@@ -7,6 +7,7 @@
  * keeps resume metadata and a committed `seq` cursor into
  * `junior_conversation_events`.
  */
+import { isDeepStrictEqual } from "node:util";
 import {
   actorSchema,
   sourceSchema,
@@ -34,10 +35,7 @@ import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
-import {
-  retainRuntimeTurnContext,
-  stripRuntimeTurnContext,
-} from "@/chat/pi/transcript";
+import { retainRuntimeTurnContext } from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -481,6 +479,13 @@ function restoreRuntimeContext(
   const restoredProvenance = [...projection.provenance];
   const unmatchedRuntimeContext: PiMessage[] = [];
   for (const runtimeMessage of runtimeContext) {
+    if (
+      restoredMessages.some((message) =>
+        isDeepStrictEqual(message, runtimeMessage),
+      )
+    ) {
+      continue;
+    }
     const runtime = runtimeMessage as {
       timestamp?: unknown;
       content?: unknown;
@@ -888,12 +893,7 @@ async function upsertTurnRecordLocked(
         }
       : undefined),
   });
-  const durableTurnStartMessageIndex =
-    args.turnStartMessageIndex === undefined
-      ? undefined
-      : stripRuntimeTurnContext(
-          args.piMessages.slice(0, args.turnStartMessageIndex),
-        ).length;
+  const durableTurnStartMessageIndex = args.turnStartMessageIndex;
   const runtimeContext = retainRuntimeTurnContext(args.piMessages);
   const retainedRuntimeContext =
     runtimeContext.length > 0

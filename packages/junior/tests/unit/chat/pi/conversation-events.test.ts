@@ -269,7 +269,7 @@ describe("projectConversationEvents", () => {
     ).toBe("gpt-5");
   });
 
-  it("omits volatile runtime bootstrap from durable agent history", () => {
+  it("replays runtime context as exact model history", () => {
     const projection = projectConversationEvents(
       [
         event(20, {
@@ -291,7 +291,13 @@ describe("projectConversationEvents", () => {
     expect(projection.messages).toEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "Keep this instruction." }],
+        content: [
+          {
+            type: "text",
+            text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
+          },
+          { type: "text", text: "Keep this instruction." },
+        ],
         timestamp: 2_000,
       },
     ]);

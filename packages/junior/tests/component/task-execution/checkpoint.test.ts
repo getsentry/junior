@@ -1397,7 +1397,7 @@ describe("turn checkpoint", () => {
     }
   });
 
-  it("keeps runtime bootstrap out of durable completed history", async () => {
+  it("keeps runtime context in completed model history", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
@@ -1430,7 +1430,13 @@ describe("turn checkpoint", () => {
       piMessages: [
         {
           role: "user",
-          content: [{ type: "text", text: "actual request" }],
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
+            },
+            { type: "text", text: "actual request" },
+          ],
         },
         {
           role: "assistant",

@@ -37,7 +37,6 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -341,7 +340,7 @@ export async function commitMessages(args: {
   historyVersion: number;
   /** Event sequence for every projected agent history item. */
   messageSeqs: number[];
-  /** Normalized durable messages after volatile runtime context is removed. */
+  /** Normalized durable messages committed as exact model history. */
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
 }> {
@@ -418,12 +417,7 @@ async function commitMessagesLocked(
   const current = projectConversationEvents(currentEvents, {
     defaultProfile: botConfig.defaultProfile,
   });
-  // Runtime bootstrap is per-run input, not durable agent history. Session
-  // records may retain it while a turn is live, but event replay must not need
-  // a compensating history rewrite when that bootstrap changes.
-  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
-    normalizeDurableMessage,
-  );
+  const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
     nextLocalMessages,

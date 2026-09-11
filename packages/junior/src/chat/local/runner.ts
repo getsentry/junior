@@ -23,7 +23,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -155,7 +154,7 @@ async function loadLocalPiMessages(args: {
   if (projection.length === 0) {
     return undefined;
   }
-  return stripRuntimeTurnContext(projection);
+  return projection;
 }
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
