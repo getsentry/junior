@@ -64,14 +64,16 @@ describe("eval AI Gateway dispatcher", () => {
 
     try {
       const stream = streamAnthropic(
-        getModel("vercel-ai-gateway", "xai/grok-4.5"),
+        getModel("vercel-ai-gateway", "openai/gpt-5.6-sol"),
         { messages: [userMessage] },
         {
           client: {
-            messages: {
-              create: () => ({
-                asResponse: async () => await fetch(targetOrigin),
-              }),
+            beta: {
+              messages: {
+                create: () => ({
+                  asResponse: async () => await fetch(targetOrigin),
+                }),
+              },
             },
           } as never,
         },

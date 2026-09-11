@@ -237,9 +237,7 @@ function parseCrossActorMidRunMode(
   throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
 }
 
-// Compile-time assertions catch stale defaults that pi-ai owns. Junior-owned
-// overrides are validated through resolveGatewayModel instead.
-const DEFAULT_MODEL_ID = resolveGatewayModel("xai/grok-4.5").id;
+const DEFAULT_MODEL_ID = "xai/grok-4.5";
 const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-luna",
