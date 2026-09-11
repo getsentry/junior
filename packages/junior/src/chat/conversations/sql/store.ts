@@ -364,15 +364,22 @@ function updateConversationUsage(args: {
       tokenTotal(args.previousExecution) +
       tokenTotal(args.nextExecution),
   };
-  if (
-    args.current?.reasoningTokens !== undefined ||
-    args.previousExecution?.reasoningTokens !== undefined ||
-    args.nextExecution.reasoningTokens !== undefined
-  ) {
-    usage.reasoningTokens =
-      (args.current?.reasoningTokens ?? 0) -
-      (args.previousExecution?.reasoningTokens ?? 0) +
-      (args.nextExecution.reasoningTokens ?? 0);
+  const tokenFields = [
+    "inputTokens",
+    "outputTokens",
+    "cachedInputTokens",
+    "cacheCreationTokens",
+    "reasoningTokens",
+  ] as const satisfies ReadonlyArray<keyof AgentTurnUsage>;
+  for (const field of tokenFields) {
+    const current = args.current?.[field];
+    const previous = args.previousExecution?.[field];
+    const next = args.nextExecution[field];
+    if (current === undefined) {
+      if (next !== undefined) usage[field] = next;
+      continue;
+    }
+    usage[field] = current - (previous ?? 0) + (next ?? 0);
   }
   const costFields = [
     "input",

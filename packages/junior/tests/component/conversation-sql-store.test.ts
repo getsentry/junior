@@ -1070,7 +1070,13 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: { totalTokens: 10, cost: { total: 0.01 } },
+          usage: {
+            inputTokens: 4,
+            outputTokens: 2,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+            cost: { total: 0.01 },
+          },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -1097,7 +1103,13 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: { totalTokens: 15, cost: { total: 0.015 } },
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cachedInputTokens: 5,
+            cacheCreationTokens: 2,
+            cost: { total: 0.015 },
+          },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
@@ -1107,7 +1119,14 @@ INSERT INTO junior_conversations (
         durationMs: number;
         executionDurationMs: number;
         metricRunId: string | null;
-        usage: { cost?: { total?: number }; totalTokens?: number } | null;
+        usage: {
+          cacheCreationTokens?: number;
+          cachedInputTokens?: number;
+          cost?: { total?: number };
+          inputTokens?: number;
+          outputTokens?: number;
+          totalTokens?: number;
+        } | null;
       }>(
         `
 SELECT
@@ -1124,7 +1143,14 @@ WHERE conversation_id = $1
         durationMs: 1_500,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+        usage: {
+          cacheCreationTokens: 2,
+          cachedInputTokens: 5,
+          cost: { total: 0.015 },
+          inputTokens: 5,
+          outputTokens: 3,
+          totalTokens: 15,
+        },
       });
     } finally {
       await fixture.close();

@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
@@ -75,20 +74,6 @@ describe("conversation stats API", () => {
         source: "slack",
         updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
       });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          usage: {
-            cachedInputTokens: 300,
-            inputTokens: 100,
-            outputTokens: 20,
-            reasoningTokens: 5,
-            totalTokens: 999,
-            cost: { input: 0.001, output: 0.002, total: 0.003 },
-          },
-        })
-        .where(eq(juniorConversations.conversationId, "slack:C1:recent"));
       await store.recordExecution({
         conversationId: "slack:D1:failed",
         createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
@@ -120,7 +105,10 @@ describe("conversation stats API", () => {
       });
       await store.recordActivity({
         conversationId: "local:test:scheduler-daily",
-        destination: { platform: "local" as const, conversationId: "local:test:scheduler-daily" },
+        destination: {
+          platform: "local" as const,
+          conversationId: "local:test:scheduler-daily",
+        },
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
@@ -275,7 +263,9 @@ describe("conversation stats API", () => {
       expect(report.guardian.metricHours).toHaveLength(7 * 24);
       expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
       expect(
-        report.guardian.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
+        report.guardian.metricHours?.find(
+          (hour) => hour.date === "2026-06-15T11",
+        ),
       ).toEqual({
         allow: 1,
         ask: 1,
