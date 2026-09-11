@@ -1,5 +1,5 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -11,26 +11,26 @@ type FixedModelOutput =
   | {
       type: "text";
       text: string;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "toolCall";
       name: string;
       arguments: Parameters<typeof fauxToolCall>[1];
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "error";
       errorMessage: string;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "message";
       message: AssistantMessage;
-      onRequest?: () => void;
+      onRequest?: (context: Context) => void;
       waitFor?: Promise<unknown>;
     };
 
@@ -58,8 +58,8 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   if (!onRequest && !waitFor) {
     return message;
   }
-  return async () => {
-    onRequest?.();
+  return async (context) => {
+    onRequest?.(context);
     if (waitFor) {
       await waitFor;
     }
