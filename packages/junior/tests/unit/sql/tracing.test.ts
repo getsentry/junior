@@ -48,7 +48,7 @@ describe("SQL tracing", () => {
     const client = { query: queryClient };
     const traced = traceQueries(client, OPTIONS);
     const query = {
-      text: "  select * from junior_conversations where id = $1",
+      text: "  select * from junior_conversations where id = $1 and kind = 'private-kind'",
       values: ["private-id"],
     };
 
@@ -67,7 +67,8 @@ describe("SQL tracing", () => {
           "db.namespace": "junior",
           "db.operation.name": "select",
           "db.query.summary": "select junior_conversations",
-          "db.query.text": "select * from junior_conversations where id = $1",
+          "db.query.text":
+            "select * from junior_conversations where id = $1 and kind = ?",
           "db.system.name": "postgresql",
           "server.address": "example.test",
           "server.port": 6432,
@@ -95,15 +96,67 @@ describe("SQL tracing", () => {
     const traced = traceQueries(client, OPTIONS);
 
     await traced.query(
-      "UPDATE users SET email = 'private--value@example.test', active = true WHERE id = 42 -- secret",
+      `UPDATE "users--active" SET email = E'private\\'--value@example.test', active = true WHERE id = 42 -- secret`,
     );
 
     expect(startSpanManual.mock.calls[0]?.[0]).toMatchObject({
-      name: "UPDATE users",
+      name: 'UPDATE "users--active"',
       attributes: {
-        "db.collection.name": "users",
-        "db.query.summary": "UPDATE users",
-        "db.query.text": "UPDATE users SET email = ?, active = ? WHERE id = ?",
+        "db.query.summary": 'UPDATE "users--active"',
+        "db.query.text":
+          'UPDATE "users--active" SET email = ?, active = ? WHERE id = ?',
+      },
+    });
+  });
+
+  it("uses the outer operation and records stored procedures", async () => {
+    const cteClient = {
+      query: vi.fn((..._args: unknown[]) => Promise.resolve({ rows: [] })),
+    };
+    await traceQueries(cteClient, OPTIONS).query(
+      "WITH recent AS (SELECT * FROM events) SELECT EXTRACT(DAY FROM created_at) FROM conversations",
+    );
+
+    expect(startSpanManual.mock.calls[0]?.[0]).toMatchObject({
+      name: "SELECT conversations",
+      attributes: {
+        "db.collection.name": "conversations",
+        "db.operation.name": "SELECT",
+        "db.query.summary": "SELECT conversations",
+      },
+    });
+
+    const callClient = {
+      query: vi.fn((..._args: unknown[]) => Promise.resolve({ rows: [] })),
+    };
+    await traceQueries(callClient, OPTIONS).query(
+      "CALL public.refresh_stats() ",
+    );
+
+    expect(startSpanManual.mock.calls[1]?.[0]).toMatchObject({
+      name: "CALL public.refresh_stats",
+      attributes: {
+        "db.operation.name": "CALL",
+        "db.query.summary": "CALL public.refresh_stats",
+        "db.stored_procedure.name": "public.refresh_stats",
+      },
+    });
+    expect(startSpanManual.mock.calls[1]?.[0]).not.toHaveProperty(
+      "attributes.db.collection.name",
+    );
+
+    const transactionClient = {
+      query: vi.fn((..._args: unknown[]) => Promise.resolve({ rows: [] })),
+    };
+    await traceQueries(transactionClient, OPTIONS).query(
+      "ROLLBACK TO SAVEPOINT s1",
+    );
+
+    expect(startSpanManual.mock.calls[2]?.[0]).toMatchObject({
+      name: "ROLLBACK",
+      attributes: {
+        "db.operation.name": "ROLLBACK",
+        "db.query.summary": "ROLLBACK",
       },
     });
   });
@@ -131,12 +184,13 @@ describe("SQL tracing", () => {
     );
   });
 
-  it("finishes callback queries after the callback runs", async () => {
+  it("finishes callback queries and records callback errors", async () => {
     const callback = vi.fn();
+    const error = Object.assign(new Error("query failed"), { code: "42P01" });
     const client = {
       query: vi.fn(
         (_text: string, wrappedCallback: (...args: unknown[]) => void) => {
-          wrappedCallback(null, { rows: [] });
+          wrappedCallback(error);
         },
       ),
     };
@@ -144,7 +198,13 @@ describe("SQL tracing", () => {
 
     traced.query("SELECT 1", callback);
 
-    expect(callback).toHaveBeenCalledWith(null, { rows: [] });
+    expect(callback).toHaveBeenCalledWith(error);
+    expect(span.setAttribute).toHaveBeenCalledWith("error.type", "42P01");
+    expect(span.setAttribute).toHaveBeenCalledWith(
+      "db.response.status_code",
+      "42P01",
+    );
+    expect(span.setStatus).toHaveBeenCalledWith({ code: 2 });
     expect(finish).toHaveBeenCalledOnce();
   });
 });

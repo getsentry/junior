@@ -149,7 +149,7 @@ Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
 `app.db.driver`
 
 `db.query.text` keeps parameter placeholders and never includes parameter values.
-Non-parameterized SQL replaces literals with `?`. SQL comments are removed.
+All inline SQL literals use `?`. SQL comments are removed.
 Group by `db.query.text` to identify one query shape. Group by
 `db.query.summary` for a lower-cardinality operation and target view.
 

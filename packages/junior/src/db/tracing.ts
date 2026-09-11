@@ -19,24 +19,57 @@ interface DatabaseConnectionAttributes {
 interface QueryDetails {
   collection?: string;
   operation?: string;
+  storedProcedure?: string;
   summary?: string;
   text?: string;
 }
 
-const SQL_OPERATION =
-  /\b(ALTER|CALL|CREATE|DELETE|DROP|INSERT|MERGE|SELECT|TRUNCATE|UPDATE)\b/i;
+const SQL_OPERATIONS = new Set([
+  "ALTER",
+  "ANALYZE",
+  "BEGIN",
+  "CALL",
+  "COMMIT",
+  "COPY",
+  "CREATE",
+  "DELETE",
+  "DROP",
+  "EXPLAIN",
+  "GRANT",
+  "INSERT",
+  "MERGE",
+  "RELEASE",
+  "REVOKE",
+  "ROLLBACK",
+  "SAVEPOINT",
+  "SELECT",
+  "SET",
+  "SHOW",
+  "TRUNCATE",
+  "UPDATE",
+  "VACUUM",
+]);
+const SQL_IDENTIFIER = String.raw`(?:(?:U&)?"(?:""|[^"])*"|[A-Za-z_][A-Za-z0-9_$]*)(?:\.(?:(?:U&)?"(?:""|[^"])*"|[A-Za-z_][A-Za-z0-9_$]*))*`;
+
+function targetPattern(prefix: string): RegExp {
+  return new RegExp(`${prefix}(${SQL_IDENTIFIER})`, "i");
+}
+
 const SQL_TARGET: Record<string, RegExp> = {
-  ALTER: /\bALTER\s+(?:TABLE\s+)?([^\s(;]+)/i,
-  CALL: /\bCALL\s+([^\s(;]+)/i,
-  CREATE:
-    /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|INDEX|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(;]+)/i,
-  DELETE: /\bDELETE\s+FROM\s+([^\s(;]+)/i,
-  DROP: /\bDROP\s+(?:TABLE|INDEX|VIEW)\s+(?:IF\s+EXISTS\s+)?([^\s(;]+)/i,
-  INSERT: /\bINSERT\s+INTO\s+([^\s(;]+)/i,
-  MERGE: /\bMERGE\s+INTO\s+([^\s(;]+)/i,
-  SELECT: /\bFROM\s+([^\s(;]+)/i,
-  TRUNCATE: /\bTRUNCATE\s+(?:TABLE\s+)?([^\s(;]+)/i,
-  UPDATE: /\bUPDATE\s+([^\s(;]+)/i,
+  ALTER: targetPattern(String.raw`\bALTER\s+TABLE\s+`),
+  CALL: targetPattern(String.raw`\bCALL\s+`),
+  CREATE: targetPattern(
+    String.raw`\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?`,
+  ),
+  DELETE: targetPattern(String.raw`\bDELETE\s+FROM\s+`),
+  DROP: targetPattern(
+    String.raw`\bDROP\s+(?:TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?`,
+  ),
+  INSERT: targetPattern(String.raw`\bINSERT\s+INTO\s+`),
+  MERGE: targetPattern(String.raw`\bMERGE\s+INTO\s+`),
+  SELECT: targetPattern(String.raw`\bFROM\s+`),
+  TRUNCATE: targetPattern(String.raw`\bTRUNCATE\s+(?:TABLE\s+)?`),
+  UPDATE: targetPattern(String.raw`\bUPDATE\s+`),
 };
 
 function queryText(query: unknown): string | undefined {
@@ -47,21 +80,7 @@ function queryText(query: unknown): string | undefined {
   return typeof query.text === "string" ? query.text : undefined;
 }
 
-function hasQueryParameters(args: unknown[], text: string): boolean {
-  const query = args[0];
-  const configValues =
-    query && typeof query === "object" && "values" in query
-      ? query.values
-      : undefined;
-  const argumentValues = Array.isArray(args[1]) ? args[1] : undefined;
-  return (
-    /\$\d+\b/.test(text) ||
-    (Array.isArray(configValues) && configValues.length > 0) ||
-    (argumentValues?.length ?? 0) > 0
-  );
-}
-
-function safeSqlText(text: string, sanitizeLiterals: boolean): string {
+function safeSqlText(text: string): string {
   let safe = "";
   for (let index = 0; index < text.length; ) {
     if (text.startsWith("--", index)) {
@@ -71,9 +90,20 @@ function safeSqlText(text: string, sanitizeLiterals: boolean): string {
       continue;
     }
     if (text.startsWith("/*", index)) {
-      const end = text.indexOf("*/", index + 2);
+      let depth = 1;
+      index += 2;
+      while (index < text.length && depth > 0) {
+        if (text.startsWith("/*", index)) {
+          depth += 1;
+          index += 2;
+        } else if (text.startsWith("*/", index)) {
+          depth -= 1;
+          index += 2;
+        } else {
+          index += 1;
+        }
+      }
       safe += " ";
-      index = end === -1 ? text.length : end + 2;
       continue;
     }
 
@@ -82,16 +112,40 @@ function safeSqlText(text: string, sanitizeLiterals: boolean): string {
     )?.[0];
     if (dollarTag) {
       const end = text.indexOf(dollarTag, index + dollarTag.length);
-      const next = end === -1 ? text.length : end + dollarTag.length;
-      safe += sanitizeLiterals ? "?" : text.slice(index, next);
-      index = next;
+      index = end === -1 ? text.length : end + dollarTag.length;
+      safe += "?";
+      continue;
+    }
+
+    const identifierPrefix = /^(?:U&)?"/i.exec(text.slice(index))?.[0];
+    if (identifierPrefix) {
+      let end = index + identifierPrefix.length;
+      while (end < text.length) {
+        if (text[end] !== '"') {
+          end += 1;
+          continue;
+        }
+        if (text[end + 1] === '"') {
+          end += 2;
+          continue;
+        }
+        end += 1;
+        break;
+      }
+      safe += text.slice(index, end);
+      index = end;
       continue;
     }
 
     const stringPrefix = /^(?:E|U&|B|X)?'/i.exec(text.slice(index))?.[0];
     if (stringPrefix) {
+      const supportsBackslashEscapes = /^E'/i.test(stringPrefix);
       let end = index + stringPrefix.length;
       while (end < text.length) {
+        if (supportsBackslashEscapes && text[end] === "\\") {
+          end += 2;
+          continue;
+        }
         if (text[end] !== "'") {
           end += 1;
           continue;
@@ -103,8 +157,19 @@ function safeSqlText(text: string, sanitizeLiterals: boolean): string {
         end += 1;
         break;
       }
-      safe += sanitizeLiterals ? "?" : text.slice(index, end);
+      safe += "?";
       index = end;
+      continue;
+    }
+
+    const token =
+      /^(?:TRUE|FALSE|NULL|0x[\da-f_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*(?:\.[\d_]*)?(?:e[+-]?[\d_]+)?)(?![A-Za-z0-9_$])/i.exec(
+        text.slice(index),
+      )?.[0];
+    const previous = text[index - 1];
+    if (token && (!previous || !/[A-Za-z0-9_$]/.test(previous))) {
+      safe += "?";
+      index += token.length;
       continue;
     }
 
@@ -112,43 +177,88 @@ function safeSqlText(text: string, sanitizeLiterals: boolean): string {
     index += 1;
   }
 
-  if (!sanitizeLiterals) return safe;
-  return safe
-    .replace(/\b(?:TRUE|FALSE)\b/gi, "?")
-    .replace(/\b(?:0x[\da-f]+|\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/gi, "?");
+  return safe;
 }
 
-function normalizeQueryText(text: string, parameterized: boolean): string {
-  return safeSqlText(text, !parameterized)
+function normalizeQueryText(text: string): string {
+  return safeSqlText(text.slice(0, MAX_QUERY_TEXT_LENGTH))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_QUERY_TEXT_LENGTH);
 }
 
-function collectionFromTarget(target: string): string | undefined {
-  return /^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/.test(
-    target,
-  )
-    ? target
-    : undefined;
+function operationFromText(
+  text: string,
+): { index: number; name: string } | undefined {
+  const tokens = /(?:U&)?"(?:""|[^"])*"|[A-Za-z_][A-Za-z0-9_$]*|[()]/gi;
+  let depth = 0;
+  for (const match of text.matchAll(tokens)) {
+    const token = match[0];
+    if (token === "(") {
+      depth += 1;
+    } else if (token === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (depth === 0 && !token.includes('"')) {
+      if (SQL_OPERATIONS.has(token.toUpperCase())) {
+        return { index: match.index, name: token };
+      }
+    }
+  }
+  return undefined;
+}
+
+function targetFromOperation(
+  operation: string,
+  text: string,
+): string | undefined {
+  if (operation.toUpperCase() !== "SELECT") {
+    return SQL_TARGET[operation.toUpperCase()]?.exec(text)?.[1];
+  }
+
+  const tokens = /(?:U&)?"(?:""|[^"])*"|[A-Za-z_][A-Za-z0-9_$]*|[()]/gi;
+  let depth = 0;
+  for (const match of text.matchAll(tokens)) {
+    const token = match[0];
+    if (token === "(") {
+      depth += 1;
+    } else if (token === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (depth === 0 && token.toUpperCase() === "FROM") {
+      const targetText = text.slice(match.index + token.length).trimStart();
+      return new RegExp(`^(${SQL_IDENTIFIER})`, "i").exec(targetText)?.[1];
+    }
+  }
+  return undefined;
+}
+
+function querySummary(
+  operation: string | undefined,
+  target: string | undefined,
+): string | undefined {
+  if (!operation) return undefined;
+  const summary = target ? `${operation} ${target}` : operation;
+  return summary.length <= MAX_QUERY_SUMMARY_LENGTH ? summary : operation;
 }
 
 function detailsFromQuery(args: unknown[]): QueryDetails {
   const rawText = queryText(args[0]);
   if (!rawText) return {};
 
-  const text = normalizeQueryText(rawText, hasQueryParameters(args, rawText));
-  const operation = SQL_OPERATION.exec(text)?.[1];
+  const text = normalizeQueryText(rawText);
+  const operationMatch = operationFromText(text);
+  const operation = operationMatch?.name;
+  const operationText = operationMatch ? text.slice(operationMatch.index) : "";
   const target = operation
-    ? SQL_TARGET[operation.toUpperCase()]?.exec(text)?.[1]
+    ? targetFromOperation(operation, operationText)
     : undefined;
-  const collection = target ? collectionFromTarget(target) : undefined;
-  const summary = [operation, target].filter(Boolean).join(" ");
+  const summary = querySummary(operation, target);
+  const isCall = operation?.toUpperCase() === "CALL";
 
   return {
-    collection,
+    collection: isCall ? undefined : target,
     operation,
-    summary: summary ? summary.slice(0, MAX_QUERY_SUMMARY_LENGTH) : undefined,
+    storedProcedure: isCall ? target : undefined,
+    summary,
     text: text || undefined,
   };
 }
@@ -189,7 +299,7 @@ function errorType(error: unknown): string {
 function markFailed(span: Sentry.Span, error: unknown): void {
   const statusCode = responseStatusCode(error);
   span.setAttribute("error.type", statusCode ?? errorType(error));
-  if (statusCode) {
+  if (statusCode && /^[0-9A-Z]{5}$/i.test(statusCode)) {
     span.setAttribute("db.response.status_code", statusCode);
   }
   span.setStatus({ code: 2 });
@@ -230,6 +340,9 @@ export function traceQueries<T extends QueryClient>(
             ? { "db.query.summary": details.summary }
             : undefined),
           ...(details.text ? { "db.query.text": details.text } : undefined),
+          ...(details.storedProcedure
+            ? { "db.stored_procedure.name": details.storedProcedure }
+            : undefined),
           ...(details.collection
             ? { "db.collection.name": details.collection }
             : undefined),
