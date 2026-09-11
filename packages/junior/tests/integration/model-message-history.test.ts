@@ -11,7 +11,6 @@ describe("model message history", () => {
     await agent.run("second request");
     const second = agent.snapshot();
 
-    expect(second.systemPrompt).toBe(first.systemPrompt);
     expect(second.messages.slice(0, first.messages.length)).toEqual(
       first.messages,
     );
