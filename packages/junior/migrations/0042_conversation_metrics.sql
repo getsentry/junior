@@ -14,7 +14,7 @@ SELECT conversation_id, coalesce(metric_run_id, 'legacy:' || conversation_id), m
 FROM junior_conversations
 CROSS JOIN LATERAL (VALUES
   ('duration_ms', duration_ms::double precision),
-  ('tokens', CASE WHEN coalesce(usage_json->>'inputTokens', usage_json->>'outputTokens', usage_json->>'cachedInputTokens', usage_json->>'cacheCreationTokens') IS NOT NULL THEN coalesce((usage_json->>'inputTokens')::double precision, 0) + coalesce((usage_json->>'outputTokens')::double precision, 0) + coalesce((usage_json->>'cachedInputTokens')::double precision, 0) + coalesce((usage_json->>'cacheCreationTokens')::double precision, 0) ELSE (usage_json->>'totalTokens')::double precision END),
+  ('total_tokens', CASE WHEN coalesce(usage_json->>'inputTokens', usage_json->>'outputTokens', usage_json->>'cachedInputTokens', usage_json->>'cacheCreationTokens') IS NOT NULL THEN coalesce((usage_json->>'inputTokens')::double precision, 0) + coalesce((usage_json->>'outputTokens')::double precision, 0) + coalesce((usage_json->>'cachedInputTokens')::double precision, 0) + coalesce((usage_json->>'cacheCreationTokens')::double precision, 0) ELSE (usage_json->>'totalTokens')::double precision END),
   ('input_tokens', (usage_json->>'inputTokens')::double precision),
   ('output_tokens', (usage_json->>'outputTokens')::double precision),
   ('cached_input_tokens', (usage_json->>'cachedInputTokens')::double precision),

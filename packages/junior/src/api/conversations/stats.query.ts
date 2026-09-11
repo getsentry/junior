@@ -190,7 +190,7 @@ function applyMetricBuckets(
       row.durationMs = fact.value;
     } else if (fact.metric === "input_tokens") {
       row.inputTokens = fact.value;
-    } else if (fact.metric === "tokens") {
+    } else if (fact.metric === "total_tokens") {
       row.tokens = fact.value;
     }
     byDate.set(fact.date, row);

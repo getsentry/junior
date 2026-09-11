@@ -11,7 +11,7 @@ import { timestamptz } from "./timestamps";
 
 export const CONVERSATION_METRICS = [
   "duration_ms",
-  "tokens",
+  "total_tokens",
   "input_tokens",
   "output_tokens",
   "cached_input_tokens",

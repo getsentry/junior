@@ -25,7 +25,7 @@ export function conversationMetricValues(args: {
   const usage = args.usage;
   return {
     duration_ms: Math.max(0, args.durationMs),
-    tokens: agentTurnTotalTokens(usage),
+    total_tokens: agentTurnTotalTokens(usage),
     input_tokens: finite(usage?.inputTokens),
     output_tokens: finite(usage?.outputTokens),
     cached_input_tokens: finite(usage?.cachedInputTokens),
@@ -88,7 +88,7 @@ export async function replaceConversationMetrics(
     .set({
       durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
       usage: sql`jsonb_strip_nulls(jsonb_build_object(
-        'totalTokens', ${metric("tokens")},
+        'totalTokens', ${metric("total_tokens")},
         'inputTokens', ${metric("input_tokens")},
         'outputTokens', ${metric("output_tokens")},
         'cachedInputTokens', ${metric("cached_input_tokens")},

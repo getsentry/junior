@@ -1070,7 +1070,14 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: { totalTokens: 10, cost: { total: 0.01 } },
+          usage: {
+            inputTokens: 4,
+            outputTokens: 2,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+            reasoningTokens: 1,
+            cost: { total: 0.01 },
+          },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -1097,7 +1104,14 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: { totalTokens: 15, cost: { total: 0.015 } },
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cachedInputTokens: 5,
+            cacheCreationTokens: 2,
+            reasoningTokens: 2,
+            cost: { total: 0.015 },
+          },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
@@ -1124,7 +1138,15 @@ WHERE conversation_id = $1
         durationMs: 1_500,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+        usage: {
+          cacheCreationTokens: 2,
+          cachedInputTokens: 5,
+          cost: { total: 0.015 },
+          inputTokens: 5,
+          outputTokens: 3,
+          reasoningTokens: 2,
+          totalTokens: 15,
+        },
       });
       expect(
         await fixture.sql.query<{ metric: string; value: number }>(
@@ -1137,9 +1159,14 @@ ORDER BY metric
           [CONVERSATION_ID],
         ),
       ).toEqual([
+        { metric: "cache_creation_tokens", value: 2 },
+        { metric: "cached_input_tokens", value: 5 },
         { metric: "cost_usd", value: 0.015 },
         { metric: "duration_ms", value: 1_500 },
-        { metric: "tokens", value: 15 },
+        { metric: "input_tokens", value: 5 },
+        { metric: "output_tokens", value: 3 },
+        { metric: "reasoning_tokens", value: 2 },
+        { metric: "total_tokens", value: 15 },
       ]);
     } finally {
       await fixture.close();
