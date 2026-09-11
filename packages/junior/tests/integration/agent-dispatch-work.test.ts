@@ -234,17 +234,7 @@ describe("agent dispatch conversation work", () => {
       [],
     );
     const agentRunner = createModelAgentRunner(
-      createModelStream([
-        {
-          type: "toolCall",
-          name: "reportProgress",
-          arguments: {
-            message: "Applying the maintenance",
-            intentAcknowledgment: true,
-          },
-        },
-        { type: "text", text: "Maintenance complete" },
-      ]),
+      createModelStream([{ type: "text", text: "Maintenance complete" }]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =

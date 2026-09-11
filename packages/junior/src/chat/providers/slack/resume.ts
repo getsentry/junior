@@ -331,7 +331,6 @@ function buildResumedRun(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
   delivery: Delivery,
-  postIntentAcknowledgment: (text: string) => Promise<void>,
 ): AgentRun {
   const savedRun = args.run;
   if (!savedRun) {
@@ -378,9 +377,6 @@ function buildResumedRun(
     onEvent: async (event) => {
       if (event.type === "status") {
         statusSession.update({ text: event.text });
-        if (event.intentAcknowledgment) {
-          await postIntentAcknowledgment(event.text);
-        }
       }
       await priorOnEvent?.(event);
     },
@@ -667,29 +663,7 @@ async function resumeSlackTurnInContext(
       deliveryState.conversation,
       sessionId,
     );
-    let intentAcknowledgmentPosted = false;
-    const postIntentAcknowledgment = async (text: string): Promise<void> => {
-      if (
-        intentAcknowledgmentPosted ||
-        runArgs.run?.dispatch?.outcomes?.length === 0
-      ) {
-        return;
-      }
-      intentAcknowledgmentPosted = true;
-      await postSlackMessageBestEffort(
-        runArgs.channelId,
-        runArgs.threadTs,
-        text,
-        runArgs.conversationId,
-        runArgs.run?.dispatch?.replyAttribution,
-      );
-    };
-    const run = buildResumedRun(
-      runArgs,
-      status,
-      deliverAssistantMessage,
-      postIntentAcknowledgment,
-    );
+    const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,
