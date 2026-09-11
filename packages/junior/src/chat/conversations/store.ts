@@ -148,12 +148,13 @@ export interface ConversationStore {
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
-   * Materialize execution and usage aggregates beside canonical metadata.
-   * These fields serve reporting and runtime control, never history hydration.
+   * Store execution state and one Run's metrics.
+   * Conversation metric fields cache totals for existing readers.
    */
   recordExecution(args: {
     channelName?: string;
     conversationId: string;
+    /** When this Run started. */
     createdAtMs: number;
     destination?: Destination;
     execution: ConversationExecution;

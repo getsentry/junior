@@ -1061,8 +1061,23 @@ INSERT INTO junior_conversations (
       await migrateSchema(fixture.sql);
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
-        createdAtMs: 1_000,
+        createdAtMs: 500,
         destination: inboundMessage("exec-metrics").destination,
+        execution: {
+          runId: "run-opaque",
+          status: "running",
+          updatedAtMs: 1_000,
+        },
+        metrics: {
+          durationMs: 100,
+          usage: { totalTokens: 100, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 1_000,
+        updatedAtMs: 1_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
         execution: {
           runId: "run-1",
           status: "running",
@@ -1070,7 +1085,14 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: { totalTokens: 10, cost: { total: 0.01 } },
+          usage: {
+            inputTokens: 4,
+            outputTokens: 2,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+            reasoningTokens: 1,
+            cost: { total: 0.01 },
+          },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -1097,10 +1119,29 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: { totalTokens: 15, cost: { total: 0.015 } },
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cachedInputTokens: 5,
+            cacheCreationTokens: 2,
+            reasoningTokens: 2,
+            cost: { total: 0.015 },
+          },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "running",
+          updatedAtMs: 3_500,
+        },
+        metrics: { durationMs: 1, usage: { totalTokens: 1 } },
+        lastActivityAtMs: 3_500,
+        updatedAtMs: 3_500,
       });
 
       const [metrics] = await fixture.sql.query<{
@@ -1121,11 +1162,35 @@ WHERE conversation_id = $1
         [CONVERSATION_ID],
       );
       expect(metrics).toMatchObject({
-        durationMs: 1_500,
+        durationMs: 1_600,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+        usage: {
+          cost: { total: 0.025 },
+          reasoningTokens: 2,
+          totalTokens: 115,
+        },
       });
+      expect(
+        await fixture.sql.query<{ metric: string; value: number }>(
+          `
+SELECT metric, value
+FROM junior_conversation_metrics
+WHERE conversation_id = $1 AND run_id = 'run-1'
+ORDER BY metric
+`,
+          [CONVERSATION_ID],
+        ),
+      ).toEqual([
+        { metric: "cache_creation_tokens", value: 2 },
+        { metric: "cached_input_tokens", value: 5 },
+        { metric: "cost_usd", value: 0.015 },
+        { metric: "duration_ms", value: 1_500 },
+        { metric: "input_tokens", value: 5 },
+        { metric: "output_tokens", value: 3 },
+        { metric: "reasoning_tokens", value: 2 },
+        { metric: "total_tokens", value: 15 },
+      ]);
     } finally {
       await fixture.close();
     }

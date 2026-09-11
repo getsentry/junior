@@ -10,6 +10,10 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationAggregateColumns } from "./aggregate";
+import {
+  readConversationMetricBuckets,
+  type ConversationMetricBucket,
+} from "./metric-buckets";
 import type {
   ConversationMetricDay,
   ConversationStatsItem,
@@ -163,6 +167,49 @@ type MetricRow = {
   tokens: number | null;
 };
 
+function applyMetricBuckets(
+  rows: Array<Pick<MetricRow, "conversations" | "date">>,
+  metrics: ConversationMetricBucket[],
+): MetricRow[] {
+  const byDate = new Map<string, MetricRow>(
+    rows.map((row) => [
+      row.date,
+      {
+        ...row,
+        cachedInputTokens: null,
+        costUsd: null,
+        durationMs: 0,
+        inputTokens: null,
+        tokens: null,
+      },
+    ]),
+  );
+  for (const metric of metrics) {
+    const row = byDate.get(metric.date) ?? {
+      cachedInputTokens: null,
+      conversations: 0,
+      costUsd: null,
+      date: metric.date,
+      durationMs: 0,
+      inputTokens: null,
+      tokens: null,
+    };
+    if (metric.metric === "cached_input_tokens") {
+      row.cachedInputTokens = metric.value;
+    } else if (metric.metric === "cost_usd") {
+      row.costUsd = metric.value;
+    } else if (metric.metric === "duration_ms") {
+      row.durationMs = metric.value;
+    } else if (metric.metric === "input_tokens") {
+      row.inputTokens = metric.value;
+    } else if (metric.metric === "total_tokens") {
+      row.tokens = metric.value;
+    }
+    byDate.set(metric.date, row);
+  }
+  return [...byDate.values()];
+}
+
 type GuardianRow = {
   allow: number;
   ask: number;
@@ -171,7 +218,6 @@ type GuardianRow = {
   deny: number;
   requests: number;
 };
-
 
 function metricPoint(
   date: string,
@@ -223,7 +269,6 @@ function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   return days;
 }
 
-
 function emptyMetricDay(date: string): ConversationMetricDay {
   return { conversations: 0, date, durationMs: 0 };
 }
@@ -254,8 +299,10 @@ function sumGuardianHoursIntoSixHours(
   });
 }
 
-
-function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
+function metricHours(
+  rows: MetricRow[],
+  endMs: number,
+): ConversationMetricDay[] {
   const byHour = new Map(rows.map((row) => [row.date, row]));
   const end = startOfUtcHour(endMs);
   const start = new Date(end.getTime() - (WINDOW_HOURS - 1) * HOUR_MS);
@@ -362,6 +409,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     locationRows,
     metricRows,
     metricHourRows,
+    dayMetrics,
+    hourMetrics,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -439,13 +488,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
@@ -459,13 +503,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       .groupBy(activityDate),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityHour,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
@@ -477,12 +516,14 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       )
       .where(where)
       .groupBy(activityHour),
+    readConversationMetricBuckets(db, { bucket: "day", start, end }),
+    readConversationMetricBuckets(db, { bucket: "hour", start, end }),
   ]);
   return {
     actorRows,
     locationRows,
-    metricHourRows,
-    metricRows,
+    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics),
     totals: totalsRows[0],
   };
 }
