@@ -29,7 +29,6 @@ type Metric = "costUsd" | "durationMs" | "inputTokens" | "tokens";
 type ChartConfig = {
   axisFormat(value: number): string;
   color: string;
-  description: string;
   format(value: number): string;
   metric: Metric;
   title: string;
@@ -48,16 +47,10 @@ function compactDuration(value: number): string {
   return formatDuration(value);
 }
 
-function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
+function tokenChart(): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description:
-      bucketUnit === "hour"
-        ? "Hourly model tokens"
-        : bucketUnit === "6hour"
-          ? "6-hour model tokens"
-          : "Daily model tokens",
     format: formatCompactNumber,
     metric: "tokens",
     title: "Token usage",
@@ -65,16 +58,10 @@ function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   };
 }
 
-function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
+function inputCacheChart(): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description:
-      bucketUnit === "hour"
-        ? "Hourly cache mix"
-        : bucketUnit === "6hour"
-          ? "6-hour cache mix"
-          : "Daily cache mix",
     format: formatCompactNumber,
     metric: "inputTokens",
     title: "Input token cache",
@@ -82,17 +69,11 @@ function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   };
 }
 
-function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
+function supportingCharts(): ChartConfig[] {
   return [
     {
       axisFormat: compactCurrency,
       color: "#fbbf24",
-      description:
-        bucketUnit === "hour"
-          ? "Hourly estimated cost"
-          : bucketUnit === "6hour"
-            ? "6-hour estimated cost"
-            : "Daily estimated cost",
       format: (value) => formatCostSummary({ total: value }),
       metric: "costUsd",
       title: "Model spend",
@@ -101,12 +82,6 @@ function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
     {
       axisFormat: compactDuration,
       color: "#a78bfa",
-      description:
-        bucketUnit === "hour"
-          ? "Hourly cumulative runtime"
-          : bucketUnit === "6hour"
-            ? "6-hour cumulative runtime"
-            : "Daily cumulative runtime",
       format: formatDuration,
       metric: "durationMs",
       title: "Runtime",
@@ -134,8 +109,8 @@ export function SystemMetricCharts(props: {
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const charts = [
-    props.cacheBreakdown ? inputCacheChart(bucketUnit) : tokenChart(bucketUnit),
-    ...supportingCharts(bucketUnit),
+    props.cacheBreakdown ? inputCacheChart() : tokenChart(),
+    ...supportingCharts(),
   ];
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -182,11 +157,7 @@ function MetricChart(props: {
 
   return (
     <Card>
-      <ChartHeader
-        description={chart.description}
-        title={chart.title}
-        total={chart.format(total)}
-      />
+      <ChartHeader title={chart.title} total={chart.format(total)} />
       {chart.metric === "inputTokens" ? (
         <div className="px-5 pt-3">
           <ChartLegend
