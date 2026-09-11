@@ -168,7 +168,7 @@ type MetricRow = {
 };
 
 function applyMetricBuckets(
-  rows: MetricRow[],
+  rows: Array<Pick<MetricRow, "conversations" | "date">>,
   metrics: ConversationMetricBucket[],
 ): MetricRow[] {
   const byDate = new Map<string, MetricRow>(
@@ -488,13 +488,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
@@ -508,13 +503,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       .groupBy(activityDate),
     db
       .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
         date: activityHour,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
       .innerJoin(
