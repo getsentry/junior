@@ -77,6 +77,26 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
   withSpan: mocks.withSpan,
 }));
 
+describe("resolveGatewayModel", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("loads a Junior-owned model before pi-ai publishes it", async () => {
+    const { resolveGatewayModel } = await import("@/chat/pi/client");
+
+    expect(resolveGatewayModel("openai/gpt-6-astra")).toEqual(
+      expect.objectContaining({
+        id: "openai/gpt-6-astra",
+        provider: "vercel-ai-gateway",
+        contextWindow: 1_050_000,
+        maxTokens: 128_000,
+      }),
+    );
+  });
+});
+
 describe("completeText", () => {
   afterEach(() => {
     vi.clearAllMocks();
