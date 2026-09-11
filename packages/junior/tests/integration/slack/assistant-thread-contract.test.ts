@@ -64,10 +64,7 @@ function progressThenReply(): StreamFn {
     {
       type: "toolCall",
       name: "reportProgress",
-      arguments: {
-        message: "Running bash",
-        intentAcknowledgment: true,
-      },
+      arguments: { message: "Running bash" },
     },
     { type: "text", text: "Done." },
   ]);
@@ -239,14 +236,6 @@ describe("Slack contract: assistant-thread delivery", () => {
           }),
         }),
       ]),
-    );
-    const posts = slackApiOutbox.messages();
-    expect(posts.map((post) => post.params.text)).toEqual([
-      "Running bash",
-      "Done.",
-    ]);
-    expect(JSON.stringify(posts[0]?.params.blocks)).toContain(
-      "slack:C12345:1700000200.000200",
     );
   });
 

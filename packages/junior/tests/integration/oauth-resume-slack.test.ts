@@ -80,22 +80,7 @@ describe("oauth resume slack integration", () => {
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       executeTurn: createTestTurnExecution(
-        createModelAgentRunner(
-          createModelStream([
-            {
-              type: "toolCall",
-              name: "reportProgress",
-              arguments: {
-                message: "Reviewing the saved context",
-                intentAcknowledgment: true,
-              },
-            },
-            {
-              type: "text",
-              text: "The budget deadline you mentioned earlier was Friday.",
-            },
-          ]),
-        ),
+        modelReply("The budget deadline you mentioned earlier was Friday."),
       ),
       commitResult: async () => {
         expect(
@@ -105,25 +90,23 @@ describe("oauth resume slack integration", () => {
       },
     });
 
-    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel_id: "C123",
-            thread_ts: "1700000000.001",
-            status: expect.any(String),
-            loading_messages: expect.arrayContaining([expect.any(String)]),
-          }),
+    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel_id: "C123",
+          thread_ts: "1700000000.001",
+          status: expect.any(String),
+          loading_messages: expect.arrayContaining([expect.any(String)]),
         }),
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel_id: "C123",
-            thread_ts: "1700000000.001",
-            status: "",
-          }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel_id: "C123",
+          thread_ts: "1700000000.001",
+          status: "",
         }),
-      ]),
-    );
+      }),
+    ]);
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
@@ -137,21 +120,10 @@ describe("oauth resume slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
-          text: "Reviewing the saved context",
-        }),
-      }),
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.001",
           text: "The budget deadline you mentioned earlier was Friday.",
         }),
       }),
     ]);
-    expectBlocksIncludeConversationId(
-      getCapturedSlackApiCalls("chat.postMessage")[1]!.params,
-      "slack:C123:1700000000.001",
-    );
   }, 10_000);
 
   it("validates credentials before starting Slack resume UX", async () => {

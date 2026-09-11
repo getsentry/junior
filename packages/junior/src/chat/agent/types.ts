@@ -162,11 +162,7 @@ export type AgentDurability = {
 
 /** Best-effort progress events. Failures here never affect the run. */
 export type AgentEvent =
-  | {
-      type: "status";
-      text: string;
-      intentAcknowledgment?: boolean;
-    }
+  | { type: "status"; text: string }
   | {
       type: "tool_started";
       toolCallId: string;

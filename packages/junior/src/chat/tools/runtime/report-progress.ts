@@ -12,18 +12,12 @@ export function createReportProgressTool() {
       readOnlyHint: false,
     },
     description:
-      "Update the user-visible assistant loading message with a short progress phase. For a large Slack task, set intentAcknowledgment to true on the first update so the runtime also posts a linked intent acknowledgment without ending the Turn. Skip short lookups, routine commands, generic filler, and minor substeps. After an initial update, call it again only when the major phase meaningfully changes. Messages must be written in sentence case with a present-participle verb (e.g. 'Searching docs', 'Reviewing results', 'Running checks').",
+      "Update the user-visible assistant loading message with a short progress phase. Use this only for work with multiple substantive phases or a materially long wait. Skip short lookups, routine commands, generic filler, and minor substeps. After an initial update, call it again only when the major phase meaningfully changes. Messages must be written in sentence case with a present-participle verb (e.g. 'Searching docs', 'Reviewing results', 'Running checks').",
     inputSchema: z.object({
       message: z
         .string()
         .min(1)
         .describe("Short user-facing progress message."),
-      intentAcknowledgment: z
-        .boolean()
-        .optional()
-        .describe(
-          "True only for the first update of a large Slack task, when the runtime should also post a linked acknowledgment.",
-        ),
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async () => ({}),
