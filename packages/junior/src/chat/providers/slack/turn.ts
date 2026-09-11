@@ -763,6 +763,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         ): Promise<void> => {
           if (
             intentAcknowledgmentPosted ||
+            options.execution?.dispatch?.outcomes?.length === 0 ||
             !channelId ||
             thread.adapter.name !== "slack"
           ) {
