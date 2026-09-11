@@ -137,6 +137,22 @@ sort=-timestamp
 
 ## Domains
 
+### Database Queries
+
+PostgreSQL queries that are slow, frequent, or failing.
+
+Spans: `db.query`
+
+Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
+`db.collection.name`, `db.query.summary`, `db.query.text`,
+`db.response.status_code`, `error.type`, `server.address`, `server.port`,
+`app.db.driver`
+
+`db.query.text` keeps parameter placeholders and never includes parameter values.
+All inline SQL literals use `?`. SQL comments are removed.
+Group by `db.query.text` to identify one query shape. Group by
+`db.query.summary` for a lower-cardinality operation and target view.
+
 ### Webhook Ingress
 
 Slack or Vercel webhook delivery/routing failures.

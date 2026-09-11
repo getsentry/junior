@@ -19,7 +19,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
 
-  constructor(private readonly pool: PgPool) {}
+  constructor(
+    private readonly pool: PgPool,
+    private readonly connectionString: string,
+  ) {}
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -134,10 +137,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return traceQueries(
-      this.transactionClient.getStore() ?? this.pool,
-      "postgres",
-    );
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
+      connectionString: this.connectionString,
+      driver: "postgres",
+    });
   }
 }
 
@@ -154,5 +157,6 @@ export function createPostgresJuniorSqlExecutor(args: {
       max: 3,
       statement_timeout: args.statementTimeoutMs,
     }),
+    args.connectionString,
   );
 }
