@@ -334,7 +334,7 @@ const CONVERSATION_RULES = [
 ];
 
 const SLACK_ACTION_RULES = [
-  "- For a large task with multiple substantive steps, first call `reportProgress` with one short intent acknowledgment before any other tool. State what you are starting so people can follow the linked Conversation while work continues. Do not send a standalone assistant reply for this acknowledgment, and skip it for short or routine work. After the initial update, use `reportProgress` only for later major phase changes.",
+  "- For a large task with multiple substantive steps, first call `reportProgress` with `intentAcknowledgment: true` before any other tool. State what you are starting so the runtime posts a linked intent acknowledgment while work continues. Do not send a standalone assistant reply for this acknowledgment, and skip it for short or routine work. After the initial update, use `reportProgress` without `intentAcknowledgment` only for later major phase changes.",
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
   "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",

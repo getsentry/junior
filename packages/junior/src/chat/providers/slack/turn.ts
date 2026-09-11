@@ -757,6 +757,33 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const compactingStatus: AssistantStatusSpec = {
           text: "Compacting context",
         };
+        let intentAcknowledgmentPosted = false;
+        const postIntentAcknowledgment = async (
+          text: string,
+        ): Promise<void> => {
+          if (
+            intentAcknowledgmentPosted ||
+            !channelId ||
+            thread.adapter.name !== "slack"
+          ) {
+            return;
+          }
+          intentAcknowledgmentPosted = true;
+          try {
+            await beforeFirstResponsePost();
+            await sendSlackReply({
+              channelId,
+              conversationId,
+              replyAttribution: options.execution?.dispatch?.replyAttribution,
+              text,
+              ...(threadTs ? { threadTs } : undefined),
+            });
+          } catch (error) {
+            logException(error, "slack.intent_acknowledgment.post_failed", {
+              "app.slack.reply_stage": "intent_acknowledgment",
+            });
+          }
+        };
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
         // Once model output is settled, later commit errors must not trigger a
@@ -1141,6 +1168,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             onEvent: async (event) => {
               if (event.type === "status") {
                 status.update({ text: event.text });
+                if (event.intentAcknowledgment) {
+                  await postIntentAcknowledgment(event.text);
+                }
                 return;
               }
               if (event.type === "tool_started") {

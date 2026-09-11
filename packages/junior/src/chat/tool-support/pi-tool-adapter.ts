@@ -17,8 +17,10 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
-import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
+import {
+  buildReportedProgressStatus,
+  type ReportedProgress,
+} from "@/chat/runtime/report-progress";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -52,7 +54,7 @@ export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
   sandbox: SkillSandbox,
   spanContext: LogContext,
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
+  onStatus?: (status: ReportedProgress) => void | Promise<void>,
   sandboxTools?: SandboxTools,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (
