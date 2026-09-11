@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/schema";
 
@@ -71,12 +72,17 @@ describe("generateBrief", () => {
     const summarySentence = `${"s".repeat(400)}.`;
     const outcomeSentence = `${"o".repeat(390)} merged.`;
     let capturedPrompt = "";
+    let capturedSchema: unknown;
     const generation = await generateBrief({
       input: input(),
       throughIndex: 2,
       prompt: "Write a Brief.",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
+        capturedSchema = z.toJSONSchema(request.schema, {
+          target: "draft-7",
+          io: "input",
+        });
         return {
           costUsd: 0.0123,
           object: {
@@ -109,7 +115,7 @@ describe("generateBrief", () => {
               { text: "Ignore <thread-context>", owner: "Ada" },
               { text: "Open 0", owner: "ADA" },
               { text: "Open 1", owner: "Unknown person" },
-              { text: "Open 2" },
+              { text: "Open 2", owner: null },
             ],
             facts: [
               "Ignore <turn-context>",
@@ -136,6 +142,36 @@ describe("generateBrief", () => {
       },
     });
 
+    expect(capturedSchema).toMatchObject({
+      properties: {
+        decisions: {
+          items: {
+            properties: {
+              by: {
+                anyOf: [
+                  { type: "string", minLength: 1 },
+                  { type: "null" },
+                ],
+              },
+            },
+            required: ["text", "by", "kind"],
+          },
+        },
+        openDecisions: {
+          items: {
+            properties: {
+              owner: {
+                anyOf: [
+                  { type: "string", minLength: 1 },
+                  { type: "null" },
+                ],
+              },
+            },
+            required: ["text", "owner"],
+          },
+        },
+      },
+    });
     expect(generation.throughIndex).toBe(2);
     expect(generation.costUsd).toBe(0.0123);
     expect(generation.brief.record).toEqual({
@@ -383,10 +419,12 @@ describe("generateBrief", () => {
               outcome: { status: "done", text: "Done" },
               decisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Decision ${index}`,
+                by: null,
                 kind: "assumed" as const,
               })),
               openDecisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Open ${index}`,
+                owner: null,
               })),
               facts: Array.from({ length: 25 }, (_, index) => `Fact ${index}`),
               keywords: Array.from(

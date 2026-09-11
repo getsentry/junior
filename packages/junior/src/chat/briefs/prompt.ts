@@ -11,7 +11,7 @@ Rules:
 - Facts are durable one-line facts that help after the transcript expires. Prefer ids, versions, owners, constraints, and numbers. Do not list fields, recap the transcript, or include transient progress.
 - Ignore Junior runtime mechanics, context tags, and markers such as [[NO_REPLY]].
 - Never say that a code change was merged, closed, deployed, or released unless a supplied code change or resource has that status. Say opened for an open code change.
-- Attribute by or owner only to a participant in the supplied record. Junior is also valid.
+- Attribute by or owner only to a participant in the supplied record. Junior is also valid. Set by or owner to null when no supported attribution exists.
 - Choose the outcome status that best describes where the Conversation ended.
 - Follow the supplied size class caps. Keep the first items that matter most.
 - Cite a URL only when its exact full string occurs in an entry, evidence, or the previous Brief. Return cited URLs in urls. Core adds code changes and resources separately.
