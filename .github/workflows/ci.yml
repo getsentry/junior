@@ -337,6 +337,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:dashboard
       - name: Find Frameshift baseline
         if: github.event_name == 'pull_request'
