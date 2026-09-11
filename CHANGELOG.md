@@ -1,4 +1,14 @@
 # Changelog
+## 0.209.0
+
+### Bug Fixes 🐛
+
+- (models) Support gateway catalog overrides by @sentry-junior in [#1836](https://github.com/getsentry/junior/pull/1836)
+
+### Internal Changes 🔧
+
+- (chat) Use lightweight stop markers by @sentry-junior in [#1834](https://github.com/getsentry/junior/pull/1834)
+
 ## 0.208.0
 
 ### New Features ✨
