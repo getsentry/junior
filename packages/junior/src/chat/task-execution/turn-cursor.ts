@@ -7,7 +7,6 @@
  * keeps resume metadata and a committed `seq` cursor into
  * `junior_conversation_events`.
  */
-import { isDeepStrictEqual } from "node:util";
 import {
   actorSchema,
   sourceSchema,
@@ -35,7 +34,6 @@ import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
-import { retainRuntimeTurnContext } from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -184,14 +182,14 @@ interface StoredTurnRecord extends Omit<
    * this record's committed Pi messages; -1 when nothing was committed.
    */
   committedSeq: number;
-  /** History version that owns `committedSeq` and any volatile bootstrap. */
+  /** History version that owns `committedSeq`. */
   historyVersion?: number;
   /**
    * `seq` boundary where this turn's fresh prompt starts: the seq of the last
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
   turnStartSeq?: number;
-  /** Volatile bootstrap retained only in the resumable turn cursor, never SQL. */
+  /** Legacy bootstrap from cursors written before SQL stored exact model history. */
   runtimeContext?: PiMessage[];
 }
 
@@ -479,13 +477,6 @@ function restoreRuntimeContext(
   const restoredProvenance = [...projection.provenance];
   const unmatchedRuntimeContext: PiMessage[] = [];
   for (const runtimeMessage of runtimeContext) {
-    if (
-      restoredMessages.some((message) =>
-        isDeepStrictEqual(message, runtimeMessage),
-      )
-    ) {
-      continue;
-    }
     const runtime = runtimeMessage as {
       timestamp?: unknown;
       content?: unknown;
@@ -636,7 +627,6 @@ function buildStoredRecord(args: {
   traceId?: string;
   cumulativeToolCallCount?: number;
   turnStartSeq?: number;
-  runtimeContext?: PiMessage[];
 }): StoredTurnRecord {
   const nowMs = Date.now();
   return {
@@ -662,10 +652,6 @@ function buildStoredRecord(args: {
       source: args.source,
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
-      runtimeContext:
-        args.runtimeContext && args.runtimeContext.length > 0
-          ? args.runtimeContext
-          : undefined,
       surface: args.surface,
       traceId: args.traceId,
       turnStartSeq: args.turnStartSeq,
@@ -894,13 +880,6 @@ async function upsertTurnRecordLocked(
       : undefined),
   });
   const durableTurnStartMessageIndex = args.turnStartMessageIndex;
-  const runtimeContext = retainRuntimeTurnContext(args.piMessages);
-  const retainedRuntimeContext =
-    runtimeContext.length > 0
-      ? runtimeContext
-      : existingRecord?.historyVersion === commit.historyVersion
-        ? existingRecord.runtimeContext
-        : undefined;
   // Flip the caller's message-index cursor into a durable seq reference: the
   // seq of the last committed message before the turn's fresh prompt.
   const turnStartSeq =
@@ -976,10 +955,6 @@ async function upsertTurnRecordLocked(
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,
-        runtimeContext:
-          args.state === "running" || args.state === "paused"
-            ? retainedRuntimeContext
-            : undefined,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
         traceId: args.traceId ?? existingRecord?.traceId,

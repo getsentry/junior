@@ -115,9 +115,9 @@ describe("turn checkpoint", () => {
       state: "running",
     });
     expect(set.mock.calls.at(-1)?.[1]).toMatchObject({
-      runtimeContext: [runtimeContext],
       source: SLACK_SOURCE,
     });
+    expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("runtimeContext");
     expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("modelId");
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
     expect(appendToList).toHaveBeenCalledTimes(1);
