@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Conversation } from "../types";
 
@@ -10,13 +10,18 @@ type StoredConversationState = {
 
 type StoredConversationStates = Record<string, StoredConversationState>;
 
+type ConversationFinishedIndicators = {
+  finishedConversationIds: ReadonlySet<string>;
+  markRead(conversationId: string, lastReadAt: string): void;
+};
+
 /** Track visible idle conversations that have activity after the user read them. */
 export function useConversationFinishedIndicators(
   conversations: Conversation[],
   selectedId: string | undefined,
   ready: boolean,
   pruneMissing: boolean,
-): ReadonlySet<string> {
+): ConversationFinishedIndicators {
   const [storedStates, setStoredStates] = useState(readStoredStates);
 
   useEffect(() => {
@@ -34,10 +39,24 @@ export function useConversationFinishedIndicators(
     });
   }, [conversations, pruneMissing, ready, selectedId]);
 
-  return useMemo(
-    () => finishedConversationIds(storedStates, conversations, selectedId),
-    [conversations, selectedId, storedStates],
-  );
+  const markRead = useCallback((conversationId: string, lastReadAt: string) => {
+    setStoredStates((current) => {
+      const previous = current[conversationId];
+      if (previous && !isAfter(lastReadAt, previous.lastReadAt)) return current;
+
+      const next = { ...current, [conversationId]: { lastReadAt } };
+      writeStoredStates(next);
+      return next;
+    });
+  }, []);
+
+  return {
+    finishedConversationIds: useMemo(
+      () => finishedConversationIds(storedStates, conversations, selectedId),
+      [conversations, selectedId, storedStates],
+    ),
+    markRead,
+  };
 }
 
 /** Find idle conversations with activity after the user read them. */

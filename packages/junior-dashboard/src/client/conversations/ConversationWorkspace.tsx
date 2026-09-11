@@ -60,12 +60,13 @@ export function ConversationWorkspace() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
-  const finishedConversationIds = useConversationFinishedIndicators(
-    conversations,
-    selectedId,
-    Boolean(feed.data),
-    !search,
-  );
+  const { finishedConversationIds, markRead } =
+    useConversationFinishedIndicators(
+      conversations,
+      selectedId,
+      Boolean(feed.data),
+      !search,
+    );
 
   const createView = (
     <NewConversationView
@@ -158,6 +159,7 @@ export function ConversationWorkspace() {
                 }
               : undefined
           }
+          onRead={markRead}
           pendingArchiveUpdate={pendingArchiveUpdates.find(
             (update) => update.conversationId === selectedId,
           )}
