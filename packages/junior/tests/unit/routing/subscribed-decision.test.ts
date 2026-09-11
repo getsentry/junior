@@ -1,3 +1,4 @@
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import {
@@ -28,12 +29,15 @@ function classify(
     reason: string;
   },
   input = makeInput(),
+  completeObject: Parameters<
+    typeof decideSubscribedThreadReply
+  >[0]["completeObject"] = vi.fn(async () => ({ costUsd: 0.00023, object })),
 ) {
   return decideSubscribedThreadReply({
     botUserName: "junior",
     modelId: "router-model",
     input,
-    completeObject: vi.fn(async () => ({ costUsd: 0.00023, object })),
+    completeObject,
     logClassifierFailure: vi.fn(),
   });
 }
@@ -294,7 +298,16 @@ describe("subscribed reply decision", () => {
       },
     },
   ])("maps $name onto the runtime decision contract", async (fixture) => {
-    await expect(classify(fixture.object)).resolves.toEqual(fixture.expected);
+    const completeObject = vi.fn<
+      Parameters<typeof decideSubscribedThreadReply>[0]["completeObject"]
+    >(async () => ({ costUsd: 0.00023, object: fixture.object }));
+
+    await expect(
+      classify(fixture.object, makeInput(), completeObject),
+    ).resolves.toEqual(fixture.expected);
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
   });
 
   it("projects guardian-style user/assistant evidence without tool lines", async () => {

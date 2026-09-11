@@ -7,6 +7,7 @@ import {
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import {
   createEventSource,
   createWebSource,
@@ -584,6 +585,7 @@ describe("memory plugin storage", () => {
             kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
             expiresAtMs: null,
+            reason: null,
           },
         };
       },
@@ -600,7 +602,7 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(calls[0]?.schema).toBeDefined();
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("normalizes recall selection to known unique candidate ids", async () => {
@@ -637,6 +639,7 @@ describe("memory plugin storage", () => {
       "Reject memories that merely share a company",
     );
     expect(calls[0]?.prompt).toContain("<candidate-memories>");
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -851,6 +854,9 @@ describe("memory plugin storage", () => {
         return {
           object: {
             decision: "reject",
+            kind: null,
+            canonicalFact: null,
+            expiresAtMs: null,
             reason: "not_public_shareable",
           },
         };
@@ -1047,15 +1053,19 @@ describe("memory plugin storage", () => {
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
       });
+      const supersessionCalls: Parameters<PluginModel["completeObject"]>[0][] =
+        [];
       const model: PluginModel = {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
             input.prompt.includes("<memory-preference-adjudication-input>")
           ) {
+            supersessionCalls.push(input);
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [oldMemory.memory.id],
               },
             };
@@ -1097,6 +1107,11 @@ describe("memory plugin storage", () => {
           },
         }),
       );
+
+      expect(supersessionCalls).toHaveLength(1);
+      expect(
+        strictProviderSchemaProblems(supersessionCalls[0]!.schema),
+      ).toEqual([]);
 
       const rows = await memoryDb(fixture)
         .select()
@@ -1314,6 +1329,7 @@ describe("memory plugin storage", () => {
       );
 
       expect(calls).toHaveLength(1);
+      expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -1553,11 +1569,18 @@ describe("memory plugin storage", () => {
               ? (JSON.parse(existingJson) as Array<{ id: string }>)
               : [];
             if (existing.length === 0) {
-              return { object: { decision: "distinct" } };
+              return {
+                object: {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
+              };
             }
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [existing[0]!.id],
               },
             };
@@ -4606,8 +4629,12 @@ INSERT INTO junior_memory_memories (
           );
           return {
             object: duplicateId
-              ? { decision: "duplicate", duplicateId }
-              : { decision: "distinct" },
+              ? { decision: "duplicate", duplicateId, supersededIds: null }
+              : {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
           };
         },
       };
