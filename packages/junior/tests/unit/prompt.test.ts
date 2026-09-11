@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { buildTurnContextPrompt } from "@/chat/prompt";
+import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
+  it("asks Slack agents to acknowledge large tasks before tool use", () => {
+    const prompt = buildSystemPrompt("slack");
+
+    expect(prompt).toContain(
+      "first send one short standalone acknowledgment that states what you intend to do",
+    );
+    expect(prompt).toContain("Send it before the first tool call");
+    expect(prompt).toContain(
+      "Use `reportProgress` only for later major phase changes",
+    );
+    expect(buildSystemPrompt("local")).not.toContain(
+      "Send it before the first tool call",
+    );
+  });
+
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

@@ -334,6 +334,7 @@ const CONVERSATION_RULES = [
 ];
 
 const SLACK_ACTION_RULES = [
+  "- For a large task with multiple substantive steps, first send one short standalone acknowledgment that states what you intend to do. Send it before the first tool call so people can open the linked Conversation while work continues. Do not do this for short or routine work. Use `reportProgress` only for later major phase changes.",
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
   "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
