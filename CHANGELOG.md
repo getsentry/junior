@@ -1,4 +1,15 @@
 # Changelog
+## 0.208.0
+
+### New Features ✨
+
+- (dashboard) Show memories captured from a conversation by @sentry-junior in [#1832](https://github.com/getsentry/junior/pull/1832)
+- (db) Add query spans by @sentry-junior in [#1833](https://github.com/getsentry/junior/pull/1833)
+
+### Bug Fixes 🐛
+
+- (models) Use Luna as the fast model default by @sentry-junior in [#1835](https://github.com/getsentry/junior/pull/1835)
+
 ## 0.207.0
 
 ### New Features ✨
