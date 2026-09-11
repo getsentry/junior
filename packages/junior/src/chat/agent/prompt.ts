@@ -14,6 +14,7 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
+  buildCapabilitiesPrompt,
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
   buildTurnContextPrompt,
@@ -516,7 +517,16 @@ export async function assemblePrompt(args: {
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt(platform), pluginSystemPrompt]
+  const capabilitiesPrompt = buildCapabilitiesPrompt({
+    availableSkills: args.availableSkills,
+    activeMcpCatalogs: args.activeMcpCatalogs,
+    toolGuidance: args.toolGuidance,
+  });
+  const baseInstructions = [
+    buildSystemPrompt(platform),
+    pluginSystemPrompt,
+    capabilitiesPrompt,
+  ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =

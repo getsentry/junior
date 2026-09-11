@@ -1,8 +1,43 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { buildTurnContextPrompt } from "@/chat/prompt";
+import {
+  buildCapabilitiesPrompt,
+  buildTurnContextPrompt,
+} from "@/chat/prompt";
 
 describe("prompt builders", () => {
+  it("renders capability catalogs separately from volatile runtime context", () => {
+    const capabilities = buildCapabilitiesPrompt({
+      availableSkills: [
+        {
+          name: "alpha",
+          description: "Alpha workflow",
+          skillPath: "/tmp/skills/alpha",
+        },
+      ],
+      activeMcpCatalogs: [
+        { provider: "alpha-provider", available_tool_count: 2 },
+      ],
+      toolGuidance: [
+        {
+          name: "editFile",
+          promptSnippet: "exact edits",
+        },
+      ],
+    });
+    const runtime = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+    });
+
+    expect(capabilities).toContain("<available-skills>");
+    expect(capabilities).toContain("<active-mcp-catalogs>");
+    expect(capabilities).toContain("<tool-guidance>");
+    expect(runtime).not.toContain("<available-skills>");
+    expect(runtime).not.toContain("<active-mcp-catalogs>");
+    expect(runtime).not.toContain("<tool-guidance>");
+  });
+
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

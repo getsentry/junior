@@ -64,6 +64,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
+import { keepRuntimeContextOutsidePromptCache } from "@/chat/pi/prompt-cache-boundary";
 import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
@@ -1086,6 +1087,7 @@ async function executeAgentRunInPrivacyContext(
         conversationPrivacy,
         ...(streamFn ? { base: streamFn } : undefined),
       }),
+      onPayload: keepRuntimeContextOutsidePromptCache,
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
