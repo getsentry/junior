@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -1119,14 +1120,7 @@ INSERT INTO junior_conversations (
         durationMs: number;
         executionDurationMs: number;
         metricRunId: string | null;
-        usage: {
-          cacheCreationTokens?: number;
-          cachedInputTokens?: number;
-          cost?: { total?: number };
-          inputTokens?: number;
-          outputTokens?: number;
-          totalTokens?: number;
-        } | null;
+        usage: AgentTurnUsage | null;
       }>(
         `
 SELECT

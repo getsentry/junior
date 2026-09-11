@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
-import { conversationStatsReportSchema } from "@/api/schema";
+import {
+  conversationStatsReportSchema,
+  type ConversationStatsReport,
+} from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -12,20 +14,6 @@ import {
 } from "../../../fixtures/sql";
 
 describe("conversation stats API", () => {
-  test("serves the route through its response schema", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    try {
-      await migrateSchema(fixture.sql);
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations/stats",
-      );
-      expect(response.status).toBe(200);
-      conversationStatsReportSchema.parse(await response.json());
-    } finally {
-      await fixture.close();
-    }
-  });
-
   test("aggregates normalized SQL conversation dimensions", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
@@ -202,7 +190,13 @@ describe("conversation stats API", () => {
         },
       ]);
 
-      const report = await readConversationStatsFromSql();
+      const response = await createJuniorApi().request(
+        "http://localhost/api/conversations/stats",
+      );
+      expect(response.status).toBe(200);
+      const report = conversationStatsReportSchema.parse(
+        await response.json(),
+      ) satisfies ConversationStatsReport;
 
       expect(report).toMatchObject({
         active: 1,
@@ -292,9 +286,11 @@ describe("conversation stats API", () => {
         report.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
       ).toEqual(
         expect.objectContaining({
+          cachedInputTokens: 300,
           conversations: expect.any(Number),
           date: "2026-06-15T11",
           durationMs: expect.any(Number),
+          inputTokens: 100,
         }),
       );
       expect(
@@ -335,7 +331,13 @@ describe("conversation stats API", () => {
           ),
         );
 
-      const report = await readConversationStatsFromSql();
+      const response = await createJuniorApi().request(
+        "http://localhost/api/conversations/stats",
+      );
+      expect(response.status).toBe(200);
+      const report = conversationStatsReportSchema.parse(
+        await response.json(),
+      ) satisfies ConversationStatsReport;
 
       expect(report).toMatchObject({
         conversations: 5_001,
