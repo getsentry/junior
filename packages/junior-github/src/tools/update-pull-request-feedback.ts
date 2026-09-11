@@ -22,6 +22,7 @@ const FEEDBACK_REACTION_CONTENTS = new Set<string>(
   Object.values(STATUS_TO_REACTION_CONTENT),
 );
 type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
+type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
 type PullRequestCommentKind = "conversation" | "review";
 
 const inputSchema = z
@@ -40,9 +41,9 @@ const inputSchema = z
         "GitHub comment id (conversation comment id or inline review comment id).",
       ),
     status: z
-      .enum(["reviewing", "addressed", "declined"])
+      .enum(["addressed", "declined"])
       .describe(
-        "Feedback status. Maps to a reaction: reviewing -> eyes, addressed -> +1, declined -> -1.",
+        "Feedback outcome. Maps to a reaction: addressed -> +1, declined -> -1.",
       ),
   })
   .strict();
@@ -51,14 +52,14 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequestFeedback"),
   repo: z.string(),
   commentId: z.number(),
-  status: z.enum(["reviewing", "addressed", "declined"]),
+  status: z.enum(["addressed", "declined"]),
   reactionId: z.number(),
 });
 interface Result extends PluginToolOutput {
   target: "updatePullRequestFeedback";
   repo: string;
   commentId: number;
-  status: FeedbackStatus;
+  status: FeedbackOutcome;
   reactionId: number;
 }
 
@@ -130,7 +131,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set Junior's status reaction on GitHub pull request feedback: reviewing (eyes), addressed (+1), or declined (-1). Use the commentId and commentKind from the event. Replaces only Junior's prior status reaction on that comment.",
+      "Set Junior's outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Use the commentId and commentKind from the event after acting on the feedback. Replaces only Junior's prior status reaction on that comment.",
     exposure: "direct",
     inputSchema,
     outputSchema,
