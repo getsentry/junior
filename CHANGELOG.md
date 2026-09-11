@@ -1,4 +1,8 @@
 # Changelog
+## 0.210.2
+
+- revert: Acknowledge large tasks before tools by @sentry-junior in [#1846](https://github.com/getsentry/junior/pull/1846)
+
 ## 0.210.1
 
 ### Bug Fixes 🐛
