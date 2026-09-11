@@ -1,6 +1,10 @@
 import type { Message } from "@earendil-works/pi-ai";
+import { onTestFinished } from "vitest";
 import { toCanonicalInputMessage } from "@/chat/conversation-privacy";
-import { createConversationWebHarness } from "./conversation";
+import {
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "./conversation";
 import { createModelStream } from "./model-stream";
 
 type Agent = {
@@ -23,6 +27,8 @@ export async function createAgent(): Promise<Agent> {
   );
   let conversationId: string | undefined;
   let turn = 0;
+
+  onTestFinished(closeConversationFixture);
 
   return {
     async run(prompt) {
