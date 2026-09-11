@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type
+        description: Version bump type (ignored when version is set)
         required: true
         type: choice
         default: minor
@@ -12,6 +12,10 @@ on:
           - patch
           - minor
           - major
+      version:
+        description: Exact version override (for example, 0.212.0)
+        required: false
+        type: string
       force:
         description: Force release (bypass blockers)
         required: false
@@ -61,9 +65,18 @@ jobs:
         id: version
         env:
           BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
         run: |
           CURRENT=$(node -p "require('./packages/junior/package.json').version")
-          NEW=$(npx semver -i "$BUMP" "$CURRENT")
+          if [ -n "$VERSION" ]; then
+            NEW=$(npx semver "$VERSION")
+            if [ "$NEW" != "$VERSION" ]; then
+              echo "Version override must be an exact semantic version" >&2
+              exit 1
+            fi
+          else
+            NEW=$(npx semver -i "$BUMP" "$CURRENT")
+          fi
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
           echo "new=$NEW" >> $GITHUB_OUTPUT
 
