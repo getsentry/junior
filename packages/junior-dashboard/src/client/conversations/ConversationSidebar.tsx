@@ -43,6 +43,7 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading: boolean;
   query: string;
   selectedId?: string;
@@ -173,6 +174,9 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
+                  finishedSinceSeen={props.finishedConversationIds.has(
+                    entry.conversation.id,
+                  )}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
@@ -257,6 +261,7 @@ function conversationSidebarEntries(
 
 /** Status glyph for a sidebar row; private rows use the lock instead of a dot. */
 function ConversationListStatusIcon(props: {
+  finishedSinceSeen: boolean;
   isPrivate: boolean;
   status: VisualStatus;
 }) {
@@ -268,8 +273,13 @@ function ConversationListStatusIcon(props: {
           "size-3 shrink-0",
           props.status === "active" &&
             "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
-          props.status === "failed" && "text-rose-300",
-          props.status === "idle" && "text-dashboard-text-muted",
+          props.finishedSinceSeen && "text-orange-300",
+          !props.finishedSinceSeen &&
+            props.status === "failed" &&
+            "text-rose-300",
+          !props.finishedSinceSeen &&
+            props.status === "idle" &&
+            "text-dashboard-text-muted",
         )}
       />
     );
@@ -284,8 +294,9 @@ function ConversationListStatusIcon(props: {
       aria-hidden="true"
       className={cn(
         "size-1.5 shrink-0 rounded-full",
-        props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-white/25",
+        props.finishedSinceSeen && "bg-orange-300",
+        !props.finishedSinceSeen && props.status === "failed" && "bg-rose-300",
+        !props.finishedSinceSeen && props.status === "idle" && "bg-white/25",
       )}
     />
   );
@@ -293,6 +304,7 @@ function ConversationListStatusIcon(props: {
 
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
@@ -337,7 +349,11 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       >
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
           <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
-            <ConversationListStatusIcon isPrivate={isPrivate} status={status} />
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </div>
           <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}

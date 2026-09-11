@@ -28,6 +28,7 @@ import {
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   timeZone: string;
 }) {
@@ -85,6 +86,7 @@ export function ConversationHomeList(props: {
       <div aria-label="Your conversations" className="grid gap-5" role="list">
         {sections.map((section) => (
           <ConversationCardSection
+            finishedConversationIds={props.finishedConversationIds}
             key={section.key}
             onArchiveError={handleArchiveError}
             onArchived={handleArchived}
@@ -159,6 +161,7 @@ function ConversationCardLoading(props: { index: number }) {
 }
 
 function ConversationCardSection(props: {
+  finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   section: ConversationSection;
@@ -175,6 +178,9 @@ function ConversationCardSection(props: {
         {props.section.conversations.map((conversation) => (
           <ConversationCard
             conversation={conversation}
+            finishedSinceSeen={props.finishedConversationIds.has(
+              conversation.id,
+            )}
             key={conversation.id}
             onArchiveError={props.onArchiveError}
             onArchived={props.onArchived}
@@ -187,6 +193,7 @@ function ConversationCardSection(props: {
 
 function ConversationCard(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
 }) {
@@ -219,19 +226,32 @@ function ConversationCard(props: {
             {isPrivate ? (
               <LockKeyhole
                 aria-label="Private conversation"
-                className="size-3 text-dashboard-text-muted"
+                className={cn(
+                  "size-3",
+                  props.finishedSinceSeen
+                    ? "text-orange-300"
+                    : "text-dashboard-text-muted",
+                )}
               />
             ) : status === "active" ? (
               <ActiveIndicator className="size-1.5" />
             ) : (
               <span
-                aria-hidden="true"
+                aria-label={
+                  props.finishedSinceSeen
+                    ? "Finished since last viewed"
+                    : undefined
+                }
+                aria-hidden={props.finishedSinceSeen ? undefined : "true"}
                 className={cn(
                   "size-1.5 rounded-full",
-                  status === "failed"
-                    ? "bg-rose-300"
-                    : "bg-dashboard-text-muted/40",
+                  props.finishedSinceSeen
+                    ? "bg-orange-300"
+                    : status === "failed"
+                      ? "bg-rose-300"
+                      : "bg-dashboard-text-muted/40",
                 )}
+                role={props.finishedSinceSeen ? "img" : undefined}
               />
             )}
           </span>

@@ -19,6 +19,7 @@ import { buildConversations, getDashboardTimeZone } from "../format";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
+import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
@@ -59,6 +60,12 @@ export function ConversationWorkspace() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+  const visibleConversations = home ? pagedConversations : conversations;
+  const finishedConversationIds = useConversationFinishedIndicators(
+    visibleConversations,
+    selectedId,
+    Boolean(feed.data),
+  );
 
   const createView = (
     <NewConversationView
@@ -99,6 +106,7 @@ export function ConversationWorkspace() {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
+              finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
               timeZone={getDashboardTimeZone()}
             />
@@ -127,6 +135,7 @@ export function ConversationWorkspace() {
         <ConversationSidebar
           conversations={conversations}
           error={feed.error?.message}
+          finishedConversationIds={finishedConversationIds}
           loading={feed.isPending}
           onNewConversation={openCreate}
           onQueryChange={setQuery}
