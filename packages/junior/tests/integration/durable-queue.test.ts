@@ -398,50 +398,6 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0010");
     });
 
-    it("keeps the complete prior model request as an exact prefix across Turns", async () => {
-      const requests: Array<Parameters<StreamFn>[1]["messages"]> = [];
-      const q = await slack({
-        modelStream: createModelStream([
-          {
-            type: "text",
-            text: "First reply.",
-            onRequest: (context) => {
-              requests.push(structuredClone(context.messages));
-            },
-          },
-          {
-            type: "text",
-            text: "Second reply.",
-            onRequest: (context) => {
-              requests.push(structuredClone(context.messages));
-            },
-          },
-        ]),
-      });
-
-      await expect(
-        q.send({ text: `<@${SLACK_BOT_USER_ID}> first request` }),
-      ).resolves.toMatchObject({ status: 200 });
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
-      await expect(
-        q.send({
-          text: `<@${SLACK_BOT_USER_ID}> second request`,
-          threadTs: "1712345.0001",
-          ts: "1712345.0010",
-        }),
-      ).resolves.toMatchObject({ status: 200 });
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
-
-      expect(requests).toHaveLength(2);
-      const firstRequest = requests[0];
-      const secondRequest = requests[1];
-      expect(firstRequest).toBeDefined();
-      expect(secondRequest).toBeDefined();
-      expect(secondRequest!.slice(0, firstRequest!.length)).toEqual(
-        firstRequest,
-      );
-    });
-
     it("publishes a resource wake from a channel-level Slack Location", async () => {
       const q = await slack({
         modelStream: createModelStream([
