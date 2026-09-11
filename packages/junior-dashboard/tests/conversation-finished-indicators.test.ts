@@ -49,4 +49,20 @@ describe("conversation finished indicators", () => {
     });
     expect([...finishedConversationIds(current, [updated], "a")]).toEqual([]);
   });
+
+  it("keeps conversations outside filtered results", () => {
+    const current = {
+      a: { lastReadAt: "2026-09-11T00:00:00.000Z" },
+      hidden: { lastReadAt: "2026-09-11T00:00:00.000Z" },
+    };
+
+    expect(
+      reconcileStoredStates(
+        current,
+        [conversation("a", "completed")],
+        undefined,
+        false,
+      ),
+    ).toEqual(current);
+  });
 });

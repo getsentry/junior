@@ -15,6 +15,7 @@ export function useConversationFinishedIndicators(
   conversations: Conversation[],
   selectedId: string | undefined,
   ready: boolean,
+  pruneMissing: boolean,
 ): ReadonlySet<string> {
   const [storedStates, setStoredStates] = useState(readStoredStates);
 
@@ -22,11 +23,16 @@ export function useConversationFinishedIndicators(
     if (!ready) return;
 
     setStoredStates((current) => {
-      const next = reconcileStoredStates(current, conversations, selectedId);
+      const next = reconcileStoredStates(
+        current,
+        conversations,
+        selectedId,
+        pruneMissing,
+      );
       writeStoredStates(next);
       return next;
     });
-  }, [conversations, ready, selectedId]);
+  }, [conversations, pruneMissing, ready, selectedId]);
 
   return useMemo(
     () => finishedConversationIds(storedStates, conversations, selectedId),
@@ -60,8 +66,9 @@ export function reconcileStoredStates(
   current: StoredConversationStates,
   conversations: Conversation[],
   selectedId: string | undefined,
+  pruneMissing = true,
 ): StoredConversationStates {
-  return Object.fromEntries(
+  const visibleStates = Object.fromEntries(
     conversations.map((conversation) => {
       const previous = current[conversation.id];
       const lastReadAt =
@@ -72,6 +79,8 @@ export function reconcileStoredStates(
       return [conversation.id, { lastReadAt }];
     }),
   );
+  if (pruneMissing) return visibleStates;
+  return { ...current, ...visibleStates };
 }
 
 function isAfter(value: string, reference: string): boolean {

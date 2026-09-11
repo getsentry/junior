@@ -60,11 +60,11 @@ export function ConversationWorkspace() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
-  const visibleConversations = home ? pagedConversations : conversations;
   const finishedConversationIds = useConversationFinishedIndicators(
-    visibleConversations,
+    conversations,
     selectedId,
     Boolean(feed.data),
+    !search,
   );
 
   const createView = (
