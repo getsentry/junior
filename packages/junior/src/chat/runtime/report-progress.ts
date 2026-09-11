@@ -1,10 +1,14 @@
 import type { PiMessage } from "@/chat/pi/messages";
-import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status-render";
+
+export interface ReportedProgress {
+  text: string;
+  intentAcknowledgment?: boolean;
+}
 
 /** Convert a `reportProgress` tool payload into assistant status text. */
 export function buildReportedProgressStatus(
   input: unknown,
-): AssistantStatusSpec | undefined {
+): ReportedProgress | undefined {
   if (!input || typeof input !== "object") {
     return undefined;
   }
@@ -19,13 +23,19 @@ export function buildReportedProgressStatus(
     return undefined;
   }
 
-  return { text };
+  return {
+    text,
+    ...((input as { intentAcknowledgment?: unknown }).intentAcknowledgment ===
+    true
+      ? { intentAcknowledgment: true }
+      : undefined),
+  };
 }
 
 /** Recover the latest explicit progress update from a resumable Pi transcript. */
 export function latestReportedProgress(
   messages: readonly PiMessage[],
-): AssistantStatusSpec | undefined {
+): ReportedProgress | undefined {
   for (
     let messageIndex = messages.length - 1;
     messageIndex >= 0;

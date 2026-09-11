@@ -325,8 +325,8 @@ async function executeAgentRunInPrivacyContext(
   const state = run.state ?? {};
   const observers = {
     onStatus: run.onEvent
-      ? async (status: { text: string }) => {
-          await run.onEvent?.({ type: "status", text: status.text });
+      ? async (status: { text: string; intentAcknowledgment?: boolean }) => {
+          await run.onEvent?.({ type: "status", ...status });
         }
       : undefined,
     onToolInvocation: run.onEvent

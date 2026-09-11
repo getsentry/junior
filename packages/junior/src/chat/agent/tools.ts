@@ -531,8 +531,8 @@ export async function wireAgentTools(
     }
   };
   const onStatus = emitEvent
-    ? async (status: { text: string }) => {
-        await emitEvent({ type: "status", text: status.text });
+    ? async (status: { text: string; intentAcknowledgment?: boolean }) => {
+        await emitEvent({ type: "status", ...status });
       }
     : undefined;
   const onToolResult = emitEvent
