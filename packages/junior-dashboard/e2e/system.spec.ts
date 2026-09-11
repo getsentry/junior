@@ -11,7 +11,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
-  await expect(page.getByText("Cache hit rate")).toBeVisible();
+  await expect(page.getByText("Cached input share")).toBeVisible();
   await expect(page.getByText("Input token cache")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),

@@ -24,7 +24,10 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
-import { conversationFromDetail, setDashboardTimeZone } from "../src/client/format";
+import {
+  conversationFromDetail,
+  setDashboardTimeZone,
+} from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
 import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -1540,7 +1543,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain('aria-label="Conversations per day"');
-    expect(systemHtml).toContain("Cache hit rate");
+    expect(systemHtml).toContain("Cached input share");
     expect(systemHtml).toContain("75.0%");
     expect(systemHtml).toContain("Input token cache");
     expect(systemHtml).toContain("Model spend");
@@ -1571,6 +1574,19 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">Skills<");
     expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
+
+    data.conversationStats!.metricDays[0] = {
+      ...data.conversationStats!.metricDays[0],
+      cachedInputTokens: 9_999,
+      inputTokens: 1,
+    };
+    const nearCompleteCacheHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+    expect(nearCompleteCacheHtml).toContain("&lt;100%");
+    expect(nearCompleteCacheHtml).toContain("9.9k cached · 1 uncached");
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
