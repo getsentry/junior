@@ -60,6 +60,59 @@ import {
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
+const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+  "xai/grok-4.5": {
+    id: "xai/grok-4.5",
+    name: "Grok 4.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 2,
+      output: 6,
+      cacheRead: 0.3,
+      cacheWrite: 0,
+    },
+    contextWindow: 500_000,
+    maxTokens: 500_000,
+  },
+  "openai/gpt-6-astra": {
+    id: "openai/gpt-6-astra",
+    name: "GPT-6 Astra",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 10,
+      output: 50,
+      cacheRead: 1,
+      cacheWrite: 12.5,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 20,
+          output: 75,
+          cacheRead: 2,
+          cacheWrite: 25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      supportsTemperature: false,
+    },
+  },
+};
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
@@ -102,14 +155,15 @@ function extractText(message: {
 }
 
 /**
- * Look up a gateway model by id. Throws `Unknown AI Gateway model id: …` if
- * the id is not in pi-ai's registry — callers at the config boundary can use
- * this to fail fast at startup instead of mid-turn.
+ * Look up a gateway model by id. Junior-owned overrides let new gateway
+ * models work before pi-ai publishes an updated bundled catalog.
  */
 export function resolveGatewayModel(modelId: string): Model<any> {
-  const matched = getModels(GATEWAY_PROVIDER).find(
-    (model: Model<any>) => model.id === modelId,
-  );
+  const matched =
+    GATEWAY_MODEL_OVERRIDES[modelId] ??
+    getModels(GATEWAY_PROVIDER).find(
+      (model: Model<any>) => model.id === modelId,
+    );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }

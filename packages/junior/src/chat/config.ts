@@ -237,9 +237,9 @@ function parseCrossActorMidRunMode(
   throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
 }
 
-// Compile-time assertion: `getModel`'s second generic is constrained to
-// `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
-const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
+// Compile-time assertions catch stale defaults that pi-ai owns. Junior-owned
+// overrides are validated through resolveGatewayModel instead.
+const DEFAULT_MODEL_ID = resolveGatewayModel("xai/grok-4.5").id;
 const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-luna",
