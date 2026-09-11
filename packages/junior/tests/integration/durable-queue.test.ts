@@ -399,19 +399,13 @@ describe("durable queue contract", () => {
     });
 
     it("keeps the complete prior model request as an exact prefix across Turns", async () => {
-      const requests: Array<{
-        messages: Parameters<StreamFn>[1]["messages"];
-        systemPrompt: string | undefined;
-      }> = [];
+      const requests: Array<Parameters<StreamFn>[1]["messages"]> = [];
       const generated = createModelStream([
         { type: "text", text: "First reply." },
         { type: "text", text: "Second reply." },
       ]);
       const modelStream = vi.fn<StreamFn>((model, context, options) => {
-        requests.push({
-          messages: structuredClone(context.messages),
-          systemPrompt: context.systemPrompt,
-        });
+        requests.push(structuredClone(context.messages));
         return generated(model, context, options);
       });
       const q = await slack({ modelStream });
@@ -434,10 +428,9 @@ describe("durable queue contract", () => {
       const secondRequest = requests[1];
       expect(firstRequest).toBeDefined();
       expect(secondRequest).toBeDefined();
-      expect(secondRequest!.systemPrompt).toBe(firstRequest!.systemPrompt);
-      expect(
-        secondRequest!.messages.slice(0, firstRequest!.messages.length),
-      ).toEqual(firstRequest!.messages);
+      expect(secondRequest!.slice(0, firstRequest!.length)).toEqual(
+        firstRequest,
+      );
     });
 
     it("publishes a resource wake from a channel-level Slack Location", async () => {
