@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { z } from "zod";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/schema";
@@ -79,10 +80,7 @@ describe("generateBrief", () => {
       prompt: "Write a Brief.",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
-        capturedSchema = z.toJSONSchema(request.schema, {
-          target: "draft-7",
-          io: "input",
-        });
+        capturedSchema = request.schema;
         return {
           costUsd: 0.0123,
           object: {
@@ -142,16 +140,28 @@ describe("generateBrief", () => {
       },
     });
 
-    expect(capturedSchema).toMatchObject({
+    expect(strictProviderSchemaProblems(capturedSchema as z.ZodType)).toEqual(
+      [],
+    );
+    expect(
+      z.toJSONSchema(capturedSchema as z.ZodType, {
+        target: "draft-7",
+        io: "input",
+      }),
+    ).toMatchObject({
       properties: {
+        urls: {
+          items: {
+            properties: {
+              url: { type: "string", minLength: 1, maxLength: 2048 },
+            },
+          },
+        },
         decisions: {
           items: {
             properties: {
               by: {
-                anyOf: [
-                  { type: "string", minLength: 1 },
-                  { type: "null" },
-                ],
+                anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
               },
             },
             required: ["text", "by", "kind"],
@@ -161,10 +171,7 @@ describe("generateBrief", () => {
           items: {
             properties: {
               owner: {
-                anyOf: [
-                  { type: "string", minLength: 1 },
-                  { type: "null" },
-                ],
+                anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
               },
             },
             required: ["text", "owner"],

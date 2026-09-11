@@ -60,6 +60,7 @@ vi.mock("@/chat/pi/client", () => ({
       decision: "store",
       expiresAtMs: null,
       kind: "preference",
+      reason: null,
     },
   })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
