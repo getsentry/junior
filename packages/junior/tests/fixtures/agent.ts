@@ -1,34 +1,26 @@
 import type { Message } from "@earendil-works/pi-ai";
-import { onTestFinished } from "vitest";
-import { toCanonicalInputMessage } from "@/chat/conversation-privacy";
-import {
-  closeConversationFixture,
-  createConversationWebHarness,
-} from "./conversation";
+import { vi } from "vitest";
+import { createConversationWebHarness } from "./conversation";
 import { createModelStream } from "./model-stream";
 
 type Agent = {
   run(prompt: string): Promise<void>;
-  snapshot(): Record<string, unknown>[];
+  snapshot(): Message[];
 };
 
 /** Create an Agent that runs complete Conversation Turns through production code. */
 export async function createAgent(): Promise<Agent> {
-  const modelRequests: Message[][] = [];
-  const conversation = await createConversationWebHarness(
+  const model = vi.fn(
     createModelStream(
       ["First reply.", "Second reply."].map((text) => ({
         type: "text" as const,
         text,
-        onRequest: ({ messages }) =>
-          modelRequests.push(structuredClone(messages)),
       })),
     ),
   );
+  const conversation = await createConversationWebHarness(model);
   let conversationId: string | undefined;
   let turn = 0;
-
-  onTestFinished(closeConversationFixture);
 
   return {
     async run(prompt) {
@@ -51,9 +43,9 @@ export async function createAgent(): Promise<Agent> {
       await conversation.drain();
     },
     snapshot() {
-      const messages = modelRequests.at(-1);
-      if (!messages) throw new Error("No model request to snapshot");
-      return structuredClone(messages.map(toCanonicalInputMessage));
+      const context = model.mock.lastCall?.[1];
+      if (!context) throw new Error("No model request to snapshot");
+      return structuredClone(context.messages);
     },
   };
 }

@@ -1,5 +1,5 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -7,19 +7,32 @@ import {
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 
-type FixedModelOutput = (
-  | { type: "text"; text: string }
+type FixedModelOutput =
+  | {
+      type: "text";
+      text: string;
+      onRequest?: () => void;
+      waitFor?: Promise<unknown>;
+    }
   | {
       type: "toolCall";
       name: string;
       arguments: Parameters<typeof fauxToolCall>[1];
+      onRequest?: () => void;
+      waitFor?: Promise<unknown>;
     }
-  | { type: "error"; errorMessage: string }
-  | { type: "message"; message: AssistantMessage }
-) & {
-  onRequest?: (context: Context) => void;
-  waitFor?: Promise<unknown>;
-};
+  | {
+      type: "error";
+      errorMessage: string;
+      onRequest?: () => void;
+      waitFor?: Promise<unknown>;
+    }
+  | {
+      type: "message";
+      message: AssistantMessage;
+      onRequest?: () => void;
+      waitFor?: Promise<unknown>;
+    };
 
 function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
   if (output.type === "text") {
@@ -45,8 +58,8 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   if (!onRequest && !waitFor) {
     return message;
   }
-  return async (context) => {
-    onRequest?.(context);
+  return async () => {
+    onRequest?.();
     if (waitFor) {
       await waitFor;
     }
