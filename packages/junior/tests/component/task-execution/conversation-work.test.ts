@@ -21,6 +21,7 @@ import {
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
+  promoteHumanFacingPendingMessage,
   recordConversationActivity,
   requestAnotherSlice,
   requestConversationWork,
@@ -2319,6 +2320,63 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(injected).toEqual([["m1"], ["m2"]]);
+  });
+
+  it("injects an older queued Message after it is steered", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_500;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        delivery: "defer",
+        source: "web",
+      }),
+      nowMs: 1_100,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        input: { authorId: "U456", text: "message m3" },
+      }),
+      nowMs: 1_200,
+    });
+    const injected: string[][] = [];
+    let runs = 0;
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          runs += 1;
+          if (runs > 1) {
+            await context.attempt.ack();
+            return { status: "completed" };
+          }
+          const first = await context.attempt.drain(async () => {});
+          injected.push(first.map((message) => message.inboundMessageId));
+          currentNowMs = 2_000;
+          await promoteHumanFacingPendingMessage({
+            conversationId: CONVERSATION_ID,
+            inboundMessageId: "m2",
+            nowMs: currentNowMs,
+          });
+          await promoteHumanFacingPendingMessage({
+            conversationId: CONVERSATION_ID,
+            inboundMessageId: "m3",
+            nowMs: currentNowMs,
+          });
+          const second = await context.attempt.drain(async () => {});
+          injected.push(second.map((message) => message.inboundMessageId));
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(injected).toEqual([["m1"], ["m2"]]);
+    expect(runs).toBe(2);
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({ messages: [] });
   });
 
   it("clears the run marker after draining messages that arrived during active execution", async () => {

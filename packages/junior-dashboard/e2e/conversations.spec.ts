@@ -137,14 +137,18 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(
     page.getByText("Connect to send. Your draft is saved."),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeDisabled();
 
   await context.setOffline(false);
   await expect(
     page.getByText("You’re offline. Drafts stay on this device."),
   ).toBeHidden();
   await expect(composer).toHaveValue("Keep this draft through reconnect");
-  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeEnabled();
 });
 
 test("shows the repo name for one annotation scope on mobile", async ({

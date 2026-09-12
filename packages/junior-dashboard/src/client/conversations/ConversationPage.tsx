@@ -18,6 +18,8 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  usePromoteConversationPendingMessage,
+  useStopConversationTurn,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
@@ -44,6 +46,7 @@ import {
   conversationFromDetail,
   visualStatusForConversation,
 } from "../format";
+import { Button } from "../components/Button";
 import { Card } from "../components/layout/Card";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
@@ -290,6 +293,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              active={live}
             />
           ) : undefined
         }
@@ -310,6 +314,7 @@ export function ConversationPage(props: {
  * footer tree. Fast chat UIs isolate the composer the same way.
  */
 const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
+  active: boolean;
   committedMessageIds: readonly string[];
   conversationId: string;
   onPinRequest: () => void;
@@ -321,6 +326,10 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const promotePendingMessage = usePromoteConversationPendingMessage(
+    props.conversationId,
+  );
+  const stopTurn = useStopConversationTurn(props.conversationId);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -372,6 +381,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
+  const onPromoteMessage = useCallback(
+    (message: ConversationMailboxMessage) => {
+      promotePendingMessage.mutate(message.inboundMessageId);
+    },
+    [promotePendingMessage],
+  );
   const onCancelMessage = useCallback(
     (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
@@ -418,13 +433,39 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
             onLayoutChange={onMailboxLayoutChange}
+            onPromoteMessage={props.active ? onPromoteMessage : undefined}
             onRetry={onRetry}
+            promoteErrorMessageId={
+              promotePendingMessage.error
+                ? promotePendingMessage.variables
+                : undefined
+            }
+            promotePendingMessageId={
+              promotePendingMessage.isPending
+                ? promotePendingMessage.variables
+                : undefined
+            }
           />
         </>
       }
     >
       <ConversationComposer
         draftId={props.conversationId}
+        error={stopTurn.error ? "Could not stop the active turn." : undefined}
+        footerStart={
+          props.active ? (
+            <Button
+              aria-label="Stop active turn"
+              disabled={stopTurn.isPending}
+              onClick={() => stopTurn.mutate()}
+              title="Stop active turn"
+              tone="danger"
+            >
+              <span aria-hidden="true" className="size-2.5 bg-current" />
+              {stopTurn.isPending ? "Stopping…" : "Stop"}
+            </Button>
+          ) : undefined
+        }
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}

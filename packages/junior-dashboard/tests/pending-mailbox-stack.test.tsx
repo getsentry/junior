@@ -20,7 +20,7 @@ function message(
   };
 }
 
-describe("PendingMailboxStack remove control", () => {
+describe("PendingMailboxStack controls", () => {
   it("shows remove only for an accepted mailbox row", () => {
     const accepted = renderToStaticMarkup(
       <PendingMailboxStack
@@ -43,6 +43,24 @@ describe("PendingMailboxStack remove control", () => {
 
     expect(accepted).toContain("Remove queued message");
     expect(localOnly).not.toContain("Remove queued message");
+  });
+
+  it("shows Steer only for an accepted queued row", () => {
+    const queued = renderToStaticMarkup(
+      <PendingMailboxStack
+        messages={[message()]}
+        onPromoteMessage={() => undefined}
+      />,
+    );
+    const promoted = renderToStaticMarkup(
+      <PendingMailboxStack
+        messages={[message({ delivery: "interrupt" })]}
+        onPromoteMessage={() => undefined}
+      />,
+    );
+
+    expect(queued).toContain('aria-label="Steer queued message"');
+    expect(promoted).not.toContain('aria-label="Steer queued message"');
   });
 
   it("keeps remove available for accepted rows while a local send is pending", () => {

@@ -1856,6 +1856,55 @@ export async function completeConversationStop(args: {
   });
 }
 
+/** Promote one human-facing pending Message into the active Turn. */
+export async function promoteHumanFacingPendingMessage(args: {
+  conversationId: string;
+  inboundMessageId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{ status: "not_found" | "promoted" }> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) return { status: "not_found" };
+
+    let promoted = false;
+    const pendingMessages = current.execution.pendingMessages.map((message) => {
+      if (
+        message.inboundMessageId !== args.inboundMessageId ||
+        !isHumanFacingMessage(message)
+      ) {
+        return message;
+      }
+      promoted = true;
+      if (message.delivery === "interrupt") return message;
+      return {
+        ...message,
+        delivery: "interrupt" as const,
+        input: {
+          ...message.input,
+          metadata: {
+            ...message.input.metadata,
+            steeredAtMs: nowMs,
+          },
+        },
+      };
+    });
+    if (!promoted) return { status: "not_found" };
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        { ...current.execution, pendingMessages },
+        nowMs,
+      ),
+    );
+    return { status: "promoted" };
+  });
+}
+
 /** Cancel human-facing pending mailbox rows without requiring a worker lease. */
 export async function cancelHumanFacingPendingMessages(args: {
   conversationId: string;

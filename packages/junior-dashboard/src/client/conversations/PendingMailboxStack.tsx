@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   SkipForward,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,6 +62,8 @@ function PendingMetaIcons(props: {
   cancelPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?: () => void;
+  onPromote?: () => void;
+  promotePending: boolean;
   showSlack: boolean;
 }) {
   const delivery = pendingDeliveryMeta(props.message);
@@ -83,6 +86,28 @@ function PendingMetaIcons(props: {
           strokeWidth={2.2}
         />
       </PendingMetaIcon>
+      {props.onPromote ? (
+        <Tooltip content="Steer into active turn" placement="above">
+          <button
+            aria-label="Steer queued message"
+            className="inline-flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-amber-100/80 transition-colors hover:bg-amber-300/[0.08] hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            disabled={props.promotePending}
+            onClick={props.onPromote}
+            type="button"
+          >
+            {props.promotePending ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={12}
+              />
+            ) : (
+              <Zap aria-hidden="true" size={12} />
+            )}
+            Steer
+          </button>
+        </Tooltip>
+      ) : null}
       {props.onCancel ? (
         <Tooltip content="Remove queued message" placement="above">
           <button
@@ -118,7 +143,10 @@ function PendingRow(props: {
   cancelPending: boolean;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
+  onPromote?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
+  promoteError: boolean;
+  promotePending: boolean;
 }) {
   const text = props.message.text ?? "";
   const redacted = Boolean(props.message.redacted);
@@ -149,6 +177,12 @@ function PendingRow(props: {
             onCancel={
               props.onCancel ? () => props.onCancel?.(props.message) : undefined
             }
+            onPromote={
+              props.onPromote
+                ? () => props.onPromote?.(props.message)
+                : undefined
+            }
+            promotePending={props.promotePending}
             showSlack={showSlack}
           />
         }
@@ -176,9 +210,11 @@ function PendingRow(props: {
           </button>
         </div>
       ) : null}
-      {props.cancelError ? (
+      {props.cancelError || props.promoteError ? (
         <p className="m-0 font-sans text-xs text-amber-100/75">
-          Could not remove. Try again.
+          {props.promoteError
+            ? "Could not steer. Try again."
+            : "Could not remove. Try again."}
         </p>
       ) : null}
     </article>
@@ -231,6 +267,9 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   committedMessageIds?: readonly string[];
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
+  onPromoteMessage?: (message: ConversationMailboxMessage) => void;
+  promoteErrorMessageId?: string;
+  promotePendingMessageId?: string;
   /** Fires after expand/collapse changes the stack height above the composer. */
   onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
@@ -290,7 +329,19 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
                   ? props.onCancelMessage
                   : undefined
               }
+              onPromote={
+                message.clientStatus === undefined &&
+                message.delivery === "defer"
+                  ? props.onPromoteMessage
+                  : undefined
+              }
               onRetry={props.onRetry}
+              promoteError={
+                props.promoteErrorMessageId === message.inboundMessageId
+              }
+              promotePending={
+                props.promotePendingMessageId === message.inboundMessageId
+              }
             />
           ))}
         </div>
@@ -313,7 +364,18 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
                 ? props.onCancelMessage
                 : undefined
             }
+            onPromote={
+              message.clientStatus === undefined && message.delivery === "defer"
+                ? props.onPromoteMessage
+                : undefined
+            }
             onRetry={props.onRetry}
+            promoteError={
+              props.promoteErrorMessageId === message.inboundMessageId
+            }
+            promotePending={
+              props.promotePendingMessageId === message.inboundMessageId
+            }
           />
         ))
       )}

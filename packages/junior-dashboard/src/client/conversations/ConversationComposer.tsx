@@ -79,7 +79,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
-  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
+  const [canSend, setCanSend] = useState(() =>
+    Boolean(initialDraft.text.trim()),
+  );
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -302,7 +304,9 @@ export const ConversationComposer = memo(function ConversationComposer(
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
-            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+            props.footerStart
+              ? "justify-between"
+              : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -313,24 +317,26 @@ export const ConversationComposer = memo(function ConversationComposer(
               </div>
             )}
           </div>
-          <Button
-            aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
-            disabled={!canSend || !online || sendLocked}
-            title={
-              !online
-                ? "Connect to send"
-                : sendLocked
-                  ? "Sending message"
-                  : props.submitLabel
-            }
-            type="submit"
-          >
-            <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">
-              {sendLocked ? "Sending…" : props.submitLabel}
-            </span>
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              aria-label={sendLocked ? "Sending message" : props.submitLabel}
+              className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
+              disabled={!canSend || !online || sendLocked}
+              title={
+                !online
+                  ? "Connect to send"
+                  : sendLocked
+                    ? "Sending message"
+                    : props.submitLabel
+              }
+              type="submit"
+            >
+              <Send aria-hidden="true" size={14} />
+              <span className="hidden md:inline">
+                {sendLocked ? "Sending…" : props.submitLabel}
+              </span>
+            </Button>
+          </div>
         </div>
       </form>
     </div>

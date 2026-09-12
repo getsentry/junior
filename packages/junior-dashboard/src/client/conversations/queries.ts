@@ -21,6 +21,8 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  promoteConversationPendingMessageResponseSchema,
+  stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -235,6 +237,79 @@ export function useAppendConversationMessage(conversationId: string) {
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
+    },
+  });
+}
+
+/** Request that the active Conversation Turn stop. */
+export function useStopConversationTurn(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationTurnResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+      ]);
+    },
+  });
+}
+
+/** Promote one accepted queued Message into the active Turn. */
+export function usePromoteConversationPendingMessage(conversationId: string) {
+  const queryClient = useQueryClient();
+  const pendingQueryKey = conversationPendingMessagesQueryKey(conversationId);
+  return useMutation({
+    mutationFn: (inboundMessageId: string) =>
+      post(
+        promoteConversationPendingMessageResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages/promote`,
+        { inboundMessageId },
+      ),
+    onMutate: async (inboundMessageId) => {
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: pendingQueryKey,
+      });
+      const previousPending =
+        queryClient.getQueryData<ConversationPendingMessagesReport>(
+          pendingQueryKey,
+        );
+      if (previousPending) {
+        queryClient.setQueryData<ConversationPendingMessagesReport>(
+          pendingQueryKey,
+          {
+            ...previousPending,
+            messages: previousPending.messages.map((message) =>
+              message.inboundMessageId === inboundMessageId
+                ? { ...message, delivery: "interrupt" }
+                : message,
+            ),
+          },
+        );
+      }
+      return { previousPending };
+    },
+    onError: (_error, _inboundMessageId, context) => {
+      if (context?.previousPending) {
+        queryClient.setQueryData(pendingQueryKey, context.previousPending);
+      }
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: pendingQueryKey,
       });
     },
   });

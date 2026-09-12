@@ -289,7 +289,9 @@ test("opens and closes a conversation on mobile", async ({
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
 

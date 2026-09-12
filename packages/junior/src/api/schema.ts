@@ -43,6 +43,9 @@ export {
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
+  promoteConversationPendingMessageBodySchema,
+  promoteConversationPendingMessageResponseSchema,
+  stopConversationTurnResponseSchema,
 } from "./schema/conversation";
 export type {
   AcceptedConversationMessage,
@@ -66,6 +69,7 @@ export type {
   ConversationReportStatus,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
+  StopConversationTurnResponse,
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
@@ -77,6 +81,8 @@ export type {
   ConversationUsage,
   CreateConversationBody,
   CreateConversationMessageBody,
+  PromoteConversationPendingMessageBody,
+  PromoteConversationPendingMessageResponse,
   GuardianMetricDay,
   GuardianStats,
 } from "./schema/conversation";

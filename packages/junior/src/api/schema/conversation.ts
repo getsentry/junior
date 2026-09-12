@@ -102,6 +102,14 @@ export const acceptedConversationMessageSchema = z
   })
   .strict();
 
+/** Result of requesting that the active Conversation Turn stop. */
+export const stopConversationTurnResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    status: z.enum(["no_work", "requested"]),
+  })
+  .strict();
+
 export const actorIdentitySchema = z
   .object({
     email: z.string().optional(),
@@ -163,6 +171,20 @@ export const conversationPendingMessagesReportSchema = z
     conversationId: z.string().min(1),
     generatedAt: z.string().datetime(),
     messages: z.array(conversationPendingMessageSchema),
+  })
+  .strict();
+
+/** Select one queued Message to promote into the active Turn. */
+export const promoteConversationPendingMessageBodySchema = z
+  .object({ inboundMessageId: z.string().min(1) })
+  .strict();
+
+/** Result of promoting one queued Message. */
+export const promoteConversationPendingMessageResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    inboundMessageId: z.string().min(1),
+    status: z.literal("promoted"),
   })
   .strict();
 
@@ -899,6 +921,9 @@ export type CreateConversationMessageBody = z.infer<
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
 >;
+export type StopConversationTurnResponse = z.infer<
+  typeof stopConversationTurnResponseSchema
+>;
 export type ConversationPendingMessageDelivery = z.infer<
   typeof conversationPendingMessageDeliverySchema
 >;
@@ -907,6 +932,12 @@ export type ConversationPendingMessage = z.infer<
 >;
 export type ConversationPendingMessagesReport = z.infer<
   typeof conversationPendingMessagesReportSchema
+>;
+export type PromoteConversationPendingMessageBody = z.infer<
+  typeof promoteConversationPendingMessageBodySchema
+>;
+export type PromoteConversationPendingMessageResponse = z.infer<
+  typeof promoteConversationPendingMessageResponseSchema
 >;
 export type CancelConversationPendingMessagesBody = z.infer<
   typeof cancelConversationPendingMessagesBodySchema
