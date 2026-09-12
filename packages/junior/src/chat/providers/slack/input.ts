@@ -82,15 +82,14 @@ export function appendRecentMessagesToContext(
   );
 }
 
-/** Return the actor stored with one inbound Slack message. */
-export function inboundMessageActor(
-  queued: QueuedTurnMessage,
+/** Return the actor stored with one Slack message. */
+export function slackMessageActor(
+  message: Message,
 ): AgentSteeringMessage["actor"] {
-  const actor = getMessageActorIdentity(queued.message);
-  const authorId =
-    actor?.userId ?? parseActorUserId(queued.message.author.userId);
+  const actor = getMessageActorIdentity(message);
+  const authorId = actor?.userId ?? parseActorUserId(message.author.userId);
   const authorName = actor?.fullName ?? actor?.userName;
-  const slackTs = getMessageTimestamp(queued.message);
+  const slackTs = getMessageTimestamp(message);
   return {
     ...(authorId ? { authorId } : undefined),
     ...(authorName ? { authorName } : undefined),
@@ -98,24 +97,40 @@ export function inboundMessageActor(
   };
 }
 
+/** Return the actor stored with one inbound Slack message. */
+export function inboundMessageActor(
+  queued: QueuedTurnMessage,
+): AgentSteeringMessage["actor"] {
+  return slackMessageActor(queued.message);
+}
+
+/** Return the authority stored with one Slack message. */
+export function slackMessageProvenance(
+  message: Message,
+  teamId: string,
+): ConversationMessageProvenance {
+  const identity = getMessageActorIdentity(message);
+  const userId = parseActorUserId(message.author.userId);
+  const author =
+    identity && "platform" in identity
+      ? identity
+      : createActor(
+          { userId },
+          {
+            platform: "slack",
+            teamId,
+            userId,
+          },
+        );
+  return instructionProvenanceFor(author);
+}
+
 /** Return the authority stored with one inbound Slack message. */
 export function inboundMessageProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
-  const identity = getMessageActorIdentity(queued.message);
-  const author =
-    identity && "platform" in identity
-      ? identity
-      : createActor(
-          { userId: parseActorUserId(queued.message.author.userId) },
-          {
-            platform: "slack",
-            teamId,
-            userId: parseActorUserId(queued.message.author.userId),
-          },
-        );
-  return instructionProvenanceFor(author);
+  return slackMessageProvenance(queued.message, teamId);
 }
 
 /** Return the Slack channel name when it is available. */
