@@ -2,6 +2,29 @@ import { describeEval } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Output Contract", slackEvals, (it) => {
+  it("when a task has several explicit deliverables, preserve all of them in the proposed scope", async ({
+    run,
+  }) => {
+    await run({
+      initialEvents: [
+        mention(
+          "Before touching code, summarize the scope you would implement for this ticket: register three new event tables in the warehouse sync, add a daily account summary that joins those events, and update the existing notification-provider definition. The daily summary is the largest part, but all three are required. Keep it brief.",
+        ),
+      ],
+      requireSandboxReady: false,
+      criteria: rubric({
+        pass: [
+          "The proposed scope preserves all three required deliverables: warehouse sync registration, the daily account summary, and the notification-provider definition update.",
+          "The assistant does not remove the daily account summary merely because it is the largest deliverable.",
+        ],
+        fail: [
+          "Do not label an explicit deliverable as out of scope or defer it to separate work without asking the user to approve that scope change.",
+          "Do not present a partial implementation as the complete ticket.",
+        ],
+      }),
+    });
+  });
+
   it("when asked for a structured overview, avoid hash markdown headings", async ({
     run,
   }) => {

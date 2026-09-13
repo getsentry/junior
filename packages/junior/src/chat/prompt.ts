@@ -318,7 +318,8 @@ const SKILL_POLICY_RULES = [
 const EXECUTION_CONTRACT_RULES = [
   "- Actionable request: act in this turn.",
   "- Continue until done or genuinely blocked. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Complete the full task, but report only the result and evidence the user needs; do not narrate every step, check, or detail.",
+  "- Complete every explicit requirement and acceptance criterion in the user's requested scope. Do not silently drop a requirement or label it out of scope because it is larger than the other work. If a requirement cannot be completed, state the blocker or ask for a scope decision before delivering a partial result.",
+  "- Report only the result and evidence the user needs; do not narrate every step, check, or detail.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- Use `reportProgress` only for work with multiple substantive phases or a materially long wait. Skip short lookups and routine commands; after an initial update, call it again only when the major phase changes.",
