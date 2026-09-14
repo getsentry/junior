@@ -4591,11 +4591,12 @@ INSERT INTO junior_memory_memories (
   content,
   source_platform,
   source_key,
+  conversation_id,
   idempotency_key,
   observed_at_ms,
   created_at_ms
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 `,
           [
@@ -4608,6 +4609,7 @@ INSERT INTO junior_memory_memories (
             "Duplicate raw insert with same retry key.",
             "slack",
             "slack:T123:C123:1718800000.000000",
+            context.conversationId,
             "explicit-create-1",
             nowMs,
             nowMs,
@@ -5274,10 +5276,11 @@ INSERT INTO junior_memory_memories (
   content,
   source_platform,
   source_key,
+  conversation_id,
   observed_at_ms,
   created_at_ms
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 )
 `,
           [
@@ -5290,6 +5293,7 @@ INSERT INTO junior_memory_memories (
             "Unsupported scope value.",
             "slack",
             "slack:T123:C123:1718800000.000000",
+            "slack:C123:1718800000.000000",
             TEST_NOW_MS,
             TEST_NOW_MS,
           ],
