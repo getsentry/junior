@@ -2400,10 +2400,12 @@ describe("memory plugin storage", () => {
       });
 
       expect(publicMemory.memory).toMatchObject({
+        conversationId: slackContext().conversationId,
         scope: "public",
         subjectType: "conversation",
       });
       expect(privateMemory.memory).toMatchObject({
+        conversationId: privateContext.conversationId,
         scope: "private",
         subjectType: "user",
       });
