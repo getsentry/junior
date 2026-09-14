@@ -215,7 +215,7 @@
           "name": "conversation_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "idempotency_key": {
           "name": "idempotency_key",

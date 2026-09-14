@@ -146,7 +146,7 @@ const memoryRowSchema = z
     archivedAtMs: optionalNumberSchema,
     archiveReason: optionalStringSchema,
     content: memoryContentSchema,
-    conversationId: optionalNonEmptyStringSchema,
+    conversationId: z.string().min(1),
     createdAtMs: z.coerce.number(),
     expiresAtMs: optionalNumberSchema,
     id: z.string().min(1),
@@ -207,7 +207,7 @@ const memoryRecordSchema = z
     archivedAtMs: numberSchema.optional(),
     archiveReason: nonEmptyStringSchema.optional(),
     content: memoryContentSchema,
-    conversationId: nonEmptyStringSchema.optional(),
+    conversationId: nonEmptyStringSchema,
     createdAtMs: numberSchema,
     expiresAtMs: numberSchema.optional(),
     id: nonEmptyStringSchema,
@@ -411,6 +411,13 @@ function sourceKey(ctx: MemoryRuntimeContext): string {
   return key;
 }
 
+function originConversationId(ctx: MemoryRuntimeContext): string {
+  if (!ctx.conversationId) {
+    throw new Error("Memory requires conversation context.");
+  }
+  return ctx.conversationId;
+}
+
 /** Parse one SQL row into the public memory projection. */
 export function parseMemoryRow(row: unknown): MemoryRecord {
   const parsed = memoryRowSchema.parse(row);
@@ -420,9 +427,7 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
     kind: parsed.kind,
     subjectType: parsed.subjectType,
     content: parsed.content,
-    ...(parsed.conversationId
-      ? { conversationId: parsed.conversationId }
-      : undefined),
+    conversationId: parsed.conversationId,
     observedAtMs: parsed.observedAtMs,
     createdAtMs: parsed.createdAtMs,
     ...(parsed.expiresAtMs !== undefined
@@ -786,7 +791,7 @@ async function rememberDuplicateIdempotency(args: {
     .insert(juniorMemoryMemories)
     .values({
       content: args.content,
-      conversationId: args.runtimeContext.conversationId,
+      conversationId: originConversationId(args.runtimeContext),
       createdAtMs: args.nowMs,
       expiresAtMs: args.duplicate.expiresAtMs,
       id: idempotencyAliasId({
@@ -1308,7 +1313,7 @@ export function createMemoryStore(
         .insert(juniorMemoryMemories)
         .values({
           content,
-          conversationId: runtimeContext.conversationId,
+          conversationId: originConversationId(runtimeContext),
           createdAtMs: nowMs,
           expiresAtMs: input.expiresAtMs,
           id,
