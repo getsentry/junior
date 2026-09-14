@@ -83,7 +83,6 @@ describe("memory operational report", () => {
         .insert(juniorMemoryMemories)
         .values({
           content: "A memory created shortly after UTC midnight.",
-          conversationId: "local:junior:memory-report",
           createdAtMs: Date.parse("2026-07-28T00:30:00.000Z"),
           id: "utc-boundary-memory",
           kind: "knowledge",
@@ -195,7 +194,6 @@ describe("memory operational report", () => {
       await db.insert(juniorMemoryMemories).values({
         archivedAtMs: TEST_NOW_MS,
         content: "Archived memory content.",
-        conversationId: "local:junior:memory-report",
         createdAtMs: TEST_NOW_MS,
         id: "archived-memory",
         kind: "knowledge",
