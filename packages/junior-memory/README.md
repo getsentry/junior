@@ -45,8 +45,8 @@ exported types, tools, and tests are authoritative.
 
 - The Drizzle schema in `src/db/schema.ts` and generated migrations define the
   database contract.
-- Records retain provenance, the origin `conversation_id`, lifecycle status,
-  supersession relationships, and timestamps needed for review and deletion.
+- Records retain provenance, the optional origin `conversation_id`, lifecycle
+  status, supersession relationships, and timestamps needed for review and deletion.
 - Embeddings are derived indexes, not independent memory authority.
 - Embedding distance never decides that two memories are duplicates. Exact
   content and preference review own duplicate and supersession decisions.
