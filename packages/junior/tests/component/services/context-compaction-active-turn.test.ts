@@ -214,21 +214,22 @@ describe("active-turn context compaction", () => {
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<current-instruction>",
     );
+    await expect(
+      commitMessages({
+        conversationId,
+        messages: result.piMessages!,
+      }),
+    ).resolves.toBeDefined();
     const durable = await loadProjection({ conversationId });
-    expect(durable).toHaveLength(2);
-    expect(textOf(durable[0]!)).toBe(
-      "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
-    );
-    expect(textOf(durable[1]!)).toContain("No outstanding asks.");
-    expect(textOf(durable[1]!)).not.toContain("<runtime-turn-context>");
-    expect(textOf(durable[1]!)).not.toContain("<current-instruction>");
+    expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.modelProfile).toBe("standard");
-    expect(projection.provenance[0]).toMatchObject({
+    expect(projection.provenance[0]).toEqual({ authority: "context" });
+    expect(projection.provenance[1]).toMatchObject({
       authority: "instruction",
       actor: { userId: "U_STEER" },
     });
-    expect(projection.provenance[1]).toEqual({ authority: "context" });
+    expect(projection.provenance[2]).toEqual({ authority: "context" });
     const compactionEvent = (
       await getConversationEventStore().loadHistory(conversationId)
     ).find((event) => event.data.type === "compaction");

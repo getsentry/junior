@@ -1,4 +1,10 @@
 # Changelog
+## 0.215.0
+
+### New Features ✨
+
+- (memory) Link memories to origin conversations by @sentry-junior in [#1856](https://github.com/getsentry/junior/pull/1856)
+
 ## 0.214.0
 
 ### New Features ✨

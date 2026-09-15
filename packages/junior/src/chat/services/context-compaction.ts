@@ -691,19 +691,25 @@ export async function compactActiveContextIfNeeded(
     retainedRuntimeContext,
     typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
   );
-  const runtimeMessages = contextMessage ? [contextMessage] : [];
-  const messages = [...runtimeMessages, ...instructionMessages, summaryMessage];
+  const replacement = [
+    ...(contextMessage
+      ? [{ message: contextMessage, provenance: contextProvenance }]
+      : []),
+    ...instructionMessages.map((message, index) => ({
+      message,
+      provenance: instructionProvenance[index]!,
+      ...(index === 0 && retainedInstruction
+        ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
+        : undefined),
+    })),
+    { message: summaryMessage, provenance: contextProvenance },
+  ];
+  const messages = replacement.map((entry) => entry.message);
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {
     throw new ContextInputLimitExceededError(
       replacementInputTokens,
       inputLimitTokens,
-    );
-  }
-  const replacementMessages = stripRuntimeTurnContext(messages);
-  if (replacementMessages.length !== 1 + instructionProvenance.length) {
-    throw new Error(
-      "persisted instruction provenance must align one-to-one with messages",
     );
   }
   args.signal?.throwIfAborted();
@@ -724,18 +730,12 @@ export async function compactActiveContextIfNeeded(
         summaryChars: summary.length,
       },
       summary,
-      replacementHistory: replacementMessages.map((message, index) => {
-        const isSummary = index === replacementMessages.length - 1;
-        const provenance = isSummary
-          ? contextProvenance
-          : instructionProvenance[index]!;
-        return {
-          item: historyItemFromPiMessage(message, provenance),
-          ...(index === 0 && retainedInstruction
-            ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
-            : undefined),
-        };
-      }),
+      replacementHistory: replacement.map((entry) => ({
+        item: historyItemFromPiMessage(entry.message, entry.provenance),
+        ...(entry.sourceEventSeq === undefined
+          ? undefined
+          : { sourceEventSeq: entry.sourceEventSeq }),
+      })),
     },
   });
   setSpanAttributes({

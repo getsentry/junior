@@ -1,20 +1,52 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
 import { vi } from "vitest";
+import type { BotConfig } from "@/chat/config";
+import { botConfig } from "@/chat/config";
+import type { ConversationEvent } from "@/chat/conversations/history";
+import { loadProjection } from "@/chat/conversations/projection";
+import { getConversationEventStore } from "@/chat/db";
+import type { PiMessage } from "@/chat/pi/messages";
 import { createConversationWebHarness } from "./conversation";
 import { createModelStream } from "./model-stream";
 
 type ModelInput = Pick<Context, "systemPrompt"> & { messages: Message[] };
 
-type Agent = {
+type AgentFixture = {
+  agentHistory(): Promise<PiMessage[]>;
+  historyEvents(): Promise<ConversationEvent[]>;
   run(prompt: string): Promise<void>;
   snapshot(): ModelInput;
 };
 
-/** Create an Agent that runs complete Conversation Turns through production code. */
-export async function createAgent(): Promise<Agent> {
+type PreviousTurn = {
+  prompt: string;
+  response: string;
+};
+
+type AgentFixtureOptions = {
+  botConfig?: Partial<BotConfig>;
+  previousTurns?: PreviousTurn[];
+  responses?: string[];
+};
+
+/**
+ * Create an Agent fixture through the production Conversation path.
+ *
+ * `previousTurns` runs before this function returns. This gives tests durable
+ * agent history without bypassing Turn execution or SQL history.
+ */
+export async function createAgent(
+  options: AgentFixtureOptions = {},
+): Promise<AgentFixture> {
+  Object.assign(botConfig, options.botConfig);
+  const previousTurns = options.previousTurns ?? [];
+  const responses = [
+    ...previousTurns.map((turn) => turn.response),
+    ...(options.responses ?? ["First response.", "Second response."]),
+  ];
   const model = vi.fn(
     createModelStream(
-      ["First reply.", "Second reply."].map((text) => ({
+      responses.map((text) => ({
         type: "text" as const,
         text,
       })),
@@ -24,7 +56,15 @@ export async function createAgent(): Promise<Agent> {
   let conversationId: string | undefined;
   let turn = 0;
 
-  return {
+  const agent: AgentFixture = {
+    async agentHistory() {
+      if (!conversationId) throw new Error("No conversation to inspect");
+      return await loadProjection({ conversationId });
+    },
+    async historyEvents() {
+      if (!conversationId) throw new Error("No conversation to inspect");
+      return await getConversationEventStore().loadHistory(conversationId);
+    },
     async run(prompt) {
       turn += 1;
       // TODO(dcramer): Remove this web start/continue choice when the shared
@@ -53,4 +93,9 @@ export async function createAgent(): Promise<Agent> {
       };
     },
   };
+
+  for (const turn of previousTurns) {
+    await agent.run(turn.prompt);
+  }
+  return agent;
 }
