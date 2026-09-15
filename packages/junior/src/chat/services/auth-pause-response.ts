@@ -24,7 +24,7 @@ export function buildAuthPauseResponse(
   const mention = slackUserId ? `<@${slackUserId}> ` : "";
   const request = requestText ? formatAuthRequest(requestText) : undefined;
   if (!request) {
-    return `${mention}I'll need you to authorize ${providerDisplayName}. I sent you a link.`;
+    return `${mention}I'll need you to authorize ${providerDisplayName}. Use the link in the message above in this thread.`;
   }
-  return `${mention}I need access to ${providerDisplayName} to continue.\n\n*Why:* ${request}\n\nI sent you a link.`;
+  return `${mention}I need access to ${providerDisplayName} to continue.\n\n*Why:* ${request}\n\nUse the link in the message above in this thread.`;
 }
