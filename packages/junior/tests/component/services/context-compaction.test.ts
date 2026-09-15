@@ -199,7 +199,7 @@ describe("context compaction projection reset", () => {
         ({ text: "Continue with focused tests." }) as never,
     );
 
-    await createContextCompactor({
+    const result = await createContextCompactor({
       completeText,
       autoCompactionTriggerTokens: 0,
     }).maybeCompact({
@@ -209,6 +209,9 @@ describe("context compaction projection reset", () => {
       piMessages: messages,
     });
 
+    expect(textOf(result.piMessages!.at(-1)!)).toContain(
+      '<open-plan>\n[{"step":"Run focused tests","status":"in_progress"}]\n</open-plan>',
+    );
     const summaryInput = completeText.mock.calls[0]?.[0] as
       | { messages: PiMessage[] }
       | undefined;
@@ -403,7 +406,31 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-handoff";
     const priorMessages = [
       user("Implement the multi-file change.", 1),
-      assistant("I found the affected modules.", 2),
+      {
+        ...assistant("", 2),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-handoff",
+            name: "update_plan",
+            arguments: {
+              plan: [
+                { step: "Edit both modules", status: "in_progress" },
+                { step: "Run focused tests", status: "pending" },
+              ],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-handoff",
+        toolName: "update_plan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 3,
+      } as PiMessage,
     ];
     await commitMessages({
       conversationId,
@@ -444,9 +471,12 @@ describe("context compaction projection reset", () => {
     expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the multi-file implementation.",
     );
+    expect(textOf(handoffMessages[1]!)).toContain(
+      "&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;",
+    );
     const durableHandoffMessages = [
       user(
-        "<current-instruction>\nAnother language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:\nContinue the multi-file implementation.\n</current-instruction>",
+        "<current-instruction>\nAnother language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:\nContinue the multi-file implementation.\n\n&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;\n</current-instruction>",
         3,
       ),
     ];

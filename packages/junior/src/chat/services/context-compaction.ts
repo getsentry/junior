@@ -50,6 +50,7 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
+import { appendOpenPlan } from "@/chat/services/plan-continuation";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_CHARS = 6_000;
@@ -511,9 +512,10 @@ async function writeCompactedThreadContext(
   const retained = selectRetainedUserMessageEntries(
     trimTrailingAssistantMessages(sourceProjection.messages),
   );
+  const continuation = appendOpenPlan(summary, sourceMessages);
   const replacement = [
     ...retained.map((entry) => entry.message),
-    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${summary}`),
+    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${continuation}`),
   ];
   const replacementInputTokens = estimateHistoryTokens(replacement);
   // Provenance comes from the committed projection so retained user asks keep
@@ -592,7 +594,8 @@ export async function compactContextForHandoff(
     throw new Error("Handoff requires the current runtime turn context");
   }
   const generatedSummary = await summarizeContext(args, deps);
-  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${generatedSummary}`;
+  const continuation = appendOpenPlan(generatedSummary, args.piMessages);
+  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}`;
   const instructionMessage = {
     role: "user",
     content: [{ type: "text", text: renderCurrentInstruction(summary) }],
@@ -671,8 +674,9 @@ export async function compactActiveContextIfNeeded(
     return { compacted: false, reason: "summary_failed" };
   }
 
+  const continuation = appendOpenPlan(summary, source.messages);
   const summaryMessage = userMessage(
-    `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${summary}`,
+    `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${continuation}`,
   );
   const retainedInstruction =
     pendingMessages.length === 0

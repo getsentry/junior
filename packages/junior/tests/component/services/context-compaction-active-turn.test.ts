@@ -154,17 +154,41 @@ describe("active-turn context compaction", () => {
         2,
       ),
       user("Make the requested edit.", 3),
-      assistantWithUsage("I will apply the edit.", {
-        totalTokens: 20_000,
-        timestamp: 4,
-      }),
+      {
+        ...assistantWithUsage("", {
+          totalTokens: 20_000,
+          timestamp: 4,
+        }),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-active",
+            name: "update_plan",
+            arguments: {
+              plan: [
+                { step: "Apply requested edit", status: "in_progress" },
+                { step: "Run focused test", status: "pending" },
+              ],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-active",
+        toolName: "update_plan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 5,
+      } as PiMessage,
       {
         role: "toolResult",
         toolCallId: "edit-1",
         toolName: "editFile",
         content: [{ type: "text", text: OVERSIZED_CONTEXT_TEXT }],
         isError: false,
-        timestamp: 5,
+        timestamp: 6,
       } as PiMessage,
     ];
     const result = await compactActiveContextIfNeeded(
@@ -176,7 +200,7 @@ describe("active-turn context compaction", () => {
           {
             message: user(
               "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
-              6,
+              7,
             ),
             provenance: {
               authority: "instruction",
@@ -208,6 +232,9 @@ describe("active-turn context compaction", () => {
       "<current-instruction>\nAlso run the focused test.\n</current-instruction>",
     );
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
+    expect(textOf(result.piMessages![2]!)).toContain(
+      '<open-plan>\n[{"step":"Apply requested edit","status":"in_progress"},{"step":"Run focused test","status":"pending"}]\n</open-plan>',
+    );
     expect(textOf(result.piMessages![2]!)).not.toContain(
       "<runtime-turn-context>",
     );
@@ -242,7 +269,7 @@ describe("active-turn context compaction", () => {
         reason: "capacity",
         triggerTokens: 360_000,
         inputLimitTokens: 380_000,
-        inputMessageCount: 5,
+        inputMessageCount: 6,
         retainedMessageCount: 1,
         summaryChars: 20,
       },
