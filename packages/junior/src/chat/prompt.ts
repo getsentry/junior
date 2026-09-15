@@ -384,10 +384,10 @@ Example 3:
 3. Summarize usage instructions
 
 If you need to write a plan, only write high quality plans, not low quality ones.
+`.split("\n");
 
-## \`update_plan\`
-
-A tool named \`update_plan\` is available to you. You can use it to keep an up‑to‑date, step‑by‑step plan for the task.
+const UPDATE_PLAN_RULES =
+  `A tool named \`update_plan\` is available to you. You can use it to keep an up‑to‑date, step‑by‑step plan for the task.
 
 To create a new plan, call \`update_plan\` with a short list of 1‑sentence steps (no more than 5-7 words each) with a \`status\` for each step (\`pending\`, \`in_progress\`, or \`completed\`).
 
@@ -403,7 +403,7 @@ const EXECUTION_CONTRACT_RULES = [
   "- Complete the full task, but report only the result and evidence the user needs; do not narrate every step, check, or detail.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
-  "- Use `reportProgress` for a materially long wait that a plan does not already express. Skip short waits, routine commands, generic filler, and minor substeps.",
+  "- Use `reportProgress` only for work with multiple substantive phases or a materially long wait. Skip short lookups and routine commands; after an initial update, call it again only when the major phase changes.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
 ];
 
@@ -448,6 +448,7 @@ function buildBehaviorSection(platform: PromptPlatform): string {
     renderRuleSection("conversation", CONVERSATION_RULES),
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
+    renderRuleSection("update-plan", UPDATE_PLAN_RULES),
   ];
   if (platform === "slack") {
     sections.splice(
