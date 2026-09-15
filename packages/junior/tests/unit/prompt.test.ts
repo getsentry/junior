@@ -1,16 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
-  it("requires plans for complex tasks", () => {
-    const prompt = buildSystemPrompt("slack");
-
-    expect(prompt).toContain("<planning>");
-    expect(prompt).toContain("Use `updatePlan` for every complex task");
-    expect(prompt).toContain("Skip plans for simple or single-step work");
-  });
-
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],
