@@ -588,6 +588,7 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   apiHeaders: Record<string, string> | undefined,
   credentials: PluginCredentials | undefined,
   oauth: PluginOAuthConfig | undefined,
+  mcp: PluginMcpConfig | undefined,
   pluginName: string,
 ): void {
   if (!commandEnv) {
@@ -595,7 +596,10 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   }
 
   const hostOnlyRefs = new Set<string>();
-  for (const value of Object.values(apiHeaders ?? {})) {
+  for (const value of [
+    ...Object.values(apiHeaders ?? {}),
+    ...Object.values(mcp?.headers ?? {}),
+  ]) {
     for (const name of envReferences(value)) {
       hostOnlyRefs.add(name);
     }
@@ -944,6 +948,13 @@ function normalizeMcp(
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
       })
     : undefined;
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    assertDeclaredEnvReferences(
+      value,
+      envVars,
+      `Plugin ${name} mcp.headers.${key}`,
+    );
+  }
 
   return {
     transport: "http",
@@ -1150,6 +1161,7 @@ function parseManifestSource(
     apiHeaders,
     credentials,
     manifest.oauth,
+    mcp,
     data.name,
   );
   assertCommandEnvHostRefsAreExplicitlyExposed(

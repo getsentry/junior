@@ -16,6 +16,7 @@ import {
   type McpProviderErrorPhase,
   toMcpProviderError,
 } from "./errors";
+import { resolveMcpHeaders } from "./headers";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -213,8 +214,9 @@ export class PluginMcpClient {
     }
 
     const requestInit: RequestInit = {};
-    if (mcp.headers && Object.keys(mcp.headers).length > 0) {
-      requestInit.headers = new Headers(mcp.headers);
+    const headers = resolveMcpHeaders(this.plugin.manifest.name, mcp.headers);
+    if (headers) {
+      requestInit.headers = new Headers(headers);
     }
 
     const sessionId = await this.getStoredTransportSessionId();

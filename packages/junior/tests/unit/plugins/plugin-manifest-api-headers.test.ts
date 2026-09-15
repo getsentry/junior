@@ -450,4 +450,46 @@ describe("plugin manifest API headers", () => {
       "Plugin example api-headers.Authorization references env var EXAMPLE_AUTH_HEADER, but API header env vars must not declare defaults",
     );
   });
+
+  it("rejects undeclared MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example mcp.headers.X-Api-Key references env var EXAMPLE_MCP_KEY which is not declared in env-vars",
+    );
+  });
+
+  it("rejects command env references that reuse MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_MCP_KEY:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+          "command-env:",
+          '  EXAMPLE_TOKEN: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_MCP_KEY, but credential/API header env vars must stay host-only",
+    );
+  });
 });

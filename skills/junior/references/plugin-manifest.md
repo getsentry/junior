@@ -119,8 +119,12 @@ mcp: {
 - `domains` requires `api-headers` in `plugin.yaml`.
 - `oauth` requires `credentials.type: oauth-bearer` in `plugin.yaml`.
 - `mcp.url` env refs must be declared in `env-vars`.
+- `mcp.headers` env refs must be declared in `env-vars` and must not declare
+  defaults. Junior resolves them when it connects, so build output keeps only
+  the placeholder.
 - API-header env refs must not declare defaults.
-- `command-env` env refs must not reuse API-header, credential, or OAuth env vars.
+- `command-env` env refs must not reuse API-header, MCP header, credential, or
+  OAuth env vars.
 - `Authorization` is reserved inside `oauth-bearer` `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

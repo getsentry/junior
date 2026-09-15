@@ -55,6 +55,7 @@ export interface PluginRuntimePostinstallCommand {
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
+  /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */
   headers?: Record<string, string>;
   transport: "http";
   url: string;
