@@ -798,6 +798,8 @@ describe("context compaction projection reset", () => {
       conversationId: "conversation-large",
       modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
+      conversationContext:
+        "<thread-context>\nBackground incident discussion\n</thread-context>",
     });
 
     expect(capturedMessageAttributeMode).toBe("metadata");
@@ -806,6 +808,9 @@ describe("context compaction projection reset", () => {
     expect(capturedText).not.toContain("bootstrap instructions");
     expect(capturedText).not.toContain("<runtime-turn-context>");
     expect(capturedText).toContain("recent-critical-marker");
+    expect(textOf(capturedMessages.at(-2)!)).toBe(
+      "<visible-thread-context>\n<thread-context>\nBackground incident discussion\n</thread-context>\n</visible-thread-context>",
+    );
     expect(textOf(capturedMessages.at(-1)!)).toContain(
       "CONTEXT CHECKPOINT COMPACTION",
     );

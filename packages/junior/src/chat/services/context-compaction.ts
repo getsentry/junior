@@ -350,6 +350,9 @@ async function summarizeContext(
     "Be concise, structured, and focused on helping the next LLM seamlessly continue the work.",
   ].join("\n");
   const visibleContext = args.conversationContext?.trim();
+  const labeledContext = visibleContext
+    ? `<visible-thread-context>\n${visibleContext}\n</visible-thread-context>`
+    : undefined;
   const history = stripRuntimeTurnContext(args.piMessages).filter(
     (message): message is Message =>
       ["user", "assistant", "toolResult"].includes(
@@ -364,7 +367,7 @@ async function summarizeContext(
     promptName: "junior.context_compaction",
     messages: [
       ...history,
-      ...(visibleContext ? [userMessage(visibleContext) as Message] : []),
+      ...(labeledContext ? [userMessage(labeledContext) as Message] : []),
       userMessage(instructions) as Message,
     ],
     metadata: {
