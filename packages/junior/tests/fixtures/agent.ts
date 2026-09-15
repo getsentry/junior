@@ -11,30 +11,42 @@ import { createModelStream } from "./model-stream";
 
 type ModelInput = Pick<Context, "systemPrompt"> & { messages: Message[] };
 
-type Agent = {
-  events(): Promise<ConversationEvent[]>;
-  messages(): Promise<PiMessage[]>;
+type AgentFixture = {
+  agentHistory(): Promise<PiMessage[]>;
+  historyEvents(): Promise<ConversationEvent[]>;
   run(prompt: string): Promise<void>;
   snapshot(): ModelInput;
 };
 
-type AgentOptions = {
-  botConfig?: Partial<BotConfig>;
-  history?: Array<{ prompt: string; reply: string }>;
-  replies?: string[];
+type PreviousTurn = {
+  prompt: string;
+  response: string;
 };
 
-/** Create an Agent that runs complete Conversation Turns through production code. */
-export async function createAgent(options: AgentOptions = {}): Promise<Agent> {
+type AgentFixtureOptions = {
+  botConfig?: Partial<BotConfig>;
+  previousTurns?: PreviousTurn[];
+  responses?: string[];
+};
+
+/**
+ * Create an Agent fixture through the production Conversation path.
+ *
+ * `previousTurns` runs before this function returns. This gives tests durable
+ * agent history without bypassing Turn execution or SQL history.
+ */
+export async function createAgent(
+  options: AgentFixtureOptions = {},
+): Promise<AgentFixture> {
   Object.assign(botConfig, options.botConfig);
-  const history = options.history ?? [];
-  const replies = [
-    ...history.map((entry) => entry.reply),
-    ...(options.replies ?? ["First reply.", "Second reply."]),
+  const previousTurns = options.previousTurns ?? [];
+  const responses = [
+    ...previousTurns.map((turn) => turn.response),
+    ...(options.responses ?? ["First response.", "Second response."]),
   ];
   const model = vi.fn(
     createModelStream(
-      replies.map((text) => ({
+      responses.map((text) => ({
         type: "text" as const,
         text,
       })),
@@ -44,14 +56,14 @@ export async function createAgent(options: AgentOptions = {}): Promise<Agent> {
   let conversationId: string | undefined;
   let turn = 0;
 
-  const agent: Agent = {
-    async events() {
-      if (!conversationId) throw new Error("No conversation to inspect");
-      return await getConversationEventStore().loadHistory(conversationId);
-    },
-    async messages() {
+  const agent: AgentFixture = {
+    async agentHistory() {
       if (!conversationId) throw new Error("No conversation to inspect");
       return await loadProjection({ conversationId });
+    },
+    async historyEvents() {
+      if (!conversationId) throw new Error("No conversation to inspect");
+      return await getConversationEventStore().loadHistory(conversationId);
     },
     async run(prompt) {
       turn += 1;
@@ -82,8 +94,8 @@ export async function createAgent(options: AgentOptions = {}): Promise<Agent> {
     },
   };
 
-  for (const entry of history) {
-    await agent.run(entry.prompt);
+  for (const turn of previousTurns) {
+    await agent.run(turn.prompt);
   }
   return agent;
 }
