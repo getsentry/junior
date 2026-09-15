@@ -13,13 +13,6 @@ const COMPACTION_SUMMARY =
   "Earlier work is complete. Continue with the new ask.";
 const FINAL_RESPONSE = "New request completed.";
 const originalBotConfig = { ...botConfig };
-const originalGatewayKey = process.env.AI_GATEWAY_API_KEY;
-
-/** Use the normal utility-model HTTP edge for the compaction summary. */
-function mockCompactionSummary(text: string): void {
-  process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
-  mockTitleModel(text);
-}
 
 function textFromAgentHistory(messages: PiMessage[]): string {
   const text: string[] = [];
@@ -39,11 +32,6 @@ function textFromAgentHistory(messages: PiMessage[]): string {
 describe("model message history", () => {
   afterEach(async () => {
     Object.assign(botConfig, originalBotConfig);
-    if (originalGatewayKey === undefined) {
-      delete process.env.AI_GATEWAY_API_KEY;
-    } else {
-      process.env.AI_GATEWAY_API_KEY = originalGatewayKey;
-    }
     await closeConversationFixture();
   });
   it("keeps earlier model messages unchanged", async () => {
@@ -62,7 +50,7 @@ describe("model message history", () => {
   });
 
   it("compacts preloaded history and completes the active turn", async () => {
-    mockCompactionSummary(COMPACTION_SUMMARY);
+    mockTitleModel(COMPACTION_SUMMARY);
 
     // Keep this test cheap. The 50k context window makes the normal 90%
     // compaction threshold 45k tokens. This response pads the durable history
