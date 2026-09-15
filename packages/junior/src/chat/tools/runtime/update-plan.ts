@@ -4,7 +4,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const planItemSchema = z
   .object({
-    step: z.string().trim().min(1).max(200).describe("Task step text."),
+    step: z.string().trim().min(1).describe("Task step text."),
     status: z
       .enum(["pending", "in_progress", "completed"])
       .describe("Current step status."),
@@ -17,13 +17,11 @@ const updatePlanInputSchema = z
       .string()
       .trim()
       .min(1)
-      .max(500)
       .optional()
       .describe("Why the plan changed, when the change is not obvious."),
     plan: z
       .array(planItemSchema)
       .min(1)
-      .max(20)
       .describe(
         "Complete ordered task plan. Each call replaces the prior plan.",
       ),
@@ -52,7 +50,7 @@ export function createUpdatePlanTool() {
       readOnlyHint: false,
     },
     description:
-      "Replace the current task plan. Provide the complete ordered list on every call. Keep at most one step in_progress. Complete the active step before starting the next one, and explain material changes to the plan.",
+      "Replace the current task plan. Provide the complete ordered list on every call. Keep at most one step in_progress.",
     inputSchema: updatePlanInputSchema,
     outputSchema: juniorToolOutputSchema,
     execute: async () => ({}),

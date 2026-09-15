@@ -65,13 +65,12 @@ describe("Pi tool adapter", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("emits assistant status for progress tools only", async () => {
+  it("emits assistant status for updatePlan only", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
-    const [updatePlanTool, reportProgressTool, bashTool] = createPiAgentTools(
+    const [updatePlanTool, bashTool] = createPiAgentTools(
       {
         updatePlan: createUpdatePlanTool(),
-        reportProgress: createReportProgressTool(),
         bash: {
           description: "bash",
           inputSchema: {} as any,
@@ -89,18 +88,10 @@ describe("Pi tool adapter", () => {
         { step: "Implement the MVP", status: "in_progress" },
       ],
     });
-    await reportProgressTool!.execute("tool-progress", {
-      message: "  Waiting for checks  ",
-    });
     await bashTool!.execute("tool-bash", { command: "pwd" });
 
-    expect(onStatus).toHaveBeenCalledTimes(2);
-    expect(onStatus).toHaveBeenNthCalledWith(1, {
-      text: "Implement the MVP",
-    });
-    expect(onStatus).toHaveBeenNthCalledWith(2, {
-      text: "Waiting for checks",
-    });
+    expect(onStatus).toHaveBeenCalledOnce();
+    expect(onStatus).toHaveBeenCalledWith({ text: "Implement the MVP" });
   });
 
   it("emits assistant status when reportProgress runs through executeTool", async () => {

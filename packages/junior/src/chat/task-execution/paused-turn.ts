@@ -81,7 +81,7 @@ import {
   credentialContextForActor,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import { latestProgressStatus } from "@/chat/runtime/update-plan";
+import { latestProgressStatus } from "@/chat/runtime/report-progress";
 
 /** Runtime ports for paused turn scheduling. */
 export interface PausedTurnOptions {

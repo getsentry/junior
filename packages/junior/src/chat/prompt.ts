@@ -317,9 +317,7 @@ const SKILL_POLICY_RULES = [
 
 const PLANNING_RULES = [
   "- Use `updatePlan` for every complex task: substantive work with multiple actions, phases, dependencies, or ambiguity. Also use it when the user asks for a plan.",
-  "- Skip plans for simple or single-step work. A plan must contain useful, verifiable steps rather than filler.",
-  "- Update the plan as work advances. Complete the active step before starting the next one. Explain material changes to the plan.",
-  "- Do not repeat the full plan in assistant text because the runtime already records the tool call.",
+  "- Skip plans for simple or single-step work. Do not repeat the full plan in assistant text.",
 ];
 
 const EXECUTION_CONTRACT_RULES = [

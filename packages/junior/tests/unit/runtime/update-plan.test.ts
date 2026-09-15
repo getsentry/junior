@@ -6,7 +6,7 @@ import {
 import {
   buildPlanStatus,
   latestProgressStatus,
-} from "@/chat/runtime/update-plan";
+} from "@/chat/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 
 const plan = [

@@ -17,8 +17,10 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
-import { buildPlanStatus } from "@/chat/runtime/update-plan";
+import {
+  buildPlanStatus,
+  buildReportedProgressStatus,
+} from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
