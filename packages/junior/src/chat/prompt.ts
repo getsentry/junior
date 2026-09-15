@@ -397,13 +397,11 @@ If all steps are complete, ensure you call \`update_plan\` to mark all steps as 
     "\n",
   );
 
-const EXECUTION_CONTRACT_RULES = [
+const TASK_EXECUTION_RULES = [
   "- Actionable request: act in this turn.",
   "- Continue until done or genuinely blocked. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
-  "- Complete the full task, but report only the result and evidence the user needs; do not narrate every step, check, or detail.",
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
-  "- Use `reportProgress` only for work with multiple substantive phases or a materially long wait. Skip short lookups and routine commands; after an initial update, call it again only when the major phase changes.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
 ];
 
@@ -444,7 +442,7 @@ function buildBehaviorSection(platform: PromptPlatform): string {
     renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
     renderRuleSection("planning", PLANNING_RULES),
-    renderRuleSection("execution-contract", EXECUTION_CONTRACT_RULES),
+    renderRuleSection("task-execution", TASK_EXECUTION_RULES),
     renderRuleSection("conversation", CONVERSATION_RULES),
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
