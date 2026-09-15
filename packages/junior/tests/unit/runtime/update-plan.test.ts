@@ -29,7 +29,7 @@ describe("task plan", () => {
     expect(
       latestProgressStatus([
         fauxAssistantMessage(
-          [fauxToolCall("updatePlan", { plan }, { id: "plan-1" })],
+          [fauxToolCall("update_plan", { plan }, { id: "plan-1" })],
           {
             stopReason: "toolUse",
           },
@@ -47,7 +47,7 @@ describe("task plan", () => {
         ),
         fauxAssistantMessage(
           [
-            fauxToolCall("updatePlan", {
+            fauxToolCall("update_plan", {
               plan: plan.map((item) => ({
                 ...item,
                 status: "completed",
@@ -60,16 +60,25 @@ describe("task plan", () => {
     ).toBeUndefined();
   });
 
-  it("rejects more than one active step", () => {
+  it("matches the Codex schema and result", async () => {
     const tool = createUpdatePlanTool();
+    const input = tool.prepareArguments({
+      explanation: "Scope changed",
+      plan: [
+        { step: "First", status: "in_progress" },
+        { step: "Second", status: "in_progress" },
+      ],
+    });
 
-    expect(() =>
-      tool.prepareArguments({
-        plan: [
-          { step: "First", status: "in_progress" },
-          { step: "Second", status: "in_progress" },
-        ],
-      }),
-    ).toThrow("At most one plan step can be in_progress");
+    expect(input).toEqual({
+      explanation: "Scope changed",
+      plan: [
+        { step: "First", status: "in_progress" },
+        { step: "Second", status: "in_progress" },
+      ],
+    });
+    await expect(tool.execute?.(input, {} as never)).resolves.toEqual({
+      content: [{ type: "text", text: "Plan updated" }],
+    });
   });
 });

@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const planItemSchema = z
   .object({
-    step: z.string().trim().min(1).describe("Task step text."),
+    step: z.string().describe("Task step text."),
     status: z
       .enum(["pending", "in_progress", "completed"])
-      .describe("Current step status."),
+      .describe("Step status."),
   })
   .strict();
 
@@ -15,30 +14,11 @@ const updatePlanInputSchema = z
   .object({
     explanation: z
       .string()
-      .trim()
-      .min(1)
       .optional()
-      .describe("Why the plan changed, when the change is not obvious."),
-    plan: z
-      .array(planItemSchema)
-      .min(1)
-      .describe(
-        "Complete ordered task plan. Each call replaces the prior plan.",
-      ),
+      .describe("Optional explanation for this plan update."),
+    plan: z.array(planItemSchema).describe("The list of steps"),
   })
-  .strict()
-  .superRefine((input, context) => {
-    const activeSteps = input.plan.filter(
-      (item) => item.status === "in_progress",
-    );
-    if (activeSteps.length > 1) {
-      context.addIssue({
-        code: "custom",
-        message: "At most one plan step can be in_progress.",
-        path: ["plan"],
-      });
-    }
-  });
+  .strict();
 
 /** Create the internal tool the model uses to replace its task plan. */
 export function createUpdatePlanTool() {
@@ -49,10 +29,14 @@ export function createUpdatePlanTool() {
       openWorldHint: false,
       readOnlyHint: false,
     },
-    description:
-      "Replace the current task plan. Provide the complete ordered list on every call. Keep at most one step in_progress.",
+    description: [
+      "Updates the task plan.",
+      "Provide an optional explanation and a list of plan items, each with a step and status.",
+      "At most one step can be in_progress at a time.",
+    ].join("\n"),
     inputSchema: updatePlanInputSchema,
-    outputSchema: juniorToolOutputSchema,
-    execute: async () => ({}),
+    execute: async () => ({
+      content: [{ type: "text" as const, text: "Plan updated" }],
+    }),
   });
 }

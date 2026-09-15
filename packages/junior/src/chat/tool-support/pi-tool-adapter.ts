@@ -281,7 +281,7 @@ export function createPiAgentTools(
     params: Record<string, unknown>,
   ) => {
     const status =
-      executionToolName === "updatePlan"
+      executionToolName === "update_plan"
         ? buildPlanStatus(params)
         : executionToolName === "reportProgress"
           ? buildReportedProgressStatus(params)

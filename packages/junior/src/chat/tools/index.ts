@@ -102,7 +102,7 @@ export function createTools(
             onSkillLoaded: hooks.onSkillLoaded,
           }),
         }),
-    updatePlan: createUpdatePlanTool(),
+    update_plan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),

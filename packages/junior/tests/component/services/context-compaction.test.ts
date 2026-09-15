@@ -289,7 +289,7 @@ describe("context compaction projection reset", () => {
     expect(result).not.toHaveProperty("sessionId");
     const compactedMessages = result.piMessages ?? [];
     expect(compactedMessages.map(textOf).join("\n")).toContain(
-      "Context compaction summary",
+      "Another language model started to solve this problem",
     );
     expect(compactedMessages.map(textOf).join("\n")).toContain(
       "migration approval",
@@ -312,6 +312,63 @@ describe("context compaction projection reset", () => {
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
+  });
+
+  it("summarizes model-visible tool calls and results", async () => {
+    const { createContextCompactor } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    const conversationId = "conversation-tool-summary";
+    const messages = [
+      user("Implement the change.", 1),
+      {
+        ...assistant("", 2),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-1",
+            name: "update_plan",
+            arguments: {
+              plan: [{ step: "Run focused tests", status: "in_progress" }],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-1",
+        toolName: "update_plan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 3,
+      } as PiMessage,
+    ];
+    await commitMessages({ conversationId, messages });
+    const completeText = vi.fn(
+      async (_input: unknown) =>
+        ({ text: "Continue with focused tests." }) as never,
+    );
+
+    await createContextCompactor({
+      completeText,
+      autoCompactionTriggerTokens: 0,
+    }).maybeCompact({
+      conversation: coerceThreadConversationState({}),
+      conversationId,
+      modelId: "openai/gpt-5.4",
+      piMessages: messages,
+    });
+
+    const summaryInput = completeText.mock.calls[0]?.[0] as
+      | { messages: PiMessage[] }
+      | undefined;
+    expect(summaryInput?.messages.slice(0, -1)).toEqual(messages);
+    expect(textOf(summaryInput!.messages.at(-1)!)).toContain(
+      "CONTEXT CHECKPOINT COMPACTION",
+    );
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
@@ -535,17 +592,14 @@ describe("context compaction projection reset", () => {
     );
     expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
     expect(textOf(handoffMessages[1]!)).toContain(
-      "<current-instruction>\nModel handoff checkpoint.",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Continue the outstanding request now",
+      "<current-instruction>\nAnother language model started to solve this problem",
     );
     expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the multi-file implementation.",
     );
     const durableHandoffMessages = [
       user(
-        "<current-instruction>\nModel handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nContinue the multi-file implementation.\n</current-instruction>",
+        "<current-instruction>\nAnother language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:\nContinue the multi-file implementation.\n</current-instruction>",
         3,
       ),
     ];
@@ -852,7 +906,7 @@ describe("context compaction projection reset", () => {
     ]);
   });
 
-  it("summarizes recent history when compaction input is oversized", async () => {
+  it("summarizes the full model-visible history", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
@@ -881,11 +935,11 @@ describe("context compaction projection reset", () => {
       messages: priorMessages,
     });
     const conversation = coerceThreadConversationState({});
-    let capturedPrompt = "";
+    let capturedMessages: PiMessage[] = [];
     let capturedMessageAttributeMode: unknown;
     const compactor = createContextCompactor({
       completeText: async (params) => {
-        capturedPrompt = String(params.messages[0]?.content ?? "");
+        capturedMessages = params.messages as PiMessage[];
         capturedMessageAttributeMode = params.messageAttributeMode;
         return { text: "Summary keeps the rollback plan." } as never;
       },
@@ -900,11 +954,14 @@ describe("context compaction projection reset", () => {
     });
 
     expect(capturedMessageAttributeMode).toBe("metadata");
-    expect(capturedPrompt).toContain("[older context omitted]");
-    expect(capturedPrompt).not.toContain("old-00");
-    expect(capturedPrompt).not.toContain("bootstrap instructions");
-    expect(capturedPrompt).not.toContain("<runtime-turn-context>");
-    expect(capturedPrompt).toContain("recent-critical-marker");
+    const capturedText = capturedMessages.map(textOf).join("\n");
+    expect(capturedText).toContain("old-00");
+    expect(capturedText).not.toContain("bootstrap instructions");
+    expect(capturedText).not.toContain("<runtime-turn-context>");
+    expect(capturedText).toContain("recent-critical-marker");
+    expect(textOf(capturedMessages.at(-1)!)).toContain(
+      "CONTEXT CHECKPOINT COMPACTION",
+    );
   });
 
   it("counts structured tool context when deciding whether to compact", async () => {

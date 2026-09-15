@@ -74,7 +74,7 @@ function planThenReply(): StreamFn {
   return createModelStream([
     {
       type: "toolCall",
-      name: "updatePlan",
+      name: "update_plan",
       arguments: {
         plan: [{ step: "Run the command", status: "in_progress" }],
       },
