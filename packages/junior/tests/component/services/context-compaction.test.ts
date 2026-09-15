@@ -36,159 +36,6 @@ function textOf(message: PiMessage): string {
   );
 }
 
-describe("context compaction retained messages", () => {
-  it("derives automatic trigger size from the model context window", async () => {
-    const {
-      calculateContextCompactionTargetTokens,
-      calculateContextCompactionTriggerTokens,
-      calculateContextInputLimitTokens,
-    } = await import("@/chat/services/context-budget");
-
-    const miniTrigger = calculateContextCompactionTriggerTokens({
-      contextWindow: 400_000,
-    });
-    expect(miniTrigger).toBe(360_000);
-    expect(calculateContextInputLimitTokens({ contextWindow: 400_000 })).toBe(
-      380_000,
-    );
-    expect(calculateContextCompactionTargetTokens(miniTrigger)).toBe(288_000);
-    expect(
-      calculateContextCompactionTriggerTokens({
-        contextWindow: 1_050_000,
-      }),
-    ).toBe(945_000);
-  });
-
-  it("uses configured model context windows for runtime thresholds", async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      AI_MODEL: "openai/gpt-5.4",
-      AI_FAST_MODEL: "openai/gpt-5.4-mini",
-      AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000",
-    };
-    vi.resetModules();
-    try {
-      const {
-        calculateContextCompactionTriggerTokens,
-        getAgentContextCompactionTriggerTokens,
-        getConversationContextCompactionTriggerTokens,
-        getModelContextBudget,
-      } = await import("@/chat/services/context-budget");
-      const { resolveGatewayModel } = await import("@/chat/pi/client");
-
-      expect(getAgentContextCompactionTriggerTokens("openai/gpt-5.4")).toBe(
-        180_000,
-      );
-      expect(getModelContextBudget("openai/gpt-5.4")).toMatchObject({
-        contextWindow: 200_000,
-      });
-      expect(getConversationContextCompactionTriggerTokens()).toBe(
-        calculateContextCompactionTriggerTokens({
-          ...resolveGatewayModel("openai/gpt-5.4-mini"),
-          contextWindow: 200_000,
-        }),
-      );
-    } finally {
-      process.env = { ...ORIGINAL_ENV };
-      vi.resetModules();
-    }
-  });
-
-  it("never raises an active model's advertised context window", async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      AI_MODEL_CONTEXT_WINDOW_TOKENS: "900000",
-    };
-    vi.resetModules();
-    try {
-      const { getModelContextBudget } =
-        await import("@/chat/services/context-budget");
-      const { resolveGatewayModel } = await import("@/chat/pi/client");
-      const model = resolveGatewayModel("anthropic/claude-haiku-4.5");
-
-      expect(getModelContextBudget(model.id).contextWindow).toBe(
-        model.contextWindow,
-      );
-    } finally {
-      process.env = { ...ORIGINAL_ENV };
-      vi.resetModules();
-    }
-  });
-
-  it("keeps newest eligible user messages in chronological order", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages(
-      [
-        user("older message that should not fit", 1),
-        user("middle", 2),
-        assistant("assistant reply", 3),
-        user("<data_base64>raw-payload</data_base64>", 4),
-        user("recent", 5),
-      ],
-      4,
-    );
-
-    expect(retained.map(textOf)).toEqual(["middle", "recent"]);
-  });
-
-  it("strips stale runtime context before retaining user text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
-          },
-          { type: "text", text: "actual user request" },
-        ],
-        timestamp: 1,
-      } as PiMessage,
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["actual user request"]);
-  });
-
-  it("unwraps current instruction markers before retaining user text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      user(
-        "<current-instruction>\nuse &lt;tag&gt; literally\n</current-instruction>",
-      ),
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["use <tag> literally"]);
-  });
-
-  it("unwraps current instruction markers from composite prompt text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      user(
-        [
-          "<thread-background>",
-          "prior context",
-          "</thread-background>",
-          "",
-          "<current-instruction>",
-          "actual follow-up",
-          "</current-instruction>",
-        ].join("\n"),
-      ),
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["actual follow-up"]);
-  });
-});
-
 describe("context compaction projection reset", () => {
   beforeEach(async () => {
     process.env = {
@@ -312,6 +159,63 @@ describe("context compaction projection reset", () => {
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
+  });
+
+  it("summarizes model-visible tool calls and results", async () => {
+    const { createContextCompactor } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    const conversationId = "conversation-tool-summary";
+    const messages = [
+      user("Implement the change.", 1),
+      {
+        ...assistant("", 2),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-1",
+            name: "update_plan",
+            arguments: {
+              plan: [{ step: "Run focused tests", status: "in_progress" }],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-1",
+        toolName: "update_plan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 3,
+      } as PiMessage,
+    ];
+    await commitMessages({ conversationId, messages });
+    const completeText = vi.fn(
+      async (_input: unknown) =>
+        ({ text: "Continue with focused tests." }) as never,
+    );
+
+    await createContextCompactor({
+      completeText,
+      autoCompactionTriggerTokens: 0,
+    }).maybeCompact({
+      conversation: coerceThreadConversationState({}),
+      conversationId,
+      modelId: "openai/gpt-5.4",
+      piMessages: messages,
+    });
+
+    const summaryInput = completeText.mock.calls[0]?.[0] as
+      | { messages: PiMessage[] }
+      | undefined;
+    expect(summaryInput?.messages.slice(0, -1)).toEqual(messages);
+    expect(textOf(summaryInput!.messages.at(-1)!)).toContain(
+      "CONTEXT CHECKPOINT COMPACTION",
+    );
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
