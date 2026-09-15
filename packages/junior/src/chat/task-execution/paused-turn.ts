@@ -81,7 +81,7 @@ import {
   credentialContextForActor,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import { latestReportedProgress } from "@/chat/runtime/report-progress";
+import { latestProgressStatus } from "@/chat/runtime/update-plan";
 
 /** Runtime ports for paused turn scheduling. */
 export interface PausedTurnOptions {
@@ -511,7 +511,7 @@ async function runPausedTurnInContext(
           sliceId: activeTurn.sliceId,
           messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
-          initialStatus: latestReportedProgress(turnMessages),
+          initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
               ...(conversationContext

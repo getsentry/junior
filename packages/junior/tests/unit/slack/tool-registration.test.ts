@@ -118,6 +118,15 @@ describe("Slack tool registration", () => {
     });
   });
 
+  it("registers task planning for every turn", () => {
+    const tools = createTools([], {}, ctx("D12345"));
+
+    expect(tools).toHaveProperty("updatePlan");
+    expect(tools.updatePlan?.inputSchema).toMatchObject({
+      required: expect.arrayContaining(["plan"]),
+    });
+  });
+
   it("omits loadSkill when an explicit skill is already loaded", () => {
     const tools = createTools([], {}, ctx("D12345"), {
       includeLoadSkill: false,

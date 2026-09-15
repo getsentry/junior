@@ -59,12 +59,17 @@ function createChannelMentionRequest(
   );
 }
 
-function progressThenReply(): StreamFn {
+function planThenReply(): StreamFn {
   return createModelStream([
     {
       type: "toolCall",
-      name: "reportProgress",
-      arguments: { message: "Running bash" },
+      name: "updatePlan",
+      arguments: {
+        plan: [
+          { step: "Inspect the request", status: "completed" },
+          { step: "Run the command", status: "in_progress" },
+        ],
+      },
     },
     { type: "text", text: "Done." },
   ]);
@@ -153,7 +158,7 @@ describe("Slack contract: assistant-thread delivery", () => {
   });
 
   it("does not post assistant status when the DM message omits thread_ts", async () => {
-    const bot = await createDirectMessageBot(progressThenReply());
+    const bot = await createDirectMessageBot(planThenReply());
     const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handleChatSdkPlatformWebhook(
@@ -170,7 +175,7 @@ describe("Slack contract: assistant-thread delivery", () => {
   });
 
   it("posts assistant status with a raw DM channel id when thread_ts is present", async () => {
-    const bot = await createDirectMessageBot(progressThenReply());
+    const bot = await createDirectMessageBot(planThenReply());
     const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handleChatSdkPlatformWebhook(
@@ -206,7 +211,7 @@ describe("Slack contract: assistant-thread delivery", () => {
   });
 
   it("posts assistant status for the first channel-thread reply before Slack adds thread_ts", async () => {
-    const bot = await createMentionBot(progressThenReply());
+    const bot = await createMentionBot(planThenReply());
     const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handleChatSdkPlatformWebhook(

@@ -9,6 +9,7 @@ import {
   type ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -64,11 +65,12 @@ describe("Pi tool adapter", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("emits assistant status only for reportProgress", async () => {
+  it("emits assistant status for progress tools only", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
-    const [reportProgressTool, bashTool] = createPiAgentTools(
+    const [updatePlanTool, reportProgressTool, bashTool] = createPiAgentTools(
       {
+        updatePlan: createUpdatePlanTool(),
         reportProgress: createReportProgressTool(),
         bash: {
           description: "bash",
@@ -81,13 +83,24 @@ describe("Pi tool adapter", () => {
       onStatus,
     );
 
+    await updatePlanTool!.execute("tool-plan", {
+      plan: [
+        { step: "Inspect current behavior", status: "completed" },
+        { step: "Implement the MVP", status: "in_progress" },
+      ],
+    });
     await reportProgressTool!.execute("tool-progress", {
-      message: "  Reviewing results  ",
+      message: "  Waiting for checks  ",
     });
     await bashTool!.execute("tool-bash", { command: "pwd" });
 
-    expect(onStatus).toHaveBeenCalledTimes(1);
-    expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
+    expect(onStatus).toHaveBeenCalledTimes(2);
+    expect(onStatus).toHaveBeenNthCalledWith(1, {
+      text: "Implement the MVP",
+    });
+    expect(onStatus).toHaveBeenNthCalledWith(2, {
+      text: "Waiting for checks",
+    });
   });
 
   it("emits assistant status when reportProgress runs through executeTool", async () => {

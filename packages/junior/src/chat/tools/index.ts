@@ -14,6 +14,7 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -101,6 +102,7 @@ export function createTools(
             onSkillLoaded: hooks.onSkillLoaded,
           }),
         }),
+    updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),
