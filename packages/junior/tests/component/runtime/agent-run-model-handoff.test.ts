@@ -19,6 +19,7 @@ import {
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
+import { MODEL_HANDOFF_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 
 function expectedHandoffReplacementHistory() {
   return [
@@ -30,7 +31,7 @@ function expectedHandoffReplacementHistory() {
           expect.objectContaining({
             type: "text",
             text: expect.stringContaining(
-              "<current-instruction>\nModel handoff checkpoint.",
+              `<current-instruction>\n${MODEL_HANDOFF_SUMMARY_PREFIX}`,
             ),
           }),
         ],
@@ -127,7 +128,7 @@ describe("model handoff execution", () => {
       expect.objectContaining({
         type: "text",
         text: expect.stringContaining(
-          "<current-instruction>\nModel handoff checkpoint.",
+          `<current-instruction>\n${MODEL_HANDOFF_SUMMARY_PREFIX}`,
         ),
       }),
     ]);

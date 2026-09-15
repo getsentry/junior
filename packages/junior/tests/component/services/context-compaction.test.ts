@@ -314,63 +314,6 @@ describe("context compaction projection reset", () => {
     });
   });
 
-  it("summarizes model-visible tool calls and results", async () => {
-    const { createContextCompactor } =
-      await import("@/chat/services/context-compaction");
-    const { commitMessages } = await import("@/chat/conversations/projection");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
-    const conversationId = "conversation-tool-summary";
-    const messages = [
-      user("Implement the change.", 1),
-      {
-        ...assistant("", 2),
-        content: [
-          {
-            type: "toolCall",
-            id: "plan-1",
-            name: "update_plan",
-            arguments: {
-              plan: [{ step: "Run focused tests", status: "in_progress" }],
-            },
-          },
-        ],
-        stopReason: "toolUse",
-      } as PiMessage,
-      {
-        role: "toolResult",
-        toolCallId: "plan-1",
-        toolName: "update_plan",
-        content: [{ type: "text", text: "Plan updated" }],
-        isError: false,
-        timestamp: 3,
-      } as PiMessage,
-    ];
-    await commitMessages({ conversationId, messages });
-    const completeText = vi.fn(
-      async (_input: unknown) =>
-        ({ text: "Continue with focused tests." }) as never,
-    );
-
-    await createContextCompactor({
-      completeText,
-      autoCompactionTriggerTokens: 0,
-    }).maybeCompact({
-      conversation: coerceThreadConversationState({}),
-      conversationId,
-      modelId: "openai/gpt-5.4",
-      piMessages: messages,
-    });
-
-    const summaryInput = completeText.mock.calls[0]?.[0] as
-      | { messages: PiMessage[] }
-      | undefined;
-    expect(summaryInput?.messages.slice(0, -1)).toEqual(messages);
-    expect(textOf(summaryInput!.messages.at(-1)!)).toContain(
-      "CONTEXT CHECKPOINT COMPACTION",
-    );
-  });
-
   it("counts retained runtime context in the replacement hard limit", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");

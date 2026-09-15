@@ -12,6 +12,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRun } from "@/chat/agent/types";
@@ -473,7 +474,7 @@ describe("Slack behavior: message content", () => {
     ).toBeGreaterThan(compactingStatusIndex);
     expect(calls[0]?.piMessages?.length).toBeLessThan(priorMessages.length + 1);
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
-      "Context compaction summary",
+      COMPACTION_SUMMARY_PREFIX,
     );
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
       "old context is still relevant",

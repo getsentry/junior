@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
   type Model,
 } from "@earendil-works/pi-ai";
+import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 
 const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
   const span = {
@@ -351,7 +352,7 @@ describe("createTracedStreamFn", () => {
             content: [
               {
                 type: "text",
-                text: "Context compaction summary for future Junior turns:\nsummary",
+                text: `${COMPACTION_SUMMARY_PREFIX}\nsummary`,
               },
             ],
             timestamp: 0,
