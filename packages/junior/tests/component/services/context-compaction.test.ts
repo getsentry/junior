@@ -474,12 +474,7 @@ describe("context compaction projection reset", () => {
     expect(textOf(handoffMessages[1]!)).toContain(
       "&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;",
     );
-    const durableHandoffMessages = [
-      user(
-        "<current-instruction>\nAnother language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:\nContinue the multi-file implementation.\n\n&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;\n</current-instruction>",
-        3,
-      ),
-    ];
+    const durableHandoffMessages = handoffMessages;
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       durableHandoffMessages,
     );
@@ -497,20 +492,14 @@ describe("context compaction projection reset", () => {
       modelId: botConfig.profiles.handoff!.modelId,
       triggeringToolCallId: "handoff-call-1",
       summary: "Continue the multi-file implementation.",
-      replacementHistory: [
-        {
-          item: {
-            type: "user_message",
-            content: (
-              durableHandoffMessages[0] as {
-                content: unknown[];
-              }
-            ).content,
-            timestamp: 3,
-            provenance: { authority: "context" },
-          },
+      replacementHistory: durableHandoffMessages.map((message) => ({
+        item: {
+          type: "user_message",
+          content: (message as { content: unknown[] }).content,
+          timestamp: 3,
+          provenance: { authority: "context" },
         },
-      ],
+      })),
     });
 
     const compactor = createContextCompactor({
