@@ -158,12 +158,15 @@ jobs:
         include:
           - suite: unit
             path: tests/unit
+            max_workers: 4
             test_timeout: 5000
           - suite: component
             path: tests/component
+            max_workers: 4
             test_timeout: 5000
           - suite: integration
             path: tests/integration
+            max_workers: 2
             test_timeout: 10000
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
@@ -195,7 +198,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior build
-      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
+      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
