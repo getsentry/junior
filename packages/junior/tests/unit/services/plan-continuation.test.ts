@@ -20,13 +20,13 @@ function planUpdate(
   isError = false,
 ): PiMessage[] {
   return [
-    fauxAssistantMessage([fauxToolCall("update_plan", { plan }, { id })], {
+    fauxAssistantMessage([fauxToolCall("updatePlan", { plan }, { id })], {
       stopReason: "toolUse",
     }) as PiMessage,
     {
       role: "toolResult",
       toolCallId: id,
-      toolName: "update_plan",
+      toolName: "updatePlan",
       content: [{ type: "text", text: "Plan updated" }],
       isError,
       timestamp: 2,

@@ -65,12 +65,12 @@ describe("Pi tool adapter", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("emits assistant status for update_plan only", async () => {
+  it("emits assistant status for updatePlan only", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
-    const [update_planTool, bashTool] = createPiAgentTools(
+    const [updatePlanTool, bashTool] = createPiAgentTools(
       {
-        update_plan: createUpdatePlanTool(),
+        updatePlan: createUpdatePlanTool(),
         bash: {
           description: "bash",
           inputSchema: {} as any,
@@ -82,7 +82,7 @@ describe("Pi tool adapter", () => {
       onStatus,
     );
 
-    await update_planTool!.execute("tool-plan", {
+    await updatePlanTool!.execute("tool-plan", {
       plan: [
         { step: "Inspect current behavior", status: "completed" },
         { step: "Implement the MVP", status: "in_progress" },

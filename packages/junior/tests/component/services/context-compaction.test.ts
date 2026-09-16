@@ -176,7 +176,7 @@ describe("context compaction projection reset", () => {
           {
             type: "toolCall",
             id: "plan-1",
-            name: "update_plan",
+            name: "updatePlan",
             arguments: {
               plan: [{ step: "Run focused tests", status: "in_progress" }],
             },
@@ -187,7 +187,7 @@ describe("context compaction projection reset", () => {
       {
         role: "toolResult",
         toolCallId: "plan-1",
-        toolName: "update_plan",
+        toolName: "updatePlan",
         content: [{ type: "text", text: "Plan updated" }],
         isError: false,
         timestamp: 3,
@@ -412,7 +412,7 @@ describe("context compaction projection reset", () => {
           {
             type: "toolCall",
             id: "plan-handoff",
-            name: "update_plan",
+            name: "updatePlan",
             arguments: {
               plan: [
                 { step: "Edit both modules", status: "in_progress" },
@@ -426,7 +426,7 @@ describe("context compaction projection reset", () => {
       {
         role: "toolResult",
         toolCallId: "plan-handoff",
-        toolName: "update_plan",
+        toolName: "updatePlan",
         content: [{ type: "text", text: "Plan updated" }],
         isError: false,
         timestamp: 3,

@@ -29,7 +29,7 @@ describe("task plan", () => {
     expect(
       latestProgressStatus([
         fauxAssistantMessage(
-          [fauxToolCall("update_plan", { plan }, { id: "plan-1" })],
+          [fauxToolCall("updatePlan", { plan }, { id: "plan-1" })],
           {
             stopReason: "toolUse",
           },
@@ -47,7 +47,7 @@ describe("task plan", () => {
         ),
         fauxAssistantMessage(
           [
-            fauxToolCall("update_plan", {
+            fauxToolCall("updatePlan", {
               plan: plan.map((item) => ({
                 ...item,
                 status: "completed",

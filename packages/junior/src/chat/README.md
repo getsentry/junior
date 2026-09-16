@@ -187,7 +187,7 @@ delegation without becoming the execution actor or a general task owner.
   and resumable boundary before execution continues. A handoff changes the
   active model and history, then passes through the same capacity check rather
   than bypassing it. Each history replacement keeps the open items from the
-  latest successful `update_plan` call in its continuation context. Compaction
+  latest successful `updatePlan` call in its continuation context. Compaction
   events retain the active model plus privacy-safe capacity and replacement
   metrics for reporting without exposing the summary or replaced history.
 - Cooperative yield preserves the exact agent history and occurs only at a user

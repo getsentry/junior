@@ -82,7 +82,7 @@ export function latestOpenPlanItems(
     };
     if (
       message.role === "toolResult" &&
-      message.toolName === "update_plan" &&
+      message.toolName === "updatePlan" &&
       typeof message.toolCallId === "string" &&
       message.isError !== true
     ) {
@@ -111,7 +111,7 @@ export function latestOpenPlanItems(
       };
       if (
         call?.type === "toolCall" &&
-        call.name === "update_plan" &&
+        call.name === "updatePlan" &&
         typeof call.id === "string" &&
         successfulCalls.has(call.id)
       ) {

@@ -34,7 +34,7 @@ export function buildReportedProgressStatus(
   return { text };
 }
 
-/** Convert an `update_plan` payload into the active assistant status. */
+/** Convert an `updatePlan` payload into the active assistant status. */
 export function buildPlanStatus(
   input: unknown,
 ): AssistantStatusSpec | undefined {
@@ -84,7 +84,7 @@ export function latestProgressStatus(
       if (toolCall.type !== "toolCall") {
         continue;
       }
-      if (toolCall.name === "update_plan") {
+      if (toolCall.name === "updatePlan") {
         return buildPlanStatus(toolCall.arguments);
       }
       if (toolCall.name === "reportProgress") {

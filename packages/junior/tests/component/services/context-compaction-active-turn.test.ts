@@ -163,7 +163,7 @@ describe("active-turn context compaction", () => {
           {
             type: "toolCall",
             id: "plan-active",
-            name: "update_plan",
+            name: "updatePlan",
             arguments: {
               plan: [
                 { step: "Apply requested edit", status: "in_progress" },
@@ -177,7 +177,7 @@ describe("active-turn context compaction", () => {
       {
         role: "toolResult",
         toolCallId: "plan-active",
-        toolName: "update_plan",
+        toolName: "updatePlan",
         content: [{ type: "text", text: "Plan updated" }],
         isError: false,
         timestamp: 5,
