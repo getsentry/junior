@@ -16,6 +16,7 @@ import {
   loadProjection,
   recordTurnRoute,
 } from "@/chat/conversations/projection";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
@@ -23,6 +24,19 @@ import { MODEL_HANDOFF_SUMMARY_PREFIX } from "@/chat/services/context-compaction
 
 function expectedHandoffReplacementHistory() {
   return [
+    {
+      item: {
+        type: "user_message",
+        timestamp: expect.any(Number),
+        content: [
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("<runtime-turn-context>"),
+          }),
+        ],
+        provenance: { authority: "context" },
+      },
+    },
     {
       item: {
         type: "user_message",
@@ -105,8 +119,17 @@ describe("model handoff execution", () => {
         replacementHistory: expectedHandoffReplacementHistory(),
       },
     ]);
+    await expect(
+      saveTurnCheckpoint({
+        mode: "completed",
+        conversationId,
+        turnId: "turn-model-handoff",
+        sliceId: 1,
+        messages: outcome.result.piMessages ?? [],
+      }),
+    ).resolves.toBeUndefined();
     const projection = await loadProjection({ conversationId });
-    expect(projection).toHaveLength(1);
+    expect(projection).toEqual(outcome.result.piMessages);
     expect(JSON.stringify(projection)).toContain(
       "Implement the requested change and verify it.",
     );

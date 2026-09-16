@@ -602,7 +602,6 @@ export async function compactContextForHandoff(
     timestamp: (contextMessage as { timestamp?: number }).timestamp,
   } as PiMessage;
   const messages = [contextMessage, instructionMessage];
-  const replacementMessages = stripRuntimeTurnContext(messages);
   args.signal?.throwIfAborted();
   await getConversationEventStore().replaceHistory(args.conversationId, {
     createdAtMs: Date.now(),
@@ -617,8 +616,8 @@ export async function compactContextForHandoff(
         ? { triggeringToolCallId: args.triggeringToolCallId }
         : undefined),
       summary: generatedSummary,
-      replacementHistory: replacementMessages.map((replacementMessage) => ({
-        item: historyItemFromPiMessage(replacementMessage, contextProvenance),
+      replacementHistory: messages.map((message) => ({
+        item: historyItemFromPiMessage(message, contextProvenance),
       })),
     },
   });
