@@ -217,14 +217,14 @@ async function saveRunning(
       state: "running",
     });
   } catch (error) {
-    // Quiet only branch races on best-effort running checkpoints.
-    if (!(error instanceof AgentHistoryBranchError)) {
-      logException(error, "agent.turn.checkpoint.running.failed", {
-        "app.ai.resume_conversation_id": args.conversationId,
-        "app.ai.resume_session_id": args.turnId,
-        "app.ai.resume_slice_id": args.sliceId,
-      });
+    if (error instanceof AgentHistoryBranchError) {
+      throw error;
     }
+    logException(error, "agent.turn.checkpoint.running.failed", {
+      "app.ai.resume_conversation_id": args.conversationId,
+      "app.ai.resume_session_id": args.turnId,
+      "app.ai.resume_slice_id": args.sliceId,
+    });
     return undefined;
   }
 }

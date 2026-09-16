@@ -241,8 +241,20 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "turn_lifecycle" && data.state === "started") {
-      const inputMessages = data.inputMessageIds
-        ?.map((messageId) => messagesById.get(messageId))
+      const inputMessageIds = data.inputMessageIds ?? [];
+      const inputMessageIdSet = new Set(inputMessageIds);
+      for (const messageId of inputMessageIds) {
+        const suffix = ":message_changed_mention";
+        if (!messageId.endsWith(suffix)) continue;
+        const originalMessageId = messageId.slice(0, -suffix.length);
+        if (!inputMessageIdSet.has(originalMessageId)) continue;
+        const originalMessage = messagesById.get(originalMessageId);
+        if (!originalMessage) continue;
+        messages.splice(messages.indexOf(originalMessage), 1);
+        messagesById.delete(originalMessageId);
+      }
+      const inputMessages = inputMessageIds
+        .map((messageId) => messagesById.get(messageId))
         .filter((message) => message !== undefined);
       const turnUserMessage = inputMessages
         ?.slice()
