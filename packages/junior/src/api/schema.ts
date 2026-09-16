@@ -43,6 +43,7 @@ export {
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
+  stopConversationResponseSchema,
 } from "./schema/conversation";
 export type {
   AcceptedConversationMessage,
@@ -61,6 +62,7 @@ export type {
   ConversationPendingMessage,
   ConversationPendingMessageDelivery,
   ConversationPendingMessagesReport,
+  StopConversationResponse,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportStatus,

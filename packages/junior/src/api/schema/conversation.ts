@@ -174,6 +174,14 @@ export const cancelConversationPendingMessagesBodySchema = z
   })
   .strict();
 
+/** Result of stopping the active Conversation Turn. */
+export const stopConversationResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    status: z.enum(["no_work", "requested"]),
+  })
+  .strict();
+
 /** Result of cancelling accepted human-facing mailbox rows. */
 export const cancelConversationPendingMessagesResponseSchema = z
   .object({
@@ -907,6 +915,9 @@ export type ConversationPendingMessage = z.infer<
 >;
 export type ConversationPendingMessagesReport = z.infer<
   typeof conversationPendingMessagesReportSchema
+>;
+export type StopConversationResponse = z.infer<
+  typeof stopConversationResponseSchema
 >;
 export type CancelConversationPendingMessagesBody = z.infer<
   typeof cancelConversationPendingMessagesBodySchema

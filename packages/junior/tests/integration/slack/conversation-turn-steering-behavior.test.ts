@@ -712,9 +712,10 @@ describe("Slack behavior: durable turn steering", () => {
       handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           makeMessageEvent({
-            eventType: "message",
-            text: "stop",
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}>!! stop`,
             ts: "1712345.000500",
+            user: "U999",
           }),
         ),
         services,
@@ -744,6 +745,10 @@ describe("Slack behavior: durable turn steering", () => {
     expect(await state.isSubscribed(conversationId)).toBe(false);
     await expect(listWatches({ conversationId, state })).resolves.toEqual([]);
     expect(agentRuns).toHaveLength(1);
+    await expect(loadMessageProvenance(conversationId, "stop")).resolves.toEqual({
+      authority: "instruction",
+      actor: expect.objectContaining({ userId: "U999" }),
+    });
 
     expect(reactionTargetsByName("eyes")).toEqual([
       {
@@ -766,7 +771,7 @@ describe("Slack behavior: durable turn steering", () => {
           }),
         }),
         expect.objectContaining({
-          text: "stop",
+          text: `@${SLACK_BOT_USER_ID}!! stop`,
           meta: expect.objectContaining({
             replied: false,
             skippedReason: "thread_opt_out:stop",

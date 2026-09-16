@@ -21,6 +21,7 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  stopConversationResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -235,6 +236,25 @@ export function useAppendConversationMessage(conversationId: string) {
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
+    },
+  });
+}
+
+/** Stop the active Turn for the open conversation. */
+export function useStopConversation(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
       });
     },
   });

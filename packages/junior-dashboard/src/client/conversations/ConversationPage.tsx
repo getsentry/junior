@@ -18,6 +18,7 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  useStopConversation,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
@@ -290,6 +291,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              running={live}
             />
           ) : undefined
         }
@@ -316,11 +318,13 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  running: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const stopConversation = useStopConversation(props.conversationId);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -425,6 +429,18 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     >
       <ConversationComposer
         draftId={props.conversationId}
+        footerStart={
+          props.running ? (
+            <button
+              className="rounded border border-red-300/30 px-2 py-1 font-mono text-xs text-red-200 hover:bg-red-300/10 disabled:opacity-50"
+              disabled={stopConversation.isPending}
+              type="button"
+              onClick={() => stopConversation.mutate()}
+            >
+              {stopConversation.isPending ? "Stopping…" : "Stop"}
+            </button>
+          ) : undefined
+        }
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}

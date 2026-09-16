@@ -12,6 +12,12 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import {
+  slackMessageActor,
+  slackMessageProvenance,
+} from "@/chat/providers/slack/input";
 import { cancelSubscriptions } from "@/chat/events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
@@ -27,12 +33,14 @@ import {
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
+import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import {
   getThreadStopDecision,
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
+import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { stopSlackThread } from "@/chat/slack/thread-stop";
 import {
   extractMessageChangedMention,
@@ -340,6 +348,31 @@ async function handleSlackThreadStop(args: {
   await cancelSubscriptions({ conversationId, state: args.state });
 
   const content = parseContent(args.message);
+  const stopText = stripLeadingBotMention(
+    stripLeadingSteeringOverride(content.topLevelText),
+    {
+      botUserId: args.adapter.botUserId,
+      stripLeadingSlackMentionToken: Boolean(args.message.isMention),
+    },
+  );
+  const provenance = slackMessageProvenance(
+    args.message,
+    args.installation.teamId ?? "",
+  );
+  const stopMessage = buildSteeringPiMessage({
+    actor: slackMessageActor(args.message),
+    provenance,
+    text: stopText,
+    timestampMs: args.message.metadata.dateSent.getTime(),
+  });
+  await getConversationEventStore().append(conversationId, [
+    {
+      idempotencyKey: `slack-stop:${args.message.id}:agent`,
+      createdAtMs: args.message.metadata.dateSent.getTime(),
+      data: historyItemFromPiMessage(stopMessage, provenance),
+    },
+  ]);
+
   const conversation = coerceThreadConversationState(undefined);
   recordSkippedConversationMessage({
     conversation,
@@ -397,9 +430,10 @@ async function routeParsedMessage(args: {
     return;
   }
 
+  const stopText = stripLeadingSteeringOverride(args.event.text ?? "");
   const stopDecision = getThreadStopDecision({
-    rawText: args.event.text ?? "",
-    text: args.event.text ?? "",
+    rawText: stopText,
+    text: stopText,
   });
   if (stopDecision) {
     await handleSlackThreadStop({
