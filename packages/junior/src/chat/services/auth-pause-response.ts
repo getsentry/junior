@@ -26,5 +26,10 @@ export function buildAuthPauseResponse(
   if (!request) {
     return `${mention}I'll need you to authorize ${providerDisplayName}. I sent you a link.`;
   }
-  return `${mention}I need access to ${providerDisplayName} to continue.\n\n*Why:* ${request}\n\nI sent you a link.`;
+  // CommonMark bold (`**...**`), not mrkdwn bold (`*...*`) — this text is
+  // delivered through the same `markdown` block as every other Slack reply,
+  // which Slack renders from standard Markdown. A single-`*` emphasis marker
+  // is CommonMark italics, not bold, so `*Why:*` rendered wrong even before
+  // it contributed to the invalid_blocks failure in JUNIOR-72.
+  return `${mention}I need access to ${providerDisplayName} to continue.\n\n**Why:** ${request}\n\nI sent you a link.`;
 }
