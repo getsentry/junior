@@ -1582,12 +1582,7 @@ describe("turn checkpoint", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("rejects true history branches without reporting a running-session exception", async () => {
-    const logException = vi.fn();
-    vi.doMock("@/chat/logging", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/chat/logging")>();
-      return { ...actual, logException };
-    });
+  it("surfaces true history branches to the owning Turn boundary", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const committedUser = userMessage("committed");
@@ -1610,9 +1605,7 @@ describe("turn checkpoint", () => {
         sliceId: 1,
         messages: [staleUser],
       }),
-    ).resolves.toBeUndefined();
-
-    expect(logException).not.toHaveBeenCalled();
+    ).rejects.toThrow("changed before its committed boundary");
   });
 
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
