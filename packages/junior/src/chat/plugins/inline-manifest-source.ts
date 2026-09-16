@@ -1,4 +1,4 @@
-import type { PluginManifest } from "./types";
+import type { PluginManifest, PluginMcpConfig } from "./types";
 
 type ManifestSource = Record<string, unknown>;
 
@@ -54,6 +54,17 @@ function inlineCredentialsSource(
   return result;
 }
 
+/** Convert a camelCase `mcp.auth` block to its plugin.yaml source keys. */
+export function mcpAuthSource(
+  auth: NonNullable<PluginMcpConfig["auth"]>,
+): ManifestSource {
+  return {
+    issuer: auth.issuer,
+    "key-id": auth.keyId,
+    "private-key-env": auth.privateKeyEnv,
+  };
+}
+
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   if (mcp === undefined || !isRecord(mcp)) {
     return mcp;
@@ -63,6 +74,7 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   setDefined(result, "transport", mcp.transport);
   setDefined(result, "url", mcp.url);
   setDefined(result, "headers", mcp.headers);
+  setDefined(result, "auth", mcp.auth && mcpAuthSource(mcp.auth));
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
   return result;

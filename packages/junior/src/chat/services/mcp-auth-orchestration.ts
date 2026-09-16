@@ -8,6 +8,7 @@
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
@@ -80,10 +81,20 @@ export function createMcpAuthOrchestration(
 ): McpAuthOrchestration {
   let pendingPause: McpAuthorizationPauseError | undefined;
   const authSessionIdsByProvider = new Map<string, string>();
+  const botAuthProviders = new Set<string>();
 
   const authProviderFactory = async (
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
+    const mcp = plugin.manifest.mcp;
+    if (mcp?.auth) {
+      botAuthProviders.add(plugin.manifest.name);
+      return createJwtBearerMcpClientProvider(
+        plugin.manifest.name,
+        mcp.url,
+        mcp.auth,
+      );
+    }
     if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
     }
@@ -114,6 +125,12 @@ export function createMcpAuthOrchestration(
   const onAuthorizationRequired = async (
     provider: string,
   ): Promise<boolean> => {
+    // Bot auth has no user OAuth session or authorization link. If the SDK
+    // ever reports an unauthorized response from that non-interactive flow,
+    // let the original MCP auth error surface without creating a user pause.
+    if (botAuthProviders.has(provider)) {
+      return false;
+    }
     if (pendingPause) {
       return true;
     }
