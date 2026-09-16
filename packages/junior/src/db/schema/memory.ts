@@ -1,8 +1,8 @@
 /**
- * Drizzle source of truth for memory plugin SQL migrations.
+ * Drizzle source of truth for core Memory SQL migrations.
  *
  * Update this schema first, then regenerate packaged migrations with
- * `pnpm --filter @sentry/junior-memory db:generate`.
+ * `pnpm --filter @sentry/junior db:generate`.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -23,7 +23,7 @@ import {
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
-} from "../types";
+} from "@/chat/memory/types";
 
 const tsvector = customType<{ data: string }>({
   dataType() {

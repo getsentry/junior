@@ -3,6 +3,15 @@ import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
+  memoriesCapturedEvent,
+  memoriesCapturedEventV1,
+  memoriesRecalledEvent,
+} from "./events";
+import { buildMemoryOperationalReport } from "./operational-report";
+import { processMemorySession } from "./process-session";
+import { createMemoryPromptContributions } from "./recall";
+import type { MemoryDb } from "./store";
+import {
   createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
@@ -11,34 +20,25 @@ import {
   type MemoryReviewer,
   type MemoryToolContext,
 } from "./tools";
-import { processMemorySession } from "./process-session";
-import { createMemoryPromptContributions } from "./recall";
-import { buildMemoryOperationalReport } from "./operational-report";
-import {
-  memoriesCapturedEvent,
-  memoriesCapturedEventV1,
-  memoriesRecalledEvent,
-} from "./events";
-import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
 
-export interface MemoryPluginOptions {
+export interface MemoryOptions {
   /** Disable automatic prompt recall while keeping explicit memory tools available. */
   disableRecall?: boolean;
   /** Disable passive memory extraction from completed sessions. */
   disableExtraction?: boolean;
+  /** Structured model used by Memory. Defaults to AI_MEMORY_MODEL, then the default model. */
   modelId?: string;
 }
 
-function memoryModelId(options: MemoryPluginOptions): string | undefined {
-  const explicitModelId = options.modelId?.trim();
-  if (explicitModelId) {
-    return explicitModelId;
-  }
-  const envModelId = process.env[MEMORY_MODEL_ENV]?.trim();
-  return envModelId || undefined;
+function memoryModelId(options: MemoryOptions): string | undefined {
+  return (
+    options.modelId?.trim() ||
+    process.env[MEMORY_MODEL_ENV]?.trim() ||
+    undefined
+  );
 }
 
 function memoryToolContext(ctx: {
@@ -85,8 +85,8 @@ function memoryCreateToolContext(ctx: {
   };
 }
 
-/** Register Junior's long-term memory plugin. */
-export function memoryPlugin(options: MemoryPluginOptions = {}) {
+/** Create the core Memory registration. */
+export function createMemoryRegistration(options: MemoryOptions = {}) {
   const modelId = memoryModelId(options);
   return defineJuniorPlugin({
     manifest: {
@@ -97,15 +97,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     model: modelId
       ? { structuredModelId: modelId }
       : { structuredModel: "default" },
-    packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],
-    cli: {
-      commands: [createMemoryCliCommand()],
-    },
+    cli: { commands: [createMemoryCliCommand()] },
     tasks: options.disableExtraction
       ? {}
       : {
@@ -118,13 +115,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     userPages: [createMemoryUserPage()],
     hooks: {
       async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
-        });
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
-          extractionDays,
+          extractionDays: await ctx.eventStats.costsByDay({
+            days: 90,
+            eventName: "memories_captured",
+          }),
           nowMs: ctx.nowMs,
         });
       },

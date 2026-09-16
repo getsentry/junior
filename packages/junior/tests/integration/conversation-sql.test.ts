@@ -458,7 +458,7 @@ ORDER BY conversation_id
     }
   });
 
-  it("creates migrated tables matching the Drizzle schema", async () => {
+  it("creates core migrated tables matching the core Drizzle schema", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {

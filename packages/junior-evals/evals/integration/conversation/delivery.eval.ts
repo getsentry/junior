@@ -21,9 +21,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
   it("when asked for no visible reply, complete silently", async ({ run }) => {
     const result = await run({
       initialEvents: [
-        mention(
-          "please just mark that this has been seen — no need to reply",
-        ),
+        mention("please just mark that this has been seen — no need to reply"),
       ],
     });
 

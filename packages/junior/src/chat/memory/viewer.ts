@@ -17,7 +17,10 @@ import {
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
-import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+} from "@/db/schema/memory";
 import { publicMemoryScope } from "./scope";
 import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";
 import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
@@ -438,4 +441,3 @@ export async function getMemoryTimelineHours(
     };
   });
 }
-

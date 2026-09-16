@@ -9,12 +9,12 @@ import {
 } from "@sentry/junior-testing/pglite";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import * as memorySqlSchema from "../src/db/schema";
+import * as memorySqlSchema from "@sentry/junior/src/db/schema/memory";
 import {
   createMemoryStore,
   type MemoryDb,
   type MemoryEmbeddingProvider,
-} from "../src/store";
+} from "@sentry/junior/src/chat/memory/store";
 
 const EMBEDDING_DIMENSIONS = 1536;
 const NOW_MS = Date.parse("2026-07-29T12:00:00.000Z");
@@ -50,16 +50,18 @@ async function createFixture(): Promise<MemoryFixture> {
       vector: pgliteVectorExtension,
     },
   });
-  const migrationsDir = resolve(__dirname, "../migrations");
-  const migrations = (await readdir(migrationsDir))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const filename of migrations) {
-    await fixture.execute(
-      await readFile(resolve(migrationsDir, filename), "utf8"),
-    );
+  const migrationsDir = resolve(__dirname, "../../junior/migrations");
+  for (const filename of await readdir(migrationsDir)) {
+    if (!filename.endsWith(".sql")) {
+      continue;
+    }
+    const migration = await readFile(resolve(migrationsDir, filename), "utf8");
+    if (migration.includes("Adopt the former Memory plugin tables")) {
+      await fixture.execute(migration);
+      return fixture;
+    }
   }
-  return fixture;
+  throw new Error("Memory adoption migration not found");
 }
 
 function runtimeContext() {

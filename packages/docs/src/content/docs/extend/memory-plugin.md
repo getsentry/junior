@@ -1,6 +1,6 @@
 ---
-title: Memory Plugin
-description: Configure the memory plugin for persistent long-term memory storage and recall.
+title: Memory
+description: Configure core Memory for persistent long-term memory storage and recall.
 type: tutorial
 summary: Set up pgvector-backed memory storage so Junior can recall preferences and context across conversations.
 prerequisites:
@@ -10,50 +10,29 @@ related:
   - /start-here/quickstart/
 ---
 
-The memory plugin uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. The plugin also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed public-channel and local sessions.
+Memory uses a Postgres database with the pgvector extension to store and retrieve long-term memories across conversations. Before each user turn, Junior combines semantic and full-text matches and includes only memories that directly help with the current request. Memory also exposes explicit memory tools (remember, list, search, remove) and passively extracts memories from completed public-channel and local sessions.
 
-New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by default.
+Memory is part of `@sentry/junior`. New apps created with `junior init` do not install or register a separate Memory package.
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
-
-## Install
-
-Install the plugin package alongside `@sentry/junior`:
-
-```bash
-pnpm add @sentry/junior @sentry/junior-memory
-```
-
-## Runtime setup
-
-The memory plugin requires a factory function call to register its tools and session hooks. Add `memoryPlugin()` to the plugin set exported from `plugins.ts`:
-
-```ts title="plugins.ts"
-import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
-
-export const plugins = defineJuniorPlugins([memoryPlugin()]);
-```
-
-Do not register `@sentry/junior-memory` as a bare package-name string. The memory plugin uses `defineJuniorPlugin` with runtime hooks for tool registration and session processing; a bare string skips those hooks and the plugin will not activate its runtime behavior.
+Provision a Postgres database with pgvector support before running migrations. Core migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Config
 
-Pass plugin options to `memoryPlugin({ ... })` in `plugins.ts`. Set deployment variables in the Junior environment, then redeploy.
+Pass Memory options to `createApp({ memory: { ... } })`. Set deployment variables in the Junior environment, then redeploy.
 
-### Plugin options
+### Memory options
 
 <details class="plugin-config">
 <summary><code>modelId</code></summary>
 
 Model used for memory classification, consolidation, and automatic recall relevance.
 
-- **Define:** `memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" })` in `plugins.ts`
+- **Define:** `createApp({ memory: { modelId: "anthropic/claude-sonnet-4-5" } })`
 - **Default:** The app's structured model
 - **Required:** No
-- **Environment override:** `AI_MEMORY_MODEL`; the plugin option takes precedence
+- **Environment override:** `AI_MEMORY_MODEL`; the app option takes precedence
 
 </details>
 
@@ -62,7 +41,7 @@ Model used for memory classification, consolidation, and automatic recall releva
 
 Disables automatic prompt recall while keeping explicit memory tools available.
 
-- **Define:** `memoryPlugin({ disableRecall: true })` in `plugins.ts`
+- **Define:** `createApp({ memory: { disableRecall: true } })`
 - **Default:** `false`
 - **Required:** No
 - **Environment override:** None
@@ -74,7 +53,7 @@ Disables automatic prompt recall while keeping explicit memory tools available.
 
 Disables passive memory extraction from completed sessions while keeping explicit memory tools available.
 
-- **Define:** `memoryPlugin({ disableExtraction: true })` in `plugins.ts`
+- **Define:** `createApp({ memory: { disableExtraction: true } })`
 - **Default:** `false`
 - **Required:** No
 - **Environment override:** None
@@ -147,7 +126,7 @@ explains whether Junior learned it automatically or saved it because the user
 asked. Overview groups the viewer's active memories by type and how they were
 added. Forgetting archives the memory so Junior no longer recalls it.
 
-The plugin also exposes authenticated REST resources:
+Memory also exposes authenticated REST resources:
 
 | Method   | Path                               | Purpose                                       |
 | -------- | ---------------------------------- | --------------------------------------------- |
@@ -161,7 +140,7 @@ authenticated dashboard browser session.
 
 ## Run migrations
 
-After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin schema:
+After setting `DATABASE_URL`, run the upgrade command to apply the Memory schema:
 
 ```bash
 pnpm junior upgrade
@@ -195,7 +174,6 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 
 ## Failure modes
 
-- **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `memoryPlugin()`. Switch to the factory call and redeploy.
 - **Migration error — extension "vector" does not exist**: the Postgres database does not have pgvector available. Use a provider that supports pgvector or install it manually with `CREATE EXTENSION vector`.
 - **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.

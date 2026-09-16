@@ -507,10 +507,7 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
     inputSchema: archiveMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(
-        archiveMemoryInputSchema,
-        input,
-      );
+      const parsedInput = parseMemoryToolInput(archiveMemoryInputSchema, input);
       const runtimeContext = await memoryRuntimeContext(context);
       const memory = await (async () => {
         try {

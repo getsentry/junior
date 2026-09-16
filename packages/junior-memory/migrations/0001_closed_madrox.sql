@@ -1,2 +1,0 @@
-DROP INDEX "junior_memory_memories_idempotency_idx";--> statement-breakpoint
-CREATE UNIQUE INDEX "junior_memory_memories_idempotency_idx" ON "junior_memory_memories" USING btree ("scope","scope_key","idempotency_key") WHERE "junior_memory_memories"."idempotency_key" IS NOT NULL AND "junior_memory_memories"."archived_at_ms" IS NULL AND "junior_memory_memories"."superseded_at_ms" IS NULL AND "junior_memory_memories"."superseded_by_id" IS NULL;

@@ -174,7 +174,9 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
+      ...(embeddingCostUsd !== undefined
+        ? { costUsd: embeddingCostUsd }
+        : undefined),
       events: context.events,
       memories: [],
     });

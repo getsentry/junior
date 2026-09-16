@@ -52,7 +52,9 @@ function cloneInlineManifests(
                   }
                 : undefined),
             },
-            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
+            ...(plugin.packageName
+              ? { packageName: plugin.packageName }
+              : undefined),
           },
         ]
       : [],
@@ -128,9 +130,15 @@ export function pluginCatalogConfigFromPluginSet(
         plugin.packageName ? [plugin.packageName] : [],
       ),
     ]),
-  ];
+  ].filter((packageName) => packageName !== "@sentry/junior-memory");
   const manifests = cloneManifests(pluginSet.manifests);
-  const inlineManifests = cloneInlineManifests(pluginSet.registrations);
+  const inlineManifests = cloneInlineManifests(
+    pluginSet.registrations.filter(
+      (plugin) =>
+        plugin.manifest.name !== "memory" ||
+        plugin.packageName !== "@sentry/junior-memory",
+    ),
+  );
 
   if (packages.length === 0 && !manifests && !inlineManifests) {
     return undefined;

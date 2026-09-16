@@ -24,6 +24,10 @@
       "types": "./dist/instrumentation.d.ts",
       "default": "./dist/instrumentation.js"
     },
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "default": "./dist/memory/index.js"
+    },
     "./nitro": {
       "types": "./dist/nitro.d.ts",
       "default": "./dist/nitro.js"
@@ -54,11 +58,11 @@
   "scripts": {
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
-    "build": "tsdown",
+    "build": "tsdown && tsdown --config tsdown.memory.config.ts",
     "acp:smoke": "pnpm exec tsx scripts/acp-smoke.ts",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
-    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsdown.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
-    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsdown.config.ts",
+    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin drizzle.config.ts tsdown.config.ts tsdown.memory.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
+    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin drizzle.config.ts tsdown.config.ts tsdown.memory.config.ts",
     "test": "vitest run --maxWorkers=4",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -109,7 +113,6 @@
     "@hono/node-server": "1.19.14",
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-github": "workspace:*",
-    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",

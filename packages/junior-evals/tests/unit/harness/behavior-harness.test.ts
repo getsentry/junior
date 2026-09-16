@@ -593,7 +593,7 @@ describe("behavior harness", () => {
     expect(process.cwd()).toBe(cwd);
   });
 
-  it("registers GitHub runtime and egress ownership when an eval requests its package", async () => {
+  it("registers core Memory and requested plugin runtimes", async () => {
     let pluginNames: string[] = [];
     let apiProvider: string | undefined;
     handleNewMentionMock.mockImplementationOnce(
@@ -627,11 +627,12 @@ describe("behavior harness", () => {
         },
       ],
       overrides: {
+        memory: {},
         plugin_packages: ["@sentry/junior-github"],
       },
     });
 
-    expect(pluginNames).toContain("github");
+    expect(pluginNames).toEqual(["github", "memory"]);
     expect(apiProvider).toBe("github");
   });
 

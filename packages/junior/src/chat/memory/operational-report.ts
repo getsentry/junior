@@ -4,7 +4,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+} from "@/db/schema/memory";
 import type { MemoryDb } from "./store";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;

@@ -40,6 +40,8 @@ import {
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import type { MemoryOptions } from "@/chat/memory/registration";
+import { memoryRuntimeRegistrations } from "@/chat/memory/runtime";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   defineJuniorPlugins,
@@ -66,7 +68,6 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -351,6 +352,7 @@ export interface EvalOverrides {
   expired_oauth_tokens?: string[];
   github_events?: boolean;
   mock_image_generation?: boolean;
+  memory?: MemoryOptions;
   plugin_dirs?: string[];
   plugin_packages?: string[];
   reply_timeout_ms?: number;
@@ -1545,13 +1547,14 @@ function runtimePluginsForScenario(
   scenario: EvalScenario,
 ): PluginRegistration[] {
   const packages = new Set(scenario.overrides?.plugin_packages ?? []);
-  return [
+  const plugins = [
     ...(packages.has("@sentry/junior-github")
       ? [githubPlugin({ appPermissions: { deployments: "read" } })]
       : []),
-    ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.has("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
+  const memory = scenario.overrides?.memory;
+  return memory ? memoryRuntimeRegistrations(plugins, memory) : plugins;
 }
 
 async function setupHarnessEnvironment(

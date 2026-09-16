@@ -21,6 +21,10 @@ const originalCwd = process.cwd();
 const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
 const tempDirs: string[] = [];
 
+function registeredPluginNames(): string[] {
+  return getPlugins().map((plugin) => plugin.manifest.name);
+}
+
 async function makeTempDir(): Promise<string> {
   const tempDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "junior-app-config-"),
@@ -150,7 +154,7 @@ describe("createApp plugin config", () => {
     });
 
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
   });
 
   it("validates sandbox egress trace propagation domains from app options", async () => {
@@ -189,9 +193,7 @@ describe("createApp plugin config", () => {
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["base"]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
-      "base",
-    ]);
+    expect(registeredPluginNames()).toEqual(["base", "memory"]);
   });
 
   it("loads package plugins with runtime hook plugins", async () => {
@@ -228,9 +230,7 @@ describe("createApp plugin config", () => {
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["dashboard", "env"]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
-      "dashboard",
-    ]);
+    expect(registeredPluginNames()).toEqual(["dashboard", "memory"]);
   });
 
   it("fails loudly when configured plugin package names are invalid", async () => {
@@ -322,9 +322,7 @@ describe("createApp plugin config", () => {
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["hooked"]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
-      "hooked",
-    ]);
+    expect(registeredPluginNames()).toEqual(["hooked", "memory"]);
   });
 
   it("rejects incomplete plugin egress credential hooks", async () => {
@@ -354,7 +352,7 @@ describe("createApp plugin config", () => {
       'Plugin "example" egress credential hooks must include both grantForEgress and issueCredential.',
     );
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -390,7 +388,7 @@ describe("createApp plugin config", () => {
       'Plugin "example" egress credential hooks require manifest.domains to list sandbox egress hosts.',
     );
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -422,7 +420,7 @@ describe("createApp plugin config", () => {
       'Plugin "example" manifest.oauth without oauth-bearer credentials requires egress credential hooks.',
     );
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -454,9 +452,7 @@ describe("createApp plugin config", () => {
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["example"]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
-      "example",
-    ]);
+    expect(registeredPluginNames()).toEqual(["example", "memory"]);
   });
 
   it("does not assign app skills to runtime hook inline plugins", async () => {
@@ -612,7 +608,7 @@ describe("createApp plugin config", () => {
       'Plugin "invalid" manifest.domains requires egress credential hooks when no generic credentials or apiHeaders are configured.',
     );
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -654,9 +650,7 @@ describe("createApp plugin config", () => {
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["hooked"]);
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
-      "hooked",
-    ]);
+    expect(registeredPluginNames()).toEqual(["hooked", "memory"]);
   });
 
   it("loads manifest-only package plugins by package name", async () => {
@@ -679,7 +673,7 @@ describe("createApp plugin config", () => {
       plugins: defineJuniorPlugins(["@acme/full-plugin"]),
     });
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["full"]);
@@ -709,7 +703,7 @@ describe("createApp plugin config", () => {
       ]),
     ).toThrow('Duplicate plugin registration name "dupe"');
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -731,7 +725,7 @@ describe("createApp plugin config", () => {
       'Junior plugin registration name "GitHub" must be a lowercase plugin identifier',
     );
 
-    expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
+    expect(registeredPluginNames()).toEqual(["memory"]);
     expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
@@ -812,9 +806,9 @@ describe("createApp plugin config", () => {
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "demo-api",
+            displayName: "Demo API",
+            description: "Demo API plugin",
           },
           hooks: {
             apiRoutes() {
@@ -824,13 +818,13 @@ describe("createApp plugin config", () => {
         }),
       ]),
       plugins: undefined,
-      pluginRuntimeRegistrations: ["memory"],
+      pluginRuntimeRegistrations: ["demo-api"],
     }));
 
     const app = await createApp();
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory"),
+      new Request("http://localhost/api/plugins/demo-api"),
     );
 
     expect(response.status).toBe(200);

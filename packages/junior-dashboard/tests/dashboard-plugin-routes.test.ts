@@ -96,9 +96,9 @@ describe("dashboard plugin routes", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "demo",
+            displayName: "Demo",
+            description: "Demo plugin",
           },
           hooks: {
             apiRoutes() {
@@ -110,7 +110,7 @@ describe("dashboard plugin routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/demo/memories"),
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({

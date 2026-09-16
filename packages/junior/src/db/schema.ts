@@ -14,6 +14,7 @@ import {
   juniorAgentInvocations,
 } from "./schema/agent-invocations";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
+import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./schema/memory";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorEventAutomations } from "./schema/event-automations";
 import { juniorIdentities } from "./schema/identities";
@@ -43,6 +44,8 @@ export {
   juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
   juniorDestinations,
   juniorEventAutomations,
   juniorIdentities,
@@ -72,6 +75,8 @@ export const juniorSqlSchema = {
   juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
   juniorDestinations,
   juniorEventAutomations,
   juniorIdentities,

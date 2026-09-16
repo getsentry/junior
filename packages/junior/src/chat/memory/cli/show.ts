@@ -4,7 +4,7 @@ import type {
   PluginCliHost,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import { juniorMemoryMemories } from "../db/schema";
+import { juniorMemoryMemories } from "@/db/schema/memory";
 import type { MemoryDb } from "../store";
 import { formatMemory } from "./format";
 

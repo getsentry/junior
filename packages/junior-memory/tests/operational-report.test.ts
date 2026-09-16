@@ -9,10 +9,13 @@ import {
 } from "@sentry/junior-testing/pglite";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import * as memorySqlSchema from "../src/db/schema";
-import { juniorMemoryMemories } from "../src/db/schema";
-import { buildMemoryOperationalReport } from "../src/operational-report";
-import { createMemoryStore, type MemoryDb } from "../src/store";
+import * as memorySqlSchema from "@sentry/junior/src/db/schema/memory";
+import { juniorMemoryMemories } from "@sentry/junior/src/db/schema/memory";
+import { buildMemoryOperationalReport } from "@sentry/junior/src/chat/memory/operational-report";
+import {
+  createMemoryStore,
+  type MemoryDb,
+} from "@sentry/junior/src/chat/memory/store";
 
 const TEST_NOW_MS = Date.parse("2026-07-28T12:00:00.000Z");
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,15 +40,18 @@ async function createMemoryFixture(): Promise<MemoryFixture> {
       vector: pgliteVectorExtension,
     },
   });
-  const migrations = (await readdir(resolve(__dirname, "../migrations")))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const migration of migrations) {
-    await fixture.execute(
-      await readFile(resolve(__dirname, "../migrations", migration), "utf8"),
-    );
+  const migrationsDir = resolve(__dirname, "../../junior/migrations");
+  for (const filename of await readdir(migrationsDir)) {
+    if (!filename.endsWith(".sql")) {
+      continue;
+    }
+    const migration = await readFile(resolve(migrationsDir, filename), "utf8");
+    if (migration.includes("Adopt the former Memory plugin tables")) {
+      await fixture.execute(migration);
+      return fixture;
+    }
   }
-  return fixture;
+  throw new Error("Memory adoption migration not found");
 }
 
 function localContext() {

@@ -1,18 +1,10 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   cleanupPostgresHarness,
   setupPostgresTemplate,
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
-
-const workspaceRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
 
 interface EvalTestProject {
   provide(key: "juniorPostgresHarness", value: PostgresHarnessConfig): void;
@@ -44,15 +36,6 @@ export default async function setup(
       const executor = createPostgresJuniorSqlExecutor({ connectionString });
       try {
         await migrateSchema(executor);
-        await migratePluginSchemas(executor, [
-          {
-            dir: path.resolve(
-              workspaceRoot,
-              "packages/junior-memory/migrations",
-            ),
-            pluginName: "memory",
-          },
-        ]);
       } finally {
         await executor.close();
       }

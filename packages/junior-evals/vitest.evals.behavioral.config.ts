@@ -8,7 +8,6 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
-const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 // Leave room for harness cleanup and rubric judging after a reply reaches its
 // separate 60-second behavior budget.
 const EVAL_TEST_TIMEOUT_MS = 120_000;
@@ -47,7 +46,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
-      "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+      "@sentry/junior/memory": path.resolve(
+        juniorPackageRoot,
+        "src/chat/memory/index.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",

@@ -1,21 +1,24 @@
 import path from "node:path";
-import { readdirSync } from "node:fs";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
-  memoryPlugin,
-  createMemoryStore,
-  type MemoryDb,
-} from "@sentry/junior-memory";
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
+import { createMemoryRegistration as memoryPlugin } from "@/chat/memory/registration";
+import { memoryRuntimeRegistrations } from "@/chat/memory/runtime";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
-import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 import {
@@ -86,25 +89,64 @@ afterAll(() => {
   }
 });
 
-function memoryMigrationsDir(): string {
-  return path.resolve(process.cwd(), "../junior-memory/migrations");
+function coreMigrationsDir(): string {
+  return path.resolve(process.cwd(), "migrations");
 }
 
-function memoryMigrationFiles(): string[] {
-  return readdirSync(memoryMigrationsDir())
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
+function copyPreMemoryCoreMigrations(): string {
+  const source = coreMigrationsDir();
+  const destination = mkdtempSync(
+    path.join(tmpdir(), "junior-pre-memory-core-"),
+  );
+  mkdirSync(path.join(destination, "meta"));
+  const journal = JSON.parse(
+    readFileSync(path.join(source, "meta", "_journal.json"), "utf8"),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+  const adoption = journal.entries.find((entry) => {
+    const sql = readFileSync(path.join(source, `${entry.tag}.sql`), "utf8");
+    return sql.includes("Adopt the former Memory plugin tables");
+  });
+  if (!adoption) {
+    throw new Error("Memory adoption migration not found");
+  }
+  const entries = journal.entries.filter((entry) => entry.idx < adoption.idx);
+  writeFileSync(
+    path.join(destination, "meta", "_journal.json"),
+    JSON.stringify({ ...journal, entries }),
+  );
+  for (const entry of entries) {
+    copyFileSync(
+      path.join(source, `${entry.tag}.sql`),
+      path.join(destination, `${entry.tag}.sql`),
+    );
+  }
+  return destination;
 }
 
-async function migrateMemorySchema(
+async function createLegacyMemoryTable(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
-) {
-  await migratePluginSchemas(fixture.sql, [
-    {
-      dir: memoryMigrationsDir(),
-      pluginName: "memory",
-    },
-  ]);
+): Promise<void> {
+  await fixture.sql.execute(`
+CREATE TABLE junior_memory_memories (
+  id TEXT PRIMARY KEY NOT NULL,
+  scope TEXT NOT NULL,
+  scope_key TEXT NOT NULL,
+  type TEXT NOT NULL,
+  subject_type TEXT NOT NULL,
+  subject_key TEXT,
+  content TEXT NOT NULL,
+  source_platform TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  idempotency_key TEXT,
+  observed_at_ms BIGINT NOT NULL,
+  created_at_ms BIGINT NOT NULL,
+  expires_at_ms BIGINT,
+  superseded_at_ms BIGINT,
+  superseded_by_id TEXT,
+  archived_at_ms BIGINT,
+  archive_reason TEXT
+)
+`);
 }
 
 async function recordPrivateConversation(
@@ -183,166 +225,76 @@ function memoryToolsFor(args: {
 }
 
 describe("memory plugin host wiring", () => {
-  it("adopts exact legacy migration hashes without replaying them", async () => {
+  it("adopts deployed Memory rows into the core schema", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const migrations = readMigrationFiles({
-      migrationsFolder: memoryMigrationsDir(),
-    });
-    const migrationFiles = memoryMigrationFiles();
-    expect(migrationFiles).toHaveLength(migrations.length);
+    const oldCoreMigrations = copyPreMemoryCoreMigrations();
 
     try {
-      await migrateMemorySchema(fixture);
-      const [migrationTable] = await fixture.sql.query<{ tablename: string }>(`
-SELECT tablename
-FROM pg_tables
-WHERE schemaname = 'drizzle'
-  AND tablename LIKE '__drizzle_memory_%'
-`);
-      expect(migrationTable).toBeDefined();
+      await fixture.sql.migrate({
+        migrationsFolder: oldCoreMigrations,
+        migrationsTable: "__drizzle_junior_core",
+      });
+      await createLegacyMemoryTable(fixture);
       await fixture.sql.execute(
-        `DROP TABLE drizzle.${migrationTable!.tablename}`,
-      );
-      await fixture.sql.execute(`
-CREATE TABLE junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`);
-      for (const [index, migration] of migrations.entries()) {
-        await fixture.sql.execute(
-          `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
-          [`plugin:memory/${migrationFiles[index]}`, migration.hash],
-        );
-      }
-
-      await expect(
-        migratePluginSchemas(fixture.sql, [
-          {
-            dir: memoryMigrationsDir(),
-            pluginName: "memory",
-          },
-        ]),
-      ).resolves.toEqual({
-        existing: migrations.length,
-        migrated: 0,
-        scanned: migrations.length,
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("does not adopt an unknown memory legacy checksum", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    const migrationCount = readMigrationFiles({
-      migrationsFolder: memoryMigrationsDir(),
-    }).length;
-    const [baselineFile] = memoryMigrationFiles();
-    expect(baselineFile).toBeDefined();
-
-    try {
-      await fixture.sql.execute(`
-CREATE TABLE junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`);
-      await fixture.sql.execute(
-        `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
-        [`plugin:memory/${baselineFile}`, "unknown-memory-checksum"],
+        `INSERT INTO junior_memory_memories (
+          id, scope, scope_key, type, subject_type, subject_key, content,
+          source_platform, source_key, idempotency_key, observed_at_ms, created_at_ms
+        ) VALUES ($1, 'conversation', 'slack:T123:C123:1718800000.000000',
+          'task', 'conversation', 'slack:T123:C123:1718800000.000000', $2,
+          'slack', 'slack:T123:C123:1718800000.000000', $3, $4, $4)`,
+        [
+          "legacy-memory",
+          "Use the deploy runbook.",
+          "legacy-memory-key",
+          Date.parse("2026-08-21T12:00:00.000Z"),
+        ],
       );
 
-      await expect(
-        migratePluginSchemas(fixture.sql, [
-          {
-            dir: memoryMigrationsDir(),
-            pluginName: "memory",
-          },
-        ]),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        scanned: migrationCount,
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("applies packaged migrations through plugin discovery", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    NEON.sql = fixture.sql;
-
-    try {
-      const migrationCount = readMigrationFiles({
-        migrationsFolder: memoryMigrationsDir(),
-      }).length;
-      await expect(
-        migratePluginsToSql({
-          pluginSet: defineJuniorPlugins([memoryPlugin()]),
-          sqlExecutor: fixture.sql,
-        }),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: migrationCount,
-        scanned: migrationCount,
-      });
+      await migrateSchema(fixture.sql);
 
       await expect(
-        fixture.sql.query<{ table_name: string }>(
-          `
-SELECT table_name
-FROM information_schema.tables
-WHERE table_name = 'junior_memory_memories'
-`,
+        fixture.sql.query<{
+          conversationId: string | null;
+          id: string;
+          kind: string;
+          scope: string;
+          scopeKey: string;
+        }>(
+          `SELECT id, type AS kind, scope, scope_key AS "scopeKey",
+                  conversation_id AS "conversationId"
+           FROM junior_memory_memories WHERE id = $1`,
+          ["legacy-memory"],
         ),
-      ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
-
+      ).resolves.toEqual([
+        {
+          conversationId: "slack:C123:1718800000.000000",
+          id: "legacy-memory",
+          kind: "procedure",
+          scope: "public",
+          scopeKey: "public",
+        },
+      ]);
       await expect(
-        fixture.sql.query<{ extname: string }>(
-          "SELECT extname FROM pg_extension WHERE extname = 'btree_gin'",
+        fixture.sql.query<{ isGenerated: string }>(
+          `SELECT is_generated AS "isGenerated"
+           FROM information_schema.columns
+           WHERE table_name = 'junior_memory_memories'
+             AND column_name = 'search_vector'`,
         ),
-      ).resolves.toEqual([{ extname: "btree_gin" }]);
-
-      await expect(
-        fixture.sql.query<{ is_generated: string }>(
-          `
-SELECT is_generated
-FROM information_schema.columns
-WHERE table_name = 'junior_memory_memories'
-  AND column_name = 'search_vector'
-`,
-        ),
-      ).resolves.toEqual([{ is_generated: "ALWAYS" }]);
-
-      const [searchIndex] = await fixture.sql.query<{ indexdef: string }>(`
-SELECT indexdef
-FROM pg_indexes
-WHERE indexname = 'junior_memory_memories_search_idx'
-`);
-      expect(searchIndex?.indexdef).toContain(
-        "USING gin (scope, scope_key, search_vector)",
-      );
+      ).resolves.toEqual([{ isGenerated: "ALWAYS" }]);
     } finally {
       await fixture.close();
     }
   }, 15_000);
 
-  it("reports core and nonempty plugin migration journals", async () => {
+  it("reports Memory in the core migration journal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
       const coreMigrationCount = readMigrationFiles({
-        migrationsFolder: path.resolve(process.cwd(), "migrations"),
+        migrationsFolder: coreMigrationsDir(),
       }).length;
-      const memoryMigrationCount = readMigrationFiles({
-        migrationsFolder: memoryMigrationsDir(),
-      }).length;
-      const totalMigrationCount = coreMigrationCount + memoryMigrationCount;
       const lines: string[] = [];
       const pluginSet = defineJuniorPlugins([
         memoryPlugin(),
@@ -359,8 +311,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       expect(lines).toEqual([
         "Checking database migrations...",
         `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
-        `  junior-memory: applied ${memoryMigrationCount} migrations (${memoryMigrationCount} total)`,
-        `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
+        `Applied ${coreMigrationCount} migrations (${coreMigrationCount} total).`,
       ]);
 
       lines.length = 0;
@@ -368,8 +319,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       expect(lines).toEqual([
         "Checking database migrations...",
         `  junior: up to date (${coreMigrationCount} migrations)`,
-        `  junior-memory: up to date (${memoryMigrationCount} migrations)`,
-        `Database is up to date (${totalMigrationCount} migrations).`,
+        `Database is up to date (${coreMigrationCount} migrations).`,
       ]);
     } finally {
       await fixture.close();
@@ -378,14 +328,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
   it("reads public memory everywhere and private memory only for its User", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const plugin = memoryPlugin();
-    setPlugins([plugin]);
+    setPlugins(memoryRuntimeRegistrations([]));
     NEON.sql = fixture.sql;
 
     try {
       await migrateSchema(fixture.sql);
-      await migrateMemorySchema(fixture);
-      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
       const db = fixture.sql.db() as MemoryDb;
       const viewerConversationId = "slack:D123:1718800001.000000";
       const viewer = await recordPrivateConversation(fixture, {
@@ -485,12 +432,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    setPlugins([memoryPlugin()]);
+    setPlugins(memoryRuntimeRegistrations([]));
     NEON.sql = fixture.sql;
 
     try {
       await migrateSchema(fixture.sql);
-      await migrateMemorySchema(fixture);
       const conversationId = "slack:C123:1718800000.000000";
       const actor = {
         platform: "slack" as const,
@@ -512,17 +458,13 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
         userId: actor.userId,
       });
-      const store = createMemoryStore(
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        fixture.sql.db() as MemoryDb,
-        {
-          conversationId,
-          locationId: userContext.locationId,
-          actor,
-          source,
-          userId: userContext.user.id,
-        },
-      );
+      const store = createMemoryStore(fixture.sql.db() as MemoryDb, {
+        conversationId,
+        locationId: userContext.locationId,
+        actor,
+        source,
+        userId: userContext.user.id,
+      });
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",

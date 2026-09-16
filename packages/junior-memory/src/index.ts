@@ -1,25 +1,25 @@
-export { memoryPlugin } from "./plugin";
-export {
-  memoryApiSchema,
-  memoryDashboardResponseSchema,
-  memoryListResponseSchema,
-  type MemoryApi,
-  type MemoryDashboardResponse,
-  type MemoryListResponse,
-} from "./api";
-export type { MemoryPluginOptions } from "./plugin";
-export { createMemoryStore } from "./store";
-export type {
-  ArchiveMemoryInput,
-  CreateMemoryInput,
-  CreateMemoryResult,
-  ListMemoriesInput,
-  MemoryDb,
-  MemoryEmbeddingProvider,
-  MemoryRecord,
-  MemoryStore,
-  MemoryStoreOptions,
-  SearchMemoriesInput,
-} from "./store";
-export { MEMORY_KINDS } from "./types";
-export type { MemoryKind, MemoryRuntimeContext } from "./types";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+
+export * from "@sentry/junior/memory";
+export type { MemoryOptions as MemoryPluginOptions } from "@sentry/junior/memory";
+
+/**
+ * Keep old app plugin sets valid while Memory runs in core.
+ *
+ * @deprecated Remove this registration and configure `createApp({ memory })`.
+ */
+export function memoryPlugin(
+  options: import("@sentry/junior/memory").MemoryOptions = {},
+) {
+  return Object.assign(
+    defineJuniorPlugin({
+      manifest: {
+        name: "memory",
+        displayName: "Memory",
+        description: "Compatibility marker for core Memory",
+      },
+      packageName: "@sentry/junior-memory",
+    }),
+    { coreMemoryOptions: { ...options } },
+  );
+}

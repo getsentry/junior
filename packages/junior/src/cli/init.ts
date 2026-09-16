@@ -41,10 +41,8 @@ function writePluginsFile(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "plugins.ts"),
     `import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
 
 export const plugins = defineJuniorPlugins([
-  memoryPlugin(),
   "@sentry/junior-maintenance",
 ]);
 `,
@@ -182,7 +180,6 @@ export async function runInit(
       "@opentelemetry/api": "1.9.1",
       "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
-      "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       "@sentry/nitro": "10.65.0",
       hono: "^4.12.27",

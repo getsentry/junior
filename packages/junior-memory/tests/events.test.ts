@@ -3,7 +3,7 @@ import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
   memoriesRecalledEvent,
-} from "../src/events";
+} from "@sentry/junior/src/chat/memory/events";
 
 describe("memory conversation events", () => {
   it("renders stored capture events with legacy scope values", () => {

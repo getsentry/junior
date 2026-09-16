@@ -94,6 +94,11 @@ import {
 } from "@/chat/app/production";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  installedRuntimeRegistrations,
+  legacyMemoryOptions,
+  memoryRuntimeRegistrations,
+} from "@/chat/memory/runtime";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -116,6 +121,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
+export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Generate a durable Brief after each completed Turn. This costs one
@@ -124,6 +130,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   briefs?: { enabled?: boolean };
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
+  /** Long-term Memory behavior. Memory is always available in core. */
+  memory?: import("@/chat/memory/registration").MemoryOptions;
   /**
    * Opt into unstable product features. Experimental keys may change or be
    * removed without a stable migration path; leave unset in production unless
@@ -685,14 +693,24 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
-  const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
+  const configuredRuntimePlugins =
+    pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
+  const plugins = memoryRuntimeRegistrations(
+    configuredRuntimePlugins,
+    options?.memory ??
+      legacyMemoryOptions(configuredPlugins?.registrations ?? []) ??
+      {},
+  );
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
     : (virtualConfig?.plugins ?? pluginCatalogConfigFromEnv());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }
-  validateBuildIncludesPluginRuntimeRegistrations(plugins, virtualConfig);
+  validateBuildIncludesPluginRuntimeRegistrations(
+    configuredRuntimePlugins,
+    virtualConfig,
+  );
   validatePlugins(plugins);
   getDb();
   const shouldValidatePluginCatalog =
@@ -747,9 +765,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
-      validatePluginRegistrations(configuredPlugins?.registrations ?? []);
+      validatePluginRegistrations(
+        installedRuntimeRegistrations(configuredPlugins?.registrations ?? []),
+      );
       validatePluginEgressCredentialHooks(
-        configuredPlugins?.registrations ?? [],
+        installedRuntimeRegistrations(configuredPlugins?.registrations ?? []),
       );
     }
     pluginRoutes = getPluginRoutes({ events });

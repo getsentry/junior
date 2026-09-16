@@ -26,8 +26,11 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
-import * as memorySqlSchema from "./db/schema";
-import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import * as memorySqlSchema from "@/db/schema/memory";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+} from "@/db/schema/memory";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_EMBEDDING_DIMENSIONS,

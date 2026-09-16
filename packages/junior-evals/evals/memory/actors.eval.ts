@@ -2,11 +2,11 @@ import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { MemoryDb } from "@sentry/junior-memory";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
+  type MemoryDb,
+} from "@sentry/junior/memory";
 import {
   mention,
   rubric,
@@ -23,9 +23,7 @@ import {
  * more than one Actor does not store any preference.
  */
 
-const memoryPluginOverrides = {
-  plugin_packages: ["@sentry/junior-memory"],
-};
+const memoryPluginOverrides = { memory: {} };
 const memoryTeamId = "TEVAL";
 
 const ALICE = {

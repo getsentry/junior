@@ -1,4 +1,4 @@
-import type { juniorMemoryMemories } from "../db/schema";
+import type { juniorMemoryMemories } from "@/db/schema/memory";
 
 function formatDate(ms: number | null): string {
   return ms === null ? "-" : new Date(ms).toISOString();

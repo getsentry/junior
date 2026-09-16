@@ -4,7 +4,7 @@ import type {
   PluginCliActionContext,
   PluginCliHost,
 } from "@sentry/junior-plugin-api";
-import { juniorMemoryMemories } from "../db/schema";
+import { juniorMemoryMemories } from "@/db/schema/memory";
 import type { MemoryDb } from "../store";
 import { MEMORY_SCOPES, type MemoryScope } from "../types";
 import { formatMemory } from "./format";
