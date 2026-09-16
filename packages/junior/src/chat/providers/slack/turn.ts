@@ -197,7 +197,12 @@ async function loadPiMessagesForTurn(args: {
       args.conversationId,
       args.activeTurnId,
     );
-    if (sessionRecord?.piMessages.length) {
+    if (
+      sessionRecord?.state !== "completed" &&
+      sessionRecord?.state !== "failed" &&
+      sessionRecord?.state !== "abandoned" &&
+      sessionRecord?.piMessages.length
+    ) {
       return {
         piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
       };

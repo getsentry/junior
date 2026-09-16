@@ -487,6 +487,55 @@ describe("Slack behavior: message content", () => {
     );
   });
 
+  it("ignores a stale activeTurnId for a completed Turn", async () => {
+    const calls: CapturedCall[] = [];
+    const completedMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior request" }],
+        timestamp: 1,
+      },
+      assistantPiMessage("prior answer", 2),
+    ];
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005005.000",
+    });
+    await upsertTurnRecord({
+      conversationId: thread.id,
+      turnId: "turn-completed",
+      sliceId: 1,
+      state: "completed",
+      piMessages: completedMessages,
+    });
+    const conversation = coerceThreadConversationState({});
+    conversation.processing.activeTurnId = "turn-completed";
+    await persistThreadState(thread, { conversation });
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-content-after-completed-turn",
+        text: "<@U0APP> continue",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U0TESTER" },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.piMessages).toEqual(completedMessages);
+  });
+
   it("rejects active-turn history that conflicts with committed conversation history", async () => {
     const calls: CapturedCall[] = [];
     const activeMessages: PiMessage[] = [

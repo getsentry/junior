@@ -80,7 +80,9 @@ export function pendingTranscriptMessage(
     // Keep pending rows after history without colliding with real event seqs.
     sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
     timestamp: Date.parse(message.createdAt),
-    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : undefined),
+    ...(message.actorIdentity
+      ? { actorIdentity: message.actorIdentity }
+      : undefined),
   };
 }
 
@@ -141,6 +143,7 @@ export function transcriptMessagesFromEvents(
   >();
   const messages: TranscriptViewMessage[] = [];
   const messagesById = new Map<string, TranscriptViewMessage>();
+  const supersededMessageIds = new Set<string>();
   const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
   let latestUserMessage: TranscriptViewMessage | undefined;
 
@@ -197,7 +200,9 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
-        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : undefined),
+        ...(data.actorIdentity
+          ? { actorIdentity: data.actorIdentity }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
@@ -241,8 +246,17 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "turn_lifecycle" && data.state === "started") {
-      const inputMessages = data.inputMessageIds
-        ?.map((messageId) => messagesById.get(messageId))
+      const inputMessageIds = data.inputMessageIds ?? [];
+      for (const messageId of inputMessageIds) {
+        const editedSuffix = ":message_changed_mention";
+        if (!messageId.endsWith(editedSuffix)) continue;
+        const originalMessageId = messageId.slice(0, -editedSuffix.length);
+        if (inputMessageIds.includes(originalMessageId)) {
+          supersededMessageIds.add(originalMessageId);
+        }
+      }
+      const inputMessages = inputMessageIds
+        .map((messageId) => messagesById.get(messageId))
         .filter((message) => message !== undefined);
       const turnUserMessage = inputMessages
         ?.slice()
@@ -436,10 +450,11 @@ export function transcriptMessagesFromEvents(
   const ordered = messages
     .filter(
       (message) =>
-        message.role !== "user" ||
-        message.eventType !== undefined ||
-        message.explicitMention !== false ||
-        message.context === true,
+        (!message.messageId || !supersededMessageIds.has(message.messageId)) &&
+        (message.role !== "user" ||
+          message.eventType !== undefined ||
+          message.explicitMention !== false ||
+          message.context === true),
     )
     .sort((left, right) => left.sourceSeq - right.sourceSeq);
   return mergePendingTranscriptMessages(ordered, pendingMessages);
