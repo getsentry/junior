@@ -28,6 +28,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Real integration wiring can exceed Vitest's 5s default under CI load.
+    testTimeout: 10_000,
     include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",
