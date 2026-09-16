@@ -158,10 +158,13 @@ jobs:
         include:
           - suite: unit
             path: tests/unit
+            test_timeout: 5000
           - suite: component
             path: tests/component
+            test_timeout: 5000
           - suite: integration
             path: tests/integration
+            test_timeout: 10000
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       REDIS_URL: redis://localhost:6379
@@ -192,7 +195,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior build
-      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --coverage ${{ matrix.path }}
+      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
