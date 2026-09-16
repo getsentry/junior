@@ -1,4 +1,14 @@
 # Changelog
+## 0.218.0
+
+### New Features ✨
+
+- (mcp) Support bot credentials for MCP plugins by @mchen-sentry in [#1767](https://github.com/getsentry/junior/pull/1767)
+
+### Internal Changes 🔧
+
+- Allow longer integration tests by @sentry-junior in [#1871](https://github.com/getsentry/junior/pull/1871)
+
 ## 0.217.0
 
 ### New Features ✨
