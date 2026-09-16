@@ -85,8 +85,9 @@ describe("plan continuation", () => {
       timestamp: 3,
     } as PiMessage;
 
-    expect(appendOpenPlan("Second summary.", [compactedMessage])).toContain(
-      '<open-plan>\n[{"step":"Keep &quot; and &amp; exact","status":"in_progress"}]\n</open-plan>',
+    const echoedSummary = `The prior summary included:\n${first}`;
+    expect(appendOpenPlan(echoedSummary, [compactedMessage])).toBe(
+      `${echoedSummary}\n\n<open-plan>\n[{"step":"Keep &quot; and &amp; exact","status":"in_progress"}]\n</open-plan>`,
     );
   });
 

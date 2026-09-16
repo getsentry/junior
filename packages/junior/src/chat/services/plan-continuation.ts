@@ -48,12 +48,16 @@ function retainedOpenItems(message: PiMessage): OpenPlanItem[] | undefined {
     return undefined;
   }
   const continuation = unwrapCurrentInstruction(text) ?? text;
-  const match = continuation.match(/<open-plan>\n([\s\S]*)\n<\/open-plan>/);
-  if (!match) {
+  const open = `<${OPEN_PLAN_TAG}>\n`;
+  const close = `\n</${OPEN_PLAN_TAG}>`;
+  const closeIndex = continuation.lastIndexOf(close);
+  const openIndex = continuation.lastIndexOf(open, closeIndex);
+  if (openIndex < 0 || closeIndex < 0) {
     return undefined;
   }
+  const payload = continuation.slice(openIndex + open.length, closeIndex);
   try {
-    return openItems({ plan: JSON.parse(match[1]!) });
+    return openItems({ plan: JSON.parse(payload) });
   } catch {
     return undefined;
   }
