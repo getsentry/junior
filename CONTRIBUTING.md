@@ -45,6 +45,7 @@ pnpm test
 pnpm evals                 # behavioral suite
 pnpm evals:integration       # hard pass/fail integration suite
 pnpm evals:guardian        # isolated Guardian snapshots
+pnpm evals:router          # isolated turn route snapshots
 pnpm typecheck
 pnpm skills:check
 pnpm docs:check
