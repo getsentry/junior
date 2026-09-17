@@ -39,13 +39,67 @@ export interface SubscribedDecisionResult {
   reasonDetail?: string;
 }
 
+export interface SubscribedReplyClassification {
+  confidence: number;
+  reason: string;
+  shouldReply: boolean;
+  shouldUnsubscribe: boolean;
+}
+
+function mapSubscribedReplyClassification(
+  classification: SubscribedReplyClassification,
+  costUsd?: number,
+): SubscribedDecisionResult {
+  const cost = costUsd === undefined ? {} : { costUsd };
+  const reason = classification.reason.trim() || "classifier";
+  if (classification.shouldUnsubscribe) {
+    if (classification.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
+      return {
+        ...cost,
+        shouldReply: false,
+        reason: SubscribedReplyReason.LowConfidence,
+        reasonDetail: `${classification.confidence.toFixed(2)}: ${reason}`,
+      };
+    }
+    return {
+      ...cost,
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: reason,
+    };
+  }
+  if (!classification.shouldReply) {
+    return {
+      ...cost,
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: reason,
+    };
+  }
+  if (classification.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
+    return {
+      ...cost,
+      shouldReply: false,
+      reason: SubscribedReplyReason.LowConfidence,
+      reasonDetail: `${classification.confidence.toFixed(2)}: ${reason}`,
+    };
+  }
+  return {
+    ...cost,
+    shouldReply: true,
+    reason: SubscribedReplyReason.Classifier,
+    reasonDetail: reason,
+  };
+}
+
 interface TranscriptMessage {
   author: string;
   role: "assistant" | "user";
   text: string;
 }
 
-interface RouterEvidence {
+export interface RouterEvidence {
   assistantWasLastSpeaker: boolean;
   currentMessageHasAttachments: boolean;
   currentMessageHasDirectedFollowUpCue: boolean;
@@ -90,8 +144,7 @@ const TRANSCRIPT_MESSAGE_LINE_RE =
 /** `!stop` may appear anywhere in the message. */
 const BANG_STOP_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
 /** Drop a leading `@jr` / mention before matching bare `stop`. */
-const LEADING_ADDRESS_RE =
-  /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
+const LEADING_ADDRESS_RE = /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
 /** Whole message is only `stop` after any leading address. */
 const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
@@ -434,6 +487,11 @@ export async function decideSubscribedThreadReply(args: {
   botUserName: string;
   modelId: string;
   input: SubscribedDecisionInput;
+  classifyReply?: (args: {
+    botUserName: string;
+    evidence: RouterEvidence;
+    latestMessage: string;
+  }) => Promise<SubscribedReplyClassification>;
   completeObject: (args: {
     modelId: string;
     schema: typeof replyDecisionSchema;
@@ -510,6 +568,16 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   try {
+    if (args.classifyReply) {
+      return mapSubscribedReplyClassification(
+        await args.classifyReply({
+          botUserName: args.botUserName,
+          evidence,
+          latestMessage: rawText.trim() || "[attachment-only message]",
+        }),
+      );
+    }
+
     const result = await args.completeObject({
       modelId: args.modelId,
       schema: replyDecisionSchema,
@@ -528,50 +596,15 @@ export async function decideSubscribedThreadReply(args: {
     });
 
     const parsed = replyDecisionSchema.parse(result.object);
-    const reason = parsed.reason?.trim() || "classifier";
-    if (parsed.should_unsubscribe) {
-      if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-        return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-          shouldReply: false,
-          reason: SubscribedReplyReason.LowConfidence,
-          reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-        };
-      }
-
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: reason,
-      };
-    }
-
-    if (!parsed.should_reply) {
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.SideConversation,
-        reasonDetail: reason,
-      };
-    }
-
-    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-      return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-        shouldReply: false,
-        reason: SubscribedReplyReason.LowConfidence,
-        reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
-      };
-    }
-
-    return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-      shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: reason,
-    };
+    return mapSubscribedReplyClassification(
+      {
+        confidence: parsed.confidence,
+        reason: parsed.reason,
+        shouldReply: parsed.should_reply,
+        shouldUnsubscribe: parsed.should_unsubscribe,
+      },
+      result.costUsd,
+    );
   } catch (error) {
     if (isProviderRetryError(error)) {
       throw error;
