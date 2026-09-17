@@ -52,9 +52,9 @@ refactors should not churn brittle unit tests.
 - Prefer existing harnesses, shared fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
 - Database tests must use `tests/fixtures/sql`. Normal tests use
-  `createJuniorSqlFixture`, which starts from the migrated worker database and
-  rolls back after the test. Only migration contract tests use an explicit empty
-  fixture. Do not import Postgres fixture internals from a test.
+  `createJuniorSqlFixture`, which uses the migrated worker database that shared
+  setup truncates before each test. Only migration contract tests use an explicit
+  empty fixture. Do not import Postgres fixture internals from a test.
 - Assert user-visible outcomes and external contracts before implementation
   details. Logs, spans, and status telemetry are not behavior contracts unless
   the test is explicitly about instrumentation.
