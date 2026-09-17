@@ -33,14 +33,14 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     });
   });
 
-  it("when the user asks for thorough research across sources, use high reasoning", async ({
+  it("when the user asks for thorough drafting, use high reasoning", async ({
     run,
   }) => {
     await run({
-      expectedProfile: "handoff",
+      expectedProfile: "standard",
       expectedReasoningLevel: "high",
       messageText:
-        "research our current Slack delivery architecture across the code, docs, and recent pull requests, then write a thorough design summary",
+        "write a thorough launch announcement from these notes: faster search, clearer filters, and a gradual rollout next week",
     });
   });
 

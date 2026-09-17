@@ -15,7 +15,6 @@ import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { selectTurnRoute, type TurnRoute } from "@/chat/services/turn-router";
 
 const ROUTER_EVAL_TIMEOUT_MS = 60_000;
-const DEFAULT_PROFILE = "standard";
 const ROUTER_PROFILES = {
   standard: {
     modelId: "xai/grok-4.5",
@@ -29,15 +28,14 @@ const ROUTER_PROFILES = {
   },
 } satisfies Readonly<Record<string, ModelProfileConfig>>;
 
-export interface RouterEvalInput {
+interface RouterEvalInput {
   conversationContext?: string;
-  currentTurnBlocks?: string[];
   expectedProfile: string;
   expectedReasoningLevel: TurnReasoningLevel;
   messageText: string;
 }
 
-export interface RouterEvalOutput extends Record<string, JsonValue> {
+interface RouterEvalOutput extends Record<string, JsonValue> {
   confidence: number | null;
   costUsd: number | null;
   expectedProfile: string;
@@ -51,8 +49,7 @@ function resolveRouterModelId(): string {
   return process.env.AI_FAST_MODEL?.trim() || "anthropic/claude-haiku-4.5";
 }
 
-/** Run one task through the production turn router boundary. */
-export async function routeTask(
+async function routeTask(
   input: RouterEvalInput,
   options?: { signal?: AbortSignal },
 ): Promise<TurnRoute> {
@@ -64,8 +61,7 @@ export async function routeTask(
   return selectTurnRoute({
     completeObject: (args) => completeObject({ ...args, signal: routeSignal }),
     conversationContext: input.conversationContext,
-    currentTurnBlocks: input.currentTurnBlocks,
-    defaultProfile: DEFAULT_PROFILE,
+    defaultProfile: "standard",
     fastModelId: resolveRouterModelId(),
     messageText: input.messageText,
     profiles: ROUTER_PROFILES,

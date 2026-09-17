@@ -31,7 +31,6 @@ jobs:
             relevant:
               - 'packages/junior-evals/evals/router/**'
               - 'packages/junior-evals/src/router-harness.ts'
-              - 'packages/junior-evals/src/router-setup.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/router-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.router.config.ts'
