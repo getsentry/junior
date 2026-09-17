@@ -79,6 +79,7 @@ vi.mock("@/chat/pi/client", () => ({
     };
   }),
   embedTexts: vi.fn(),
+  resolveGatewayModel: vi.fn((modelId: string) => ({ id: modelId })),
 }));
 
 function piMessages(instruction: string, turnId: string): PiMessage[] {
