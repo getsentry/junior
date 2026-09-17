@@ -19,14 +19,11 @@ import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  createLocalJuniorSqlFixture,
-  type LocalJuniorSqlFixture,
-} from "../fixtures/sql";
+import type { LocalJuniorSqlFixture } from "../fixtures/sql";
+import { createMigratedJuniorSqlFixture } from "../fixtures/postgres/fixture";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 vi.hoisted(() => {
@@ -38,8 +35,7 @@ let currentFixture: LocalJuniorSqlFixture | undefined;
 let toolCallSequence = 0;
 
 async function useSchedulerSqlPlugin() {
-  const fixture = await createLocalJuniorSqlFixture();
-  await migrateSchema(fixture.sql);
+  const fixture = await createMigratedJuniorSqlFixture();
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
   return fixture;
 }
