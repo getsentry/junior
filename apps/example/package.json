@@ -27,7 +27,7 @@
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
     "@sentry/nitro": "10.65.0",
-    "hono": "^4.12.27"
+    "hono": "^4.13.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
