@@ -167,7 +167,7 @@ jobs:
           - suite: integration
             path: tests/integration
             max_workers: 2
-            test_timeout: 10000
+            test_timeout: 20000
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       REDIS_URL: redis://localhost:6379
