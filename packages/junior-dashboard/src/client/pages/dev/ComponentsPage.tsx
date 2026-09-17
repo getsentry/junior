@@ -28,6 +28,7 @@ import { CardHeader } from "../../components/layout/CardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
@@ -508,6 +509,28 @@ function FoundationsGalleryPage() {
           <StatusChip size="compact" tone="success">
             public
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Participant avatars">
+        <div className="flex flex-wrap items-center gap-8">
+          <ParticipantAvatarStack
+            participants={[
+              { email: "ada@example.com", fullName: "Ada Lovelace" },
+              { email: "grace@example.com", fullName: "Grace Hopper" },
+              { email: "alan@example.com", fullName: "Alan Turing" },
+              { email: "katherine@example.com", fullName: "Katherine Johnson" },
+            ]}
+            size="list"
+          />
+          <ParticipantAvatarStack
+            participants={[
+              { email: "ada@example.com", fullName: "Ada Lovelace" },
+              { email: "grace@example.com", fullName: "Grace Hopper" },
+              { email: "alan@example.com", fullName: "Alan Turing" },
+              { email: "katherine@example.com", fullName: "Katherine Johnson" },
+            ]}
+            size="detail"
+          />
         </div>
       </Fixture>
       <Fixture title="Status dots">

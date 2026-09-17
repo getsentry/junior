@@ -3,7 +3,6 @@ import { Archive, ArchiveRestore } from "lucide-react";
 import { Link } from "react-router";
 
 import {
-  conversationActorLabel,
   conversationDisplayTitle,
   formatRelativeTime,
   slackLocationLabel,
@@ -11,6 +10,10 @@ import {
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/Skeleton";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
@@ -208,7 +211,7 @@ function ConversationCard(props: {
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
-  const actor = conversationActorLabel(conversation);
+  const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
   return (
     <article
@@ -271,8 +274,12 @@ function ConversationCard(props: {
       )}
       <div className="relative z-[1] flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted pointer-events-none">
         {location ? <span className="truncate">{location}</span> : null}
-        {location && actor ? <span aria-hidden="true">·</span> : null}
-        {actor ? <span className="truncate">{actor}</span> : null}
+        {location && participants.length > 0 ? (
+          <span aria-hidden="true">·</span>
+        ) : null}
+        {participants.length > 0 ? (
+          <ParticipantAvatarStack participants={participants} size="list" />
+        ) : null}
         <ConversationSidebarAnnotations
           annotations={conversation.sidebarAnnotations}
         />

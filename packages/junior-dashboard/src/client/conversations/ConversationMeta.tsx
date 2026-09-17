@@ -13,9 +13,7 @@ import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
-  conversationActorLabel,
   formatConversationDuration,
-  peoplePath,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -23,6 +21,10 @@ import {
   automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
@@ -450,10 +452,12 @@ export function hasConversationIdentity(props: {
   variant?: "compact" | "full";
 }): boolean {
   const variant = props.variant ?? "full";
-  const owner = conversationActorLabel(props.conversation);
-  if (variant === "compact") return Boolean(owner);
+  const participants = conversationParticipants(props.conversation);
+  if (variant === "compact") return participants.length > 0;
   const id = props.conversationId ?? props.conversation?.id;
-  return Boolean(owner || id || props.detail?.sentryConversationUrl);
+  return Boolean(
+    participants.length > 0 || id || props.detail?.sentryConversationUrl,
+  );
 }
 
 /** Render the conversation owner, optionally with id and Sentry deep link. */
@@ -465,28 +469,13 @@ export function ConversationIdentity(props: {
 }) {
   if (!hasConversationIdentity(props)) return null;
   const variant = props.variant ?? "full";
-  const email = props.conversation?.actorIdentity?.email?.trim();
-  const owner = conversationActorLabel(props.conversation);
+  const participants = conversationParticipants(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
-  const ownerNode = owner ? (
-    email ? (
-      <Link
-        className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
-        to={peoplePath(email)}
-      >
-        {owner}
-      </Link>
-    ) : (
-      owner
-    )
-  ) : null;
-  if (variant === "compact") {
-    return (
-      <span className="inline-flex min-w-0 max-w-full items-center">
-        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
-      </span>
-    );
-  }
+  const participantStack =
+    participants.length > 0 ? (
+      <ParticipantAvatarStack participants={participants} size="detail" />
+    ) : null;
+  if (variant === "compact") return participantStack;
   const sentryLink = props.detail?.sentryConversationUrl ? (
     <a
       className="text-dashboard-text no-underline hover:underline"
@@ -500,12 +489,10 @@ export function ConversationIdentity(props: {
 
   return (
     <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-      {ownerNode ? (
-        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
-      ) : null}
+      {participantStack}
       {id ? (
         <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
-          {ownerNode ? (
+          {participantStack ? (
             <span className="text-dashboard-text-muted/50">·</span>
           ) : null}
           <span className="min-w-0 max-w-[18rem] truncate">{id}</span>
@@ -513,7 +500,7 @@ export function ConversationIdentity(props: {
       ) : null}
       {sentryLink ? (
         <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {ownerNode || id ? (
+          {participantStack || id ? (
             <span className="text-dashboard-text-muted/50">·</span>
           ) : null}
           {sentryLink}

@@ -341,6 +341,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+    participants: [
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("avery@sentry.io", "Avery Chen", "avery"),
+      actor("riley@sentry.io", "Riley Park", "riley"),
+      actor("jordan@sentry.io", "Jordan Blake", "jordan"),
+    ],
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
