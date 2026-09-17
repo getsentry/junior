@@ -8,6 +8,9 @@ const packageRoot = process.cwd();
 loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
 process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+// The shared fake LLM implements chat completions, not evaluation models.
+// Guardian evals cover the Jev path through the real AI Gateway protocol.
+process.env.AI_GUARDIAN_MODEL = "openai/gpt-5.6-luna";
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
