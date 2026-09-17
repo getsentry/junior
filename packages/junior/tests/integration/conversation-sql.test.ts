@@ -16,12 +16,10 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
-  createLocalJuniorSqlFixture,
-} from "../fixtures/sql";
-import {
+  createEmptyJuniorPostgresFixture,
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
-} from "../fixtures/postgres/fixture";
+} from "../fixtures/sql";
 import {
   applyCoreMigrations as applyCoreMigrationSlice,
   insertLegacyConversation,
@@ -46,7 +44,7 @@ SELECT EXISTS (
 }
 
 async function applyCoreMigrations(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
   fromIndex: number,
   toIndexExclusive?: number,
 ): Promise<void> {
@@ -60,7 +58,7 @@ async function applyCoreMigrations(
 
 describe("conversation SQL local mode", () => {
   it("backfills session sources from matching conversation destinations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const sourceMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes('ADD COLUMN "source_json" jsonb'),
@@ -163,7 +161,7 @@ ORDER BY conversation_id
   });
 
   it("migrates unowned MCP connection events into replayable facts", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const ownershipMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes("mcp_provider_connected_unowned"),
@@ -214,7 +212,7 @@ ORDER BY conversation_id
   });
 
   it("migrates legacy agent history to native event types", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes(
@@ -459,7 +457,7 @@ ORDER BY conversation_id
   });
 
   it("creates migrated tables matching the Drizzle schema", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -562,7 +560,7 @@ ORDER BY table_name ASC, constraint_name ASC
   });
 
   it("backfills the owning root for existing conversation trees", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await fixture.sql.execute(`
@@ -627,7 +625,7 @@ ORDER BY conversation_id
   });
 
   it("keeps core migrations separate from another Drizzle journal", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await fixture.sql.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
@@ -661,7 +659,7 @@ VALUES ('host-migration', 9999999999999)
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "cancels runtime queries after the configured statement timeout",
     async () => {
-      const fixture = await createEmptyJuniorSqlFixture();
+      const fixture = await createEmptyJuniorPostgresFixture();
       const executor = createPostgresJuniorSqlExecutor({
         connectionString: fixture.connectionString,
         statementTimeoutMs: 10,
@@ -681,7 +679,7 @@ VALUES ('host-migration', 9999999999999)
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "serializes concurrent core migrations",
     async () => {
-      const fixture = await createEmptyJuniorSqlFixture();
+      const fixture = await createEmptyJuniorPostgresFixture();
       const second = createPostgresJuniorSqlExecutor({
         connectionString: fixture.connectionString,
       });
@@ -705,7 +703,7 @@ VALUES ('host-migration', 9999999999999)
   );
 
   it("runs migrations and stores metadata through the Drizzle schema", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       const migrationLock = vi.spyOn(fixture.sql, "withMigrationLock");
@@ -824,7 +822,7 @@ CREATE TABLE junior_conversations (
   );
 
   it("mirrors completed scheduler turns into SQL conversation record", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);

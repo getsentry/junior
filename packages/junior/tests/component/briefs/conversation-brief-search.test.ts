@@ -7,7 +7,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
-import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
+import { createJuniorSqlFixture } from "../../fixtures/sql";
 
 const tenantScope = {
   kind: "public_provider_tenant" as const,
@@ -17,7 +17,7 @@ const tenantScope = {
 
 describe("Conversation Brief search", () => {
   it("searches only the latest public root Briefs in the authorized scope", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
       const db = fixture.sql.db();

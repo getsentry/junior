@@ -6,7 +6,18 @@ const TEST_ROOTS = [
   "packages/junior/tests/integration",
   "packages/junior-dashboard/e2e",
 ];
+const DATABASE_TEST_ROOTS = [
+  "packages/junior/tests/component",
+  "packages/junior/tests/integration",
+];
 const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
+const EMPTY_DATABASE_TESTS = new Set([
+  "packages/junior/tests/component/conversation-storage-sql.test.ts",
+  "packages/junior/tests/component/memory-plugin-storage.test.ts",
+  "packages/junior/tests/component/scheduled-automations-sql.test.ts",
+  "packages/junior/tests/integration/conversation-sql.test.ts",
+  "packages/junior/tests/integration/workspace-snapshot-migration.test.ts",
+]);
 
 const RULES = [
   {
@@ -85,8 +96,43 @@ export function checkIntegrationTestArchitecture(files) {
   return errors;
 }
 
-function collectTests(root) {
-  return TEST_ROOTS.flatMap((testRoot) => {
+/** Report SQL fixture boundary violations. */
+export function checkDatabaseTestFixtures(files) {
+  const errors = [];
+  for (const file of files) {
+    const directFixtureImports = countMatches(
+      file.contents,
+      /(?:fixtures\/postgres\/fixture|@sentry\/junior-testing\/postgres)/g,
+    );
+    if (directFixtureImports > 0) {
+      errors.push(
+        `${file.path}: database tests must import fixtures through tests/fixtures/sql (${directFixtureImports} found, 0 allowed)`,
+      );
+    }
+    const legacyFixtures = countMatches(
+      file.contents,
+      /\bcreateLocalJuniorSqlFixture\b/g,
+    );
+    if (legacyFixtures > 0) {
+      errors.push(
+        `${file.path}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (${legacyFixtures} found, 0 allowed)`,
+      );
+    }
+    const emptyFixtures = countMatches(
+      file.contents,
+      /\bcreateEmptyJunior(?:Postgres|Sql)Fixture\b/g,
+    );
+    if (emptyFixtures > 0 && !EMPTY_DATABASE_TESTS.has(file.path)) {
+      errors.push(
+        `${file.path}: only migration contract tests may use empty Junior SQL fixtures (${emptyFixtures} found, 0 allowed)`,
+      );
+    }
+  }
+  return errors;
+}
+
+function collectTests(root, testRoots = TEST_ROOTS) {
+  return testRoots.flatMap((testRoot) => {
     const directory = path.join(root, testRoot);
     return fs
       .readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -108,7 +154,10 @@ function collectTests(root) {
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
-  const errors = checkIntegrationTestArchitecture(collectTests(root));
+  const errors = [
+    ...checkIntegrationTestArchitecture(collectTests(root)),
+    ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
+  ];
   if (errors.length === 0) {
     console.log("Tests follow test architecture policy.");
     return;

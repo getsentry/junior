@@ -27,12 +27,12 @@ import {
 } from "../fixtures/conversation-work";
 import {
   createConfiguredJuniorSqlFixture,
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -89,7 +89,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects provider conversation rebinding to another conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -127,7 +127,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects updates to a child whose parent has no persisted root", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -168,7 +168,7 @@ describe("conversation SQL store", () => {
   });
 
   it("requires a destination on first root upsert", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -188,7 +188,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists queryable conversation records and linked identities", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -384,7 +384,7 @@ describe("conversation SQL store", () => {
   });
 
   it("links actor identities to users by case-insensitive verified email", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -493,7 +493,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects a provider account already linked to another user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -537,7 +537,7 @@ describe("conversation SQL store", () => {
   });
 
   it("falls back to the provider name when an actor has no linked user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -575,7 +575,7 @@ describe("conversation SQL store", () => {
   });
 
   it("preserves an existing verified identity email when linking its user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -647,7 +647,7 @@ describe("conversation SQL store", () => {
   }, 15_000);
 
   it("fills missing actor identity from later trusted profile observations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -694,7 +694,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists session source set-once and ignores later turn anchors", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -757,7 +757,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists visibility from source signals and converges on newer signals", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -824,7 +824,7 @@ describe("conversation SQL store", () => {
   });
 
   it("leaves Slack visibility missing without a live signal", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -854,7 +854,7 @@ describe("conversation SQL store", () => {
   });
 
   it("resolves a known Slack destination by exact display name", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -899,7 +899,7 @@ describe("conversation SQL store", () => {
   });
 
   it("fails closed when a destination display name is ambiguous", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -940,7 +940,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects legacy JSON metadata that was not migrated to foreign keys", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1000,7 +1000,7 @@ INSERT INTO junior_conversations (
   });
 
   it("keeps newer SQL execution when a stale mirror arrives later", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1054,7 +1054,7 @@ INSERT INTO junior_conversations (
   });
 
   it("replaces the matching run metrics after execution cursor changes", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1197,7 +1197,7 @@ ORDER BY metric
   });
 
   it("keeps SQL execution timestamps when a fresh summary omits them", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1248,7 +1248,7 @@ ORDER BY metric
   });
 
   it("keeps the earliest creation time across SQL metadata updates", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1442,7 +1442,7 @@ ORDER BY metric
   });
 
   it("mirrors worker check-ins into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       vi.useFakeTimers({ now: 1_000 });
@@ -1496,7 +1496,7 @@ ORDER BY metric
   });
 
   it("mirrors mailbox drains into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await disconnectStateAdapter();

@@ -22,7 +22,7 @@ import {
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import {
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
 
@@ -195,7 +195,7 @@ describe("Conversation Brief task", () => {
   beforeEach(async () => {
     setBriefsConfig({ enabled: true });
     process.env.JUNIOR_STATE_ADAPTER = "memory";
-    fixture = await createLocalJuniorSqlFixture();
+    fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
     TEST.calls.length = 0;
     await migrateSchema(fixture.sql);

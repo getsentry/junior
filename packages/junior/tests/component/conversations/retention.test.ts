@@ -28,7 +28,7 @@ import {
 } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import {
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
 
@@ -141,7 +141,7 @@ describe("retention purge job", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
-    fixture = await createLocalJuniorSqlFixture();
+    fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
   });
 

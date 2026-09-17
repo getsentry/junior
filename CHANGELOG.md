@@ -1,4 +1,18 @@
 # Changelog
+## 0.220.0
+
+### New Features ✨
+
+- (dashboard) Show conversation participant avatars by @sentry-junior in [#1878](https://github.com/getsentry/junior/pull/1878)
+
+### Bug Fixes 🐛
+
+- (slack) Ignore message edits by @sentry-junior in [#1872](https://github.com/getsentry/junior/pull/1872)
+
+### Internal Changes 🔧
+
+- (evals) Add turn router suite by @sentry-junior in [#1875](https://github.com/getsentry/junior/pull/1875)
+
 ## 0.219.0
 
 ### New Features ✨

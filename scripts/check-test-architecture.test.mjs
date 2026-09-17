@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkIntegrationTestArchitecture } from "./check-test-architecture.mjs";
+import {
+  checkDatabaseTestFixtures,
+  checkIntegrationTestArchitecture,
+} from "./check-test-architecture.mjs";
 
 const TEST_PATH = "packages/junior/tests/integration/new.test.ts";
 const DASHBOARD_E2E_PATH =
@@ -154,6 +157,57 @@ test("allows screenshots in dashboard E2E tests", () => {
       integrationTest(
         'await page.screenshot({ path: "screenshots/settings.png" });',
         DASHBOARD_E2E_PATH,
+      ),
+    ]),
+    [],
+  );
+});
+
+test("rejects database fixture boundary bypasses", () => {
+  assert.deepEqual(
+    checkDatabaseTestFixtures([
+      integrationTest(
+        [
+          'import { createEmptyJuniorSqlFixture } from "../fixtures/postgres/fixture";',
+          'import { createPostgresTransactionFixture } from "@sentry/junior-testing/postgres";',
+        ].join("\n"),
+      ),
+    ]),
+    [
+      `${TEST_PATH}: database tests must import fixtures through tests/fixtures/sql (2 found, 0 allowed)`,
+      `${TEST_PATH}: only migration contract tests may use empty Junior SQL fixtures (1 found, 0 allowed)`,
+    ],
+  );
+});
+
+test("rejects the ambiguous local SQL fixture", () => {
+  assert.deepEqual(
+    checkDatabaseTestFixtures([
+      integrationTest("await createLocalJuniorSqlFixture();"),
+    ]),
+    [
+      `${TEST_PATH}: database tests must use createJuniorSqlFixture or createEmptyJuniorSqlFixture (1 found, 0 allowed)`,
+    ],
+  );
+});
+
+test("allows the shared migrated SQL fixture", () => {
+  assert.deepEqual(
+    checkDatabaseTestFixtures([
+      integrationTest(
+        'import { createJuniorSqlFixture } from "../fixtures/sql";\nawait createJuniorSqlFixture();',
+      ),
+    ]),
+    [],
+  );
+});
+
+test("allows the empty SQL fixture only in migration contract tests", () => {
+  assert.deepEqual(
+    checkDatabaseTestFixtures([
+      integrationTest(
+        'import { createEmptyJuniorSqlFixture } from "../fixtures/sql";\nawait createEmptyJuniorSqlFixture();',
+        "packages/junior/tests/integration/conversation-sql.test.ts",
       ),
     ]),
     [],

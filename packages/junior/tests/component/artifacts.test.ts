@@ -1,14 +1,11 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import {
-  publishImage,
-  unpublishArtifact,
-} from "@/chat/artifacts/store";
+import { publishImage, unpublishArtifact } from "@/chat/artifacts/store";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import { juniorArtifacts } from "@/db/schema";
 import {
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -58,7 +55,7 @@ describe("public artifact route", () => {
   });
 
   async function setup() {
-    fixture = await createLocalJuniorSqlFixture();
+    fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     return fixture;
   }
