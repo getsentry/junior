@@ -8,11 +8,13 @@ Suite policy:
 
 - **Integration** (`evals/integration/**`): full-runtime integration coverage
   that must never regress. Failures are hard pass/fail.
-- **Behavioral** (domain folders under `evals/` except `integration/` and
-  `guardian/`): agent behavior with bounded variability. CI gates on the
-  aggregate suite floor, not a single weak case.
+- **Behavioral** (domain folders under `evals/` except `integration/`,
+  `guardian/`, and `router/`): agent behavior with bounded variability. CI
+  gates on the aggregate suite floor, not a single weak case.
 - **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact
   `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
+- **Router** (`evals/router/**`): isolated turn route snapshots with exact
+  model profile and reasoning level assertions. Failures are hard pass/fail.
 
 ## Policy
 

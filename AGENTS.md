@@ -21,6 +21,8 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Integration eval case      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
 | Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`                   |
 | Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"`    |
+| Router eval file           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts`                     |
+| Router eval case           | `pnpm --filter @sentry/junior-evals evals:router path/to/file.eval.ts -t "case name"`      |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                                      |
 | Dashboard e2e              | `pnpm test:e2e:dashboard`                                                                  |
 | Release package alignment  | `pnpm release:check`                                                                       |

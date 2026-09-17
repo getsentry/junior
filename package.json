@@ -37,6 +37,7 @@
     "evals:behavioral": "pnpm --filter @sentry/junior-evals evals:behavioral",
     "evals:integration": "pnpm --filter @sentry/junior-evals evals:integration",
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
+    "evals:router": "pnpm --filter @sentry/junior-evals evals:router",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm -r run typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check",
