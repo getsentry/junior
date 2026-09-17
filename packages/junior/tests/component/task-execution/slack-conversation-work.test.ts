@@ -394,42 +394,38 @@ describe("Slack conversation work execution", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("routes edited Slack mentions through the durable mailbox", async () => {
+  it("does not route edited Slack messages", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
-    const editedTs = "1712345.0003";
-    const editedText = `<@${SLACK_BOT_USER_ID}> edited ask`;
 
     const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest({
         ...slackEnvelope({
           eventType: "message",
           text: "edited ask",
-          ts: editedTs,
+          ts: "1712345.0003",
         }),
         event: {
           type: "message",
           subtype: "message_changed",
           channel: "C123",
-          hidden: true,
           message: {
             type: "message",
             user: "U123",
-            text: editedText,
-            ts: editedTs,
+            text: `<@${SLACK_BOT_USER_ID}> edited ask`,
+            ts: "1712345.0003",
           },
           previous_message: {
             type: "message",
             user: "U123",
             text: "edited ask",
-            ts: editedTs,
+            ts: "1712345.0003",
           },
         },
       }),
       services: {
-        getSlackAdapter: () => slackAdapter,
+        getSlackAdapter: createSlackAdapterFixture,
         queue,
         runtime: createNoopSlackWebhookRuntime(),
         state,
@@ -437,36 +433,7 @@ describe("Slack conversation work execution", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId: `slack:C123:${editedTs}`,
-        idempotencyKey: `slack:T123:slack:C123:${editedTs}:${editedTs}:message_changed_mention`,
-      }),
-    ]);
-
-    const calls: Array<{ message: Message; thread: Thread }> = [];
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        queue,
-        runtime: {
-          handleNewMention: async (thread, message, hooks) => {
-            await hooks.ack?.();
-            calls.push({ thread, message });
-          },
-          handleSubscribedMessage: async () => {
-            throw new Error("unexpected subscribed route");
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.thread.id).toBe(`slack:C123:${editedTs}`);
-    expect(calls[0]?.message.id).toBe(`${editedTs}:message_changed_mention`);
-    expect(calls[0]?.message.text).toBe(editedText);
-    expect(calls[0]?.message.isMention).toBe(true);
+    expect(queue.sentRecords()).toEqual([]);
   });
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {

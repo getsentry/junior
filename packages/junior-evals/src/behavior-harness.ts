@@ -1143,8 +1143,7 @@ function toEvalAssistantPost(value: unknown): EvalAssistantPost {
  * Build a Chat SDK Message for Slack ingress from a harness event.
  *
  * Synthetic Slack ingress keeps an empty formatted AST so plain text remains
- * the source of truth, matching mailbox restore and edited-message
- * construction elsewhere in Junior.
+ * the source of truth, matching mailbox restore elsewhere in Junior.
  */
 function toSlackMessage(
   event: MentionEvent | SubscribedMessageEvent,

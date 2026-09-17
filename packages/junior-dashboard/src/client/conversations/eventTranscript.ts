@@ -53,26 +53,6 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   return ids;
 }
 
-const EDITED_MENTION_SUFFIX = ":message_changed_mention";
-
-/** Find original Slack Messages superseded by an edited mention in one Turn. */
-function supersededSlackMessageIds(
-  events: readonly ConversationReportEvent[],
-): Set<string> {
-  const superseded = new Set<string>();
-  for (const event of events) {
-    const data = event.data;
-    if (data.type !== "turn_lifecycle" || data.state !== "started") continue;
-    const inputIds = new Set(data.inputMessageIds ?? []);
-    for (const messageId of inputIds) {
-      if (!messageId.endsWith(EDITED_MENTION_SUFFIX)) continue;
-      const originalId = messageId.slice(0, -EDITED_MENTION_SUFFIX.length);
-      if (inputIds.has(originalId)) superseded.add(originalId);
-    }
-  }
-  return superseded;
-}
-
 function historyMessageIds(
   messages: readonly TranscriptViewMessage[],
 ): Set<string> {
@@ -152,7 +132,6 @@ export function transcriptMessagesFromEvents(
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
-  const supersededMessageIds = supersededSlackMessageIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
@@ -266,10 +245,8 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "turn_lifecycle" && data.state === "started") {
-      const inputMessageIds = data.inputMessageIds ?? [];
-      const inputMessages = inputMessageIds
-        .filter((messageId) => !supersededMessageIds.has(messageId))
-        .map((messageId) => messagesById.get(messageId))
+      const inputMessages = data.inputMessageIds
+        ?.map((messageId) => messagesById.get(messageId))
         .filter((message) => message !== undefined);
       const turnUserMessage = inputMessages
         ?.slice()
@@ -463,12 +440,10 @@ export function transcriptMessagesFromEvents(
   const ordered = messages
     .filter(
       (message) =>
-        !message.messageId ||
-        (!supersededMessageIds.has(message.messageId) &&
-          (message.role !== "user" ||
-            message.eventType !== undefined ||
-            message.explicitMention !== false ||
-            message.context === true)),
+        message.role !== "user" ||
+        message.eventType !== undefined ||
+        message.explicitMention !== false ||
+        message.context === true,
     )
     .sort((left, right) => left.sourceSeq - right.sourceSeq);
   return mergePendingTranscriptMessages(ordered, pendingMessages);
