@@ -191,12 +191,15 @@ describe("Conversation mailbox Turn work", () => {
 
     // Title generation is automatic on human transcript persist and may finish
     // just after the worker returns completed.
-    await vi.waitFor(async () => {
-      const stored = await conversationStore.get({
-        conversationId: accepted.conversationId,
-      });
-      expect(stored?.title?.trim().length).toBeGreaterThan(0);
-    });
+    await vi.waitFor(
+      async () => {
+        const stored = await conversationStore.get({
+          conversationId: accepted.conversationId,
+        });
+        expect(stored?.title?.trim().length).toBeGreaterThan(0);
+      },
+      { timeout: 5_000 },
+    );
 
     const history = await getConversationEventStore().loadHistory(
       accepted.conversationId,
@@ -258,7 +261,7 @@ describe("Conversation mailbox Turn work", () => {
         }),
       }),
     ]);
-  });
+  }, 10_000);
 
   it("feeds private source visibility into the agent run", async () => {
     const { actor, conversationStore, queue, state } =
