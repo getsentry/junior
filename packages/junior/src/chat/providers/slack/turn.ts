@@ -1149,6 +1149,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ? undefined
               : { delivery: deliverAssistantMessage }),
             durability: {
+              inputCheckpointRequired: true,
               onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,

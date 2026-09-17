@@ -7,6 +7,7 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import { AgentHistoryBranchError } from "@/chat/conversations/projection";
 import {
   CooperativeTurnYieldError,
   TurnInputCommitLostError,
@@ -211,11 +212,21 @@ export function createResumeState(args: ResumeStateArgs) {
       messages: PiMessage[],
       trailingMessageProvenance?: ConversationMessageProvenance[],
     ): Promise<boolean> {
-      const persisted = await this.persistSafeBoundary(
-        messages,
-        trailingMessageProvenance,
-        Boolean(args.durability.onInputCommitted),
-      );
+      let persisted: boolean;
+      try {
+        persisted = await this.persistSafeBoundary(
+          messages,
+          trailingMessageProvenance,
+          args.durability.inputCheckpointRequired === true,
+        );
+      } catch (error) {
+        if (!(error instanceof AgentHistoryBranchError)) {
+          throw error;
+        }
+        throw new TurnInputCommitLostError(
+          `Durable turn input conflicts with committed history for conversation=${args.conversationId} turn=${args.turnId}`,
+        );
+      }
       if (!persisted && args.durability.onInputCommitted) {
         throw new TurnInputCommitLostError(
           `Durable turn input could not be checkpointed for conversation=${args.conversationId} turn=${args.turnId}`,
