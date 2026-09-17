@@ -17,7 +17,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
 import { juniorAttachments } from "@/db/schema";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createJuniorSqlFixture } from "../fixtures/sql";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 function createToolState(): ToolState {
@@ -565,7 +565,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("deletes the blob when SQL insert fails after put", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
       // No conversation row: FK on junior_attachments.conversation_id fails.

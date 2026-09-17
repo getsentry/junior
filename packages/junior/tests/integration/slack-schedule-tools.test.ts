@@ -22,8 +22,10 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import type { LocalJuniorSqlFixture } from "../fixtures/sql";
-import { createMigratedJuniorSqlFixture } from "../fixtures/postgres/fixture";
+import {
+  createJuniorSqlFixture,
+  type LocalJuniorSqlFixture,
+} from "../fixtures/sql";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 vi.hoisted(() => {
@@ -35,7 +37,7 @@ let currentFixture: LocalJuniorSqlFixture | undefined;
 let toolCallSequence = 0;
 
 async function useSchedulerSqlPlugin() {
-  const fixture = await createMigratedJuniorSqlFixture();
+  const fixture = await createJuniorSqlFixture();
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
   return fixture;
 }

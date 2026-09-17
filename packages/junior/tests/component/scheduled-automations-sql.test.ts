@@ -18,7 +18,7 @@ import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { deferred } from "../fixtures/conversation-work";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -97,7 +97,7 @@ function copyPreSchedulerCoreMigrations(): string {
 }
 
 async function createLegacySchedulerTables(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
 ): Promise<void> {
   await fixture.sql.execute(`
 CREATE TABLE junior_scheduler_tasks (
@@ -121,7 +121,7 @@ CREATE TABLE junior_scheduler_runs (
 
 describe("scheduled-automation SQL storage", () => {
   it("adopts deployed Scheduler rows into the core schema", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const oldCoreMigrations = copyPreSchedulerCoreMigrations();
 
     try {
@@ -291,7 +291,7 @@ describe("scheduled-automation SQL storage", () => {
   }, 30_000);
 
   it("creates and claims scheduled work from a fresh core database", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -327,7 +327,7 @@ describe("scheduled-automation SQL storage", () => {
   }, 30_000);
 
   it("skips pending runs and stops claiming after a task is deleted", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -369,7 +369,7 @@ describe("scheduled-automation SQL storage", () => {
   }, 30_000);
 
   it("does not overwrite a concurrent task save while skipping missed work", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -430,7 +430,7 @@ describe("scheduled-automation SQL storage", () => {
   }, 30_000);
 
   it("skips malformed rows while claiming later valid work", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);

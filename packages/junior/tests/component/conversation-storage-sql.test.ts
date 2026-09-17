@@ -20,7 +20,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
-  createLocalJuniorSqlFixture,
+  createEmptyJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
@@ -384,7 +384,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("applies Drizzle migrations idempotently", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -400,7 +400,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("assigns sequential seq and fences conflicting appends loudly", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -458,7 +458,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("loads the latest matching structured event directly", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -513,7 +513,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("loads the latest user instruction", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -556,7 +556,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("does not refresh a conversation for duplicate appends", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -623,7 +623,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("deduplicates repeated keys within one append without leaving seq gaps", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const store = createSqlConversationEventStore(fixture.sql);
 
     try {
@@ -681,7 +681,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("persists only the first conflicting terminal turn event", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -725,7 +725,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("replaces NUL characters before persisting conversation events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -751,7 +751,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("returns only the active history version", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -794,7 +794,7 @@ describe("SQL conversation storage", () => {
   }, 15_000);
 
   it("loads exactly the history version containing an event cursor", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -867,7 +867,7 @@ describe("SQL conversation storage", () => {
   });
 
   it("does not decode events after a fixed epoch boundary", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -911,7 +911,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("narrow reads do not decode unrelated or superseded events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -962,7 +962,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("keeps a bounded visible suffix after compacting more than 864 messages", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1034,7 +1034,7 @@ WHERE conversation_id = $1 AND seq = 0
   }, 30_000);
 
   it("round trips provider-neutral isolated subagent history", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1056,7 +1056,7 @@ WHERE conversation_id = $1 AND seq = 0
   });
 
   it("rolls back a failed history replacement transaction", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1113,7 +1113,7 @@ WHERE conversation_id = $1 AND seq = 0
   ])(
     "preserves unsupported stored events as opaque facts %#",
     async ({ schemaVersion, type, payload }) => {
-      const fixture = await createLocalJuniorSqlFixture();
+      const fixture = await createEmptyJuniorSqlFixture();
 
       try {
         await migrateSchema(fixture.sql);
@@ -1157,7 +1157,7 @@ INSERT INTO junior_conversation_events (
   );
 
   it("rejects malformed payloads for supported stored events", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1190,7 +1190,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("uses physical event columns as authoritative when decoding rows", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1237,7 +1237,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("records message and handled facts idempotently", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -1310,7 +1310,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("advances last_activity_at on content writes without regressing on backdated content", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     async function lastActivityMs(): Promise<number> {
       const rows = await fixture.sql
@@ -1388,7 +1388,7 @@ INSERT INTO junior_conversation_events (
   });
 
   it("purges conversation events for a conversation and its descendants", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
