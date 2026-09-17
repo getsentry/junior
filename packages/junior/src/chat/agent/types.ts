@@ -148,8 +148,8 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
-  /** Reject a history branch before the current input enters model execution. */
-  inputCheckpointRequired?: boolean;
+  /** True when the current input has no durable copy yet. */
+  inputNeedsPersistence?: boolean;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;

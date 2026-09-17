@@ -85,8 +85,8 @@ interface TurnCheckpointWrite {
   turnStartMessageIndex?: number;
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
-  /** Reject a conflicting history write instead of treating it as best-effort. */
-  required?: boolean;
+  /** Reject a history branch instead of skipping this progress write. */
+  rejectHistoryBranch?: boolean;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -158,7 +158,7 @@ export async function loadTurnCheckpoint(args: {
  * Save turn progress.
  *
  * - `running` / `paused`: best-effort; returns the stored record or undefined
- * - required `running`: rejects a conflicting history write
+ * - `running` with `rejectHistoryBranch`: rejects a history branch
  * - `completed` / `failed`: retries until write accepts; throws on hard failure
  */
 export function saveTurnCheckpoint(
@@ -222,7 +222,7 @@ async function saveRunning(
   } catch (error) {
     if (
       error instanceof AgentHistoryBranchError &&
-      args.required === true
+      args.rejectHistoryBranch === true
     ) {
       throw error;
     }
