@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
 import type { completeObject } from "@/chat/pi/client";
+import { evaluateQuestions } from "@/chat/pi/evaluate";
 import { GUARDIAN_ACTION_POLICY } from "@/chat/services/guardian-action-policy";
 import { ProviderError } from "@/chat/services/provider-error";
 import type {
@@ -20,6 +21,7 @@ const guardianDecisionSchema = z
 type CompleteObject = typeof completeObject;
 const GUARDIAN_REVIEW_TIMEOUT_MS = 60_000;
 const GUARDIAN_REVIEW_MAX_TOKENS = 2_000;
+const JEV_MODEL_ID = "typesafe-ai/jev";
 const MAX_PROPOSAL_CHARS = 192_000;
 
 /** Serialize one bounded proposal while keeping its contents untrusted. */
@@ -51,6 +53,54 @@ export function createGuardianActionReviewer(options: {
       const signal = reviewOptions?.signal
         ? AbortSignal.any([reviewOptions.signal, timeoutSignal])
         : timeoutSignal;
+      if (options.modelId === JEV_MODEL_ID) {
+        const result = await evaluateQuestions({
+          modelId: options.modelId,
+          state: [GUARDIAN_ACTION_POLICY, guardianPrompt(proposal)].join(
+            "\n\n",
+          ),
+          questions: {
+            decision: {
+              type: "choice",
+              instructions: "Choose the required Guardian decision.",
+              criteria: {
+                allow: "The policy allows the action without confirmation.",
+                ask: "The policy requires explicit user confirmation.",
+                deny: "The policy prohibits the action.",
+              },
+            },
+            riskLevel: {
+              type: "choice",
+              instructions: "Choose the risk level of the planned action.",
+              criteria: {
+                low: "Low impact and easy to reverse.",
+                medium: "Meaningful but limited impact.",
+                high: "Substantial impact or hard to reverse.",
+                critical: "Severe, broad, or irreversible impact.",
+              },
+            },
+            userAuthorization: {
+              type: "choice",
+              instructions:
+                "Choose how clearly the user authorized the planned action.",
+              criteria: {
+                high: "The user explicitly authorized this exact action.",
+                medium: "The user intent supports the action but is not exact.",
+                low: "The action is only weakly implied.",
+                unknown: "The proposal shows no user authorization.",
+              },
+            },
+          },
+          signal,
+        });
+        return guardianDecisionSchema.parse({
+          decision: result.answers.decision.choice,
+          reason: "jev_evaluation",
+          riskLevel: result.answers.riskLevel.choice,
+          userAuthorization: result.answers.userAuthorization.choice,
+        });
+      }
+
       const completeReview = () =>
         options.completeObject({
           modelId: options.modelId,
@@ -87,7 +137,9 @@ export function createGuardianActionReviewer(options: {
       }
       return {
         ...guardianDecisionSchema.parse(result.object),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
   };
