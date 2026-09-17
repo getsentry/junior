@@ -35,10 +35,6 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
 import { stopSlackThread } from "@/chat/slack/thread-stop";
 import {
-  extractMessageChangedMention,
-  isMessageChangedEnvelope,
-} from "@/chat/ingress/message-changed";
-import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
@@ -102,6 +98,8 @@ function slackEventLogContext(
 }
 
 const IGNORED_MESSAGE_SUBTYPES = new Set([
+  // Conversation Messages are immutable once accepted. An edit must not
+  // rewrite input or start another Turn. Send a new Slack Message instead.
   "message_changed",
   "message_deleted",
   "message_replied",
@@ -454,50 +452,6 @@ async function routeParsedMessage(args: {
   });
 }
 
-async function handleMessageChanged(args: {
-  adapter: SlackAdapter;
-  body: unknown;
-  installation: SlackInstallationContext;
-  queue: ConversationWorkQueue;
-  conversationStore?: ConversationStore;
-  receivedAtMs: number;
-  state: StateAdapter;
-}): Promise<boolean> {
-  if (!isMessageChangedEnvelope(args.body)) {
-    return false;
-  }
-  const botUserId = args.adapter.botUserId;
-  if (!botUserId) {
-    // Entry classification requires resolved bot identity; degrading into
-    // silently dropped edited-mention events would hide the outage. Throwing
-    // makes the webhook return a retryable non-2xx so Slack redelivers.
-    throw new Error(
-      "Slack bot identity is unresolved; cannot classify message_changed event",
-    );
-  }
-
-  const result = extractMessageChangedMention(
-    args.body,
-    botUserId,
-    args.adapter,
-  );
-  if (!result || shouldIgnoreMessage(result.message)) {
-    return true;
-  }
-
-  await persistSlackMessage({
-    adapter: args.adapter,
-    installation: args.installation,
-    message: result.message,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    receivedAtMs: args.receivedAtMs,
-    route: "mention",
-    state: args.state,
-  });
-  return true;
-}
-
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -533,20 +487,6 @@ async function handleSlackEvent(args: {
       installation,
       state,
       task: async () => {
-        if (
-          await handleMessageChanged({
-            adapter,
-            body: args.body,
-            installation,
-            conversationStore: args.services.conversationStore,
-            queue: args.services.queue,
-            receivedAtMs,
-            state,
-          })
-        ) {
-          return;
-        }
-
         if (event.type === "assistant_thread_started") {
           const assistantThread = (event as Record<string, unknown>)
             .assistant_thread as

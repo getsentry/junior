@@ -161,7 +161,7 @@ describeEval("Event automation management", slackEvals, (it) => {
         ],
         fail: [
           "Do not create separate tasks for closed and reopened.",
-          "Do not claim a polling schedule, recurring timer, or watch was created.",
+          "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
         ],
       }),
     });
@@ -208,7 +208,7 @@ describeEval("Event automation management", slackEvals, (it) => {
         fail: [
           "Do not narrow the task to one issue number.",
           "Do not create separate tasks for closed and reopened issues.",
-          "Do not claim a polling schedule or watch was created.",
+          "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
         ],
       }),
     });
