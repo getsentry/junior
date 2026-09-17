@@ -16,6 +16,7 @@ type TooltipProps = {
   children: ReactElement;
   className?: string;
   content: ReactNode;
+  focusable?: boolean;
   label?: ReactNode;
   placement?: "above" | "below";
   triggerClassName?: string;
@@ -51,6 +52,7 @@ export function Tooltip({
   children,
   className,
   content,
+  focusable = false,
   label,
   placement = "above",
   triggerClassName,
@@ -121,6 +123,8 @@ export function Tooltip({
       <HoverCard.Trigger
         aria-describedby={open ? tooltipId : undefined}
         asChild
+        onBlur={focusable ? () => setOpen(false) : undefined}
+        onFocus={focusable ? () => setOpen(true) : undefined}
         onPointerCancel={() => {
           touchStartedOpenRef.current = null;
         }}

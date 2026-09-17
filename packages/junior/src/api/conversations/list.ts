@@ -36,6 +36,7 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
+import { readConversationParticipants } from "./participants";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -306,6 +307,7 @@ export async function readConversationFeedFromSql(
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
+    participantsByConversation,
     teamDomainByTeamId,
     conversationWork,
     lastUserMessageAtByConversation,
@@ -326,6 +328,7 @@ export async function readConversationFeedFromSql(
       includeDescendants: true,
     }),
     readRootConversationMetricsFromSql(db, conversationIds),
+    readConversationParticipants(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
         conversation.location?.provider === "slack"
@@ -392,9 +395,15 @@ export async function readConversationFeedFromSql(
       const activityPreview = access?.canViewPrivateContent
         ? activityPreviewByConversation.get(conversation.conversationId)
         : undefined;
+      const participants = access?.canViewPrivateContent
+        ? participantsByConversation.get(conversation.conversationId)
+        : undefined;
       return {
         ...summary,
         ...work,
+        ...(participants && participants.length > 0
+          ? { participants }
+          : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]

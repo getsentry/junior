@@ -23,6 +23,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
+import { readConversationParticipants } from "./participants";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -36,6 +37,7 @@ function projectConversationDetail(args: {
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
+  participants: NonNullable<ConversationDetailReport["participants"]>;
   previousSeq?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -66,6 +68,9 @@ function projectConversationDetail(args: {
     annotations: canExposePayload ? args.annotations : [],
     ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
+    ...(canExposePayload && args.participants.length > 0
+      ? { participants: args.participants }
+      : undefined),
     ...(args.previousSeq !== undefined
       ? {
           previousCursor: encodeConversationCursor({
@@ -109,6 +114,7 @@ async function readConversationDetailFromSql(
     briefVersion,
     modelUsage,
     metricsByRoot,
+    participantsByConversation,
     sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
@@ -128,6 +134,7 @@ async function readConversationDetailFromSql(
       getDb(),
       includeDescendantMetrics ? [conversationId] : [],
     ),
+    readConversationParticipants(getDb(), [conversationId]),
     readConversationSourceTask({
       conversationId,
       ...(options.viewer ? { viewer: options.viewer } : undefined),
@@ -166,6 +173,7 @@ async function readConversationDetailFromSql(
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,
+    participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined

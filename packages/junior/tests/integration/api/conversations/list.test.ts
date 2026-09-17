@@ -752,6 +752,17 @@ describe("conversation list API", () => {
         }),
         conversationId: "slack:C1:shared-thread",
         isParticipant: true,
+        participants: [
+          expect.objectContaining({
+            email: "owner@example.com",
+            slackUserId: "U-OWNER",
+          }),
+          expect.objectContaining({
+            email: "participant@example.com",
+            fullName: "Participant",
+            slackUserId: "U-PARTICIPANT",
+          }),
+        ],
       });
     } finally {
       await fixture.close();

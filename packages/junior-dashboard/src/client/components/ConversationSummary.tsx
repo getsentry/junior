@@ -2,12 +2,14 @@ import { Link } from "react-router";
 
 import {
   conversationDisplayTitle,
-  conversationActorLabel,
   locationPath,
-  peoplePath,
   slackLocationLabel,
 } from "../format";
 import type { Conversation } from "../types";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "./ParticipantAvatarStack";
 
 /** Render the shared conversation title and identity. */
 export function ConversationSummary(props: { conversation: Conversation }) {
@@ -24,8 +26,7 @@ export function ConversationSummary(props: { conversation: Conversation }) {
 }
 
 function ConversationIdentity(props: { conversation: Conversation }) {
-  const email = props.conversation.actorIdentity?.email?.trim();
-  const owner = conversationActorLabel(props.conversation);
+  const participants = conversationParticipants(props.conversation);
   const id = props.conversation.id;
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
@@ -51,19 +52,12 @@ function ConversationIdentity(props: { conversation: Conversation }) {
           {" · "}
         </>
       ) : null}
-      {email ? (
-        <Link
-          className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-          to={peoplePath(email)}
-        >
-          {owner}
-        </Link>
-      ) : owner ? (
-        owner
+      {participants.length > 0 ? (
+        <span className="mr-1 inline-flex align-middle">
+          <ParticipantAvatarStack participants={participants} size="list" />
+        </span>
       ) : null}
-      {owner ? " · " : null}
+      {participants.length > 0 ? " · " : null}
       {id}
     </>
   );
