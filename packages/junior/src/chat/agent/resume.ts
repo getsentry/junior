@@ -181,6 +181,7 @@ export function createResumeState(args: ResumeStateArgs) {
     async persistSafeBoundary(
       messages: PiMessage[],
       trailingMessageProvenance?: ConversationMessageProvenance[],
+      required = false,
     ): Promise<boolean> {
       const saved = await saveTurnCheckpoint({
         mode: "running",
@@ -190,6 +191,7 @@ export function createResumeState(args: ResumeStateArgs) {
         trailingMessageProvenance,
         turnContexts: turnContexts.length > 0 ? turnContexts : undefined,
         turnStartMessageIndex,
+        required,
       });
       if (!saved) {
         return false;
@@ -212,6 +214,7 @@ export function createResumeState(args: ResumeStateArgs) {
       const persisted = await this.persistSafeBoundary(
         messages,
         trailingMessageProvenance,
+        Boolean(args.durability.onInputCommitted),
       );
       if (!persisted && args.durability.onInputCommitted) {
         throw new TurnInputCommitLostError(

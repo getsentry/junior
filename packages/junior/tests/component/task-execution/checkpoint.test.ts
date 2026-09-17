@@ -1604,6 +1604,7 @@ describe("turn checkpoint", () => {
         turnId: "turn-stale-checkpoint",
         sliceId: 1,
         messages: [staleUser],
+        required: true,
       }),
     ).rejects.toThrow("changed before its committed boundary");
   });
