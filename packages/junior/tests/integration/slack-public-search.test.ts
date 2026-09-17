@@ -292,6 +292,36 @@ describe("Slack public search", () => {
     expect(params).not.toHaveProperty("before");
   });
 
+  it("treats null optional arguments as omitted", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: { ok: true, results: { messages: [] } },
+    });
+    const tool = createSlackPublicSearchTool(actionToken);
+    const input = tool.prepareArguments({
+      query: "company announcement",
+      content_types: null,
+      after: null,
+      before: null,
+      cursor: null,
+      limit: null,
+      sort: null,
+      sort_dir: null,
+    });
+
+    await executeTool(tool, input);
+
+    expect(
+      getCapturedSlackApiCalls("assistant.search.context")[0]?.params,
+    ).toEqual({
+      action_token: "action-123",
+      query: "company announcement",
+      channel_types: ["public_channel"],
+      content_types: ["messages"],
+      include_bots: "true",
+      limit: "10",
+    });
+  });
+
   it("reports a missing public-search scope explicitly", async () => {
     queueSlackApiError("assistant.search.context", {
       error: "missing_scope",
