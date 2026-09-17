@@ -2,14 +2,11 @@ import { inject } from "vitest";
 import {
   parsePostgresHarnessConfig,
   createEmptyPostgresDatabase,
-  createPostgresTransactionFixture,
+  getPostgresWorkerDatabaseUrl,
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import type { JuniorSqlExecutor } from "@/db/db";
-import {
-  createClientJuniorSqlExecutor,
-  createPooledJuniorSqlExecutor,
-} from "./executor";
+import { createPooledJuniorSqlExecutor } from "./executor";
 
 export interface JuniorPostgresFixture {
   sql: JuniorSqlExecutor;
@@ -36,15 +33,16 @@ function getHarnessConfig(): PostgresHarnessConfig {
   return parsePostgresHarnessConfig(config);
 }
 
-/** Create a rollback-isolated fixture from the migrated Junior template DB. */
+/** Use the migrated per-worker database that the shared setup truncates per test. */
 export async function createMigratedJuniorSqlFixture(): Promise<JuniorPostgresFixture> {
-  const transaction = await createPostgresTransactionFixture(
-    getHarnessConfig(),
-    ({ client, close }) => createClientJuniorSqlExecutor(client, close),
-  );
+  const config = getHarnessConfig();
+  const pooled = createPooledJuniorSqlExecutor({
+    applicationName: config.applicationName,
+    connectionString: await getPostgresWorkerDatabaseUrl(config),
+  });
   return {
-    sql: transaction.resource,
-    close: () => transaction.close(),
+    sql: pooled.db,
+    close: () => pooled.close(),
   };
 }
 
