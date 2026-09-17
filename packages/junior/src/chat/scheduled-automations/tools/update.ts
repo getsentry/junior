@@ -45,7 +45,7 @@ export function createSlackScheduleUpdateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      'Update a scheduled automation. To move the requester\'s task into this Slack conversation, set destination to "here".',
+      'Update a scheduled automation. Set destination to "here" for this Slack conversation or "channel" for the active channel top level.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -74,10 +74,10 @@ export function createSlackScheduleUpdateAutomationTool(
           )
           .optional(),
         destination: z
-          .literal("here")
+          .enum(["here", "channel"])
           .nullable()
           .describe(
-            'Set to "here" to move the creator\'s task into this Slack conversation. Omit to keep its destination.',
+            'Set to "here" to move the creator\'s task into this Slack conversation, or "channel" to post at the active channel top level. Omit to keep its destination.',
           )
           .optional(),
         credentialMode: z
@@ -112,16 +112,24 @@ export function createSlackScheduleUpdateAutomationTool(
         );
       }
 
-      const moveHere = input.destination === "here";
+      const moveDestination = input.destination != null;
+      const requestedDestination =
+        input.destination === "channel"
+          ? {
+              platform: "slack" as const,
+              teamId: activeDestination.teamId,
+              channelId: activeDestination.channelId,
+            }
+          : activeDestination;
       const alreadyHere = sameDestination(lookup, activeDestination);
       const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
 
-      if (!alreadyHere && !moveHere) {
+      if (!alreadyHere && !moveDestination) {
         throwToolInputError(
           'Scheduled automation can only be managed from the Slack destination where it currently delivers. Set destination to "here" to move it into this conversation.',
         );
       }
-      if (moveHere && !isCreator) {
+      if (moveDestination && !isCreator) {
         throwToolInputError(
           "Only the scheduled automation creator can move this task.",
         );
@@ -139,7 +147,10 @@ export function createSlackScheduleUpdateAutomationTool(
         );
       }
 
-      const changingDestination = moveHere && !alreadyHere;
+      const changingDestination =
+        moveDestination &&
+        (!alreadyHere ||
+          lookup.destination.threadTs !== requestedDestination.threadTs);
       if (changingDestination) {
         const incompleteRuns = await db
           .select({ id: juniorSchedulerRuns.id })
@@ -199,7 +210,7 @@ export function createSlackScheduleUpdateAutomationTool(
         input.instruction !== undefined ? input.instruction : lookup.task.text;
       const instructionChanged = nextInstruction !== lookup.task.text;
       const nextDestination = changingDestination
-        ? activeDestination
+        ? requestedDestination
         : lookup.destination;
       const next: ScheduledAutomation = {
         ...lookup,
@@ -242,7 +253,7 @@ export function createSlackScheduleUpdateAutomationTool(
         else delete next.title;
       }
 
-      // Destination already here with only destination:"here" is a no-op success.
+      // A Destination update that already landed is a no-op success.
       if (
         !changingDestination &&
         !instructionChanged &&
@@ -252,7 +263,7 @@ export function createSlackScheduleUpdateAutomationTool(
           input.credentialMode === null ||
           input.credentialMode === lookup.credentialMode) &&
         input.outcomes === undefined &&
-        moveHere
+        moveDestination
       ) {
         return scheduleAutomationToolResult(lookup, actor.slackUserId);
       }
