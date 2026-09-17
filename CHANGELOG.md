@@ -1,4 +1,14 @@
 # Changelog
+## 0.219.0
+
+### New Features ✨
+
+- (scheduler) Support top-level Slack channel delivery by @sentry-junior in [#1877](https://github.com/getsentry/junior/pull/1877)
+
+### Internal Changes 🔧
+
+- (chat) Wait for async conversation title by @sentry-junior in [#1874](https://github.com/getsentry/junior/pull/1874)
+
 ## 0.218.0
 
 ### New Features ✨
