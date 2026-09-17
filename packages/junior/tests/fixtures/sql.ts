@@ -8,10 +8,13 @@ import {
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
-  createEmptyJuniorSqlFixture,
-  hasJuniorPostgresTestDatabase,
+  createEmptyJuniorSqlFixture as createEmptyPostgresJuniorSqlFixture,
+  createMigratedJuniorSqlFixture,
+  type JuniorPostgresDatabaseFixture,
+  hasJuniorPostgresTestDatabase as hasJuniorPostgresTestDatabaseFixture,
 } from "./postgres/fixture";
 import { closeDb, getSqlExecutor } from "@/chat/db";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
 
@@ -21,23 +24,16 @@ export interface LocalJuniorSqlFixture {
   close(): Promise<void>;
 }
 
-/**
- * Create a local Postgres-compatible Junior SQL fixture for integration tests.
- */
-export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
-  if (hasJuniorPostgresTestDatabase()) {
-    const fixture = await createEmptyJuniorSqlFixture();
-    return {
-      sql: fixture.sql,
-      close: () => fixture.close(),
-    };
-  }
+/** Return whether tests use the shared Postgres harness. */
+export function hasJuniorPostgresTestDatabase(): boolean {
+  return hasJuniorPostgresTestDatabaseFixture();
+}
 
+async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
   const fixture =
     await createLocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>(
       juniorSqlSchema,
     );
-
   const sql: JuniorSqlExecutor = {
     close: () => fixture.close(),
     db: () => fixture.db() as JuniorDatabase,
@@ -49,12 +45,37 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
     withLock: (lockName, callback) => fixture.withLock(lockName, callback),
     withMigrationLock: (_migrationTable, callback) => callback(),
   };
-
   return {
     client: fixture.client,
     sql,
     close: () => fixture.close(),
   };
+}
+
+/** Create an isolated fixture with the current Junior schema. */
+export async function createJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
+  if (hasJuniorPostgresTestDatabase()) {
+    return await createMigratedJuniorSqlFixture();
+  }
+  const fixture = await createPgliteJuniorSqlFixture();
+  await migrateSchema(fixture.sql);
+  return fixture;
+}
+
+/** Create an empty committed database for migration contract tests. */
+export async function createEmptyJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
+  if (hasJuniorPostgresTestDatabase()) {
+    return await createEmptyPostgresJuniorSqlFixture();
+  }
+  return await createPgliteJuniorSqlFixture();
+}
+
+/** Create an empty Postgres database for connection-level migration tests. */
+export async function createEmptyJuniorPostgresFixture(): Promise<JuniorPostgresDatabaseFixture> {
+  if (!hasJuniorPostgresTestDatabase()) {
+    throw new Error("Postgres test database is required");
+  }
+  return await createEmptyPostgresJuniorSqlFixture();
 }
 
 /** Use the product-configured SQL connection for API boundary tests. */

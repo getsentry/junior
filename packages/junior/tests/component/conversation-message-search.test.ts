@@ -6,11 +6,11 @@ import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sq
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation message search", () => {
   it("returns only public user and assistant messages from the authorized workspace", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
