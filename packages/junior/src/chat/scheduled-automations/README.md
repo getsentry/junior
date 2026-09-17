@@ -32,4 +32,6 @@ Cross-channel rehomes stay destination-first and reuse the existing tools:
 2. `slackScheduleListAutomations` with optional `channel_id` / `query` finds the requester's matching task elsewhere in the workspace;
 3. `slackScheduleUpdateAutomation` with `destination: "here"` rehomes that existing task row into the active conversation.
 
+Set `destination: "channel"` on create or update to deliver at the active Slack channel top level instead of the active thread. This removes `threadTs` from the Automation Destination and matching outcomes.
+
 Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.

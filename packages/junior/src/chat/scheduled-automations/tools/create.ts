@@ -47,7 +47,7 @@ export function createSlackScheduleCreateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Create a one-time or recurring Junior task in the active Slack conversation when the user asks Junior to do work later or repeatedly.",
+      'Create a one-time or recurring Junior task in the active Slack conversation. Set destination to "channel" when the user asks for top-level delivery in the active channel.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -65,6 +65,13 @@ export function createSlackScheduleCreateAutomationTool(
         schedule: scheduleIntentSchema.describe(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
+        destination: z
+          .literal("channel")
+          .nullable()
+          .describe(
+            'Set to "channel" to post at the active channel top level. Omit to use this Slack conversation.',
+          )
+          .optional(),
         outcomes: z
           .array(taskOutcomeInputSchema)
           .max(5)
@@ -86,6 +93,7 @@ export function createSlackScheduleCreateAutomationTool(
         instruction: string;
         title?: string | null;
         schedule: z.input<typeof scheduleIntentSchema>;
+        destination?: "channel" | null;
         outcomes?: TaskOutcomeInput[];
         credentialMode?: "creator" | "system" | null;
       };
@@ -103,7 +111,15 @@ export function createSlackScheduleCreateAutomationTool(
     },
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input, options) => {
-      const destination = requireActiveConversation(context);
+      const activeDestination = requireActiveConversation(context);
+      const destination =
+        input.destination === "channel"
+          ? {
+              platform: "slack" as const,
+              teamId: activeDestination.teamId,
+              channelId: activeDestination.channelId,
+            }
+          : activeDestination;
       const actor = requireActor(context, destination);
       const id = buildTaskId({
         actor,

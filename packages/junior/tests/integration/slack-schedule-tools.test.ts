@@ -243,6 +243,47 @@ describe("Slack schedule tools", () => {
     });
   });
 
+  it("creates a top-level channel task from a thread", async () => {
+    const context = createContext({
+      source: createSlackSource({
+        teamId: TEST_TEAM_ID,
+        channelId: "C123",
+        threadTs: "1700000000.000100",
+        visibility: "public",
+      }),
+    });
+    const created = await createTask(context, {
+      title: "Weekly issue digest",
+      destination: "channel",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: "current_conversation",
+        },
+      ],
+    });
+
+    expect(created).toMatchObject({
+      automation: {
+        destination: { channel: "C123", thread: null },
+        outcomes: [
+          {
+            destination: { channel: "C123", thread: null },
+          },
+        ],
+      },
+    });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.toMatchObject({
+      destination: { channelId: "C123" },
+      outcomes: [{ destination: { channelId: "C123" } }],
+    });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.not.toHaveProperty("destination.threadTs");
+  });
+
   it("stores a direct message outcome created from a channel", async () => {
     const created = await createTask(createContext(), {
       outcomes: [
@@ -1661,6 +1702,23 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       automations: [{ id: created.automation.id }],
     });
+
+    const movedToChannel = await executeTool(
+      createSlackScheduleUpdateAutomationTool(publicTarget),
+      { automationId: created.automation.id, destination: "channel" },
+    );
+    expect(movedToChannel).toMatchObject({
+      automation: {
+        destination: { channel: "CTARGET", thread: null },
+        outcomes: [{ destination: { channel: "CTARGET", thread: null } }],
+      },
+    });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.not.toHaveProperty("destination.threadTs");
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.not.toHaveProperty("outcomes.0.destination.threadTs");
 
     const privateTarget = createContext({ channelId: "GPRIVATE" });
     const movedPrivate = await executeTool(
