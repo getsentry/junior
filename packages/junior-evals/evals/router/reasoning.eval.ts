@@ -33,14 +33,14 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     });
   });
 
-  it("when the user asks for thorough drafting, use high reasoning", async ({
+  it("when the user asks for a thorough strategy comparison, use high reasoning", async ({
     run,
   }) => {
     await run({
       expectedProfile: "standard",
       expectedReasoningLevel: "high",
       messageText:
-        "write a thorough launch announcement from these notes: faster search, clearer filters, and a gradual rollout next week",
+        "be thorough: compare a big-bang launch, a customer beta, and a gradual rollout; analyze tradeoffs and risks, then recommend one",
     });
   });
 
