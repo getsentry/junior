@@ -1149,9 +1149,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ? undefined
               : { delivery: deliverAssistantMessage }),
             durability: {
-              // This direct Slack path has no mailbox copy. Store the input
-              // before ack so a failed Run cannot lose it.
-              inputNeedsPersistence: true,
               onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,

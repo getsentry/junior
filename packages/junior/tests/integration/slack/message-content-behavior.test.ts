@@ -6,6 +6,7 @@ import {
   persistThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -553,29 +554,21 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const message = createTestMessage({
-      id: "m-content-active-session-record",
-      text: "<@U0APP> continue",
-      isMention: true,
-      threadId: thread.id,
-      author: { userId: "U0TESTER" },
-    });
-    await slackRuntime.handleNewMention(thread, message, {
-      destination: createTestDestination(thread),
-    });
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "m-content-active-session-record",
+          text: "<@U0APP> continue",
+          isMention: true,
+          threadId: thread.id,
+          author: { userId: "U0TESTER" },
+        }),
+        { destination: createTestDestination(thread) },
+      ),
+    ).rejects.toBeInstanceOf(TurnInputCommitLostError);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.piMessages).toEqual(activeMessages);
-    const lifecycle = (
-      await getConversationEventStore().loadHistory(thread.id)
-    ).filter(
-      (event) =>
-        event.data.type === "turn_started" ||
-        event.data.type === "turn_failed",
-    );
-    expect(lifecycle.map((event) => event.data.type)).toEqual([
-      "turn_started",
-      "turn_failed",
-    ]);
   });
 });

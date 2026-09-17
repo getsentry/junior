@@ -85,8 +85,6 @@ interface TurnCheckpointWrite {
   turnStartMessageIndex?: number;
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
-  /** Reject a history branch instead of skipping this progress write. */
-  rejectHistoryBranch?: boolean;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -158,7 +156,6 @@ export async function loadTurnCheckpoint(args: {
  * Save turn progress.
  *
  * - `running` / `paused`: best-effort; returns the stored record or undefined
- * - `running` with `rejectHistoryBranch`: rejects a history branch
  * - `completed` / `failed`: retries until write accepts; throws on hard failure
  */
 export function saveTurnCheckpoint(
@@ -220,20 +217,14 @@ async function saveRunning(
       state: "running",
     });
   } catch (error) {
-    if (
-      error instanceof AgentHistoryBranchError &&
-      args.rejectHistoryBranch === true
-    ) {
-      throw error;
+    // Quiet only branch races on best-effort running checkpoints.
+    if (!(error instanceof AgentHistoryBranchError)) {
+      logException(error, "agent.turn.checkpoint.running.failed", {
+        "app.ai.resume_conversation_id": args.conversationId,
+        "app.ai.resume_session_id": args.turnId,
+        "app.ai.resume_slice_id": args.sliceId,
+      });
     }
-    if (error instanceof AgentHistoryBranchError) {
-      return undefined;
-    }
-    logException(error, "agent.turn.checkpoint.running.failed", {
-      "app.ai.resume_conversation_id": args.conversationId,
-      "app.ai.resume_session_id": args.turnId,
-      "app.ai.resume_slice_id": args.sliceId,
-    });
     return undefined;
   }
 }
