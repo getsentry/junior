@@ -76,13 +76,13 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("openai/gpt-5.6-luna");
   });
 
-  it("uses Luna for Guardian when no override is configured", async () => {
+  it("uses Jev for Guardian when no override is configured", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
     delete process.env.AI_GUARDIAN_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.guardianModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.guardianModelId).toBe("typesafe-ai/jev");
   });
 
   it("uses the configured Guardian model override", async () => {

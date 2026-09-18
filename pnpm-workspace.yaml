@@ -34,6 +34,11 @@ syncInjectedDepsAfterScripts:
   - build
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
+  # Temporary exception for the Jev evaluation model spike.
+  - "ai@7.0.105"
+  - "@ai-sdk/gateway@4.0.85"
+  - "@ai-sdk/provider@4.0.17"
+  - "@ai-sdk/provider-utils@5.0.43"
   - "@sentry/starlight-theme"
   - "@vitest-evals/core@0.16.1"
   - "@vitest-evals/report-ui@0.16.1"

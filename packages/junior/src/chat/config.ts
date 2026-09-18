@@ -242,10 +242,7 @@ const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-luna",
 ).id;
-const DEFAULT_GUARDIAN_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-luna",
-).id;
+const DEFAULT_GUARDIAN_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_HANDOFF_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-sol",
