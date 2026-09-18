@@ -32,6 +32,11 @@ export interface SlackThreadReply {
   type?: string;
   files?: SlackFileRef[];
   attachments?: unknown[];
+  reactions?: Array<{
+    name?: string;
+    count?: number;
+    users?: string[];
+  }>;
 }
 
 /** List channel history using Slack-native, pre-validated timestamp bounds. */

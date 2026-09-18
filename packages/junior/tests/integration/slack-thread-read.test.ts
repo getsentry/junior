@@ -171,6 +171,13 @@ describe("slackThreadRead", () => {
             thread_ts: "1700000000.500000",
             user: "U1",
             text: "standalone message",
+            reactions: [
+              {
+                name: "raised_hands",
+                count: 2,
+                users: ["U2", "U3"],
+              },
+            ],
           },
         ],
       }),
@@ -180,13 +187,27 @@ describe("slackThreadRead", () => {
     const result = await executeTool(tool, {
       channel_id: "C0MANUAL",
       ts: "1700000000.500000",
+      url: null,
+      limit: null,
+      max_pages: null,
     });
 
     expect(result).toMatchObject({
       channel_id: "C0MANUAL",
       count: 1,
+      messages: [
+        {
+          text: "standalone message",
+          reactions: [
+            {
+              name: "raised_hands",
+              count: 2,
+              users: ["U2", "U3"],
+            },
+          ],
+        },
+      ],
     });
-    expect(result.messages[0].text).toBe("standalone message");
   });
 
   it("allows reading a private channel when it matches the current channel", async () => {

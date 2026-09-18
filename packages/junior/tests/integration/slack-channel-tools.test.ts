@@ -193,9 +193,12 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
+      channel_id: null,
       limit: 150,
+      cursor: null,
       oldest: "1690000000.000",
       latest: "1710000000",
+      inclusive: null,
       max_pages: 3,
     });
 
