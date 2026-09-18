@@ -3,10 +3,17 @@ import { logWarn } from "@/chat/logging";
 import {
   decideSubscribedThreadReply,
   type SubscribedDecisionInput,
+  type SubscribedReplyClassification,
+  type RouterEvidence,
 } from "@/chat/services/subscribed-decision";
 import type { completeObject } from "@/chat/pi/client";
 
 export interface SubscribedReplyPolicyDeps {
+  classifyReply?: (args: {
+    botUserName: string;
+    evidence: RouterEvidence;
+    latestMessage: string;
+  }) => Promise<SubscribedReplyClassification>;
   completeObject: typeof completeObject;
 }
 
@@ -29,6 +36,7 @@ export function createSubscribedReplyPolicy(
       botUserName: botConfig.userName,
       modelId: botConfig.fastModelId,
       input: args,
+      classifyReply: deps.classifyReply,
       completeObject: deps.completeObject,
       logClassifierFailure: (error) => {
         logWarn("subscribed_message.classifier.failed", {
@@ -42,7 +50,9 @@ export function createSubscribedReplyPolicy(
       ? `${decision.reason}:${decision.reasonDetail}`
       : decision.reason;
     return {
-      ...(decision.costUsd !== undefined ? { costUsd: decision.costUsd } : undefined),
+      ...(decision.costUsd !== undefined
+        ? { costUsd: decision.costUsd }
+        : undefined),
       shouldReply: decision.shouldReply,
       shouldUnsubscribe: decision.shouldUnsubscribe,
       reason,
