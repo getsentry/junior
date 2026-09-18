@@ -69,6 +69,15 @@ function sanitizeMessage(
     subtype: msg.subtype,
     bot_id: msg.bot_id,
     type: msg.type,
+    ...(msg.reactions?.length
+      ? {
+          reactions: msg.reactions.map((reaction) => ({
+            name: reaction.name,
+            count: reaction.count,
+            users: reaction.users,
+          })),
+        }
+      : undefined),
     ...(attachmentText ? { attachment_text: attachmentText } : undefined),
     ...(files.length
       ? {
@@ -119,7 +128,7 @@ export function createSlackThreadReadTool(
 ) {
   return zodTool({
     description:
-      "Read a Slack thread from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
+      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -127,17 +136,25 @@ export function createSlackThreadReadTool(
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      url: z.string().min(1).describe("Slack message archive URL.").optional(),
-      channel_id: slackChannelRefParam.optional(),
+      url: z
+        .string()
+        .min(1)
+        .describe("Slack message archive URL.")
+        .nullable()
+        .optional(),
+      channel_id: slackChannelRefParam.nullable().optional(),
       ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(1000)
         .describe("Maximum number of thread messages to fetch.")
+        .nullable()
         .optional(),
       max_pages: z.coerce
         .number()
@@ -145,6 +162,7 @@ export function createSlackThreadReadTool(
         .min(1)
         .max(10)
         .describe("Maximum number of Slack API pages to traverse.")
+        .nullable()
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
@@ -197,7 +215,7 @@ export function createSlackThreadReadTool(
           channelId,
           threadTs: lookupTs,
           limit: limit ?? 1000,
-          maxPages: max_pages,
+          maxPages: max_pages ?? undefined,
         });
 
       let replies: SlackThreadReply[] | undefined;

@@ -2,6 +2,12 @@ import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 
+export interface SlackReaction {
+  name?: string;
+  count?: number;
+  users?: string[];
+}
+
 export interface SlackChannelMessage {
   ts?: string;
   user?: string;
@@ -11,6 +17,7 @@ export interface SlackChannelMessage {
   bot_id?: string;
   type?: string;
   attachments?: unknown[];
+  reactions?: SlackReaction[];
 }
 
 export interface SlackFileRef {
@@ -32,6 +39,7 @@ export interface SlackThreadReply {
   type?: string;
   files?: SlackFileRef[];
   attachments?: unknown[];
+  reactions?: SlackReaction[];
 }
 
 /** List channel history using Slack-native, pre-validated timestamp bounds. */
