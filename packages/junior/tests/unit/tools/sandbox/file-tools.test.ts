@@ -416,6 +416,24 @@ describe("sandbox file tools", () => {
       message: "Invalid glob: {foo,{bar,baz}}",
     });
 
+    const literalNewline: SandboxCommandRunner = async () => ({
+      exitCode: 2,
+      stderr: 'rg: the literal "\\n" is not allowed in a regex',
+      stdout: "",
+    });
+
+    await expect(
+      grepFiles({
+        fs: memory.fs,
+        path: "src",
+        pattern: "foo\nbar",
+        runCommand: literalNewline,
+      }),
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: "Invalid regex pattern: foo\nbar",
+    });
+
     const lifecycleFailure = new Error("sandbox_stopped");
     await expect(
       findFiles({
