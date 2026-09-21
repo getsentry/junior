@@ -1,4 +1,8 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import {
+  slackDestinationSchema,
+  taskOutcomeSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -17,6 +21,9 @@ const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const retainedScheduledAutomationSchema = scheduledAutomationSchema
   .omit({ creatorIdentityId: true, title: true })
   .extend({
+    // Retained rows can predate the channel-only Destination invariant.
+    destination: slackDestinationSchema,
+    outcomes: z.array(taskOutcomeSchema).max(5),
     // TODO(dcramer): Remove paused decoding and SQL list filtering after
     // v0.129.x workers are unsupported and cannot overlap an upgrade.
     status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
@@ -53,7 +60,24 @@ export function parseScheduledAutomationRow(
       : retained;
   const parsed = retainedScheduledAutomationSchema.safeParse(current);
   if (!parsed.success) return undefined;
-  const { status, version: _version, ...task } = parsed.data;
+  const { status, version: _version, ...retainedTask } = parsed.data;
+  const destination = {
+    platform: "slack" as const,
+    teamId: retainedTask.destination.teamId,
+    channelId: retainedTask.destination.channelId,
+  };
+  const task = {
+    ...retainedTask,
+    destination,
+    outcomes: retainedTask.outcomes.map((outcome) => ({
+      ...outcome,
+      destination: {
+        platform: "slack" as const,
+        teamId: outcome.destination.teamId,
+        channelId: outcome.destination.channelId,
+      },
+    })),
+  };
   // The indexed identity remains authoritative while older workers may rewrite JSON.
   const fallbackIdentity =
     row.creatorIdentityId === null

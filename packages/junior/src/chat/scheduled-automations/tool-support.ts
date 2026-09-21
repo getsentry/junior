@@ -115,8 +115,8 @@ export function throwToolInputError(error: string): never {
   throw new ToolInputError(error);
 }
 
-/** Require scheduler mutations to stay scoped to the active Slack conversation. */
-export function requireActiveConversation(
+/** Resolve the active Slack channel for scheduled automation operations. */
+export function requireActiveChannel(
   context: SchedulerToolContext,
 ): SlackDestination {
   const parsed = sourceSchema.safeParse(context.source);
@@ -148,7 +148,6 @@ export function requireActiveConversation(
     platform: "slack",
     teamId: parsed.data.teamId,
     channelId: parsed.data.channelId,
-    threadTs: parsed.data.threadTs ?? parsed.data.messageTs,
   };
 }
 
@@ -203,7 +202,7 @@ export function getConversationAccess(
   };
 }
 
-/** Keep scheduler management operations bound to the task's current Slack destination. */
+/** Keep scheduler management operations bound to the task's current Slack channel. */
 export function sameDestination(
   task: ScheduledAutomation,
   destination: SlackDestination,
@@ -221,7 +220,7 @@ export async function getWritableTask(args: {
   context: SchedulerToolContext;
   taskId: string;
 }): Promise<ScheduledAutomation> {
-  const destination = requireActiveConversation(args.context);
+  const destination = requireActiveChannel(args.context);
 
   const task = await readScheduledAutomation(getDb(), args.taskId);
   if (!task || task.status === "deleted") {
@@ -270,7 +269,7 @@ export function compactTask(
       : null,
     destination: {
       channel: task.destination.channelId,
-      thread: task.destination.threadTs ?? null,
+      thread: null,
     },
     conversationAccess: task.conversationAccess,
     credentialMode: task.credentialMode,

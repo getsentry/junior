@@ -2,7 +2,6 @@
 import {
   actorUserIdSchema,
   slackDestinationSchema,
-  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -71,6 +70,18 @@ const scheduledAutomationExecutionActorSchema = z
   })
   .strict();
 
+/** Scheduled automations target a Slack conversation, never one message thread. */
+const scheduledAutomationDestinationSchema = slackDestinationSchema.omit({
+  threadTs: true,
+});
+
+const scheduledAutomationOutcomeSchema = z
+  .object({
+    action: z.literal("send_message"),
+    destination: scheduledAutomationDestinationSchema,
+  })
+  .strict();
+
 /** Validate the current scheduled-automation domain shape. */
 export const scheduledAutomationSchema = z
   .object({
@@ -87,7 +98,7 @@ export const scheduledAutomationSchema = z
     creatorIdentityId: z.string(),
     /** Selects system credentials or task-bound creator credential delegation. */
     credentialMode: scheduledAutomationCredentialModeSchema,
-    destination: slackDestinationSchema,
+    destination: scheduledAutomationDestinationSchema,
     executionActor: scheduledAutomationExecutionActorSchema.optional(),
     lastRunAtMs: z.number().optional(),
     nextRunAtMs: z.number().optional(),
@@ -97,7 +108,7 @@ export const scheduledAutomationSchema = z
     status: scheduledAutomationStatusSchema,
     statusReason: z.string().optional(),
     /** Explicit visible effects after successful work. An empty list is silent. */
-    outcomes: z.array(taskOutcomeSchema).max(5),
+    outcomes: z.array(scheduledAutomationOutcomeSchema).max(5),
     task: z.object({ text: z.string() }).strict(),
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),

@@ -23,7 +23,7 @@ import {
   getConversationAccess,
   getDefaultScheduleTimezone,
   normalizeStatus,
-  requireActiveConversation,
+  requireActiveChannel,
   requireActor,
   sameDestination,
   scheduleAutomationToolResult,
@@ -45,7 +45,7 @@ export function createSlackScheduleUpdateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      'Update a scheduled automation. Set destination to "here" for this Slack conversation or "channel" for the active channel top level.',
+      'Update a scheduled automation. Set destination to "here" to move it to the active Slack channel.',
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -74,10 +74,10 @@ export function createSlackScheduleUpdateAutomationTool(
           )
           .optional(),
         destination: z
-          .enum(["here", "channel"])
+          .literal("here")
           .nullable()
           .describe(
-            'Set to "here" to move the creator\'s task into this Slack conversation, or "channel" to post at the active channel top level. Omit to keep its destination.',
+            'Set to "here" to move the creator\'s task into the active Slack channel. Omit to keep its destination.',
           )
           .optional(),
         credentialMode: z
@@ -91,7 +91,7 @@ export function createSlackScheduleUpdateAutomationTool(
       .strict(),
     outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input) => {
-      const activeDestination = requireActiveConversation(context);
+      const activeDestination = requireActiveChannel(context);
       const actor = requireActor(context, activeDestination);
       const db = getDb();
       const lookup = await readScheduledAutomation(db, input.automationId);
@@ -113,14 +113,7 @@ export function createSlackScheduleUpdateAutomationTool(
       }
 
       const moveDestination = input.destination != null;
-      const requestedDestination =
-        input.destination === "channel"
-          ? {
-              platform: "slack" as const,
-              teamId: activeDestination.teamId,
-              channelId: activeDestination.channelId,
-            }
-          : activeDestination;
+      const requestedDestination = activeDestination;
       const alreadyHere = sameDestination(lookup, activeDestination);
       const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
 
@@ -147,10 +140,7 @@ export function createSlackScheduleUpdateAutomationTool(
         );
       }
 
-      const changingDestination =
-        moveDestination &&
-        (!alreadyHere ||
-          lookup.destination.threadTs !== requestedDestination.threadTs);
+      const changingDestination = moveDestination && !alreadyHere;
       if (changingDestination) {
         const incompleteRuns = await db
           .select({ id: juniorSchedulerRuns.id })
