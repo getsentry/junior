@@ -1,5 +1,8 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
-import { slackDestinationSchema } from "@sentry/junior-plugin-api";
+import {
+  slackDestinationSchema,
+  taskOutcomeSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -21,6 +24,7 @@ const retainedScheduledAutomationSchema = scheduledAutomationSchema
   .extend({
     // Retained rows can predate the channel-only Destination invariant.
     destination: slackDestinationSchema,
+    outcomes: z.array(taskOutcomeSchema).max(5),
     // TODO(dcramer): Remove paused decoding and SQL list filtering after
     // v0.129.x workers are unsupported and cannot overlap an upgrade.
     status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
