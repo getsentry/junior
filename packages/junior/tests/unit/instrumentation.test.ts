@@ -80,12 +80,17 @@ describe("initSentry", () => {
     expect(options?.beforeSendSpan).toEqual(expect.any(Function));
     expect(options?.beforeSendSpan?._streamed).toBe(true);
     expect(options?.beforeSendTransaction).toEqual(expect.any(Function));
-    expect(options?.integrations?.[0]).toMatchObject({
-      options: {
-        recordInputs: true,
-        recordOutputs: true,
-      },
-    });
+    expect(options?.integrations).toEqual(expect.any(Function));
+    const defaultIntegration = { name: "default" };
+    expect(options?.integrations?.([defaultIntegration])).toEqual([
+      defaultIntegration,
+      expect.objectContaining({
+        options: {
+          recordInputs: true,
+          recordOutputs: true,
+        },
+      }),
+    ]);
     const span: {
       attributes: Record<string, unknown>;
       end_timestamp: number;

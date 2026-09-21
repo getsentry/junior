@@ -68,12 +68,6 @@ export async function commitAssistantMessage(args: {
       }),
     );
   } catch (error) {
-    logException(
-      new Error("Assistant message persistence failed"),
-      "conversation.assistant.message_persist.failed",
-      {
-        "error.type": error instanceof Error ? error.name : typeof error,
-      },
-    );
+    logException(error, "conversation.assistant.message_persist.failed");
   }
 }
