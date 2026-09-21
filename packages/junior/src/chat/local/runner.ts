@@ -291,9 +291,10 @@ async function runLocalAgentTurnInContext(
       );
     } catch (error) {
       logException(
-        new Error("Accepted assistant message persistence failed"),
+        new Error("Accepted assistant message persistence failed", {
+          cause: error,
+        }),
         "local.assistant.message_post_delivery_persist.failed",
-        { "error.type": error instanceof Error ? error.name : typeof error },
       );
     }
     failureCode = "agent_run_failed";

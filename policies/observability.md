@@ -41,6 +41,9 @@ contract. It should not drive mocks or assertions outside instrumentation tests.
   provider, and sandbox session IDs when they are relevant and safe.
 - Do not encode identifiers or user-controlled values into span operation names.
 - Set error status and capture exceptions at the edge that owns the failure.
+- Preserve `Error.cause` when adding domain context. Captured exceptions must
+  include the bounded cause chain, including safe error types, messages, codes,
+  and stack traces. Do not replace a caught error with an unrelated error.
 
 ## Emission
 
