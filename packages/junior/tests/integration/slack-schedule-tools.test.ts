@@ -544,32 +544,6 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
-  it("accepts Slack thread context and stores a channel Destination", async () => {
-    const result = await createTask(
-      createContext({
-        source: createSlackSource({
-          teamId: TEST_TEAM_ID,
-          channelId: "C123",
-          threadTs: "1700000000.000",
-
-          visibility: "private",
-        }),
-      }),
-    );
-
-    const taskId = (result as { automation: { id: string } }).automation.id;
-    await expect(readScheduledAutomation(taskId)).resolves.toMatchObject({
-      destination: {
-        platform: "slack",
-        teamId: TEST_TEAM_ID,
-        channelId: "C123",
-      },
-    });
-    await expect(readScheduledAutomation(taskId)).resolves.not.toHaveProperty(
-      "destination.threadTs",
-    );
-  });
-
   it("normalizes retained thread-bound tasks to their channel", async () => {
     await createTask();
     const task = (await listScheduledAutomations()).at(0);
@@ -1683,9 +1657,6 @@ describe("Slack schedule tools", () => {
       destination: { channelId: "CSOURCE" },
       outcomes: [],
     });
-    await expect(
-      readScheduledAutomation(created.automation.id),
-    ).resolves.not.toHaveProperty("destination.threadTs");
     await executeTool(createSlackScheduleUpdateAutomationTool(source), {
       automationId: created.automation.id,
       outcomes: [

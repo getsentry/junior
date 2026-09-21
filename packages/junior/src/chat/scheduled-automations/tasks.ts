@@ -10,7 +10,6 @@ import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
 } from "@/db/schema/scheduled-automations";
-import { moveTaskOutcomes } from "@/chat/task-outcomes";
 import {
   scheduledRunSchema,
   scheduledAutomationSchema,
@@ -70,11 +69,14 @@ export function parseScheduledAutomationRow(
   const task = {
     ...retainedTask,
     destination,
-    outcomes: moveTaskOutcomes(
-      retainedTask.outcomes,
-      retainedTask.destination,
-      destination,
-    ),
+    outcomes: retainedTask.outcomes.map((outcome) => ({
+      ...outcome,
+      destination: {
+        platform: "slack" as const,
+        teamId: outcome.destination.teamId,
+        channelId: outcome.destination.channelId,
+      },
+    })),
   };
   // The indexed identity remains authoritative while older workers may rewrite JSON.
   const fallbackIdentity =
