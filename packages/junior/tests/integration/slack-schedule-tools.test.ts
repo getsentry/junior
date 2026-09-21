@@ -11,6 +11,7 @@ import { claimDueScheduledRun } from "@/chat/scheduled-automations/runs";
 import {
   listScheduledAutomations as listStoredTasks,
   listScheduledAutomationsForTeam as listStoredTasksForTeam,
+  parseScheduledAutomationRow,
   readScheduledAutomation as readStoredTask,
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
@@ -214,6 +215,7 @@ describe("Slack schedule tools", () => {
     expect(schema.required).toContain("schedule");
     expect(schema.properties).not.toHaveProperty("nextRunAt");
     expect(schema.properties).not.toHaveProperty("schedule_kind");
+    expect(schema.properties).not.toHaveProperty("destination");
     expect(
       (updateTool.inputSchema as { properties?: Record<string, unknown> })
         .properties,
@@ -241,7 +243,7 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("creates a top-level channel task from a thread", async () => {
+  it("creates a channel task from a thread", async () => {
     const context = createContext({
       source: createSlackSource({
         teamId: TEST_TEAM_ID,
@@ -252,7 +254,6 @@ describe("Slack schedule tools", () => {
     });
     const created = await createTask(context, {
       title: "Weekly issue digest",
-      destination: "channel",
       outcomes: [
         {
           action: "send_message",
@@ -543,7 +544,7 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
-  it("accepts Slack source message context and stores canonical task destinations", async () => {
+  it("accepts Slack thread context and stores a channel Destination", async () => {
     const result = await createTask(
       createContext({
         source: createSlackSource({
@@ -562,9 +563,41 @@ describe("Slack schedule tools", () => {
         platform: "slack",
         teamId: TEST_TEAM_ID,
         channelId: "C123",
-        threadTs: "1700000000.000",
       },
     });
+    await expect(readScheduledAutomation(taskId)).resolves.not.toHaveProperty(
+      "destination.threadTs",
+    );
+  });
+
+  it("normalizes retained thread-bound tasks to their channel", async () => {
+    await createTask();
+    const task = (await listScheduledAutomations()).at(0);
+    if (!task) {
+      throw new Error("Expected scheduled automation to be created");
+    }
+    const { title: _title, ...record } = task;
+    const legacyDestination = {
+      ...task.destination,
+      threadTs: "1700000000.000100",
+    };
+
+    const parsed = parseScheduledAutomationRow({
+      creatorIdentityId: task.creatorIdentityId,
+      title: task.title ?? null,
+      record: {
+        ...record,
+        destination: legacyDestination,
+        outcomes: [{ action: "send_message", destination: legacyDestination }],
+      },
+    });
+
+    expect(parsed).toMatchObject({
+      destination: { channelId: "C123" },
+      outcomes: [{ destination: { channelId: "C123" } }],
+    });
+    expect(parsed).not.toHaveProperty("destination.threadTs");
+    expect(parsed).not.toHaveProperty("outcomes.0.destination.threadTs");
   });
 
   it("rejects invalid scheduled automation routing context at the store boundary", async () => {
@@ -588,6 +621,17 @@ describe("Slack schedule tools", () => {
     await expect(
       readScheduledAutomation("sched_bad_destination"),
     ).resolves.toBe(undefined);
+
+    await expect(
+      saveScheduledAutomation(schedulerDb(), {
+        ...task,
+        id: "sched_thread_destination",
+        destination: {
+          ...task.destination,
+          threadTs: "1700000000.000100",
+        } as ScheduledAutomation["destination"],
+      }),
+    ).rejects.toThrow("Scheduled automation routing context is invalid.");
 
     await expect(
       saveScheduledAutomation(schedulerDb(), {
@@ -1636,9 +1680,12 @@ describe("Slack schedule tools", () => {
     await expect(
       readScheduledAutomation(created.automation.id),
     ).resolves.toMatchObject({
-      destination: { threadTs: "1700000000.000100" },
+      destination: { channelId: "CSOURCE" },
       outcomes: [],
     });
+    await expect(
+      readScheduledAutomation(created.automation.id),
+    ).resolves.not.toHaveProperty("destination.threadTs");
     await executeTool(createSlackScheduleUpdateAutomationTool(source), {
       automationId: created.automation.id,
       outcomes: [
@@ -1676,20 +1723,11 @@ describe("Slack schedule tools", () => {
         },
       },
     });
-    // Moving into a new conversation drops the old channel's thread and
-    // rebinds to the new one; a stale timestamp does not carry over.
     await expect(
       readScheduledAutomation(created.automation.id),
     ).resolves.toMatchObject({
-      destination: { threadTs: "1700000000.000200" },
-      outcomes: [
-        {
-          destination: {
-            channelId: "CTARGET",
-            threadTs: "1700000000.000200",
-          },
-        },
-      ],
+      destination: { channelId: "CTARGET" },
+      outcomes: [{ destination: { channelId: "CTARGET" } }],
     });
 
     await expect(
@@ -1700,23 +1738,6 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       automations: [{ id: created.automation.id }],
     });
-
-    const movedToChannel = await executeTool(
-      createSlackScheduleUpdateAutomationTool(publicTarget),
-      { automationId: created.automation.id, destination: "channel" },
-    );
-    expect(movedToChannel).toMatchObject({
-      automation: {
-        destination: { channel: "CTARGET", thread: null },
-        outcomes: [{ destination: { channel: "CTARGET", thread: null } }],
-      },
-    });
-    await expect(
-      readScheduledAutomation(created.automation.id),
-    ).resolves.not.toHaveProperty("destination.threadTs");
-    await expect(
-      readScheduledAutomation(created.automation.id),
-    ).resolves.not.toHaveProperty("outcomes.0.destination.threadTs");
 
     const privateTarget = createContext({ channelId: "GPRIVATE" });
     const movedPrivate = await executeTool(

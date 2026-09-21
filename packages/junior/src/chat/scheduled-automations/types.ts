@@ -71,6 +71,11 @@ const scheduledAutomationExecutionActorSchema = z
   })
   .strict();
 
+/** Scheduled automations target a Slack conversation, never one message thread. */
+const scheduledAutomationDestinationSchema = slackDestinationSchema.omit({
+  threadTs: true,
+});
+
 /** Validate the current scheduled-automation domain shape. */
 export const scheduledAutomationSchema = z
   .object({
@@ -87,7 +92,7 @@ export const scheduledAutomationSchema = z
     creatorIdentityId: z.string(),
     /** Selects system credentials or task-bound creator credential delegation. */
     credentialMode: scheduledAutomationCredentialModeSchema,
-    destination: slackDestinationSchema,
+    destination: scheduledAutomationDestinationSchema,
     executionActor: scheduledAutomationExecutionActorSchema.optional(),
     lastRunAtMs: z.number().optional(),
     nextRunAtMs: z.number().optional(),

@@ -10,7 +10,7 @@ import type { ScheduledAutomation } from "../types";
 import {
   compactTask,
   MAX_LISTED_TASKS,
-  requireActiveConversation,
+  requireActiveChannel,
   requireActor,
   sameDestination,
   scheduleListToolResult,
@@ -62,7 +62,7 @@ export function createSlackScheduleListAutomationsTool(
       .strict(),
     outputSchema: scheduleListToolResultSchema,
     execute: async (input) => {
-      const destination = requireActiveConversation(context);
+      const destination = requireActiveChannel(context);
       const actor = requireActor(context, destination);
 
       let channelId: string | undefined;
