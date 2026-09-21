@@ -1,4 +1,22 @@
 # Changelog
+## 0.221.0
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Preserve thread reaction users by @sentry-junior in [#1884](https://github.com/getsentry/junior/pull/1884)
+- Treat null search arguments as omitted by @sentry-junior in [#1880](https://github.com/getsentry/junior/pull/1880)
+
+#### Other
+
+- (scheduler) Keep scheduled tasks out of threads by @sentry-junior in [#1888](https://github.com/getsentry/junior/pull/1888)
+- (telemetry) Preserve exception causes by @sentry-junior in [#1887](https://github.com/getsentry/junior/pull/1887)
+
+### Internal Changes 🔧
+
+- (guardian) Cover scoped Linear automations by @sentry-junior in [#1881](https://github.com/getsentry/junior/pull/1881)
+
 ## 0.220.0
 
 ### New Features ✨
