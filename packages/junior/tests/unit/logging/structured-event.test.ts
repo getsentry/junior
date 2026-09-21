@@ -14,20 +14,8 @@ async function loadLoggingModule() {
       span_id: "span-123",
       trace_id: "trace-123",
     }),
-    withScope: (
-      callback: (scope: {
-        setContext: () => void;
-        setExtra: () => void;
-        setTag: () => void;
-        setUser: () => void;
-      }) => void,
-    ) =>
-      callback({
-        setContext() {},
-        setExtra() {},
-        setTag() {},
-        setUser() {},
-      }),
+    withScope: (callback: (scope: { setExtra: () => void }) => void) =>
+      callback({ setExtra() {} }),
   }));
   return await import("@/chat/logging");
 }
@@ -77,40 +65,6 @@ describe("structured log events", () => {
         }),
       }),
     ]);
-  });
-
-  it("records a bounded and redacted exception cause chain", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { logException, registerLogRecordSink } = await loadLoggingModule();
-    const records: EmittedLogRecord[] = [];
-    const unregister = registerLogRecordSink((record) => records.push(record));
-    const databaseError = Object.assign(
-      new Error(
-        "column status does not exist for Bearer abcdefghijklmnopqrstuvwxyz",
-      ),
-      { code: "42703" },
-    );
-
-    try {
-      logException(
-        new Error("Failed query", { cause: databaseError }),
-        "database.query.exception",
-      );
-    } finally {
-      unregister();
-    }
-
-    expect(records[0]?.attributes).toEqual(
-      expect.objectContaining({
-        "app.error.cause_chain.codes": ["0:42703"],
-        "app.error.cause_chain.messages": [
-          "0:column status does not exist for Bearer abcd...wxyz",
-        ],
-        "app.error.cause_chain.truncated": false,
-        "app.error.cause_chain.types": ["0:Error"],
-        "exception.message": "Failed query",
-      }),
-    );
   });
 
   it("rejects non-namespaced application event names", async () => {

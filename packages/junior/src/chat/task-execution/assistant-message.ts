@@ -68,9 +68,6 @@ export async function commitAssistantMessage(args: {
       }),
     );
   } catch (error) {
-    logException(
-      new Error("Assistant message persistence failed", { cause: error }),
-      "conversation.assistant.message_persist.failed",
-    );
+    logException(error, "conversation.assistant.message_persist.failed");
   }
 }

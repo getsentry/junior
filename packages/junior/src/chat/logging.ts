@@ -91,7 +91,6 @@ interface SentryUserIdentity {
 }
 
 const MAX_STRING_VALUE = 1200;
-const MAX_ERROR_CAUSE_DEPTH = 5;
 const EVENT_NAME_PATTERN = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
 const SECRETS_RE = [
   /\b(sk-[A-Za-z0-9_-]{20,})\b/g,
@@ -456,77 +455,6 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
     return sanitized.length > 0 ? sanitized : undefined;
   }
   return sanitizePrimitive(value);
-}
-
-function errorRecord(error: unknown): Record<string, unknown> | undefined {
-  return typeof error === "object" && error !== null
-    ? (error as Record<string, unknown>)
-    : undefined;
-}
-
-function errorCause(error: unknown): unknown {
-  return errorRecord(error)?.cause;
-}
-
-function errorType(error: unknown): string {
-  if (error instanceof Error && error.name) return error.name;
-  const name = errorRecord(error)?.name;
-  return typeof name === "string" && name.trim() ? name : typeof error;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  const message = errorRecord(error)?.message;
-  return typeof message === "string" ? message : String(error);
-}
-
-function errorCode(error: unknown): string | undefined {
-  const record = errorRecord(error);
-  for (const key of ["code", "errno", "statusCode", "status"] as const) {
-    const value = record?.[key];
-    if (typeof value === "string" || typeof value === "number") {
-      return String(value);
-    }
-  }
-  return undefined;
-}
-
-function exceptionAttributes(error: Error): Record<string, unknown> {
-  const attributes: Record<string, unknown> = {
-    "error.type": error.name,
-    "exception.type": error.name,
-    "exception.message": error.message,
-    "exception.stacktrace": error.stack,
-  };
-  const causeTypes: string[] = [];
-  const causeMessages: string[] = [];
-  const causeCodes: string[] = [];
-  const causeStacktraces: string[] = [];
-  const seen = new Set<unknown>([error]);
-  let cause = errorCause(error);
-  for (
-    let depth = 0;
-    cause !== undefined && depth < MAX_ERROR_CAUSE_DEPTH && !seen.has(cause);
-    depth += 1
-  ) {
-    seen.add(cause);
-    causeTypes.push(`${depth}:${errorType(cause)}`);
-    causeMessages.push(`${depth}:${errorMessage(cause)}`);
-    const code = errorCode(cause);
-    if (code) causeCodes.push(`${depth}:${code}`);
-    if (cause instanceof Error && cause.stack) {
-      causeStacktraces.push(`${depth}:${cause.stack}`);
-    }
-    cause = errorCause(cause);
-  }
-  if (causeTypes.length > 0) {
-    attributes["app.error.cause_chain.types"] = causeTypes;
-    attributes["app.error.cause_chain.messages"] = causeMessages;
-    attributes["app.error.cause_chain.codes"] = causeCodes;
-    attributes["app.error.cause_chain.stacktraces"] = causeStacktraces;
-    attributes["app.error.cause_chain.truncated"] = cause !== undefined;
-  }
-  return attributes;
 }
 
 function contextToAttributes(context: LogContext): LogAttributes {
@@ -1264,13 +1192,15 @@ export const log = {
   ): string | undefined {
     const normalizedError =
       error instanceof Error ? error : new Error(String(error));
-    const errorAttributes = exceptionAttributes(normalizedError);
     emit(
       "error",
       eventName,
       {
         ...attrs,
-        ...errorAttributes,
+        "error.type": normalizedError.name,
+        "exception.type": normalizedError.name,
+        "exception.message": normalizedError.message,
+        "exception.stacktrace": normalizedError.stack,
       },
       body,
     );
@@ -1278,11 +1208,7 @@ export const log = {
     let eventId: string | undefined;
     withScope((scope) => {
       setSentryScopeContext(scope, getBoundLogContext());
-      const mergedAttributes = mergeAttributes(
-        getBoundLogAttributes(),
-        attrs,
-        errorAttributes,
-      );
+      const mergedAttributes = mergeAttributes(getBoundLogAttributes(), attrs);
       for (const [key, value] of Object.entries(mergedAttributes)) {
         scope.setExtra(key, value);
         if (

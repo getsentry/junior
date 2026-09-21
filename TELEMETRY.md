@@ -146,11 +146,8 @@ Spans: `db.query`
 Attributes: `db.system.name`, `db.namespace`, `db.operation.name`,
 `db.collection.name`, `db.query.summary`, `db.query.text`,
 `db.response.status_code`, `error.type`, `server.address`, `server.port`,
-`app.db.driver`, `app.error.cause_chain.types`,
-`app.error.cause_chain.messages`, `app.error.cause_chain.codes`
+`app.db.driver`
 
-Captured exceptions preserve up to five linked causes. Use the cause code and
-message to distinguish query, schema, connection, and timeout failures.
 `db.query.text` keeps parameter placeholders and never includes parameter values.
 All inline SQL literals use `?`. SQL comments are removed.
 Group by `db.query.text` to identify one query shape. Group by

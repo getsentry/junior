@@ -921,9 +921,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await options.onTurnStatePersisted?.();
           } catch (error) {
             logException(
-              new Error("Accepted assistant message persistence failed", {
-                cause: error,
-              }),
+              error,
               "slack.assistant.message_post_delivery_persist.failed",
             );
           }

@@ -630,9 +630,7 @@ async function resumeSlackTurnInContext(
         );
       } catch (error) {
         logException(
-          new Error("Accepted assistant message persistence failed", {
-            cause: error,
-          }),
+          error,
           "slack.resume.assistant_message_post_delivery_persist.failed",
         );
       }
