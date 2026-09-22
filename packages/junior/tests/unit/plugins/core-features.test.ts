@@ -7,6 +7,11 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { getCoreFeatures, setCoreFeatures } from "@/chat/plugins/core-features";
+import { createPluginCatalogRuntime } from "@/chat/plugins/registry";
+import {
+  defineJuniorPlugins,
+  pluginCatalogConfigFromPluginSet,
+} from "@/plugins";
 
 afterEach(() => {
   setCoreFeatures([]);
@@ -75,6 +80,25 @@ describe("core features", () => {
 
     expect(() => validatePlugins([plugin])).toThrow(
       'Plugin name "briefs" is reserved for a Junior core feature',
+    );
+
+    // Manifest-only plugins skip runtime validation and enter the catalog.
+    const catalog = createPluginCatalogRuntime();
+    catalog.setConfig(
+      pluginCatalogConfigFromPluginSet(
+        defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "memory",
+              displayName: "Other Memory",
+              description: "Not core memory",
+            },
+          }),
+        ]),
+      ),
+    );
+    expect(() => catalog.getProviders()).toThrow(
+      'Plugin name "memory" is reserved for a Junior core feature',
     );
   });
 });

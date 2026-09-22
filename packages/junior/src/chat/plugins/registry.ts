@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { pluginRoots } from "@/chat/discovery";
+import { isCoreFeatureName } from "@/chat/plugins/core-features";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
 import { parseInlinePluginManifest, parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
@@ -107,6 +108,11 @@ function registerPluginManifest(
 ): void {
   if (state.pluginsByName.has(manifest.name)) {
     throw new Error(`Duplicate plugin name "${manifest.name}"`);
+  }
+  if (isCoreFeatureName(manifest.name)) {
+    throw new Error(
+      `Plugin name "${manifest.name}" is reserved for a Junior core feature`,
+    );
   }
 
   for (const domain of providerDomains(manifest)) {
@@ -511,7 +517,9 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
           commands.push({
             cmd: command.cmd,
             ...(command.args ? { args: [...command.args] } : undefined),
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
+            ...(command.sudo !== undefined
+              ? { sudo: command.sudo }
+              : undefined),
           });
         }
       }
