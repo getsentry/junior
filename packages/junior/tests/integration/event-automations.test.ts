@@ -4,7 +4,10 @@ import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { getEventAutomation } from "@/chat/event-automations/store";
+import {
+  getEventAutomation,
+  saveEventAutomation,
+} from "@/chat/event-automations/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
@@ -325,47 +328,104 @@ describe("event automations", () => {
     },
   );
 
-  it("binds a created-in-thread event automation to that thread when it dispatches", async () => {
-    const threadTs = "1700000000.000100";
-    await execute(
-      createEventAutomationTool(
-        context("U123", "C123", "public", threadTs),
-        EVENT_CATALOG,
-      ),
-      {
-        instruction: "Address the requested changes.",
-        trigger: {
+  it.each([
+    { channelId: "C123", retained: false },
+    { channelId: "D123", retained: false },
+    { channelId: "C123", retained: true },
+  ])(
+    "dispatches to $channelId without thread bindings (retained: $retained)",
+    async ({ channelId, retained }) => {
+      const threadTs = "1700000000.000100";
+      const taskContext = context(
+        "U123",
+        channelId,
+        channelId.startsWith("C") ? "public" : "private",
+        threadTs,
+      );
+      const { automation } = await createTask(
+        "Address the requested changes.",
+        "dispatch-thread-binding",
+        undefined,
+        taskContext,
+      );
+      await execute(
+        createUpdateEventAutomationTool(taskContext, EVENT_CATALOG),
+        {
+          automationId: automation.id,
+          outcomes: [
+            { action: "send_message", destination: "current_conversation" },
+          ],
+        },
+      );
+      const db = fixture.sql.db();
+      const task = (await getEventAutomation(db, automation.id))!;
+      const destination = { platform: "slack", teamId, channelId };
+      expect(task.destination).toEqual(destination);
+      expect(task.outcomes).toEqual([{ action: "send_message", destination }]);
+
+      const threadDestination = { ...task.destination, threadTs };
+      const threadOutcome = {
+        action: "send_message" as const,
+        destination: threadDestination,
+      };
+      await expect(
+        saveEventAutomation(db, { ...task, destination: threadDestination }),
+      ).rejects.toThrow(/threadTs/);
+      await expect(
+        saveEventAutomation(db, { ...task, outcomes: [threadOutcome] }),
+      ).rejects.toThrow(/threadTs/);
+
+      if (retained) {
+        const legacy = {
+          ...task,
+          destination: threadDestination,
+          outcomes: [
+            threadOutcome,
+            {
+              action: "send_message" as const,
+              destination: { ...threadDestination, channelId: "D456" },
+            },
+          ],
+        };
+        // An older worker can still retain thread routing during deployment.
+        const { status: _status, ...payload } = legacy;
+        await db
+          .update(juniorEventAutomations)
+          .set({ task: payload })
+          .where(eq(juniorEventAutomations.id, task.id));
+      }
+
+      await ingestEventAutomations(
+        {
+          eventKey: "github:dispatch-thread-binding",
+          eventType: "pull_request.review.changes_requested",
+          occurredAtMs: Date.now(),
           namespace: "github",
           identifier: "getsentry/junior#1174",
-          resourceType: "pull_request",
-          label: "GitHub PR getsentry/junior#1174",
-          events: ["pull_request.review.changes_requested"],
+          trustedSummary: "A reviewer requested changes.",
         },
-      },
-      "dispatch-thread-binding",
-    );
+        { queue, teamId },
+      );
 
-    await ingestEventAutomations(
-      {
-        eventKey: "github:dispatch-thread-binding",
-        eventType: "pull_request.review.changes_requested",
-        occurredAtMs: Date.now(),
-        namespace: "github",
-        identifier: "getsentry/junior#1174",
-        trustedSummary: "A reviewer requested changes.",
-      },
-      { queue, teamId },
-    );
-
-    const [{ conversationId }] = queue.sentRecords();
-    expect(conversationId).toBeDefined();
-    await expect(
-      getDispatchRecord(conversationId!.replace(/^agent-dispatch:/, "")),
-    ).resolves.toMatchObject({
-      destination: { channelId: "C123", threadTs },
-      source: { kind: "event_automation" },
-    });
-  });
+      const [{ conversationId }] = queue.sentRecords();
+      const dispatch = await getDispatchRecord(
+        conversationId!.replace(/^agent-dispatch:/, ""),
+      );
+      expect(dispatch?.destination).toEqual(destination);
+      expect(dispatch?.source.kind).toBe("event_automation");
+      expect(dispatch?.outcomes).toEqual([
+        { action: "send_message", destination },
+        ...(retained
+          ? [
+              {
+                action: "send_message",
+                destination: { ...destination, channelId: "D456" },
+              },
+            ]
+          : []),
+      ]);
+    },
+  );
 
   it("rejects event types that the plugin did not register", async () => {
     await expect(

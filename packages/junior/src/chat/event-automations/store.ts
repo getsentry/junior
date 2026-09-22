@@ -1,4 +1,11 @@
-import { eventMatches, type Event, type User } from "@sentry/junior-plugin-api";
+import {
+  eventMatches,
+  slackDestinationSchema,
+  taskOutcomeSchema,
+  type Event,
+  type User,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -7,6 +14,12 @@ import {
   type EventAutomationStatus,
 } from "@/db/schema/event-automations";
 import { eventAutomationSchema, type EventAutomation } from "./types";
+
+// Retained rows can predate the channel-only Destination invariant.
+const retainedEventAutomationSchema = eventAutomationSchema.extend({
+  destination: slackDestinationSchema,
+  outcomes: z.array(taskOutcomeSchema).max(5),
+});
 
 type EventAutomationRow = {
   status?: EventAutomationStatus | null;
@@ -55,7 +68,23 @@ function parseTask(row: EventAutomationRow): StoredEventAutomation {
       { action: "send_message", destination: raw.destination },
     ];
   }
-  const payload = eventAutomationSchema.parse(raw);
+  const retained = retainedEventAutomationSchema.parse(raw);
+  const payload = {
+    ...retained,
+    destination: {
+      platform: "slack" as const,
+      teamId: retained.destination.teamId,
+      channelId: retained.destination.channelId,
+    },
+    outcomes: retained.outcomes.map((outcome) => ({
+      ...outcome,
+      destination: {
+        platform: "slack" as const,
+        teamId: outcome.destination.teamId,
+        channelId: outcome.destination.channelId,
+      },
+    })),
+  };
   const title = row.title?.trim();
   return {
     ...payload,
