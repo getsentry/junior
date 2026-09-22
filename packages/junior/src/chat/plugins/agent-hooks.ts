@@ -57,7 +57,10 @@ import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import {
+  getCoreFeatures,
+  isCoreFeatureName,
+} from "@/chat/plugins/core-features";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -390,6 +393,11 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
         `Plugin name "${name}" must be a lowercase plugin identifier`,
       );
     }
+    if (isCoreFeatureName(name)) {
+      throw new Error(
+        `Plugin name "${name}" is reserved for a Junior core feature`,
+      );
+    }
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
@@ -432,10 +440,15 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
+/** Return core features and runtime hook plugins as one host registration list. */
+export function getRegistrations(): PluginRegistration[] {
+  return [...getCoreFeatures(), ...registeredPlugins];
+}
+
 /** Apply plugin Markdown rewrites before destination delivery formatting. */
 export function applyPluginFormatMarkdown(text: string): string {
   let transformed = text;
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const hook = plugin.hooks?.formatMarkdown;
     if (!hook) {
       continue;
@@ -462,7 +475,7 @@ export async function getPluginSystemPromptContributions(
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.systemPrompt;
     if (!hook) {
@@ -532,7 +545,7 @@ export async function getPluginUserPromptContributions(args: {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.userPrompt;
     if (!hook) {
@@ -612,7 +625,7 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
     if (!hook) {
@@ -872,7 +885,7 @@ export function getPluginRoutes(options: {
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
 
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.routes;
     if (!hook) {
@@ -991,7 +1004,7 @@ export function getPluginRoutes(options: {
 export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
   const routes: PluginApiRouteRegistration[] = [];
 
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.apiRoutes;
     if (!hook) {
@@ -1049,7 +1062,7 @@ function trustedSlackConversationUrl(
 export function getPluginSlackConversationLink(
   conversationId: string,
 ): SlackConversationLink | undefined {
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.slackConversationLink;
     if (!hook) {
@@ -1356,7 +1369,7 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {
@@ -1397,7 +1410,7 @@ export async function getPluginProfileReports(args: {
   viewer: User;
 }): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.profileReport;
     if (!hook) {
@@ -1496,7 +1509,7 @@ export function createPluginHookRunner(
     actors?: () => Actor[];
   } = {},
 ): PluginHookRunner {
-  const loaded = getPlugins();
+  const loaded = getRegistrations();
 
   return {
     async afterMcpTool(tool) {

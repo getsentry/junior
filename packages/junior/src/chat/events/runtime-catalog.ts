@@ -1,4 +1,4 @@
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
 import { CORE_EVENT_NAMESPACE, type EventCatalog } from "@/chat/events/catalog";
 import { workspaceSnapshotEvents } from "@/chat/sandbox/snapshot/events";
 
@@ -12,7 +12,7 @@ export function getEventCatalog(): EventCatalog {
   const catalog: Record<string, EventCatalog[string]> = {
     [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
   };
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const registration = plugin.events;
     if (!registration || registration.isEnabled?.() === false) {
       continue;

@@ -221,7 +221,7 @@ Each profile value may be a model id string or an object with `modelId` and opti
 
 Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 
-The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+The memory model belongs to core Memory. Set it with `createApp({ memory: { modelId } })` or `AI_MEMORY_MODEL`.
 
 ## Install-wide config defaults
 

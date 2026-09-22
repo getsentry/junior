@@ -30,7 +30,7 @@
     "package-types:check": "sh scripts/check-package-types.sh",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
-    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-gocd build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-gocd test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
+    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-gocd build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-gocd test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
     "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
@@ -41,7 +41,7 @@
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm -r run typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check",
-    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-gocd build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-gocd test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
+    "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-gocd build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-gocd test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",

@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 /** Return plugin-selected sidebar annotations for candidate conversations. */
@@ -15,14 +15,14 @@ export async function listConversationSidebarAnnotations(
 ): Promise<Record<string, ConversationSidebarAnnotation[]>> {
   const candidates = new Set(conversationIds);
   const selected: Record<string, ConversationSidebarAnnotation[]> = {};
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const hook = plugin.hooks?.conversationSidebar;
     if (!hook) continue;
     const annotationsByConversationId = Object.fromEntries(
       conversationIds.flatMap((conversationId) => {
-        const annotations = (annotationsByConversation.get(conversationId) ?? []).filter(
-          (annotation) => annotation.plugin === plugin.manifest.name,
-        );
+        const annotations = (
+          annotationsByConversation.get(conversationId) ?? []
+        ).filter((annotation) => annotation.plugin === plugin.manifest.name);
         return annotations.length > 0 ? [[conversationId, annotations]] : [];
       }),
     );
@@ -38,7 +38,9 @@ export async function listConversationSidebarAnnotations(
         result.annotationsByConversationId,
       )) {
         if (!candidates.has(conversationId)) continue;
-        const parsed = conversationSidebarAnnotationSchema.array().safeParse(annotations);
+        const parsed = conversationSidebarAnnotationSchema
+          .array()
+          .safeParse(annotations);
         if (!parsed.success || parsed.data.length === 0) continue;
         selected[conversationId] = [
           ...(selected[conversationId] ?? []),
@@ -48,7 +50,8 @@ export async function listConversationSidebarAnnotations(
     } catch (error) {
       logWarn("plugin.conversation_sidebar.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
-        "exception.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       });
     }
   }

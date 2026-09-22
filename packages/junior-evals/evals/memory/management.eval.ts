@@ -3,7 +3,6 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
-  memoryPluginOverrides,
   type MemoryThread,
   readActiveMemories,
   readMemories,
@@ -29,7 +28,6 @@ describeEval("Memory Management", slackEvals, (it) => {
     });
 
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("How should I structure my next PR summary?", {
           thread: autoRecallThread,
@@ -77,7 +75,6 @@ describeEval("Memory Management", slackEvals, (it) => {
     });
 
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("For PR summaries, I still want risk notes first.", {
           thread: passiveDedupeThread,
@@ -123,7 +120,6 @@ describeEval("Memory Management", slackEvals, (it) => {
     });
 
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("Please forget that I prefer terse PR summaries.", {
           thread: removeThread,

@@ -40,6 +40,8 @@ import {
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { createCoreFeatures } from "@/chat/app/core-features";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   defineJuniorPlugins,
@@ -66,7 +68,6 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -1548,7 +1549,6 @@ function runtimePluginsForScenario(
     ...(packages.has("@sentry/junior-github")
       ? [githubPlugin({ appPermissions: { deployments: "read" } })]
       : []),
-    ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.has("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
 }
@@ -2650,12 +2650,15 @@ export async function runEvalScenario(
   const runtimePlugins = runtimePluginsForScenario(scenario);
   const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  let previousCoreFeatures: ReturnType<typeof setCoreFeatures> | undefined;
 
   try {
     const runtimePluginNames = new Set(
       runtimePlugins.map((plugin) => plugin.manifest.name),
     );
     const currentPlugins = getPlugins();
+    // Core features ship with every app, so evals run them like production.
+    previousCoreFeatures = setCoreFeatures(createCoreFeatures());
     previousPlugins = setPlugins([
       ...runtimePlugins,
       ...currentPlugins.filter(
@@ -2774,6 +2777,9 @@ export async function runEvalScenario(
   } finally {
     if (previousPlugins) {
       setPlugins(previousPlugins);
+    }
+    if (previousCoreFeatures) {
+      setCoreFeatures(previousCoreFeatures);
     }
     await teardownHarnessEnvironment(scenario, env);
   }

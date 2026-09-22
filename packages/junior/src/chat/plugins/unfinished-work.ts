@@ -1,5 +1,5 @@
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { logWarn } from "@/chat/logging";
 
@@ -24,7 +24,7 @@ export async function listConversationWork(
   const assigned = new Set<string>();
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
-  for (const plugin of getPlugins()) {
+  for (const plugin of getRegistrations()) {
     const hook = plugin.hooks?.unfinishedWork;
     if (!hook) continue;
     try {

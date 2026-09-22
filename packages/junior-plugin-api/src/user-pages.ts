@@ -36,7 +36,8 @@ const pluginUserPageActionSchema = z
     confirmation: nonBlankStringSchema.max(500).optional(),
     href: nonBlankStringSchema
       .max(500)
-      .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
+      // Plugins act under /api/plugins/<name>/; core features under /api/<name>/.
+      .regex(/^\/api\/(?:plugins\/)?[a-z][a-z0-9-]*(?:\/|$)/),
     label: nonBlankStringSchema.max(80),
     method: z.literal("DELETE"),
     tone: z.enum(["danger", "neutral"]).optional(),

@@ -13,7 +13,8 @@ const DATABASE_TEST_ROOTS = [
 const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
 const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/conversation-storage-sql.test.ts",
-  "packages/junior/tests/component/memory-plugin-storage.test.ts",
+  "packages/junior/tests/component/memory/host-wiring.test.ts",
+  "packages/junior/tests/component/plugins/plugin-migrations.test.ts",
   "packages/junior/tests/component/scheduled-automations-sql.test.ts",
   "packages/junior/tests/integration/conversation-sql.test.ts",
   "packages/junior/tests/integration/workspace-snapshot-migration.test.ts",

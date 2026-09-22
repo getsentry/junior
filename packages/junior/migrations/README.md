@@ -8,6 +8,10 @@ migrations. Core SQL is recorded in `drizzle.__drizzle_junior_core`. Reruns
 check that journal before taking the migration lock, so an already-current
 schema returns without opening a second SQL connection.
 
+Core migrations need the `vector` (pgvector) and `btree_gin` Postgres
+extensions. `junior upgrade` enables them under the migration lock. It stops
+with a prerequisite error when the database cannot enable either one.
+
 An existing Junior schema without the core Drizzle journal cannot be upgraded
 directly. Upgrade it with `@sentry/junior@0.107.1` first so that bridge release
 can establish the journal, then continue to the target version. A database with
@@ -25,6 +29,20 @@ no Junior tables remains a normal fresh install.
 - Never edit, rename, reorder, or delete an applied SQL migration or its
   metadata. Add a new migration to correct it.
 
-Migration loading, locking, and the bridge-version guard live in
-`src/chat/conversations/sql/migrations.ts`. Their integration coverage lives in
-`tests/integration/conversation-sql.test.ts`.
+## Memory adoption
+
+`0045_memory_core` adopts the Memory tables that the `@sentry/junior-memory`
+plugin used to own. It creates the final schema on a fresh database and
+reconciles an existing database from any legacy plugin journal position,
+applying only the transitions and data rewrites that are still missing. The
+legacy plugin journal stays in the database as audit state. Rehearse the
+upgrade against real Postgres with:
+
+```bash
+DATABASE_URL=postgres://junior:junior@localhost:54322/junior \
+  pnpm --filter @sentry/junior exec tsx scripts/rehearse-memory-upgrade.ts
+```
+
+Migration loading, locking, the extension check, and the bridge-version guard
+live in `src/chat/conversations/sql/migrations.ts`. Their integration coverage
+lives in `tests/integration/conversation-sql.test.ts`.

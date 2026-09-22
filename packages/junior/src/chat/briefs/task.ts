@@ -190,7 +190,7 @@ export async function updateConversationBrief(
 }
 
 /** Core task registration kept outside the installed plugin catalog. */
-export const briefsTaskRegistration: PluginRegistration = {
+const briefsTaskRegistration: PluginRegistration = {
   manifest: {
     name: "briefs",
     displayName: "Briefs",
@@ -218,3 +218,21 @@ export const briefsTaskRegistration: PluginRegistration = {
     },
   },
 };
+
+/**
+ * Register Briefs as a core feature.
+ *
+ * Disabled Briefs keep only their event definitions so stored Brief events
+ * still render in transcripts.
+ */
+export function briefsFeature(
+  options: { enabled?: boolean } = {},
+): PluginRegistration {
+  if (options.enabled) {
+    return briefsTaskRegistration;
+  }
+  return {
+    manifest: briefsTaskRegistration.manifest,
+    conversationEvents: briefsTaskRegistration.conversationEvents,
+  };
+}

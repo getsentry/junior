@@ -64,16 +64,16 @@ describe("conversation report event projection", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory test plugin",
+          name: "recall",
+          displayName: "Recall",
+          description: "Recall test plugin",
         },
         conversationEvents: [captured],
       }),
     ]);
     const pluginEvent = event(1, {
       type: "structured_event",
-      namespace: "memory",
+      namespace: "recall",
       name: "memories_captured",
       version: 1,
       turnId: "turn-1",
@@ -91,7 +91,7 @@ describe("conversation report event projection", () => {
           createdAt: new Date(1_000).toISOString(),
           data: {
             type: "structured_event",
-            namespace: "memory",
+            namespace: "recall",
             name: "memories_captured",
             version: 1,
             turnId: "turn-1",

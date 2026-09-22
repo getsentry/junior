@@ -110,14 +110,14 @@ describe("plugin CLI commands", () => {
     pluginSetRef.current = defineJuniorPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory plugin",
         },
         cli: {
           commands: [
             {
-              name: "memory",
+              name: "notes",
               summary: "Memory command",
               configure(command) {
                 command.name("renamed");
@@ -130,7 +130,7 @@ describe("plugin CLI commands", () => {
     ]);
 
     await expect(loadCliPluginCommands()).rejects.toThrow(
-      'Plugin CLI command "memory" from plugin "memory" must not rename its top-level command',
+      'Plugin CLI command "notes" from plugin "notes" must not rename its top-level command',
     );
   });
 
@@ -138,14 +138,14 @@ describe("plugin CLI commands", () => {
     pluginSetRef.current = defineJuniorPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory plugin",
         },
         cli: {
           commands: [
             {
-              name: "memory",
+              name: "notes",
               summary: "Memory command",
               configure(command) {
                 command.alias("mem");
@@ -158,7 +158,7 @@ describe("plugin CLI commands", () => {
     ]);
 
     await expect(loadCliPluginCommands()).rejects.toThrow(
-      'Plugin CLI command "memory" from plugin "memory" must not define top-level aliases',
+      'Plugin CLI command "notes" from plugin "notes" must not define top-level aliases',
     );
   });
 
@@ -252,7 +252,7 @@ describe("plugin CLI commands", () => {
         cli: {
           commands: [
             {
-              name: "memory",
+              name: "notes",
               summary: "First memory",
               configure(command) {
                 command.command("search");
@@ -270,7 +270,7 @@ describe("plugin CLI commands", () => {
         cli: {
           commands: [
             {
-              name: "memory",
+              name: "notes",
               summary: "Second memory",
               configure(command) {
                 command.command("show");
@@ -282,7 +282,7 @@ describe("plugin CLI commands", () => {
     ]);
 
     await expect(loadCliPluginCommands()).rejects.toThrow(
-      'Plugin CLI command "memory" from plugin "second" conflicts with plugin "first"',
+      'Plugin CLI command "notes" from plugin "second" conflicts with plugin "first"',
     );
   });
 

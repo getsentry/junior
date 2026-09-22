@@ -96,7 +96,7 @@ describe("dashboard plugin routes", () => {
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
+            name: "notes",
             displayName: "Memory",
             description: "Memory plugin",
           },
@@ -110,7 +110,7 @@ describe("dashboard plugin routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -127,10 +127,10 @@ describe("dashboard plugin routes", () => {
     const unauthenticated = createDashboardApp({
       allowedGoogleDomains: ["sentry.io"],
       auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [{ app: pluginApp, pluginName: "notes" }],
     });
     const denied = await unauthenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(denied.status).toBe(401);
     await expect(denied.json()).resolves.toEqual({
@@ -145,10 +145,10 @@ describe("dashboard plugin routes", () => {
           emailVerified: true,
         },
       }),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [{ app: pluginApp, pluginName: "notes" }],
     });
     const allowed = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(allowed.status).toBe(200);
     await expect(allowed.json()).resolves.toEqual({
@@ -168,11 +168,11 @@ describe("dashboard plugin routes", () => {
     const app = createDashboardApp({
       allowedGoogleDomains: ["sentry.io"],
       auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      pluginRoutes: [{ app: pluginApp, pluginName: "notes" }],
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories/memory-1", {
+      new Request("http://localhost/api/plugins/notes/memories/memory-1", {
         headers: { authorization: "Bearer jr_pat_valid" },
         method: "DELETE",
       }),
@@ -201,13 +201,13 @@ describe("dashboard plugin routes", () => {
               return Response.json({ ok: true });
             },
           },
-          pluginName: "memory",
+          pluginName: "notes",
         },
       ],
     });
 
     const response = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/notes/memories"),
     );
     expect(response.status).toBe(200);
     expect(pluginContext).toEqual({
@@ -218,7 +218,7 @@ describe("dashboard plugin routes", () => {
           name: "Person",
         },
       },
-      pluginName: "memory",
+      pluginName: "notes",
     });
   });
 

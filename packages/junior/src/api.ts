@@ -5,6 +5,11 @@ import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
+import {
+  createMemoryRoutes,
+  LEGACY_MEMORY_API_PREFIX,
+  MEMORY_API_PREFIX,
+} from "./api/memory/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
@@ -75,6 +80,11 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
+  app.route(MEMORY_API_PREFIX, createMemoryRoutes(MEMORY_API_PREFIX));
+  app.route(
+    LEGACY_MEMORY_API_PREFIX,
+    createMemoryRoutes(LEGACY_MEMORY_API_PREFIX),
+  );
   app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
   app.notFound(() =>

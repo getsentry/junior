@@ -16,9 +16,9 @@ export const fileLengthExceptions = {
     "Existing broad plugin suite; split with plugin modules.",
   "packages/junior-github/tests/webhook-outcomes.test.ts":
     "Existing broad webhook outcome suite; split by outcome.",
-  "packages/junior-memory/src/store.ts":
+  "packages/junior/src/chat/memory/store.ts":
     "Existing memory store; split by storage concern.",
-  "packages/junior-memory/tests/storage.test.ts":
+  "packages/junior/tests/component/memory/storage.test.ts":
     "Existing broad memory storage suite; split by storage concern.",
   "packages/junior/src/chat/agent/index.ts":
     "Existing agent run lifecycle; split only at a clear lifecycle boundary.",

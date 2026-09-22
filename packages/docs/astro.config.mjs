@@ -14,6 +14,7 @@ export default defineConfig({
     "/deploy": "/start-here/deploy-to-vercel",
     "/deploy/vercel": "/start-here/deploy-to-vercel",
     "/extend/custom-plugins": "/extend/build-a-plugin",
+    "/extend/memory-plugin": "/concepts/memory",
     "/extend/plugins-overview": "/extend",
     "/extend/amplitude": "/extend/amplitude-plugin",
     "/extend/cloudflare": "/extend/cloudflare-plugin",
@@ -103,6 +104,7 @@ export default defineConfig({
               link: "/concepts/watches/",
             },
             { label: "Automations", link: "/concepts/automations/" },
+            { label: "Memory", link: "/concepts/memory/" },
             {
               label: "Data & Privacy",
               link: "/concepts/data-and-privacy/",
@@ -135,7 +137,6 @@ export default defineConfig({
               label: "Maintenance Plugin",
               link: "/extend/maintenance-plugin/",
             },
-            { label: "Memory Plugin", link: "/extend/memory-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
