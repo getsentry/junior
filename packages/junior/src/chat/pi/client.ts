@@ -88,6 +88,37 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     contextWindow: 500_000,
     maxTokens: 500_000,
   },
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "openai/gpt-6-luna": {
+    id: "openai/gpt-6-luna",
+    name: "GPT-6 Luna",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 0.2,
+          output: 0.75,
+          cacheRead: 0.02,
+          cacheWrite: 0.25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+  },
   "openai/gpt-6-astra": {
     id: "openai/gpt-6-astra",
     name: "GPT-6 Astra",
@@ -213,7 +244,9 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : undefined),
+    ...(params.promptName
+      ? { "gen_ai.prompt.name": params.promptName }
+      : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
@@ -295,7 +328,9 @@ export async function completeText(params: {
               ],
             }
           : undefined),
-        ...(message.model ? { "gen_ai.response.model": message.model } : undefined),
+        ...(message.model
+          ? { "gen_ai.response.model": message.model }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -431,7 +466,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined ? { system: params.system } : undefined),
+          ...(params.system !== undefined
+            ? { system: params.system }
+            : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
             : undefined),
@@ -567,7 +604,9 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

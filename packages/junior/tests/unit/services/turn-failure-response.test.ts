@@ -25,7 +25,9 @@ function providerErrorReply(args: {
       toolErrorCount: 0,
       usedPrimaryText: false,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : undefined),
-      ...(args.providerError ? { providerError: args.providerError } : undefined),
+      ...(args.providerError
+        ? { providerError: args.providerError }
+        : undefined),
     },
   };
 }
@@ -77,9 +79,9 @@ describe("finalizeFailedTurnReply", () => {
       "gen_ai.request.model": "xai/grok-4.5",
     });
     expect(attributes).not.toHaveProperty("exception.message");
-    expect(String(attributes?.["app.ai.provider_error.summary"] ?? "")).not.toContain(
-      "providerMetadata",
-    );
+    expect(
+      String(attributes?.["app.ai.provider_error.summary"] ?? ""),
+    ).not.toContain("providerMetadata");
   });
 
   it("classifies empty execution failures without raw exception text", () => {
@@ -103,7 +105,7 @@ describe("finalizeFailedTurnReply", () => {
     const logException = vi.fn().mockReturnValue("evt_guardian");
     const providerError = createProviderError("No object generated", {
       kind: "invalid_response",
-      modelId: "openai/gpt-5.6-luna",
+      modelId: "openai/gpt-6-luna",
     });
     const reviewError = new Error("Action review unavailable", {
       cause: providerError,
@@ -121,7 +123,7 @@ describe("finalizeFailedTurnReply", () => {
     expect(logException.mock.calls[0]?.[2]).toMatchObject({
       "app.ai.provider_error.kind": "invalid_response",
       "app.ai.provider_error.retryable": false,
-      "gen_ai.request.model": "openai/gpt-5.6-luna",
+      "gen_ai.request.model": "openai/gpt-6-luna",
     });
   });
 
