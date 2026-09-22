@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseInlinePluginManifest,
@@ -5,6 +7,39 @@ import {
 } from "@/chat/plugins/manifest";
 
 describe("plugin manifest config", () => {
+  it("limits the packaged GCP plugin to per-user read-only Logging access", () => {
+    const manifestPath = path.resolve(
+      process.cwd(),
+      "../junior-gcp/plugin.yaml",
+    );
+    const manifest = parsePluginManifest(
+      readFileSync(manifestPath, "utf8"),
+      path.dirname(manifestPath),
+    );
+
+    expect(manifest.name).toBe("gcp");
+    expect(manifest.credentials).toEqual({
+      type: "oauth-bearer",
+      authTokenEnv: "GCP_ACCESS_TOKEN",
+      authTokenPlaceholder: "host_managed_credential",
+      domains: ["logging.googleapis.com"],
+    });
+    expect(manifest.oauth).toEqual({
+      clientIdEnv: "GCP_CLIENT_ID",
+      clientSecretEnv: "GCP_CLIENT_SECRET",
+      authorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenEndpoint: "https://oauth2.googleapis.com/token",
+      tokenAuthMethod: "body",
+      scope: "https://www.googleapis.com/auth/logging.read",
+      authorizeParams: { access_type: "offline", prompt: "consent" },
+    });
+    expect(manifest.envVars).toEqual({
+      GCP_CLIENT_ID: {},
+      GCP_CLIENT_SECRET: {},
+    });
+    expect(manifest.domains ?? []).toEqual([]);
+  });
+
   it("applies manifest config before validation", () => {
     const manifest = parsePluginManifest(
       [

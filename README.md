@@ -29,6 +29,7 @@ Start here:
 | `@sentry/junior-cloudflare`    | Cloudflare plugin package for production operations                          |
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
+| `@sentry/junior-gcp`          | Read-only Google Cloud Logging through per-user OAuth                       |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
 | `@sentry/junior-gocd`          | GoCD plugin package for read-only pipeline history through host egress auth  |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |

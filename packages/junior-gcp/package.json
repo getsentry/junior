@@ -1,0 +1,18 @@
+{
+  "name": "@sentry/junior-gcp",
+  "version": "0.221.1",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-gcp"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

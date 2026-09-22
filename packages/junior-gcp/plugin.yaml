@@ -1,0 +1,28 @@
+name: gcp
+display-name: Google Cloud Logging
+description: Read Google Cloud log entries with the connected user's IAM permissions
+
+config-keys:
+  - project
+
+env-vars:
+  GCP_CLIENT_ID:
+  GCP_CLIENT_SECRET:
+
+credentials:
+  type: oauth-bearer
+  auth-token-env: GCP_ACCESS_TOKEN
+  auth-token-placeholder: host_managed_credential
+  domains:
+    - logging.googleapis.com
+
+oauth:
+  client-id-env: GCP_CLIENT_ID
+  client-secret-env: GCP_CLIENT_SECRET
+  authorize-endpoint: https://accounts.google.com/o/oauth2/v2/auth
+  token-endpoint: https://oauth2.googleapis.com/token
+  token-auth-method: body
+  scope: https://www.googleapis.com/auth/logging.read
+  authorize-params:
+    access_type: offline
+    prompt: consent

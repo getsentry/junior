@@ -26,6 +26,9 @@ targets:
     id: "@sentry/junior-datadog"
     includeNames: /^sentry-junior-datadog-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-gcp"
+    includeNames: /^sentry-junior-gcp-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-github"
     includeNames: /^sentry-junior-github-\d.*\.tgz$/
   - name: npm
