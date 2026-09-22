@@ -7,7 +7,6 @@ export {
   calculateCost,
   completeSimple,
   getEnvApiKey,
-  getModel,
   getModels,
   isRetryableAssistantError,
   registerApiProvider,

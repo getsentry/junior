@@ -61,15 +61,9 @@ import { hasCompactedConversationContext } from "@/chat/services/context-compact
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
-// Temporary workaround. `pi-ai` only exposes a static, bundled gateway
-// catalog (`@earendil-works/pi-ai/compat` `getModels`/`getModel`), so new
-// gateway models are unknown to Junior until pi-ai ships an update. Warden
-// avoids this by using `@earendil-works/pi-coding-agent`'s `ModelRuntime`,
-// which refreshes its catalog live from Pi's hosted model list. The real
-// fix is moving Junior's gateway client onto that live-refresh path (or an
-// equivalent wrapper), not hardcoding models here. Remove each entry below
-// once it appears in the upstream static catalog or Junior gets live
-// catalog refresh.
+// Pi's bundled catalog can lag behind the gateway. Keep missing models and
+// metadata corrections here until the catalog includes them. Remove these
+// overrides when Pi supplies the same metadata or Junior uses a live catalog.
 const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
   "xai/grok-4.5": {
     id: "xai/grok-4.5",
@@ -194,10 +188,7 @@ function extractText(message: {
     .trim();
 }
 
-/**
- * Look up a gateway model by id. Junior-owned overrides let new gateway
- * models work before pi-ai publishes an updated bundled catalog.
- */
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
 export function resolveGatewayModel(modelId: string): Model<any> {
   const matched =
     GATEWAY_MODEL_OVERRIDES[modelId] ??
