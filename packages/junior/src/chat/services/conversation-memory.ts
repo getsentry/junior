@@ -1,3 +1,4 @@
+import type { MessageCard } from "@/chat/conversations/cards";
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
 import type {
@@ -150,6 +151,7 @@ export function upsertConversationMessage(
 
 /** Record one assistant message after its destination accepts it. */
 export function recordDeliveredAssistantMessage(args: {
+  cards?: MessageCard[];
   conversation: ThreadConversationState;
   sessionId: string;
   source?: "slack" | "web";
@@ -176,6 +178,7 @@ export function recordDeliveredAssistantMessage(args: {
       isBot: true,
     },
     meta: {
+      ...(args.cards?.length ? { cards: args.cards } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },

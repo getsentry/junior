@@ -1,4 +1,10 @@
 import { z } from "zod";
+import { fallbackShortTitle } from "@/chat/services/short-title";
+import { getDashboardTaskLink } from "@/chat/dashboard-link";
+import {
+  messageCardSchema,
+  type MessageCard,
+} from "@/chat/conversations/cards";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import {
@@ -24,6 +30,7 @@ const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1).nullable(),
+    dashboardUrl: z.string().url().nullable(),
     instruction: z.string().min(1),
     trigger: z
       .object({
@@ -66,6 +73,7 @@ const compactEventAutomationResultSchema = z
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactEventAutomationResultSchema,
+    cards: z.array(messageCardSchema),
   })
   .strict();
 
@@ -225,6 +233,7 @@ export function compactEventAutomation(
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     title: task.title?.trim() || null,
+    dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,
     trigger: {
       namespace: task.trigger.namespace,
@@ -257,9 +266,39 @@ export function compactEventAutomation(
 export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
-  requesterSlackUserId?: string,
+  requesterSlackUserId: string,
+  operation: MessageCard["operation"],
 ) {
+  const automation = compactEventAutomation(
+    task,
+    catalog,
+    requesterSlackUserId,
+  );
+  const filters = Object.entries(task.trigger.match ?? {}).map(
+    ([key, value]) => `${key} = ${JSON.stringify(value)}`,
+  );
   return {
-    automation: compactEventAutomation(task, catalog, requesterSlackUserId),
+    automation,
+    cards: [
+      {
+        kind: "automation",
+        id: task.id,
+        title:
+          automation.title ??
+          fallbackShortTitle(task.task.text, "Event automation"),
+        url: automation.dashboardUrl,
+        operation,
+        instruction: task.task.text,
+        trigger: [
+          task.trigger.label,
+          task.trigger.events.join(", "),
+          ...filters,
+        ].join(" · "),
+        warning:
+          operation !== "deleted" && !automation.trigger.available
+            ? "Trigger unavailable. This automation cannot receive events."
+            : null,
+      } satisfies MessageCard,
+    ],
   };
 }

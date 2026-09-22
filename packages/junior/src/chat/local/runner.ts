@@ -6,6 +6,8 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts each completed tool-free assistant message.
  */
+import { messageCardText } from "@/chat/conversations/cards";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
@@ -267,9 +269,13 @@ async function runLocalAgentTurnInContext(
       return;
     }
     failureCode = "delivery_failed";
-    await deps.deliverReply({ text });
+    const cards = await loadPendingMessageCards(input.conversationId);
+    await deps.deliverReply({
+      text: [text, ...cards.map(messageCardText)].join("\n\n"),
+    });
     assistantMessageDelivered = true;
     const recordedMessageId = recordDeliveredAssistantMessage({
+      cards,
       conversation,
       sessionId: turnId,
       text,

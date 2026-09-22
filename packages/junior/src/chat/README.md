@@ -336,3 +336,14 @@ snapshots together. Do not restate the outline in call-site prompts.
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in
 this directory.
+
+## Message cards
+
+Automation tools return saved facts with successful changes. Delivery stores
+these cards in Message metadata. Slack and the web transcript render the same
+facts, under the same privacy rules as message text. Cards are not live status.
+
+`conversations/pending-cards.ts` reads committed tool results back to the last
+assistant Message or Turn start. It keeps the last successful change per
+Automation, including across resume and history replacement. Silent Turns do
+not send cards or pass them to a later Turn.

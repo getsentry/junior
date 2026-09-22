@@ -46,7 +46,11 @@ export function createSlackScheduleDeleteAutomationTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(next, context.actor?.userId);
+      return scheduleAutomationToolResult(
+        next,
+        context.actor?.userId,
+        "deleted",
+      );
     },
   });
 }

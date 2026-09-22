@@ -1,3 +1,4 @@
+import type { MessageCard } from "@sentry/junior/api/schema";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   PluginOperationalReportFeed,
@@ -110,6 +111,7 @@ export type TranscriptViewTurnContext = {
 };
 
 export type TranscriptViewMessage = {
+  cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */

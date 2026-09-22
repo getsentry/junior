@@ -1,3 +1,4 @@
+import { messageCardText } from "@sentry/junior/api/schema";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -187,7 +188,7 @@ export function groupTranscriptMessages(
 
 /** Build the plain-text clipboard/raw view for one canonical message. */
 export function messageRawText(message: TranscriptViewMessage): string {
-  return message.parts
+  const body = message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
       if (part.type === "reasoning") return part.text ?? "reasoning redacted";
@@ -232,5 +233,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
         .join("\n");
     })
     .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+  return [body, ...(message.cards ?? []).map(messageCardText)]
+    .filter(Boolean)
     .join("\n\n");
 }

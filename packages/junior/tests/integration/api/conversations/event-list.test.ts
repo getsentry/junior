@@ -365,7 +365,26 @@ describe("conversation event list API", () => {
     });
     await getConversationEventStore().append(conversationId, [
       message("private-message-1", 1),
-      message("private-message-2", 2),
+      {
+        ...message("private-message-2", 2),
+        data: {
+          ...message("private-message-2", 2).data,
+          meta: {
+            cards: [
+              {
+                kind: "automation",
+                id: "secret-task",
+                title: "Private automation",
+                operation: "created",
+                url: "https://junior.example.com/automations/secret-task",
+                instruction: "Private instruction",
+                trigger: "Private repository",
+                warning: null,
+              },
+            ],
+          },
+        },
+      },
     ]);
 
     const app = createJuniorApi();

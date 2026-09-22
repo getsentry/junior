@@ -4,6 +4,7 @@
  * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -809,6 +810,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
+          const cards = await loadPendingMessageCards(conversationId);
           let slackMessageTs: string[] = [];
           const messageDestinations: Array<{
             destination: Extract<Destination, { platform: "slack" }>;
@@ -822,6 +824,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             if (outcomes) {
               for (const outcome of outcomes) {
                 const messageIds = await sendSlackReply({
+                  cards,
                   channelId: outcome.destination.channelId,
                   conversationId,
                   replyAttribution:
@@ -839,6 +842,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               }
             } else if (channelId && thread.adapter.name === "slack") {
               slackMessageTs = await sendSlackReply({
+                cards,
                 channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
@@ -883,6 +887,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           acceptedDeliveryId = slackTs;
           options.onTurnDeliveryAccepted?.(slackTs);
           const recordedMessageId = recordDeliveredAssistantMessage({
+            cards,
             conversation: preparedState.conversation,
             sessionId: turnId,
             source: "slack",

@@ -8,6 +8,11 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import {
+  messageCardSchema,
+  type MessageCard,
+} from "@/chat/conversations/cards";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -94,6 +99,7 @@ const compactTaskResultSchema = z
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactTaskResultSchema,
+    cards: z.array(messageCardSchema).optional(),
   })
   .strict();
 
@@ -299,8 +305,28 @@ export function compactTask(
 export function scheduleAutomationToolResult(
   task: ScheduledAutomation,
   requesterSlackUserId?: string,
+  operation?: MessageCard["operation"],
 ) {
-  return { automation: compactTask(task, requesterSlackUserId) } as const;
+  const automation = compactTask(task, requesterSlackUserId);
+  if (!operation) return { automation };
+  const card: MessageCard = {
+    kind: "automation",
+    id: task.id,
+    title:
+      automation.title ??
+      fallbackShortTitle(automation.instruction, "Scheduled automation"),
+    url: automation.dashboardUrl,
+    operation,
+    instruction: automation.instruction,
+    trigger: automation.schedule,
+    warning:
+      automation.status === "blocked"
+        ? (automation.statusReason ?? "This automation is blocked.")
+        : automation.status === "completed"
+          ? "This automation has completed."
+          : null,
+  };
+  return { automation, cards: [card] };
 }
 
 /** Build the structured result for listing scheduler tools. */

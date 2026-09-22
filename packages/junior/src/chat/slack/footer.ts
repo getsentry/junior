@@ -21,8 +21,14 @@ interface SlackMarkdownBlock {
 }
 
 interface SlackSectionBlock {
-  text: SlackMrkdwnTextObject;
+  text: SlackMrkdwnTextObject | SlackPlainTextObject;
   type: "section";
+  accessory?: {
+    type: "button";
+    text: SlackPlainTextObject;
+    url: string;
+    action_id: string;
+  };
 }
 
 interface SlackContextBlock {
@@ -31,6 +37,7 @@ interface SlackContextBlock {
 }
 
 export type SlackMessageBlock =
+  | { type: "divider" }
   | SlackMarkdownBlock
   | SlackSectionBlock
   | SlackContextBlock;
@@ -94,16 +101,15 @@ export function buildSlackReplyFooter(args: {
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
+  cardBlocks: SlackMessageBlock[] = [],
 ): SlackMessageBlock[] | undefined {
-  if (!text.trim()) {
+  if (!text.trim() && cardBlocks.length === 0) {
     return undefined;
   }
 
   const blocks: SlackMessageBlock[] = [
-    {
-      type: "markdown",
-      text,
-    },
+    ...(text.trim() ? [{ type: "markdown" as const, text }] : []),
+    ...cardBlocks,
   ];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {

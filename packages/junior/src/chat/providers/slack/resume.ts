@@ -6,6 +6,7 @@
  * authorization pause notices use `sendSlackReply` so the footer stays
  * consistent.
  */
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
@@ -555,6 +556,7 @@ async function resumeSlackTurnInContext(
         return;
       }
       failureCode = "delivery_failed";
+      const cards = await loadPendingMessageCards(conversationId);
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
@@ -563,6 +565,7 @@ async function resumeSlackTurnInContext(
           for (const outcome of outcomes) {
             slackMessageTs.push(
               ...(await sendSlackReply({
+                cards,
                 channelId: outcome.destination.channelId,
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
@@ -573,6 +576,7 @@ async function resumeSlackTurnInContext(
           }
         } else {
           slackMessageTs = await sendSlackReply({
+            cards,
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
             replyAttribution: runArgs.run?.dispatch?.replyAttribution,
@@ -590,6 +594,7 @@ async function resumeSlackTurnInContext(
       assistantMessageDelivered = true;
       acceptedDeliveryId = messageTs;
       const recordedMessageId = recordDeliveredAssistantMessage({
+        cards,
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
         source: "slack",
