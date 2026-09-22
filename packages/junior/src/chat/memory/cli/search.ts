@@ -86,7 +86,7 @@ async function runSearch(
   return 0;
 }
 
-/** Wire the memory search admin subcommand under the plugin namespace. */
+/** Wire the memory search admin subcommand under `memory`. */
 export function configureMemorySearchCommand(
   parent: Command,
   junior: PluginCliHost,

@@ -1193,7 +1193,7 @@ export function createMemoryStore(
     return { created: false, memory: args.duplicate };
   }
 
-  /** Persist a memory under the plugin-derived scope and subject. */
+  /** Persist a memory under the scope and subject derived from the runtime context. */
   async function createScopedMemory(
     rawInput: CreateMemoryInput,
     subjectType: ResolvedMemorySubject["subjectType"],

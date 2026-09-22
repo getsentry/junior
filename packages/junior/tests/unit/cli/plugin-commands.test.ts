@@ -111,14 +111,14 @@ describe("plugin CLI commands", () => {
       defineJuniorPlugin({
         manifest: {
           name: "notes",
-          displayName: "Memory",
-          description: "Memory plugin",
+          displayName: "Notes",
+          description: "Notes plugin",
         },
         cli: {
           commands: [
             {
               name: "notes",
-              summary: "Memory command",
+              summary: "Notes command",
               configure(command) {
                 command.name("renamed");
                 command.command("search");
@@ -139,14 +139,14 @@ describe("plugin CLI commands", () => {
       defineJuniorPlugin({
         manifest: {
           name: "notes",
-          displayName: "Memory",
-          description: "Memory plugin",
+          displayName: "Notes",
+          description: "Notes plugin",
         },
         cli: {
           commands: [
             {
               name: "notes",
-              summary: "Memory command",
+              summary: "Notes command",
               configure(command) {
                 command.alias("mem");
                 command.command("search");

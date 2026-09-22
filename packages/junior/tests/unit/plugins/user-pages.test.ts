@@ -10,81 +10,81 @@ describe("plugin user pages", () => {
     expect(() =>
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory plugin",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes plugin",
         },
         userPages: [
           {
-            id: "Memories",
-            label: "Memories",
-            description: "Personal memories.",
+            id: "Notes",
+            label: "Notes",
+            description: "Personal notes.",
             read,
           },
         ],
       }),
     ).toThrow(
-      'Junior plugin "memory" user page id "Memories" must be a lowercase identifier.',
+      'Junior plugin "notes" user page id "Notes" must be a lowercase identifier.',
     );
 
     expect(() =>
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory plugin",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes plugin",
         },
         userPages: [
           {
-            id: "memories",
-            label: "Memories",
-            description: "Personal memories.",
+            id: "notes",
+            label: "Notes",
+            description: "Personal notes.",
             read,
           },
           {
-            id: "memories",
+            id: "notes",
             label: "Other memories",
             description: "More personal memories.",
             read,
           },
         ],
       }),
-    ).toThrow('Junior plugin "memory" has duplicate user page id "memories".');
+    ).toThrow('Junior plugin "notes" has duplicate user page id "notes".');
 
     expect(() =>
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory plugin",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes plugin",
         },
         userPages: [
           {
-            id: "memories",
-            label: "Memories",
-            description: "Personal memories.",
+            id: "notes",
+            label: "Notes",
+            description: "Personal notes.",
             navigation: "sidebar" as "primary",
             read,
           },
         ],
       }),
     ).toThrow(
-      'Junior plugin "memory" user page "memories" navigation must be "primary" or "profile".',
+      'Junior plugin "notes" user page "notes" navigation must be "primary" or "profile".',
     );
   });
 
   it("keeps page-only plugins in the runtime plugin set", () => {
     const plugin = defineJuniorPlugin({
       manifest: {
-        name: "memory",
-        displayName: "Memory",
-        description: "Memory plugin",
+        name: "notes",
+        displayName: "Notes",
+        description: "Notes plugin",
       },
       userPages: [
         {
-          id: "memories",
-          label: "Memories",
-          description: "Personal memories.",
+          id: "notes",
+          label: "Notes",
+          description: "Personal notes.",
           read: () => ({ type: "list", records: [] }),
         },
       ],

@@ -213,9 +213,9 @@ async function getTaskExtraction(
 }
 
 /**
- * Extract and store memories from a completed session plugin task.
+ * Extract and store memories from a completed session task.
  *
- * Memory owns learning after a run and reads only the plugin run data.
+ * Memory owns learning after a run and reads only the task's run data.
  * Explicit memory tools stay separate so retries do not reinterpret user
  * requests.
  */

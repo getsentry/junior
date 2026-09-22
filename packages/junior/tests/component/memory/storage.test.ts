@@ -539,7 +539,7 @@ const rejectMemory: MemoryReviewer = {
   },
 };
 
-describe("memory plugin storage", () => {
+describe("memory storage", () => {
   it("normalizes structured review responses", async () => {
     const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
     const model: PluginModel = {
@@ -804,7 +804,7 @@ describe("memory plugin storage", () => {
     ).rejects.toThrow("Too big");
   });
 
-  it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
+  it("uses AI_MEMORY_MODEL as the memory model default", async () => {
     const previousModel = process.env.AI_MEMORY_MODEL;
     process.env.AI_MEMORY_MODEL = "anthropic/claude-sonnet-4.6";
 

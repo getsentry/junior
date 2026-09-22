@@ -2,7 +2,7 @@ import type { PluginCliCommandDefinition } from "@sentry/junior-plugin-api";
 import { configureMemorySearchCommand } from "./search";
 import { configureMemoryShowCommand } from "./show";
 
-/** Create the plugin-owned memory admin CLI command. */
+/** Create the `memory` admin CLI command. */
 export function createMemoryCliCommand(): PluginCliCommandDefinition {
   return {
     name: "memory",

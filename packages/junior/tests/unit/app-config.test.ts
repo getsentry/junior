@@ -813,8 +813,8 @@ describe("createApp plugin config", () => {
         defineJuniorPlugin({
           manifest: {
             name: "notes",
-            displayName: "Memory",
-            description: "Memory plugin",
+            displayName: "Notes",
+            description: "Notes plugin",
           },
           hooks: {
             apiRoutes() {
