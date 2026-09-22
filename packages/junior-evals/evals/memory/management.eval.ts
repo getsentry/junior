@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, memoryEvals } from "../../src/helpers";
 import {
   clearMemories,
   type MemoryThread,
@@ -9,7 +9,7 @@ import {
   seedMemory,
 } from "./helpers";
 
-describeEval("Memory Management", slackEvals, (it) => {
+describeEval("Memory Management", memoryEvals, (it) => {
   const autoRecallThread = {
     id: "thread-memory-auto-recall",
     channel_type: "im",

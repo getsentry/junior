@@ -7,7 +7,7 @@ import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import {
   mention,
   rubric,
-  slackEvals,
+  memoryEvals,
   steer,
   threadMessage,
 } from "../../src/helpers";
@@ -88,7 +88,7 @@ async function memoriesForActor(
   );
 }
 
-describeEval("Memory with Multiple Actors", slackEvals, (it) => {
+describeEval("Memory with Multiple Actors", memoryEvals, (it) => {
   const bystanderPreferenceThread = {
     channel_type: "channel",
     id: "thread-memory-bystander-preference",

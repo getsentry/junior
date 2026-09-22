@@ -351,6 +351,8 @@ export interface EvalOverrides {
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
   github_events?: boolean;
+  /** Run passive Memory extraction after completed turns. Off by default. */
+  memory_extraction?: boolean;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -2658,7 +2660,13 @@ export async function runEvalScenario(
     );
     const currentPlugins = getPlugins();
     // Core features ship with every app, so evals run them like production.
-    previousCoreFeatures = setCoreFeatures(createCoreFeatures());
+    // Passive Memory extraction runs model calls and a background task after
+    // every completed turn, so only scenarios that measure it turn it on.
+    previousCoreFeatures = setCoreFeatures(
+      createCoreFeatures({
+        memory: { disableExtraction: !scenario.overrides?.memory_extraction },
+      }),
+    );
     previousPlugins = setPlugins([
       ...runtimePlugins,
       ...currentPlugins.filter(

@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, memoryEvals } from "../../src/helpers";
 import {
   clearMemories,
   countMemoryEmbeddings,
@@ -13,7 +13,7 @@ import {
   visibleAssistantText,
 } from "./helpers";
 
-describeEval("User Memory", slackEvals, (it) => {
+describeEval("User Memory", memoryEvals, (it) => {
   const explicitRememberThread = {
     id: "thread-memory-explicit-remember",
     channel_type: "im",

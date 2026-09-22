@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, memoryEvals } from "../../src/helpers";
 import {
   clearMemories,
   expectAssistantMemoryAnswer,
@@ -11,7 +11,7 @@ import {
   visibleAssistantText,
 } from "./helpers";
 
-describeEval("Shared Memory", slackEvals, (it) => {
+describeEval("Shared Memory", memoryEvals, (it) => {
   const recallRelevanceThread = {
     channel_type: "channel",
     id: "thread-memory-recall-relevance",
