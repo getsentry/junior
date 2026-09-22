@@ -334,7 +334,7 @@ async function grepFilesWithRipgrep(params: {
         cause: new Error(detail),
       });
     }
-    if (/regex parse error|error parsing regex/i.test(detail)) {
+    if (/regex parse error|error parsing regex|is not allowed in a regex/i.test(detail)) {
       throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
         cause: new Error(detail),
       });
