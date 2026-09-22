@@ -1,10 +1,10 @@
 import { ArrowUpRight, CircleAlert, Workflow } from "lucide-react";
-import type { MessageCard } from "@sentry/junior/api/schema";
+import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
 import { automationPath } from "../format";
 import { ButtonLink } from "./Button";
 
 /** Show the automation saved at this point in the conversation. */
-export function AutomationMessageCard({ card }: { card: MessageCard }) {
+export function AutomationCard({ card }: { card: AutomationCardValue }) {
   return (
     <section
       aria-label={card.title}

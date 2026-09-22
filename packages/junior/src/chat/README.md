@@ -347,3 +347,9 @@ facts, under the same privacy rules as message text. Cards are not live status.
 assistant Message or Turn start. It keeps the last successful change per
 Automation, including across resume and history replacement. Silent Turns do
 not send cards or pass them to a later Turn.
+
+`automations/card.ts` owns the AutomationCard schema and text format. Its Slack
+renderer and dashboard component own their layouts. `conversations/cards.ts`
+contains the closed union of built-in response types, not shared layout fields.
+To add a known card type, define its schema and add a case to each surface's
+renderer. Plugin-defined cards are not supported.

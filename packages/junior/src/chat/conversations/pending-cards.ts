@@ -44,7 +44,8 @@ export async function loadPendingMessageCards(
         continue;
       for (const value of data.details.cards) {
         const card = messageCardSchema.parse(value);
-        if (!cards.has(card.id)) cards.set(card.id, card);
+        const key = `${card.kind}:${card.id}`;
+        if (!cards.has(key)) cards.set(key, card);
       }
     }
     if (!page.hasOlder || page.events.length === 0)

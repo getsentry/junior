@@ -9,9 +9,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import {
-  messageCardSchema,
-  type MessageCard,
-} from "@/chat/conversations/cards";
+  automationCardSchema,
+  type AutomationCard,
+} from "@/chat/automations/card";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -99,7 +99,7 @@ const compactTaskResultSchema = z
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactTaskResultSchema,
-    cards: z.array(messageCardSchema).optional(),
+    cards: z.array(automationCardSchema).optional(),
   })
   .strict();
 
@@ -305,11 +305,11 @@ export function compactTask(
 export function scheduleAutomationToolResult(
   task: ScheduledAutomation,
   requesterSlackUserId?: string,
-  operation?: MessageCard["operation"],
+  operation?: AutomationCard["operation"],
 ) {
   const automation = compactTask(task, requesterSlackUserId);
   if (!operation) return { automation };
-  const card: MessageCard = {
+  const card: AutomationCard = {
     kind: "automation",
     id: task.id,
     title:

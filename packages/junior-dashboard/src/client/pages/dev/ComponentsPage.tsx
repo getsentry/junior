@@ -1,4 +1,4 @@
-import { AutomationMessageCard } from "../../components/AutomationMessageCard";
+import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
   Bot,
@@ -633,7 +633,7 @@ function TranscriptsGalleryPage() {
       title="Transcripts"
     >
       <Fixture title="Saved automation">
-        <AutomationMessageCard
+        <AutomationCard
           card={{
             kind: "automation",
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
@@ -647,7 +647,7 @@ function TranscriptsGalleryPage() {
             warning: null,
           }}
         />
-        <AutomationMessageCard
+        <AutomationCard
           card={{
             kind: "automation",
             id: "scheduled-1",

@@ -2,9 +2,9 @@ import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import {
-  messageCardSchema,
-  type MessageCard,
-} from "@/chat/conversations/cards";
+  automationCardSchema,
+  type AutomationCard,
+} from "@/chat/automations/card";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import {
@@ -73,7 +73,7 @@ const compactEventAutomationResultSchema = z
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactEventAutomationResultSchema,
-    cards: z.array(messageCardSchema),
+    cards: z.array(automationCardSchema),
   })
   .strict();
 
@@ -267,7 +267,7 @@ export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId: string,
-  operation: MessageCard["operation"],
+  operation: AutomationCard["operation"],
 ) {
   const automation = compactEventAutomation(
     task,
@@ -298,7 +298,7 @@ export function eventAutomationToolResult(
           operation !== "deleted" && !automation.trigger.available
             ? "Trigger unavailable. This automation cannot receive events."
             : null,
-      } satisfies MessageCard,
+      } satisfies AutomationCard,
     ],
   };
 }
