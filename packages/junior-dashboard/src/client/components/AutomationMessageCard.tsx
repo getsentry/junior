@@ -1,5 +1,6 @@
 import { ArrowUpRight, CircleAlert, Workflow } from "lucide-react";
 import type { MessageCard } from "@sentry/junior/api/schema";
+import { automationPath } from "../format";
 import { ButtonLink } from "./Button";
 
 /** Show the automation saved at this point in the conversation. */
@@ -33,9 +34,9 @@ export function AutomationMessageCard({ card }: { card: MessageCard }) {
       <p className="line-clamp-2 break-words text-xs leading-relaxed text-dashboard-text-muted">
         {card.trigger}
       </p>
-      {card.url && card.operation !== "deleted" ? (
+      {card.operation !== "deleted" ? (
         <div>
-          <ButtonLink to={card.url} className="h-8 text-xs">
+          <ButtonLink to={automationPath(card.id)} className="h-8 text-xs">
             Open automation{" "}
             <ArrowUpRight aria-hidden="true" className="size-3.5" />
           </ButtonLink>
