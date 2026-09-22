@@ -23,10 +23,10 @@ provider retry does not run the same automation twice. A destination may still
 stop further event-automation dispatches after too many automated turns with no user
 message. The Turn that hits the limit posts a plain notice, and later matching
 events stay quiet until a user message clears that pause.
-An event Automation targets a Slack channel or direct message, never a thread.
-Creation from a thread uses the active channel as the Destination. The store
-rejects thread fields on new writes and removes them from retained rows on read.
-Migration 0044 removes thread fields from existing Destinations and message outcomes.
+
+Event automations target channels or DMs, not threads. Migration 0044 removes
+stored thread destinations. Reads also remove thread fields written by older
+workers during deployment; new writes reject them.
 
 Listing stays bound to the destination where the automation was created. Threads
 in that destination share the list. Update and delete also accept a public

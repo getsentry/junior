@@ -4,6 +4,7 @@ import {
   eventMatchSchema,
   eventTypeSchema,
   slackDestinationSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -36,12 +37,9 @@ const eventAutomationDestinationSchema = slackDestinationSchema.omit({
   threadTs: true,
 });
 
-const eventAutomationOutcomeSchema = z
-  .object({
-    action: z.literal("send_message"),
-    destination: eventAutomationDestinationSchema,
-  })
-  .strict();
+const eventAutomationOutcomeSchema = taskOutcomeSchema.extend({
+  destination: eventAutomationDestinationSchema,
+});
 
 /** Validate one persisted event automation. */
 export const eventAutomationSchema = z

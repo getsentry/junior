@@ -15,7 +15,7 @@ import {
 } from "@/db/schema/event-automations";
 import { eventAutomationSchema, type EventAutomation } from "./types";
 
-// Retained rows can predate the channel-only Destination invariant.
+// Older workers can still write thread destinations during deployment.
 const retainedEventAutomationSchema = eventAutomationSchema.extend({
   destination: slackDestinationSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
@@ -69,25 +69,15 @@ function parseTask(row: EventAutomationRow): StoredEventAutomation {
     ];
   }
   const retained = retainedEventAutomationSchema.parse(raw);
-  const payload = {
-    ...retained,
-    destination: {
-      platform: "slack" as const,
-      teamId: retained.destination.teamId,
-      channelId: retained.destination.channelId,
-    },
-    outcomes: retained.outcomes.map((outcome) => ({
-      ...outcome,
-      destination: {
-        platform: "slack" as const,
-        teamId: outcome.destination.teamId,
-        channelId: outcome.destination.channelId,
-      },
-    })),
-  };
+  const { threadTs: _threadTs, ...destination } = retained.destination;
   const title = row.title?.trim();
   return {
-    ...payload,
+    ...retained,
+    destination,
+    outcomes: retained.outcomes.map((outcome) => {
+      const { threadTs: _threadTs, ...destination } = outcome.destination;
+      return { ...outcome, destination };
+    }),
     status: row.status === "deleted" ? "deleted" : "active",
     ...(title ? { title } : undefined),
   };
