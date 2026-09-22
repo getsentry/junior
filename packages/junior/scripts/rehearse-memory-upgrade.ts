@@ -28,9 +28,10 @@ import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
 const MEMORY_MIGRATION_TAG = "0045_memory_core";
 const CORE_MIGRATIONS = path.resolve(process.cwd(), "migrations");
+/** The 12 migrations that the removed `@sentry/junior-memory` plugin shipped. */
 const LEGACY_MIGRATIONS = path.resolve(
   process.cwd(),
-  "../junior-memory/migrations",
+  "scripts/fixtures/legacy-memory-migrations",
 );
 /** Legacy plugin journal prefixes worth rehearsing: before each data change. */
 const LEGACY_PREFIXES = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12];

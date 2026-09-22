@@ -84,35 +84,24 @@ function assertUniquePackageNames(packageNames: string[]): void {
 }
 
 const LEGACY_MEMORY_PACKAGE = "@sentry/junior-memory";
-let warnedLegacyMemoryPackage = false;
 
 /**
- * Memory moved into core. Ignore the old package registration once so
- * existing plugin sets keep loading during the compatibility window.
+ * Stop startup when a plugin set still names the removed Memory plugin.
+ *
+ * Memory ships inside `@sentry/junior`. The error tells the operator how to
+ * move the old registration and its options.
  */
-function isLegacyMemoryInput(input: JuniorPluginInput): boolean {
-  return typeof input === "string"
-    ? input === LEGACY_MEMORY_PACKAGE
-    : input.packageName === LEGACY_MEMORY_PACKAGE;
-}
-
-function warnLegacyMemoryInput(): void {
-  if (warnedLegacyMemoryPackage) {
-    return;
-  }
-  warnedLegacyMemoryPackage = true;
-  console.warn(
-    `${LEGACY_MEMORY_PACKAGE} is deprecated and ignored: Memory ships inside @sentry/junior. Remove memoryPlugin() from defineJuniorPlugins([...]) or JUNIOR_PLUGIN_PACKAGES, and configure createApp({ memory }).`,
+function assertNoLegacyMemory(inputs: JuniorPluginInput[]): void {
+  const legacy = inputs.some((input) =>
+    typeof input === "string"
+      ? input === LEGACY_MEMORY_PACKAGE
+      : input.packageName === LEGACY_MEMORY_PACKAGE,
   );
-}
-
-/** Drop the legacy Memory registration and warn once when it was present. */
-function withoutLegacyMemory<T extends JuniorPluginInput>(inputs: T[]): T[] {
-  const kept = inputs.filter((input) => !isLegacyMemoryInput(input));
-  if (kept.length < inputs.length) {
-    warnLegacyMemoryInput();
+  if (legacy) {
+    throw new Error(
+      `${LEGACY_MEMORY_PACKAGE} was removed: Memory ships inside @sentry/junior. Remove memoryPlugin() or "${LEGACY_MEMORY_PACKAGE}" from your plugin set and JUNIOR_PLUGIN_PACKAGES, uninstall the package, and move its options to createApp({ memory }).`,
+    );
   }
-  return kept;
 }
 
 function normalizePluginInput(input: JuniorPluginInput): {
@@ -130,7 +119,8 @@ export function defineJuniorPlugins(
   inputs: JuniorPluginInput[],
   options: JuniorPluginSetOptions = {},
 ): JuniorPluginSet {
-  const normalized = withoutLegacyMemory(inputs).map(normalizePluginInput);
+  assertNoLegacyMemory(inputs);
+  const normalized = inputs.map(normalizePluginInput);
   const packageNames = normalized.flatMap((input) =>
     input.packageName ? [input.packageName] : [],
   );
@@ -203,7 +193,8 @@ function readEnvPluginPackages(
     );
   }
 
-  return withoutLegacyMemory(parsed);
+  assertNoLegacyMemory(parsed);
+  return parsed;
 }
 
 /** Build the manifest catalog config implied by plugin package env. */

@@ -28,8 +28,7 @@ schemas, exported types, tools, and tests are authoritative.
   `GET /api/memory/memories`, read one through `GET /api/memory/memories/:id`,
   and forget an authorized private memory through
   `DELETE /api/memory/memories/:id`. `../../api/memory/routes.ts` mounts these
-  routes and keeps `/api/plugins/memory/*` as an alias for one compatibility
-  window. Public memory is read-only in the dashboard and REST API.
+  routes. Public memory is read-only in the dashboard and REST API.
 
 ## Scope And Visibility
 

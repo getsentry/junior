@@ -72,7 +72,7 @@ async function seedPrivateMemory(fixture: {
 describe("memory API routes", () => {
   afterEach(() => setCoreFeatures([]));
 
-  test("serves memory at the core prefix and the legacy plugin alias", async () => {
+  test("lists, reads, and forgets memory through the core routes", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     setCoreFeatures([createMemoryFeature()]);
     try {
@@ -80,17 +80,15 @@ describe("memory API routes", () => {
       const memory = await seedPrivateMemory(fixture);
       const api = authenticatedApi(VIEWER_EMAIL);
 
-      for (const prefix of ["/api/memory", "/api/plugins/memory"]) {
-        const listResponse = await api.request(
-          `http://localhost${prefix}/memories`,
-        );
-        expect(listResponse.status).toBe(200);
-        expect(
-          memoryListResponseSchema
-            .parse(await listResponse.json())
-            .memories.map((entry) => entry.id),
-        ).toEqual([memory.id]);
-      }
+      const listResponse = await api.request(
+        "http://localhost/api/memory/memories",
+      );
+      expect(listResponse.status).toBe(200);
+      expect(
+        memoryListResponseSchema
+          .parse(await listResponse.json())
+          .memories.map((entry) => entry.id),
+      ).toEqual([memory.id]);
 
       const detailResponse = await api.request(
         `http://localhost/api/memory/memories/${encodeURIComponent(memory.id)}`,

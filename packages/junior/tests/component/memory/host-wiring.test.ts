@@ -1,6 +1,4 @@
-import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { readMigrationFiles } from "drizzle-orm/migrator";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -16,8 +14,6 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
-import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
-import { runUpgrade } from "@/cli/upgrade";
 import { createEmptyJuniorSqlFixture } from "../../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
@@ -67,16 +63,6 @@ vi.mock("@/chat/pi/client", () => ({
   })),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
-
-/** The marker that the deprecated `@sentry/junior-memory` package still returns. */
-const legacyMemoryPlugin = {
-  manifest: {
-    name: "memory",
-    displayName: "Memory",
-    description: "Long-term Junior memory storage and recall",
-  },
-  packageName: "@sentry/junior-memory",
-};
 
 afterEach(async () => {
   setCoreFeatures([]);
@@ -169,79 +155,28 @@ function memoryToolsFor(args: {
 }
 
 describe("memory core feature host wiring", () => {
-  it("ignores the legacy memory package registration with one warning", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const pluginSet = defineJuniorPlugins([
-      legacyMemoryPlugin,
-      "@sentry/junior-memory",
-      defineJuniorPlugin({
-        manifest: {
-          description: "Plugin without SQL migrations",
-          displayName: "Empty",
-          name: "empty",
-        },
-      }),
-    ]);
+  it("stops startup while a plugin set still names the removed Memory plugin", () => {
+    const removed = "@sentry/junior-memory was removed";
+    // The last published `memoryPlugin()` returns this registration.
+    const publishedMemoryPlugin = defineJuniorPlugin({
+      manifest: {
+        description: "Long-term Junior memory storage and recall",
+        displayName: "Memory",
+        name: "memory",
+      },
+      packageName: "@sentry/junior-memory",
+    });
 
-    expect(pluginSet.packageNames).toEqual([]);
-    expect(
-      pluginSet.registrations.map((plugin) => plugin.manifest.name),
-    ).toEqual(["empty"]);
-    expect(
+    expect(() => defineJuniorPlugins([publishedMemoryPlugin])).toThrow(removed);
+    expect(() => defineJuniorPlugins(["@sentry/junior-memory"])).toThrow(
+      removed,
+    );
+    expect(() =>
       pluginCatalogConfigFromEnv({
-        JUNIOR_PLUGIN_PACKAGES: JSON.stringify([
-          "@sentry/junior-memory",
-          "@sentry/junior-github",
-        ]),
+        JUNIOR_PLUGIN_PACKAGES: JSON.stringify(["@sentry/junior-memory"]),
       }),
-    ).toEqual({ packages: ["@sentry/junior-github"] });
-    expect(
-      warn.mock.calls.filter(([message]) =>
-        String(message).includes("@sentry/junior-memory is deprecated"),
-      ).length,
-    ).toBeLessThanOrEqual(1);
-
-    const fixture = await createEmptyJuniorSqlFixture();
-    NEON.sql = fixture.sql;
-    try {
-      await expect(
-        migratePluginsToSql({ pluginSet, sqlExecutor: fixture.sql }),
-      ).resolves.toEqual({ existing: 0, migrated: 0, scanned: 0 });
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("reports only the core migration journal for a legacy memory plugin set", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fixture = await createEmptyJuniorSqlFixture();
-    NEON.sql = fixture.sql;
-
-    try {
-      const coreMigrationCount = readMigrationFiles({
-        migrationsFolder: path.resolve(process.cwd(), "migrations"),
-      }).length;
-      const lines: string[] = [];
-      const pluginSet = defineJuniorPlugins([legacyMemoryPlugin]);
-
-      await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
-      expect(lines).toEqual([
-        "Checking database migrations...",
-        `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
-        `Applied ${coreMigrationCount} migrations (${coreMigrationCount} total).`,
-      ]);
-
-      lines.length = 0;
-      await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
-      expect(lines).toEqual([
-        "Checking database migrations...",
-        `  junior: up to date (${coreMigrationCount} migrations)`,
-        `Database is up to date (${coreMigrationCount} migrations).`,
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
+    ).toThrow(removed);
+  });
 
   it("reads public memory everywhere and private memory only for its User", async () => {
     const fixture = await createEmptyJuniorSqlFixture();

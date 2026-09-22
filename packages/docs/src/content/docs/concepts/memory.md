@@ -123,8 +123,6 @@ Junior also exposes authenticated REST resources:
 Personal API tokens can use the read endpoints. Deletion requires an
 authenticated dashboard browser session.
 
-The same resources stay available under `/api/plugins/memory/*` for one compatibility window. New clients should use `/api/memory/*`.
-
 ## Run migrations
 
 After you set `DATABASE_URL`, run the upgrade command:
@@ -137,18 +135,18 @@ On a fresh database, this enables the `vector` and `btree_gin` extensions and cr
 
 ## Upgrade from `@sentry/junior-memory`
 
-Earlier releases shipped Memory as the `@sentry/junior-memory` plugin. Core now owns the same tables, data, events, tools, and routes. The upgrade keeps every stored memory.
+Earlier releases shipped Memory as the `@sentry/junior-memory` plugin. Core now owns the same tables, data, events, tools, and routes. The upgrade keeps every stored memory. Make these changes in the same deploy that installs the new `@sentry/junior` version:
 
 1. Stop old Junior workers.
-2. Install the new `@sentry/junior` version.
-3. Run `junior upgrade`. A core migration adopts the Memory schema. It reads the current schema and applies only the legacy changes that are missing. It does not change a database that already ran every plugin migration. The old plugin migration journal stays as an audit record.
-4. Remove `memoryPlugin()` from `defineJuniorPlugins(...)`. Move its options to `createApp({ memory })`.
-5. Remove `@sentry/junior-memory` from your dependencies.
+2. Install the new `@sentry/junior` version and uninstall `@sentry/junior-memory`.
+3. Remove `memoryPlugin()` from `defineJuniorPlugins(...)`, and remove `@sentry/junior-memory` from `JUNIOR_PLUGIN_PACKAGES` if you set it. Move the `memoryPlugin()` options to `createApp({ memory })`.
+4. Import Memory stores, schemas, and types from `@sentry/junior/memory` instead of `@sentry/junior-memory`.
+5. Run `junior upgrade`. A core migration adopts the Memory schema. It reads the current schema and applies only the legacy changes that are missing. It does not change a database that already ran every plugin migration. The old plugin migration journal stays as an audit record.
 6. Restart workers.
 
-During the compatibility window, `@sentry/junior-memory` is a deprecated package. Its `memoryPlugin()` call is accepted and ignored, and Junior logs one deprecation warning at startup. Its options have no effect. Its other exports come from `@sentry/junior/memory`. A future breaking release removes the package, the old registration, and the `/api/plugins/memory/*` routes.
+REST clients must move from `/api/plugins/memory/*` to `/api/memory/*`. The paths below the prefix are unchanged.
 
-If you must roll back, go back to the compatibility release. Do not reverse the core migration or drop Memory tables. The compatibility release reads the same tables.
+If you must roll back, deploy the previous release with the `@sentry/junior-memory` plugin. Do not reverse the core migration or drop Memory tables. The previous release reads the same tables.
 
 ## Verify
 
@@ -177,7 +175,7 @@ Public Slack channel memories are workspace-visible. Junior can recall a durable
 ## Failure modes
 
 - **Upgrade error — Junior requires the Postgres extensions vector and btree_gin**: the database cannot enable one of the extensions. Use a provider that supports pgvector, or enable the extensions as a privileged user with `CREATE EXTENSION vector` and `CREATE EXTENSION btree_gin`. Then rerun `junior upgrade`.
-- **Startup warning about `@sentry/junior-memory`**: the plugin set still includes `memoryPlugin()` or the package name. Remove it and move its options to `createApp({ memory })`.
+- **Startup error — `@sentry/junior-memory` was removed**: the plugin set or `JUNIOR_PLUGIN_PACKAGES` still names the old plugin. Remove it and move its options to `createApp({ memory })`.
 - **Startup error — plugin name "memory" is reserved**: another plugin claims the `memory` name. Rename that plugin.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` changed after Junior stored memories with a different model. Flush the `junior_memory_embeddings` table so that Junior can make new embeddings.

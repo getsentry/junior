@@ -35,8 +35,10 @@ it applies a migration.
 Core now owns [Memory](/concepts/memory/) storage. A database that ran the old
 `@sentry/junior-memory` plugin migrations keeps its tables and data. The core
 Memory migration reads the current schema and applies only the missing legacy
-changes. The old plugin migration journal stays unchanged. Stop old workers
-before you run the upgrade, as for any schema change.
+changes. The old plugin migration journal stays unchanged. Remove
+`memoryPlugin()` from the plugin set before you run the upgrade, because the
+command stops while the plugin set still names the removed package. See
+[Upgrade from `@sentry/junior-memory`](/concepts/memory/#upgrade-from-sentryjunior-memory).
 
 ## Upgrade bridge for older databases
 

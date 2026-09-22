@@ -33,7 +33,6 @@ Start here:
 | `@sentry/junior-gocd`          | GoCD plugin package for read-only pipeline history through host egress auth  |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
-| `@sentry/junior-memory`        | Compatibility shim; long-term Memory now ships inside `@sentry/junior`       |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
 | `@sentry/junior-octolens`      | Octolens plugin package for social-listening workflows                       |
 | `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |

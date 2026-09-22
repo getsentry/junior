@@ -31,12 +31,14 @@ no Junior tables remains a normal fresh install.
 
 ## Memory adoption
 
-`0045_memory_core` adopts the Memory tables that the `@sentry/junior-memory`
-plugin used to own. It creates the final schema on a fresh database and
+`0045_memory_core` adopts the Memory tables that the removed
+`@sentry/junior-memory` plugin used to own. It creates the final schema on a fresh database and
 reconciles an existing database from any legacy plugin journal position,
 applying only the transitions and data rewrites that are still missing. The
-legacy plugin journal stays in the database as audit state. Rehearse the
-upgrade against real Postgres with:
+legacy plugin journal stays in the database as audit state.
+`scripts/fixtures/legacy-memory-migrations/` keeps the plugin's 12 migrations
+so that the rehearsal can build every legacy state. Rehearse the upgrade
+against real Postgres with:
 
 ```bash
 DATABASE_URL=postgres://junior:junior@localhost:54322/junior \

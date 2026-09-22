@@ -572,30 +572,6 @@ importers:
 
   packages/junior-maintenance: {}
 
-  packages/junior-memory:
-    dependencies:
-      '@sentry/junior-plugin-api':
-        specifier: workspace:*
-        version: link:../junior-plugin-api
-    devDependencies:
-      '@oxlint/plugins':
-        specifier: 1.79.0
-        version: 1.79.0
-      '@sentry/junior':
-        specifier: workspace:*
-        version: file:packages/junior
-      '@types/node':
-        specifier: ^25.9.1
-        version: 25.9.1
-      oxlint:
-        specifier: ^1.79.0
-        version: 1.79.0
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
 
   packages/junior-notion: {}
 

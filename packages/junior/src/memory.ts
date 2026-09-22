@@ -1,11 +1,11 @@
 /**
  * Public Memory API.
  *
- * Apps and the `@sentry/junior-memory` compatibility package import Memory
- * from `@sentry/junior/memory`. Runtime registration happens inside
- * `createApp()`; this entry exposes stores, schemas, and types.
+ * Apps import Memory stores, schemas, and types from `@sentry/junior/memory`.
+ * `createApp()` registers Memory itself; configure it with
+ * `createApp({ memory })`.
  */
-export { createMemoryFeature, type MemoryOptions } from "@/chat/memory/feature";
+export type { MemoryOptions } from "@/chat/memory/feature";
 export {
   memoryApiSchema,
   memoryDashboardResponseSchema,
