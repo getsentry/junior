@@ -23,6 +23,11 @@ provider retry does not run the same automation twice. A destination may still
 stop further event-automation dispatches after too many automated turns with no user
 message. The Turn that hits the limit posts a plain notice, and later matching
 events stay quiet until a user message clears that pause.
+
+Event automations target channels or DMs, not threads. Migration 0044 removes
+stored thread destinations. Reads also remove thread fields written by older
+workers during deployment; new writes reject them.
+
 Listing stays bound to the destination where the automation was created. Threads
 in that destination share the list. Update and delete also accept a public
 automation by id from another destination in the same workspace. Private

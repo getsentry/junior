@@ -32,6 +32,15 @@ const eventAutomationTriggerSchema = z
   })
   .strict();
 
+/** Event automations target a Slack channel or DM, never a message thread. */
+const eventAutomationDestinationSchema = slackDestinationSchema.omit({
+  threadTs: true,
+});
+
+const eventAutomationOutcomeSchema = taskOutcomeSchema.extend({
+  destination: eventAutomationDestinationSchema,
+});
+
 /** Validate one persisted event automation. */
 export const eventAutomationSchema = z
   .object({
@@ -39,10 +48,10 @@ export const eventAutomationSchema = z
     createdAtMs: z.number().finite(),
     createdBy: eventAutomationPrincipalSchema,
     credentialMode: z.enum(["system", "creator"]),
-    destination: slackDestinationSchema,
+    destination: eventAutomationDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
     /** Explicit visible effects after successful work. An empty list is silent. */
-    outcomes: z.array(taskOutcomeSchema).max(5),
+    outcomes: z.array(eventAutomationOutcomeSchema).max(5),
     task: z.object({ text: z.string().min(1) }).strict(),
     trigger: eventAutomationTriggerSchema,
   })

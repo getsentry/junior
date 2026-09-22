@@ -4,7 +4,10 @@ import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { getEventAutomation } from "@/chat/event-automations/store";
+import {
+  getEventAutomation,
+  saveEventAutomation,
+} from "@/chat/event-automations/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
@@ -280,15 +283,18 @@ describe("event automations", () => {
       sourceVisibility: "private" as const,
     },
   ])(
-    "preserves $destinationVisibility Slack access when dispatching",
+    "dispatches from a thread to its $destinationVisibility channel or DM",
     async ({ channelId, destinationVisibility, sourceVisibility }) => {
       await execute(
         createEventAutomationTool(
-          context("U123", channelId, sourceVisibility),
+          context("U123", channelId, sourceVisibility, "1700000000.000100"),
           EVENT_CATALOG,
         ),
         {
           instruction: "Address the requested changes.",
+          outcomes: [
+            { action: "send_message", destination: "current_conversation" },
+          ],
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#1174",
@@ -314,40 +320,58 @@ describe("event automations", () => {
 
       const [{ conversationId }] = queue.sentRecords();
       expect(conversationId).toBeDefined();
-      await expect(
-        getDispatchRecord(conversationId!.replace(/^agent-dispatch:/, "")),
-      ).resolves.toMatchObject({
-        destination: { channelId },
-        destinationVisibility,
-        outcomes: [],
-        source: { kind: "event_automation" },
-      });
+      const dispatch = await getDispatchRecord(
+        conversationId!.replace(/^agent-dispatch:/, ""),
+      );
+      const destination = { platform: "slack", teamId, channelId };
+      expect(dispatch?.destination).toEqual(destination);
+      expect(dispatch?.destinationVisibility).toBe(destinationVisibility);
+      expect(dispatch?.outcomes).toEqual([
+        { action: "send_message", destination },
+      ]);
     },
   );
 
-  it("binds a created-in-thread event automation to that thread when it dispatches", async () => {
-    const threadTs = "1700000000.000100";
-    await execute(
-      createEventAutomationTool(
-        context("U123", "C123", "public", threadTs),
-        EVENT_CATALOG,
-      ),
-      {
-        instruction: "Address the requested changes.",
-        trigger: {
-          namespace: "github",
-          identifier: "getsentry/junior#1174",
-          resourceType: "pull_request",
-          label: "GitHub PR getsentry/junior#1174",
-          events: ["pull_request.review.changes_requested"],
-        },
-      },
-      "dispatch-thread-binding",
+  it("removes stored thread destinations before dispatch and update", async () => {
+    const db = fixture.sql.db();
+    const { automation } = await createTask("Address the requested changes.");
+    const { status: _status, ...task } = (await getEventAutomation(
+      db,
+      automation.id,
+    ))!;
+    const destination = task.destination;
+    const threadDestination = { ...destination, threadTs: "1700000000.000100" };
+    const outcomes = [destination, { ...destination, channelId: "D456" }].map(
+      (destination) => ({ action: "send_message" as const, destination }),
     );
+    const threadOutcomes = outcomes.map((outcome) => ({
+      ...outcome,
+      destination: {
+        ...outcome.destination,
+        threadTs: threadDestination.threadTs,
+      },
+    }));
+    await expect(
+      saveEventAutomation(db, { ...task, destination: threadDestination }),
+    ).rejects.toThrow(/threadTs/);
+    await expect(
+      saveEventAutomation(db, { ...task, outcomes: threadOutcomes }),
+    ).rejects.toThrow(/threadTs/);
 
+    // Simulate a row written by an older worker during deployment.
+    await db
+      .update(juniorEventAutomations)
+      .set({
+        task: {
+          ...task,
+          destination: threadDestination,
+          outcomes: threadOutcomes,
+        },
+      })
+      .where(eq(juniorEventAutomations.id, task.id));
     await ingestEventAutomations(
       {
-        eventKey: "github:dispatch-thread-binding",
+        eventKey: "github:stored-thread",
         eventType: "pull_request.review.changes_requested",
         occurredAtMs: Date.now(),
         namespace: "github",
@@ -358,13 +382,24 @@ describe("event automations", () => {
     );
 
     const [{ conversationId }] = queue.sentRecords();
-    expect(conversationId).toBeDefined();
-    await expect(
-      getDispatchRecord(conversationId!.replace(/^agent-dispatch:/, "")),
-    ).resolves.toMatchObject({
-      destination: { channelId: "C123", threadTs },
-      source: { kind: "event_automation" },
+    const dispatch = await getDispatchRecord(
+      conversationId!.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch?.destination).toEqual(destination);
+    expect(dispatch?.outcomes).toEqual(outcomes);
+
+    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
+      automationId: task.id,
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
     });
+    const [saved] = await db
+      .select()
+      .from(juniorEventAutomations)
+      .where(eq(juniorEventAutomations.id, task.id));
+    expect(saved.task.destination).toEqual(destination);
+    expect(saved.task.outcomes).toEqual([outcomes[0]]);
   });
 
   it("rejects event types that the plugin did not register", async () => {

@@ -148,7 +148,6 @@ export function requireEventAutomationSlackContext(
       platform: "slack" as const,
       teamId: context.source.teamId,
       channelId: context.source.channelId,
-      threadTs: context.source.threadTs ?? context.source.messageTs,
     },
     source: context.source,
   };

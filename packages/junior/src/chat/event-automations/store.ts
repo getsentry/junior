@@ -1,4 +1,11 @@
-import { eventMatches, type Event, type User } from "@sentry/junior-plugin-api";
+import {
+  eventMatches,
+  slackDestinationSchema,
+  taskOutcomeSchema,
+  type Event,
+  type User,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -7,6 +14,12 @@ import {
   type EventAutomationStatus,
 } from "@/db/schema/event-automations";
 import { eventAutomationSchema, type EventAutomation } from "./types";
+
+// Older workers can still write thread destinations during deployment.
+const retainedEventAutomationSchema = eventAutomationSchema.extend({
+  destination: slackDestinationSchema,
+  outcomes: z.array(taskOutcomeSchema).max(5),
+});
 
 type EventAutomationRow = {
   status?: EventAutomationStatus | null;
@@ -55,10 +68,16 @@ function parseTask(row: EventAutomationRow): StoredEventAutomation {
       { action: "send_message", destination: raw.destination },
     ];
   }
-  const payload = eventAutomationSchema.parse(raw);
+  const retained = retainedEventAutomationSchema.parse(raw);
+  const { threadTs: _threadTs, ...destination } = retained.destination;
   const title = row.title?.trim();
   return {
-    ...payload,
+    ...retained,
+    destination,
+    outcomes: retained.outcomes.map((outcome) => {
+      const { threadTs: _threadTs, ...destination } = outcome.destination;
+      return { ...outcome, destination };
+    }),
     status: row.status === "deleted" ? "deleted" : "active",
     ...(title ? { title } : undefined),
   };
