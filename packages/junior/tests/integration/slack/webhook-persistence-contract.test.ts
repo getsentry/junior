@@ -138,7 +138,7 @@ describe("Slack webhook persistence contract", () => {
       eventType: "message" as const,
     },
   ])(
-    "acks a code-only bot mention on $label without queueing work",
+    "acks display-only bot references on $label without queueing work",
     async (args) => {
       const queue = createConversationWorkQueueTestAdapter();
       const state = getStateAdapter();
@@ -146,13 +146,63 @@ describe("Slack webhook persistence contract", () => {
       const slackAdapter = createSlackAdapterFixture();
       const codeOnlyText = "docs say use `" + `<@${SLACK_BOT_USER_ID}>` + "`";
 
+      const envelope = slackEnvelope({
+        eventType: args.eventType,
+        text: codeOnlyText,
+      });
       const response = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          slackEnvelope({
-            eventType: args.eventType,
-            text: codeOnlyText,
-          }),
-        ),
+        request: slackWebhookRequest({
+          ...envelope,
+          event: {
+            ...envelope.event,
+            blocks: [
+              { type: "section", text: { type: "mrkdwn", text: codeOnlyText } },
+              {
+                type: "section",
+                text: { type: "plain_text", text: `<@${SLACK_BOT_USER_ID}>` },
+              },
+              {
+                type: "rich_text",
+                elements: [
+                  {
+                    type: "rich_text_preformatted",
+                    elements: [{ type: "user", user_id: SLACK_BOT_USER_ID }],
+                  },
+                  {
+                    type: "rich_text_section",
+                    elements: [
+                      {
+                        type: "user",
+                        user_id: SLACK_BOT_USER_ID,
+                        style: { code: true },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: { type: "plain_text", text: "Run" },
+                    value: `<@${SLACK_BOT_USER_ID}>`,
+                  },
+                ],
+              },
+            ],
+            attachments: [
+              {
+                blocks: [
+                  {
+                    type: "section",
+                    text: { type: "mrkdwn", text: `<@${SLACK_BOT_USER_ID}>` },
+                  },
+                ],
+              },
+            ],
+          },
+        }),
         services: {
           getSlackAdapter: () => slackAdapter,
           queue,
@@ -196,9 +246,8 @@ describe("Slack webhook persistence contract", () => {
 
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
-      const history = await getConversationEventStore().loadMessageHistory(
-        threadId,
-      );
+      const history =
+        await getConversationEventStore().loadMessageHistory(threadId);
       expect(history.events).toEqual([
         expect.objectContaining({
           data: expect.objectContaining({

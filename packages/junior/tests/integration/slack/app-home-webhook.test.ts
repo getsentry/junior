@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
+import { Message } from "chat";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { parseContent } from "@/chat/slack/message/content";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import {
@@ -176,49 +176,99 @@ describe("Slack webhook: App Home events", () => {
     await expect(responsePromise).resolves.toMatchObject({ status: 200 });
   });
 
-  it("routes explicit mentions from other Slack bots", async () => {
-    const state = createMemoryState();
-    const client = createSlackWebhookTestClient({
-      signingSecret: SIGNING_SECRET,
-    });
-    const waitUntil = client.waitUntil();
-    const queue = createConversationWorkQueueTestAdapter();
-    const slackAdapter = createSlackAdapter();
+  it.each(["text", "blocks"])(
+    "routes explicit %s mentions from other Slack bots",
+    async (source) => {
+      const state = createMemoryState();
+      const client = createSlackWebhookTestClient({
+        signingSecret: SIGNING_SECRET,
+      });
+      const waitUntil = client.waitUntil();
+      const queue = createConversationWorkQueueTestAdapter();
+      const slackAdapter = createSlackAdapter();
 
-    const response = await handleSlackWebhook({
-      request: client.event({
-        team_id: "T123",
-        type: "event_callback",
-        event: {
-          type: "message",
-          subtype: "bot_message",
-          bot_id: "B_DEPLOY",
-          username: "Deploy Bot",
-          text: `<@${BOT_USER_ID}> production deploy failed`,
-          channel: "C123",
-          ts: "1712345.0002",
-          event_ts: "1712345.0002",
-          channel_type: "channel",
+      const response = await handleSlackWebhook({
+        request: client.event({
+          team_id: "T123",
+          type: "event_callback",
+          event: {
+            type: "message",
+            subtype: "bot_message",
+            bot_id: "B_DEPLOY",
+            username: "Deploy Bot",
+            text:
+              source === "text"
+                ? `<@${BOT_USER_ID}> production deploy failed`
+                : "Daily summary: 9 unregistered options",
+            blocks:
+              source === "blocks"
+                ? [
+                    {
+                      type: "header",
+                      text: {
+                        type: "plain_text",
+                        text: "Daily Unregistered Options Summary",
+                      },
+                    },
+                    {
+                      type: "section",
+                      text: {
+                        type: "mrkdwn",
+                        text: `<@${BOT_USER_ID}> please create a PR to remove the options below.`,
+                      },
+                    },
+                    {
+                      type: "section",
+                      fields: [
+                        { type: "mrkdwn", text: "`example.retired-option`" },
+                      ],
+                    },
+                  ]
+                : undefined,
+            channel: "C123",
+            ts: "1712345.0002",
+            event_ts: "1712345.0002",
+            channel_type: "channel",
+          },
+        }),
+        waitUntil: waitUntil.fn,
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
         },
-      }),
-      waitUntil: waitUntil.fn,
-      services: {
-        getSlackAdapter: () => slackAdapter,
-        queue,
-        runtime: createNoopSlackWebhookRuntime(),
-        state,
-      },
-    });
+      });
 
-    expect(response.status).toBe(200);
-    expect(waitUntil.pendingCount()).toBe(0);
-    expect(queue.queuedMessages()).toEqual([
-      {
-        schemaVersion: 2,
+      expect(response.status).toBe(200);
+      expect(waitUntil.pendingCount()).toBe(0);
+      expect(queue.queuedMessages()).toEqual([
+        {
+          schemaVersion: 2,
+          conversationId: "slack:C123:1712345.0002",
+        },
+      ]);
+      const work = await getConversationWorkState({
         conversationId: "slack:C123:1712345.0002",
-      },
-    ]);
-  });
+        state,
+      });
+      const inbound = work?.messages[0];
+      expect(inbound?.delivery).toBe("interrupt");
+      const message = Message.fromJSON(
+        inbound?.input.metadata?.message as ReturnType<Message["toJSON"]>,
+      );
+      const content = parseContent(message);
+      expect(content.text).toBe(
+        source === "text"
+          ? `@${BOT_USER_ID} production deploy failed`
+          : [
+              "Daily Unregistered Options Summary",
+              `<@${BOT_USER_ID}> please create a PR to remove the options below.`,
+              "`example.retired-option`",
+            ].join("\n"),
+      );
+    },
+  );
 
   it("removes only the disconnected provider account identity", async () => {
     const slackIdentity = await upsertIdentity(getSqlExecutor(), {

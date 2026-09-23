@@ -1,7 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { blocksMentionBot, textMentionsBot } from "@/chat/ingress/bot-mention";
 
 const BOT = "U0BOT";
+
+describe("blocksMentionBot", () => {
+  it("recognizes structured user mentions but not plain rich-text tokens", () => {
+    const elements = [
+      { type: "text", text: `<@${BOT}>` },
+      { type: "user", user_id: "U0OTHER" },
+    ];
+    const blocks = [
+      {
+        type: "rich_text",
+        elements: [{ type: "rich_text_section", elements }],
+      },
+    ];
+    expect(blocksMentionBot(blocks, BOT)).toBe(false);
+    elements.push({ type: "user", user_id: BOT });
+    expect(blocksMentionBot(blocks, BOT)).toBe(true);
+  });
+
+  it("checks independent markdown fields without sharing code fences", () => {
+    expect(
+      blocksMentionBot(
+        [
+          {
+            type: "section",
+            fields: [
+              { type: "mrkdwn", text: "```unfinished code example" },
+              { type: "mrkdwn", text: `<@${BOT}> help` },
+            ],
+          },
+        ],
+        BOT,
+      ),
+    ).toBe(true);
+  });
+
+  it("bounds malformed or recursive block data", () => {
+    expect(blocksMentionBot(null, BOT)).toBe(false);
+    const block: { type: string; elements: unknown[] } = {
+      type: "rich_text",
+      elements: [],
+    };
+    block.elements.push(block);
+    expect(blocksMentionBot([block], BOT)).toBe(false);
+  });
+});
 
 describe("textMentionsBot", () => {
   it("detects a plain or labeled bot mention outside code", () => {
@@ -40,9 +85,7 @@ describe("textMentionsBot", () => {
   });
 
   it("detects a mention after a same-line fence close", () => {
-    expect(
-      textMentionsBot("```code``` " + `<@${BOT}> help`, BOT),
-    ).toBe(true);
+    expect(textMentionsBot("```code``` " + `<@${BOT}> help`, BOT)).toBe(true);
     expect(
       textMentionsBot(
         ["```", "code", "``` " + `<@${BOT}> help`].join("\n"),

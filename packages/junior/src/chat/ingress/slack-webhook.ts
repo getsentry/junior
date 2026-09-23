@@ -24,7 +24,7 @@ import {
   verifySlackSignature,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
-import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { blocksMentionBot, textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
@@ -62,6 +62,7 @@ import {
 import type { WaitUntilFn } from "@/handlers/types";
 
 type SlackMessageEvent = {
+  blocks?: unknown;
   bot_id?: string;
   channel?: string;
   channel_type?: string;
@@ -371,11 +372,13 @@ async function routeParsedMessage(args: {
   const normalized = normalizeMessageThreadId(args.message);
   const message = normalized.message;
   const canonicalThreadId = normalized.threadId;
-  // Slack still emits app_mention for tokens inside code spans/blocks. Only
-  // count mentions that sit outside code as activations.
+  // Bots can put the mention only in blocks and use text as a short fallback.
+  // Neither code examples nor link unfurls should activate a new thread.
   const botUserId = args.adapter.botUserId;
   const isMention = Boolean(
-    botUserId && textMentionsBot(args.event.text ?? "", botUserId),
+    botUserId &&
+    (textMentionsBot(args.event.text ?? "", botUserId) ||
+      blocksMentionBot(args.event.blocks, botUserId)),
   );
   if (isMention) {
     message.isMention = true;
