@@ -1,4 +1,32 @@
 # Changelog
+## 0.223.0
+
+### New Features ✨
+
+#### Models
+
+- Use Opus 5.5 for the default handoff profile by @sentry-junior in [#1909](https://github.com/getsentry/junior/pull/1909)
+- Upgrade Luna defaults to GPT-6 by @sentry-junior in [#1890](https://github.com/getsentry/junior/pull/1890)
+
+#### Other
+
+- (chat) Show annotations as reply cards by @sentry-junior in [#1905](https://github.com/getsentry/junior/pull/1905)
+- (dashboard) Redesign conversations by @gricha in [#1901](https://github.com/getsentry/junior/pull/1901)
+- (evals) Report suite results to Sentry Evals by @sentry-junior in [#1904](https://github.com/getsentry/junior/pull/1904)
+- (vercel) Add deployment and alias actions by @sentry-junior in [#1900](https://github.com/getsentry/junior/pull/1900)
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Remove text-only assistant reply fallback by @sentry-junior in [#1910](https://github.com/getsentry/junior/pull/1910)
+- Recognize mentions in message blocks by @sentry-junior in [#1902](https://github.com/getsentry/junior/pull/1902)
+
+#### Other
+
+- (maintenance) Allow for delayed npm release availability by @sentry-junior in [#1906](https://github.com/getsentry/junior/pull/1906)
+- (plugins) Enforce tool naming in lint instead of runtime by @sentry-junior in [#1908](https://github.com/getsentry/junior/pull/1908)
+
 ## 0.222.0
 
 ### New Features ✨
