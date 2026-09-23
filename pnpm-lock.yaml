@@ -297,6 +297,9 @@ importers:
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)
+      '@sentry/junior-sentry':
+        specifier: workspace:*
+        version: link:../junior-sentry
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)

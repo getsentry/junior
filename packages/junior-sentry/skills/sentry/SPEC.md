@@ -2,7 +2,7 @@
 
 ## Intent
 
-The Sentry skill helps agents investigate live Sentry telemetry and create explicitly requested alerts and monitors through the Sentry CLI using per-user credentials injected by Junior.
+The Sentry skill helps agents investigate live Sentry telemetry and create explicitly requested alerts and monitors through the Sentry CLI using host-managed user OAuth or a read-only service connection.
 It should produce useful investigation results, safe alerting mutations, or Sentry web links without exposing credentials.
 
 ## Scope
@@ -39,7 +39,7 @@ Out of scope:
 
 - Verified date: 2026-07-13.
 - Verified npm package: `sentry@0.38.0`, installed from the `runtimeDependencies` declared by `sentryPlugin()`.
-- Auth model: Junior injects `SENTRY_AUTH_TOKEN` for authenticated Sentry commands during the requesting user's turn.
+- Auth model: the host applies the actor's OAuth token or an operator-configured service token to verified HTTP requests. `SENTRY_AUTH_TOKEN` in the Sandbox is a non-secret placeholder. Service mode is install-wide and read-only; missing or rejected service credentials require operator repair, not user reconnection.
 - Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, `sentry alert metrics`, and `sentry api`.
 - Required migration rule: prefer singular command groups such as `sentry org list`; do not teach stale plural command forms such as `sentry organizations list`.
 - Required fallback rule: use `sentry api <endpoint>` when no high-level CLI command covers the requested surface.

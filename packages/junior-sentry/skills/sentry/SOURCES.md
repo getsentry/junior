@@ -53,6 +53,8 @@ Last updated: 2026-07-13
 
 ## Changelog
 
+- 2026-09-23: Replaced the claim that skill loading grants authenticated traffic. A bot-authored deployment triage hit `AuthorizationFlowDisabledError`; a later human turn could read the same data. The Slack turn boundary disables interactive OAuth for bot authors. `src/service-auth.ts` now supplies an opt-in, read-only service connection. Keep the existing reference-backed shape and triggers; narrow reconnect guidance to distinguish service repair from user OAuth. Runtime credential tests cover reads, denied writes, and missing or rejected service credentials. No model replay was run.
+
 - 2026-07-13: Added CLI-first `sentry alert metrics` guidance, explicit-write and duplicate safeguards, API fallback for unsupported anomaly configuration, and `alerts:write` scope behavior.
 - 2026-06-18: Expanded trigger language for Sentry product telemetry and feature usage, and recorded issue 615 routing evidence.
 - 2026-04-30: Reconciled skill guidance with Sentry CLI `0.30.0`, replaced stale plural command forms, added live-help verification, expanded log/trace/API guidance, updated eval smoke artifacts, and added an org-list command-selection eval.
