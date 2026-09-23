@@ -51,6 +51,7 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
+import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
   logException,
@@ -534,6 +535,11 @@ async function handleSlackEvent(args: {
               userId: assistantThread.user_id,
             });
           }
+          return;
+        }
+
+        if (event.type === "entity_details_requested") {
+          await presentSlackAutomationDetails(event, installation.teamId);
           return;
         }
 

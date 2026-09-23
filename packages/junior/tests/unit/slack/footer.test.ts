@@ -57,7 +57,7 @@ describe("buildSlackReplyFooter", () => {
     expect(buildSlackReplyFooter({})).toBeUndefined();
   });
 
-  it("links to the core dashboard with a readable conversation label", () => {
+  it("links the conversation ID to the core dashboard", () => {
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
@@ -89,7 +89,7 @@ describe("buildSlackReplyFooter", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "<https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100|Conversation>",
+            text: "*ID:* <https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100|slack:C123:1700000000.000100>",
           },
         ],
       },

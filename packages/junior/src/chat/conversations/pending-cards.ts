@@ -1,6 +1,6 @@
 import { getConversationEventStore } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
-import { messageCardSchema, type MessageCard } from "./cards";
+import { readMessageCards, type MessageCard } from "./cards";
 
 const CARD_TOOLS = new Set([
   "createEventAutomation",
@@ -16,6 +16,7 @@ export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
   const cards = new Map<string, MessageCard>();
+  const deleted = new Set<string>();
   let beforeSeq: number | undefined;
   // Tools are committed before Delivery. A visible assistant Message consumes
   // the cards; a new Turn must not inherit cards from an earlier silent Turn.
@@ -38,14 +39,25 @@ export async function loadPendingMessageCards(
         data.isError ||
         typeof data.toolName !== "string" ||
         !CARD_TOOLS.has(data.toolName) ||
-        !isRecord(data.details) ||
-        !Array.isArray(data.details.cards)
+        !isRecord(data.details)
       )
         continue;
-      for (const value of data.details.cards) {
-        const card = messageCardSchema.parse(value);
+      if (
+        data.toolName === "deleteEventAutomation" ||
+        data.toolName === "slackScheduleDeleteAutomation"
+      ) {
+        if (
+          isRecord(data.details.automation) &&
+          typeof data.details.automation.id === "string"
+        ) {
+          deleted.add(data.details.automation.id);
+        }
+        continue;
+      }
+      if (!Array.isArray(data.details.cards)) continue;
+      for (const card of readMessageCards(data.details.cards)) {
         const key = `${card.kind}:${card.id}`;
-        if (!cards.has(key)) cards.set(key, card);
+        if (!deleted.has(card.id) && !cards.has(key)) cards.set(key, card);
       }
     }
     if (!page.hasOlder || page.events.length === 0)

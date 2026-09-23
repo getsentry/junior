@@ -52,20 +52,24 @@ transport retries. Saved cards use Slack Work Objects through
 `chat.postMessage.metadata.entities`, not Block Kit attachments. Automation
 previews use `slack#/entities/item`. They show the title, trigger, and any warning.
 The opaque ID stays in `external_ref`; operation badges and full instructions
-stay out of the preview. Deleted objects use a text confirmation, not a dead
-link. Objects without a dashboard URL use compact text instead.
+stay out of the preview. Deleted objects render nothing; the normal reply owns
+the confirmation. Objects without a dashboard URL use compact text instead.
 
 Enable **Work Object Previews → Item** in the Slack app before deploying this
-renderer. Slack owns the card layout and app attribution. The app icon supplies
-the card icon. The initial delivery is read-only: it does not implement link
-unfurls, refresh, actions, or a custom detail panel. Slack shows the saved preview
-in its default detail panel. Do not describe these cards as live status.
+renderer. Subscribe to `entity_details_requested` at `/api/webhooks/slack`.
+Slack owns the card layout and app attribution. The app icon supplies the card
+icon. Opening or refreshing the detail panel loads current Automation facts
+and calls `entity.presentDetails`. The stored Slack identity selects the User;
+the Automations view access rules allow owned and public-workspace objects.
+Missing, deleted, and inaccessible objects all return `not_found` without facts.
+Message previews remain saved facts until Slack refreshes them. Link unfurls
+and actions are not implemented.
 See [Slack's notification API](https://docs.slack.dev/messaging/work-objects-implementation#implementation-notifications).
 
 Reply text and accessible fallback text still travel together. Card-only chunks
 keep a context block so Slack does not also display the notification fallback
-as body text. Conversation footer links use the label “Conversation,” not an
-opaque ID. Installs without a conversation URL retain the diagnostic ID.
+as body text. Conversation footer links retain the diagnostic ID as their label.
+Installs without a conversation URL show the same ID without a link.
 `errors.ts` owns reply-failure classification. `mrkdwn.ts` owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
 status rendering.
 

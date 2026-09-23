@@ -183,7 +183,7 @@ export function createUpdateEventAutomationTool(
       if (!saved) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationToolResult(saved, catalog, actor.userId, "updated");
+      return eventAutomationToolResult(saved, catalog, actor.userId);
     },
   });
 }

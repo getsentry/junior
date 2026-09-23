@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { deleteEventAutomation } from "@/chat/event-automations/store";
 import {
-  eventAutomationToolResult,
+  compactEventAutomation,
   eventAutomationToolResultSchema,
   requireEventAutomationSlackContext,
   writableEventAutomation,
@@ -28,7 +28,7 @@ export function createDeleteEventAutomationTool(
     executionMode: "sequential",
     description: "Delete an event automation.",
     inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
-    outputSchema: eventAutomationToolResultSchema,
+    outputSchema: eventAutomationToolResultSchema.omit({ cards: true }),
     async execute({ automationId }) {
       const { actor } = requireEventAutomationSlackContext(context);
       const current = await writableEventAutomation(context, automationId);
@@ -36,12 +36,9 @@ export function createDeleteEventAutomationTool(
       if (!deleted) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationToolResult(
-        deleted,
-        catalog,
-        actor.userId,
-        "deleted",
-      );
+      return {
+        automation: compactEventAutomation(deleted, catalog, actor.userId),
+      };
     },
   });
 }

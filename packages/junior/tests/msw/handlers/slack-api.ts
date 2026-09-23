@@ -46,6 +46,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
+  "entity.presentDetails",
   "reactions.add",
   "reactions.remove",
   "conversations.history",
@@ -223,6 +224,7 @@ function defaultSlackApiResponse(
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
+    case "entity.presentDetails":
     case "views.publish":
       return { body: slackOk() };
     case "reactions.add":

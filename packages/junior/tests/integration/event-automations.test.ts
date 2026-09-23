@@ -229,7 +229,7 @@ describe("event automations", () => {
       expect(cards).toEqual([
         expect.objectContaining({
           id: created.automation.id,
-          operation: "updated",
+
           trigger: "Review feedback · pull_request.review.commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
@@ -926,18 +926,42 @@ describe("event automations", () => {
       "event-automation-replayed-create",
     );
 
-    await execute(
+    const deleted = await execute(
       createDeleteEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
         automationId: created.automation.id,
       },
     );
-    await expect(
-      getEventAutomation(fixture.sql.db(), created.automation.id),
-    ).resolves.toMatchObject({
-      id: created.automation.id,
-      status: "deleted",
+    expect(deleted).not.toHaveProperty("cards");
+    const conversationId = "local:delete-card";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      source: "internal",
+      visibility: "public",
     });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "tool_result",
+          toolName: "createEventAutomation",
+          details: created,
+          isError: false,
+        },
+      },
+      {
+        createdAtMs: 2,
+        data: {
+          type: "tool_result",
+          toolName: "deleteEventAutomation",
+          details: deleted,
+          isError: false,
+        },
+      },
+    ]);
+    const cards = await loadPendingMessageCards(conversationId);
+    expect(cards).toEqual([]);
     await expect(
       execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
         automationId: created.automation.id,

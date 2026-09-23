@@ -267,7 +267,6 @@ export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId: string,
-  operation: AutomationCard["operation"],
 ) {
   const automation = compactEventAutomation(
     task,
@@ -287,17 +286,15 @@ export function eventAutomationToolResult(
           automation.title ??
           fallbackShortTitle(task.task.text, "Event automation"),
         url: automation.dashboardUrl,
-        operation,
         instruction: task.task.text,
         trigger: [
           task.trigger.label,
           task.trigger.events.join(", "),
           ...filters,
         ].join(" · "),
-        warning:
-          operation !== "deleted" && !automation.trigger.available
-            ? "Trigger unavailable. This automation cannot receive events."
-            : null,
+        warning: !automation.trigger.available
+          ? "Trigger unavailable. This automation cannot receive events."
+          : null,
       } satisfies AutomationCard,
     ],
   };

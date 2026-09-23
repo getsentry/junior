@@ -74,7 +74,6 @@ describe("canonical event transcript reduction", () => {
       kind: "automation" as const,
       id: "evt_review",
       title: "Review fixes",
-      operation: "updated" as const,
       url: "https://junior.example.com/automations/evt_review",
       instruction: "Review new fixes.",
       trigger: "New pull requests",

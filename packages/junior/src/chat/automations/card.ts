@@ -7,7 +7,6 @@ export const automationCardSchema = z
     id: z.string().min(1),
     title: z.string().min(1).max(160),
     url: z.string().url().nullable(),
-    operation: z.enum(["created", "updated", "deleted"]),
     instruction: z.string().max(4000),
     trigger: z.string().min(1),
     warning: z.string().nullable(),
@@ -18,7 +17,6 @@ export type AutomationCard = z.output<typeof automationCardSchema>;
 
 /** Render saved card facts for text-only delivery and accessible fallbacks. */
 export function automationCardText(card: AutomationCard): string {
-  if (card.operation === "deleted") return `Deleted “${card.title}”.`;
   return [
     card.title,
     card.warning,

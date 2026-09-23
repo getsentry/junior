@@ -5,7 +5,7 @@ import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
   getWritableTask,
-  scheduleAutomationToolResult,
+  compactTask,
   scheduleAutomationToolResultSchema,
   throwToolInputError,
   type SchedulerToolContext,
@@ -51,7 +51,7 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(next, context.actor?.userId);
+      return { automation: compactTask(next, context.actor?.userId) };
     },
   });
 }
