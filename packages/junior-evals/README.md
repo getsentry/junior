@@ -102,6 +102,16 @@ These knobs work by overriding services on the eval-local runtime instance. They
 
 The eval queue honors each accepted delivery's due time before invoking the worker. This includes the production event batching delay; the 60-second agent response budget starts afterward. Snapshot warmup and the egress process use the same JavaScript plugin registrations as the scenario, not package names alone. Package names expose skills but do not supply runtime dependencies or credential metadata.
 
+Failed scenario runs attach the partial normalized session to the original error.
+This keeps observed replies, unfinished tool calls, logs, and usage in reports.
+The case still fails and does not reach the rubric judge. The shared conversion
+lives in `src/eval-result.ts`.
+
+Worker setup installs the AI Gateway body timeout in each worker process.
+Global setup installs it separately for invocation-wide work. Quick Tunnel DNS
+checks use bounded, independent queries to system DNS and each public resolver.
+Startup failures retain every attempt and the connected tunnel's output.
+
 Tool replay:
 
 - `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. Use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.

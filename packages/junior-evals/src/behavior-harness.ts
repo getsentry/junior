@@ -10,7 +10,12 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
-import type { JsonValue } from "vitest-evals/harness";
+import {
+  attachHarnessRunToError,
+  serializeError,
+  type JsonValue,
+} from "vitest-evals/harness";
+import { toEvalHarnessRun } from "./eval-result";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -381,6 +386,7 @@ interface SteeringDelivery {
 }
 
 export interface EvalResult {
+  sessionMessages: NormalizedMessage[];
   canvases: EvalCanvasArtifact[];
   channelPosts: Array<{
     channel: string;
@@ -406,10 +412,6 @@ export interface EvalResult {
   toolInvocations: EvalToolInvocation[];
   usage?: AgentTurnUsage;
 }
-
-type CollectedEvalResult = EvalResult & {
-  sessionMessages: NormalizedMessage[];
-};
 
 export interface AuthorizationCompletion {
   credentialStored: true;
@@ -2593,7 +2595,7 @@ function collectResults(
   slackAdapter: FakeSlackAdapter,
   logRecords: EmittedLogRecord[],
   observations: RuntimeObservations,
-): CollectedEvalResult {
+): EvalResult {
   const threadReplyTargets = new Set(
     [...threadRecordsById.values()]
       .filter((record) => record.thread.threadTs)
@@ -2647,6 +2649,7 @@ export async function runEvalScenario(
   scenario: EvalScenario,
   options: EvalScenarioRunOptions = {},
 ): Promise<EvalResult> {
+  const startedAt = Date.now();
   const logRecords = options.logRecords ?? [];
   const runtimePlugins = evalRuntimePlugins(
     scenario.overrides?.plugin_packages ?? [],
@@ -2756,25 +2759,42 @@ export async function runEvalScenario(
       }),
     });
 
-    await processEvents({
-      scenario,
-      env,
-      agentRunner: evalAgentRunner,
-      getSlackAdapter: () => slackAdapter,
-      conversationWorkQueue,
-      conversationWork,
-      getThreadRecord,
-      observations,
-      readyQueueDeliveries,
-      steeringDelivery,
-      signal: options.signal,
-    });
+    try {
+      await processEvents({
+        scenario,
+        env,
+        agentRunner: evalAgentRunner,
+        getSlackAdapter: () => slackAdapter,
+        conversationWorkQueue,
+        conversationWork,
+        getThreadRecord,
+        observations,
+        readyQueueDeliveries,
+        steeringDelivery,
+        signal: options.signal,
+      });
 
-    if (observations.errors.length > 0) {
-      throw new AggregateError(
-        observations.errors,
-        "Eval agent execution failed",
+      if (observations.errors.length > 0) {
+        throw new AggregateError(
+          observations.errors,
+          "Eval agent execution failed",
+        );
+      }
+    } catch (error) {
+      const run = toEvalHarnessRun(
+        collectResults(
+          threadRecordsById,
+          slackAdapter,
+          logRecords,
+          observations,
+        ),
+        Date.now() - startedAt,
       );
+      run.errors = [
+        error,
+        ...observations.errors.filter((cause) => cause !== error),
+      ].map(serializeError);
+      throw attachHarnessRunToError(error, run);
     }
     return collectResults(
       threadRecordsById,

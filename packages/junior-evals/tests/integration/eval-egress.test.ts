@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
 
 const originalPath = process.env.PATH;
@@ -31,6 +31,7 @@ afterEach(() => {
 
 describe("eval egress", () => {
   it("retries a failed Quick Tunnel allocation through teardown", async () => {
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     let resetCount = 0;
     let publicVerificationAttempts = 0;
     const fixtureDir = await mkdtemp(path.join(tmpdir(), "eval-egress-test-"));
@@ -85,10 +86,22 @@ setInterval(() => undefined, 1000);
         },
         verifyPublicUrl: async () => {
           publicVerificationAttempts += 1;
+          if (publicVerificationAttempts === 1)
+            throw new Error("DNS not ready");
         },
       });
-      expect(publicVerificationAttempts).toBe(1);
-      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("2");
+      expect(publicVerificationAttempts).toBe(2);
+      expect(warnings).toHaveBeenCalledTimes(2);
+      expect(warnings.mock.calls[1]?.[0]).toMatchObject({
+        message: expect.stringContaining(
+          "https://eval-suite.trycloudflare.com",
+        ),
+        cause: expect.objectContaining({ message: "DNS not ready" }),
+      });
+      expect(warnings.mock.calls[1]?.[0].message).toContain(
+        "Registered tunnel connection",
+      );
+      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("3");
       expect(egress.baseUrl).toBe("https://eval-suite.trycloudflare.com");
       await expect(
         fetch(egress.controlUrl, {
@@ -111,6 +124,7 @@ setInterval(() => undefined, 1000);
       await expect(egress.close()).resolves.toBeUndefined();
       await expect(readFile(closeMarker, "utf8")).resolves.toBe("closed");
     } finally {
+      warnings.mockRestore();
       await rm(fixtureDir, { force: true, recursive: true });
     }
   }, 15_000);

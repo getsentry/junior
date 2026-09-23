@@ -6,8 +6,6 @@
 export const fileLengthExceptions = {
   "packages/junior-evals/src/behavior-harness.ts":
     "Existing eval harness; split by harness concern.",
-  "packages/junior-evals/src/helpers.ts":
-    "Existing shared eval helpers; split by helper concern.",
   "packages/junior-dashboard/src/mock-reporting/fixtures.ts":
     "Large static reporting fixture set.",
   "packages/junior-dashboard/tests/telemetry-components.test.tsx":

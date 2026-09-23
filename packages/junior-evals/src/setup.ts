@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, inject } from "vitest";
+import { afterAll, afterEach, beforeEach, inject } from "vitest";
 import "./eval-context";
 
 const context = inject("juniorEvalContext");
@@ -10,6 +10,13 @@ process.env.JUNIOR_BASE_URL = evalContext.baseUrl;
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX = evalContext.stateKeyPrefix;
 process.env.REDIS_URL = evalContext.redisUrl;
+
+// Load model code only after the worker's runtime environment is set.
+// Global setup has a separate dispatcher, so install the limit here too.
+const { installEvalAiGatewayDispatcher } =
+  await import("./eval-ai-gateway-dispatcher");
+const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
+afterAll(restoreAiGatewayDispatcher);
 
 /** Read fixture observations owned by the invocation-wide egress process. */
 export async function readEvalEgressFixtureState<T>(): Promise<T> {

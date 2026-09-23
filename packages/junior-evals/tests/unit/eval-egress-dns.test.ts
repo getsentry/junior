@@ -1,57 +1,59 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const { publicResolve4, setServers, systemResolve4 } = vi.hoisted(() => ({
-  publicResolve4: vi.fn(),
+const { resolve4, setServers } = vi.hoisted(() => ({
+  resolve4: vi.fn(),
   setServers: vi.fn(),
-  systemResolve4: vi.fn(),
 }));
 
 vi.mock("node:dns/promises", () => ({
   Resolver: class {
-    resolve4 = publicResolve4;
+    resolve4 = resolve4;
     setServers = setServers;
   },
-  resolve4: systemResolve4,
 }));
 
 import { resolveQuickTunnelIpv4 } from "../../src/eval-egress";
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 it("uses system DNS when the Quick Tunnel hostname is available", async () => {
-  systemResolve4.mockResolvedValueOnce(["192.0.2.1"]);
-
+  resolve4.mockResolvedValueOnce(["192.0.2.1"]);
   await expect(resolveQuickTunnelIpv4("ready.trycloudflare.com")).resolves.toBe(
     "192.0.2.1",
   );
-  expect(publicResolve4).not.toHaveBeenCalled();
+  expect(setServers).not.toHaveBeenCalled();
 });
 
-it("falls back to public DNS when system DNS is stale", async () => {
-  systemResolve4.mockRejectedValueOnce(new Error("stale system DNS"));
-  publicResolve4.mockResolvedValueOnce(["192.0.2.2"]);
-
+it("tries each public provider independently after a negative DNS answer", async () => {
+  resolve4
+    .mockRejectedValueOnce(new Error("stale system DNS"))
+    .mockRejectedValueOnce(
+      Object.assign(new Error("queryA ENOTFOUND"), { code: "ENOTFOUND" }),
+    )
+    .mockResolvedValueOnce(["192.0.2.2"]);
   await expect(resolveQuickTunnelIpv4("new.trycloudflare.com")).resolves.toBe(
     "192.0.2.2",
   );
-  expect(setServers).toHaveBeenCalledWith(["1.1.1.1", "8.8.8.8"]);
+  expect(setServers.mock.calls).toEqual([[["1.1.1.1"]], [["8.8.8.8"]]]);
 });
 
-it("reports both DNS failures", async () => {
-  const systemError = new Error("system DNS failed");
-  const publicError = new Error("public DNS failed");
-  systemResolve4.mockRejectedValueOnce(systemError);
-  publicResolve4.mockRejectedValueOnce(publicError);
-
+it("retains every DNS failure with its resolver", async () => {
+  const failures = [
+    new Error("system failed"),
+    new Error("Cloudflare failed"),
+    new Error("Google failed"),
+  ];
+  for (const failure of failures) resolve4.mockRejectedValueOnce(failure);
   await expect(
     resolveQuickTunnelIpv4("missing.trycloudflare.com"),
-  ).rejects.toEqual(
-    expect.objectContaining({
-      errors: [systemError, publicError],
-      message:
-        "Could not resolve missing.trycloudflare.com through system or public DNS",
-    }),
-  );
+  ).rejects.toMatchObject({
+    errors: failures.map((cause, index) => ({
+      cause,
+      message: `DNS lookup failed via ${["system", "1.1.1.1", "8.8.8.8"][index]}`,
+    })),
+    message:
+      "Could not resolve missing.trycloudflare.com through system or public DNS",
+  });
 });

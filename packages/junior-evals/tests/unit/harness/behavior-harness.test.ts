@@ -1,3 +1,5 @@
+import { getHarnessRunFromError, toolCalls } from "vitest-evals/harness";
+import type { AgentEvent } from "@/chat/agent/types";
 import { setImmediate } from "node:timers/promises";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +26,7 @@ const {
     executeAgentRunMock: vi.fn<
       (request: {
         signal?: AbortSignal;
+        onEvent?: (event: AgentEvent) => Promise<void>;
         environment?: {
           toolOverrides?: {
             webFetch?: {
@@ -202,7 +205,15 @@ describe("behavior harness", () => {
     async (mode) => {
       const failure = new Error("provider unavailable");
       if (mode === "throw") {
-        executeAgentRunMock.mockRejectedValueOnce(failure);
+        executeAgentRunMock.mockImplementationOnce(async (request) => {
+          await request.onEvent?.({
+            type: "tool_started",
+            toolCallId: "pending-tool",
+            toolName: "listDir",
+            params: { path: "/vercel/sandbox" },
+          });
+          throw failure;
+        });
       } else {
         executeAgentRunMock.mockResolvedValueOnce({
           status: "completed",
@@ -227,25 +238,24 @@ describe("behavior harness", () => {
         }
       });
 
-      await expect(
-        runEvalScenario({
-          initialEvents: [
-            {
-              type: "new_mention",
-              thread: {
-                id: "slack:CFAILURE:1700000000.0001",
-                channel_id: "CFAILURE",
-                thread_ts: "1700000000.0001",
-              },
-              message: {
-                id: "1700000000.0002",
-                text: "Help me with this task.",
-                author: { user_id: "U0TEST" },
-              },
+      const failedRun = runEvalScenario({
+        initialEvents: [
+          {
+            type: "new_mention",
+            thread: {
+              id: "slack:CFAILURE:1700000000.0001",
+              channel_id: "CFAILURE",
+              thread_ts: "1700000000.0001",
             },
-          ],
-        }),
-      ).rejects.toMatchObject({
+            message: {
+              id: "1700000000.0002",
+              text: "Help me with this task.",
+              author: { user_id: "U0TEST" },
+            },
+          },
+        ],
+      });
+      await expect(failedRun).rejects.toMatchObject({
         message: "Eval agent execution failed",
         errors: [
           mode === "throw"
@@ -253,6 +263,32 @@ describe("behavior harness", () => {
             : expect.objectContaining({ cause: failure }),
         ],
       });
+      const error = await failedRun.catch((error: unknown) => error);
+      const partial = getHarnessRunFromError(error);
+      expect(partial?.session.events).toContainEqual(
+        expect.objectContaining({
+          type: "message",
+          role: "user",
+          content: "Help me with this task.",
+        }),
+      );
+      expect(partial?.errors).toContainEqual(
+        expect.objectContaining({
+          message: expect.stringContaining("provider unavailable"),
+        }),
+      );
+      if (mode === "throw") {
+        expect(toolCalls(partial!.session)).toMatchObject([
+          { name: "listDir", status: "pending" },
+        ]);
+        expect(partial?.session.events).toContainEqual(
+          expect.objectContaining({
+            type: "message",
+            role: "assistant",
+            content: "I ran into an internal error while processing that.",
+          }),
+        );
+      }
     },
   );
 

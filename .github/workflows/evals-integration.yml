@@ -124,6 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
             https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
             --output "$RUNNER_TEMP/cloudflared"
           echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check

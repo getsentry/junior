@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Resolver, resolve4 } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -82,27 +82,28 @@ function closeServer(server: Server): Promise<void> {
 export async function resolveQuickTunnelIpv4(
   hostname: string,
 ): Promise<string> {
-  let addresses: string[];
-  try {
-    addresses = await resolve4(hostname);
-  } catch (systemError) {
-    const publicResolver = new Resolver();
-    publicResolver.setServers(["1.1.1.1", "8.8.8.8"]);
+  const errors: Error[] = [];
+  // Node stops at a negative DNS answer. Separate resolvers let another
+  // provider answer while a new Quick Tunnel hostname is still propagating.
+  for (const server of [undefined, "1.1.1.1", "8.8.8.8"]) {
+    const resolver = new Resolver({ timeout: 1_000, tries: 1 });
+    if (server) resolver.setServers([server]);
     try {
-      addresses = await publicResolver.resolve4(hostname);
-    } catch (publicError) {
-      throw new AggregateError(
-        [systemError, publicError],
-        `Could not resolve ${hostname} through system or public DNS`,
-        { cause: systemError },
+      const [address] = await resolver.resolve4(hostname);
+      if (!address) throw new Error(`No IPv4 address resolved for ${hostname}`);
+      return address;
+    } catch (error) {
+      errors.push(
+        new Error(`DNS lookup failed via ${server ?? "system"}`, {
+          cause: error,
+        }),
       );
     }
   }
-  const [address] = addresses;
-  if (!address) {
-    throw new Error(`No IPv4 address resolved for ${hostname}`);
-  }
-  return address;
+  throw new AggregateError(
+    errors,
+    `Could not resolve ${hostname} through system or public DNS`,
+  );
 }
 
 async function writeResponse(
@@ -223,7 +224,10 @@ function createEvalEgressServer(options: EvalEgressOptions): {
 }
 
 /** Wait until cloudflared has both allocated and connected the Quick Tunnel. */
-function waitForQuickTunnel(tunnel: ChildProcess): Promise<string> {
+function waitForQuickTunnel(tunnel: ChildProcess): Promise<{
+  baseUrl: string;
+  output: () => string;
+}> {
   return new Promise((resolve, reject) => {
     let output = "";
     let settled = false;
@@ -247,7 +251,7 @@ function waitForQuickTunnel(tunnel: ChildProcess): Promise<string> {
       if (settled) return;
       settled = true;
       cleanupControlListeners();
-      resolve(baseUrl);
+      resolve({ baseUrl, output: () => output });
     };
     function fail(error: Error) {
       if (settled) return;
@@ -382,8 +386,9 @@ export async function startEvalEgress(
     configDir = await mkdtemp(path.join(tmpdir(), "junior-eval-egress-"));
     const configPath = path.join(configDir, "config.yml");
     await writeFile(configPath, "{}\n", "utf8");
-    let lastError: unknown;
+    const errors: Error[] = [];
     for (let attempt = 1; attempt <= QUICK_TUNNEL_ATTEMPTS; attempt += 1) {
+      const startedAt = Date.now();
       tunnel = spawn(
         "cloudflared",
         [
@@ -402,8 +407,12 @@ export async function startEvalEgress(
         ],
         { stdio: ["ignore", "pipe", "pipe"] },
       );
+      let connectedTunnel:
+        | Awaited<ReturnType<typeof waitForQuickTunnel>>
+        | undefined;
       try {
-        const baseUrl = await waitForQuickTunnel(tunnel);
+        connectedTunnel = await waitForQuickTunnel(tunnel);
+        const { baseUrl } = connectedTunnel;
         await (options.verifyPublicUrl ?? waitForPublicProxy)(baseUrl);
         return {
           baseUrl,
@@ -413,7 +422,12 @@ export async function startEvalEgress(
           stateUrl: new URL(STATE_PATH, `http://127.0.0.1:${port}`).href,
         };
       } catch (error) {
-        lastError = error;
+        const failure = new Error(
+          `Quick Tunnel attempt ${attempt} failed after ${Date.now() - startedAt}ms${connectedTunnel ? ` at ${connectedTunnel.baseUrl}:\n${connectedTunnel.output()}` : ""}`,
+          { cause: error },
+        );
+        errors.push(failure);
+        console.warn(failure);
         await stopTunnel(tunnel);
         tunnel = undefined;
         if (attempt < QUICK_TUNNEL_ATTEMPTS) {
@@ -425,9 +439,9 @@ export async function startEvalEgress(
         }
       }
     }
-    throw new Error(
+    throw new AggregateError(
+      errors,
       `Eval egress failed after ${QUICK_TUNNEL_ATTEMPTS} Quick Tunnel attempts`,
-      { cause: lastError },
     );
   } catch (error) {
     try {
