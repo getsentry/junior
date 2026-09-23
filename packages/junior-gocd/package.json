@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-gocd",
-  "version": "0.221.1",
+  "version": "0.222.0",
   "private": false,
   "publishConfig": {
     "access": "public"
