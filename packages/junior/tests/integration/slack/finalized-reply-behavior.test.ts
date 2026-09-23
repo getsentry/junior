@@ -18,6 +18,7 @@ import {
 import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 import { getConversationEventStore } from "@/chat/db";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -76,6 +77,18 @@ describe("Slack behavior: finalized thread replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(thread.posts.map(toPostedText)).toEqual(["Hello world"]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C0FINAL",
+          thread_ts: "1700006000.000",
+          blocks: [
+            { type: "markdown", text: "Hello world" },
+            expect.objectContaining({ type: "context" }),
+          ],
+        }),
+      }),
+    ]);
     const lifecycle = await loadTurnLifecycleEvents(thread.id);
     expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({

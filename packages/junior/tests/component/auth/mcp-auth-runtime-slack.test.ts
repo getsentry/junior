@@ -500,7 +500,6 @@ describe("mcp auth runtime slack integration", () => {
         }),
       }),
     ]);
-    expect(thread.posts).toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -758,7 +757,6 @@ describe("mcp auth runtime slack integration", () => {
 
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(0);
-    expect(thread.posts).toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({

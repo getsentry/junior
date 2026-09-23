@@ -65,7 +65,7 @@ describe("slack harness fixture", () => {
   it("uses explicit channelId when provided", async () => {
     const thread = await createTestThread({ id: "thread-3", channelId: "C-3" });
 
-    expect(thread.adapter.name).toBe("test");
+    expect(thread.adapter.name).toBe("slack");
     expect(thread.channelId).toBe("C-3");
     expect(thread.channel.id).toBe("C-3");
   });

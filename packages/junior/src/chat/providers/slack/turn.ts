@@ -27,10 +27,7 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { sendSlackReply } from "@/chat/slack/reply";
-import {
-  buildSlackOutputMessage,
-  splitSlackReplyText,
-} from "@/chat/slack/output";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
@@ -840,7 +837,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   })),
                 );
               }
-            } else if (channelId && thread.adapter.name === "slack") {
+            } else {
+              if (!channelId || thread.adapter.name !== "slack") {
+                throw new Error(
+                  "Slack reply delivery requires a Slack adapter and channel ID",
+                );
+              }
               slackMessageTs = await sendSlackReply({
                 cards,
                 channelId,
@@ -855,15 +857,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   messageId: threadTs ?? messageId,
                 })),
               );
-            } else {
-              for (const part of splitSlackReplyText(text)) {
-                const postedMessageTs = (
-                  await thread.post(buildSlackOutputMessage(part))
-                ).id;
-                if (postedMessageTs) {
-                  slackMessageTs.push(postedMessageTs);
-                }
-              }
             }
           } catch (error) {
             if (isRetryableSlackPostError(error)) {
