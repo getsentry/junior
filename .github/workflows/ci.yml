@@ -142,6 +142,18 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm typecheck
 
+  eval-report-tests:
+    name: test / eval reporting
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+      - run: node --test packages/junior-evals/scripts/report.test.mjs
+
   junior-tests:
     name: test / junior ${{ matrix.suite }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
