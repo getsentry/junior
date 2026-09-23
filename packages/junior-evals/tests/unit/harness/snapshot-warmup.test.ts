@@ -56,7 +56,7 @@ it("preserves local fixture skill ownership", () => {
   const fixture = loadEvalPluginFixtures([root]);
   pluginCatalogRuntime.setConfig({
     packages: [],
-    inlineManifests: fixture.inlineManifests,
+    inlineManifests: fixture,
   });
   expect(pluginCatalogRuntime.getOAuthConfig("eval-oauth")).toBeDefined();
   expect(

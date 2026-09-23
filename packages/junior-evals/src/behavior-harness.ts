@@ -169,7 +169,7 @@ async function processEvalPluginTask(
 }
 
 /** Drain plugin tasks started by the eval harness before shared state cleanup. */
-export async function drainPendingEvalPluginTasks(): Promise<void> {
+async function drainPendingEvalPluginTasks(): Promise<void> {
   if (pendingEvalPluginTasks.size === 0) {
     return;
   }
@@ -1546,15 +1546,11 @@ async function setupHarnessEnvironment(
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
 
   try {
-    const explicitSkillDirs =
+    const configuredSkillDirs =
       scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
     const configuredPluginDirs =
       scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
     const pluginFixtures = loadEvalPluginFixtures(configuredPluginDirs);
-    const configuredSkillDirs = [
-      ...explicitSkillDirs,
-      ...pluginFixtures.skillDirs,
-    ];
     const autoCompleteMcpOauthProviders = new Set(
       scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
     );
@@ -1598,7 +1594,7 @@ async function setupHarnessEnvironment(
     );
     pluginCatalogRuntime.setConfig({
       inlineManifests: [
-        ...pluginFixtures.inlineManifests,
+        ...pluginFixtures,
         ...(pluginConfig?.inlineManifests ?? []),
       ],
       packages: pluginConfig?.packages ?? [],

@@ -283,29 +283,20 @@ describeEval("Routing", slackEvals, (it) => {
 });
 ```
 
-## Failure cleanup and CI
+## Cleanup and CI
 
-CI runs all eval harness tests once, without model credentials or a tunnel.
-Live behavioral and integration jobs select changes to shared harness sources,
-fixtures, dependency files, and their own workflow. Runtime-only changes still
-require the existing eval labels.
+CI runs the harness tests once, without live credentials or a tunnel. Live eval
+jobs select shared sources, fixtures, workflow and dependency changes.
+Runtime-only changes still require the eval labels.
 
-Global setup warms the base, GitHub, and Sentry snapshot profiles once per shard.
-No measured agent turn pays the first build cost because of file order.
+Global setup warms the base, GitHub, and Sentry snapshots once per shard.
+The last setup file joins case work before MSW and database cleanup. A worker
+that cannot drain within five seconds exits with an error. Keep this order:
+late cleanup must not change the next case's state. Scenarios also join title
+and plugin tasks. Failed runs retain their transcript, including cleanup errors.
 
-Each Vitest case owns its scenario and judge promises. The last setup file
-registers the first cleanup hook. It joins that work before MSW or database
-cleanup, including after an outer test timeout. If work does not settle within
-five seconds of teardown, the worker exits with an error instead of starting
-another case with dirty state. Scenario cleanup also joins conversation titles
-and plugin tasks before restoring the catalog. Post-run validation errors retain
-the collected transcript.
+Gateway header and body-idle limits do not replace request cancellation.
+Judges and task titles receive the caller's signal; reply budgets stay unchanged.
 
-The Gateway dispatcher bounds both stalled headers and idle response bodies.
-These limits are not total request deadlines. Judge and task-title requests use
-their owning cancellation signals; reply budgets stay at 60 seconds.
-
-The Pi capacity patch is in `patches/@earendil-works__pi-ai@0.85.1.patch`.
-It adds missing transient capacity wording to the SDK classifier. Existing
-retry limits and terminal billing/quota exclusions still apply. Remove the patch
-when the pinned SDK includes these cases. No whole-scenario retry is added.
+Remove `patches/@earendil-works__pi-ai@0.85.1.patch` when the pinned SDK handles
+capacity errors. It uses the existing retry budget and preserves quota exclusions.

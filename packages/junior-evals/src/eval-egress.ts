@@ -33,7 +33,7 @@ export interface EvalEgress {
 }
 
 /** Extract the public Quick Tunnel URL from cloudflared output. */
-export function extractQuickTunnelUrl(output: string): string | undefined {
+function extractQuickTunnelUrl(output: string): string | undefined {
   return output.match(QUICK_TUNNEL_URL_PATTERN)?.[0];
 }
 
@@ -372,7 +372,6 @@ export async function startEvalEgress(
           { cause: error },
         );
         errors.push(failure);
-        console.warn(failure);
         await stopTunnel(tunnel);
         tunnel = undefined;
         if (attempt < QUICK_TUNNEL_ATTEMPTS) {

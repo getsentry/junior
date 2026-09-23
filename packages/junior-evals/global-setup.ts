@@ -114,7 +114,7 @@ export default async function setup(
     previousCatalogConfig = pluginCatalogRuntime.setConfig({
       ...pluginConfig,
       inlineManifests: [
-        ...pluginFixtures.inlineManifests,
+        ...pluginFixtures,
         ...(pluginConfig?.inlineManifests ?? []),
       ],
     });

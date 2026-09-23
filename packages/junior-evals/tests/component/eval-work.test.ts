@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { setTimeout as delay } from "node:timers/promises";
-import { drainEvalWork, trackEvalWork } from "../../src/eval-work";
+import { drainEvalWork, runEvalWork } from "../../src/eval-work";
 
 let cleaned = false;
 let drainedBeforeReset = false;
@@ -12,17 +12,15 @@ afterEach(async (context) => {
 it.fails(
   "joins work after the outer Vitest timeout",
   async ({ signal }) => {
-    await trackEvalWork(
-      (async () => {
-        await new Promise<void>((resolve) =>
-          signal.addEventListener("abort", () => resolve(), { once: true }),
-        );
-        // Cleanup deliberately completes after Vitest has rejected the case.
-        await delay(300);
-        cleaned = true;
-        signal.throwIfAborted();
-      })(),
-    );
+    await runEvalWork(async () => {
+      await new Promise<void>((resolve) =>
+        signal.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      // Cleanup deliberately completes after Vitest has rejected the case.
+      await delay(300);
+      cleaned = true;
+      signal.throwIfAborted();
+    });
   },
   50,
 );

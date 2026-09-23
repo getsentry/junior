@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
@@ -36,11 +36,6 @@ export function evalGitHubEnv(): Record<string, string> {
   };
 }
 
-export interface EvalPluginFixtures {
-  inlineManifests: InlinePluginManifestDefinition[];
-  skillDirs: string[];
-}
-
 function pluginDirs(root: string): string[] {
   if (existsSync(path.join(root, "plugin.yaml"))) return [root];
   return readdirSync(root, { withFileTypes: true })
@@ -53,10 +48,11 @@ function pluginDirs(root: string): string[] {
     .sort((left, right) => left.localeCompare(right));
 }
 
-/** Load eval plugin manifests and skill roots without changing process cwd. */
-export function loadEvalPluginFixtures(roots: string[]): EvalPluginFixtures {
+/** Load eval plugin manifests without changing process cwd. */
+export function loadEvalPluginFixtures(
+  roots: string[],
+): InlinePluginManifestDefinition[] {
   const inlineManifests: InlinePluginManifestDefinition[] = [];
-  const skillDirs: string[] = [];
   for (const root of roots) {
     for (const pluginDir of pluginDirs(root)) {
       inlineManifests.push({
@@ -67,11 +63,7 @@ export function loadEvalPluginFixtures(roots: string[]): EvalPluginFixtures {
           undefined,
         ),
       });
-      const skillsDir = path.join(pluginDir, "skills");
-      if (statSync(skillsDir, { throwIfNoEntry: false })?.isDirectory()) {
-        skillDirs.push(skillsDir);
-      }
     }
   }
-  return { inlineManifests, skillDirs };
+  return inlineManifests;
 }
