@@ -28,7 +28,7 @@ export function Drawer(props: {
   onClose(): void;
   openKey: string;
   titleId: string;
-  width?: "default" | "wide";
+  width?: "default" | "wide" | "narrow";
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(props.onClose);
@@ -110,7 +110,9 @@ export function Drawer(props: {
           "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-emphasis",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
-            : "md:w-[min(560px,94vw)]",
+            : props.width === "narrow"
+              ? "md:w-[min(440px,94vw)]"
+              : "md:w-[min(560px,94vw)]",
         )}
       >
         <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dashboard-border-strong bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">

@@ -23,9 +23,12 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { Drawer } from "../../components/Drawer";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
+import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
+import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -36,6 +39,7 @@ import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
+import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
 import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
@@ -327,6 +331,8 @@ function GalleryIndexPage() {
 function FoundationsGalleryPage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const [pressed, setPressed] = useState(true);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
     <GalleryShell
@@ -334,6 +340,46 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Conversation navigation">
+        <DashboardChromeProvider>
+          <DashboardHeader
+            compact
+            mobileNavigationOpen={navigationOpen}
+            navItems={[
+              { key: "code", label: "Code", to: "/code" },
+              { key: "system", label: "System", to: "/system" },
+            ]}
+            onMobileNavigationOpenChange={setNavigationOpen}
+            workspaceActive
+          />
+        </DashboardChromeProvider>
+      </Fixture>
+      <Fixture title="Narrow details drawer">
+        <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
+        {drawerOpen ? (
+          <Drawer
+            closeLabel="Close gallery details"
+            dismissLabel="Dismiss gallery details"
+            header={
+              <h2
+                id="gallery-drawer-title"
+                className="m-0 text-lg font-semibold"
+              >
+                Conversation details
+              </h2>
+            }
+            onClose={() => setDrawerOpen(false)}
+            openKey="gallery-details"
+            titleId="gallery-drawer-title"
+            width="narrow"
+          >
+            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+              Linked work, the Brief, participants, and runtime details stay
+              within reach.
+            </p>
+          </Drawer>
+        ) : null}
+      </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">
           <TokenSwatchRow
@@ -342,6 +388,7 @@ function FoundationsGalleryPage() {
               { className: "bg-dashboard-bg", label: "bg" },
               { className: "bg-dashboard-bg-elevated", label: "elevated" },
               { className: "bg-dashboard-surface-panel", label: "panel" },
+              { className: "bg-dashboard-surface-active", label: "active" },
               { className: "bg-dashboard-surface-raised", label: "raised" },
               { className: "bg-dashboard-surface-hover", label: "hover" },
               { className: "bg-dashboard-control", label: "control" },
@@ -632,7 +679,32 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
-      <Fixture title="Automation objects">
+      <Fixture title="Saved automation inside a reply">
+        <div className="max-w-[52.5rem]">
+          <TranscriptMessageShell actor="Junior" role="assistant">
+            <span className="text-sm font-semibold text-cyan-100">Junior</span>
+            <TranscriptText
+              role="assistant"
+              text={
+                "Drink water reminder is set.\n\nI'll ping you here in 30 minutes, then keep rebooking itself every 30 minutes until you ask me to stop."
+              }
+            />
+            <AutomationCard
+              card={{
+                kind: "automation",
+                id: "sched_0123456789abcdef0123456789abcdef",
+                title: "Drink water",
+                url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
+                instruction:
+                  "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
+                trigger: "In 30 minutes",
+                warning: null,
+              }}
+            />
+          </TranscriptMessageShell>
+        </div>
+      </Fixture>
+      <Fixture title="Automation card states">
         <AutomationCard
           card={{
             kind: "automation",

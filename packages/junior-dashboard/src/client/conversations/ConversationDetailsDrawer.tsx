@@ -18,10 +18,10 @@ export function ConversationDetailsDrawer(props: {
   const [tab, setTab] = useState<"details" | "memories">("details");
   const titleId = "conversation-details-drawer-title";
   const sections = [
+    { content: props.annotations, title: "Linked work" },
     { content: props.brief, title: "Brief" },
     { content: props.identity, title: "Identity" },
     { content: props.stats, title: "Runtime" },
-    { content: props.annotations, title: "Links" },
   ].filter((section) => section.content != null);
 
   return (
@@ -44,6 +44,7 @@ export function ConversationDetailsDrawer(props: {
       onClose={props.onClose}
       openKey={props.conversationId}
       titleId={titleId}
+      width="narrow"
     >
       <div className="grid min-w-0 gap-4">
         <FilterTabList
@@ -63,8 +64,11 @@ export function ConversationDetailsDrawer(props: {
           ) : sections.length > 0 ? (
             <div className="grid min-w-0 gap-5">
               {sections.map((section) => (
-                <section className="grid min-w-0 gap-2" key={section.title}>
-                  <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+                <section
+                  className="grid min-w-0 gap-3 border-b border-dashboard-border pb-5 last:border-0 last:pb-0"
+                  key={section.title}
+                >
+                  <h3 className="m-0 text-sm font-semibold text-dashboard-text">
                     {section.title}
                   </h3>
                   <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">

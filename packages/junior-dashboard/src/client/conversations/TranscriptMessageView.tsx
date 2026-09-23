@@ -1,5 +1,5 @@
 import { AutomationCard } from "../components/AutomationCard";
-import { memo, type ClipboardEventHandler, type ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -9,6 +9,7 @@ import {
   transcriptRoleKind,
 } from "../format";
 import { cn } from "../styles";
+import { TranscriptMessageShell } from "./TranscriptMessageShell";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
@@ -26,7 +27,7 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { showsSlackSourceIcon } from "./transcriptSource";
 
-/** Render one primary chat message bubble and its attached turn context. */
+/** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
     message: TranscriptViewMessage;
@@ -39,6 +40,7 @@ export const TranscriptMessageView = memo(
     return (
       <TranscriptMessageShell
         role={props.message.role}
+        actor={transcriptMessageActorLabel(props.conversation, props.message)}
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
@@ -124,7 +126,10 @@ export function RedactedMessageView(props: {
       : [formatMessageTimestamp(props.message.timestamp)];
 
   return (
-    <TranscriptMessageShell role={props.message.role}>
+    <TranscriptMessageShell
+      role={props.message.role}
+      actor={transcriptMessageActorLabel(props.conversation, props.message)}
+    >
       <TranscriptMessageHeader
         meta={meta}
         message={props.message}
@@ -136,21 +141,6 @@ export function RedactedMessageView(props: {
         ))}
       </div>
     </TranscriptMessageShell>
-  );
-}
-
-function TranscriptMessageShell(props: {
-  children: ReactNode;
-  onCopy?: ClipboardEventHandler<HTMLElement>;
-  role: string;
-}) {
-  return (
-    <article
-      className={transcriptMessageClass(props.role)}
-      onCopy={props.onCopy}
-    >
-      {props.children}
-    </article>
   );
 }
 
@@ -176,7 +166,7 @@ function TranscriptMessageHeader(props: {
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
         showSlack || meta.length ? (
-          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
+          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-xs leading-snug text-dashboard-text-muted md:leading-none">
             {showSlack ? (
               <span className="inline-flex shrink-0" title="Slack">
                 <SlackMark className="size-3.5" />
@@ -211,20 +201,6 @@ function RedactedMetadataRow(props: { meta?: string }) {
   );
 }
 
-/** Return the shared chat bubble classes for a transcript role. */
-export function transcriptMessageClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
-    kind === "assistant" && "mr-6 bg-[#0f191c] text-dashboard-text md:mr-[18%]",
-    kind === "user" && "ml-6 bg-[#1a1a1c] text-dashboard-text md:ml-[22%]",
-    kind === "system" && "rounded-xl bg-[#17140d] text-dashboard-text",
-    kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-    kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
-  );
-}
-
 function transcriptRoleClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
@@ -242,7 +218,7 @@ function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full truncate font-display text-xs font-semibold leading-tight md:text-sm",
+    "inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight",
     kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",

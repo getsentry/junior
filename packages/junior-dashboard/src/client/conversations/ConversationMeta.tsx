@@ -78,7 +78,7 @@ export function ConversationPrivacyChip(props: {
     <span
       className={
         isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2 py-0.5 font-sans text-2xs font-medium text-emerald-50/85"
+          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
           : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
@@ -364,6 +364,7 @@ function SidebarAnnotationIcon(props: {
 /** Render resource-link annotations under the conversation title. */
 export function ConversationAnnotations(props: {
   detail: ConversationDetailReport | undefined;
+  layout?: "list" | "strip";
 }) {
   const links =
     props.detail?.annotations?.filter(
@@ -371,10 +372,15 @@ export function ConversationAnnotations(props: {
     ) ?? [];
   if (links.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div
+      className={cn(
+        "flex gap-x-4 gap-y-2",
+        props.layout === "strip" ? "overflow-x-auto" : "flex-wrap",
+      )}
+    >
       {links.map((link) => (
         <a
-          className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
+          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           href={link.url}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
@@ -384,7 +390,7 @@ export function ConversationAnnotations(props: {
           {link.status ? (
             <ResourceStatus status={link.status} url={link.url} />
           ) : null}
-          <span>{link.label}</span>
+          <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
     </div>
@@ -439,7 +445,7 @@ function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
   return (
     <SidebarAnnotationIcon
       icon={resourceStatusIcon(props.status, props.url)}
-      size={12}
+      size={15}
     />
   );
 }
@@ -646,7 +652,7 @@ function conversationStatItems(props: {
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [
-    variant === "full" && location
+    location
       ? {
           content: <LocationLink label={location} locationUrl={locationUrl} />,
           key: "location",

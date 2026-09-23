@@ -12,7 +12,7 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { transcriptMessageClass } from "./TranscriptMessageView";
+import { TranscriptMessageShell } from "./TranscriptMessageShell";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function mayDisplayInline(contentType: string): boolean {
@@ -24,10 +24,7 @@ function mayDisplayInline(contentType: string): boolean {
   );
 }
 
-function attachmentUrl(
-  conversationId: string,
-  attachmentId: string,
-): string {
+function attachmentUrl(conversationId: string, attachmentId: string): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
@@ -94,17 +91,17 @@ export function TranscriptAttachmentsDeliveredView(props: {
   const timestamp = formatMessageTimestamp(props.timestamp);
 
   return (
-    <article className={transcriptMessageClass("assistant")}>
+    <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
       <TranscriptHeadingRow
         left={
-          <span className="inline-block max-w-full truncate font-display text-xs font-semibold leading-tight text-cyan-100 md:text-sm">
+          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-cyan-100">
             {getDashboardAgentName()}
           </span>
         }
         leftClassName="text-xs leading-snug text-cyan-100/70"
         right={
           timestamp ? (
-            <TranscriptHeadingMeta className="text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
+            <TranscriptHeadingMeta className="text-xs leading-snug text-dashboard-text-muted md:leading-none">
               {timestamp}
             </TranscriptHeadingMeta>
           ) : undefined
@@ -119,6 +116,6 @@ export function TranscriptAttachmentsDeliveredView(props: {
           />
         ))}
       </div>
-    </article>
+    </TranscriptMessageShell>
   );
 }

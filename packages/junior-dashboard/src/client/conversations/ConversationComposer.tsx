@@ -79,7 +79,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
-  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
+  const [canSend, setCanSend] = useState(() =>
+    Boolean(initialDraft.text.trim()),
+  );
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -282,7 +284,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3.5"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-none md:resize-y md:overflow-visible md:px-4 md:py-3"
           enterKeyHint="send"
           id={id}
           inputMode="text"
@@ -302,20 +304,22 @@ export const ConversationComposer = memo(function ConversationComposer(
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
-            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+            props.footerStart
+              ? "justify-between"
+              : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
             {props.footerStart}
             {props.footerStart ? null : (
-              <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
+              <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>
             )}
           </div>
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
+            className="rounded-lg !border-0 !bg-cyan-100 font-sans !text-dashboard-text-inverse hover:!bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted"
             disabled={!canSend || !online || sendLocked}
             title={
               !online

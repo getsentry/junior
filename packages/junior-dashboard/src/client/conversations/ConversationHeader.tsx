@@ -18,6 +18,7 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
+  TranscriptViewToggle,
   type ConversationArchiveAction,
 } from "./ConversationHeaderActions";
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
@@ -31,6 +32,7 @@ export function ConversationHeader(props: {
   brief?: ReactNode;
   conversationId: string;
   identity: ReactNode;
+  linkedWork?: ReactNode;
   live: boolean;
   meta?: ReactNode;
   onSearchChange(value: string): void;
@@ -142,7 +144,8 @@ export function ConversationHeader(props: {
     </div>
   );
 
-  const showMobileChrome = searchOpenVisible || props.archive.error;
+  const showMobileChrome =
+    searchOpenVisible || props.archive.error || props.linkedWork;
 
   const liveIndicator = props.live ? (
     <span
@@ -159,21 +162,24 @@ export function ConversationHeader(props: {
       <header
         className={
           showMobileChrome
-            ? "sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-2 pt-2 backdrop-blur md:-mx-7 md:mb-3 md:px-7 md:pb-2.5 md:pt-4"
-            : "sticky top-0 z-10 -mx-3 mb-2 hidden border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-2 pt-3 backdrop-blur md:-mx-7 md:mb-3 md:block md:px-7 md:pb-2.5 md:pt-4"
+            ? "sticky top-0 z-10 -mx-4 border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7"
+            : "sticky top-0 z-10 -mx-4 hidden border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7 md:block"
         }
       >
-        <div className="hidden min-w-0 items-start justify-between gap-2 md:flex">
-          <div className="min-w-0 pt-0.5">
-            <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
-              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-[-0.03em]">
+        <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
                 {props.title}
               </h2>
               {liveIndicator}
-              <span className="hidden shrink-0 sm:inline-flex">
-                {props.privacy}
-              </span>
+              <span className="shrink-0">{props.privacy}</span>
             </div>
+            {props.meta ? (
+              <div className="mt-2 min-w-0 text-xs leading-snug text-dashboard-text-muted">
+                {props.meta}
+              </div>
+            ) : null}
           </div>
           <ConversationHeaderActions
             archive={props.archive}
@@ -186,9 +192,23 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
-
+        {props.linkedWork ? (
+          <div
+            aria-label="Linked work"
+            className="border-t border-dashboard-border bg-dashboard-surface-panel px-4 py-3 md:px-7"
+          >
+            {props.linkedWork}
+          </div>
+        ) : null}
+        <div className="hidden border-t border-dashboard-border px-7 md:flex">
+          <TranscriptViewToggle
+            labelled
+            onChange={props.onViewChange}
+            value={props.view}
+          />
+        </div>
         {searchOpenVisible ? (
-          <div className="min-w-0 md:mt-2">
+          <div className="px-4 py-3 md:px-7">
             <SearchInput
               className="min-w-0"
               inputRef={searchInputRef}
@@ -200,16 +220,9 @@ export function ConversationHeader(props: {
             />
           </div>
         ) : null}
-
         {props.archive.error ? (
-          <div className="mt-1.5 text-xs text-red-300/80">
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update archive state.
-          </div>
-        ) : null}
-
-        {props.meta ? (
-          <div className="mt-1.5 hidden min-w-0 font-sans text-xs leading-snug text-dashboard-text-muted md:block">
-            {props.meta}
           </div>
         ) : null}
       </header>
