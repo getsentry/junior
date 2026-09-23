@@ -101,16 +101,10 @@ export function buildSlackReplyFooter(args: {
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
-  cardBlocks: SlackMessageBlock[] = [],
 ): SlackMessageBlock[] | undefined {
-  if (!text.trim() && cardBlocks.length === 0) {
-    return undefined;
-  }
-
-  const blocks: SlackMessageBlock[] = [
-    ...(text.trim() ? [{ type: "markdown" as const, text }] : []),
-    ...cardBlocks,
-  ];
+  const blocks: SlackMessageBlock[] = text.trim()
+    ? [{ type: "markdown", text }]
+    : [];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
     const attributionElements: SlackPlainTextObject[] = footer.attribution
@@ -135,5 +129,5 @@ export function buildSlackReplyBlocks(
     });
   }
 
-  return blocks;
+  return blocks.length ? blocks : undefined;
 }

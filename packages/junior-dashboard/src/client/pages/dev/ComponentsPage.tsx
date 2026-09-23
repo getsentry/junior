@@ -636,6 +636,31 @@ function TranscriptsGalleryPage() {
         <AutomationCard
           card={{
             kind: "automation",
+            id: "sched_0123456789abcdef0123456789abcdef",
+            title: "Drink water",
+            operation: "created",
+            url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
+            instruction:
+              "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
+            trigger: "In 30 minutes",
+            warning: null,
+          }}
+        />
+        <AutomationCard
+          card={{
+            kind: "automation",
+            id: "sched_0123456789abcdef0123456789abcdef",
+            title: "Drink water",
+            operation: "deleted",
+            url: null,
+            instruction: "Remind the user to drink water.",
+            trigger: "In 30 minutes",
+            warning: null,
+          }}
+        />
+        <AutomationCard
+          card={{
+            kind: "automation",
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             title: "Sentry Auto-Fix PRs",
             operation: "updated",

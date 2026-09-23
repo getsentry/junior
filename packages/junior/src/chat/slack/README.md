@@ -48,8 +48,11 @@ inspect `message.raw` or assemble attachment text themselves.
 
 `reply.ts` owns destination-visible reply chunking, conversation footers, and
 the `sendSlackReply` helper. `outbound.ts` owns Slack API calls and immediate
-transport retries. `errors.ts` owns reply-failure classification. `mrkdwn.ts`
-owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
+transport retries. Saved cards use Block Kit inside native Slack attachments,
+not blocks appended to the reply body. Their title links to the object; full
+instructions stay on the detail page. Attachment-only chunks keep a context
+block so Slack does not also display the notification fallback as body text.
+`errors.ts` owns reply-failure classification. `mrkdwn.ts` owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
 status rendering.
 
 ## Tools And Tool Support

@@ -9,7 +9,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page.goto(`${dashboard.baseURL}/dev/transcripts`);
   const cardLink = page
     .getByRole("region", { name: "Weekly release digest" })
-    .getByRole("link", { name: "Open automation" });
+    .getByRole("link", { name: "Weekly release digest", exact: true });
   await expect(cardLink).toHaveAttribute("href", "/automations/scheduled-1");
   const documentRequests: string[] = [];
   page.on("request", (request) => {

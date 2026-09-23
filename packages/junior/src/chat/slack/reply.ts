@@ -32,7 +32,7 @@ export async function sendSlackReply(args: {
   const posts: Array<{ text: string; cards: MessageCard[] }> =
     splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
   const cards = args.cards ?? [];
-  // Leave room for the reply and footer within Slack's 50-block limit.
+  // Keep each post within Slack's limits and avoid a long stack of attachments.
   for (let index = 0; index < cards.length; index += 5) {
     const group = cards.slice(index, index + 5);
     const lastPost = posts.at(-1);
@@ -54,10 +54,10 @@ export async function sendSlackReply(args: {
     const isFinalChunk = index === posts.length - 1;
     const blocks = buildSlackReplyBlocks(
       text,
-      isFinalChunk ? footer : undefined,
-      cards.flatMap((card) => card.blocks),
+      // Attachment-only chunks need visible blocks so Slack does not show the fallback twice.
+      isFinalChunk || !text.trim() ? footer : undefined,
     );
-    const accessibleText = [text, ...cards.map((card) => card.text)]
+    const accessibleText = [text, ...cards.map((card) => card.fallback)]
       .filter(Boolean)
       .join("\n\n");
     const fallbackText =
@@ -69,6 +69,7 @@ export async function sendSlackReply(args: {
       threadTs,
       text: fallbackText,
       ...(blocks ? { blocks } : undefined),
+      ...(cards.length ? { attachments: cards } : undefined),
     });
     if (response.ts) {
       messageTs.push(response.ts);

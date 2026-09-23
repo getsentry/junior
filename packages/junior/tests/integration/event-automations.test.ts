@@ -243,14 +243,20 @@ describe("event automations", () => {
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
       expect(posted?.text).toContain(created.automation.id);
-      expect(posted?.blocks).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            type: "section",
-            accessory: expect.objectContaining({ url: cards[0]!.url }),
-          }),
-        ]),
-      );
+      expect(posted?.attachments).toEqual([
+        expect.objectContaining({
+          fallback: expect.stringContaining(created.automation.id),
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: "section",
+              text: expect.objectContaining({
+                text: expect.stringContaining(`<${cards[0]!.url}|`),
+              }),
+            }),
+          ]),
+        }),
+      ]);
+      expect(JSON.stringify(posted?.blocks)).not.toContain(cards[0]!.url);
       await commitAssistantMessage({
         cards,
         conversation: coerceThreadConversationState({}),
