@@ -429,7 +429,7 @@ describe("Pi tool adapter", () => {
       userAuthorization: "high" as const,
     }));
     const pluginHooks = {
-      afterMcpTool: vi.fn(async () => undefined),
+      afterMcpTool: vi.fn(async () => []),
       beforeToolExecute: vi.fn(async () => ({
         input: {
           reportId: "monthly",

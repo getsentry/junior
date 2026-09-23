@@ -1,3 +1,4 @@
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
@@ -98,6 +99,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         },
       };
     },
+    outputSchema: z.object({ cards: z.array(ownedObjectAnnotationSchema) }),
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
@@ -136,7 +138,10 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
             : undefined),
         },
       );
-      return { content: result.content };
+      return {
+        content: result.content,
+        details: { cards: result.cards ?? [] },
+      };
     },
   });
 }

@@ -96,16 +96,17 @@ export function ConversationPrivacyChip(props: {
 }
 
 type ResourceLinkStatus = NonNullable<
-  NonNullable<ConversationDetailReport["annotations"]>[number]["status"]
+  Extract<
+    NonNullable<ConversationDetailReport["annotations"]>[number],
+    { kind: "resource_link" }
+  >["status"]
 >;
 
 /** True when the conversation has at least one resource-link annotation. */
 export function hasConversationAnnotations(
   annotations: ConversationDetailReport["annotations"] | undefined,
 ): boolean {
-  return Boolean(
-    annotations?.some((annotation) => annotation.kind === "resource_link"),
-  );
+  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -367,7 +368,7 @@ export function ConversationAnnotations(props: {
 }) {
   const links =
     props.detail?.annotations?.filter(
-      (annotation) => annotation.kind === "resource_link",
+      (annotation) => annotation.url !== null,
     ) ?? [];
   if (links.length === 0) return null;
   return (
@@ -375,14 +376,17 @@ export function ConversationAnnotations(props: {
       {links.map((link) => (
         <a
           className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
-          href={link.url}
+          href={link.url ?? undefined}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
           target="_blank"
-          title={resourceLinkTitle(link)}
+          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
         >
-          {link.status ? (
-            <ResourceStatus status={link.status} url={link.url} />
+          {link.status && link.status in RESOURCE_STATUS_ICON ? (
+            <ResourceStatus
+              status={link.status as ResourceLinkStatus}
+              url={link.url ?? ""}
+            />
           ) : null}
           <span>{link.label}</span>
         </a>

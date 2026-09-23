@@ -1,3 +1,5 @@
+import { removedCardSchema } from "@/chat/conversations/cards";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { deleteEventAutomation } from "@/chat/event-automations/store";
@@ -28,7 +30,9 @@ export function createDeleteEventAutomationTool(
     executionMode: "sequential",
     description: "Delete an event automation.",
     inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
-    outputSchema: eventAutomationToolResultSchema.omit({ cards: true }),
+    outputSchema: eventAutomationToolResultSchema
+      .omit({ cards: true })
+      .extend({ removedCards: z.array(removedCardSchema) }),
     async execute({ automationId }) {
       const { actor } = requireEventAutomationSlackContext(context);
       const current = await writableEventAutomation(context, automationId);
@@ -36,8 +40,14 @@ export function createDeleteEventAutomationTool(
       if (!deleted) {
         throw new ToolInputError("Event automation was not found.");
       }
+      await createPluginAnnotations({
+        conversationId: context.conversationId,
+        db: getDb(),
+        plugin: "junior",
+      }).remove("object", automationId);
       return {
         automation: compactEventAutomation(deleted, catalog, actor.userId),
+        removedCards: [{ plugin: "junior", key: automationId }],
       };
     },
   });

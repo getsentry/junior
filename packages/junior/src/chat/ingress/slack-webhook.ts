@@ -1,3 +1,4 @@
+import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
 import type { SlackAdapter, SlackEvent } from "@chat-adapter/slack";
 import {
   ChannelImpl,
@@ -539,7 +540,17 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "entity_details_requested") {
-          await presentSlackAutomationDetails(event, installation.teamId);
+          const ref = event.external_ref;
+          if (
+            ref &&
+            typeof ref === "object" &&
+            "type" in ref &&
+            ref.type === "annotation"
+          ) {
+            await presentSlackAnnotationDetails(event, installation.teamId);
+          } else {
+            await presentSlackAutomationDetails(event, installation.teamId);
+          }
           return;
         }
 

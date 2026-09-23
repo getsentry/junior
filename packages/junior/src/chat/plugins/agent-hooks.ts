@@ -1,3 +1,4 @@
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
@@ -28,6 +29,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import {
+  annotateToolResult,
+  saveObjectAnnotations,
+} from "@/chat/conversations/annotation-results";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
@@ -97,7 +102,7 @@ export interface AfterMcpToolHookInput {
 }
 
 export interface PluginHookRunner {
-  afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
+  afterMcpTool(input: AfterMcpToolHookInput): Promise<OwnedObjectAnnotation[]>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   prepareWorkspace(
@@ -800,7 +805,18 @@ export function getPluginTools(
         description: plugin.manifest.description,
       };
       definition.exposure ??= "deferred";
-      tools[name] = definition;
+      const execute = definition.execute;
+      if (execute) {
+        // Keep prototype methods and their receiver on plugin tool instances.
+        const wrapped: AnyToolDefinition = Object.create(definition);
+        wrapped.execute = async (input, options) =>
+          annotateToolResult(
+            context.conversationId,
+            pluginName,
+            await execute.call(definition, input, options),
+          );
+        tools[name] = wrapped;
+      } else tools[name] = definition;
     }
   }
   return tools;
@@ -1500,6 +1516,7 @@ export function createPluginHookRunner(
 
   return {
     async afterMcpTool(tool) {
+      const cards: OwnedObjectAnnotation[] = [];
       for (const plugin of loaded) {
         if (plugin.manifest.name !== tool.provider) {
           continue;
@@ -1516,7 +1533,7 @@ export function createPluginHookRunner(
             })
           : undefined;
         try {
-          await hook({
+          const result = await hook({
             ...basePluginContext(plugin),
             ...(tool.conversationId
               ? { conversationId: tool.conversationId }
@@ -1531,6 +1548,15 @@ export function createPluginHookRunner(
               name: tool.toolName,
             },
           });
+          if (result && tool.conversationId) {
+            cards.push(
+              ...(await saveObjectAnnotations(
+                tool.conversationId,
+                plugin.manifest.name,
+                result.objectAnnotations,
+              )),
+            );
+          }
         } catch (error) {
           logWarn("agent.plugin.after_mcp_tool.failed", {
             "app.plugin.name": plugin.manifest.name,
@@ -1540,6 +1566,7 @@ export function createPluginHookRunner(
           });
         }
       }
+      return cards;
     },
     async prepareWorkspace(sandbox, repos, signal) {
       const preparers = new Set(

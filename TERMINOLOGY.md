@@ -84,6 +84,9 @@ Canonical words used across Junior's code and documentation.
   this description when they choose a profile.
 - **Message**: exact normalized source or destination chat content stored for
   transcript display, privacy, delivery handling, and search.
+- **Annotation**: saved facts or a resource link associated with one Conversation.
+  The owner supplies the object identity and facts. Updating an annotation does
+  not by itself send a message.
 - **Message card**: typed saved facts attached to a Message. Each surface owns
   its layout. A card records the facts at delivery, not live resource status.
 - **Message update**: later delivery or hydration state for an existing

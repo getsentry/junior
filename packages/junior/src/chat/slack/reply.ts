@@ -31,7 +31,9 @@ export async function sendSlackReply(args: {
 }): Promise<string[]> {
   const posts: Array<{ text: string; cards: SlackCard[] }> =
     splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
-  const cards = (args.cards ?? []).map(renderSlackCard);
+  const cards = (args.cards ?? []).map((card) =>
+    renderSlackCard(card, args.conversationId),
+  );
   // Keep previews in small groups so one reply does not become a wall of cards.
   for (let index = 0; index < cards.length; index += 5) {
     const group = cards.slice(index, index + 5);

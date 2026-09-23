@@ -55,7 +55,7 @@ The opaque ID stays in `external_ref`; operation badges and full instructions
 stay out of the preview. Deleted objects render nothing; the normal reply owns
 the confirmation. Objects without a dashboard URL use compact text instead.
 
-Enable **Work Object Previews → Item** in the Slack app before deploying this
+Enable **Work Object Previews → Item and Task** in the Slack app before deploying this
 renderer. Subscribe to `entity_details_requested` at `/api/webhooks/slack`.
 Slack owns the card layout and app attribution. The app icon supplies the card
 icon. Opening or refreshing the detail panel loads current Automation facts
@@ -67,6 +67,14 @@ line breaks; timestamps use Slack's local time display. Item entities use
 `custom_fields` in display order, not task-specific `fields`.
 New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
+Object annotation previews use Task for tasks and Item for code changes and
+other objects. Their `external_ref` identifies the Conversation, plugin, and
+object key. Details show the latest saved annotation, not a live provider lookup.
+The viewer must have a linked User, belong to the same Slack workspace, and have
+access to that Conversation. Missing and inaccessible annotations return
+`not_found`. Only already-shared annotation facts enter these details; do not add
+viewer-only provider fields because Slack can refresh shared previews from them.
+Automation details retain their current authoritative lookup and access checks.
 Link unfurls and actions are not implemented.
 See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
 

@@ -1,3 +1,6 @@
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
+import { automationAnnotation } from "@/chat/automations/annotation";
+import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { createHash } from "node:crypto";
 import {
   sourceSchema,
@@ -8,10 +11,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import {
-  automationCardSchema,
-  type AutomationCard,
-} from "@/chat/automations/card";
+import { type AutomationCard } from "@/chat/automations/card";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -28,6 +28,7 @@ import type {
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 export interface SchedulerToolContext {
+  conversationId: string;
   actor?: SlackActor;
   now?: () => number;
   source?: SlackSource;
@@ -99,7 +100,7 @@ const compactTaskResultSchema = z
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactTaskResultSchema,
-    cards: z.array(automationCardSchema).optional(),
+    cards: z.array(ownedObjectAnnotationSchema).optional(),
   })
   .strict();
 
@@ -302,7 +303,8 @@ export function compactTask(
 }
 
 /** Build the structured result shared by single-task scheduler tools. */
-export function scheduleAutomationToolResult(
+export async function scheduleAutomationToolResult(
+  conversationId: string,
   task: ScheduledAutomation,
   requesterSlackUserId?: string,
 ) {
@@ -330,7 +332,12 @@ export function scheduleAutomationToolResult(
           ? "This automation has completed."
           : null,
   };
-  return { automation, cards: [card] };
+  return {
+    automation,
+    cards: await saveObjectAnnotations(conversationId, "junior", [
+      automationAnnotation(card),
+    ]),
+  };
 }
 
 /** Build the structured result for listing scheduler tools. */

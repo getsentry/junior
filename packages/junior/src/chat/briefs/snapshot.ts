@@ -126,13 +126,19 @@ export function briefInputFromSnapshot(
       const bounded = codeChangeAt(change, boundaryMs);
       return bounded ? [bounded] : [];
     }),
-    resources: (detail.annotations ?? [])
-      .filter((annotation) => Date.parse(annotation.createdAt) <= boundaryMs)
-      .map((annotation) => ({
-        label: annotation.label,
-        url: annotation.url,
-        ...(annotation.status ? { status: annotation.status } : undefined),
-      })),
+    resources: (detail.annotations ?? []).flatMap((annotation) =>
+      annotation.url !== null && Date.parse(annotation.createdAt) <= boundaryMs
+        ? [
+            {
+              label: annotation.label,
+              url: annotation.url,
+              ...(annotation.status
+                ? { status: annotation.status }
+                : undefined),
+            },
+          ]
+        : [],
+    ),
   });
 }
 

@@ -9,6 +9,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import { objectAnnotationSchema } from "./object-annotations";
 import type { SlackConversationLink } from "./operations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
@@ -225,6 +226,8 @@ export const pluginToolContinuationSchema = z
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
+    /** Object results to save and show with the next reply. Omit for silent updates. */
+    objectAnnotations: z.array(objectAnnotationSchema).optional(),
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),

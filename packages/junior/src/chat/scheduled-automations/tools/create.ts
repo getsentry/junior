@@ -122,7 +122,11 @@ export function createSlackScheduleCreateAutomationTool(
             "Scheduled automation operation identity is invalid.",
           );
         }
-        return scheduleAutomationToolResult(existing, actor.slackUserId);
+        return scheduleAutomationToolResult(
+          context.conversationId,
+          existing,
+          actor.slackUserId,
+        );
       }
 
       const creator = await context.users.resolveActor();
@@ -200,7 +204,11 @@ export function createSlackScheduleCreateAutomationTool(
         "scheduled_automation.create.completed",
         scheduledAutomationAttributes(committed),
       );
-      return scheduleAutomationToolResult(committed, actor.slackUserId);
+      return scheduleAutomationToolResult(
+        context.conversationId,
+        committed,
+        actor.slackUserId,
+      );
     },
   });
 }

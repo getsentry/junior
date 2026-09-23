@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PluginContext } from "./context";
+import { objectAnnotationSchema } from "./object-annotations";
 
 function usesHttpProtocol(value: string): boolean {
   try {
@@ -28,6 +29,7 @@ export const resourceLinkAnnotationSchema = z
 /** Core-known annotation shapes that plugins may attach to a conversation. */
 export const conversationAnnotationInputSchema = z.discriminatedUnion("kind", [
   resourceLinkAnnotationSchema,
+  objectAnnotationSchema,
 ]);
 export type ConversationAnnotationInput = z.output<
   typeof conversationAnnotationInputSchema

@@ -1,3 +1,4 @@
+import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ClipboardEventHandler, type ReactNode } from "react";
 
@@ -87,6 +88,10 @@ export const TranscriptMessageView = memo(
         {props.view === "rich" &&
           props.message.cards?.map((card) => {
             switch (card.kind) {
+              case "object":
+                return (
+                  <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+                );
               case "automation":
                 return (
                   <AutomationCard key={`${card.kind}:${card.id}`} card={card} />

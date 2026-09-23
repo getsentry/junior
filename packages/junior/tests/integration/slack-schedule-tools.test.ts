@@ -1,3 +1,4 @@
+import { getConversationStore } from "@/chat/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSlackScheduleCreateAutomationTool,
@@ -40,6 +41,17 @@ let toolCallSequence = 0;
 async function useSchedulerSqlPlugin() {
   const fixture = await createJuniorSqlFixture();
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
+  for (const conversationId of [
+    "test:schedule-cards",
+    "slack:DDM:1700000000.100000",
+  ]) {
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      source: "local",
+      nowMs: Date.now(),
+    });
+  }
   return fixture;
 }
 
@@ -78,6 +90,7 @@ function createContext(
           identities: [identity],
         };
   const context: SchedulerToolContext = {
+    conversationId: "test:schedule-cards",
     source: createSlackSource({
       teamId,
       channelId,
@@ -320,11 +333,16 @@ describe("Slack schedule tools", () => {
     expect(created).toMatchObject({
       cards: [
         {
-          kind: "automation",
-          id: created.automation.id,
-
-          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
-          warning: null,
+          kind: "object",
+          objectType: "automation",
+          plugin: "junior",
+          key: created.automation.id,
+          fields: [
+            {
+              label: "When",
+              value: "Every week on Monday at 09:00 (America/Los_Angeles)",
+            },
+          ],
         },
       ],
     });
@@ -670,7 +688,16 @@ describe("Slack schedule tools", () => {
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
       },
-      cards: [{ trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles" }],
+      cards: [
+        {
+          fields: [
+            {
+              label: "When",
+              value: "May 26, 2026, 5:25 PM · America/Los_Angeles",
+            },
+          ],
+        },
+      ],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),

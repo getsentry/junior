@@ -1,3 +1,4 @@
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -21,7 +22,12 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 const SIGNING_SECRET = "test-signing-secret";
 const ORIGINAL_ENV = { ...process.env };
 
-async function requestDetails(id: string, user = "U123", teamId = "T123") {
+async function requestDetails(
+  id: string,
+  user = "U123",
+  teamId = "T123",
+  type = "automation",
+) {
   const client = createSlackWebhookTestClient({
     signingSecret: SIGNING_SECRET,
   });
@@ -34,7 +40,7 @@ async function requestDetails(id: string, user = "U123", teamId = "T123") {
       event: {
         type: "entity_details_requested",
         user,
-        external_ref: { id, type: "automation" },
+        external_ref: { id, type },
         trigger_id: `trigger-${id}`,
         // The URL and channel must not grant access or select the object.
         entity_url: "https://untrusted.example/automations/other",
@@ -116,6 +122,46 @@ describe("Slack Work Object details", () => {
     setDashboardConversationLinkOptions(undefined);
     resetSlackApiMockState();
     await disconnectStateAdapter();
+  });
+
+  it("shows saved annotation facts only within the viewer's Conversation access", async () => {
+    await saveReminder();
+    const conversationId = "slack:D123:annotation";
+    await getConversationStore().recordActivity({
+      conversationId,
+      actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
+      destination: { platform: "slack", teamId: "T123", channelId: "D123" },
+      visibility: "private",
+    });
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "1",
+      label: "ENG-1",
+      title: "Saved issue",
+      objectType: "task",
+      status: "Started",
+      url: "https://example.com/issues/1",
+    });
+    const id = JSON.stringify([conversationId, "objects", "1"]);
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        entity_type: "slack#/entities/task",
+        external_ref: { id, type: "annotation" },
+        entity_payload: {
+          attributes: { title: { text: "Saved issue" } },
+          fields: { status: { value: "Started" } },
+        },
+      },
+    });
+    const denied = await requestDetails(id, "U999", "T123", "annotation");
+    expect(denied).toMatchObject({ error: { status: "not_found" } });
+    expect(denied).not.toHaveProperty("metadata");
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {

@@ -1,3 +1,4 @@
+import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
@@ -632,6 +633,32 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Object annotations">
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "code_change",
+            plugin: "github",
+            key: "getsentry/junior#1200",
+            label: "getsentry/junior#1200",
+            title: "Use object annotations for reply cards",
+            status: "draft",
+            url: "https://github.com/getsentry/junior/pull/1200",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "task",
+            plugin: "linear",
+            key: "ENG-123",
+            label: "ENG-123",
+            title: "Keep background annotation updates out of the next reply",
+            status: "In Progress",
+            url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+      </Fixture>
       <Fixture title="Automation objects">
         <AutomationCard
           card={{

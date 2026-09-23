@@ -2,6 +2,7 @@ import {
   defineJuniorPlugin,
   type AfterMcpToolHookContext,
   type PluginRegistration,
+  type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -17,16 +18,18 @@ const saveIssueResultSchema = z
       .object({
         identifier: z.string().trim().min(1),
         url: z.url(),
+        title: z.string().optional(),
+        status: z.string().optional(),
       })
       .passthrough(),
   })
   .passthrough();
 
-/** Link newly created Linear issues to the current Junior conversation. */
-async function annotateCreatedIssue(
+/** Link created and updated Linear issues to the current Junior conversation. */
+async function annotateSavedIssue(
   ctx: AfterMcpToolHookContext,
-): Promise<void> {
-  if (ctx.tool.name !== "save_issue" || ctx.tool.arguments.id !== undefined) {
+): Promise<{ objectAnnotations: ObjectAnnotation[] } | void> {
+  if (ctx.tool.name !== "save_issue") {
     return;
   }
   if (!ctx.annotations) {
@@ -40,13 +43,20 @@ async function annotateCreatedIssue(
     return;
   }
   const identifier = result.data.issue.identifier.toUpperCase();
-  await ctx.annotations.upsert({
-    kind: "resource_link",
-    key: identifier,
-    label: identifier,
-    url: result.data.issue.url,
-    status: "open",
-  });
+  const issue = result.data.issue;
+  return {
+    objectAnnotations: [
+      {
+        kind: "object",
+        objectType: "task",
+        key: identifier,
+        label: identifier,
+        title: (issue.title || identifier).slice(0, 512),
+        url: issue.url,
+        status: issue.status,
+      },
+    ],
+  };
 }
 
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
@@ -86,7 +96,7 @@ export function linearPlugin(): PluginRegistration {
       name: "linear",
     },
     hooks: {
-      afterMcpTool: annotateCreatedIssue,
+      afterMcpTool: annotateSavedIssue,
       routes(ctx) {
         return [
           createLinearWebhookRoute({
