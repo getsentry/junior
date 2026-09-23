@@ -39,12 +39,22 @@ function readRawBlocks(raw: unknown): unknown {
 function renderTopLevelText(
   message: Pick<Message, "formatted" | "raw" | "text">,
 ): string {
+  const blocks = readRawBlocks(message.raw);
+  const blockText = renderBlockText(blocks);
+  // Section blocks contain the body; text can be only a notification summary.
+  if (
+    Array.isArray(blocks) &&
+    blocks.some((block) => block?.type === "section") &&
+    blockText
+  ) {
+    return blockText;
+  }
+
   if (message.formatted.children.length > 0) {
     return stringifyMarkdown(message.formatted).trim();
   }
 
-  const text = message.text.trim();
-  return text || renderBlockText(readRawBlocks(message.raw));
+  return message.text.trim() || blockText;
 }
 
 /** Parse the agent-visible content and attachment state of a Slack message. */

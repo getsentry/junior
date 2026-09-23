@@ -6,19 +6,16 @@ export function TranscriptLoading() {
     <div
       aria-busy="true"
       aria-live="polite"
-      className="grid gap-6 py-2"
+      className="grid gap-7"
       role="status"
     >
       <span className="sr-only">Loading conversation transcript</span>
       <MessageLoading width="w-3/4" />
-      <div className="grid gap-2 border-l border-dashboard-border-subtle py-1 pl-4">
+      <div className="ml-11 grid gap-2 border-l border-dashboard-border-subtle py-1 pl-4 md:ml-[3.125rem]">
         <Skeleton className="h-3 w-36 opacity-70" />
         <Skeleton className="h-3 w-1/2" />
       </div>
-      <div className="grid justify-items-end gap-2">
-        <Skeleton className="h-3 w-24 opacity-70" />
-        <Skeleton className="h-4 w-56" />
-      </div>
+      <MessageLoading width="w-1/2" />
       <MessageLoading width="w-2/3" />
     </div>
   );
@@ -26,10 +23,13 @@ export function TranscriptLoading() {
 
 function MessageLoading(props: { width: string }) {
   return (
-    <div className="grid gap-2">
-      <Skeleton className="h-3 w-24 opacity-70" />
-      <Skeleton className={`h-4 max-w-xl ${props.width}`} />
-      <Skeleton className="h-4 w-1/2 max-w-lg" />
+    <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 md:grid-cols-[2.25rem_minmax(0,1fr)]">
+      <Skeleton className="size-8 rounded-full" />
+      <div className="grid gap-3 pt-1">
+        <Skeleton className="h-3 w-24 opacity-70" />
+        <Skeleton className={`h-4 max-w-xl ${props.width}`} />
+        <Skeleton className="h-4 w-1/2 max-w-lg" />
+      </div>
     </div>
   );
 }

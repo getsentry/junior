@@ -213,6 +213,22 @@ test("opens a conversation in the built dashboard", async ({
   await expect(costTooltip).toBeHidden();
 
   await expect(
+    page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
+  ).toBeVisible();
+  const detailsButton = page.getByRole("button", {
+    name: "Conversation details",
+  });
+  await detailsButton.click();
+  const details = page.getByRole("dialog", { name: "Checkout latency triage" });
+  await details.getByText("Facts, links & keywords", { exact: true }).click();
+  await expect(
+    details.getByText("PAYMENTS-42 contained 418 events."),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await expect(detailsButton).toBeFocused();
+
+  await expect(
     page.getByRole("link", { name: "Conversations" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);

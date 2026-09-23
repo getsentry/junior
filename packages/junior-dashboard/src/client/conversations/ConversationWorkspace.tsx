@@ -126,12 +126,7 @@ export function ConversationWorkspace() {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
-      )}
-    >
+    <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]">
       <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
           conversations={conversations}
@@ -147,7 +142,7 @@ export function ConversationWorkspace() {
       </div>
       <section
         aria-label="Selected conversation"
-        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
       >
         <ConversationPage
           key={selectedId}

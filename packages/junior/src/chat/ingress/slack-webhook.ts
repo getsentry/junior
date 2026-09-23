@@ -63,6 +63,7 @@ import {
 import type { WaitUntilFn } from "@/handlers/types";
 
 type SlackMessageEvent = {
+  blocks?: Array<{ type: string; text?: { type: string; text: string } }>;
   bot_id?: string;
   channel?: string;
   channel_type?: string;
@@ -376,7 +377,14 @@ async function routeParsedMessage(args: {
   // count mentions that sit outside code as activations.
   const botUserId = args.adapter.botUserId;
   const isMention = Boolean(
-    botUserId && textMentionsBot(args.event.text ?? "", botUserId),
+    botUserId &&
+    (textMentionsBot(args.event.text ?? "", botUserId) ||
+      args.event.blocks?.some(
+        (block) =>
+          block.type === "section" &&
+          block.text?.type === "mrkdwn" &&
+          textMentionsBot(block.text.text, botUserId),
+      )),
   );
   if (isMention) {
     message.isMention = true;

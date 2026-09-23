@@ -24,9 +24,12 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { Drawer } from "../../components/Drawer";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
+import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
+import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -37,6 +40,7 @@ import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
+import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShell";
 import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
@@ -328,6 +332,8 @@ function GalleryIndexPage() {
 function FoundationsGalleryPage() {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const [pressed, setPressed] = useState(true);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
     <GalleryShell
@@ -335,6 +341,45 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Conversation navigation">
+        <DashboardChromeProvider>
+          <DashboardHeader
+            compact
+            mobileNavigationOpen={navigationOpen}
+            navItems={[
+              { key: "code", label: "Code", to: "/code" },
+              { key: "system", label: "System", to: "/system" },
+            ]}
+            onMobileNavigationOpenChange={setNavigationOpen}
+            workspaceActive
+          />
+        </DashboardChromeProvider>
+      </Fixture>
+      <Fixture title="Narrow details drawer">
+        <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
+        {drawerOpen ? (
+          <Drawer
+            closeLabel="Close gallery details"
+            dismissLabel="Dismiss gallery details"
+            header={
+              <h2
+                id="gallery-drawer-title"
+                className="m-0 text-lg font-semibold"
+              >
+                Conversation details
+              </h2>
+            }
+            onClose={() => setDrawerOpen(false)}
+            openKey="gallery-details"
+            titleId="gallery-drawer-title"
+            width="narrow"
+          >
+            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+              Linked work, the Brief, participants, and usage.
+            </p>
+          </Drawer>
+        ) : null}
+      </Fixture>
       <Fixture title="Color tokens">
         <div className="grid gap-4">
           <TokenSwatchRow
@@ -343,6 +388,7 @@ function FoundationsGalleryPage() {
               { className: "bg-dashboard-bg", label: "bg" },
               { className: "bg-dashboard-bg-elevated", label: "elevated" },
               { className: "bg-dashboard-surface-panel", label: "panel" },
+              { className: "bg-dashboard-surface-active", label: "active" },
               { className: "bg-dashboard-surface-raised", label: "raised" },
               { className: "bg-dashboard-surface-hover", label: "hover" },
               { className: "bg-dashboard-control", label: "control" },
@@ -659,11 +705,35 @@ function TranscriptsGalleryPage() {
           }}
         />
       </Fixture>
-      <Fixture title="Automation objects">
+      <Fixture title="Automation in a reply">
+        <div className="max-w-[52.5rem]">
+          <TranscriptMessageShell actor="Junior" role="assistant">
+            <span className="text-sm font-semibold text-cyan-100">Junior</span>
+            <TranscriptText
+              role="assistant"
+              text={
+                "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
+              }
+            />
+            <AutomationCard
+              card={{
+                id: "sched_0123456789abcdef0123456789abcdef",
+                title: "Drink water",
+                instruction:
+                  "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
+                trigger: "In 30 minutes",
+                warning: null,
+              }}
+            />
+          </TranscriptMessageShell>
+        </div>
+      </Fixture>
+      <Fixture title="Automation card states">
         <AutomationCard
           card={{
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
+            instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
           }}
@@ -673,6 +743,8 @@ function TranscriptsGalleryPage() {
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             title:
               "Review automated fixes across the JavaScript SDK repositories",
+            instruction:
+              "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
             trigger:
               'getsentry/junior · pull_request.opened · author = "sentry[bot]"',
             warning: null,
@@ -682,6 +754,8 @@ function TranscriptsGalleryPage() {
           card={{
             id: "scheduled-1",
             title: "Weekly release digest",
+            instruction:
+              "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",
             warning: "Connect your GitHub account to resume this automation.",
           }}

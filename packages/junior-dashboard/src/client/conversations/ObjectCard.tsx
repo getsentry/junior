@@ -9,6 +9,7 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         card={{
           id: card.key,
           title: card.title,
+          instruction: card.description ?? "",
           trigger: card.trigger ?? "",
           warning: card.warning ?? null,
         }}

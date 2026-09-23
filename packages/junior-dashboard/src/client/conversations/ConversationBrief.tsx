@@ -1,12 +1,12 @@
+import { ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { Detail, DetailList } from "../components/DetailList";
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
 import { formatTime } from "../format";
 
-type ConversationBriefReport = NonNullable<
-  ConversationDetailReport["brief"]
->;
+type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
 type BriefContent = ConversationBriefReport["content"];
 
@@ -40,80 +40,111 @@ export function ConversationBrief(props: { brief: ConversationBriefReport }) {
       <p className="m-0 text-sm leading-relaxed text-dashboard-text">
         {content.summary}
       </p>
-      <DetailList>
-        <Detail label="Intent">{content.intent}</Detail>
-        <Detail label="Outcome">{content.outcome.text}</Detail>
-        {content.decisions.length ? (
-          <Detail label="Decisions">
-            <BriefDecisions decisions={content.decisions} />
-          </Detail>
-        ) : null}
-        {content.openDecisions.length ? (
-          <Detail label="Open decisions">
-            <ul className="m-0 grid list-none gap-2 p-0">
-              {content.openDecisions.map((decision, index) => (
-                <li key={`${decision.text}:${index}`}>
-                  <div>{decision.text}</div>
-                  {decision.owner ? (
-                    <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
-                      owner · {decision.owner}
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </Detail>
-        ) : null}
-        {content.facts.length ? (
-          <Detail label="Facts">
-            <BriefList items={content.facts} />
-          </Detail>
-        ) : null}
-        {content.links.length ? (
-          <Detail label="Links">
-            <ul className="m-0 grid list-none gap-2 p-0">
-              {content.links.map((link) => (
-                <li
-                  className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
-                  key={`${link.kind}:${link.url}`}
-                >
-                  <a
-                    className="min-w-0 break-all font-medium text-cyan-200 underline decoration-cyan-300/30 underline-offset-2 hover:text-cyan-100"
-                    href={link.url}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    {link.label}
-                  </a>
-                  <span className="font-mono text-xs text-dashboard-text-muted">
-                    {displayLabel(link.kind)}
-                  </span>
-                  {link.status ? (
-                    <StatusChip
-                      size="compact"
-                      tone={linkStatusTone(link.status)}
+      <BriefSection title="Intent & outcome">
+        <DetailList>
+          <Detail label="Intent">{content.intent}</Detail>
+          <Detail label="Outcome">{content.outcome.text}</Detail>
+        </DetailList>
+      </BriefSection>
+      {content.decisions.length || content.openDecisions.length ? (
+        <BriefSection title="Decisions">
+          <DetailList>
+            {content.decisions.length ? (
+              <Detail label="Decisions">
+                <BriefDecisions decisions={content.decisions} />
+              </Detail>
+            ) : null}
+            {content.openDecisions.length ? (
+              <Detail label="Open decisions">
+                <ul className="m-0 grid list-none gap-2 p-0">
+                  {content.openDecisions.map((decision, index) => (
+                    <li key={`${decision.text}:${index}`}>
+                      <div>{decision.text}</div>
+                      {decision.owner ? (
+                        <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
+                          owner · {decision.owner}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Detail>
+            ) : null}
+          </DetailList>
+        </BriefSection>
+      ) : null}
+      {content.facts.length ||
+      content.links.length ||
+      content.keywords.length ? (
+        <BriefSection title="Facts, links & keywords">
+          <DetailList>
+            {content.facts.length ? (
+              <Detail label="Facts">
+                <BriefList items={content.facts} />
+              </Detail>
+            ) : null}
+            {content.links.length ? (
+              <Detail label="Links">
+                <ul className="m-0 grid list-none gap-2 p-0">
+                  {content.links.map((link) => (
+                    <li
+                      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+                      key={`${link.kind}:${link.url}`}
                     >
-                      {link.status}
+                      <a
+                        className="min-w-0 break-all font-medium text-cyan-200 underline decoration-cyan-300/30 underline-offset-2 hover:text-cyan-100"
+                        href={link.url}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        {link.label}
+                      </a>
+                      <span className="font-mono text-xs text-dashboard-text-muted">
+                        {displayLabel(link.kind)}
+                      </span>
+                      {link.status ? (
+                        <StatusChip
+                          size="compact"
+                          tone={linkStatusTone(link.status)}
+                        >
+                          {link.status}
+                        </StatusChip>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </Detail>
+            ) : null}
+            {content.keywords.length ? (
+              <Detail label="Keywords">
+                <div className="flex flex-wrap gap-1.5">
+                  {content.keywords.map((keyword) => (
+                    <StatusChip key={keyword} size="compact">
+                      {keyword}
                     </StatusChip>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </Detail>
-        ) : null}
-        {content.keywords.length ? (
-          <Detail label="Keywords">
-            <div className="flex flex-wrap gap-1.5">
-              {content.keywords.map((keyword) => (
-                <StatusChip key={keyword} size="compact">
-                  {keyword}
-                </StatusChip>
-              ))}
-            </div>
-          </Detail>
-        ) : null}
-      </DetailList>
+                  ))}
+                </div>
+              </Detail>
+            ) : null}
+          </DetailList>
+        </BriefSection>
+      ) : null}
     </div>
+  );
+}
+
+function BriefSection(props: { children: ReactNode; title: string }) {
+  return (
+    <details className="group min-w-0 border-t border-dashboard-border pt-3">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-dashboard-text [&::-webkit-details-marker]:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+        <ChevronRight
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-dashboard-text-muted transition-transform group-open:rotate-90"
+        />
+        {props.title}
+      </summary>
+      <div className="mt-3">{props.children}</div>
+    </details>
   );
 }
 
