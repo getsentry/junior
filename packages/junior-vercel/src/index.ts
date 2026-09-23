@@ -10,6 +10,7 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { createVercelDeploymentTool } from "./tools/deployment.js";
+import { createVercelActionTools } from "./tools/actions.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
@@ -40,7 +41,7 @@ export function vercelPlugin(): PluginRegistration {
       },
       configKeys: ["project", "team"],
       description:
-        "Query Vercel deployments and logs and monitor deployment outcomes",
+        "Deploy and inspect Vercel projects, manage aliases, query logs, and monitor outcomes",
       displayName: "Vercel",
       domains: ["api.vercel.com"],
       envVars: {
@@ -68,6 +69,7 @@ export function vercelPlugin(): PluginRegistration {
       tools(ctx) {
         return {
           deployment: createVercelDeploymentTool(ctx),
+          ...createVercelActionTools(ctx),
         };
       },
     },
