@@ -353,3 +353,13 @@ renderer and dashboard component own their layouts. `conversations/cards.ts`
 contains the closed union of built-in response types, not shared layout fields.
 To add a known card type, define its schema and add a case to each surface's
 renderer. Plugin-defined cards are not supported.
+
+Cards need no database migration. Versions before cards preserve Message
+metadata and tool-result fields, but omit cards from the transcript API.
+Rollback therefore hides web cards without deleting stored facts. Slack cards
+already posted remain visible. Automation changes are not undone by rollback.
+
+Roll back the API and dashboard together, or the API first. The new dashboard
+accepts responses without cards. The old dashboard rejects the new API's
+`cards` field because its response schema is strict. An old open tab needs a
+reload when it starts receiving card-bearing responses from the new API.
