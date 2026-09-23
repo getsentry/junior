@@ -89,10 +89,10 @@ export function ConversationSidebar(props: {
         "relative min-w-0",
         isLanding
           ? "border-t border-white/[0.07] bg-transparent"
-          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
+          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel",
       )}
     >
-      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")}>
+      <div className="px-5 pb-4 pt-5">
         <div className="flex items-center justify-between gap-2">
           <h2
             className={cn(
@@ -117,7 +117,7 @@ export function ConversationSidebar(props: {
           </div>
         </div>
       </div>
-      <div className="px-2 pb-2">
+      <div className="px-4 pb-3">
         <SearchInput
           label="Search your conversations"
           onChange={props.onQueryChange}
@@ -128,7 +128,7 @@ export function ConversationSidebar(props: {
       </div>
       <div
         className={cn(
-          "px-1.5",
+          "px-3",
           isLanding
             ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
             : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
@@ -159,7 +159,7 @@ export function ConversationSidebar(props: {
               entry.kind === "section" ? (
                 <h3
                   className={cn(
-                    "m-0 px-2.5 pb-0.5 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55",
+                    "m-0 px-3 pb-2 font-sans text-xs font-medium text-dashboard-text-muted",
                     entry.first ? "pt-1.5" : "pt-4",
                   )}
                 >
@@ -224,11 +224,11 @@ function ConversationRowsLoading() {
       <span className="sr-only">Loading your conversations</span>
       <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 7 }, (_, index) => (
-        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+        <div className="grid gap-2 rounded-lg px-3 py-3" key={index}>
           <Skeleton
-            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+            className={cn("h-4", index % 3 === 0 ? "w-4/5" : "w-3/5")}
           />
-          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+          <Skeleton className="h-3 w-2/5 opacity-70" />
         </div>
       ))}
     </div>
@@ -293,8 +293,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-md px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04] max-sm:pr-10",
-          props.selected && "bg-white/[0.06]",
+          "block min-w-0 rounded-lg px-3 py-3 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover max-sm:pr-10",
+          props.selected && "bg-dashboard-surface-active",
         )}
         to={conversationPath(props.conversation.id)}
       >
@@ -306,11 +306,11 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
               status={status}
             />
           </div>
-          <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
+          <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
           {hasMeta ? (
-            <div className="col-start-2 row-start-2 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
+            <div className="col-start-2 row-start-2 mt-1.5 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
               {showLocation ? (
                 <span className="truncate">{location}</span>
               ) : null}
@@ -323,7 +323,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({

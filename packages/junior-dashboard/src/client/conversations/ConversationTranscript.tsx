@@ -108,7 +108,7 @@ function SegmentEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:gap-4">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 md:gap-7">
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
       ) : props.conversation.eventHistory.status === "available" ? (
@@ -325,7 +325,10 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <div className="mobile-transcript-row" key={activityKey}>
+          <div
+            className="mobile-transcript-row pl-11 md:pl-[3.125rem]"
+            key={activityKey}
+          >
             <TranscriptActivityGroup
               separateFromPrevious={followsEvent}
               entries={visibleEntries}

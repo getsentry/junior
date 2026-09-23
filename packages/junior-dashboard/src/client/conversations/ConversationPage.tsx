@@ -136,7 +136,7 @@ export function ConversationPage(props: {
       <ChatLayout
         scrollMinTall
         scrollAriaLabel="Conversation transcript"
-        scrollClassName="px-3 pb-1.5 md:px-7 md:pb-2"
+        scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
         scroll={
           <section className="min-w-0">
             <ConversationHeader
@@ -158,6 +158,14 @@ export function ConversationPage(props: {
               annotations={
                 hasConversationAnnotations(detail.data?.annotations) ? (
                   <ConversationAnnotations detail={detail.data} />
+                ) : null
+              }
+              linkedWork={
+                hasConversationAnnotations(detail.data?.annotations) ? (
+                  <ConversationAnnotations
+                    detail={detail.data}
+                    layout="strip"
+                  />
                 ) : null
               }
               archive={{
@@ -245,36 +253,38 @@ export function ConversationPage(props: {
               view={view}
             />
 
-            {detail.isPending ? (
-              <TranscriptLoading />
-            ) : detail.error && !detail.data ? (
-              <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                {detail.error.message}
-              </Card>
-            ) : (
-              <>
-                {detail.error ? (
-                  <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                    Transcript refresh failed. Showing the latest available
-                    data.
-                  </div>
-                ) : null}
-                <Transcript
-                  hasPreviousPage={detail.hasPreviousPage}
-                  historyError={detail.historyError}
-                  historyVersion={detail.historyVersion}
-                  live={live}
-                  loadingPreviousPage={detail.isLoadingPreviousPage}
-                  onLoadPreviousPage={detail.loadPreviousPage}
-                  pinRequestVersion={pinRequestVersion}
-                  responding={!detail.error && live}
-                  onOpenSubagentTranscript={onOpenSubagentTranscript}
-                  search={search}
-                  transcript={transcript}
-                  view={view}
-                />
-              </>
-            )}
+            <div className="mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7">
+              {detail.isPending ? (
+                <TranscriptLoading />
+              ) : detail.error && !detail.data ? (
+                <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                  {detail.error.message}
+                </Card>
+              ) : (
+                <>
+                  {detail.error ? (
+                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                      Transcript refresh failed. Showing the latest available
+                      data.
+                    </div>
+                  ) : null}
+                  <Transcript
+                    hasPreviousPage={detail.hasPreviousPage}
+                    historyError={detail.historyError}
+                    historyVersion={detail.historyVersion}
+                    live={live}
+                    loadingPreviousPage={detail.isLoadingPreviousPage}
+                    onLoadPreviousPage={detail.loadPreviousPage}
+                    pinRequestVersion={pinRequestVersion}
+                    responding={!detail.error && live}
+                    onOpenSubagentTranscript={onOpenSubagentTranscript}
+                    search={search}
+                    transcript={transcript}
+                    view={view}
+                  />
+                </>
+              )}
+            </div>
           </section>
         }
         dock={
