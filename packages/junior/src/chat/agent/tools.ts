@@ -25,10 +25,7 @@ import {
 } from "@/chat/agent/sandbox";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
-import {
-  createPluginHookRunner,
-  type PluginHookRunner,
-} from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
@@ -216,7 +213,6 @@ export interface ToolWiring {
   agentTools: AgentTool[];
   getPendingAuthPause: () => AuthorizationPauseError | undefined;
   mcpToolManager: McpToolManager;
-  pluginHooks: PluginHookRunner;
   /** Project core-owned review state into one durable Pi tool result. */
   projectActionReviewResult<
     TResult extends { details?: unknown; isError?: boolean },
@@ -565,7 +561,6 @@ export async function wireAgentTools(
     agentTools,
     getPendingAuthPause,
     mcpToolManager,
-    pluginHooks,
     projectActionReviewResult(toolCallId, result) {
       return actionReview.projectToolResult(toolCallId, result);
     },
