@@ -153,12 +153,19 @@ describe("buildSlackReplyBlocks", () => {
     ]);
   });
 
-  it("does not emit blocks when the reply has no visible text", () => {
+  it("keeps the footer for replies with only attachments", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
     });
 
-    expect(buildSlackReplyBlocks("   ", footer)).toBeUndefined();
+    expect(buildSlackReplyBlocks("   ", footer)).toEqual([
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: "*ID:* slack:C123:1700000000.000100" },
+        ],
+      },
+    ]);
   });
 });
 
