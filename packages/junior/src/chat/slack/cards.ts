@@ -1,3 +1,4 @@
+import { renderSlackObjectCard } from "./object-card";
 import type { ChatPostMessageArguments } from "@slack/web-api";
 import type { MessageCard } from "@/chat/conversations/cards";
 import { renderSlackAutomationCard } from "./automation-card";
@@ -14,8 +15,13 @@ export interface SlackCard {
 }
 
 /** Select the Slack object renderer for a built-in card. */
-export function renderSlackCard(card: MessageCard): SlackCard {
+export function renderSlackCard(
+  card: MessageCard,
+  conversationId: string,
+): SlackCard {
   switch (card.kind) {
+    case "object":
+      return renderSlackObjectCard(card, conversationId);
     case "automation":
       return renderSlackAutomationCard(card);
   }

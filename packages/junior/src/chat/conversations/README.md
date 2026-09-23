@@ -171,3 +171,33 @@ Follow `../../../../../policies/data-redaction.md` and
 
 Representative coverage lives in the conversation storage component tests and
 `packages/junior/tests/integration/conversation-sql.test.ts`.
+
+## Object annotations and Message cards
+
+An object annotation holds the latest saved facts for an object in one
+Conversation. The provider owns its key, type, title, status, and optional fields.
+It is not the authoritative object store.
+
+Successful plugin tools return `objectAnnotations`. Core assigns the plugin
+owner, saves the annotations, and includes their snapshots in the tool result's
+`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+cannot set cards. Automation tools use the same saved object contract.
+
+`annotations.upsert` is storage-only. Webhook updates do not queue a card or
+start a Turn. A producer can use this path for a silent update. Returned
+`objectAnnotations` are a deliberate selection for the next visible reply.
+
+Pending cards come from committed successful tool results, not a scan of changed
+annotation rows. The latest selection per owner/key wins. Failed or timed-out
+results do not replace earlier cards. Removal results suppress earlier selections.
+A visible Message consumes its cards. A new Turn does not inherit cards from a
+silent Turn. Store each delivered snapshot in the Message so background updates
+do not rewrite stored history. The web transcript shows this snapshot. Slack can
+refresh its preview from newer detail responses; it does not change the stored
+Message. Existing Automation cards remain readable.
+
+Plugins must return only facts appropriate to disclose in the current
+Conversation. This contract does not expand provider permissions or make a
+private object public. Detail views of saved annotations use Conversation access,
+not the original actor's provider credentials. Live provider details and actions
+are not part of this contract.

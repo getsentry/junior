@@ -1,3 +1,4 @@
+import { getConversationStore } from "@/chat/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSlackScheduleCreateAutomationTool,
@@ -40,6 +41,17 @@ let toolCallSequence = 0;
 async function useSchedulerSqlPlugin() {
   const fixture = await createJuniorSqlFixture();
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
+  for (const conversationId of [
+    "test:schedule-cards",
+    "slack:DDM:1700000000.100000",
+  ]) {
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      source: "local",
+      nowMs: Date.now(),
+    });
+  }
   return fixture;
 }
 
@@ -78,6 +90,7 @@ function createContext(
           identities: [identity],
         };
   const context: SchedulerToolContext = {
+    conversationId: "test:schedule-cards",
     source: createSlackSource({
       teamId,
       channelId,
@@ -316,15 +329,18 @@ describe("Slack schedule tools", () => {
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
-    const created = await createTask();
+    const created = await createTask(createContext(), {
+      title: "Weekly issue digest",
+    });
     expect(created).toMatchObject({
-      cards: [
+      objectCards: [
         {
-          kind: "automation",
-          id: created.automation.id,
-
+          kind: "object",
+          objectType: "automation",
+          plugin: "junior",
+          key: created.automation.id,
+          label: "Weekly issue digest",
           trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
-          warning: null,
         },
       ],
     });
@@ -670,7 +686,11 @@ describe("Slack schedule tools", () => {
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
       },
-      cards: [{ trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles" }],
+      objectCards: [
+        {
+          trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
+        },
+      ],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),

@@ -1,3 +1,4 @@
+export * from "./object-annotations";
 export * from "./annotations";
 export * from "./code";
 export * from "./conversation-events";

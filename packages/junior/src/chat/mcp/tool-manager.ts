@@ -1,3 +1,4 @@
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 /**
  * Turn-local MCP tool manager.
  *
@@ -280,10 +281,13 @@ export interface McpToolManagerOptions {
    * Optional post-success processor for model-facing MCP tool calls.
    * Failures are logged by the host caller and must not fail the tool result.
    */
-  onToolSuccess?: (input: McpToolSuccessHookInput) => Promise<void> | void;
+  onToolSuccess?: (
+    input: McpToolSuccessHookInput,
+  ) => Promise<OwnedObjectAnnotation[] | void> | OwnedObjectAnnotation[] | void;
 }
 
 export interface ManagedMcpToolResult {
+  cards?: OwnedObjectAnnotation[];
   /**
    * Internal bridge for direct model calls, which need placeholder content
    * while the wrapper boundary receives a content-free discriminated result.
@@ -593,7 +597,7 @@ export class McpToolManager {
                   ? { structuredContent: result.structuredContent }
                   : undefined),
               };
-              await this.options.onToolSuccess?.({
+              const cards = await this.options.onToolSuccess?.({
                 arguments: resolvedArgs,
                 provider: plugin.manifest.name,
                 ...(result.structuredContent !== undefined
@@ -601,7 +605,9 @@ export class McpToolManager {
                   : undefined),
                 toolName: tool.name,
               });
-              return successResult;
+              return cards?.length
+                ? { ...successResult, cards }
+                : successResult;
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&
@@ -725,7 +731,9 @@ export class McpToolManager {
     try {
       result = await tool.execute(args, {
         conversationPrivacy: "private",
-        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+        ...(options?.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
       });
     } catch (error) {
       if (error instanceof McpToolError) {

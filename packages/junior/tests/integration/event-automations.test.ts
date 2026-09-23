@@ -1,5 +1,13 @@
+import {
+  context,
+  createTask,
+  execute,
+  EVENT_CATALOG,
+  teamId,
+} from "../fixtures/event-automations";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { messageCardText } from "@/chat/conversations/cards";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitAssistantMessage } from "@/chat/task-execution/assistant-message";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -8,7 +16,6 @@ import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -22,7 +29,6 @@ import { createEventAutomationTool } from "@/chat/tools/create-event-automation"
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createListEventAutomationsTool } from "@/chat/tools/list-event-automations";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
 import {
   createConversationWorkQueueTestAdapter,
@@ -40,81 +46,6 @@ vi.hoisted(() => {
 
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
-const teamId = `TEVENT${Date.now()}`;
-const EVENT_CATALOG = {
-  github: {
-    resourceTypes: [
-      {
-        type: "pull_request",
-        supportedEvents: [
-          "pull_request.review.changes_requested",
-          "pull_request.review.commented",
-        ],
-      },
-      {
-        type: "review_target",
-        supportedEvents: [
-          "pull_request.review.changes_requested",
-          "pull_request.review.commented",
-        ],
-      },
-    ],
-    normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
-  },
-  sentry: {
-    resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
-  },
-};
-
-function context(
-  userId = "U123",
-  channelId = "C123",
-  sourceVisibility: "private" | "public" = channelId.startsWith("C")
-    ? "public"
-    : "private",
-  threadTs?: string,
-  workspaceTeamId = teamId,
-): ToolRuntimeContext {
-  const destination = {
-    platform: "slack" as const,
-    teamId: workspaceTeamId,
-    channelId,
-  };
-  return {
-    ...(threadTs
-      ? { conversationId: `slack:${channelId}:${threadTs}` }
-      : undefined),
-    actor: {
-      platform: "slack",
-      teamId: workspaceTeamId,
-      userId,
-    },
-    destination,
-    source: createSlackSource({
-      teamId: destination.teamId,
-      channelId: destination.channelId,
-      ...(threadTs ? { threadTs } : undefined),
-      visibility: sourceVisibility,
-    }),
-    userText: "Create a task for review feedback.",
-  } as ToolRuntimeContext;
-}
-
-async function execute<TInput>(
-  tool: {
-    execute?: (input: TInput, options: { toolCallId?: string }) => unknown;
-    prepareArguments?: (input: unknown) => TInput;
-  },
-  input: unknown,
-  toolCallId = "event-automation-call",
-) {
-  if (!tool.execute) throw new Error("tool execute function missing");
-  const prepared = tool.prepareArguments?.(input) ?? input;
-  return await tool.execute(prepared as TInput, {
-    toolCallId,
-  });
-}
-
 function jsonSchemaAllowsNull(schema: unknown): boolean {
   if (!schema || typeof schema !== "object") {
     return false;
@@ -135,35 +66,21 @@ function jsonSchemaAllowsNull(schema: unknown): boolean {
   );
 }
 
-async function createTask(
-  instruction: string,
-  toolCallId?: string,
-  events = ["pull_request.review.changes_requested"],
-  taskContext = context(),
-) {
-  return (await execute(
-    createEventAutomationTool(taskContext, EVENT_CATALOG),
-    {
-      instruction,
-      outcomes: [],
-      trigger: {
-        namespace: "github",
-        identifier: "getsentry/junior#1174",
-        resourceType: "pull_request",
-        label: "GitHub PR getsentry/junior#1174",
-        events,
-      },
-    },
-    toolCallId ?? instruction,
-  )) as { automation: { id: string } };
-}
-
 describe("event automations", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
     fixture = createConfiguredJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     queue = createConversationWorkQueueTestAdapter();
+    await getConversationStore().recordActivity({
+      conversationId: "test:event-annotations",
+      destination: {
+        platform: "local",
+        conversationId: "test:event-annotations",
+      },
+      source: "local",
+      nowMs: Date.now(),
+    });
   });
 
   afterEach(async () => {
@@ -195,6 +112,8 @@ describe("event automations", () => {
         {
           automationId: created.automation.id,
           credentialMode: "system",
+          instruction:
+            "Review fixes.\nCheck the parser and report unresolved errors.",
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#1174",
@@ -228,12 +147,18 @@ describe("event automations", () => {
       const cards = await loadPendingMessageCards(conversationId);
       expect(cards).toEqual([
         expect.objectContaining({
-          id: created.automation.id,
-
+          kind: "object",
+          plugin: "junior",
+          key: created.automation.id,
+          label: "Review fixes.",
+          title: "Review fixes.",
           trigger: "Review feedback · pull_request.review.commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
+      expect(messageCardText(cards[0]!)).toContain(
+        "Review fixes.\nCheck the parser and report unresolved errors.",
+      );
       await sendSlackReply({
         channelId: "C123",
         conversationId,
@@ -242,9 +167,11 @@ describe("event automations", () => {
       });
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-      expect(posted?.text).toContain(cards[0]!.trigger);
+      expect(posted?.text).toContain(
+        "Review feedback · pull_request.review.commented",
+      );
       expect(posted?.attachments).toBeUndefined();
-      expect(posted?.metadata).toEqual({
+      expect(posted?.metadata).toMatchObject({
         entities: [
           {
             entity_type: "slack#/entities/item",
@@ -260,7 +187,7 @@ describe("event automations", () => {
                   key: "trigger",
                   label: "When",
                   type: "string",
-                  value: cards[0]!.trigger,
+                  value: "Review feedback · pull_request.review.commented",
                   long: true,
                 },
               ],

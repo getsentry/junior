@@ -339,29 +339,29 @@ this directory.
 
 ## Message cards
 
-Automation tools return saved facts with successful changes. Delivery stores
-these cards in Message metadata. Slack and the web transcript render the same
-facts, under the same privacy rules as message text. Cards are not live status.
+Object annotations hold the latest saved facts for a Conversation. Message cards
+hold the facts selected for one reply. Delivery saves each card in Message
+metadata. The web transcript renders that saved snapshot. Slack previews can
+refresh from detail responses without changing the stored Message. Each surface
+owns its layout and uses the same privacy rules as message text.
 
-`conversations/pending-cards.ts` reads committed tool results back to the last
-assistant Message or Turn start. It keeps the last successful change per
-Automation, including across resume and history replacement. Delete tools return no cards. Their results suppress
-earlier cards for the same Automation in the pending-card reader.
-Silent Turns do not send cards or pass them to a later Turn.
+See `conversations/README.md` for annotation storage, card selection, and silent
+updates. `conversations/cards.ts` also reads older Automation cards so stored
+Messages remain usable.
 
-`conversations/cards.ts` removes old receipt fields when reading stored cards.
-`automations/card.ts` owns the AutomationCard schema and text format. Its Slack
-renderer and dashboard component own their layouts. `conversations/cards.ts`
-contains the closed union of built-in response types, not shared layout fields.
-To add a known card type, define its schema and add a case to each surface's
-renderer. Plugin-defined cards are not supported.
+### Deployment and recovery
 
-Cards need no database migration. Versions before cards preserve Message
-metadata and tool-result fields, but omit cards from the transcript API.
-Rollback therefore hides web cards without deleting stored facts. Slack cards
-already posted remain visible. Automation changes are not undone by rollback.
+New object cards use `objectCards` in Message metadata and tool results. The
+legacy `cards` field stays Automation-only. The reader combines both formats;
+the transcript API and renderers still use one `cards` list.
 
-Roll back the API and dashboard together, or the API first. The new dashboard
-accepts responses without cards. The old dashboard rejects the new API's
-`cards` field because its response schema is strict. An old open tab needs a
-reload when it starts receiving card-bearing responses from the new API.
+The previous release ignores `objectCards` and unknown annotation kinds. A
+rollback hides new cards and annotations without deleting them or breaking
+transcript reads. Restore this release to show those saved facts again. Existing
+Automation cards remain readable in both releases. No migration is required.
+
+Drain active workers before changing releases. Old workers cannot deliver new
+object cards from a resumed Turn. Deploy or roll back the API and dashboard
+together. Existing dashboard tabs must reload because their old response schema
+does not accept the new card or annotation kind. Rollback does not undo provider
+changes or remove Slack messages already posted.

@@ -1,3 +1,4 @@
+import { githubObjectAnnotation } from "../annotations.js";
 import {
   definePluginTool,
   EgressAuthRequired,
@@ -132,6 +133,16 @@ function gitHubIssueToolResult(
     : undefined;
   const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
   return {
+    objectAnnotations: [
+      githubObjectAnnotation({
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "task",
+        status: "open",
+      }),
+    ],
     target: "createIssue",
     ...data,
   };
@@ -286,21 +297,6 @@ async function createGitHubIssue(
   };
 }
 
-async function annotateIssue(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubIssueInput,
-  result: GitHubIssueResult,
-): Promise<void> {
-  const repo = parseRepo(input.repo);
-  await ctx.annotations?.upsert({
-    kind: "resource_link",
-    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label: `${repo.owner}/${repo.name}#${result.number}`,
-    url: result.url,
-    status: "open",
-  });
-}
-
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
@@ -336,7 +332,6 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               number: state.number,
               url: state.url,
             };
-            await annotateIssue(ctx, completedInput, completedResult);
             return gitHubIssueToolResult(
               completedInput,
               completedResult,
@@ -379,7 +374,6 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
                 { cause: error },
               );
             }
-            await annotateIssue(ctx, parsedInput, result);
             return gitHubIssueToolResult(
               parsedInput,
               result,

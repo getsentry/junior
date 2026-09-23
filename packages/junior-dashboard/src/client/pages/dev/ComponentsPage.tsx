@@ -1,3 +1,4 @@
+import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
@@ -678,6 +679,32 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Object annotations">
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "code_change",
+            plugin: "github",
+            key: "getsentry/junior#1200",
+            label: "getsentry/junior#1200",
+            title: "Use object annotations for reply cards",
+            status: "draft",
+            url: "https://github.com/getsentry/junior/pull/1200",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "task",
+            plugin: "linear",
+            key: "ENG-123",
+            label: "ENG-123",
+            title: "Keep background annotation updates out of the next reply",
+            status: "In Progress",
+            url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+      </Fixture>
       <Fixture title="Automation in a reply">
         <div className="max-w-[52.5rem]">
           <TranscriptMessageShell actor="Junior" role="assistant">
@@ -690,10 +717,8 @@ function TranscriptsGalleryPage() {
             />
             <AutomationCard
               card={{
-                kind: "automation",
                 id: "sched_0123456789abcdef0123456789abcdef",
                 title: "Drink water",
-                url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
                 instruction:
                   "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
                 trigger: "In 30 minutes",
@@ -706,10 +731,8 @@ function TranscriptsGalleryPage() {
       <Fixture title="Automation card states">
         <AutomationCard
           card={{
-            kind: "automation",
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
-            url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
             instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
@@ -717,11 +740,9 @@ function TranscriptsGalleryPage() {
         />
         <AutomationCard
           card={{
-            kind: "automation",
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             title:
               "Review automated fixes across the JavaScript SDK repositories",
-            url: "https://junior.example.com/automations/evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             instruction:
               "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
             trigger:
@@ -731,10 +752,8 @@ function TranscriptsGalleryPage() {
         />
         <AutomationCard
           card={{
-            kind: "automation",
             id: "scheduled-1",
             title: "Weekly release digest",
-            url: "https://junior.example.com/automations/scheduled-1",
             instruction:
               "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",

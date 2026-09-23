@@ -8,7 +8,9 @@ function preview(text: string, length: number): string {
 }
 
 /** Show an Automation as a native Work Object, not an operation receipt. */
-export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
+export function renderSlackAutomationCard(
+  card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning">,
+): SlackCard {
   const title = preview(card.title, 160);
 
   const trigger = preview(card.trigger, 500);
