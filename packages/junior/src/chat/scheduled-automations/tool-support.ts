@@ -318,7 +318,14 @@ export function scheduleAutomationToolResult(
     url: automation.dashboardUrl,
     operation,
     instruction: automation.instruction,
-    trigger: automation.schedule,
+    trigger:
+      task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
+        ? `${new Intl.DateTimeFormat("en-US", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: task.schedule.timezone,
+          }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
+        : automation.schedule,
     warning:
       automation.status === "blocked"
         ? (automation.statusReason ?? "This automation is blocked.")

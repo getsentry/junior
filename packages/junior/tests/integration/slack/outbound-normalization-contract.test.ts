@@ -125,7 +125,7 @@ describe("Slack contract: outbound normalization", () => {
                 elements: [
                   {
                     type: "mrkdwn",
-                    text: "*ID:* <https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100|slack:C123:1700000000.000100>",
+                    text: "<https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100|Conversation>",
                   },
                 ],
               },

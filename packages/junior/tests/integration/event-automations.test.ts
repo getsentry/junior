@@ -242,20 +242,32 @@ describe("event automations", () => {
       });
       const posted =
         getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-      expect(posted?.text).toContain(created.automation.id);
-      expect(posted?.attachments).toEqual([
-        expect.objectContaining({
-          fallback: expect.stringContaining(created.automation.id),
-          blocks: expect.arrayContaining([
-            expect.objectContaining({
-              type: "section",
-              text: expect.objectContaining({
-                text: expect.stringContaining(`<${cards[0]!.url}|`),
-              }),
-            }),
-          ]),
-        }),
-      ]);
+      expect(posted?.text).toContain(cards[0]!.trigger);
+      expect(posted?.attachments).toBeUndefined();
+      expect(posted?.metadata).toEqual({
+        entities: [
+          {
+            entity_type: "slack#/entities/item",
+            external_ref: { id: created.automation.id, type: "automation" },
+            url: cards[0]!.url,
+            entity_payload: {
+              attributes: {
+                title: { text: cards[0]!.title },
+                display_type: "Automation",
+              },
+              custom_fields: [
+                {
+                  key: "trigger",
+                  label: "When",
+                  type: "string",
+                  value: cards[0]!.trigger,
+                  long: true,
+                },
+              ],
+            },
+          },
+        ],
+      });
       expect(JSON.stringify(posted?.blocks)).not.toContain(cards[0]!.url);
       await commitAssistantMessage({
         cards,
