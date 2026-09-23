@@ -88,6 +88,7 @@ jobs:
               - package.json
               - pnpm-lock.yaml
               - pnpm-workspace.yaml
+              - patches/**
               - tsconfig*.json
               - packages/*/package.json
               - apps/*/package.json
@@ -211,6 +212,16 @@ jobs:
           fail-ci-if-error: false
           informational-project: true
           informational-patch: true
+
+  eval-harness-tests:
+    name: test / eval harness
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-evals test
 
   workspace-snapshot-lifecycle:
     name: test / Workspace snapshot lifecycle

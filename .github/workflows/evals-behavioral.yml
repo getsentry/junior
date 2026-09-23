@@ -39,18 +39,16 @@ jobs:
               - 'packages/junior-evals/evals/memory/**'
               - 'packages/junior-evals/evals/scheduler/**'
               - 'packages/junior-evals/evals/sentry/**'
+              - '.github/workflows/evals-behavioral.yml'
+              - '.github/actions/setup-node-pnpm/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'patches/**'
+              - 'packages/junior-evals/src/**'
+              - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
-              - 'packages/junior-evals/src/behavior-harness.ts'
-              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/src/eval-context.ts'
-              - 'packages/junior-evals/src/eval-egress.ts'
-              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
-              - 'packages/junior-evals/src/helpers.ts'
-              - 'packages/junior-evals/src/setup.ts'
-              - 'packages/junior-evals/src/slack-link.ts'
-              - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/tests/**'
               - 'packages/junior-evals/vitest.evals.config.ts'
               - 'packages/junior-evals/vitest.evals.behavioral.config.ts'
@@ -144,8 +142,6 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      - name: Verify eval egress lifecycle
-        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
       - name: Run behavioral evals
         id: run
         continue-on-error: true

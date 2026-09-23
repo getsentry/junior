@@ -90,7 +90,7 @@ export function createSlackScheduleUpdateAutomationTool(
       })
       .strict(),
     outputSchema: scheduleAutomationToolResultSchema,
-    execute: async (input) => {
+    execute: async (input, options) => {
       const activeDestination = requireActiveChannel(context);
       const actor = requireActor(context, activeDestination);
       const db = getDb();
@@ -235,6 +235,7 @@ export function createSlackScheduleUpdateAutomationTool(
       };
       if (instructionChanged) {
         const title = await generateShortTitle({
+          signal: options.signal,
           completeText,
           kind: "task",
           sourceText: nextInstruction,

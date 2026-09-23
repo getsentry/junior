@@ -60,3 +60,6 @@ allowBuilds:
   protobufjs: true
   sharp: true
   simple-git-hooks: true
+
+patchedDependencies:
+  "@earendil-works/pi-ai@0.85.1": patches/@earendil-works__pi-ai@0.85.1.patch

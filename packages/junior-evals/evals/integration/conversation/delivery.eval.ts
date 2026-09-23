@@ -1,5 +1,5 @@
 import { describeEval, toolCalls } from "vitest-evals";
-import { beforeAll, expect } from "vitest";
+import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   hasImageAttachment,
@@ -9,21 +9,12 @@ import {
   visibleAssistantText,
   visibleThreadReplies,
 } from "../../../src/helpers";
-import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
-
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("Slack Message Delivery", slackEvals, (it) => {
-  beforeAll(async () => {
-    await warmSandboxSnapshot();
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
-
   it("when asked for no visible reply, complete silently", async ({ run }) => {
     const result = await run({
       initialEvents: [
-        mention(
-          "please just mark that this has been seen — no need to reply",
-        ),
+        mention("please just mark that this has been seen — no need to reply"),
       ],
     });
 

@@ -12,9 +12,11 @@ import {
 import { executeWithReplay } from "vitest-evals/replay";
 import {
   attachHarnessRunToError,
+  getHarnessRunFromError,
   serializeError,
   type JsonValue,
 } from "vitest-evals/harness";
+import { resolveConversationTitle } from "@/chat/services/conversation-title";
 import { toEvalHarnessRun } from "./eval-result";
 import {
   createFauxCore,
@@ -1643,15 +1645,21 @@ async function teardownHarnessEnvironment(
 ): Promise<void> {
   resetSkillDiscoveryCache();
   pluginCatalogRuntime.setConfig(undefined);
-  await cleanupHarnessThreadState(env.stateAdapter, scenario);
-  await cleanupMcpAuthState(
-    env.authActorUsers,
-    env.autoCompleteMcpOauthProviders,
-  );
-  await cleanupOAuthTokens(env.authActorUsers, env.autoCompleteOauthProviders);
-  await cleanupOAuthTokens(env.authActorUsers, env.credentialProviders);
-  await cleanupOAuthTokens(env.authActorUsers, env.expiredOauthProviders);
-  env.envSnapshot.restore();
+  try {
+    await cleanupHarnessThreadState(env.stateAdapter, scenario);
+    await cleanupMcpAuthState(
+      env.authActorUsers,
+      env.autoCompleteMcpOauthProviders,
+    );
+    await cleanupOAuthTokens(
+      env.authActorUsers,
+      env.autoCompleteOauthProviders,
+    );
+    await cleanupOAuthTokens(env.authActorUsers, env.credentialProviders);
+    await cleanupOAuthTokens(env.authActorUsers, env.expiredOauthProviders);
+  } finally {
+    env.envSnapshot.restore();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2656,6 +2664,9 @@ export async function runEvalScenario(
   );
   const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  let runError: unknown;
+  let result: EvalResult | undefined;
+  const threadRecordsById = new Map<string, EvalThreadRecord>();
 
   try {
     const runtimePluginNames = new Set(
@@ -2669,7 +2680,6 @@ export async function runEvalScenario(
       ),
     ]);
     const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });
-    const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {
       errors: [],
@@ -2796,17 +2806,50 @@ export async function runEvalScenario(
       ].map(serializeError);
       throw attachHarnessRunToError(error, run);
     }
-    return collectResults(
+    result = collectResults(
       threadRecordsById,
       slackAdapter,
       logRecords,
       observations,
     );
+    return result;
+  } catch (error) {
+    runError = error;
+    throw error;
   } finally {
-    if (previousPlugins) {
-      setPlugins(previousPlugins);
+    const cleanupErrors: unknown[] = [];
+    for (const cleanup of [
+      // Titles are detached from delivery but must finish before SQL is closed.
+      ...[...threadRecordsById.keys()].map((conversationId) => async () => {
+        await resolveConversationTitle({ conversationId });
+      }),
+      drainPendingEvalPluginTasks,
+      async () => {
+        if (previousPlugins) setPlugins(previousPlugins);
+        await teardownHarnessEnvironment(scenario, env);
+      },
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
     }
-    await teardownHarnessEnvironment(scenario, env);
+    if (cleanupErrors.length) {
+      const error = new AggregateError(
+        [...(runError ? [runError] : []), ...cleanupErrors],
+        "Eval cleanup failed",
+        { cause: runError ?? cleanupErrors[0] },
+      );
+      const run =
+        getHarnessRunFromError(runError) ??
+        (result ? toEvalHarnessRun(result, Date.now() - startedAt) : undefined);
+      if (run) {
+        run.errors.push(...cleanupErrors.map(serializeError));
+        throw attachHarnessRunToError(error, run);
+      }
+      throw error;
+    }
   }
 }
 

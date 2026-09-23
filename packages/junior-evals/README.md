@@ -106,7 +106,7 @@ egress use the same plugin registrations so dependencies and credentials match.
 
 Failed runs keep their partial session in the report and still fail the case.
 `src/eval-result.ts` converts both successful and failed results. Worker and global
-setup each install the AI Gateway body timeout in their own process. Quick Tunnel
+setup each install the AI Gateway transport timeouts in their own process. Quick Tunnel
 startup uses normal system DNS and retains failed attempts and logs.
 
 Tool replay:
@@ -282,3 +282,30 @@ describeEval("Routing", slackEvals, (it) => {
   });
 });
 ```
+
+## Failure cleanup and CI
+
+CI runs all eval harness tests once, without model credentials or a tunnel.
+Live behavioral and integration jobs select changes to shared harness sources,
+fixtures, dependency files, and their own workflow. Runtime-only changes still
+require the existing eval labels.
+
+Global setup warms the base, GitHub, and Sentry snapshot profiles once per shard.
+No measured agent turn pays the first build cost because of file order.
+
+Each Vitest case owns its scenario and judge promises. The last setup file
+registers the first cleanup hook. It joins that work before MSW or database
+cleanup, including after an outer test timeout. If work does not settle within
+five seconds of teardown, the worker exits with an error instead of starting
+another case with dirty state. Scenario cleanup also joins conversation titles
+and plugin tasks before restoring the catalog. Post-run validation errors retain
+the collected transcript.
+
+The Gateway dispatcher bounds both stalled headers and idle response bodies.
+These limits are not total request deadlines. Judge and task-title requests use
+their owning cancellation signals; reply budgets stay at 60 seconds.
+
+The Pi capacity patch is in `patches/@earendil-works__pi-ai@0.85.1.patch`.
+It adds missing transient capacity wording to the SDK classifier. Existing
+retry limits and terminal billing/quota exclusions still apply. Remove the patch
+when the pinned SDK includes these cases. No whole-scenario retry is added.

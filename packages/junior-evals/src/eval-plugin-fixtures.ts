@@ -21,14 +21,16 @@ export function evalRuntimePlugins(
   ];
 }
 
+const githubPrivateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+  .privateKey.export({ format: "pem", type: "pkcs8" })
+  .toString();
+
 /** Create disposable GitHub App inputs for the intercepted token exchange. */
 export function evalGitHubEnv(): Record<string, string> {
   return {
     GITHUB_APP_ID: "12345",
     GITHUB_INSTALLATION_ID: "67890",
-    GITHUB_APP_PRIVATE_KEY: generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ format: "pem", type: "pkcs8" })
-      .toString(),
+    GITHUB_APP_PRIVATE_KEY: githubPrivateKey,
     GITHUB_APP_BOT_NAME: "junior-eval",
     GITHUB_APP_BOT_EMAIL: "12345+junior-eval[bot]@users.noreply.github.com",
   };
@@ -58,6 +60,7 @@ export function loadEvalPluginFixtures(roots: string[]): EvalPluginFixtures {
   for (const root of roots) {
     for (const pluginDir of pluginDirs(root)) {
       inlineManifests.push({
+        dir: pluginDir,
         manifest: parsePluginManifest(
           readFileSync(path.join(pluginDir, "plugin.yaml"), "utf8"),
           pluginDir,

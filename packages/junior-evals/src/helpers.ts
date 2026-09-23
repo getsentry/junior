@@ -32,6 +32,8 @@ import {
   type SteerEvent,
   runEvalScenario,
 } from "./behavior-harness";
+import { trackEvalWork } from "./eval-work";
+import { attachHarnessRunToError, serializeError } from "vitest-evals/harness";
 import { toEvalHarnessRun } from "./eval-result";
 
 type NormalizedMessage = EvalResult["sessionMessages"][number];
@@ -164,7 +166,6 @@ export interface SlackEvalInput {
   overrides?: EvalOverrides;
   criteria?: EvalRubric;
   requireGatewayReady?: boolean;
-  taskTimeout?: number;
   requireSandboxReady?: boolean;
 }
 
@@ -257,14 +258,6 @@ function assertTimeoutBudget(input: SlackEvalInput): void {
       `Eval reply_timeout_ms ${replyTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
     );
   }
-  if (
-    input.taskTimeout !== undefined &&
-    input.taskTimeout > MAX_EVAL_TIMEOUT_MS
-  ) {
-    throw new Error(
-      `Eval taskTimeout ${input.taskTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
-    );
-  }
 }
 
 /** Builds a structured, maintainer-readable judge rubric for an eval case. */
@@ -296,21 +289,25 @@ const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
 
 const judgeHarness = createJudgeHarness({
   name: "slack-rubric-judge-model",
-  run: async ({ prompt, system }) => {
-    const { text } = await completeText({
-      modelId: EVAL_JUDGE_MODEL_ID,
-      system,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-          timestamp: Date.now(),
-        },
-      ],
-      temperature: 0,
-    });
-    return text;
-  },
+  run: async ({ prompt, system }, { signal }) =>
+    trackEvalWork(
+      (async () => {
+        const { text } = await completeText({
+          signal,
+          modelId: EVAL_JUDGE_MODEL_ID,
+          system,
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+              timestamp: Date.now(),
+            },
+          ],
+          temperature: 0,
+        });
+        return text;
+      })(),
+    ),
 });
 
 function formatJudgePrompt(transcript: string, criteria: string): string {
@@ -357,51 +354,39 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 /** Replays Slack events through the real runtime and returns normalized artifacts. */
 export const slackHarness: Harness<SlackEvalInput> = {
   name: "slack",
-  run: async (input, { signal }) => {
-    const startedAt = Date.now();
-    const logRecords: EmittedLogRecord[] = [];
-    const unregisterLogSink = registerLogRecordSink((record) => {
-      logRecords.push(record);
-    });
-    try {
-      assertTimeoutBudget(input);
-      const taskPromise = runEvalScenario(
-        {
-          initialEvents: input.initialEvents,
-          events: input.events,
-          overrides: input.overrides,
-        },
-        { logRecords, signal },
-      );
-      const result =
-        typeof input.taskTimeout === "number" && input.taskTimeout > 0
-          ? await Promise.race([
-              taskPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(
-                  () =>
-                    reject(
-                      new Error(
-                        `Eval harness timed out after ${input.taskTimeout}ms before judge evaluation`,
-                      ),
-                    ),
-                  input.taskTimeout,
-                ),
-              ),
-            ])
-          : await taskPromise;
-      if (input.requireGatewayReady ?? true) {
-        assertGatewayReady(result);
-      }
-      if (input.requireSandboxReady ?? true) {
-        assertSandboxReady(result);
-      }
-      assertStatusCleared(result);
-      return toEvalHarnessRun(result, Date.now() - startedAt);
-    } finally {
-      unregisterLogSink();
-    }
-  },
+  run: async (input, { signal }) =>
+    trackEvalWork(
+      (async () => {
+        const startedAt = Date.now();
+        const logRecords: EmittedLogRecord[] = [];
+        const unregisterLogSink = registerLogRecordSink((record) => {
+          logRecords.push(record);
+        });
+        try {
+          assertTimeoutBudget(input);
+          const result = await runEvalScenario(
+            {
+              initialEvents: input.initialEvents,
+              events: input.events,
+              overrides: input.overrides,
+            },
+            { logRecords, signal },
+          );
+          const run = toEvalHarnessRun(result, Date.now() - startedAt);
+          try {
+            if (input.requireGatewayReady ?? true) assertGatewayReady(result);
+            if (input.requireSandboxReady ?? true) assertSandboxReady(result);
+            assertStatusCleared(result);
+          } catch (error) {
+            run.errors = [serializeError(error)];
+            throw attachHarnessRunToError(error, run);
+          }
+          return run;
+        } finally {
+          unregisterLogSink();
+        }
+      })(),
+    ),
 };
 
 /** Scores Slack eval output against the case rubric. */

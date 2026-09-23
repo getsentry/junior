@@ -157,6 +157,7 @@ export function createSlackScheduleCreateAutomationTool(
         context.source,
       );
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,

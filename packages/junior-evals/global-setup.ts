@@ -14,6 +14,7 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalInvocationContext } from "./src/eval-context";
@@ -55,7 +56,10 @@ export default async function setup(
     EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-client-secret",
   };
   const previousEnv = new Map(
-    Object.keys(fixtureEnv).map((key) => [key, process.env[key]]),
+    [...Object.keys(fixtureEnv), "JUNIOR_BASE_URL"].map((key) => [
+      key,
+      process.env[key],
+    ]),
   );
 
   /** Release every invocation-wide resource while preserving all cleanup errors. */
@@ -128,6 +132,14 @@ export default async function setup(
         resetTestGitHubHttpFixtures();
       },
     });
+    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    for (const packages of [
+      [],
+      ["@sentry/junior-github"],
+      ["@sentry/junior-sentry"],
+    ]) {
+      await warmSandboxSnapshot(packages);
+    }
     project.provide("juniorEvalContext", {
       baseUrl: egress.baseUrl,
       controlToken: egress.controlToken,

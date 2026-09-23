@@ -48,6 +48,9 @@ overrides:
   ws: 8.20.1
   yaml: ^2.9.0
 
+patchedDependencies:
+  '@earendil-works/pi-ai@0.85.1': 8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82
+
 importers:
 
   .:
@@ -196,7 +199,7 @@ importers:
         version: 0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+        version: 0.85.1(patch_hash=8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82)(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.12.27)(zod@4.5.4)
@@ -437,7 +440,7 @@ importers:
         version: 4.29.0(ai@6.0.190(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.1(zod@4.5.4)
+        version: 0.85.1(patch_hash=8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82)(zod@4.5.4)
       '@sentry/junior':
         specifier: workspace:*
         version: file:packages/junior
@@ -9889,7 +9892,7 @@ snapshots:
 
   '@earendil-works/pi-agent-core@0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
     dependencies:
-      '@earendil-works/pi-ai': 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-ai': 0.85.1(patch_hash=8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82)(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-telemetry': 0.84.1
       diff: 8.0.4
       ignore: 7.0.5
@@ -9925,7 +9928,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
+  '@earendil-works/pi-ai@0.85.1(patch_hash=8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82)(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.5.4)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
@@ -9945,7 +9948,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.85.1(zod@4.5.4)':
+  '@earendil-works/pi-ai@0.85.1(patch_hash=8ff1bf4247f27e2ff01cb3a95fd4911b84435925e5f424e45508931bd5550f82)(zod@4.5.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.5.4)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0

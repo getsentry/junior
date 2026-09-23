@@ -29,18 +29,16 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/integration/**'
+              - '.github/workflows/evals-integration.yml'
+              - '.github/actions/setup-node-pnpm/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'patches/**'
+              - 'packages/junior-evals/src/**'
+              - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
-              - 'packages/junior-evals/src/behavior-harness.ts'
-              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/src/eval-context.ts'
-              - 'packages/junior-evals/src/eval-egress.ts'
-              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
-              - 'packages/junior-evals/src/helpers.ts'
-              - 'packages/junior-evals/src/setup.ts'
-              - 'packages/junior-evals/src/slack-link.ts'
-              - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
       - id: decision
         env:
@@ -130,8 +128,6 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      - name: Verify eval egress lifecycle
-        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
       - name: Run integration evals
         env:
           VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json

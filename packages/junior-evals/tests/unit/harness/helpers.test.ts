@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { toolCalls } from "vitest-evals/harness";
+import { getHarnessRunFromError, toolCalls } from "vitest-evals/harness";
 
 const { runError, runEvalScenarioMock } = vi.hoisted(() => ({
   runError: new Error("stop after capturing harness options"),
@@ -179,5 +179,32 @@ it("forwards the Vitest abort signal to the eval scenario", async () => {
   expect(runEvalScenarioMock).toHaveBeenCalledWith(
     { initialEvents: [], events: undefined, overrides: undefined },
     { logRecords: [], signal: controller.signal },
+  );
+});
+
+it("keeps the transcript when post-run status validation fails", async () => {
+  runEvalScenarioMock.mockResolvedValueOnce({
+    authorizationCompletions: [],
+    canvases: [],
+    channelPosts: [],
+    conversationIds: [],
+    logRecords: [],
+    modelIds: [],
+    posts: [],
+    reactions: [],
+    sessionMessages: [{ role: "assistant", content: "Finished" }],
+    slackAdapter: {
+      promptCalls: [],
+      titleCalls: [],
+      statusCalls: [{ channelId: "CEVAL", threadTs: "1", text: "Working" }],
+    },
+    toolInvocations: [],
+  } as never);
+  const error = await slackHarness
+    .run({ initialEvents: [] }, { artifacts: {}, setArtifact: vi.fn() })
+    .catch((error) => error);
+  expect(error.message).toContain("status pending");
+  expect(getHarnessRunFromError(error)?.session.events).toContainEqual(
+    expect.objectContaining({ content: "Finished" }),
   );
 });

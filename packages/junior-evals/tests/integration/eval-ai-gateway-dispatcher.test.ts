@@ -11,8 +11,9 @@ import { installEvalAiGatewayDispatcher } from "../../src/eval-ai-gateway-dispat
 
 const openServers = new Set<http.Server>();
 
-async function startStalledServer(): Promise<string> {
+async function startStalledServer(sendHeaders = true): Promise<string> {
   const server = http.createServer((_request, response) => {
+    if (!sendHeaders) return;
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
   });
@@ -36,6 +37,18 @@ afterEach(async () => {
 });
 
 describe("eval AI Gateway dispatcher", () => {
+  it("terminates a request that never receives headers", async () => {
+    const targetOrigin = await startStalledServer(false);
+    const restore = installEvalAiGatewayDispatcher(100, targetOrigin);
+    try {
+      await expect(fetch(targetOrigin)).rejects.toMatchObject({
+        cause: expect.objectContaining({ code: "UND_ERR_HEADERS_TIMEOUT" }),
+      });
+    } finally {
+      await restore();
+    }
+  });
+
   it("terminates a response body that stops producing data", async () => {
     const targetOrigin = await startStalledServer();
     const restore = installEvalAiGatewayDispatcher(100, targetOrigin);
