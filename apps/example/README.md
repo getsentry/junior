@@ -31,6 +31,12 @@ nonstandard local port. Root `pnpm cli -- ...` and `pnpm dev` load
 services so Junior and enabled plugins have their SQL schemas before local chat,
 heartbeat, or server paths use them.
 
+## Live Slack QA
+
+See [Live Slack QA](./SLACK-QA.md) for isolated preview setup and the manual
+`Slack QA alias` workflow. It selects or checks a preview without a lock. It
+does not provision infrastructure or run Slack tests.
+
 ## Wiring
 
 - `plugins.ts` is the single source of truth for installed plugin registrations and runtime hook plugins in this app
