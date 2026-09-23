@@ -1,74 +1,69 @@
 ---
 name: vercel
-description: Inspect Vercel deployments and logs through the read-only CLI, or use configured Preview tools to deploy an exact commit, select a QA alias, check its target, or delete a Preview. Use for Vercel investigations and Preview QA setup. Do not use for Production deploys, rollbacks, arbitrary domains, environment changes, caches, or storage.
+description: Deploy and inspect Vercel apps, assign aliases, delete deployments, investigate logs, and monitor deployment outcomes. Use for Vercel deployment operations and QA setup through the plugin tools or Vercel CLI. Do not use for GitHub code changes or other cloud providers.
 ---
 
 # Vercel Operations
 
-Use the CLI for read-only investigation. Use only the opt-in Preview tools for writes.
+Use the existing host-managed Vercel credential. Actions go through normal
+runtime review. Never work around a denied action with another command or API.
 
-## Read-only command allowlist
+## Resolve the target
 
-Run only these Vercel CLI commands:
+- Use the user's explicit project, team, deployment, alias, and environment.
+- Read `vercel.project` and `vercel.team` with standalone `jr-rpc config get`
+  commands only when those defaults are needed. They are fallbacks, not limits.
+- Do not change defaults unless requested.
+- Resolve an ambiguous mutation target before acting. Preview is the deployment
+  default; use Production when the user requests it.
 
-- `vercel logs`
-- `vercel inspect`
-- `vercel list` or `vercel ls`
-- `vercel help`, `vercel --help`, or `vercel <command> --help`
+## Tools and CLI
 
-Do not run `deploy`, `rollback`, `promote`, `remove`, `env`, `alias`, `dns`, `project`, `cache`, `blob`, `certs`, `teams`, `domains`, `git`, `link`, `login`, `logout`, `switch`, `pull`, `build`, `dev`, `redeploy`, `bisect`, `api`, or any command that creates, updates, deletes, purges, promotes, deploys, links, authenticates, or changes Vercel state.
+Discover tools in the Vercel catalog and follow their schemas:
 
-## Preview actions
+- `vercel_deployment_create`: deploy a Git ref from the project's linked GitHub
+  repository. Pass a full `commitSha` to pin the source while retaining branch
+  context in `ref`. The project supplies build settings and credentials.
+- `vercel_deployment_inspect`: inspect a deployment ID or hostname.
+- `vercel_alias_assign`: point an alias hostname at an exact deployment ID.
+  This can replace live traffic. Read back the result; do not overwrite another
+  selection automatically if `matches` is false.
+- `vercel_alias_inspect`: read an alias's current deployment ID or redirect.
+- `vercel_deployment_delete`: delete the exact deployment the user requests.
+  Deletion does not remove its database or Redis state.
+- `vercel_deployment`: resolve a resource for a watch or event automation.
 
-- Discover `vercel_preview_create`, `vercel_preview_select`, `vercel_preview_inspect`, and `vercel_preview_delete` in the tool catalog. If absent, report that Preview actions are not configured. Do not fall back to CLI writes or ask for tokens in chat.
-- The host fixes the team, project, GitHub repository, and QA alias. Conversation defaults cannot expand this scope.
-- Deploy only a trusted full commit SHA after the operator confirms isolated Preview state. Builds inherit Preview credentials and can run migrations. This tool does not provision Neon, Redis, or Slack.
-- Use `preview_create` once. Save its deployment ID and commit. Inspect before retrying an uncertain create; a timeout can occur after Vercel accepted it.
-- Use `preview_select` only when the deployment is READY and the user wants the QA alias moved. It can replace another tester's selection. It does not stop old workers.
-- Use `preview_inspect` before and after each QA group. If `aliasMatches` is false, stop and mark the results inconclusive. Do not reassign the alias as automatic recovery. Checks are not a lock and cannot detect every change between requests.
-- Delete only the exact Preview the user explicitly requests. Deletion does not clean up its database or Redis state. Do not automatically delete or restore aliases.
-- Report deployment and commit IDs. Do not claim Slack QA passed from an alias or health check alone.
+Prefer these tools when they cover the action. Use the CLI for logs, local
+source uploads, other Git providers, or other requested Vercel operations.
+Inspect `vercel <command> --help` when the command shape is unclear. Use
+`--scope <team>` and explicit targets to avoid ambient project mistakes.
+Do not set, print, copy, or request tokens; authentication is host-managed.
 
-## Workflow
+## Verification and failures
 
-1. Resolve the target:
+- Record the deployment ID, source commit when available, and environment.
+  A successful create starts a build; it does not mean the deployment is ready.
+- Inspect before retrying an uncertain write. A timeout can occur after Vercel
+  accepted it. Do not blindly repeat a deploy, alias assignment, or deletion.
+- For QA, compare alias deployment IDs before and after testing. A changed
+  target makes affected results inconclusive. This is not a lock and cannot
+  detect every change between reads. Moving an alias does not stop old workers.
+- Builds can run migrations and use environment credentials. Verify isolated
+  state before QA that must not affect shared data. Alias and health checks do
+  not prove Slack QA passed.
+- Report missing credentials or provider permission failures. Do not guess
+  permission scopes or change credentials as a workaround.
+- Retry a transient read once. Bound waits and report unresolved failures.
 
-- Determine whether the user needs runtime logs, build logs, deployment status, or deployment discovery.
-- Prefer explicit deployment IDs, deployment URLs, project names, environments, branch names, commit SHAs, status filters, and time windows from the user.
-- When the user did not specify a project or team, read `vercel.project` and `vercel.team` with `jr-rpc config get` and treat them as optional conversation defaults. Explicit user input always wins.
-- Only set or change `vercel.project` and `vercel.team` when the user explicitly asks to store a default for this conversation or channel.
-- Ask one concise follow-up only when the request cannot be bounded to a project, deployment, commit, or time window from the thread or config.
+## Logs and watches
 
-2. Run the narrowest safe command:
-
-- The runtime provides Vercel authentication. Do not set, print, echo, write, or ask for `JUNIOR_VERCEL_TOKEN` or `VERCEL_TOKEN`.
-- If a command shape or flag is unclear, inspect `vercel <command> --help` before guessing.
-- Add `--scope <team>` when a team is known.
-- Add `--project <project>` when a project is known and the command supports it.
-- For runtime logs, prefer `vercel logs --project <project> --since <window> --limit 20 --json` plus user-provided filters such as `--environment`, `--level`, `--status-code`, `--source`, `--query`, or `--deployment`.
-- Use `vercel inspect <deployment-id-or-url> --logs` for build logs. Add `--wait` only when the user explicitly wants to wait for an active build; also bound it with `--timeout`.
-- Use `vercel list <project>` or `vercel ls <project>` to find deployments. Prefer filters such as `--status`, `--environment`, `--prod`, or `--meta githubCommitSha=<sha>` when available.
-- For a deployment watch or event automation, call the `vercel_deployment` plugin tool with the project name and optional team slug or ID. Omit `commitSha` to watch every deployment for the project; add `target` (`production`, `preview`, or `staging`) to limit the watch to one environment; add a full 40-character `commitSha` to watch one deployment (`target` defaults to `production` when omitted with a commit). The tool resolves the canonical project ID through Vercel before Junior creates the conversation subscription or event automation.
-- Use `--follow` only when the user asks for live logs, and stop once enough evidence is captured. Do not leave a streaming command running indefinitely.
-
-3. Bound and minimize output:
-
-- Always use a time window for log searches. Default to the last hour for "right now" incidents and the last 24 hours for retrospective deployment investigations.
-- Prefer JSON output for `vercel logs` when parsing or summarizing.
-- Keep page sizes small. Start with 20 log lines or fewer unless the user asked for more.
-- Quote only the minimum log text needed as evidence. Vercel logs may contain customer data, secrets, request headers, or other sensitive payloads.
-
-4. Report the result:
-
-- Answer the user first with deployment status, error pattern, top failing route/function, or the absence of matching logs.
-- Include the project, environment, deployment, time window, and filters used.
-- Include Vercel deployment or dashboard URLs when the CLI output provides them. Do not fabricate URLs from incomplete IDs.
-
-## Failure handling
-
-- Missing `JUNIOR_VERCEL_TOKEN`: tell the operator to add `JUNIOR_VERCEL_TOKEN` to the Junior deployment environment and redeploy.
-- `401`, invalid token, expired token, or revoked token: report that the configured Vercel token cannot authenticate.
-- `403` or permission denied: report that the configured Vercel token or service account cannot read the requested project/deployment/logs. Do not guess missing Vercel permission scopes.
-- Project not found: confirm `vercel.project`, `vercel.team`, and the user-provided project name or scope.
-- Rate limiting or transient network failure: retry the same bounded read command once. If it still fails, report the throttle or network failure and stop.
-- Unsupported mutation request: explain the supported Preview scope. Production deploys, environment edits, and arbitrary domain changes remain unavailable.
+- Prefer `vercel logs` with a project, time window, and limit. Default to the
+  last hour for current incidents and the last 24 hours for retrospective work.
+- Use `vercel inspect <deployment> --logs` for build logs and `vercel list
+<project>` for deployment discovery. Quote only decisive diagnostics; logs
+  can contain private data.
+- Use live log streaming only when requested and stop after collecting evidence.
+- For watches, call `vercel_deployment` with project and optional team, target,
+  and full commit SHA. Use its returned resource. A commit defaults to
+  Production unless `target` is supplied. Create the watch before completion;
+  earlier webhook events are not replayed.

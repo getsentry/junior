@@ -27,6 +27,8 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-gocd/src/tools/pipeline-history.ts	throw new Error( `GoCD pipeline history failed with HTTP ${response.status}`, );
 packages/junior-gocd/src/tools/stage.ts	throw new Error(`GoCD stage failed with HTTP ${response.status}`);
+# Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
+packages/junior-vercel/src/tools/actions.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );

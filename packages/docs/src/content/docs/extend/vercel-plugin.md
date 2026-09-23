@@ -1,6 +1,6 @@
 ---
 title: Vercel Plugin
-description: Configure Vercel investigations, scoped Preview actions, and deployment events.
+description: Configure Vercel deployments, aliases, investigations, and deployment events.
 type: tutorial
 summary: Let Junior inspect Vercel deployments and receive signed deployment outcomes in Slack.
 prerequisites:
@@ -16,10 +16,9 @@ Use the Vercel plugin to inspect deployments, fetch build logs, search runtime
 logs, and respond to deployment outcomes through watches and
 event automations.
 
-The plugin is read-only by default. Its runtime registration installs the CLI
-and injects host-managed Vercel API auth. CLI use stays limited to
-`vercel logs`, `vercel inspect`, `vercel list`, and help commands. Optional
-host tools can manage Preview deployments in one configured project.
+The plugin provides deployment and alias tools and installs the Vercel CLI.
+Reads and writes use the existing host-managed token and normal runtime review,
+including Guardian. No second token or QA-specific scope configuration is needed.
 
 ## Install
 
@@ -71,13 +70,13 @@ Default Vercel team slug or ID used to resolve projects.
 <details class="plugin-config">
 <summary><code>JUNIOR_VERCEL_TOKEN</code></summary>
 
-Host-managed access token for deployment and log inspection.
+Host-managed access token for Vercel operations, including reads and writes.
 
 - **Define:** Set `JUNIOR_VERCEL_TOKEN` in the deployment environment
 - **Required:** Yes
 - **Environment override:** `JUNIOR_VERCEL_TOKEN`
 
-Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the projects and teams users need to inspect.
+Create a [Vercel access token](https://vercel.com/account/tokens) with access to the projects, teams, and actions users need.
 
 </details>
 
@@ -164,8 +163,8 @@ event.
 
 ## Auth model
 
-- The plugin uses host-configured Vercel tokens, not per-user OAuth. Reads use
-  `JUNIOR_VERCEL_TOKEN`; opt-in writes use `JUNIOR_VERCEL_PREVIEW_TOKEN`.
+- The plugin uses a single Vercel access token configured at deploy time, not
+  per-user OAuth.
 - Junior keeps the real `JUNIOR_VERCEL_TOKEN` value host-side.
 - Matching Vercel API requests from the CLI and plugin tools receive a
   host-managed `Authorization` header.
@@ -199,9 +198,8 @@ Confirm Junior can query Vercel successfully:
 1. Ask Junior a Vercel question in a channel, for example: `Show production error logs for junior-prod from the last hour.`
 2. Confirm the thread returns a bounded summary with the project, environment,
    time window, and filters used.
-3. Confirm Junior does not run CLI mutation commands. Only the configured
-   Preview tools can write; Production deploys, env edits, and unrelated domain
-   changes stay blocked.
+3. Verify a requested Preview deployment on a test project and inspect its
+   deployment ID and state. Confirm mutations still pass normal runtime review.
 
 If deployment webhooks are enabled, also verify one signed delivery:
 
@@ -214,41 +212,30 @@ If deployment webhooks are enabled, also verify one signed delivery:
    returned `202` with `Accepted` when the response body is shown.
 5. Confirm Junior posts the terminal outcome in the original conversation.
 
-## Optional Preview actions
+## Deployment and alias tools
 
-Pass a `preview` scope to `vercelPlugin` in trusted app configuration:
+These tools are available with `vercelPlugin()` and the existing token:
 
-```ts
-vercelPlugin({
-  preview: {
-    teamId: "team_example",
-    projectId: "prj_example",
-    repository: "getsentry/junior",
-    alias: "junior-slack-qa.sentry.dev",
-  },
-});
-```
+- `vercel_deployment_create`: supply a project, Git ref, optional team, and
+  optional full commit SHA. It uses the project's linked GitHub repository.
+  Preview is the default target; Production must be selected explicitly.
+- `vercel_deployment_inspect`: inspect an exact deployment ID or hostname.
+- `vercel_alias_assign`: assign an alias hostname to a deployment ID, then read
+  back the target. It can replace live traffic.
+- `vercel_alias_inspect`: read the alias's current deployment ID or redirect.
+- `vercel_deployment_delete`: delete the exact deployment the user requests.
 
-Set `JUNIOR_VERCEL_PREVIEW_TOKEN` on the Junior host with the smallest available
-Vercel write scope. Keep `JUNIOR_VERCEL_TOKEN` for reads and scope verification.
-Never expose the write token to the sandbox or the Preview being tested.
+Use explicit targets or conversation defaults. These are general operations,
+not a fixed QA project. The CLI covers logs, local source uploads, other Git
+providers, and other requested operations. Prefer tools when they cover the
+action. Never use the CLI to bypass a denied action.
 
-The tools create an exact-commit GitHub Preview, inspect its state and alias,
-select the configured alias, or delete a requested Preview. They cannot deploy
-to Production or override environment and build settings. Credential hooks
-check each write; raw CLI writes remain blocked. Conversation defaults cannot
-change the configured scope.
-
-Before enabling these actions, configure isolated Preview database, Redis,
-storage, and test credentials. A build runs repository code and can run
-migrations. The API source ref is the full SHA, not a branch name. Verify that
-your Neon integration isolates these deployments. Use a dedicated alias that
-is not assigned automatically to Production or a Git branch.
-
-Alias checks are not a lock. Inspect before and after each QA group and stop if
-`aliasMatches` is false. There is no automatic alias restore or deletion.
-Moving an alias does not stop old workers. These tools do not configure Slack,
-provide a browser test identity, or run Vercel Cron on Previews.
+A create starts a build, not a ready deployment. Inspect state before use.
+If a mutation response is lost, inspect before retrying. Alias checks before
+and after QA can detect changed targets but are not locks. Moving an alias does
+not stop older workers. Deployments inherit build settings and credentials and
+can run migrations; verify isolated state for QA. Production actions and
+deletion still need clear user intent and normal runtime review.
 
 ## Failure modes
 
@@ -264,9 +251,8 @@ provide a browser test identity, or run Vercel Cron on Previews.
   before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and
   should be stopped once enough evidence is captured.
-- Missing Preview tools: configure the `preview` scope and redeploy Junior.
-- Preview writes unavailable: configure `JUNIOR_VERCEL_PREVIEW_TOKEN` on the host.
-  Other mutations, including Production deploys and env edits, remain blocked.
+- Mutation denied: respect the runtime review or Vercel permission result. Do
+  not retry through another command to bypass it.
 - Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`
   and `SLACK_BOT_TOKEN`, redeploy, and provide a project name or configure
   `vercel.project` for the conversation. Multi-workspace Slack OAuth mode does

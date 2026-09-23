@@ -2,25 +2,26 @@
 
 ## Intent and shape
 
-Keep read-only CLI investigation. Add opt-in Preview tools for an exact commit
-and one configured alias. This is an inline workflow skill. No router, worker,
-or script is required in the skill.
+Support general Vercel operations through plugin tools and the CLI. Keep the
+workflow inline. QA is one use case, not a credential or project boundary.
 
 ## Evidence and limits
 
-Tool schemas and plugin credential hooks define the allowed actions. Vercel
-API responses provide deployment and alias evidence. Alias checks are not a
-lock. Builds inherit Preview secrets and migrations. A ready deployment does
-not prove Slack QA passed.
+Tool schemas and official Vercel APIs define operation inputs. Provider
+responses supply deployment and alias evidence. The existing token and runtime
+review remain authoritative; the skill does not grant permission.
 
-## Validation
+Alias checks are not a lock. Builds inherit credentials and can run migrations.
+A ready deployment does not prove Slack QA passed.
 
-Requests to inspect logs, deploy a trusted Preview, or check the QA alias should
-trigger this skill. Production deploys, environment changes, and unrelated
-cloud providers must not use its write path. Keep tests for exact-commit scope,
-raw CLI write rejection, foreign deployments, and alias changes in the plugin.
+## Validation and maintenance
 
-## Maintenance
+Log investigations, deployments, alias changes, and requested deletion should
+trigger this skill. GitHub source changes and other cloud providers should not.
+Keep component coverage for request payloads, environment selection, alias
+changes, and failures in the plugin. Keep Guardian review unchanged. Do not
+introduce a second required token or QA-specific app options.
 
-Update this contract with the tool schemas and credential policy. Keep tokens
-host-side. Never replace denied Preview tools with unrestricted CLI commands.
+Sources: plugin tool schemas and Vercel REST documentation for deployment
+creation/inspection/deletion and alias assignment/inspection. Live provider
+execution and end-to-end Slack QA are separate validation steps.
