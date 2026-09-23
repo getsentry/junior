@@ -61,6 +61,16 @@ gocdPlugin({
 });
 ```
 
+## Stage-failure events
+
+Set host-only `GOCD_WEBHOOK_SECRET` to enable `stage.failed` events for the `pipeline` resource. An operator-controlled notifier must send signed failure coordinates to `/api/webhooks/gocd`. This is a Junior adapter contract, not a native GoCD webhook. See the [setup guide](https://junior.sentry.dev/extend/gocd-plugin/#deployment-triage-with-creator-credentials) for the payload, signature, and rollout steps.
+
+Use the exact identifier `<GoCD origin>/go/pipelines/<pipeline name>`. The optional `stage` match field restricts an automation to one failed stage. Core deduplicates retries for the same stage attempt.
+
+Create a triage event automation as its owner and keep the creator credential mode. Sentry remains on user OAuth; only that automation's runs receive the owner's delegated credentials. A signed event cannot select a user or supply instructions. Task scope does not reduce the owner's OAuth scopes; use a read-only instruction and keep action review enabled. Replies go to the automation's channel or DM, not the notifier's original thread. Missing credentials require the owner to reconnect.
+
+The signing secret authenticates the notifier, not Sentry API requests. No install-wide Sentry connection is needed. Plain bot mentions still cannot inherit another person's connection. The notification sender and automation must be configured separately; package installation alone does not enable triage.
+
 ## Tools
 
 - `pipelines`: returns visible pipeline names, groups, environments, and recent run state

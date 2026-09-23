@@ -109,6 +109,7 @@
     "@hono/node-server": "1.19.14",
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-gocd": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",

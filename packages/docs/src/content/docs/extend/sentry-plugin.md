@@ -1,6 +1,6 @@
 ---
 title: Sentry Plugin
-description: Configure Sentry user OAuth, read-only service access, and issue webhooks.
+description: Configure Sentry OAuth and issue webhooks.
 type: tutorial
 prerequisites:
   - /extend/
@@ -12,7 +12,7 @@ related:
 
 Use the Sentry plugin to investigate issues with a user's Sentry account and respond to new issues through watches and event automations.
 
-By default, Junior stores each user's OAuth grant and uses it only for that user's requests. An optional service connection supports unattended reads. Webhooks use a separate internal integration secret.
+Junior stores each user's OAuth grant and uses it only for that user's requests. Webhooks use a separate internal integration.
 
 ## Install
 
@@ -28,24 +28,6 @@ export const plugins = defineJuniorPlugins([sentryPlugin()]);
 ```
 
 Register `sentryPlugin()` so Junior loads the webhook route.
-
-## Unattended deployment triage
-
-A Slack bot cannot complete user OAuth. Junior disables interactive authorization for bot-authored turns. Task approval in a skill does not supply credentials, and a bot cannot borrow a thread participant's connection.
-
-To use a shared, read-only Sentry connection, select service auth in the app:
-
-```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins([sentryPlugin({ auth: "service" })]);
-```
-
-An operator must set `SENTRY_SERVICE_TOKEN` in the host deployment environment and redeploy. Use a Sentry internal integration token with read permissions for the organizations and projects needed for triage. A webhook secret or release-upload token is not a substitute. Keep the token out of source, skill text, and the Sandbox.
-
-Service mode is **install-wide**. Human and automated requests share the token's read access. It replaces user OAuth; it is not a fallback when user OAuth fails. Sentry still enforces resource access. Junior permits only `GET` and `HEAD` requests under `/api/0/` on `sentry.io`, `us.sentry.io`, and `de.sentry.io`. Writes, including alert changes and Seer actions that use `POST`, are blocked. Action review is unchanged.
-
-The host applies the token to requests through its egress proxy. CLI commands receive only a non-secret placeholder. Missing or rejected service credentials require operator repair, not user reconnection. Installing the package alone does not enable this mode or create a token.
-
-To restore user-scoped access and explicitly requested writes, use `sentryPlugin()` and redeploy. Stored user OAuth connections are not deleted.
 
 ## Config
 
@@ -78,17 +60,6 @@ Default Sentry project slug when a request does not name one.
 </details>
 
 ### Environment variables
-
-<details class="plugin-config">
-<summary><code>SENTRY_SERVICE_TOKEN</code></summary>
-
-Host-managed internal integration token for read-only service access. It is not exposed to command environments.
-
-- **Define:** Set `SENTRY_SERVICE_TOKEN` in the deployment environment
-- **Required:** Yes when the app selects `sentryPlugin({ auth: "service" })`
-- **Environment override:** `SENTRY_SERVICE_TOKEN`
-
-</details>
 
 <details class="plugin-config">
 <summary><code>SENTRY_CLIENT_ID</code></summary>

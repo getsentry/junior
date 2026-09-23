@@ -11,6 +11,7 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { hostnameFromBaseUrl, type GocdPluginOptions } from "./config.js";
+import { createGocdWebhookRoute, gocdWebhookSecret } from "./events.js";
 import { createGocdPipelinesTool } from "./tools/pipelines.js";
 import { createGocdJobHistoryTool } from "./tools/job-history.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
@@ -39,7 +40,7 @@ function resolveManifestHostname(
   return hostnameFromBaseUrl(baseUrl);
 }
 
-/** Register read-only GoCD tools. */
+/** Register read-only GoCD tools and signed stage-failure events. */
 export function gocdPlugin(
   options: GocdPluginRegistrationOptions = {},
 ): PluginRegistration {
@@ -55,6 +56,7 @@ export function gocdPlugin(
     envVars: {
       GOCD_ACCESS_TOKEN: {},
       GOCD_URL: {},
+      GOCD_WEBHOOK_SECRET: {},
     },
     name: "gocd",
     target: {
@@ -71,6 +73,9 @@ export function gocdPlugin(
     }
   }
   const hooks: PluginHooks = {
+    routes(ctx) {
+      return [createGocdWebhookRoute(ctx.events, options)];
+    },
     tools(ctx) {
       return {
         pipelines: createGocdPipelinesTool(ctx, options),
@@ -96,6 +101,19 @@ export function gocdPlugin(
     packageName: "@sentry/junior-gocd",
     manifest,
     hooks,
+    events: {
+      isEnabled: () => Boolean(hostname && gocdWebhookSecret()),
+      resourceTypes: [
+        {
+          type: "pipeline",
+          supportedEvents: ["stage.failed"],
+          suggestedEvents: ["stage.failed"],
+          matchFields: {
+            stage: { kind: "string", description: "Exact failed stage name." },
+          },
+        },
+      ],
+    },
   });
 }
 
