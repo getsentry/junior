@@ -1,4 +1,33 @@
 # Changelog
+## 0.222.0
+
+### New Features ✨
+
+#### Automations
+
+- Render Slack Work Objects without receipt badges by @sentry-junior in [#1897](https://github.com/getsentry/junior/pull/1897)
+- Show saved cards in Slack and web replies by @sentry-junior in [#1893](https://github.com/getsentry/junior/pull/1893)
+
+#### Other
+
+- (slack) Expand automation details by @sentry-junior in [#1899](https://github.com/getsentry/junior/pull/1899)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Render compact cards in Slack and web by @sentry-junior in [#1896](https://github.com/getsentry/junior/pull/1896)
+- Keep event automations out of threads by @sentry-junior in [#1891](https://github.com/getsentry/junior/pull/1891)
+
+#### Other
+
+- (grep) Handle ripgrep literal newline regex error by @sentry in [#1885](https://github.com/getsentry/junior/pull/1885)
+- (slack) Serve Automation Work Object details by @sentry-junior in [#1898](https://github.com/getsentry/junior/pull/1898)
+
+### Internal Changes 🔧
+
+- (guardian) Cover compound PR approval after clarification by @sentry-junior in [#1892](https://github.com/getsentry/junior/pull/1892)
+
 ## 0.221.1
 
 - No documented changes.
