@@ -150,6 +150,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
 - Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
+- Set the GitHub Actions repository secret `SENTRY_EVALS_API_KEY` to upload results to `evals.sentry.dev`. Each suite uploads one run after execution, with all shards combined. Existing score gates and artifacts stay in place. Without the key, uploads are skipped.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
 Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and Router evals only need AI Gateway access.

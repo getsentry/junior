@@ -36,6 +36,7 @@ jobs:
               - 'packages/junior-evals/guardian-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior/src/chat/services/guardian-action-policy.ts'
       - id: decision
         env:
@@ -110,3 +111,8 @@ jobs:
           path: packages/junior-evals/guardian-results.json
           if-no-files-found: error
           retention-days: 7
+      - name: Report evals to Sentry Evals
+        if: ${{ !cancelled() && steps.results.outcome == 'success' }}
+        env:
+          SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
+        run: node packages/junior-evals/scripts/report.mjs guardian packages/junior-evals/guardian-results.json

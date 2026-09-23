@@ -30,6 +30,7 @@ jobs:
             relevant:
               - 'packages/junior-evals/evals/integration/**'
               - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/src/behavior-harness.ts'
@@ -145,3 +146,35 @@ jobs:
           path: packages/junior-evals/integration-results-${{ matrix.shard }}.json
           if-no-files-found: warn
           retention-days: 7
+
+  report:
+    name: integration / report
+    needs: [select, integration]
+    if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+      - name: Download integration eval results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: integration-evals-*
+          path: eval-results
+          merge-multiple: true
+      - name: Require all integration shard results
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(eval-results/integration-results-*.json)
+          if [[ "${#files[@]}" -ne 2 ]]; then
+            echo "::error::expected 2 integration eval result files, found ${#files[@]}"
+            exit 1
+          fi
+      - name: Report evals to Sentry Evals
+        env:
+          SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
+        run: node packages/junior-evals/scripts/report.mjs integration eval-results/integration-results-*.json

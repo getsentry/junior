@@ -19,6 +19,48 @@ Optional fallback if you do not want to use OIDC:
 - `VERCEL_TEAM_ID`
 - `VERCEL_PROJECT_ID`
 
+## Sentry Evals Reporting
+
+Create an API key at <https://evals.sentry.dev/settings/api-keys>. Add its
+`evk_...` value as the GitHub Actions repository secret `SENTRY_EVALS_API_KEY`.
+The workflows pass this secret only to the upload step. No GitHub Environment
+is required. A missing key skips uploads, including on fork pull requests.
+
+All four workflows upload their existing Vitest JSON results after execution.
+Behavioral and integration jobs combine every shard into one run per suite.
+They require all shard files before they upload. The stable dataset names are
+`junior-behavioral`, `junior-integration`, `junior-guardian`, and `junior-router`.
+The job summary links to the run. Source fields include the PR head SHA, branch,
+PR URL, and workflow attempt URL.
+
+`scripts/report.mjs` owns the API mapping. It uses file paths relative to this
+package plus full test names to identify scenarios. It sends pass/fail status,
+errors, judge scores, user messages, normalized session output, duration, and
+available token and cost metrics. It does not send environment variables or raw
+runtime logs. Intentional skips and todo cases are omitted because the API has
+no skipped status. File setup failures become error scenarios. A crash before
+Vitest writes a result file remains a CI failure and has no remote result.
+
+Uploads run even when an eval score check fails. Existing score gates and JSON
+artifacts remain in place. With a key configured, an API failure fails the
+upload step. The script prints the run URL before it uploads scenarios, so a
+partial upload can be inspected. It does not retry requests because run creation
+has no idempotency key. Re-running the upload creates another run. Runs with
+missing scenarios time out on the server.
+
+To upload saved artifacts manually, set `SENTRY_EVALS_API_KEY` in your shell and
+run from the repository root:
+
+```bash
+node packages/junior-evals/scripts/report.mjs router packages/junior-evals/router-results.json
+```
+
+Test the report mapping and HTTP contract without live credentials:
+
+```bash
+node --test packages/junior-evals/scripts/report.test.mjs
+```
+
 ## How To Get Them
 
 ### `VERCEL_OIDC_TOKEN`
