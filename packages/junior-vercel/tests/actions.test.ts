@@ -23,7 +23,7 @@ function fixture(...responses: Response[]) {
 
 describe("Vercel actions", () => {
   it("deploys any linked project with Preview default or explicit Production", async () => {
-    for (const target of [undefined, "production"] as const) {
+    for (const target of [undefined, "preview", "production"] as const) {
       const project = {
         id: "prj_other",
         name: "other-app",
@@ -31,7 +31,10 @@ describe("Vercel actions", () => {
       };
       const { tools, fetch } = fixture(
         Response.json(project),
-        Response.json({ ...deployment, target: target ?? null }),
+        Response.json({
+          ...deployment,
+          target: target === "production" ? "production" : null,
+        }),
       );
       const result = await tools.deployment_create.execute?.(
         {
@@ -49,12 +52,14 @@ describe("Vercel actions", () => {
       const call = fetch.mock.calls[1][0];
       expect(call.operation).toBe("vercel.deployment.create");
       expect(call.request.method).toBe("POST");
-      expect(await call.request.json()).toEqual({
+      const body = await call.request.json();
+      expect(body).toEqual({
         name: project.name,
         project: project.id,
-        target: target ?? "preview",
+        target: target === "production" ? "production" : undefined,
         gitSource: { type: "github", repoId: 456, ref: "feature/test", sha },
       });
+      expect(Object.hasOwn(body, "target")).toBe(target === "production");
       expect(result).toMatchObject({
         deploymentId: deployment.id,
         commitSha: sha,

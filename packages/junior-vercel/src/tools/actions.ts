@@ -192,7 +192,8 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
             {
               name: project.name,
               project: project.id,
-              target: input.target ?? "preview",
+              // Vercel uses an omitted target for Preview, not "preview".
+              target: input.target === "production" ? "production" : undefined,
               gitSource,
             },
           ),
