@@ -10,6 +10,7 @@ import {
 import { Ellipsis, Menu } from "lucide-react";
 
 import { SearchInput } from "../components/SearchInput";
+import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
   MobileHeaderLivePortal,
@@ -24,7 +25,7 @@ import {
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
-/** Render the sticky conversation title, compact tools, and advanced details. */
+/** Show the conversation title, search, and details. */
 export function ConversationHeader(props: {
   copyAction?: ReactNode;
   annotations: ReactNode;
@@ -144,8 +145,8 @@ export function ConversationHeader(props: {
     </div>
   );
 
-  const showMobileChrome =
-    searchOpenVisible || props.archive.error || props.linkedWork;
+  const showMobileHeader =
+    searchOpenVisible || props.archive.error || Boolean(props.linkedWork);
 
   const liveIndicator = props.live ? (
     <span
@@ -160,11 +161,10 @@ export function ConversationHeader(props: {
       <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
       <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
-        className={
-          showMobileChrome
-            ? "sticky top-0 z-10 -mx-4 border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7"
-            : "sticky top-0 z-10 -mx-4 hidden border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7 md:block"
-        }
+        className={cn(
+          "sticky top-0 z-10 -mx-4 border-b border-dashboard-border-emphasis bg-dashboard-bg md:-mx-7",
+          !showMobileHeader && "hidden md:block",
+        )}
       >
         <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
           <div className="min-w-0">

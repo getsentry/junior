@@ -374,8 +374,7 @@ function FoundationsGalleryPage() {
             width="narrow"
           >
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              Linked work, the Brief, participants, and runtime details stay
-              within reach.
+              Linked work, the Brief, participants, and usage.
             </p>
           </Drawer>
         ) : null}
@@ -679,14 +678,14 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
-      <Fixture title="Saved automation inside a reply">
+      <Fixture title="Automation in a reply">
         <div className="max-w-[52.5rem]">
           <TranscriptMessageShell actor="Junior" role="assistant">
             <span className="text-sm font-semibold text-cyan-100">Junior</span>
             <TranscriptText
               role="assistant"
               text={
-                "Drink water reminder is set.\n\nI'll ping you here in 30 minutes, then keep rebooking itself every 30 minutes until you ask me to stop."
+                "Your reminder is set.\n\nI'll remind you to drink water every 30 minutes until you ask me to stop."
               }
             />
             <AutomationCard

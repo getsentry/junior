@@ -3,7 +3,7 @@ import { JuniorLogo } from "../components/JuniorLogo";
 import { transcriptRoleKind } from "../format";
 import { cn } from "../styles";
 
-/** Align messages and delivered attachments with the same actor column. */
+/** Align message text and attachments beside their avatars. */
 export function TranscriptMessageShell(props: {
   actor: string;
   children: ReactNode;
@@ -11,12 +11,21 @@ export function TranscriptMessageShell(props: {
   role: string;
 }) {
   const kind = transcriptRoleKind(props.role);
+  const hasAvatar = kind === "assistant" || kind === "user";
   return (
     <article
-      className={transcriptMessageClass(props.role)}
+      className={cn(
+        "grid min-w-0 gap-3 md:gap-3.5",
+        hasAvatar &&
+          "grid-cols-[2rem_minmax(0,1fr)] text-dashboard-text md:grid-cols-[2.25rem_minmax(0,1fr)]",
+        kind === "system" &&
+          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text",
+        kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
+        kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
+      )}
       onCopy={props.onCopy}
     >
-      {kind === "assistant" || kind === "user" ? (
+      {hasAvatar ? (
         <div
           aria-hidden="true"
           className="flex size-8 shrink-0 items-center justify-center md:size-9"
@@ -48,20 +57,5 @@ export function TranscriptMessageShell(props: {
         {props.children}
       </div>
     </article>
-  );
-}
-
-/** Keep message avatars and content in consistent transcript columns. */
-function transcriptMessageClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "grid min-w-0 gap-3 md:gap-3.5",
-    (kind === "assistant" || kind === "user") &&
-      "grid-cols-[2rem_minmax(0,1fr)] text-dashboard-text md:grid-cols-[2.25rem_minmax(0,1fr)]",
-    kind === "system" &&
-      "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text",
-    kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-    kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
   );
 }

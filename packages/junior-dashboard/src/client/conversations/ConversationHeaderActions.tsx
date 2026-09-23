@@ -23,7 +23,7 @@ export type ConversationArchiveAction = {
   pending: boolean;
 };
 
-/** Render the compact icon controls for one conversation header. */
+/** Show conversation actions in the header or mobile menu. */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   copyAction?: ReactNode;
@@ -99,7 +99,7 @@ export function ConversationHeaderActions(props: {
   );
 }
 
-/** Switch transcript modes, with visible labels in the conversation toolbar. */
+/** Switch between the conversation and event log. */
 export function TranscriptViewToggle(props: {
   labelled?: boolean;
   onChange(value: TranscriptViewMode): void;
