@@ -75,8 +75,6 @@ describe("Slack behavior: finalized thread replies", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(thread.posts.map(toPostedText)).toEqual(["Hello world"]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({

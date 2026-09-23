@@ -838,14 +838,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 );
               }
             } else {
-              if (!channelId || thread.adapter.name !== "slack") {
-                throw new Error(
-                  "Slack reply delivery requires a Slack adapter and channel ID",
-                );
-              }
               slackMessageTs = await sendSlackReply({
                 cards,
-                channelId,
+                channelId: destination.channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
