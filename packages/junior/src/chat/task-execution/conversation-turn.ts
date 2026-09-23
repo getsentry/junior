@@ -88,8 +88,8 @@ import { isEventConversationMessage } from "@/chat/events/actor";
 
 /** Extra debounce time added per additional event already batched. */
 const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
-/** Upper bound on the debounce window regardless of batch size. */
-const EVENT_MAX_WAIT_MS = 60_000;
+/** Upper bound on the event burst window regardless of batch size. */
+export const EVENT_MAX_WAIT_MS = 60_000;
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")

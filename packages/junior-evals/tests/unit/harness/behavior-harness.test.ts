@@ -161,12 +161,12 @@ describe("behavior harness", () => {
       if (!signal) {
         throw new Error("missing eval agent signal");
       }
-      await new Promise<void>((resolve) => {
-        signal.addEventListener("abort", () => resolve(), {
+      // Like a real agent run, stop with the abort reason.
+      return await new Promise<never>((_, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), {
           once: true,
         });
       });
-      return {};
     });
 
     await runEvalScenario({

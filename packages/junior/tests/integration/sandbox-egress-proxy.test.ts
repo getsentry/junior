@@ -133,8 +133,9 @@ async function registerManagedEgressPlugin(input?: {
   onEgressResponse?: NonNullable<PluginHooks["onEgressResponse"]>;
   tools?: NonNullable<PluginHooks["tools"]>;
 }) {
-  const { createApp, defineJuniorPlugins } = await import("@/app");
-  await createApp({
+  const { defineJuniorPlugins } = await import("@/app");
+  const { createTestApp } = await import("../fixtures/app");
+  await createTestApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -194,8 +195,9 @@ async function registerManagedEgressPlugin(input?: {
 }
 
 async function registerOAuthBrokerPlugin() {
-  const { createApp, defineJuniorPlugins } = await import("@/app");
-  await createApp({
+  const { defineJuniorPlugins } = await import("@/app");
+  const { createTestApp } = await import("../fixtures/app");
+  await createTestApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -229,9 +231,10 @@ async function registerOAuthBrokerPlugin() {
 async function registerGitHubPlugin(
   options?: Parameters<typeof githubPlugin>[0],
 ) {
-  const { createApp, defineJuniorPlugins } = await import("@/app");
+  const { defineJuniorPlugins } = await import("@/app");
+  const { createTestApp } = await import("../fixtures/app");
   const plugin = githubPlugin(options);
-  await createApp({
+  await createTestApp({
     plugins: defineJuniorPlugins([
       {
         ...plugin,

@@ -4,7 +4,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import type { StateAdapter } from "chat";
 import { completeAcpAuthorization } from "@/api/acp/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApp } from "@/app";
+import { createTestApp } from "../fixtures/app";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
@@ -55,7 +55,7 @@ describe("remote ACP recovery", () => {
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "junior.example.com");
     vi.stubEnv("VERCEL_URL", "preview.example.com");
     const harness = await createConversationWebHarness();
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
       dashboard: {
         authRequired: false,
@@ -164,7 +164,7 @@ describe("remote ACP recovery", () => {
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
     vi.stubEnv("VERCEL_URL", "");
     const harness = await createConversationWebHarness();
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
       dashboard: { authRequired: false },
     });
@@ -229,7 +229,7 @@ describe("remote ACP recovery", () => {
 
   it("rejects a second authenticate request without replacing the pending sign-in", async () => {
     const harness = await createConversationWebHarness();
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
     });
     const initialized = await app.fetch(initializeRequest());
@@ -332,10 +332,10 @@ describe("remote ACP recovery", () => {
         },
       ]),
     );
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
     });
-    const secondApp = await createApp({
+    const secondApp = await createTestApp({
       conversationWork: createIndependentConversationWork(harness),
     });
     const sessionCreated = deferred<string>();
@@ -413,10 +413,10 @@ describe("remote ACP recovery", () => {
       const harness = await createConversationWebHarness(
         streamMcpSearch("Auth-paused Turn must not reply."),
       );
-      const app = await createApp({
+      const app = await createTestApp({
         conversationWork: harness.conversationWork,
       });
-      const secondApp = await createApp({
+      const secondApp = await createTestApp({
         conversationWork: createIndependentConversationWork(harness),
       });
       const sessionCreated = deferred<string>();
@@ -495,10 +495,10 @@ describe("remote ACP recovery", () => {
         { type: "text", text: "Cancelled resume must not reply." },
       ]),
     );
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
     });
-    const secondApp = await createApp({
+    const secondApp = await createTestApp({
       conversationWork: createIndependentConversationWork(harness),
     });
     const sessionCreated = deferred<string>();
@@ -601,13 +601,13 @@ describe("remote ACP recovery", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: {
         ...harness.conversationWork,
         state: observedState,
       },
     });
-    const secondApp = await createApp({
+    const secondApp = await createTestApp({
       conversationWork: createIndependentConversationWork(harness),
     });
     const sessionCreated = deferred<string>();
@@ -819,10 +819,10 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWebHarness(
       streamReplies("Recovered queue reply."),
     );
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
     });
-    const secondApp = await createApp({
+    const secondApp = await createTestApp({
       conversationWork: createIndependentConversationWork(harness),
     });
     const sessionId = await withAcpClient({
@@ -883,7 +883,7 @@ describe("remote ACP recovery", () => {
 
   it("rejects a prompt before acceptance when its output stream is full", async () => {
     const harness = await createConversationWebHarness();
-    const app = await createApp({
+    const app = await createTestApp({
       conversationWork: harness.conversationWork,
     });
     const sessionId = await withAcpClient({
