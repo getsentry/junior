@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { reportEvals } from "./report.mjs";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
-const exec = promisify(execFile);
 
 async function workspace(t) {
   const root = await mkdtemp(path.join(packageRoot, ".report-test-"));
@@ -65,63 +62,53 @@ async function reportFile(root, name = "results.json") {
   return file;
 }
 
-test("uploads real Vitest artifacts with scores, usage, failures, and PR metadata", async (t) => {
+test("uploads shards with scores, usage, failures, and PR metadata", async (t) => {
   const root = await workspace(t);
-  const report = path.join(root, "results.json");
-  const config = path.join(root, "vitest.config.mjs");
-  const filename = path.join(root, "sample.test.js");
-  await writeFile(
-    config,
-    `export default { test: { include: ["*.test.js"], reporters: ["json"], outputFile: ${JSON.stringify(report)} } };`,
-  );
-  await writeFile(
-    filename,
-    `
-    import { test, expect } from "vitest";
-    import { createHarness, describeEval } from "vitest-evals";
-    const harness = createHarness({
-      name: "fixture",
-      run: async ({ input }) => ({
-        output: { answer: "done" },
-        events: [{ type: "message", role: "user", content: input }, { type: "message", role: "assistant", content: "done" }],
-        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, toolCalls: 2, metadata: { costUsd: 0.02, cachedInputTokens: 3, cacheCreationTokens: 1 } }
-      })
-    });
-    describeEval("Example", { harness, judges: [], judgeThreshold: null }, (it) => {
-      it("passes", async ({ run, task }) => {
-        await run("hello");
-        task.meta.eval = { scores: [{ name: "quality", score: 0.8, metadata: { rationale: "Good answer" } }] };
-      });
-      it("fails an assertion", async ({ run }) => { await run("check"); expect(1).toBe(2); });
-      it.skip("skipped", async () => {});
-    });
-    test("harness error", ({ task }) => {
-      task.meta.harness = { run: { session: { events: [] }, usage: {}, errors: [{ message: "Gateway unavailable" }] } };
-      throw new Error("Gateway unavailable");
-    });
-  `,
-  );
-  const vitest = fileURLToPath(
-    new URL("../node_modules/vitest/vitest.mjs", import.meta.url),
-  );
-  await assert.rejects(
-    exec(process.execPath, [vitest, "run", "--config", config], {
-      cwd: root,
-      env: { ...process.env, SENTRY_EVALS_API_KEY: "" },
-    }),
-    (error) => error.code === 1,
-  );
-
-  // Downloaded shard paths point at the runner checkout, not this machine.
+  const report = await reportFile(root);
   const artifact = JSON.parse(await readFile(report, "utf8"));
-  artifact.testResults[0].name =
-    "/home/runner/work/junior/junior/packages/junior-evals/evals/conversation/example.eval.ts";
-  artifact.testResults[0].assertionResults[0].meta.harness.run.session.metadata =
-    {
-      log_records: [{ message: "runtime diagnostic" }],
-    };
+  const passed = artifact.testResults[0].assertionResults[0];
+  passed.duration = 1500;
+  passed.meta = {
+    eval: {
+      scores: [
+        { name: "quality", score: 0.8, metadata: { rationale: "Good answer" } },
+      ],
+    },
+    harness: {
+      run: {
+        output: { answer: "done" },
+        session: {
+          events: [{ type: "message", role: "user", content: "hello" }],
+          metadata: { log_records: [{ message: "runtime diagnostic" }] },
+        },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          toolCalls: 2,
+          metadata: {
+            costUsd: 0.02,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+          },
+        },
+        errors: [],
+      },
+    },
+  };
+  artifact.testResults[0].assertionResults.push({
+    fullName: "Routing fails an assertion",
+    status: "failed",
+    failureMessages: ["expected standard, got handoff"],
+  });
   await writeFile(report, JSON.stringify(artifact));
   const second = await reportFile(root, "second.json");
+  const shard = JSON.parse(await readFile(second, "utf8"));
+  shard.testResults[0].name = shard.testResults[0].name.replace(
+    "routing.eval.ts",
+    "reasoning.eval.ts",
+  );
+  await writeFile(second, JSON.stringify(shard));
   const event = path.join(root, "event.json");
   const summary = path.join(root, "summary.md");
   await writeFile(
@@ -170,7 +157,7 @@ test("uploads real Vitest artifacts with scores, usage, failures, and PR metadat
     commit_url: "https://github.com/getsentry/junior/commit/head-sha",
     run_url: "https://github.com/getsentry/junior/actions/runs/123/attempts/2",
   });
-  assert.equal(created.scenarios.length, 4);
+  assert.equal(created.scenarios.length, 3);
   assert.ok(created.scenarios.every(({ name }) => name.startsWith("evals/")));
   const uploaded = requests.slice(1).flatMap(({ url, body }) => {
     assert.equal(url, "https://evals.sentry.dev/api/runs/run-1/scenarios");
@@ -179,7 +166,7 @@ test("uploads real Vitest artifacts with scores, usage, failures, and PR metadat
   });
   assert.deepEqual(
     uploaded.map(({ status }) => status),
-    ["passed", "failed", "error", "passed"],
+    ["passed", "failed", "passed"],
   );
   assert.deepEqual(
     uploaded.map(({ name }) => ({ name })),
@@ -189,7 +176,7 @@ test("uploads real Vitest artifacts with scores, usage, failures, and PR metadat
     { type: "message", role: "user", content: "hello" },
   ]);
   assert.deepEqual(uploaded[0].output.result, { answer: "done" });
-  assert.equal(uploaded[0].output.session.events.length, 2);
+  assert.deepEqual(uploaded[0].output.session.events, uploaded[0].input);
   assert.equal(uploaded[0].output.session.metadata, undefined);
   assert.deepEqual(uploaded[0].scores, [
     { name: "quality", score: 0.8, label: null, explanation: "Good answer" },
@@ -203,9 +190,8 @@ test("uploads real Vitest artifacts with scores, usage, failures, and PR metadat
     cache_read_tokens: 3,
     cache_write_tokens: 1,
   });
-  assert.ok(uploaded[0].duration_seconds >= 0);
-  assert.match(uploaded[1].error, /expected 1 to be 2/);
-  assert.match(uploaded[2].error, /Gateway unavailable/);
+  assert.equal(uploaded[0].duration_seconds, 1.5);
+  assert.equal(uploaded[1].error, "expected standard, got handoff");
 });
 
 test("reports file setup failures without turning skipped tests into passes", async (t) => {

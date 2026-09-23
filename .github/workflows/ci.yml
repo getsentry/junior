@@ -149,7 +149,9 @@ jobs:
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
       - run: node --test packages/junior-evals/scripts/report.test.mjs
 
   junior-tests:

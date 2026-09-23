@@ -1,20 +1,17 @@
 import { appendFile, readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 
 // Upload completed Vitest artifacts, not live runtime state. Each suite has one
 // run across all shards. Keep CI gates and artifact storage independent.
 const API_URL = "https://evals.sentry.dev";
 const SUITES = ["behavioral", "integration", "guardian", "router"];
-const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
 function scenarioFile(filename) {
   const normalized = filename.replaceAll("\\", "/");
   const marker = "/packages/junior-evals/";
-  const file = normalized.includes(marker)
-    ? normalized.slice(normalized.lastIndexOf(marker) + marker.length)
-    : path.relative(packageRoot, filename).replaceAll("\\", "/");
-  if (!file.startsWith("evals/")) {
+  const index = normalized.lastIndexOf(marker);
+  const file = normalized.slice(index + marker.length);
+  if (index === -1 || !file.startsWith("evals/")) {
     throw new Error(`Expected an eval file inside junior-evals: ${filename}`);
   }
   return file;
@@ -27,16 +24,10 @@ function scenarioResult(file, assertion) {
   const usage = run?.usage;
   const metadata = usage?.metadata;
   const harnessErrors = run?.errors ?? [];
-  const failed = assertion.status === "failed";
   const unfinished = assertion.status === "pending";
   return {
     name: `${file} > ${assertion.fullName}`,
-    status:
-      unfinished || harnessErrors.length > 0
-        ? "error"
-        : failed
-          ? "failed"
-          : "passed",
+    status: unfinished || harnessErrors.length ? "error" : assertion.status,
     input:
       run?.session.events.filter(
         (event) => event.type === "message" && event.role === "user",
@@ -71,8 +62,8 @@ function scenarioResult(file, assertion) {
     attributes: {
       file,
       test: assertion.fullName,
-      ...(usage?.model ? { model: usage.model } : {}),
-      ...(usage?.provider ? { provider: usage.provider } : {}),
+      model: usage?.model,
+      provider: usage?.provider,
     },
     duration_seconds: (assertion.duration ?? 0) / 1000,
     otel_metrics: usage
@@ -202,11 +193,14 @@ export async function reportEvals(suite, files, env = process.env) {
   const createdAt = new Date(
     Math.min(...reports.map((report) => report.startTime)),
   ).toISOString();
+  const attempt = env.GITHUB_RUN_ID
+    ? `${env.GITHUB_RUN_ID} / attempt ${env.GITHUB_RUN_ATTEMPT ?? "1"}`
+    : "local";
   const run = await post(
     "/api/runs",
     {
       dataset_name: `junior-${suite}`,
-      name: `junior ${suite}${env.GITHUB_RUN_ID ? ` / ${env.GITHUB_RUN_ID} / attempt ${env.GITHUB_RUN_ATTEMPT ?? "1"}` : " / local"}`,
+      name: `junior ${suite} / ${attempt}`,
       created_at: createdAt,
       source,
       metadata: {
