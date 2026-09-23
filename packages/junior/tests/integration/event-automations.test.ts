@@ -7,6 +7,7 @@ import {
 } from "../fixtures/event-automations";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { messageCardText } from "@/chat/conversations/cards";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitAssistantMessage } from "@/chat/task-execution/assistant-message";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -111,6 +112,8 @@ describe("event automations", () => {
         {
           automationId: created.automation.id,
           credentialMode: "system",
+          instruction:
+            "Review fixes.\nCheck the parser and report unresolved errors.",
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#1174",
@@ -147,10 +150,15 @@ describe("event automations", () => {
           kind: "object",
           plugin: "junior",
           key: created.automation.id,
+          label: "Review fixes.",
+          title: "Review fixes.",
           trigger: "Review feedback · pull_request.review.commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
+      expect(messageCardText(cards[0]!)).toContain(
+        "Review fixes.\nCheck the parser and report unresolved errors.",
+      );
       await sendSlackReply({
         channelId: "C123",
         conversationId,

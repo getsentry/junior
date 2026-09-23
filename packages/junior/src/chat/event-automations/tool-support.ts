@@ -278,17 +278,17 @@ export async function eventAutomationToolResult(
   const filters = Object.entries(task.trigger.match ?? {}).map(
     ([key, value]) => `${key} = ${JSON.stringify(value)}`,
   );
+  const title =
+    automation.title ?? fallbackShortTitle(task.task.text, "Event automation");
   return {
     automation,
     objectCards: await saveObjectAnnotations(conversationId, "junior", [
       {
         kind: "object",
         objectType: "automation",
-        label: "Automation",
+        label: title,
         key: task.id,
-        title:
-          automation.title ??
-          fallbackShortTitle(task.task.text, "Event automation"),
+        title,
         url: automation.dashboardUrl,
         description: task.task.text,
         trigger: [

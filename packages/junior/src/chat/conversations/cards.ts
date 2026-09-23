@@ -43,7 +43,8 @@ export function messageCardText(card: MessageCard): string {
     case "object":
       return [
         card.title,
-        card.label,
+        card.label !== card.title ? card.label : undefined,
+        card.description,
         card.status,
         card.trigger,
         card.warning,

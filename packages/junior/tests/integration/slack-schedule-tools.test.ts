@@ -329,7 +329,9 @@ describe("Slack schedule tools", () => {
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
-    const created = await createTask();
+    const created = await createTask(createContext(), {
+      title: "Weekly issue digest",
+    });
     expect(created).toMatchObject({
       objectCards: [
         {
@@ -337,6 +339,7 @@ describe("Slack schedule tools", () => {
           objectType: "automation",
           plugin: "junior",
           key: created.automation.id,
+          label: "Weekly issue digest",
           trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],

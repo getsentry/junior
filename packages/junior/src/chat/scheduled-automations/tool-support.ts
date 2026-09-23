@@ -310,14 +310,15 @@ export async function scheduleAutomationToolResult(
   requesterSlackUserId?: string,
 ) {
   const automation = compactTask(task, requesterSlackUserId);
+  const title =
+    automation.title ??
+    fallbackShortTitle(automation.instruction, "Scheduled automation");
   const annotation: ObjectAnnotation = {
     kind: "object",
     objectType: "automation",
-    label: "Automation",
+    label: title,
     key: task.id,
-    title:
-      automation.title ??
-      fallbackShortTitle(automation.instruction, "Scheduled automation"),
+    title,
     url: automation.dashboardUrl,
     description: automation.instruction,
     trigger:
