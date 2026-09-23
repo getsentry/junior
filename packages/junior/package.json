@@ -70,6 +70,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",
     "@ai-sdk/gateway": "^3.0.119",
+    "@ai-sdk/gateway-v4": "npm:@ai-sdk/gateway@4.0.85",
     "@chat-adapter/slack": "4.29.0",
     "@chat-adapter/state-memory": "4.29.0",
     "@chat-adapter/state-redis": "4.29.0",
@@ -91,6 +92,7 @@
     "@vercel/queue": "^0.2.0",
     "@vercel/sandbox": "2.8.0",
     "ai": "^6.0.190",
+    "ai-v7": "npm:ai@7.0.105",
     "chat": "4.29.0",
     "commander": "^14.0.3",
     "drizzle-orm": "catalog:",
