@@ -2,8 +2,8 @@
 
 ## Intent and shape
 
-Support general Vercel operations through plugin tools and the CLI. Keep the
-workflow inline. QA is one use case, not a credential or project boundary.
+Guide Vercel operations through plugin tools and the CLI. Use inline guidance;
+tool schemas own API inputs and outputs.
 
 ## Evidence and limits
 
@@ -16,12 +16,10 @@ A ready deployment does not prove Slack QA passed.
 
 ## Validation and maintenance
 
-Log investigations, deployments, alias changes, and requested deletion should
-trigger this skill. GitHub source changes and other cloud providers should not.
-Keep component coverage for request payloads, environment selection, alias
-changes, and failures in the plugin. Keep Guardian review unchanged. Do not
-introduce a second required token or QA-specific app options.
+Trigger for requests such as "deploy this commit to Vercel", "move this alias",
+"delete this Vercel deployment", and "show Vercel build logs". Do not trigger
+for "open a GitHub PR" or "deploy to AWS".
 
-Sources: plugin tool schemas and Vercel REST documentation for deployment
-creation/inspection/deletion and alias assignment/inspection. Live provider
-execution and end-to-end Slack QA are separate validation steps.
+The plugin's action tests cover request payloads, environment selection, alias
+changes, and failures. Run `pnpm skills:check` after skill edits. Live Vercel
+execution and Slack QA need separate validation.

@@ -6,8 +6,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-// General Vercel operations use the existing host credential and tool review.
-// Return only task-relevant fields; deployment responses can contain secrets.
+// Deployment and alias tools return selected fields because Vercel responses
+// can contain environment credentials.
 const text = z.string().trim().min(1);
 const team = text
   .describe(
@@ -69,7 +69,7 @@ function deploymentResult(data: unknown) {
   };
 }
 
-/** Register general deployment and alias operations under normal host review. */
+/** Provide Vercel deployment and alias operations. */
 export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
   async function request(
     operation: string,
@@ -99,7 +99,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
       request: new Request(url, init),
     });
     if (!response.ok) {
-      const message = `Vercel ${operation} failed with HTTP ${response.status}`;
+      const message = `${operation} failed with HTTP ${response.status}`;
       if (response.status === 400 || response.status === 404)
         throw new PluginToolInputError(message);
       throw new Error(message);
@@ -131,7 +131,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         readOnlyHint: false,
       },
       description:
-        "Deploy a Git ref from an existing Vercel project's linked GitHub repository. Defaults to Preview; use production only when requested. Inherits project build settings and environment credentials and may run migrations. Supply commitSha to pin the build while retaining branch context in ref. Use explicit project/team targets or conversation defaults. Inspect deployments before retrying an uncertain create.",
+        "Start a deployment from a Vercel project's linked GitHub repository. Uses project build settings and environment credentials, so builds may run migrations. Returns the new deployment; inspect it to check readiness.",
       inputSchema: z
         .object({
           project: text.describe("Existing Vercel project name or ID."),
@@ -142,7 +142,9 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
           commitSha: z
             .string()
             .regex(/^[a-f0-9]{40}$/i)
-            .describe("Optional full commit SHA to pin the source.")
+            .describe(
+              "Full commit SHA to pin the source while retaining branch context in ref.",
+            )
             .optional(),
           target: z
             .enum(["preview", "production"])
@@ -157,7 +159,10 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
             id: text,
             name: text,
             link: z
-              .object({ type: text, repoId: z.union([text, z.number()]) })
+              .object({
+                type: text,
+                repoId: z.union([text, z.number()]).optional(),
+              })
               .nullable()
               .optional(),
           })
@@ -168,7 +173,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
               input.team,
             ),
           );
-        if (project.link?.type !== "github")
+        if (project.link?.type !== "github" || !project.link.repoId)
           throw new PluginToolInputError(
             "This deployment tool requires a project linked to GitHub. Use the Vercel CLI for other source types.",
           );
@@ -176,9 +181,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
           type: "github",
           repoId: project.link.repoId,
           ref: input.ref,
-          ...(input.commitSha
-            ? { sha: input.commitSha.toLowerCase() }
-            : undefined),
+          sha: input.commitSha?.toLowerCase(),
         };
         return deploymentResult(
           await request(
@@ -204,7 +207,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         readOnlyHint: true,
       },
       description:
-        "Inspect a Vercel deployment by ID or hostname, including an alias hostname. Returns deployment ID, state, environment, and source when available. Compare deployment IDs before and after QA; an alias can change between checks. Use the CLI for logs or additional deployment details.",
+        "Inspect a Vercel deployment by ID or hostname. Returns its ID, state, environment, and Git source when available. Use the CLI for logs.",
       inputSchema: z
         .object({
           deployment: text.describe(
@@ -232,7 +235,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         readOnlyHint: false,
       },
       description:
-        "Assign an alias hostname to an exact Vercel deployment ID. Replaces its existing target and can redirect live traffic. Returns the alias target read back after assignment and whether it matches. Does not acquire a lock or stop older workers. Do not overwrite a changed alias as automatic recovery.",
+        "Assign an alias hostname to a deployment ID. This can replace live traffic. Reads the alias back and returns matches=false if its target changed or it redirects.",
       inputSchema: z.object({ deploymentId, alias: aliasName, team }).strict(),
       outputSchema: aliasOutput.extend({ matches: z.boolean() }),
       async execute(input) {
@@ -258,8 +261,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         openWorldHint: true,
         readOnlyHint: true,
       },
-      description:
-        "Read a Vercel alias's current deployment ID or redirect. Use to detect alias changes before and after testing. This is a point-in-time observation, not a lock.",
+      description: "Read a Vercel alias's current deployment ID or redirect.",
       inputSchema: z.object({ alias: aliasName, team }).strict(),
       outputSchema: aliasOutput,
       async execute(input) {
@@ -274,7 +276,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         readOnlyHint: false,
       },
       description:
-        "Delete an exact Vercel deployment ID in the selected team. This can remove a live deployment; act only on the user's requested target. Does not delete its database or Redis state. Do not automatically delete deployments as QA cleanup.",
+        "Delete a Vercel deployment by ID. This can remove a live deployment. Does not delete its database or other external state.",
       inputSchema: z.object({ deploymentId, team }).strict(),
       outputSchema: pluginToolOutputSchema.extend({
         target: z.literal("deployment"),

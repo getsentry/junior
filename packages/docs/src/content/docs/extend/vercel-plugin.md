@@ -2,7 +2,7 @@
 title: Vercel Plugin
 description: Configure Vercel deployments, aliases, investigations, and deployment events.
 type: tutorial
-summary: Let Junior inspect Vercel deployments and receive signed deployment outcomes in Slack.
+summary: Let Junior deploy apps, manage aliases, investigate logs, and receive deployment outcomes in Slack.
 prerequisites:
   - /extend/
 related:
@@ -12,13 +12,10 @@ related:
   - /operate/sandbox-snapshots/
 ---
 
-Use the Vercel plugin to inspect deployments, fetch build logs, search runtime
-logs, and respond to deployment outcomes through watches and
-event automations.
-
-The plugin provides deployment and alias tools and installs the Vercel CLI.
-Reads and writes use the existing host-managed token and normal runtime review,
-including Guardian. No second token or QA-specific scope configuration is needed.
+Use the Vercel plugin to deploy apps, manage aliases, investigate logs, and
+respond to deployment outcomes through watches and event automations.
+The plugin provides tools and installs the Vercel CLI. Both use one host-managed
+token and normal Guardian review.
 
 ## Install
 
@@ -225,17 +222,13 @@ These tools are available with `vercelPlugin()` and the existing token:
 - `vercel_alias_inspect`: read the alias's current deployment ID or redirect.
 - `vercel_deployment_delete`: delete the exact deployment the user requests.
 
-Use explicit targets or conversation defaults. These are general operations,
-not a fixed QA project. The CLI covers logs, local source uploads, other Git
-providers, and other requested operations. Prefer tools when they cover the
-action. Never use the CLI to bypass a denied action.
+Use the CLI for logs, local source uploads, and other Git providers.
+A create starts a build; inspect its state before use. If a response is lost,
+inspect Vercel state before retrying a write.
 
-A create starts a build, not a ready deployment. Inspect state before use.
-If a mutation response is lost, inspect before retrying. Alias checks before
-and after QA can detect changed targets but are not locks. Moving an alias does
+Alias checks can detect changed targets but are not locks. Moving an alias does
 not stop older workers. Deployments inherit build settings and credentials and
-can run migrations; verify isolated state for QA. Production actions and
-deletion still need clear user intent and normal runtime review.
+can run migrations. Use isolated state for QA that must not affect shared data.
 
 ## Failure modes
 

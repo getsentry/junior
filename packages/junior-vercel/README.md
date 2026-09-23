@@ -31,7 +31,7 @@ Set a Vercel token in the Junior deployment environment:
 JUNIOR_VERCEL_TOKEN=...
 ```
 
-Use a Vercel service account or token with the smallest project/team access that covers the projects and actions users need. The same token handles reads and writes. No second token or Preview scope configuration is required.
+Use a Vercel service account or token with access to the required projects and actions. The same token handles reads and writes.
 
 ## Optional deployment webhooks
 
@@ -73,7 +73,7 @@ These defaults are optional fallbacks. If a user names a different project, team
 
 ## Deployment and alias tools
 
-`vercelPlugin()` registers these general tools without extra options:
+`vercelPlugin()` registers:
 
 - `vercel_deployment_create`: deploy a branch, tag, or commit from an existing
   project's linked GitHub repository. Preview is the default; Production is an
@@ -86,34 +86,21 @@ These defaults are optional fallbacks. If a user names a different project, team
 - `vercel_alias_inspect`: return the alias's deployment ID or redirect.
 - `vercel_deployment_delete`: delete an exact deployment ID when requested.
 
-The tools accept explicit team and resource targets. Channel defaults are
-fallbacks, not project restrictions. All actions use the existing host-managed
-`JUNIOR_VERCEL_TOKEN` and normal runtime review, including Guardian. The plugin
-does not add a second approval system or change Guardian configuration.
-Vercel permissions still apply.
+Tools use the host-managed token and normal Guardian review. Vercel permissions
+still apply.
 
 Tools return selected fields, not full deployment records that may contain
 secrets. Creates start a build; inspect readiness before using the deployment.
 Check provider state before retrying a write whose response was lost.
 
-## CLI operations
+Use the Vercel CLI for logs, local source uploads, and other operations not
+covered by the tools.
 
-Prefer tools for the operations above. Use the Vercel CLI for logs, local source
-uploads, non-GitHub sources, or other requested Vercel operations. Inspect CLI
-help for the command shape and use explicit project/team targets. Do not use a
-CLI call to bypass a tool denial. Credentials remain host-managed.
+## Limits
 
-## QA use
-
-QA setup supplies the project and alias; they are not plugin restrictions.
-Compare the alias's deployment ID before and after a test. These checks are
-point-in-time observations, not locks. They do not stop old workers or prove
-which build handled a delayed event. Do not automatically restore an alias or
-delete a deployment another tester may be using.
-
-Builds inherit project environment credentials and may run migrations. Verify
-isolated database, Redis, and storage state before testing changes that must not
-affect shared state. This plugin does not provision those resources or a Slack
-test-user session. Preview deployments do not run Vercel Cron.
+Alias checks are not locks. Moving an alias does not stop older workers or
+identify which build handled a delayed event. Builds inherit project settings
+and credentials and may run migrations. The plugin does not isolate databases
+or other state. Preview deployments do not run Vercel Cron.
 
 Full setup guide: https://junior.sentry.dev/extend/vercel-plugin/

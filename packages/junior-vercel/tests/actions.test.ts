@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createVercelActionTools } from "../src/tools/actions";
+import { vercelPlugin } from "../src";
 
 const sha = "a".repeat(40);
 const deployment = {
@@ -17,7 +17,7 @@ function fixture(...responses: Response[]) {
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   return {
     fetch,
-    tools: createVercelActionTools({ egress: { fetch } } as never),
+    tools: vercelPlugin().hooks!.tools!({ egress: { fetch } } as never),
   };
 }
 
@@ -120,7 +120,11 @@ describe("Vercel actions", () => {
 
   it("reports unsupported sources and invalid targets as repairable errors", async () => {
     const { tools, fetch } = fixture(
-      Response.json({ id: "prj_other", name: "other", link: null }),
+      Response.json({
+        id: "prj_other",
+        name: "other",
+        link: { type: "gitlab", projectId: 456 },
+      }),
     );
     await expect(
       tools.deployment_create.execute?.(
@@ -139,7 +143,7 @@ describe("Vercel actions", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "Vercel vercel.alias.get failed with HTTP 404",
+      message: "vercel.alias.get failed with HTTP 404",
     });
   });
 
@@ -152,7 +156,7 @@ describe("Vercel actions", () => {
         { deploymentId: deployment.id },
         options,
       ),
-    ).rejects.toThrow("Vercel vercel.deployment.delete failed with HTTP 500");
+    ).rejects.toThrow("vercel.deployment.delete failed with HTTP 500");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
