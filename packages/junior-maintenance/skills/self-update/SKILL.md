@@ -32,7 +32,13 @@ Verify the target exists for every inventoried package before mutating files:
 pnpm view <package>@<target> version
 ```
 
-Stop if any package lacks the target on npm.
+Allow for npm security scanning and registry propagation delays after publication. A GitHub release or successful publish log does not prove that npm can serve every package yet. A missing version alone does not prove that scanning caused the delay.
+
+If a target version or its tarball is missing, keep the same target and retry the affected packages after 30, 60, and 120 seconds. These waits bound this attempt; they are not an npm availability guarantee. Do not retry authentication or permission failures as publication delays.
+
+Before treating a version as unavailable, check fresh npm metadata with a cache-busting query, the direct version endpoint, and the tarball URL when metadata provides one. Continue only when every inventoried package has the exact target version and its tarball is available.
+
+If any package is still unavailable, stop without changing app files or opening an update PR. Report the target, affected packages, checks, and elapsed wait as "not yet available on npm". Do not declare the publish failed, republish, or cut another release from this evidence alone. A later attempt must repeat the full inventory check.
 
 ### 3. Build release context
 
@@ -133,7 +139,7 @@ When asked to keep an app current whenever Junior publishes a release, resolve `
 
 ## Stop conditions
 
-- Any Junior package lacks the target version on npm.
+- Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
 - Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.
