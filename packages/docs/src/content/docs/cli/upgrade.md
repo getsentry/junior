@@ -26,6 +26,20 @@ The command takes no arguments. It migrates the core Junior schema first, then
 the schemas owned by enabled plugins. Already-applied migrations are recognized
 as up to date and are not rerun.
 
+Core migrations enable the `vector` and `btree_gin` Postgres extensions. If the
+database cannot enable them, the command stops with a prerequisite error before
+it applies a migration.
+
+## Memory adoption
+
+Core now owns [Memory](/concepts/memory/) storage. A database that ran the old
+`@sentry/junior-memory` plugin migrations keeps its tables and data. The core
+Memory migration reads the current schema and applies only the missing legacy
+changes. The old plugin migration journal stays unchanged. Remove
+`memoryPlugin()` from the plugin set before you run the upgrade, because the
+command stops while the plugin set still names the removed package. See
+[Upgrade from `@sentry/junior-memory`](/concepts/memory/#upgrade-from-sentryjunior-memory).
+
 ## Upgrade bridge for older databases
 
 An existing Junior database without core Drizzle migration history must
@@ -58,7 +72,6 @@ An already-current database reports its migrations as existing:
 Checking database migrations...
   junior: up to date (8 migrations)
   junior-github: up to date (4 migrations)
-  junior-memory: up to date (6 migrations)
 Database is up to date (18 migrations).
 ```
 

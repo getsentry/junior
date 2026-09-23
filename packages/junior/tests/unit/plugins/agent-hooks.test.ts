@@ -430,9 +430,9 @@ describe("agent plugin hooks", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory",
+          name: "recall",
+          displayName: "Recall",
+          description: "Recall",
         },
         hooks: {
           userPrompt() {
@@ -458,7 +458,7 @@ describe("agent plugin hooks", () => {
       ).resolves.toEqual([
         {
           id: "userPrompt:0",
-          pluginName: "memory",
+          pluginName: "recall",
           text: "Use pnpm.",
           context: {
             content: {
@@ -466,7 +466,7 @@ describe("agent plugin hooks", () => {
             },
             kind: "recall",
             loadedAtMs: expect.any(Number),
-            pluginName: "memory",
+            pluginName: "recall",
             version: 1,
           },
         },

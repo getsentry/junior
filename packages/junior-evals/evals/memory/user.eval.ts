@@ -1,20 +1,19 @@
 import { expect } from "vitest";
 import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, memoryEvals } from "../../src/helpers";
 import {
   clearMemories,
   countMemoryEmbeddings,
   expectActorMemorySemantics,
   expectAssistantMemoryAnswer,
   type MemoryThread,
-  memoryPluginOverrides,
   readActiveMemories,
   readMemories,
   seedMemory,
   visibleAssistantText,
 } from "./helpers";
 
-describeEval("User Memory", slackEvals, (it) => {
+describeEval("User Memory", memoryEvals, (it) => {
   const explicitRememberThread = {
     id: "thread-memory-explicit-remember",
     channel_type: "im",
@@ -27,7 +26,6 @@ describeEval("User Memory", slackEvals, (it) => {
   }) => {
     await clearMemories();
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("Please remember that I prefer terse PR summaries.", {
           thread: explicitRememberThread,
@@ -118,7 +116,6 @@ describeEval("User Memory", slackEvals, (it) => {
     await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(50);
 
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("what time is it", {
           thread: timezoneRecallThread,
@@ -181,7 +178,6 @@ describeEval("User Memory", slackEvals, (it) => {
     await clearMemories();
     const userText = "ok remember that i think types in python are bad";
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(userText, {
           thread: firstPersonRewrittenThread,
@@ -241,7 +237,6 @@ describeEval("User Memory", slackEvals, (it) => {
     });
 
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "Please remember that I want risk notes at the start of PR summaries.",

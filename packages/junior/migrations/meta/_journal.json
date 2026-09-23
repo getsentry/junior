@@ -316,6 +316,13 @@
       "when": 1790115429065,
       "tag": "0044_event_automation_channel_destinations",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790186530995,
+      "tag": "0045_memory_core",
+      "breakpoints": true
     }
   ]
 }

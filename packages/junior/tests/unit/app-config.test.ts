@@ -783,7 +783,7 @@ describe("createApp plugin config", () => {
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
     const pluginRouteApp = {
-      fetch: () => new Response("memory"),
+      fetch: () => new Response("notes"),
     };
     const createDashboardApp = vi.fn(
       (options: {
@@ -812,9 +812,9 @@ describe("createApp plugin config", () => {
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes plugin",
           },
           hooks: {
             apiRoutes() {
@@ -824,17 +824,17 @@ describe("createApp plugin config", () => {
         }),
       ]),
       plugins: undefined,
-      pluginRuntimeRegistrations: ["memory"],
+      pluginRuntimeRegistrations: ["notes"],
     }));
 
     const app = await createApp();
 
     const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory"),
+      new Request("http://localhost/api/plugins/notes"),
     );
 
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("memory");
+    await expect(response.text()).resolves.toBe("notes");
 
     const peoplePage = await app.fetch(new Request("http://localhost/people"));
     expect(peoplePage.status).toBe(200);

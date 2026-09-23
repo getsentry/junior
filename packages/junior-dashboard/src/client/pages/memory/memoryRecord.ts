@@ -47,7 +47,7 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
           memory.visibility === "public"
             ? "Forget this memory for everyone?"
             : "Forget this memory?",
-        href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+        href: `/api/memory/memories/${encodeURIComponent(memory.id)}`,
         label: "Forget",
         method: "DELETE",
         tone: "danger",
@@ -78,7 +78,7 @@ export function useMemoryRecord(memoryId: string | undefined) {
       memoryPageRecord(
         await fetchDashboardJson(
           memoryRecordSchema,
-          `/api/plugins/memory/memories/${encodeURIComponent(memoryId!)}`,
+          `/api/memory/memories/${encodeURIComponent(memoryId!)}`,
           signal,
         ),
       ),

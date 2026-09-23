@@ -498,7 +498,6 @@ export interface SlackEvalInput {
   overrides?: EvalOverrides;
   criteria?: EvalRubric;
   requireGatewayReady?: boolean;
-  taskTimeout?: number;
   requireSandboxReady?: boolean;
 }
 
@@ -589,14 +588,6 @@ function assertTimeoutBudget(input: SlackEvalInput): void {
   if (replyTimeout !== undefined && replyTimeout > MAX_EVAL_TIMEOUT_MS) {
     throw new Error(
       `Eval reply_timeout_ms ${replyTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
-    );
-  }
-  if (
-    input.taskTimeout !== undefined &&
-    input.taskTimeout > MAX_EVAL_TIMEOUT_MS
-  ) {
-    throw new Error(
-      `Eval taskTimeout ${input.taskTimeout} exceeds the ${MAX_EVAL_TIMEOUT_MS}ms budget. Use fixtures, mocks, or tool replay instead of raising timeouts.`,
     );
   }
 }
@@ -699,31 +690,14 @@ export const slackHarness: Harness<SlackEvalInput> = {
     });
     try {
       assertTimeoutBudget(input);
-      const taskPromise = runEvalScenario(
+      const result = (await runEvalScenario(
         {
           initialEvents: input.initialEvents,
           events: input.events,
           overrides: input.overrides,
         },
         { logRecords, signal },
-      ) as Promise<HarnessEvalResult>;
-      const result =
-        typeof input.taskTimeout === "number" && input.taskTimeout > 0
-          ? await Promise.race([
-              taskPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(
-                  () =>
-                    reject(
-                      new Error(
-                        `Eval harness timed out after ${input.taskTimeout}ms before judge evaluation`,
-                      ),
-                    ),
-                  input.taskTimeout,
-                ),
-              ),
-            ])
-          : await taskPromise;
+      )) as HarnessEvalResult;
       if (input.requireGatewayReady ?? true) {
         assertGatewayReady(result);
       }
@@ -788,6 +762,22 @@ export const slackEvals = {
   judgeHarness,
   judges: [RubricJudge],
   judgeThreshold: 0.75,
+} satisfies DescribeEvalOptions<SlackEvalInput>;
+
+/** Slack eval suite options for Memory evals, which run core Memory. */
+export const memoryEvals = {
+  ...slackEvals,
+  harness: {
+    ...slackHarness,
+    run: async (input, context) =>
+      await slackHarness.run(
+        {
+          ...input,
+          overrides: { memory: true, ...input.overrides },
+        },
+        context,
+      ),
+  },
 } satisfies DescribeEvalOptions<SlackEvalInput>;
 
 export interface SlackSideEffects {

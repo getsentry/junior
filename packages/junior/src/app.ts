@@ -27,7 +27,9 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { createCoreFeatures } from "@/chat/app/core-features";
+import type { MemoryOptions } from "@/chat/memory/feature";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -147,6 +149,11 @@ export interface JuniorAppOptions extends BotModelConfig {
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
+  /**
+   * Long-term Memory: automatic recall, passive extraction, memory tools, the
+   * Memories page, and the memory REST routes. Enabled by default.
+   */
+  memory?: MemoryOptions;
   /** Queue consumer wiring for the durable conversation worker. */
   conversationWork?: ConversationWorkCallbackOptions;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
@@ -515,6 +522,8 @@ function dashboardHostRoutePaths(
     "/api/conversations/*",
     "/api/locations",
     "/api/locations/*",
+    "/api/memory",
+    "/api/memory/*",
     "/api/people",
     "/api/people/*",
     "/api/personal-tokens",
@@ -707,7 +716,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousSlackReactionConfig = getSlackReactionConfig();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousCoreFeatures = setCoreFeatures(
+    createCoreFeatures({ briefs: options?.briefs, memory: options?.memory }),
+  );
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   const restoreRuntimeConfig = (): void => {
@@ -718,7 +729,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
+    setCoreFeatures(previousCoreFeatures);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

@@ -57,7 +57,7 @@ export function useMemoryDashboardData() {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         memoryDashboardSchema,
-        "/api/plugins/memory/dashboard",
+        "/api/memory/dashboard",
         signal,
       ),
     queryKey: ["dashboard", "plugin-user-page", "memory", "summary"],

@@ -12,6 +12,17 @@ This directory loads explicitly configured plugins and adapts their public
   metadata across YAML and JavaScript.
 - Runtime does not scan dependencies or arbitrary filesystem paths for plugins.
 
+## Core Features
+
+- Core features such as Briefs register through the same runtime contract as
+  code plugins. `core-features.ts` installs them; `agent-hooks.ts` serves core
+  features and plugins together through `getRegistrations()`.
+- Core features never enter plugin or package discovery. Their names are
+  reserved, and `validatePlugins` rejects a plugin that claims one.
+- `chat/app/core-features.ts` builds the core feature list from app options.
+  Every core feature is always present so its stored events keep rendering; a
+  disabled feature contributes only its event definitions.
+
 ## Host Ownership
 
 - Validate names, manifests, duplicate registrations, and capability conflicts

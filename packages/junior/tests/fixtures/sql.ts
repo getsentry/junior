@@ -3,6 +3,9 @@ import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { juniorSqlSchema } from "@/db/schema";
 import {
   createLocalPgliteFixture,
+  pgliteBtreeGinExtension,
+  pglitePgcryptoExtension,
+  pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -29,12 +32,18 @@ export function hasJuniorPostgresTestDatabase(): boolean {
   return hasJuniorPostgresTestDatabaseFixture();
 }
 
-async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
-  const fixture =
-    await createLocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>(
-      juniorSqlSchema,
-    );
-  const sql: JuniorSqlExecutor = {
+/** Extensions the core schema needs; PGlite loads them at startup. */
+export const pgliteJuniorExtensions = {
+  btree_gin: pgliteBtreeGinExtension,
+  pgcrypto: pglitePgcryptoExtension,
+  vector: pgliteVectorExtension,
+};
+
+/** Adapt a PGlite fixture to the Junior SQL executor contract. */
+export function pgliteJuniorSqlExecutor(
+  fixture: LocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>,
+): JuniorSqlExecutor {
+  return {
     close: () => fixture.close(),
     db: () => fixture.db() as JuniorDatabase,
     execute: (statement, params) => fixture.execute(statement, params),
@@ -45,11 +54,27 @@ async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
     withLock: (lockName, callback) => fixture.withLock(lockName, callback),
     withMigrationLock: (_migrationTable, callback) => callback(),
   };
+}
+
+async function createPgliteJuniorSqlFixture(
+  options: { extensions: boolean } = { extensions: true },
+): Promise<LocalJuniorSqlFixture> {
+  const fixture = await createLocalPgliteFixture<
+    PgliteDatabase<typeof juniorSqlSchema>
+  >(
+    juniorSqlSchema,
+    options.extensions ? { extensions: pgliteJuniorExtensions } : {},
+  );
   return {
     client: fixture.client,
-    sql,
+    sql: pgliteJuniorSqlExecutor(fixture),
     close: () => fixture.close(),
   };
+}
+
+/** Create an empty PGlite database without the extensions the core schema needs. */
+export async function createUnextendedJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
+  return await createPgliteJuniorSqlFixture({ extensions: false });
 }
 
 /** Create an isolated fixture with the current Junior schema. */

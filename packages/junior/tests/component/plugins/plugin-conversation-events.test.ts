@@ -83,8 +83,10 @@ beforeEach(() => {
 
 afterEach(async () => {
   const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+  const { setCoreFeatures } = await import("@/chat/plugins/core-features");
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   setPlugins([]);
+  setCoreFeatures([]);
   await disconnectStateAdapter();
   vi.resetModules();
   process.env = { ...ORIGINAL_ENV };
@@ -92,8 +94,12 @@ afterEach(async () => {
 
 describe("plugin conversation events", () => {
   it("renders core Brief events outside the installed plugin catalog", async () => {
+    const { briefsFeature } = await import("@/chat/briefs/task");
+    const { setCoreFeatures } = await import("@/chat/plugins/core-features");
     const { renderPluginConversationEvent } =
       await import("@/chat/plugins/conversation-events");
+    // Disabled core features keep their event definitions for stored events.
+    setCoreFeatures([briefsFeature({ enabled: false })]);
 
     expect(
       renderPluginConversationEvent({

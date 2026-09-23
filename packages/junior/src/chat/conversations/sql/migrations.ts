@@ -8,6 +8,8 @@ import { juniorSqlSchema as schema } from "@/db/schema";
 
 const CORE_MIGRATION_BRIDGE_VERSION = "0.107.1";
 const MIGRATIONS_TABLE = "__drizzle_junior_core";
+/** Postgres extensions the core schema needs. Memory owns both. */
+const REQUIRED_EXTENSIONS = ["btree_gin", "vector"] as const;
 
 /** Resolve the packaged Drizzle migration directory in source or built output. */
 function migrationFolder(): string {
@@ -102,6 +104,22 @@ function assertSupportedMigrationState(state: CoreMigrationState): void {
   );
 }
 
+/** Enable required extensions, or stop with an operator prerequisite error. */
+async function enableRequiredExtensions(
+  executor: JuniorSqlMigrationExecutor,
+): Promise<void> {
+  for (const extension of REQUIRED_EXTENSIONS) {
+    try {
+      await executor.execute(`CREATE EXTENSION IF NOT EXISTS ${extension}`);
+    } catch (error) {
+      throw new Error(
+        `Junior requires the Postgres extensions ${REQUIRED_EXTENSIONS.join(" and ")}, but this database could not enable "${extension}". Install pgvector and the btree_gin contrib extension on the database server, or enable them as a privileged user, then rerun \`junior upgrade\`.`,
+        { cause: error },
+      );
+    }
+  }
+}
+
 export { schema };
 
 /** Apply the packaged Drizzle migrations during `junior upgrade`. */
@@ -127,6 +145,7 @@ export async function migrateSchema(
       return migrationResult(migrations, lockedState);
     }
     assertSupportedMigrationState(lockedState);
+    await enableRequiredExtensions(executor);
     await executor.migrate({
       migrationsFolder,
       migrationsTable: MIGRATIONS_TABLE,

@@ -36,6 +36,10 @@
       "types": "./dist/api/schema.d.ts",
       "default": "./dist/api/schema.js"
     },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "default": "./dist/memory.js"
+    },
     "./vercel": {
       "types": "./dist/vercel.d.ts",
       "default": "./dist/vercel.js"
@@ -109,7 +113,6 @@
     "@hono/node-server": "1.19.14",
     "@oxlint/plugins": "1.79.0",
     "@sentry/junior-github": "workspace:*",
-    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",

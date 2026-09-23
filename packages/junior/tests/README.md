@@ -24,6 +24,11 @@ through real wiring or remove it when stronger coverage owns the behavior.
 A test that needs internal module replacement, or a non-Slack/non-LLM external
 fake, belongs in `component/` unless it is rewritten to use real wiring.
 
+Tests that run Turns through the app use `createTestApp()` from
+`fixtures/app.ts`. It turns Memory off, because Memory adds recall and
+extraction model calls to every Turn. Memory tests turn it on. Tests about
+`createApp()` itself call it directly.
+
 Every schema passed to `completeObject` must pass
 `strictProviderSchemaProblems` from `@sentry/junior-testing/structured-output`
 in its owning unit test. Strict structured-output providers reject optional

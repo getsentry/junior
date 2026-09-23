@@ -1,18 +1,17 @@
 import { expect } from "vitest";
 import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, memoryEvals } from "../../src/helpers";
 import {
   clearMemories,
   expectAssistantMemoryAnswer,
   expectConversationMemorySemantics,
   type MemoryThread,
-  memoryPluginOverrides,
   readMemories,
   seedMemory,
   visibleAssistantText,
 } from "./helpers";
 
-describeEval("Shared Memory", slackEvals, (it) => {
+describeEval("Shared Memory", memoryEvals, (it) => {
   const recallRelevanceThread = {
     channel_type: "channel",
     id: "thread-memory-recall-relevance",
@@ -49,7 +48,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
     });
 
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "What do you remember about how CI works in getsentry/junior?",
@@ -85,7 +83,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
     const userText =
       "Please remember that for flaky webhook triage, inspect delivery headers before retrying the job.";
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(userText, {
           thread: explicitTaskProcedureThread,
@@ -152,7 +149,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
     const userText =
       "For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.";
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(userText, {
           thread: passiveTaskProcedureThread,
@@ -219,7 +215,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
     const userText =
       "For this team, branch QA runbooks require risk notes before summary notes. Please acknowledge.";
     const result = await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(userText, {
           thread: passiveConversationThread,
@@ -284,7 +279,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "The analytics query says today's signup conversion rate is 8.4%.",
@@ -319,7 +313,6 @@ describeEval("Shared Memory", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("Please remember that David prefers terse PR summaries.", {
           thread: thirdPartyRememberThread,

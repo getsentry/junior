@@ -38,8 +38,8 @@ export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
 
   /**
    * Memory temporarily uses a first-class dashboard renderer because its
-   * inspection UI exceeds the generic plugin page contract. The memory plugin
-   * still owns data, authorization, and actions.
+   * inspection UI exceeds the generic user page contract. Core Memory still
+   * owns data, authorization, and actions.
    *
    * Replace this special case when Junior has a proven custom plugin UI
    * contract.

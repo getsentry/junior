@@ -42,6 +42,7 @@ export async function ingestEvent(
           const result = await enqueueEventNotification({
             event,
             queue: options.queue,
+            receivedAtMs: nowMs,
             state: options.state,
             subscription: current,
           });

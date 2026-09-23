@@ -4,17 +4,11 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import {
-  juniorMemoryEmbeddings,
-  juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
+import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 
-export const memoryPluginOverrides = {
-  plugin_packages: ["@sentry/junior-memory"],
-};
 const memoryTeamId = "TEVAL";
 const actorUserId = TEST_USER_ID;
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;

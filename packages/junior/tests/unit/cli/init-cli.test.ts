@@ -151,11 +151,8 @@ describe("init cli", () => {
     expect(pluginsFile).toContain(
       'import { defineJuniorPlugins } from "@sentry/junior";',
     );
-    expect(pluginsFile).toContain(
-      'import { memoryPlugin } from "@sentry/junior-memory";',
-    );
+    expect(pluginsFile).not.toContain("@sentry/junior-memory");
     expect(pluginsFile).toContain("defineJuniorPlugins(");
-    expect(pluginsFile).toContain("memoryPlugin()");
     expect(pluginsFile).toContain('"@sentry/junior-maintenance"');
 
     const pkg = readJsonFile<{
@@ -164,7 +161,7 @@ describe("init cli", () => {
       scripts: Record<string, string>;
     }>(path.join(target, "package.json"));
     expect(pkg.dependencies["@sentry/junior"]).toBe("latest");
-    expect(pkg.dependencies["@sentry/junior-memory"]).toBe("latest");
+    expect(pkg.dependencies["@sentry/junior-memory"]).toBeUndefined();
     expect(pkg.dependencies["@sentry/junior-maintenance"]).toBe("latest");
     expect(pkg.dependencies["@sentry/nitro"]).toBe("10.65.0");
     expect(pkg.devDependencies.nitro).toBeDefined();

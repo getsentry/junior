@@ -135,7 +135,6 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`
-- `@sentry/junior-memory`
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-sentry`

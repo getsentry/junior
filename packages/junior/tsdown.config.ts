@@ -14,6 +14,7 @@ export default defineConfig({
     "cli/snapshot-create": "src/cli/snapshot-create.ts",
     api: "src/api.ts",
     "api/schema": "src/api/schema.ts",
+    memory: "src/memory.ts",
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",
     vercel: "src/vercel.ts",

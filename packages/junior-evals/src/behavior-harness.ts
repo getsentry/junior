@@ -40,6 +40,8 @@ import {
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { createCoreFeatures } from "@/chat/app/core-features";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   defineJuniorPlugins,
@@ -66,12 +68,12 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { ingestEvent } from "@/chat/events/ingest";
+import { EVENT_MAX_WAIT_MS } from "@/chat/task-execution/conversation-turn";
 import { createWatch } from "@/chat/events/store";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { createEventAutomation } from "@/chat/event-automations/store";
@@ -132,7 +134,7 @@ interface NormalizedMessage {
   metadata?: Record<string, JsonValue>;
 }
 
-const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
+const EVAL_CLEANUP_TIMEOUT_MS = 5_000;
 
 interface PendingEvalPluginTask {
   abort(): void;
@@ -163,31 +165,38 @@ async function processEvalPluginTask(
 
 /** Drain plugin tasks started by the eval harness before shared state cleanup. */
 export async function drainPendingEvalPluginTasks(): Promise<void> {
-  if (pendingEvalPluginTasks.size === 0) {
-    return;
-  }
   const tasks = [...pendingEvalPluginTasks];
   for (const task of tasks) {
     task.abort();
   }
+  await settleWithin(
+    tasks.map((task) => task.promise),
+    "eval plugin task(s) to settle",
+  );
+}
+
+/** Wait for aborted harness work, and fail loudly if it ignores the abort. */
+async function settleWithin(
+  work: Promise<unknown>[],
+  description: string,
+): Promise<void> {
+  if (work.length === 0) {
+    return;
+  }
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.allSettled(tasks.map((task) => task.promise)),
+      Promise.allSettled(work),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
           reject(
-            new Error(
-              `Timed out waiting for ${tasks.length} eval plugin task(s) to settle`,
-            ),
+            new Error(`Timed out waiting for ${work.length} ${description}`),
           );
-        }, EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS);
+        }, EVAL_CLEANUP_TIMEOUT_MS);
       }),
     ]);
   } finally {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
+    clearTimeout(timeout);
   }
 }
 
@@ -350,6 +359,8 @@ export interface EvalOverrides {
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
   github_events?: boolean;
+  /** Run core Memory with production settings. Off by default. */
+  memory?: boolean;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -726,33 +737,6 @@ function snapshotEnv(keys: readonly string[]): EnvSnapshot {
       }
     },
   };
-}
-
-function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error
-    ? signal.reason
-    : new Error("Eval reply aborted");
-}
-
-async function raceWithAbort<T>(
-  signal: AbortSignal,
-  operation: () => Promise<T>,
-): Promise<T> {
-  if (signal.aborted) {
-    throw abortReason(signal);
-  }
-  let removeAbortListener = () => {};
-  const abortPromise = new Promise<never>((_, reject) => {
-    const handleAbort = () => reject(abortReason(signal));
-    signal.addEventListener("abort", handleAbort, { once: true });
-    removeAbortListener = () =>
-      signal.removeEventListener("abort", handleAbort);
-  });
-  try {
-    return await Promise.race([operation(), abortPromise]);
-  } finally {
-    removeAbortListener();
-  }
 }
 
 function ensureHarnessBaseUrl(): void {
@@ -1548,7 +1532,6 @@ function runtimePluginsForScenario(
     ...(packages.has("@sentry/junior-github")
       ? [githubPlugin({ appPermissions: { deployments: "read" } })]
       : []),
-    ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.has("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
 }
@@ -1940,63 +1923,63 @@ function buildRuntimeServices(
             ...(signal ? [signal] : []),
             AbortSignal.timeout(replyTimeoutMs),
           ]);
-          const outcome = await raceWithAbort(replySignal, () =>
-            executeAgentRun(
-              {
-                ...runRequest,
-                signal: replySignal,
-                deadlineAtMs: Math.min(
-                  runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                  Date.now() + replyTimeoutMs,
-                ),
-                environment: {
-                  ...runRequest.environment,
-                  attachmentStorage:
-                    runRequest.environment?.attachmentStorage ??
-                    attachmentStorage,
-                  ...(env.configuredSkillDirs.length > 0
-                    ? { skillDirs: env.configuredSkillDirs }
-                    : {}),
-                  toolOverrides,
-                },
-                onEvent: async (event) => {
-                  await runRequest.onEvent?.(event);
-                  if (event.type === "tool_started") {
-                    const evalInvocation = toEvalToolInvocation({
-                      params: event.params,
-                      toolCallId: event.toolCallId,
-                      toolName: event.toolName,
-                    });
-                    observations.toolInvocations.push(evalInvocation);
-                    pendingToolInvocations.push(evalInvocation);
-                    return;
-                  }
-                  if (event.type !== "tool_finished") {
-                    return;
-                  }
-                  const result = event.report;
-                  const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.toolCallId === result.toolCallId,
-                  );
-                  if (pendingIndex === -1) {
-                    return;
-                  }
-                  const [invocation] = pendingToolInvocations.splice(
-                    pendingIndex,
-                    1,
-                  );
-                  invocation.completed = true;
-                  invocation.ok = result.ok;
-                  if (result.error) {
-                    invocation.error = result.error;
-                  }
-                  if (result.result !== undefined) {
-                    invocation.result = result.result;
-                  }
-                },
+          // Await the run itself: it stops on replySignal, so an aborted turn
+          // cannot keep running after the scenario tears down shared state.
+          const outcome = await executeAgentRun(
+            {
+              ...runRequest,
+              signal: replySignal,
+              deadlineAtMs: Math.min(
+                runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                Date.now() + replyTimeoutMs,
+              ),
+              environment: {
+                ...runRequest.environment,
+                attachmentStorage:
+                  runRequest.environment?.attachmentStorage ??
+                  attachmentStorage,
+                ...(env.configuredSkillDirs.length > 0
+                  ? { skillDirs: env.configuredSkillDirs }
+                  : {}),
+                toolOverrides,
               },
-              scriptedStream?.stream,
-            ),
+              onEvent: async (event) => {
+                await runRequest.onEvent?.(event);
+                if (event.type === "tool_started") {
+                  const evalInvocation = toEvalToolInvocation({
+                    params: event.params,
+                    toolCallId: event.toolCallId,
+                    toolName: event.toolName,
+                  });
+                  observations.toolInvocations.push(evalInvocation);
+                  pendingToolInvocations.push(evalInvocation);
+                  return;
+                }
+                if (event.type !== "tool_finished") {
+                  return;
+                }
+                const result = event.report;
+                const pendingIndex = pendingToolInvocations.findIndex(
+                  (candidate) => candidate.toolCallId === result.toolCallId,
+                );
+                if (pendingIndex === -1) {
+                  return;
+                }
+                const [invocation] = pendingToolInvocations.splice(
+                  pendingIndex,
+                  1,
+                );
+                invocation.completed = true;
+                invocation.ok = result.ok;
+                if (result.error) {
+                  invocation.error = result.error;
+                }
+                if (result.result !== undefined) {
+                  invocation.result = result.result;
+                }
+              },
+            },
+            scriptedStream?.stream,
           );
           const usage =
             outcome.status === "completed"
@@ -2294,7 +2277,9 @@ async function processEvents(args: {
 
   const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
-    const nowMs = Date.now();
+    // Deliver the event after its burst window closed, so the Turn runs now
+    // instead of waiting out the debounce. Integration tests own the window.
+    const nowMs = Date.now() - EVENT_MAX_WAIT_MS;
     await createWatch(
       {
         conversationId: thread.id,
@@ -2328,7 +2313,9 @@ async function processEvents(args: {
 
   const runEvent = async (event: EventFixture): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
-    const nowMs = Date.now();
+    // Deliver the event after its burst window closed, so the Turn runs now
+    // instead of waiting out the debounce. Integration tests own the window.
+    const nowMs = Date.now() - EVENT_MAX_WAIT_MS;
     const destination = createEvalDestination(thread);
     await getConversationStore().recordActivity({
       conversationId: thread.id,
@@ -2642,20 +2629,58 @@ function collectResults(
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
+const activeEvalScenarios = new Set<Promise<unknown>>();
+
+/**
+ * Run one eval scenario and track it until its teardown finishes.
+ *
+ * Vitest aborts the scenario signal when a test times out and then moves on
+ * without waiting. The eval setup waits for the aborted scenario here, so its
+ * teardown never overlaps the next test.
+ */
 export async function runEvalScenario(
   scenario: EvalScenario,
   options: EvalScenarioRunOptions = {},
+): Promise<EvalResult> {
+  const run = executeEvalScenario(scenario, options);
+  activeEvalScenarios.add(run);
+  try {
+    return await run;
+  } finally {
+    activeEvalScenarios.delete(run);
+  }
+}
+
+/** Wait for scenarios left by a timed-out test to stop and tear down. */
+export async function settleActiveEvalScenarios(): Promise<void> {
+  await settleWithin(
+    [...activeEvalScenarios],
+    "aborted eval scenario(s) to tear down",
+  );
+}
+
+async function executeEvalScenario(
+  scenario: EvalScenario,
+  options: EvalScenarioRunOptions,
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
   const runtimePlugins = runtimePluginsForScenario(scenario);
   const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  let previousCoreFeatures: ReturnType<typeof setCoreFeatures> | undefined;
 
   try {
     const runtimePluginNames = new Set(
       runtimePlugins.map((plugin) => plugin.manifest.name),
     );
     const currentPlugins = getPlugins();
+    // Memory adds recall and extraction model calls to every turn, so only
+    // scenarios that measure it run it.
+    previousCoreFeatures = setCoreFeatures(
+      createCoreFeatures({
+        memory: scenario.overrides?.memory ? {} : { enabled: false },
+      }),
+    );
     previousPlugins = setPlugins([
       ...runtimePlugins,
       ...currentPlugins.filter(
@@ -2774,6 +2799,9 @@ export async function runEvalScenario(
   } finally {
     if (previousPlugins) {
       setPlugins(previousPlugins);
+    }
+    if (previousCoreFeatures) {
+      setCoreFeatures(previousCoreFeatures);
     }
     await teardownHarnessEnvironment(scenario, env);
   }

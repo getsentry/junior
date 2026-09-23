@@ -141,6 +141,8 @@ export function createEventInboundMessage(input: {
 export async function enqueueEventNotification(args: {
   event: EventNotification;
   queue: ConversationWorkQueue;
+  /** Ingest time. The burst window before the Turn runs starts here. */
+  receivedAtMs: number;
   subscription: Watch;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -180,6 +182,7 @@ export async function enqueueEventNotification(args: {
         conversationId: args.subscription.conversationId,
         id: args.subscription.id,
       },
+      receivedAtMs: args.receivedAtMs,
       text,
     }),
     queue: args.queue,

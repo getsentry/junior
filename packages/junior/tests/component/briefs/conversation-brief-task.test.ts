@@ -13,7 +13,8 @@ import {
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { briefsFeature } from "@/chat/briefs/task";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
@@ -193,7 +194,7 @@ describe("Conversation Brief task", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
-    setBriefsConfig({ enabled: true });
+    setCoreFeatures([briefsFeature({ enabled: true })]);
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
@@ -202,7 +203,7 @@ describe("Conversation Brief task", () => {
   });
 
   afterEach(async () => {
-    setBriefsConfig(undefined);
+    setCoreFeatures([]);
     const { closeDb } = await import("@/chat/db");
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();

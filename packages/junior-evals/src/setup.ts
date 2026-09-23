@@ -38,7 +38,11 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // Keep stateful runtime modules behind the invocation-provided Redis env.
-  const { drainPendingEvalPluginTasks } = await import("./behavior-harness");
+  const { drainPendingEvalPluginTasks, settleActiveEvalScenarios } =
+    await import("./behavior-harness");
+  // A timed-out test leaves its aborted scenario running. Finish its teardown
+  // before the next test replaces shared runtime state.
+  await settleActiveEvalScenarios();
   await drainPendingEvalPluginTasks();
   const { closeDb } = await import("@/chat/db");
   await closeDb();

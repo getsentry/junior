@@ -52,7 +52,9 @@ function cloneInlineManifests(
                   }
                 : undefined),
             },
-            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
+            ...(plugin.packageName
+              ? { packageName: plugin.packageName }
+              : undefined),
           },
         ]
       : [],
@@ -81,6 +83,27 @@ function assertUniquePackageNames(packageNames: string[]): void {
   }
 }
 
+const LEGACY_MEMORY_PACKAGE = "@sentry/junior-memory";
+
+/**
+ * Stop startup when a plugin set still names the removed Memory plugin.
+ *
+ * Memory ships inside `@sentry/junior`. The error tells the operator how to
+ * move the old registration and its options.
+ */
+function assertNoLegacyMemory(inputs: JuniorPluginInput[]): void {
+  const legacy = inputs.some((input) =>
+    typeof input === "string"
+      ? input === LEGACY_MEMORY_PACKAGE
+      : input.packageName === LEGACY_MEMORY_PACKAGE,
+  );
+  if (legacy) {
+    throw new Error(
+      `${LEGACY_MEMORY_PACKAGE} was removed: Memory ships inside @sentry/junior. Remove memoryPlugin() or "${LEGACY_MEMORY_PACKAGE}" from your plugin set and JUNIOR_PLUGIN_PACKAGES, uninstall the package, and move its options to createApp({ memory }).`,
+    );
+  }
+}
+
 function normalizePluginInput(input: JuniorPluginInput): {
   packageName?: string;
   registration?: PluginRegistration;
@@ -96,6 +119,7 @@ export function defineJuniorPlugins(
   inputs: JuniorPluginInput[],
   options: JuniorPluginSetOptions = {},
 ): JuniorPluginSet {
+  assertNoLegacyMemory(inputs);
   const normalized = inputs.map(normalizePluginInput);
   const packageNames = normalized.flatMap((input) =>
     input.packageName ? [input.packageName] : [],
@@ -169,6 +193,7 @@ function readEnvPluginPackages(
     );
   }
 
+  assertNoLegacyMemory(parsed);
   return parsed;
 }
 

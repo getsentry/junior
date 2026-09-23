@@ -25,9 +25,9 @@ The command requires exactly one argument: the target directory.
 
 The scaffold includes:
 
-- `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `@sentry/junior-memory`, `hono`, `nitro`, `typescript`, `jiti`, and `@types/node`
+- `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `hono`, `nitro`, `typescript`, `jiti`, and `@types/node`
 - `pnpm-workspace.yaml` with a 24-hour dependency release delay and an immediate exception for the `@sentry/*` package scope
-- `plugins.ts` with `@sentry/junior-maintenance` and `memoryPlugin()` enabled
+- `plugins.ts` with `@sentry/junior-maintenance` enabled
 - `server.ts`
 - `nitro.config.ts` pointing at `./plugins`
 - `tsconfig.json` extending Nitro's TypeScript config
@@ -43,7 +43,7 @@ The scaffold includes:
 
 `SOUL.md` sets Junior's default voice, `WORLD.md` holds operational context, and `DESCRIPTION.md` powers the user-facing app description. Add other `app/*.md` files only when you want optional reference material available to the agent at runtime.
 
-The generated `plugins.ts` enables `@sentry/junior-maintenance` and `memoryPlugin()` by default. Maintenance provides the `self-update` skill for keeping Junior packages current, and memory provides long-term recall once you configure Postgres with pgvector. `plugins.ts` is also the place to add other packaged plugins later.
+The generated `plugins.ts` enables `@sentry/junior-maintenance` by default. Maintenance provides the `self-update` skill for keeping Junior packages current. Long-term [Memory](/concepts/memory/) is part of `@sentry/junior` and needs no plugin; it activates once you configure Postgres with pgvector. `plugins.ts` is the place to add other packaged plugins later.
 
 This gives you the supported app shape needed to run Junior locally, keep the app updated, and continue with plugin or skill setup.
 

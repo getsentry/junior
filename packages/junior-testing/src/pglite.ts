@@ -5,12 +5,17 @@ import {
   type Transaction,
 } from "@electric-sql/pglite";
 import { btree_gin as pgliteBtreeGinExtension } from "@electric-sql/pglite/contrib/btree_gin";
+import { pgcrypto as pglitePgcryptoExtension } from "@electric-sql/pglite/contrib/pgcrypto";
 import { vector as pgliteVectorExtension } from "@electric-sql/pglite/vector";
 import { drizzle } from "drizzle-orm/pglite";
 
 type PgliteQueryClient = PGlite | Transaction;
 
-export { pgliteBtreeGinExtension, pgliteVectorExtension };
+export {
+  pgliteBtreeGinExtension,
+  pglitePgcryptoExtension,
+  pgliteVectorExtension,
+};
 
 export interface LocalPgliteFixture<TDatabase> {
   client: PGlite;
