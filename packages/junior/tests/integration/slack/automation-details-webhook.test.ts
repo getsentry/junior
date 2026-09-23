@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { upsertIdentity } from "@/chat/identities/sql";
@@ -72,7 +73,7 @@ async function saveReminder(): Promise<ScheduledAutomation> {
   const task: ScheduledAutomation = {
     id: "sched_reminder",
     title: "Water reminder",
-    createdBy: { slackUserId: "U123" },
+    createdBy: { slackUserId: "U123", fullName: "Reminder owner" },
     creatorIdentityId: identity.id,
     createdAtMs: Date.now(),
     updatedAtMs: Date.now(),
@@ -92,7 +93,10 @@ async function saveReminder(): Promise<ScheduledAutomation> {
       },
     },
     status: "active",
-    task: { text: "Remind me to drink water." },
+    nextRunAtMs: Date.now() + 86_400_000,
+    task: {
+      text: "Remind me to drink water.\n\n- Keep the reminder brief.\n- Include **one** useful tip.",
+    },
   };
   await saveScheduledAutomation(getDb(), task);
   return task;
@@ -125,9 +129,33 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: {
             title: { text: "Water reminder" },
-            display_type: "Automation",
+            display_type: "Scheduled automation",
           },
-          custom_fields: [{ key: "trigger", value: "Every day at noon" }],
+          custom_fields: [
+            { key: "status", value: "active" },
+            {
+              key: "description",
+              label: "Instruction",
+              value: task.task.text,
+              format: "markdown",
+            },
+            { key: "trigger", value: "Every day at noon" },
+            {
+              key: "next_run",
+              type: "slack#/types/timestamp",
+              value: Math.floor(task.nextRunAtMs! / 1000),
+            },
+            { key: "outcomes", value: "None (silent)" },
+            { key: "destination", value: "Channel D123 · private" },
+            { key: "created_by", value: "Reminder owner" },
+            {
+              key: "date_created",
+              type: "slack#/types/timestamp",
+              value: Math.floor(task.createdAtMs / 1000),
+            },
+            { key: "executions", value: "0 total · 0 in the last 30 days" },
+            { key: "last_run", value: "Never run" },
+          ],
         },
       },
     });
@@ -135,20 +163,54 @@ describe("Slack Work Object details", () => {
       ...task,
       title: "Updated reminder",
       status: "blocked",
+      nextRunAtMs: undefined,
+      task: { text: "Updated instruction." },
+      outcomes: [{ action: "send_message", destination: task.destination }],
+    });
+    await getConversationStore().recordActivity({
+      conversationId: "agent-dispatch:reminder-run",
+      actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
+      destination: task.destination,
+      visibility: "private",
+      title: "Reminder execution",
+    });
+    const executedAtMs = Date.now();
+    await recordAutomationExecution("scheduled", task.id, {
+      conversationId: "agent-dispatch:reminder-run",
+      executionId: "reminder-run",
+      nowMs: executedAtMs,
+      status: "completed",
     });
     const refreshed = await requestDetails(task.id);
     expect(refreshed).toMatchObject({
       metadata: {
         entity_payload: {
           attributes: { title: { text: "Updated reminder" } },
-          custom_fields: [
-            { key: "trigger", value: "Every day at noon" },
-            { key: "warning", value: "This automation is blocked." },
-          ],
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({
+              key: "status",
+              value: "blocked",
+            }),
+            expect.objectContaining({
+              key: "description",
+              value: "Updated instruction.",
+            }),
+            expect.objectContaining({ key: "next_run", value: "None" }),
+            expect.objectContaining({ key: "outcomes", value: "1 message" }),
+            expect.objectContaining({
+              key: "executions",
+              value: "1 total · 1 in the last 30 days",
+            }),
+            expect.objectContaining({
+              key: "last_run",
+              type: "slack#/types/timestamp",
+              value: Math.floor(executedAtMs / 1000),
+              link: "https://junior.example.com/conversations/agent-dispatch%3Areminder-run",
+            }),
+          ]),
         },
       },
     });
-    expect(JSON.stringify(refreshed)).not.toContain(task.task.text);
   });
 
   it("loads public event Automations for another user in the same workspace", async () => {
@@ -188,15 +250,35 @@ describe("Slack Work Object details", () => {
       metadata: {
         external_ref: { id: "event_public", type: "automation" },
         entity_payload: {
-          attributes: { title: { text: "Issue updates" } },
-          custom_fields: [
-            { key: "trigger", value: "Issue · issue.closed" },
-            {
+          attributes: {
+            title: { text: "Issue updates" },
+            display_type: "Event automation",
+          },
+          custom_fields: expect.arrayContaining([
+            expect.objectContaining({
+              key: "status",
+              value: "unavailable",
+            }),
+            expect.objectContaining({
+              key: "description",
+              value: "Summarize the closed issue.",
+            }),
+            expect.objectContaining({ key: "source", value: "linear" }),
+            expect.objectContaining({
+              key: "resource",
+              value: "Issue · ACME-42",
+            }),
+            expect.objectContaining({ key: "events", value: "issue.closed" }),
+            expect.objectContaining({
+              key: "destination",
+              value: "#project · public",
+            }),
+            expect.objectContaining({
               key: "warning",
               value:
                 "Trigger unavailable. This automation cannot receive events.",
-            },
-          ],
+            }),
+          ]),
         },
       },
     });

@@ -62,9 +62,13 @@ icon. Opening or refreshing the detail panel loads current Automation facts
 and calls `entity.presentDetails`. The stored Slack identity selects the User;
 the Automations view access rules allow owned and public-workspace objects.
 Missing, deleted, and inaccessible objects all return `not_found` without facts.
-Message previews remain saved facts until Slack refreshes them. Link unfurls
-and actions are not implemented.
-See [Slack's notification API](https://docs.slack.dev/messaging/work-objects-implementation#implementation-notifications).
+Details use the dashboard Automation summary. Instructions keep Markdown and
+line breaks; timestamps use Slack's local time display. Item entities use
+`custom_fields` in display order, not task-specific `fields`.
+New message previews stay compact. Slack can refresh them from detail metadata,
+so do not send viewer-specific labels such as "you" or credential data.
+Link unfurls and actions are not implemented.
+See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
 
 Reply text and accessible fallback text still travel together. Card-only chunks
 keep a context block so Slack does not also display the notification fallback
