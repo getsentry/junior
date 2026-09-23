@@ -32,12 +32,10 @@ it("hides user-callable skills and rejects loading them without explicit invocat
     const runs: Array<{
       contexts: string[];
       results: LocalToolResult[];
-      prompts: string[];
     }> = [];
     for (const explicit of [false, true]) {
       const results: LocalToolResult[] = [];
       const contexts: string[] = [];
-      const prompts: string[] = [];
       const model = createModelStream([
         ...(explicit
           ? []
@@ -54,7 +52,6 @@ it("hides user-callable skills and rejects loading them without explicit invocat
         executeAgentRun(
           { ...run, environment: { ...run.environment, skillDirs: [root] } },
           (modelId, context, options) => {
-            prompts.push(context.systemPrompt ?? "");
             contexts.push(JSON.stringify(context.messages));
             return model(modelId, context, options);
           },
@@ -76,11 +73,17 @@ it("hides user-callable skills and rejects loading them without explicit invocat
         },
       );
       expect(outcome.outcome).toBe("success");
-      runs.push({ contexts, results, prompts });
+      runs.push({ contexts, results });
     }
-    expect(runs.flatMap((run) => run.prompts).join("\n")).not.toContain(
-      `<name>${skillName}</name>`,
-    );
+    for (const run of runs) {
+      const listings = run.contexts.flatMap(
+        (context) =>
+          context.match(/<available-skills>[\s\S]*?<\/available-skills>/g) ??
+          [],
+      );
+      expect(listings.length).toBeGreaterThan(0);
+      expect(listings.join("\n")).not.toContain(`<name>${skillName}</name>`);
+    }
     expect(runs[0].contexts.join("\n")).not.toContain(instructions);
     expect(runs[0].results).toEqual([
       expect.objectContaining({
