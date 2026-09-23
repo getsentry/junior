@@ -157,7 +157,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Router cases assert exact model profile and reasoning level selections and fail the `router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
-- Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI downloads the latest official binary and logs its version.
+- Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI verifies the pinned official binary's SHA-256 checksum before running it.
 - Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
@@ -290,9 +290,9 @@ jobs select shared sources, fixtures, workflow and dependency changes.
 Runtime-only changes still require the eval labels.
 
 Global setup warms the base, GitHub, and Sentry snapshots once per shard.
-The last setup file joins case work before MSW and database cleanup. A worker
-that cannot drain within five seconds exits with an error. Keep this order:
-late cleanup must not change the next case's state. Scenarios also join title
+The last setup file joins case work before MSW and database cleanup. This hook
+has no separate timeout: late cleanup must not change the next case's state.
+CI stops a stalled shard at the 30-minute job limit. Scenarios also join title
 and plugin tasks. Failed runs retain their transcript, including cleanup errors.
 
 Gateway header and body-idle limits do not replace request cancellation.

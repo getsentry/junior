@@ -94,6 +94,7 @@ jobs:
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -137,8 +138,9 @@ jobs:
           set -euo pipefail
           curl --fail --location --silent --show-error \
             --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
             --output "$RUNNER_TEMP/cloudflared"
+          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version

@@ -21,16 +21,5 @@ export function runEvalWork<T>(operation: () => Promise<T>): Promise<T> {
 export async function drainEvalWork(context: object): Promise<void> {
   const pending = (context as WorkOwner)[pendingWork];
   if (!pending?.size) return;
-  // A hook error alone lets Vitest start the next case with dirty state.
-  const timer = setTimeout(() => {
-    process.stderr.write(
-      "Eval work did not stop during teardown; stopping worker\n",
-    );
-    process.exit(1);
-  }, 5_000);
-  try {
-    while (pending.size) await Promise.allSettled([...pending]);
-  } finally {
-    clearTimeout(timer);
-  }
+  while (pending.size) await Promise.allSettled([...pending]);
 }

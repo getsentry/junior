@@ -218,6 +218,23 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
