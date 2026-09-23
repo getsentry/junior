@@ -52,7 +52,8 @@ vi.mock("@/db/executor", () => ({
   }),
 }));
 
-vi.mock("@/chat/pi/client", () => ({
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   completeObject: vi.fn(async (input: { modelId: string; prompt: string }) => {
     TEST.calls.push(input);
     return {

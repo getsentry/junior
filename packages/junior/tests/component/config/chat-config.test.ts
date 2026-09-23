@@ -73,7 +73,7 @@ describe("chat config", () => {
     delete process.env.AI_FAST_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.fastModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.fastModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses Luna for Guardian when no override is configured", async () => {
@@ -82,7 +82,7 @@ describe("chat config", () => {
     delete process.env.AI_GUARDIAN_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.guardianModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.guardianModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses the configured Guardian model override", async () => {
@@ -256,7 +256,7 @@ describe("chat config", () => {
     process.env.AI_WEB_SEARCH_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.webSearchModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.webSearchModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses AI_WEB_SEARCH_MODEL when configured", async () => {

@@ -73,6 +73,12 @@ describeEval("Guardian Ticket Filing Snapshots", guardianEvals, (it) => {
         context: slackContext(
           "File a Linear bug on Platform / Ingest titled Consumer lag spikes after deploy, assign Jordan Lee, Bug label, medium priority, and attach the Sentry trace.",
         ),
+        evidence: evidence([
+          {
+            role: "user",
+            text: "Ingest consumer lag climbs for about ten minutes after each deploy. Here's the trace: https://sentry.sentry.io/traces/0123456789abcdef0123456789abcdef/?project=1",
+          },
+        ]),
         input: {
           arguments: {
             team: "Platform",
@@ -85,7 +91,7 @@ describeEval("Guardian Ticket Filing Snapshots", guardianEvals, (it) => {
               "Ingest consumer lag climbs for about ten minutes after each deploy.",
             links: [
               {
-                url: "https://sentry.sentry.io/explore/traces/?project=1",
+                url: "https://sentry.sentry.io/traces/0123456789abcdef0123456789abcdef/?project=1",
                 title: "Sentry trace",
               },
             ],
