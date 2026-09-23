@@ -1,0 +1,17 @@
+id: plugin-tool-camel-case
+language: TypeScript
+severity: error
+message: Plugin tool registration keys must be camelCase identifiers. Core adds the plugin namespace; do not put underscores in the local tool name.
+files:
+  - packages/*/src/**/*.ts
+  - apps/**/src/**/*.ts
+rule:
+  pattern:
+    context: "({ $NAME: $FACTORY($$$ARGS) })"
+    selector: pair
+constraints:
+  FACTORY:
+    regex: "^(definePluginTool|create[A-Za-z0-9]*Tool)$"
+  NAME:
+    not:
+      regex: '^([a-z][A-Za-z0-9]*|"[a-z][A-Za-z0-9]*"|''[a-z][A-Za-z0-9]*'')$'
