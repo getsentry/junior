@@ -145,12 +145,11 @@ describe("sendSlackReply", () => {
     });
   });
 
-  it("keeps object groups in one thread and omits deleted objects", async () => {
+  it("keeps object groups in one thread and uses text without a URL", async () => {
     const card = {
       kind: "automation" as const,
       id: "sched_reminder",
       title: "Reminder <@U123>",
-      operation: "created" as const,
       url: "https://junior.example.com/automations/sched_reminder",
       trigger: "Every Monday",
       instruction: "Full instructions stay off the preview.",
@@ -167,7 +166,6 @@ describe("sendSlackReply", () => {
           url: `https://junior.example.com/automations/sched_${index}`,
         })),
         { ...card, id: "sched_no_url", url: null },
-        { ...card, id: "sched_deleted", operation: "deleted" },
       ],
     });
     const posts = getCapturedSlackApiCalls("chat.postMessage");
@@ -183,37 +181,9 @@ describe("sendSlackReply", () => {
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
     expect(posts[1]?.params.text).toBe("Reminder &lt;@U123&gt;\nEvery Monday");
-    expect(JSON.stringify(posts)).not.toContain("Deleted");
-    expect(JSON.stringify(posts)).not.toContain("sched_deleted");
     for (const post of posts) {
       expect(JSON.stringify(post.params)).not.toContain(card.instruction);
     }
-  });
-
-  it("uses only the normal reply for a deletion and sends no card-only receipt", async () => {
-    const card = {
-      kind: "automation" as const,
-      id: "sched_deleted",
-      title: "Daily water reminder",
-      operation: "deleted" as const,
-      url: null,
-      trigger: "Daily",
-      instruction: "Remind me to drink water.",
-      warning: null,
-    };
-    for (const text of ["Canceled the daily water reminder.", ""]) {
-      await sendSlackReply({
-        channelId: "C123",
-        conversationId: "local:delete",
-        text,
-        cards: [card],
-      });
-    }
-    const posts = getCapturedSlackApiCalls("chat.postMessage");
-    expect(posts).toHaveLength(1);
-    expect(posts[0]?.params.text).toBe("Canceled the daily water reminder.");
-    expect(posts[0]?.params).not.toHaveProperty("metadata");
-    expect(JSON.stringify(posts)).not.toContain("Deleted");
   });
 
   it("does not post empty text", async () => {

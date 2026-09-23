@@ -39,7 +39,7 @@ export async function presentSlackAutomationDetails(
   const card = identity?.user
     ? await readViewerAutomationCard(identity.user, parsed.data.external_ref.id)
     : undefined;
-  const entity = card ? renderSlackAutomationCard(card)?.entity : undefined;
+  const entity = card ? renderSlackAutomationCard(card).entity : undefined;
   if (!entity) {
     // Use one response for inaccessible and deleted objects. Do not leak titles.
     await client.entity.presentDetails({

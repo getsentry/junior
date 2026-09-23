@@ -381,7 +381,7 @@ describe("conversation event list API", () => {
                 trigger: "Private repository",
                 warning: null,
               },
-            ],
+            ].flatMap((card) => [card, { ...card, operation: "deleted" }]),
           },
         },
       },
@@ -465,6 +465,21 @@ describe("conversation event list API", () => {
     const participantDetail = conversationDetailReportSchema.parse(
       await participantDetailResponse.json(),
     );
+    const savedResponse = await participantApi.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const saved = conversationDetailReportSchema.parse(
+      await savedResponse.json(),
+    );
+    const savedCards = saved.events.find(
+      (event) =>
+        event.data.type === "message" &&
+        event.data.messageId === "private-message-2",
+    )?.data;
+    expect(savedCards).toMatchObject({
+      cards: [expect.objectContaining({ id: "secret-task" })],
+    });
+    expect(JSON.stringify(savedCards)).not.toContain('"operation"');
     expect(participantDetail.eventHistory.status).toBe("available");
     expect(participantDetail.events[0]?.data).toEqual({
       type: "message",

@@ -5,7 +5,7 @@ import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
   getWritableTask,
-  scheduleAutomationToolResult,
+  compactTask,
   scheduleAutomationToolResultSchema,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -46,11 +46,7 @@ export function createSlackScheduleDeleteAutomationTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(
-        next,
-        context.actor?.userId,
-        "deleted",
-      );
+      return { automation: compactTask(next, context.actor?.userId) };
     },
   });
 }

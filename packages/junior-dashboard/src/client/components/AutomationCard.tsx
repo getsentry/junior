@@ -5,8 +5,6 @@ import { automationPath } from "../format";
 
 /** Show the saved object, with instructions and controls on its detail page. */
 export function AutomationCard({ card }: { card: AutomationCardValue }) {
-  if (card.operation === "deleted") return null;
-
   return (
     <section
       aria-label={card.title}

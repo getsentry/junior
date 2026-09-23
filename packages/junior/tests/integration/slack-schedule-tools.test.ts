@@ -322,7 +322,7 @@ describe("Slack schedule tools", () => {
         {
           kind: "automation",
           id: created.automation.id,
-          operation: "created",
+
           trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
           warning: null,
         },
@@ -817,6 +817,7 @@ describe("Slack schedule tools", () => {
         automationId: taskId,
       },
     );
+    expect(deleted).not.toHaveProperty("cards");
     expect(deleted).toMatchObject({
       automation: {
         id: taskId,

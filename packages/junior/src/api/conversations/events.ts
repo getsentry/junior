@@ -1,4 +1,4 @@
-import { messageCardSchema } from "@/chat/conversations/cards";
+import { readMessageCards } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
@@ -339,7 +339,7 @@ function reportEventData(args: {
           ? { trustedSummary: data.meta.trustedSummary }
           : undefined),
         ...(args.canExposePayload && data.meta?.cards
-          ? { cards: messageCardSchema.array().parse(data.meta.cards) }
+          ? { cards: readMessageCards(data.meta.cards) }
           : undefined),
         ...(args.canExposePayload
           ? { text: data.text }

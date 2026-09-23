@@ -638,21 +638,8 @@ function TranscriptsGalleryPage() {
             kind: "automation",
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
-            operation: "created",
             url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
             instruction: "Remind the user to drink water in this conversation.",
-            trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
-            warning: null,
-          }}
-        />
-        <AutomationCard
-          card={{
-            kind: "automation",
-            id: "sched_0123456789abcdef0123456789abcdef",
-            title: "Deleted Automation (must not render)",
-            operation: "deleted",
-            url: null,
-            instruction: "Remind the user to drink water.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
           }}
@@ -663,7 +650,6 @@ function TranscriptsGalleryPage() {
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             title:
               "Review automated fixes across the JavaScript SDK repositories",
-            operation: "updated",
             url: "https://junior.example.com/automations/evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             instruction:
               "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
@@ -677,7 +663,6 @@ function TranscriptsGalleryPage() {
             kind: "automation",
             id: "scheduled-1",
             title: "Weekly release digest",
-            operation: "updated",
             url: "https://junior.example.com/automations/scheduled-1",
             instruction:
               "Summarize the week's releases and send me the digest.",

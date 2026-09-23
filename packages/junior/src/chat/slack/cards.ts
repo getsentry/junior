@@ -14,7 +14,7 @@ export interface SlackCard {
 }
 
 /** Select the Slack object renderer for a built-in card. */
-export function renderSlackCard(card: MessageCard): SlackCard | null {
+export function renderSlackCard(card: MessageCard): SlackCard {
   switch (card.kind) {
     case "automation":
       return renderSlackAutomationCard(card);

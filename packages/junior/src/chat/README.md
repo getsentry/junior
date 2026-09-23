@@ -345,10 +345,11 @@ facts, under the same privacy rules as message text. Cards are not live status.
 
 `conversations/pending-cards.ts` reads committed tool results back to the last
 assistant Message or Turn start. It keeps the last successful change per
-Automation, including across resume and history replacement. A deletion replaces
-an earlier card for the same Automation but renders nothing on each surface.
+Automation, including across resume and history replacement. Delete tools return no cards. Their results suppress
+earlier cards for the same Automation in the pending-card reader.
 Silent Turns do not send cards or pass them to a later Turn.
 
+`conversations/cards.ts` removes old receipt fields when reading stored cards.
 `automations/card.ts` owns the AutomationCard schema and text format. Its Slack
 renderer and dashboard component own their layouts. `conversations/cards.ts`
 contains the closed union of built-in response types, not shared layout fields.

@@ -305,10 +305,8 @@ export function compactTask(
 export function scheduleAutomationToolResult(
   task: ScheduledAutomation,
   requesterSlackUserId?: string,
-  operation?: AutomationCard["operation"],
 ) {
   const automation = compactTask(task, requesterSlackUserId);
-  if (!operation) return { automation };
   const card: AutomationCard = {
     kind: "automation",
     id: task.id,
@@ -316,7 +314,6 @@ export function scheduleAutomationToolResult(
       automation.title ??
       fallbackShortTitle(automation.instruction, "Scheduled automation"),
     url: automation.dashboardUrl,
-    operation,
     instruction: automation.instruction,
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined

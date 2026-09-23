@@ -369,15 +369,10 @@ export async function readViewerAutomationCard(
     (await resolveViewerTaskCandidate(user, "event", id));
   if (!candidate) return undefined;
   if (candidate.kind === "scheduled") {
-    return scheduleAutomationToolResult(candidate.task, undefined, "updated")
-      .cards?.[0];
+    return scheduleAutomationToolResult(candidate.task, undefined).cards[0];
   }
-  return eventAutomationToolResult(
-    candidate.task,
-    getEventCatalog(),
-    "",
-    "updated",
-  ).cards[0];
+  return eventAutomationToolResult(candidate.task, getEventCatalog(), "")
+    .cards[0];
 }
 
 async function automationSummaryForCandidate(

@@ -8,10 +8,7 @@ function preview(text: string, length: number): string {
 }
 
 /** Show an Automation as a native Work Object, not an operation receipt. */
-export function renderSlackAutomationCard(
-  card: AutomationCard,
-): SlackCard | null {
-  if (card.operation === "deleted") return null;
+export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
   const title = preview(card.title, 160);
 
   const trigger = preview(card.trigger, 500);
