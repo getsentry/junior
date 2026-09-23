@@ -55,9 +55,6 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
-import type { AutomationCard } from "./card";
-import { scheduleAutomationToolResult } from "@/chat/scheduled-automations/tool-support";
-import { eventAutomationToolResult } from "@/chat/event-automations/tool-support";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
@@ -359,20 +356,16 @@ async function resolveViewerTaskCandidate(
   };
 }
 
-/** Read current card facts using the same access rules as the Automations view. */
-export async function readViewerAutomationCard(
+/** Read one current Automation summary with the Automations view access rules. */
+export async function readViewerAutomationSummary(
   user: User,
   id: string,
-): Promise<AutomationCard | undefined> {
+): Promise<AutomationSummary | undefined> {
   const candidate =
     (await resolveViewerTaskCandidate(user, "scheduled", id)) ??
     (await resolveViewerTaskCandidate(user, "event", id));
   if (!candidate) return undefined;
-  if (candidate.kind === "scheduled") {
-    return scheduleAutomationToolResult(candidate.task, undefined).cards[0];
-  }
-  return eventAutomationToolResult(candidate.task, getEventCatalog(), "")
-    .cards[0];
+  return automationSummaryForCandidate(candidate);
 }
 
 async function automationSummaryForCandidate(

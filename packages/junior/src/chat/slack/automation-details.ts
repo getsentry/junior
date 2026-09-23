@@ -1,8 +1,144 @@
 import { z } from "zod";
-import { readViewerAutomationCard } from "@/chat/automations/read";
+import type { AutomationSummary } from "@/api/schema/automation";
+import { readViewerAutomationSummary } from "@/chat/automations/read";
+import {
+  getDashboardConversationLink,
+  getDashboardTaskLink,
+} from "@/chat/dashboard-link";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { renderSlackAutomationCard } from "./automation-card";
+import type { SlackEntity } from "./cards";
 import { getSlackClient } from "./client";
+
+type DetailField = NonNullable<
+  SlackEntity["entity_payload"]["custom_fields"]
+>[number];
+
+function textField(key: string, label: string, value: string): DetailField {
+  return { key, label, type: "string", value };
+}
+
+function dateField(
+  key: string,
+  label: string,
+  value: string | undefined,
+  empty: string,
+): DetailField {
+  return value
+    ? {
+        key,
+        label,
+        type: "slack#/types/timestamp",
+        value: Math.floor(Date.parse(value) / 1000),
+      }
+    : textField(key, label, empty);
+}
+
+function renderAutomationDetails(
+  automation: AutomationSummary,
+): SlackEntity | undefined {
+  const url = getDashboardTaskLink(automation.id);
+  if (!url) return undefined;
+
+  const status =
+    automation.kind === "scheduled"
+      ? automation.status
+      : automation.triggerAvailable
+        ? "ready"
+        : "unavailable";
+  // Item entities use custom_fields only. Do not add task-specific fields.
+  const fields: DetailField[] = [
+    {
+      ...textField("status", "Status", status),
+      tag_color:
+        status === "blocked" || status === "unavailable"
+          ? "yellow"
+          : status === "completed"
+            ? "gray"
+            : "green",
+    },
+    {
+      ...textField("description", "Instruction", automation.instruction),
+      format: "markdown",
+      long: true,
+    },
+  ];
+  if (automation.kind === "scheduled") {
+    fields.push(
+      { ...textField("trigger", "Schedule", automation.schedule), long: true },
+      dateField("next_run", "Next run", automation.nextRunAt, "None"),
+    );
+  } else {
+    fields.push(
+      textField("source", "Source", automation.source),
+      { ...textField("resource", "Resource", automation.resource), long: true },
+      {
+        ...textField("events", "Events", automation.events.join(", ")),
+        long: true,
+      },
+    );
+    if (!automation.triggerAvailable) {
+      fields.push({
+        ...textField(
+          "warning",
+          "Needs attention",
+          "Trigger unavailable. This automation cannot receive events.",
+        ),
+        long: true,
+      });
+    }
+  }
+  const lastRun = dateField(
+    "last_run",
+    "Last execution",
+    automation.lastRunAt,
+    "Never run",
+  );
+  if (automation.lastRunAt && automation.lastConversationId) {
+    lastRun.link = getDashboardConversationLink(automation.lastConversationId);
+  }
+  fields.push(
+    textField(
+      "outcomes",
+      "Outcomes",
+      automation.outcomes.length === 0
+        ? "None (silent)"
+        : `${automation.outcomes.length} message${automation.outcomes.length === 1 ? "" : "s"}`,
+    ),
+    textField(
+      "destination",
+      "Destination",
+      `${automation.destination.label} · ${automation.destination.visibility}`,
+    ),
+    textField("created_by", "Created by", automation.createdBy),
+    dateField("date_created", "Created", automation.createdAt, "Unknown"),
+    {
+      ...textField(
+        "executions",
+        "Executions",
+        `${automation.totalRuns} total · ${automation.runs[30]} in the last 30 days`,
+      ),
+      link: url,
+    },
+    lastRun,
+  );
+
+  return {
+    entity_type: "slack#/entities/item",
+    external_ref: { id: automation.id, type: "automation" },
+    url,
+    entity_payload: {
+      attributes: {
+        title: { text: automation.title },
+        display_type:
+          automation.kind === "scheduled"
+            ? "Scheduled automation"
+            : "Event automation",
+      },
+      custom_fields: fields,
+      display_order: fields.map((field) => field.key),
+    },
+  };
+}
 
 const detailsEventSchema = z.object({
   trigger_id: z.string().min(1),
@@ -36,10 +172,13 @@ export async function presentSlackAutomationDetails(
     teamId,
     userId: parsed.data.user,
   });
-  const card = identity?.user
-    ? await readViewerAutomationCard(identity.user, parsed.data.external_ref.id)
+  const automation = identity?.user
+    ? await readViewerAutomationSummary(
+        identity.user,
+        parsed.data.external_ref.id,
+      )
     : undefined;
-  const entity = card ? renderSlackAutomationCard(card).entity : undefined;
+  const entity = automation ? renderAutomationDetails(automation) : undefined;
   if (!entity) {
     // Use one response for inaccessible and deleted objects. Do not leak titles.
     await client.entity.presentDetails({
