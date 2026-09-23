@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("Slack footer Sentry links", () => {
-  it("links the ID to the conversations page using org slug subdomain for SaaS", async () => {
+  it("links to the conversations page using org slug subdomain for SaaS", async () => {
     process.env.SENTRY_ORG_SLUG = "my-org";
     mockSentryClient({
       dsn: {
@@ -55,7 +55,7 @@ describe("Slack footer Sentry links", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "*ID:* <https://my-org.sentry.io/explore/conversations/slack%3AC123%3A1700000000.000100/?project=4501|slack:C123:1700000000.000100>",
+            text: "<https://my-org.sentry.io/explore/conversations/slack%3AC123%3A1700000000.000100/?project=4501|Conversation>",
           },
         ],
       },
