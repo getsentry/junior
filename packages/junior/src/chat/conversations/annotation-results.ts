@@ -43,7 +43,7 @@ export async function annotateToolResult(
     plugin,
     details.objectAnnotations,
   );
-  const annotated = { ...details, cards };
+  const annotated = { ...details, objectCards: cards };
   if (isRecord(result.details)) return { ...result, details: annotated };
   return annotated;
 }

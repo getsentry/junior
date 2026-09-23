@@ -52,11 +52,20 @@ it("saves plugin object results once per reply, leaves background updates silent
               readOnlyHint: true,
             },
             description: "Return a verified object for this test.",
-            inputSchema: z.object({ fail: z.boolean().optional() }),
+            inputSchema: z.object({
+              fail: z.boolean().optional(),
+              timed_out: z.boolean().optional(),
+              status: z.string().optional(),
+            }),
             outputSchema: pluginToolOutputSchema,
-            execute: ({ fail }) => {
+            execute: ({ fail, timed_out, status }) => {
               if (fail) throw new Error("Object update failed");
-              return { objectAnnotations: [annotation] };
+              return {
+                timed_out,
+                objectAnnotations: [
+                  { ...annotation, status: status ?? "open" },
+                ],
+              };
             },
           }),
         }),
@@ -74,7 +83,18 @@ it("saves plugin object results once per reply, leaves background updates silent
         {
           type: "toolCall",
           name: "executeTool",
-          arguments: { tool_name: "objects_save", arguments: {} },
+          arguments: {
+            tool_name: "objects_save",
+            arguments: { status: "draft" },
+          },
+        },
+        {
+          type: "toolCall",
+          name: "executeTool",
+          arguments: {
+            tool_name: "objects_save",
+            arguments: { status: "closed", timed_out: true },
+          },
         },
         {
           type: "toolCall",
@@ -95,11 +115,19 @@ it("saves plugin object results once per reply, leaves background updates silent
       (event) =>
         event.data.type === "message" && event.data.role === "assistant",
     );
-    const cards = [{ ...annotation, plugin: "objects" }];
-    expect(message?.data).toMatchObject({ meta: { cards } });
+    const cards = [{ ...annotation, plugin: "objects", status: "draft" }];
+    expect(message?.data).toMatchObject({ meta: { objectCards: cards } });
     if (!message || message.data.type !== "message")
       throw new Error("Expected an assistant Message");
-    expect(message.data.meta?.cards).toHaveLength(1);
+    expect(message.data.meta?.objectCards).toHaveLength(1);
+    // Old readers must never receive object cards in their Automation-only field.
+    expect(message.data.meta).not.toHaveProperty("cards");
+    const toolResults = history
+      .map((event) => event.data)
+      .filter((data) => data.type === "tool_result");
+    for (const result of toolResults) {
+      expect(result.details).not.toHaveProperty("cards");
+    }
     await expect(
       listConversationAnnotations(getDb(), conversationId),
     ).resolves.toMatchObject(cards);
@@ -122,7 +150,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           },
           entity_payload: {
             attributes: { title: { text: "Fix the parser" } },
-            custom_fields: [{ key: "status", value: "open" }],
+            custom_fields: [{ key: "status", value: "draft" }],
           },
         },
       ],
@@ -137,7 +165,7 @@ it("saves plugin object results once per reply, leaves background updates silent
     const saved = await getConversationEventStore().loadHistory(conversationId);
     expect(
       saved.find((event) => event.seq === message?.seq)?.data,
-    ).toMatchObject({ meta: { cards } });
+    ).toMatchObject({ meta: { objectCards: cards } });
 
     harness.setModelStream(
       createModelStream([{ type: "text", text: "The object has merged." }]),
@@ -156,7 +184,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           event.data.type === "message" && event.data.role === "assistant",
       )
       .at(-1);
-    expect(later?.data).not.toHaveProperty("meta.cards");
+    expect(later?.data).not.toHaveProperty("meta.objectCards");
 
     harness.setModelStream(
       createModelStream([
@@ -189,7 +217,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           event.data.type === "message" && event.data.role === "assistant",
       )
       .at(-1);
-    expect(last?.data).not.toHaveProperty("meta.cards");
+    expect(last?.data).not.toHaveProperty("meta.objectCards");
   } finally {
     setPlugins(previous);
   }

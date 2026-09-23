@@ -45,8 +45,7 @@ export async function loadPendingMessageCards(
           deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      if (!Array.isArray(data.details.cards)) continue;
-      for (const card of readMessageCards(data.details.cards)) {
+      for (const card of readMessageCards(data.details)) {
         const key = messageCardKey(card);
         if (!deleted.has(key) && !cards.has(key)) cards.set(key, card);
       }

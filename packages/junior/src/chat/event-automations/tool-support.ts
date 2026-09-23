@@ -74,7 +74,7 @@ const compactEventAutomationResultSchema = z
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactEventAutomationResultSchema,
-    cards: z.array(ownedObjectAnnotationSchema),
+    objectCards: z.array(ownedObjectAnnotationSchema),
   })
   .strict();
 
@@ -280,7 +280,7 @@ export async function eventAutomationToolResult(
   );
   return {
     automation,
-    cards: await saveObjectAnnotations(conversationId, "junior", [
+    objectCards: await saveObjectAnnotations(conversationId, "junior", [
       {
         kind: "object",
         objectType: "automation",

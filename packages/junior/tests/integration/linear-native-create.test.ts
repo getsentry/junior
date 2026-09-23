@@ -1,4 +1,5 @@
 import { sendSlackReply } from "@/chat/slack/reply";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -198,23 +199,18 @@ describe("Linear MCP create annotations", () => {
           },
         ],
       });
-      const updateResult = await saveIssue.execute({
-        id: "ENG-123",
-        state: "In Progress",
-      });
-      expect(updateResult).toMatchObject({
-        structuredContent: {
-          issue: {
-            identifier: "ENG-123",
-            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
-          },
+      const updateResult = await createCallMcpToolTool(manager).execute!(
+        {
+          tool_name: saveIssue.name,
+          arguments: { id: "ENG-123", state: "In Progress" },
         },
-      });
+        {},
+      );
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toHaveLength(1);
 
-      expect(updateResult.cards).toMatchObject([
+      expect(updateResult.details.objectCards).toMatchObject([
         { plugin: "linear", key: "ENG-123", status: "In Progress" },
       ]);
       expect(saveCalls).toEqual([

@@ -168,6 +168,8 @@ export function recordDeliveredAssistantMessage(args: {
     replied: true,
     skippedReason: undefined,
   });
+  const cards = args.cards?.filter((card) => card.kind === "automation");
+  const objectCards = args.cards?.filter((card) => card.kind === "object");
   upsertConversationMessage(args.conversation, {
     id: messageId,
     role: "assistant",
@@ -178,7 +180,8 @@ export function recordDeliveredAssistantMessage(args: {
       isBot: true,
     },
     meta: {
-      ...(args.cards?.length ? { cards: args.cards } : undefined),
+      ...(cards?.length ? { cards } : undefined),
+      ...(objectCards?.length ? { objectCards } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },

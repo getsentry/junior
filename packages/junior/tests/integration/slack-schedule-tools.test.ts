@@ -331,7 +331,7 @@ describe("Slack schedule tools", () => {
   it("creates and lists tasks only for the active Slack conversation", async () => {
     const created = await createTask();
     expect(created).toMatchObject({
-      cards: [
+      objectCards: [
         {
           kind: "object",
           objectType: "automation",
@@ -683,7 +683,7 @@ describe("Slack schedule tools", () => {
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
       },
-      cards: [
+      objectCards: [
         {
           trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
         },

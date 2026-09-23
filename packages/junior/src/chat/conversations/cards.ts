@@ -17,23 +17,24 @@ export const messageCardSchema = z.discriminatedUnion("kind", [
 export type MessageCard = z.output<typeof messageCardSchema>;
 
 // Stored Messages can still contain receipt cards written before Work Objects.
-const storedCardSchema = z.union([
-  ownedObjectAnnotationSchema,
-  automationCardSchema.extend({
-    operation: z.enum(["created", "updated", "deleted"]).optional(),
-  }),
-]);
+const storedCardSchema = automationCardSchema.extend({
+  operation: z.enum(["created", "updated", "deleted"]).optional(),
+});
 
-/** Read saved cards without exposing obsolete operation receipts. */
-export function readMessageCards(value: unknown): MessageCard[] {
-  return storedCardSchema
-    .array()
-    .parse(value)
-    .flatMap((card): MessageCard[] => {
-      if (card.kind === "object") return [card];
-      const { operation, ...snapshot } = card;
-      return operation === "deleted" ? [] : [snapshot];
-    });
+/** Read both stored formats while keeping new objects out of the legacy field. */
+export function readMessageCards(value: {
+  cards?: unknown;
+  objectCards?: unknown;
+}): MessageCard[] {
+  return [
+    ...storedCardSchema
+      .array()
+      .parse(value.cards ?? [])
+      .flatMap(({ operation, ...card }) =>
+        operation === "deleted" ? [] : [card],
+      ),
+    ...ownedObjectAnnotationSchema.array().parse(value.objectCards ?? []),
+  ];
 }
 
 /** Render each built-in card with its own text format. */

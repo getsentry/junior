@@ -155,7 +155,7 @@ describe("callMcpTool", () => {
       ),
     ).resolves.toEqual({
       content: nativeContent,
-      details: { cards: [] },
+      details: { objectCards: [] },
     });
   });
 

@@ -351,25 +351,17 @@ Messages remain usable.
 
 ### Deployment and recovery
 
-Object cards need no database migration, but they change the stored Message and
-tool-result formats. The previous release reads only Automation cards. It throws
-when it reads a new object card. A direct rollback to that release is not safe
-after the first object card is stored.
+New object cards use `objectCards` in Message metadata and tool results. The
+legacy `cards` field stays Automation-only. The reader combines both formats;
+the transcript API and renderers still use one `cards` list.
 
-Stop ingress and drain active workers before this upgrade. Replace the API,
-workers, plugins, and dashboard together before resuming work. Do not let old
-workers resume Turns that contain new object cards. Existing dashboard tabs must
-reload; their old response schema does not accept the new card or annotation
-kind.
+The previous release ignores `objectCards` and unknown annotation kinds. A
+rollback hides new cards and annotations without deleting them or breaking
+transcript reads. Restore this release to show those saved facts again. Existing
+Automation cards remain readable in both releases. No migration is required.
 
-After new cards have been stored, recover with a corrected build that retains
-the object-card and annotation readers. Revert the changed producers or rendering
-if needed, but keep support for both old Automation cards and new object cards in
-Message history and pending tool results. Keep the matching dashboard schema.
-Do not delete history or relabel object cards as Automation cards to make an old
-release read them. This PR does not supply a compatible older release.
-
-If deployment requires a direct rollback, first release compatible readers
-without the new producers. Use that release as the rollback target. Until that
-release exists, use only the corrected-build recovery path above. Recovery does
-not undo provider changes or remove Slack messages already posted.
+Drain active workers before changing releases. Old workers cannot deliver new
+object cards from a resumed Turn. Deploy or roll back the API and dashboard
+together. Existing dashboard tabs must reload because their old response schema
+does not accept the new card or annotation kind. Rollback does not undo provider
+changes or remove Slack messages already posted.

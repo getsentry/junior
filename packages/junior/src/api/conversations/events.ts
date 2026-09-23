@@ -338,8 +338,9 @@ function reportEventData(args: {
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
           : undefined),
-        ...(args.canExposePayload && data.meta?.cards
-          ? { cards: readMessageCards(data.meta.cards) }
+        ...(args.canExposePayload &&
+        (data.meta?.cards || data.meta?.objectCards)
+          ? { cards: readMessageCards(data.meta) }
           : undefined),
         ...(args.canExposePayload
           ? { text: data.text }

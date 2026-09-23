@@ -101,7 +101,7 @@ const compactTaskResultSchema = z
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactTaskResultSchema,
-    cards: z.array(ownedObjectAnnotationSchema).optional(),
+    objectCards: z.array(ownedObjectAnnotationSchema).optional(),
   })
   .strict();
 
@@ -337,7 +337,9 @@ export async function scheduleAutomationToolResult(
   };
   return {
     automation,
-    cards: await saveObjectAnnotations(conversationId, "junior", [annotation]),
+    objectCards: await saveObjectAnnotations(conversationId, "junior", [
+      annotation,
+    ]),
   };
 }
 

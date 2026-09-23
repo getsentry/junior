@@ -99,7 +99,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         },
       };
     },
-    outputSchema: z.object({ cards: z.array(ownedObjectAnnotationSchema) }),
+    outputSchema: z.object({
+      objectCards: z.array(ownedObjectAnnotationSchema),
+    }),
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
@@ -140,7 +142,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       );
       return {
         content: result.content,
-        details: { cards: result.cards ?? [] },
+        details: { objectCards: result.cards ?? [] },
       };
     },
   });

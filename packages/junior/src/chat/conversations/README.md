@@ -180,7 +180,7 @@ It is not the authoritative object store.
 
 Successful plugin tools return `objectAnnotations`. Core assigns the plugin
 owner, saves the annotations, and includes their snapshots in the tool result's
-`cards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
 cannot set cards. Automation tools use the same saved object contract.
 
 `annotations.upsert` is storage-only. Webhook updates do not queue a card or

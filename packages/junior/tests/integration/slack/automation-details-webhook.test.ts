@@ -159,6 +159,30 @@ describe("Slack Work Object details", () => {
         },
       },
     });
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "1",
+      label: "ENG-1",
+      title: "Updated issue",
+      objectType: "task",
+      status: "Done",
+      url: "https://example.com/issues/1",
+    });
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id, type: "annotation" },
+        entity_payload: {
+          attributes: { title: { text: "Updated issue" } },
+          fields: { status: { value: "Done" } },
+        },
+      },
+    });
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");

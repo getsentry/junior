@@ -31,7 +31,7 @@ export function createDeleteEventAutomationTool(
     description: "Delete an event automation.",
     inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
     outputSchema: eventAutomationToolResultSchema
-      .omit({ cards: true })
+      .omit({ objectCards: true })
       .extend({ removedCards: z.array(messageCardRefSchema) }),
     async execute({ automationId }) {
       const { actor } = requireEventAutomationSlackContext(context);
