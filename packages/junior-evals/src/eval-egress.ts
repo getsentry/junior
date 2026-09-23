@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Resolver } from "node:dns/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { request as httpsRequest } from "node:https";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -76,34 +74,6 @@ function closeServer(server: Server): Promise<void> {
       else resolve();
     });
   });
-}
-
-/** Resolve a Quick Tunnel hostname through public DNS when system DNS is stale. */
-export async function resolveQuickTunnelIpv4(
-  hostname: string,
-): Promise<string> {
-  const errors: Error[] = [];
-  // Node stops at a negative DNS answer. Separate resolvers let another
-  // provider answer while a new Quick Tunnel hostname is still propagating.
-  for (const server of [undefined, "1.1.1.1", "8.8.8.8"]) {
-    const resolver = new Resolver({ timeout: 1_000, tries: 1 });
-    if (server) resolver.setServers([server]);
-    try {
-      const [address] = await resolver.resolve4(hostname);
-      if (!address) throw new Error(`No IPv4 address resolved for ${hostname}`);
-      return address;
-    } catch (error) {
-      errors.push(
-        new Error(`DNS lookup failed via ${server ?? "system"}`, {
-          cause: error,
-        }),
-      );
-    }
-  }
-  throw new AggregateError(
-    errors,
-    `Could not resolve ${hostname} through system or public DNS`,
-  );
 }
 
 async function writeResponse(
@@ -308,44 +278,19 @@ async function stopTunnel(tunnel: ChildProcess): Promise<void> {
   });
 }
 
-function requestPublicProxy(baseUrl: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    void (async () => {
-      const url = new URL("/api/internal/sandbox-egress", baseUrl);
-      const address = await resolveQuickTunnelIpv4(url.hostname);
-      const request = httpsRequest(
-        {
-          headers: { host: url.hostname },
-          hostname: address,
-          method: "GET",
-          path: url.pathname,
-          port: 443,
-          servername: url.hostname,
-          timeout: 3_000,
-        },
-        (response) => {
-          response.resume();
-          response.once("end", () => resolve(response.statusCode ?? 0));
-        },
-      );
-      request.once("error", reject);
-      request.once("timeout", () => {
-        request.destroy(new Error("Public health request timed out"));
-      });
-      request.end();
-    })().catch(reject);
-  });
-}
-
 /** Wait until the public Quick Tunnel route reaches the real proxy handler. */
 async function waitForPublicProxy(baseUrl: string): Promise<void> {
   const deadline = Date.now() + PUBLIC_HEALTH_TIMEOUT_MS;
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      const status = await requestPublicProxy(baseUrl);
-      if (status === 401) return;
-      lastError = new Error(`HTTP ${status}`);
+      const response = await fetch(
+        new URL("/api/internal/sandbox-egress", baseUrl),
+        { signal: AbortSignal.timeout(3_000), redirect: "manual" },
+      );
+      await response.body?.cancel();
+      if (response.status === 401) return;
+      lastError = new Error(`HTTP ${response.status}`);
     } catch (error) {
       lastError = error;
     }
