@@ -184,6 +184,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           body: z.string().nullable().optional().default(null),
           draft: z.boolean(),
           html_url: z.string(),
+          merged: z.boolean(),
           number: z.number(),
           state: z.string(),
           title: z.string(),
@@ -213,8 +214,9 @@ export function createGitHubUpdatePullRequestTool(ctx: {
             title: providerResult.title,
             url: providerResult.html_url,
             objectType: "code_change",
-            status:
-              providerResult.state === "open" && providerResult.draft
+            status: providerResult.merged
+              ? "merged"
+              : providerResult.state === "open" && providerResult.draft
                 ? "draft"
                 : providerResult.state,
           }),

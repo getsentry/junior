@@ -192,7 +192,9 @@ annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
 A visible Message consumes its cards. A new Turn does not inherit cards from a
 silent Turn. Store each delivered snapshot in the Message so background updates
-do not rewrite history. Existing Automation cards remain readable.
+do not rewrite stored history. The web transcript shows this snapshot. Slack can
+refresh its preview from newer detail responses; it does not change the stored
+Message. Existing Automation cards remain readable.
 
 Plugins must return only facts appropriate to disclose in the current
 Conversation. This contract does not expand provider permissions or make a

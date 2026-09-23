@@ -69,7 +69,10 @@ New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
 Object annotation previews use Task for tasks and Item for code changes and
 other objects. Their `external_ref` identifies the Conversation, plugin, and
-object key. Details show the latest saved annotation, not a live provider lookup.
+object key, not a Message snapshot. Details show the latest saved annotation, not
+a live provider lookup. Opening or refreshing details can update an earlier
+Slack preview. The saved Message and web transcript remain unchanged. Annotations
+contain last saved facts; not every provider change updates them.
 The viewer must have a linked User, belong to the same Slack workspace, and have
 access to that Conversation. Missing and inaccessible annotations return
 `not_found`. Only already-shared annotation facts enter these details; do not add
@@ -77,6 +80,12 @@ viewer-only provider fields because Slack can refresh shared previews from them.
 Automation details retain their current authoritative lookup and access checks.
 Link unfurls and actions are not implemented.
 See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
+
+Before rollout, check a GitHub issue, pull request, and Linear issue in a test
+Slack Conversation with Item and Task previews enabled. Check initial rendering,
+open details, and denied access. After a saved annotation changes, refresh the
+Slack details and compare the preview with the unchanged web transcript. Payload
+tests do not prove Slack's rendering or refresh behavior.
 
 Reply text and accessible fallback text still travel together. Card-only chunks
 keep a context block so Slack does not also display the notification fallback

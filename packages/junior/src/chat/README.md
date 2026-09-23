@@ -341,19 +341,35 @@ this directory.
 
 Object annotations hold the latest saved facts for a Conversation. Message cards
 hold the facts selected for one reply. Delivery saves each card in Message
-metadata. Slack and the web transcript own their layouts and use the same
-privacy rules as message text.
+metadata. The web transcript renders that saved snapshot. Slack previews can
+refresh from detail responses without changing the stored Message. Each surface
+owns its layout and uses the same privacy rules as message text.
 
 See `conversations/README.md` for annotation storage, card selection, and silent
 updates. `conversations/cards.ts` also reads older Automation cards so stored
 Messages remain usable.
 
-Cards need no database migration. Versions before cards preserve Message
-metadata and tool-result fields, but omit cards from the transcript API.
-Rollback therefore hides web cards without deleting stored facts. Slack cards
-already posted remain visible. Automation changes are not undone by rollback.
+### Deployment and recovery
 
-Roll back the API and dashboard together, or the API first. The new dashboard
-accepts responses without cards. The old dashboard rejects the new API's
-`cards` field because its response schema is strict. An old open tab needs a
-reload when it starts receiving card-bearing responses from the new API.
+Object cards need no database migration, but they change the stored Message and
+tool-result formats. The previous release reads only Automation cards. It throws
+when it reads a new object card. A direct rollback to that release is not safe
+after the first object card is stored.
+
+Stop ingress and drain active workers before this upgrade. Replace the API,
+workers, plugins, and dashboard together before resuming work. Do not let old
+workers resume Turns that contain new object cards. Existing dashboard tabs must
+reload; their old response schema does not accept the new card or annotation
+kind.
+
+After new cards have been stored, recover with a corrected build that retains
+the object-card and annotation readers. Revert the changed producers or rendering
+if needed, but keep support for both old Automation cards and new object cards in
+Message history and pending tool results. Keep the matching dashboard schema.
+Do not delete history or relabel object cards as Automation cards to make an old
+release read them. This PR does not supply a compatible older release.
+
+If deployment requires a direct rollback, first release compatible readers
+without the new producers. Use that release as the rollback target. Until that
+release exists, use only the corrected-build recovery path above. Recovery does
+not undo provider changes or remove Slack messages already posted.
