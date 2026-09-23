@@ -1,7 +1,7 @@
 id: plugin-tool-camel-case
 language: TypeScript
 severity: error
-message: Plugin tool registration keys must be camelCase identifiers. Core adds the plugin namespace; do not put underscores in the local tool name.
+message: Use camelCase for local plugin tool names. Core adds the plugin namespace.
 files:
   - packages/*/src/**/*.ts
   - apps/**/src/**/*.ts
