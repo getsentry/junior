@@ -170,7 +170,6 @@ describe("Linear MCP create annotations", () => {
           key: "ENG-123",
           label: "ENG-123",
           plugin: "linear",
-
           url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
         },
       ]);

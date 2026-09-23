@@ -1,6 +1,8 @@
 import type {
   ConversationAnnotation,
   ConversationSidebarAnnotation,
+  ObjectAnnotation,
+  PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 
 const STATUS_ICON = {
@@ -65,12 +67,7 @@ export function githubSidebarAnnotations(
     .map(({ annotation }) => annotation);
 }
 
-import type {
-  ObjectAnnotation,
-  PluginAnnotations,
-} from "@sentry/junior-plugin-api";
-
-/** Describe a verified GitHub object without exposing Slack layout fields. */
+/** Build the annotation returned by GitHub create and update tools. */
 export function githubObjectAnnotation(input: {
   repo: string;
   number: number;

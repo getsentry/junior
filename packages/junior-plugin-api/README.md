@@ -154,8 +154,9 @@ A tool can return `objectAnnotations` through `pluginToolOutputSchema` to save
 object facts and attach a card to the next visible reply. The host assigns the
 plugin owner. Use a stable `key` within the plugin, a compact `label`, a `title`,
 a verified HTTP(S) `url` (or null), and an `objectType`: `task`, `code_change`,
-`automation`, or `item`. Status and labeled text fields are optional. Do not send
-Slack layout JSON or infer facts that the provider did not return.
+`automation`, or `item`. Status and description are optional. Automations also
+use `trigger` and `warning`. Do not send Slack layout JSON or infer facts that
+the provider did not return.
 
 The `afterMcpTool` hook can return `{ objectAnnotations }` after a successful
 hosted tool call. Use `ctx.annotations.upsert` instead when facts must change

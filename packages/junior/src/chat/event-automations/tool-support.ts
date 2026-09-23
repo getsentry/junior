@@ -1,10 +1,11 @@
-import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
-import { automationAnnotation } from "@/chat/automations/annotation";
+import {
+  ownedObjectAnnotationSchema,
+  type ObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
-import { type AutomationCard } from "@/chat/automations/card";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import {
@@ -280,14 +281,16 @@ export async function eventAutomationToolResult(
   return {
     automation,
     cards: await saveObjectAnnotations(conversationId, "junior", [
-      automationAnnotation({
-        kind: "automation",
-        id: task.id,
+      {
+        kind: "object",
+        objectType: "automation",
+        label: "Automation",
+        key: task.id,
         title:
           automation.title ??
           fallbackShortTitle(task.task.text, "Event automation"),
         url: automation.dashboardUrl,
-        instruction: task.task.text,
+        description: task.task.text,
         trigger: [
           task.trigger.label,
           task.trigger.events.join(", "),
@@ -295,8 +298,8 @@ export async function eventAutomationToolResult(
         ].join(" · "),
         warning: !automation.trigger.available
           ? "Trigger unavailable. This automation cannot receive events."
-          : null,
-      } satisfies AutomationCard),
+          : undefined,
+      } satisfies ObjectAnnotation,
     ]),
   };
 }

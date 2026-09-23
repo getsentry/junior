@@ -337,12 +337,7 @@ describe("Slack schedule tools", () => {
           objectType: "automation",
           plugin: "junior",
           key: created.automation.id,
-          fields: [
-            {
-              label: "When",
-              value: "Every week on Monday at 09:00 (America/Los_Angeles)",
-            },
-          ],
+          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
     });
@@ -690,12 +685,7 @@ describe("Slack schedule tools", () => {
       },
       cards: [
         {
-          fields: [
-            {
-              label: "When",
-              value: "May 26, 2026, 5:25 PM · America/Los_Angeles",
-            },
-          ],
+          trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
         },
       ],
     });

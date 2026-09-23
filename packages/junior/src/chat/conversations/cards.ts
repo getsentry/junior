@@ -44,7 +44,8 @@ export function messageCardText(card: MessageCard): string {
         card.title,
         card.label,
         card.status,
-        ...(card.fields ?? []).map((field) => `${field.label}: ${field.value}`),
+        card.trigger,
+        card.warning,
         card.url,
       ]
         .filter(Boolean)
@@ -61,8 +62,8 @@ export function messageCardKey(card: MessageCard): string {
     : JSON.stringify(["junior", card.id]);
 }
 
-/** Object identities removed before the next reply; not deletion receipt cards. */
-export const removedCardSchema = z
+/** Identify an object card to select or omit from a reply. */
+export const messageCardRefSchema = z
   .object({ plugin: z.string().min(1), key: z.string().min(1) })
   .strict();
 

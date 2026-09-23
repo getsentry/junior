@@ -4,7 +4,11 @@ import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/s
 import { automationPath } from "../format";
 
 /** Show the saved object, with instructions and controls on its detail page. */
-export function AutomationCard({ card }: { card: AutomationCardValue }) {
+export function AutomationCard({
+  card,
+}: {
+  card: Pick<AutomationCardValue, "id" | "title" | "trigger" | "warning">;
+}) {
   return (
     <section
       aria-label={card.title}

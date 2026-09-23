@@ -15,17 +15,8 @@ export const objectAnnotationSchema = z
       .nullable(),
     description: z.string().max(4000).optional(),
     status: z.string().trim().min(1).max(100).optional(),
-    fields: z
-      .array(
-        z
-          .object({
-            label: z.string().trim().min(1).max(100),
-            value: z.string().max(4000),
-          })
-          .strict(),
-      )
-      .max(10)
-      .optional(),
+    trigger: z.string().max(4000).optional(),
+    warning: z.string().max(1000).optional(),
   })
   .strict();
 export type ObjectAnnotation = z.output<typeof objectAnnotationSchema>;

@@ -662,24 +662,17 @@ function TranscriptsGalleryPage() {
       <Fixture title="Automation objects">
         <AutomationCard
           card={{
-            kind: "automation",
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
-            url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
-            instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
           }}
         />
         <AutomationCard
           card={{
-            kind: "automation",
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             title:
               "Review automated fixes across the JavaScript SDK repositories",
-            url: "https://junior.example.com/automations/evt_0ffb0d2027d4b7600b64287bd6dc2b14",
-            instruction:
-              "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
             trigger:
               'getsentry/junior · pull_request.opened · author = "sentry[bot]"',
             warning: null,
@@ -687,12 +680,8 @@ function TranscriptsGalleryPage() {
         />
         <AutomationCard
           card={{
-            kind: "automation",
             id: "scheduled-1",
             title: "Weekly release digest",
-            url: "https://junior.example.com/automations/scheduled-1",
-            instruction:
-              "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",
             warning: "Connect your GitHub account to resume this automation.",
           }}

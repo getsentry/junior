@@ -230,7 +230,7 @@ export function createGitHubWebhookRoute(args: {
                   repo: pullRequestOutcome.repositoryFullName,
                   number: pullRequestOutcome.number,
                   objectType: "code_change",
-                  status: status,
+                  status,
                 },
               ),
             ),

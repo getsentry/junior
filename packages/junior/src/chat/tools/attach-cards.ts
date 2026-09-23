@@ -1,4 +1,7 @@
-import { removedCardSchema, annotationCard } from "@/chat/conversations/cards";
+import {
+  messageCardRefSchema,
+  annotationCard,
+} from "@/chat/conversations/cards";
 import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -18,18 +21,10 @@ export function createAttachCardsTool(conversationId: string) {
     },
     executionMode: "sequential",
     description:
-      "Attach saved object annotations to your next visible reply in this Conversation. Omit refs to list available objects without attaching them. Use only returned plugin/key references. Creation and update results already attach their cards; do not repeat those fields in prose. Select a small set that helps the user. Set show=false with refs to omit those cards from the next reply. This does not fetch arbitrary URLs or send a separate message.",
+      "Attach saved annotations to your next reply. Omit refs to list available objects. Use returned plugin/key references. Create and update tools already attach cards; do not repeat their fields in prose. Set show=false to omit selected cards. This does not fetch objects or send a separate message.",
     inputSchema: z
       .object({
-        refs: z
-          .array(
-            z
-              .object({ plugin: z.string().min(1), key: z.string().min(1) })
-              .strict(),
-          )
-          .min(1)
-          .max(5)
-          .optional(),
+        refs: z.array(messageCardRefSchema).min(1).max(5).optional(),
         show: z.boolean().optional(),
       })
       .strict(),
@@ -45,7 +40,7 @@ export function createAttachCardsTool(conversationId: string) {
         )
         .optional(),
       cards: z.array(ownedObjectAnnotationSchema),
-      removedCards: z.array(removedCardSchema).optional(),
+      removedCards: z.array(messageCardRefSchema).optional(),
     }),
     async execute({ refs, show }) {
       const annotations = (

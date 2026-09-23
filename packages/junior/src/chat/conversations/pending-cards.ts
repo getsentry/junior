@@ -3,7 +3,7 @@ import { isRecord } from "@/chat/coerce";
 import {
   readMessageCards,
   messageCardKey,
-  removedCardSchema,
+  messageCardRefSchema,
   type MessageCard,
 } from "./cards";
 
@@ -39,7 +39,7 @@ export async function loadPendingMessageCards(
         continue;
       if (data.details.timed_out === true) continue;
       if (Array.isArray(data.details.removedCards)) {
-        for (const ref of removedCardSchema
+        for (const ref of messageCardRefSchema
           .array()
           .parse(data.details.removedCards)) {
           deleted.add(JSON.stringify([ref.plugin, ref.key]));

@@ -147,12 +147,7 @@ describe("event automations", () => {
           kind: "object",
           plugin: "junior",
           key: created.automation.id,
-          fields: [
-            {
-              label: "When",
-              value: "Review feedback · pull_request.review.commented",
-            },
-          ],
+          trigger: "Review feedback · pull_request.review.commented",
           url: `https://junior.example.com/automations/${created.automation.id}`,
         }),
       ]);
@@ -179,6 +174,15 @@ describe("event automations", () => {
                 title: { text: cards[0]!.title },
                 display_type: "Automation",
               },
+              custom_fields: [
+                {
+                  key: "trigger",
+                  label: "When",
+                  type: "string",
+                  value: "Review feedback · pull_request.review.commented",
+                  long: true,
+                },
+              ],
             },
           },
         ],

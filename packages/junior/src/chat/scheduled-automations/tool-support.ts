@@ -1,5 +1,7 @@
-import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
-import { automationAnnotation } from "@/chat/automations/annotation";
+import {
+  ownedObjectAnnotationSchema,
+  type ObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { createHash } from "node:crypto";
 import {
@@ -11,7 +13,6 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { type AutomationCard } from "@/chat/automations/card";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -309,14 +310,16 @@ export async function scheduleAutomationToolResult(
   requesterSlackUserId?: string,
 ) {
   const automation = compactTask(task, requesterSlackUserId);
-  const card: AutomationCard = {
-    kind: "automation",
-    id: task.id,
+  const annotation: ObjectAnnotation = {
+    kind: "object",
+    objectType: "automation",
+    label: "Automation",
+    key: task.id,
     title:
       automation.title ??
       fallbackShortTitle(automation.instruction, "Scheduled automation"),
     url: automation.dashboardUrl,
-    instruction: automation.instruction,
+    description: automation.instruction,
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
         ? `${new Intl.DateTimeFormat("en-US", {
@@ -330,13 +333,11 @@ export async function scheduleAutomationToolResult(
         ? (automation.statusReason ?? "This automation is blocked.")
         : automation.status === "completed"
           ? "This automation has completed."
-          : null,
+          : undefined,
   };
   return {
     automation,
-    cards: await saveObjectAnnotations(conversationId, "junior", [
-      automationAnnotation(card),
-    ]),
+    cards: await saveObjectAnnotations(conversationId, "junior", [annotation]),
   };
 }
 

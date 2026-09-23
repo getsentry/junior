@@ -7,16 +7,10 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
     return (
       <AutomationCard
         card={{
-          kind: "automation",
           id: card.key,
           title: card.title,
-          url: card.url,
-          instruction: card.description ?? "",
-          trigger:
-            card.fields?.find((field) => field.label === "When")?.value ?? "",
-          warning:
-            card.fields?.find((field) => field.label === "Needs attention")
-              ?.value ?? null,
+          trigger: card.trigger ?? "",
+          warning: card.warning ?? null,
         }}
       />
     );
@@ -42,18 +36,6 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         {card.label}
         {card.status ? ` · ${card.status}` : ""}
       </p>
-      {card.fields?.length ? (
-        <dl className="mt-2 space-y-1">
-          {card.fields.map((field, index) => (
-            <div key={index}>
-              <dt className="inline text-dashboard-text-muted">
-                {field.label}:{" "}
-              </dt>
-              <dd className="inline">{field.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
     </section>
   );
 }

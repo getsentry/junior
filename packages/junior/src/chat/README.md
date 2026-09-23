@@ -339,22 +339,14 @@ this directory.
 
 ## Message cards
 
-Automation tools return saved facts with successful changes. Delivery stores
-these cards in Message metadata. Slack and the web transcript render the same
-facts, under the same privacy rules as message text. Cards are not live status.
+Object annotations hold the latest saved facts for a Conversation. Message cards
+hold the facts selected for one reply. Delivery saves each card in Message
+metadata. Slack and the web transcript own their layouts and use the same
+privacy rules as message text.
 
-`conversations/pending-cards.ts` reads committed tool results back to the last
-assistant Message or Turn start. It keeps the last successful change per
-Automation, including across resume and history replacement. Delete tools return no cards. Their results suppress
-earlier cards for the same Automation in the pending-card reader.
-Silent Turns do not send cards or pass them to a later Turn.
-
-`conversations/cards.ts` removes old receipt fields when reading stored cards.
-`automations/card.ts` owns the AutomationCard schema and text format. Its Slack
-renderer and dashboard component own their layouts. `conversations/cards.ts`
-contains the closed union of built-in response types, not shared layout fields.
-To add a known card type, define its schema and add a case to each surface's
-renderer. Plugin-defined cards are not supported.
+See `conversations/README.md` for annotation storage, card selection, and silent
+updates. `conversations/cards.ts` also reads older Automation cards so stored
+Messages remain usable.
 
 Cards need no database migration. Versions before cards preserve Message
 metadata and tool-result fields, but omit cards from the transcript API.

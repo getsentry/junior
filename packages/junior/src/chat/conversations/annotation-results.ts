@@ -6,7 +6,7 @@ import { isRecord } from "@/chat/coerce";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 
-/** Save trusted object results and select snapshots for the next visible reply. */
+/** Save object annotations and return their Message card snapshots. */
 export async function saveObjectAnnotations(
   conversationId: string,
   plugin: string,
@@ -24,13 +24,13 @@ export async function saveObjectAnnotations(
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }
 
-/** Attach only plugin-authored annotation facts, not arbitrary provider response fields. */
+/** Save annotations from a successful plugin tool result and attach their cards. */
 export async function annotateToolResult(
   conversationId: string,
   plugin: string,
   result: unknown,
 ): Promise<unknown> {
-  if (!isRecord(result)) return result;
+  if (!isRecord(result) || result.isError === true) return result;
   const details = isRecord(result.details) ? result.details : result;
   if (
     details.timed_out === true ||
