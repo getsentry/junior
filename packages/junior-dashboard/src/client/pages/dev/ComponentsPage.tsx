@@ -649,7 +649,7 @@ function TranscriptsGalleryPage() {
           card={{
             kind: "automation",
             id: "sched_0123456789abcdef0123456789abcdef",
-            title: "Drink water",
+            title: "Deleted Automation (must not render)",
             operation: "deleted",
             url: null,
             instruction: "Remind the user to drink water.",

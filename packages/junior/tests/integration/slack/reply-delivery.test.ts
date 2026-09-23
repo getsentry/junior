@@ -145,7 +145,7 @@ describe("sendSlackReply", () => {
     });
   });
 
-  it("keeps object groups in one thread and uses text for missing or deleted objects", async () => {
+  it("keeps object groups in one thread and omits deleted objects", async () => {
     const card = {
       kind: "automation" as const,
       id: "sched_reminder",
@@ -161,7 +161,7 @@ describe("sendSlackReply", () => {
       conversationId: "local:cards",
       text: "",
       cards: [
-        ...Array.from({ length: 4 }, (_, index) => ({
+        ...Array.from({ length: 5 }, (_, index) => ({
           ...card,
           id: `sched_${index}`,
           url: `https://junior.example.com/automations/sched_${index}`,
@@ -174,7 +174,7 @@ describe("sendSlackReply", () => {
     expect(posts).toHaveLength(2);
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
     expect(posts[1]?.params).toMatchObject({ thread_ts: timestamps[0] });
-    expect(posts[0]?.params.blocks).toContainEqual({
+    expect(posts[1]?.params.blocks).toContainEqual({
       type: "section",
       text: {
         type: "mrkdwn",
@@ -182,14 +182,38 @@ describe("sendSlackReply", () => {
       },
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
-    expect(posts[1]?.params.text).toBe("Deleted “Reminder &lt;@U123&gt;”.");
-    expect(posts[1]?.params.blocks).toContainEqual({
-      type: "section",
-      text: { type: "mrkdwn", text: "Deleted “Reminder &lt;@U123&gt;”." },
-    });
+    expect(posts[1]?.params.text).toBe("Reminder &lt;@U123&gt;\nEvery Monday");
+    expect(JSON.stringify(posts)).not.toContain("Deleted");
+    expect(JSON.stringify(posts)).not.toContain("sched_deleted");
     for (const post of posts) {
       expect(JSON.stringify(post.params)).not.toContain(card.instruction);
     }
+  });
+
+  it("uses only the normal reply for a deletion and sends no card-only receipt", async () => {
+    const card = {
+      kind: "automation" as const,
+      id: "sched_deleted",
+      title: "Daily water reminder",
+      operation: "deleted" as const,
+      url: null,
+      trigger: "Daily",
+      instruction: "Remind me to drink water.",
+      warning: null,
+    };
+    for (const text of ["Canceled the daily water reminder.", ""]) {
+      await sendSlackReply({
+        channelId: "C123",
+        conversationId: "local:delete",
+        text,
+        cards: [card],
+      });
+    }
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.params.text).toBe("Canceled the daily water reminder.");
+    expect(posts[0]?.params).not.toHaveProperty("metadata");
+    expect(JSON.stringify(posts)).not.toContain("Deleted");
   });
 
   it("does not post empty text", async () => {

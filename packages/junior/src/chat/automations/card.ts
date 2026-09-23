@@ -18,7 +18,7 @@ export type AutomationCard = z.output<typeof automationCardSchema>;
 
 /** Render saved card facts for text-only delivery and accessible fallbacks. */
 export function automationCardText(card: AutomationCard): string {
-  if (card.operation === "deleted") return `Deleted “${card.title}”.`;
+  if (card.operation === "deleted") return "";
   return [
     card.title,
     card.warning,

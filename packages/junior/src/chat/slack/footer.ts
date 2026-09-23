@@ -122,7 +122,7 @@ export function buildSlackReplyBlocks(
         ...footer.items.map((item) => ({
           type: "mrkdwn" as const,
           text: item.url
-            ? formatSlackLink(item.url, "Conversation")
+            ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
             : `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`,
         })),
       ],

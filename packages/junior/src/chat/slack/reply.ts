@@ -4,7 +4,7 @@
  * Owns chunking, conversation footer attachment, and outbound posting.
  */
 import type { MessageCard } from "@/chat/conversations/cards";
-import { renderSlackCard } from "./cards";
+import { renderSlackCard, type SlackCard } from "./cards";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import {
   buildSlackReplyBlocks,
@@ -29,9 +29,12 @@ export async function sendSlackReply(args: {
   text: string;
   threadTs?: string;
 }): Promise<string[]> {
-  const posts: Array<{ text: string; cards: MessageCard[] }> =
+  const posts: Array<{ text: string; cards: SlackCard[] }> =
     splitSlackReplyText(args.text).map((text) => ({ text, cards: [] }));
-  const cards = args.cards ?? [];
+  const cards = (args.cards ?? []).flatMap((card) => {
+    const rendered = renderSlackCard(card);
+    return rendered ? [rendered] : [];
+  });
   // Keep previews in small groups so one reply does not become a wall of cards.
   for (let index = 0; index < cards.length; index += 5) {
     const group = cards.slice(index, index + 5);
@@ -49,8 +52,7 @@ export async function sendSlackReply(args: {
   let threadTs = args.threadTs;
 
   for (const [index, post] of posts.entries()) {
-    const { text } = post;
-    const cards = post.cards.map(renderSlackCard);
+    const { text, cards } = post;
     const isFinalChunk = index === posts.length - 1;
     const blocks = buildSlackReplyBlocks(text, undefined) ?? [];
     for (const card of cards) {

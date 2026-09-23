@@ -55,7 +55,7 @@ describe("Slack footer Sentry links", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "<https://my-org.sentry.io/explore/conversations/slack%3AC123%3A1700000000.000100/?project=4501|Conversation>",
+            text: "*ID:* <https://my-org.sentry.io/explore/conversations/slack%3AC123%3A1700000000.000100/?project=4501|slack:C123:1700000000.000100>",
           },
         ],
       },

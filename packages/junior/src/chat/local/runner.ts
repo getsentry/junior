@@ -271,7 +271,7 @@ async function runLocalAgentTurnInContext(
     failureCode = "delivery_failed";
     const cards = await loadPendingMessageCards(input.conversationId);
     await deps.deliverReply({
-      text: [text, ...cards.map(messageCardText)].join("\n\n"),
+      text: [text, ...cards.map(messageCardText)].filter(Boolean).join("\n\n"),
     });
     assistantMessageDelivered = true;
     const recordedMessageId = recordDeliveredAssistantMessage({

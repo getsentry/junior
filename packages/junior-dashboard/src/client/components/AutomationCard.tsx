@@ -5,13 +5,7 @@ import { automationPath } from "../format";
 
 /** Show the saved object, with instructions and controls on its detail page. */
 export function AutomationCard({ card }: { card: AutomationCardValue }) {
-  if (card.operation === "deleted") {
-    return (
-      <p className="my-1 text-sm text-dashboard-text-muted">
-        Deleted “{card.title}”.
-      </p>
-    );
-  }
+  if (card.operation === "deleted") return null;
 
   return (
     <section
