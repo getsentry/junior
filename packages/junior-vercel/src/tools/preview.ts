@@ -82,15 +82,14 @@ export function createVercelPreviewTools(
       .parse(await readVercelPreviewResponse(response));
     return alias.deploymentId === deploymentId && !alias.redirect;
   }
-  const annotations = {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-    readOnlyHint: false,
-  };
   return {
     preview_create: definePluginTool({
-      annotations: { ...annotations, idempotentHint: false },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
       description:
         "Build an exact GitHub commit as a Vercel Preview in the host-configured project. Inherits Preview build settings and credentials, so use only trusted commits after isolated Preview state is configured. No Production deploy, files, or setting overrides. Does not select the QA alias. Do not retry an uncertain create without inspecting deployments first.",
       inputSchema: z.object({ commitSha: previewCommitSchema }).strict(),
@@ -125,7 +124,12 @@ export function createVercelPreviewTools(
       },
     }),
     preview_inspect: definePluginTool({
-      annotations: { ...annotations, readOnlyHint: true },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+        readOnlyHint: true,
+      },
       description:
         "Inspect an exact Preview deployment and check whether the configured QA alias points to it. Check before and after Slack QA. aliasMatches=false means stop and mark results inconclusive. This is a point-in-time check, not a lock; it does not stop old workers.",
       inputSchema: identity,
@@ -142,7 +146,12 @@ export function createVercelPreviewTools(
       },
     }),
     preview_select: definePluginTool({
-      annotations: { ...annotations, destructiveHint: true },
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
       description:
         "Point the host-configured QA alias at a ready Preview of the exact commit. Replaces the current alias target. Coordinate with other testers; this is not a lock. Does not change Slack app settings or stop old workers. Read back the alias after assignment; if it differs, stop rather than overwrite it again.",
       inputSchema: identity,
@@ -171,7 +180,12 @@ export function createVercelPreviewTools(
       },
     }),
     preview_delete: definePluginTool({
-      annotations: { ...annotations, destructiveHint: true },
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: true,
+        readOnlyHint: false,
+      },
       description:
         "Delete an exact Preview in the configured project only when explicitly requested. Does not delete its database or Redis state. Never use automatic cleanup to restore or remove the shared QA alias; another tester may be using it.",
       inputSchema: identity,
