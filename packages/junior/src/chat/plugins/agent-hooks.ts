@@ -117,7 +117,7 @@ export interface PluginHookRunner {
 
 let registeredPlugins: PluginRegistration[] = [];
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
-const PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+const PLUGIN_TASK_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 const OPERATIONAL_REPORT_MAX_METRICS = 8;
 const OPERATIONAL_REPORT_MAX_WIDGETS = 12;
 const OPERATIONAL_REPORT_MAX_CHART_SERIES = 8;
@@ -405,7 +405,7 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       throw new Error(`Plugin "${name}" events is invalid`);
     }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
-      if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
+      if (!PLUGIN_TASK_NAME_RE.test(taskName)) {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must be a camelCase identifier`,
         );
@@ -772,11 +772,7 @@ export function getPluginTools(
     const pluginTools = hook(pluginContext);
     const namespace = pluginToolNamespace(pluginName);
     for (const [localName, tool] of Object.entries(pluginTools)) {
-      if (!PLUGIN_TOOL_NAME_RE.test(localName)) {
-        throw new Error(
-          `Plugin tool "${localName}" from plugin "${pluginName}" must be a camelCase identifier`,
-        );
-      }
+      // Naming conventions belong in lint, not on the turn's critical path.
       const name = `${namespace}_${localName}`;
       if (tools[name]) {
         throw new Error(

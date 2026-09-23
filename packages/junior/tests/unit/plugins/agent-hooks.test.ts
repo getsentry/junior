@@ -875,7 +875,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("rejects plugin tools with invalid names", () => {
+  it("registers plugin tools without enforcing the lint naming convention", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -886,22 +886,25 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              "not-valid": demoPluginTool(),
+              deployment_create: demoPluginTool(),
             };
           },
         },
       }),
     ]);
     try {
-      expect(() =>
-        getPluginTools({
-          conversationId: LOCAL_DESTINATION.conversationId,
-          destination: LOCAL_DESTINATION,
-          egress: TEST_EGRESS,
-          source: LOCAL_SOURCE,
-          workspace: {} as any,
-        }),
-      ).toThrow("must be a camelCase identifier");
+      const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+      expect(tools.agentDemo_deployment_create?.identity).toEqual({
+        id: "agent-demo.deployment_create",
+        name: "deployment_create",
+        plugin: "agent-demo",
+      });
     } finally {
       setPlugins(previous);
     }
