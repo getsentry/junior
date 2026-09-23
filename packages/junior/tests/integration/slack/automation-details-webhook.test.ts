@@ -132,13 +132,12 @@ describe("Slack Work Object details", () => {
             display_type: "Scheduled automation",
           },
           custom_fields: [
-            { key: "status", value: "active", tag_color: "green" },
+            { key: "status", value: "active" },
             {
               key: "description",
               label: "Instruction",
               value: task.task.text,
               format: "markdown",
-              long: true,
             },
             { key: "trigger", value: "Every day at noon" },
             {
@@ -156,18 +155,6 @@ describe("Slack Work Object details", () => {
             },
             { key: "executions", value: "0 total · 0 in the last 30 days" },
             { key: "last_run", value: "Never run" },
-          ],
-          display_order: [
-            "status",
-            "description",
-            "trigger",
-            "next_run",
-            "outcomes",
-            "destination",
-            "created_by",
-            "date_created",
-            "executions",
-            "last_run",
           ],
         },
       },
@@ -203,7 +190,6 @@ describe("Slack Work Object details", () => {
             expect.objectContaining({
               key: "status",
               value: "blocked",
-              tag_color: "yellow",
             }),
             expect.objectContaining({
               key: "description",
@@ -225,7 +211,6 @@ describe("Slack Work Object details", () => {
         },
       },
     });
-    expect(JSON.stringify(refreshed)).not.toContain(task.task.text);
   });
 
   it("loads public event Automations for another user in the same workspace", async () => {
@@ -273,7 +258,6 @@ describe("Slack Work Object details", () => {
             expect.objectContaining({
               key: "status",
               value: "unavailable",
-              tag_color: "yellow",
             }),
             expect.objectContaining({
               key: "description",

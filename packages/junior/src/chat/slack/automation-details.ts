@@ -47,15 +47,7 @@ function renderAutomationDetails(
         : "unavailable";
   // Item entities use custom_fields only. Do not add task-specific fields.
   const fields: DetailField[] = [
-    {
-      ...textField("status", "Status", status),
-      tag_color:
-        status === "blocked" || status === "unavailable"
-          ? "yellow"
-          : status === "completed"
-            ? "gray"
-            : "green",
-    },
+    textField("status", "Status", status),
     {
       ...textField("description", "Instruction", automation.instruction),
       format: "markdown",
@@ -111,14 +103,11 @@ function renderAutomationDetails(
     ),
     textField("created_by", "Created by", automation.createdBy),
     dateField("date_created", "Created", automation.createdAt, "Unknown"),
-    {
-      ...textField(
-        "executions",
-        "Executions",
-        `${automation.totalRuns} total · ${automation.runs[30]} in the last 30 days`,
-      ),
-      link: url,
-    },
+    textField(
+      "executions",
+      "Executions",
+      `${automation.totalRuns} total · ${automation.runs[30]} in the last 30 days`,
+    ),
     lastRun,
   );
 
@@ -135,7 +124,6 @@ function renderAutomationDetails(
             : "Event automation",
       },
       custom_fields: fields,
-      display_order: fields.map((field) => field.key),
     },
   };
 }
