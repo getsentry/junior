@@ -1,3 +1,4 @@
+import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ClipboardEventHandler, type ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
@@ -83,6 +84,15 @@ export const TranscriptMessageView = memo(
             )}
           </div>
         )}
+        {props.view === "rich" &&
+          props.message.cards?.map((card) => {
+            switch (card.kind) {
+              case "automation":
+                return (
+                  <AutomationCard key={`${card.kind}:${card.id}`} card={card} />
+                );
+            }
+          })}
         {props.view === "rich" &&
         props.message.role === "user" &&
         props.message.contexts?.length ? (

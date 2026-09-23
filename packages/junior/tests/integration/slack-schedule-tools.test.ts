@@ -318,6 +318,17 @@ describe("Slack schedule tools", () => {
   it("creates and lists tasks only for the active Slack conversation", async () => {
     const created = await createTask();
     expect(created).toMatchObject({
+      cards: [
+        {
+          kind: "automation",
+          id: created.automation.id,
+          operation: "created",
+          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
+          warning: null,
+        },
+      ],
+    });
+    expect(created).toMatchObject({
       automation: {
         conversationAccess: {
           audience: "channel",
@@ -357,6 +368,7 @@ describe("Slack schedule tools", () => {
       ],
     });
     expect(listed).not.toHaveProperty("data");
+    expect(listed).not.toHaveProperty("cards");
 
     const sameChannelOtherThread = await executeTool(
       createSlackScheduleListAutomationsTool(createContext()),

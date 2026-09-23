@@ -1,3 +1,4 @@
+import type { MessageCard } from "@/chat/conversations/cards";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { Location } from "@/chat/conversations/location";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
@@ -24,6 +25,7 @@ export type DeliveryResult = {
  * accept provider Delivery directly.
  */
 export type DeliverMessage = (input: {
+  cards?: MessageCard[];
   conversationId: string;
   location: Location;
   text: string;
@@ -31,6 +33,7 @@ export type DeliverMessage = (input: {
 
 /** Store one assistant Message and its Agent history. */
 export async function commitAssistantMessage(args: {
+  cards?: MessageCard[];
   agentMessage?: AssistantMessage;
   conversation: ThreadConversationState;
   conversationId: string;
@@ -41,6 +44,7 @@ export async function commitAssistantMessage(args: {
   userMessageId: string;
 }): Promise<void> {
   const conversationMessageId = recordDeliveredAssistantMessage({
+    cards: args.cards,
     conversation: args.conversation,
     sessionId: args.sessionId,
     source: args.source,

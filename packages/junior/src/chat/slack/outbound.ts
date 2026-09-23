@@ -114,7 +114,6 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
               blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),

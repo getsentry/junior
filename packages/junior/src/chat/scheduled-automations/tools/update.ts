@@ -255,7 +255,11 @@ export function createSlackScheduleUpdateAutomationTool(
         input.outcomes === undefined &&
         moveDestination
       ) {
-        return scheduleAutomationToolResult(lookup, actor.slackUserId);
+        return scheduleAutomationToolResult(
+          lookup,
+          actor.slackUserId,
+          "updated",
+        );
       }
 
       const committed = await saveScheduledAutomation(db, next);
@@ -265,7 +269,11 @@ export function createSlackScheduleUpdateAutomationTool(
           scheduledAutomationAttributes(committed),
         );
       }
-      return scheduleAutomationToolResult(committed, actor.slackUserId);
+      return scheduleAutomationToolResult(
+        committed,
+        actor.slackUserId,
+        "updated",
+      );
     },
   });
 }

@@ -1,3 +1,4 @@
+import { messageCardSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
 import {
   conversationTurnFailureCodeSchema,
@@ -295,6 +296,7 @@ const conversationReportMessageEventDataSchema = z
     eventType: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
+    cards: z.array(messageCardSchema).optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
   })
@@ -306,10 +308,10 @@ const conversationReportMessageEventDataSchema = z
         message: "message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && data.actorIdentity) {
+    if (data.redacted && (data.actorIdentity || data.cards)) {
       context.addIssue({
         code: "custom",
-        message: "redacted messages must not expose actor identity",
+        message: "redacted messages must not expose actor identity or cards",
       });
     }
   });

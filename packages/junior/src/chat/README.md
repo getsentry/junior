@@ -336,3 +336,30 @@ snapshots together. Do not restate the outline in call-site prompts.
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in
 this directory.
+
+## Message cards
+
+Automation tools return saved facts with successful changes. Delivery stores
+these cards in Message metadata. Slack and the web transcript render the same
+facts, under the same privacy rules as message text. Cards are not live status.
+
+`conversations/pending-cards.ts` reads committed tool results back to the last
+assistant Message or Turn start. It keeps the last successful change per
+Automation, including across resume and history replacement. Silent Turns do
+not send cards or pass them to a later Turn.
+
+`automations/card.ts` owns the AutomationCard schema and text format. Its Slack
+renderer and dashboard component own their layouts. `conversations/cards.ts`
+contains the closed union of built-in response types, not shared layout fields.
+To add a known card type, define its schema and add a case to each surface's
+renderer. Plugin-defined cards are not supported.
+
+Cards need no database migration. Versions before cards preserve Message
+metadata and tool-result fields, but omit cards from the transcript API.
+Rollback therefore hides web cards without deleting stored facts. Slack cards
+already posted remain visible. Automation changes are not undone by rollback.
+
+Roll back the API and dashboard together, or the API first. The new dashboard
+accepts responses without cards. The old dashboard rejects the new API's
+`cards` field because its response schema is strict. An old open tab needs a
+reload when it starts receiving card-bearing responses from the new API.

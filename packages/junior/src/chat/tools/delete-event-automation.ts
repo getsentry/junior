@@ -36,7 +36,12 @@ export function createDeleteEventAutomationTool(
       if (!deleted) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationToolResult(deleted, catalog, actor.userId);
+      return eventAutomationToolResult(
+        deleted,
+        catalog,
+        actor.userId,
+        "deleted",
+      );
     },
   });
 }

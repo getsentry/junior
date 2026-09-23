@@ -70,6 +70,16 @@ describe("canonical event transcript reduction", () => {
   });
 
   it("projects visible and redacted messages", () => {
+    const card = {
+      kind: "automation" as const,
+      id: "evt_review",
+      title: "Review fixes",
+      operation: "updated" as const,
+      url: "https://junior.example.com/automations/evt_review",
+      instruction: "Review new fixes.",
+      trigger: "New pull requests",
+      warning: null,
+    };
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
@@ -77,6 +87,7 @@ describe("canonical event transcript reduction", () => {
           messageId: "visible",
           role: "assistant",
           text: "safe answer",
+          cards: [card],
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "message",
@@ -90,6 +101,11 @@ describe("canonical event transcript reduction", () => {
     expect(messages).toHaveLength(2);
     expect(messages[0]?.parts).toEqual([{ type: "text", text: "safe answer" }]);
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
+    expect(messages[0]?.cards).toEqual([card]);
+    expect(messages[1]?.cards).toBeUndefined();
+    expect(messageRawText(messages[0]!)).toContain("Automation ID: evt_review");
+    const entry = groupTranscriptMessages(messages)[0]!;
+    expect(entryMatchesSearch(entry, "evt_review")).toBe(true);
   });
 
   it("preserves ordered reasoning and tool activity", () => {

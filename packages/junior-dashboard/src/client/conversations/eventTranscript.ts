@@ -199,6 +199,7 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
+        ...(data.cards ? { cards: data.cards } : undefined),
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),

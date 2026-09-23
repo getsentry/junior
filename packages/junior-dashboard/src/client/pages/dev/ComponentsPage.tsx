@@ -1,3 +1,4 @@
+import { AutomationCard } from "../../components/AutomationCard";
 import {
   Activity,
   Bot,
@@ -631,6 +632,36 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Saved automation">
+        <AutomationCard
+          card={{
+            kind: "automation",
+            id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
+            title: "Sentry Auto-Fix PRs",
+            operation: "updated",
+            url: "https://junior.example.com/automations/evt_0ffb0d2027d4b7600b64287bd6dc2b14",
+            instruction:
+              "Review Sentry PRs. Close invalid fixes and correct valid ones. Post in #proj-junior only when ready for human merge.",
+            trigger:
+              'getsentry/junior · pull_request.opened · author = "sentry[bot]"',
+            warning: null,
+          }}
+        />
+        <AutomationCard
+          card={{
+            kind: "automation",
+            id: "scheduled-1",
+            title: "Weekly release digest",
+            operation: "updated",
+            url: "https://junior.example.com/automations/scheduled-1",
+            instruction:
+              "Summarize the week's releases and send me the digest.",
+            trigger: "Every Friday at 09:00 · America/Los_Angeles",
+            warning:
+              "This automation is blocked. Connect your account to continue.",
+          }}
+        />
+      </Fixture>
       <Fixture title="Event notification">
         <TranscriptMarkdown compact text={EVENT_NOTIFICATION} />
       </Fixture>

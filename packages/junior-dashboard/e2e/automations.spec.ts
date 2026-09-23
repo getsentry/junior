@@ -5,6 +5,22 @@ test("opens scheduled and event automations in the native Automations view", asy
   page,
   dashboard,
 }) => {
+  // Saved cards may refer to a different deployment. Stay in this dashboard.
+  await page.goto(`${dashboard.baseURL}/dev/transcripts`);
+  const cardLink = page
+    .getByRole("region", { name: "Weekly release digest" })
+    .getByRole("link", { name: "Open automation" });
+  await expect(cardLink).toHaveAttribute("href", "/automations/scheduled-1");
+  const documentRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document")
+      documentRequests.push(request.url());
+  });
+  await cardLink.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(documentRequests).toEqual([]);
+
   await page.goto(`${dashboard.baseURL}/tasks/list?range=7#history`);
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/list?range=7#history`,
@@ -164,7 +180,10 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   ).toBeVisible();
 });
 
-test("opens one automation's execution history", async ({ page, dashboard }) => {
+test("opens one automation's execution history", async ({
+  page,
+  dashboard,
+}) => {
   await page.goto(
     `${dashboard.baseURL}/automations/scheduled/scheduled-1/executions`,
   );

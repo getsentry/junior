@@ -16,7 +16,7 @@ export function createSlackSystemTurnDelivery(args: {
   getSlackAdapter: () => SlackAdapter;
   state?: StateAdapter;
 }): DeliverMessage {
-  return async ({ conversationId, location, text }) => {
+  return async ({ conversationId, location, text, cards }) => {
     if (location.provider !== "slack") {
       throw new Error(
         `Slack system Turn cannot deliver to ${location.provider} Location`,
@@ -30,6 +30,7 @@ export function createSlackSystemTurnDelivery(args: {
         state: args.state,
         task: async () =>
           await sendSlackReply({
+            cards,
             channelId: location.channelId,
             conversationId,
             text,

@@ -84,6 +84,8 @@ Canonical words used across Junior's code and documentation.
   this description when they choose a profile.
 - **Message**: exact normalized source or destination chat content stored for
   transcript display, privacy, delivery handling, and search.
+- **Message card**: typed saved facts attached to a Message. Each surface owns
+  its layout. A card records the facts at delivery, not live resource status.
 - **Message update**: later delivery or hydration state for an existing
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent

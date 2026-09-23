@@ -1,4 +1,5 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
@@ -421,6 +422,7 @@ export function createConversationTurnWorker(
             return;
           }
           failureCode = "delivery_failed";
+          const cards = await loadPendingMessageCards(context.conversationId);
           let deliveryResult: DeliveryResult | undefined;
           if (deliverToProvider) {
             if (!conversationLocation || !deliverMessage) {
@@ -429,12 +431,14 @@ export function createConversationTurnWorker(
               );
             }
             deliveryResult = await deliverMessage({
+              cards,
               conversationId: context.conversationId,
               location: conversationLocation,
               text: replyText,
             });
           }
           await commitAssistantMessage({
+            cards,
             ...(agentMessage ? { agentMessage } : undefined),
             conversation,
             conversationId: context.conversationId,

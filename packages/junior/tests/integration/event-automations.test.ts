@@ -1,3 +1,12 @@
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { commitAssistantMessage } from "@/chat/task-execution/assistant-message";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { sendSlackReply } from "@/chat/slack/reply";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { createJuniorApi } from "@/api";
+import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
@@ -165,6 +174,110 @@ describe("event automations", () => {
     await fixture.close();
     await disconnectStateAdapter();
     vi.restoreAllMocks();
+  });
+
+  it("delivers the last saved automation card and retains it in web history", async () => {
+    const conversationId = "local:automation-card";
+    const links = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "local", conversationId },
+        source: "internal",
+        nowMs: 1,
+        visibility: "public",
+      });
+      const created = await createTask("Review fixes.");
+      const updated = await execute(
+        createUpdateEventAutomationTool(context(), EVENT_CATALOG),
+        {
+          automationId: created.automation.id,
+          credentialMode: "system",
+          trigger: {
+            namespace: "github",
+            identifier: "getsentry/junior#1174",
+            resourceType: "pull_request",
+            label: "Review feedback",
+            events: ["pull_request.review.commented"],
+          },
+        },
+      );
+      const store = getConversationEventStore();
+      await store.append(conversationId, [
+        {
+          createdAtMs: 1,
+          data: {
+            type: "tool_result",
+            toolName: "createEventAutomation",
+            details: created,
+            isError: false,
+          },
+        },
+        {
+          createdAtMs: 2,
+          data: {
+            type: "tool_result",
+            toolName: "updateEventAutomation",
+            details: updated,
+            isError: false,
+          },
+        },
+      ]);
+      const cards = await loadPendingMessageCards(conversationId);
+      expect(cards).toEqual([
+        expect.objectContaining({
+          id: created.automation.id,
+          operation: "updated",
+          trigger: "Review feedback · pull_request.review.commented",
+          url: `https://junior.example.com/automations/${created.automation.id}`,
+        }),
+      ]);
+      await sendSlackReply({
+        channelId: "C123",
+        conversationId,
+        text: "Updated the trigger.",
+        cards,
+      });
+      const posted =
+        getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+      expect(posted?.text).toContain(created.automation.id);
+      expect(posted?.blocks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "section",
+            accessory: expect.objectContaining({ url: cards[0]!.url }),
+          }),
+        ]),
+      );
+      await commitAssistantMessage({
+        cards,
+        conversation: coerceThreadConversationState({}),
+        conversationId,
+        sessionId: "turn-card",
+        text: "Updated the trigger.",
+        userMessageId: "user-card",
+      });
+      await expect(loadPendingMessageCards(conversationId)).resolves.toEqual(
+        [],
+      );
+      const response = await createJuniorApi().request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+      );
+      const report = conversationDetailReportSchema.parse(
+        await response.json(),
+      );
+      expect(report.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            data: expect.objectContaining({ type: "message", cards }),
+          }),
+        ]),
+      );
+    } finally {
+      setDashboardConversationLinkOptions(links);
+    }
   });
 
   it("fans one event out to every matching task and deduplicates retries", async () => {
