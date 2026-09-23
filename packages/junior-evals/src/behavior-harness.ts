@@ -1,5 +1,4 @@
 import path from "node:path";
-import { generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
@@ -65,9 +64,6 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
-import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
-import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
@@ -124,7 +120,11 @@ import { normalizeGitHubEvents } from "@sentry/junior-github/testing";
 import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
-import { loadEvalPluginFixtures } from "./eval-plugin-fixtures";
+import {
+  evalGitHubEnv,
+  evalRuntimePlugins,
+  loadEvalPluginFixtures,
+} from "./eval-plugin-fixtures";
 
 interface NormalizedMessage {
   role: "system" | "user" | "assistant";
@@ -473,6 +473,7 @@ interface QueueDelivery {
 }
 
 interface RuntimeObservations {
+  errors: unknown[];
   authorizationCompletions: AuthorizationCompletion[];
   modelIds: Set<string>;
   sessionMessages: NormalizedMessage[];
@@ -700,11 +701,6 @@ const HARNESS_ENV_KEYS = [
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
 const SENTRY_EVAL_SCOPE =
   "alerts:write event:write member:read org:read project:releases project:write team:write";
-const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-})
-  .privateKey.export({ format: "pem", type: "pkcs8" })
-  .toString();
 
 interface EnvSnapshot {
   restore(): void;
@@ -1244,12 +1240,7 @@ function configureCredentialProviderEnv(
   providers: Set<"github" | "sentry">,
 ): void {
   if (providers.has("github")) {
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_INSTALLATION_ID = "67890";
-    process.env.GITHUB_APP_PRIVATE_KEY = DUMMY_GITHUB_APP_PRIVATE_KEY;
-    process.env.GITHUB_APP_BOT_NAME = "junior-eval";
-    process.env.GITHUB_APP_BOT_EMAIL =
-      "12345+junior-eval[bot]@users.noreply.github.com";
+    Object.assign(process.env, evalGitHubEnv());
   }
   if (providers.has("sentry")) {
     process.env.SENTRY_CLIENT_ID = "eval-sentry-client-id";
@@ -1538,19 +1529,6 @@ interface HarnessEnvironment {
   configuredSkillDirs: string[];
   envSnapshot: EnvSnapshot;
   stateAdapter: HarnessStateAdapter;
-}
-
-function runtimePluginsForScenario(
-  scenario: EvalScenario,
-): PluginRegistration[] {
-  const packages = new Set(scenario.overrides?.plugin_packages ?? []);
-  return [
-    ...(packages.has("@sentry/junior-github")
-      ? [githubPlugin({ appPermissions: { deployments: "read" } })]
-      : []),
-    ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
-    ...(packages.has("@sentry/junior-sentry") ? [sentryPlugin()] : []),
-  ];
 }
 
 async function setupHarnessEnvironment(
@@ -2008,6 +1986,11 @@ function buildRuntimeServices(
           }
           replyState.successfulCount += 1;
           return outcome;
+        } catch (error) {
+          // Production delivers a safe failure reply. Keep the original failure
+          // so a negative rubric cannot score that fallback as a successful run.
+          observations.errors.push(error);
+          throw error;
         } finally {
           if (scenario.overrides?.unset_gateway_api_key) {
             gatewaySnapshot.restore();
@@ -2055,6 +2038,7 @@ async function processEvents(args: {
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
   steeringDelivery: SteeringDelivery;
+  signal?: AbortSignal;
 }): Promise<void> {
   const {
     scenario,
@@ -2120,14 +2104,18 @@ async function processEvents(args: {
       if (processed > 10) {
         throw new Error("Eval conversation work queue did not drain");
       }
-      await processConversationQueueMessage(
-        conversationWorkQueue.takeMessage(),
+      const result = await processConversationQueueMessage(
+        await conversationWorkQueue.takeReadyMessage(args.signal),
         {
+          conversationStore: conversationWork.conversationStore,
           queue: conversationWorkQueue,
           run: conversationWork.run,
           state: env.stateAdapter,
         },
       );
+      if (result.status === "failed") {
+        throw new Error("Eval conversation worker failed");
+      }
       await maybeAutoCompleteAuth();
     }
   };
@@ -2647,7 +2635,9 @@ export async function runEvalScenario(
   options: EvalScenarioRunOptions = {},
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
-  const runtimePlugins = runtimePluginsForScenario(scenario);
+  const runtimePlugins = evalRuntimePlugins(
+    scenario.overrides?.plugin_packages ?? [],
+  );
   const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
 
@@ -2666,6 +2656,7 @@ export async function runEvalScenario(
     const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {
+      errors: [],
       authorizationCompletions: [],
       modelIds: new Set(),
       sessionMessages: [],
@@ -2763,8 +2754,15 @@ export async function runEvalScenario(
       observations,
       readyQueueDeliveries,
       steeringDelivery,
+      signal: options.signal,
     });
 
+    if (observations.errors.length > 0) {
+      throw new AggregateError(
+        observations.errors,
+        "Eval agent execution failed",
+      );
+    }
     return collectResults(
       threadRecordsById,
       slackAdapter,

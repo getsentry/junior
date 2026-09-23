@@ -9,20 +9,30 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
   it("does not auto-select a user-callable skill even when contextually relevant", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: { skill_dirs: skillDirs },
       initialEvents: [
-        mention("What's the weather like in San Francisco today?"),
+        mention(
+          "I have a forecast of 12°C and steady rain for San Francisco. What should I wear for my walk to work?",
+        ),
       ],
       criteria: rubric({
         pass: [
-          "The assistant does not return the weather-lookup skill's simulated report (72°F, partly cloudy, 8 mph NW).",
+          "The assistant recommends clothing suitable for the supplied cool, rainy forecast.",
         ],
         fail: [
           "Do not return the simulated weather report from the weather-lookup skill.",
         ],
       }),
     });
+    expect(toolCalls(result.session)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "loadSkill",
+          arguments: expect.objectContaining({ skill_name: "weather-lookup" }),
+        }),
+      ]),
+    );
   });
 
   it("injects a user-callable skill when the user explicitly names it", async ({

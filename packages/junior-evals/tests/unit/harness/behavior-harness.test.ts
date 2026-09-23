@@ -179,6 +179,43 @@ describe("behavior harness", () => {
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
+  it("fails the scenario when the runtime delivers an agent failure reply", async () => {
+    const failure = new Error("provider unavailable");
+    executeAgentRunMock.mockRejectedValueOnce(failure);
+    handleNewMentionMock.mockImplementationOnce(async (thread) => {
+      try {
+        await runtimeState.agentRunner?.run({} as never);
+      } catch {
+        await thread.post(
+          "I ran into an internal error while processing that.",
+        );
+      }
+    });
+
+    await expect(
+      runEvalScenario({
+        initialEvents: [
+          {
+            type: "new_mention",
+            thread: {
+              id: "slack:CFAILURE:1700000000.0001",
+              channel_id: "CFAILURE",
+              thread_ts: "1700000000.0001",
+            },
+            message: {
+              id: "1700000000.0002",
+              text: "Help me with this task.",
+              author: { user_id: "U0TEST" },
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      message: "Eval agent execution failed",
+      errors: [failure],
+    });
+  });
+
   it("replays one canonical web source at different output limits", async () => {
     const previousReplayMode = process.env.VITEST_EVALS_REPLAY_MODE;
     process.env.VITEST_EVALS_REPLAY_MODE = "strict";
@@ -406,7 +443,8 @@ describe("behavior harness", () => {
     ]);
   });
 
-  it("routes Event fixtures through Conversation work", async () => {
+  it("routes Event fixtures through Conversation work after the queue delay", async () => {
+    const startedAt = Date.now();
     executeAgentRunMock.mockImplementationOnce(async (request) => {
       await (
         request as {
@@ -471,6 +509,7 @@ describe("behavior harness", () => {
       ],
     });
 
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(30_000);
     expect(handleSubscribedMessageMock).not.toHaveBeenCalled();
     expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([
@@ -496,7 +535,7 @@ describe("behavior harness", () => {
         identifier: "getsentry/junior#1730",
       },
     });
-  });
+  }, 40_000);
 
   it("rejects steering without a preceding event", async () => {
     await expect(

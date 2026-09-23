@@ -95,12 +95,12 @@ Only the behavioral suite uses the aggregate floor.
 Behavioral shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
 
 1. `behavioral / report` downloads all behavioral shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
-2. the same step publishes a `behavioral / score` Check Run with `min-pass-rate` (`EVAL_MIN_PASS_RATE`, currently `0.8`)
+2. the same step publishes a `behavioral / score` Check Run with `min-pass-rate` (`EVAL_MIN_PASS_RATE=1`, requiring every case to pass)
 3. `vitest-evals@0.16.1` attaches that Check Run to the PR head SHA and soft-fails the report step when the check publishes, so the Check Run title owns the pass-rate secondary line on the PR checks list
 
 If Check Run publishing is skipped or fails, the report step still fails on a rejected gate so status is not silently lost.
 
-When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
+Any case miss fails the aggregate gate. Setup crashes and missing or empty result files fail the report job hard. A green workflow execution is not a passing score; inspect `behavioral / score`.
 
 Integration shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `guardian / run` on mismatch. Router snapshots assert exact model profile and reasoning level selections, publish their own job summary, and fail `router / run` on mismatch.
 

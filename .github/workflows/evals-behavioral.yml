@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EVAL_MIN_PASS_RATE: "0.8"
+  EVAL_MIN_PASS_RATE: "1"
 
 jobs:
   select:
@@ -163,6 +163,10 @@ jobs:
             echo "::error::missing behavioral eval results for shard ${{ matrix.shard }} ($result_file). Treat setup/runtime crashes as hard failures."
             exit 1
           fi
+          jq -e '.numTotalTests > 0 and (.testResults | length > 0)' "$result_file" >/dev/null || {
+            echo "::error::behavioral shard ${{ matrix.shard }} produced an empty report; setup did not complete."
+            exit 1
+          }
       - name: Publish behavioral shard summary
         if: steps.results.conclusion == 'success'
         uses: getsentry/vitest-evals@v0.16.1

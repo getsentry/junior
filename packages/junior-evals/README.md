@@ -7,7 +7,7 @@ Evals are the integration-style test layer for agent-facing behavior when model 
 There are four independently runnable suites:
 
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
-2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `router/`) — full agent/runtime runs that measure agent behavior and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
+2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `router/`) — full agent/runtime runs that measure agent behavior. Rubrics allow valid variations, but every case must pass.
 3. **Guardian** (`evals/guardian/**`) — isolated decision snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
 4. **Router** (`evals/router/**`) — isolated turn route snapshots scored on exact model profile and reasoning level selections. Failures are hard pass/fail.
 
@@ -100,6 +100,8 @@ Harness override knobs (in `EvalOverrides`):
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
 
+The eval queue honors each accepted delivery's due time before invoking the worker. This includes the production event batching delay; the 60-second agent response budget starts afterward. Snapshot warmup and the egress process use the same JavaScript plugin registrations as the scenario, not package names alone. Package names expose skills but do not supply runtime dependencies or credential metadata.
+
 Tool replay:
 
 - `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. Use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.
@@ -141,8 +143,8 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and Router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
-- After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the gate line (for example `Eval pass rate 90.2% — floor 80.0%`). When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
-- The behavioral floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). `vitest-evals@0.16` owns the aggregate gate math; individual case misses are warnings when the floor still passes. Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
+- After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the case pass rate and the required 100% floor. When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
+- The behavioral floor is `EVAL_MIN_PASS_RATE=1` (every case must pass). `vitest-evals@0.16` owns the aggregate gate math. Missing or empty shard reports are hard failures, not successful runs. Agent execution errors fail the scenario before rubric judging, even if the runtime posted a safe failure reply.
 - Integration cases fail the `integration / shard *` jobs hard on any miss. They do not use the aggregate pass-rate floor.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `guardian / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - Router cases assert exact model profile and reasoning level selections and fail the `router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.

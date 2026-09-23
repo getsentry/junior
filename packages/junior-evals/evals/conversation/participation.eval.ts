@@ -9,6 +9,8 @@ import {
 } from "../../src/helpers";
 
 describeEval("Passive Behavior", slackEvals, (it) => {
+  const sam = { user_id: "USAM", user_name: "sam", full_name: "Sam" };
+  const alex = { user_id: "UALEX", user_name: "alex", full_name: "Alex" };
   const sideConversationThread = {
     id: "thread-passive-side-conversation",
     channel_id: "CPASSIVESIDECONVERSATION",
@@ -97,7 +99,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         ),
       ],
       events: [
+        threadMessage("Alex, I plan to roll back the billing worker first.", {
+          author: sam,
+          thread: casualPronounThread,
+        }),
         threadMessage("Is that the right approach?", {
+          author: sam,
           thread: casualPronounThread,
         }),
       ],
@@ -127,7 +134,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       events: [
+        threadMessage("Sam, I can finish the API rollout tomorrow.", {
+          author: alex,
+          thread: domainVocabThread,
+        }),
         threadMessage("What about the billing worker timeline?", {
+          author: sam,
           thread: domainVocabThread,
         }),
       ],
@@ -153,7 +165,14 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         mention("Show me the deployment status.", { thread: canYouThread }),
       ],
       events: [
-        threadMessage("Can you check on this?", { thread: canYouThread }),
+        threadMessage("Alex, my deployment is still queued.", {
+          author: sam,
+          thread: canYouThread,
+        }),
+        threadMessage("Can you check on this?", {
+          author: sam,
+          thread: canYouThread,
+        }),
       ],
     });
 
@@ -175,7 +194,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
+          "What changed in the last deploy? The API gateway gained request timeouts, the billing worker now backs off failed payment retries, and the auth service refreshes expired sessions.",
           {
             thread: genuineFollowUpThread,
           },
@@ -188,7 +207,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The second reply provides more detail about the deploy changes.",
+          "The second reply expands the summary using the supplied changes: request timeouts, payment retry backoff, and session refresh. It does not invent other changes.",
         ],
       }),
     });
@@ -246,10 +265,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       events: [
-        threadMessage("I think auth should roll back first.", {
+        threadMessage("Sam, I think auth should roll back first.", {
+          author: alex,
           thread: humansTookFloorThread,
         }),
         threadMessage("What about the billing worker timeline?", {
+          author: sam,
           thread: humansTookFloorThread,
         }),
       ],

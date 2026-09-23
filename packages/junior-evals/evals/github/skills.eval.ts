@@ -15,6 +15,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   // Keep one-time sandbox setup outside the 60-second behavior budget.
   beforeAll(async () => {
     await warmSandboxSnapshot();
+    await warmSandboxSnapshot(["@sentry/junior-github"]);
   }, SNAPSHOT_WARMUP_TIMEOUT_MS);
 
   it("when subscribed PR checks fail headlessly, commit and push the fix", async ({
@@ -184,11 +185,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     });
   });
 
-  it("when drafting a fake issue from contextual foreign reference, keep the default repo as target", async ({
+  it("when drafting an issue from a foreign reference, keep the default repo as target", async ({
     run,
   }) => {
     await run({
       overrides: {
+        credential_providers: ["github"],
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
@@ -225,11 +227,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     });
   });
 
-  it("when confirming a fake explicit issue reference, use that issue as target", async ({
+  it("when confirming an explicit issue reference, use that issue as target", async ({
     run,
   }) => {
     await run({
       overrides: {
+        credential_providers: ["github"],
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
