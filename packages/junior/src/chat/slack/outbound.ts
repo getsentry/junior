@@ -1,6 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
-import type { SlackMessageAttachment } from "@/chat/slack/cards";
+import type { SlackEntity } from "@/chat/slack/cards";
 
 import {
   getSlackClient,
@@ -88,7 +88,7 @@ export async function getSlackMessagePermalink(args: {
 
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
-  attachments?: SlackMessageAttachment[];
+  entities?: SlackEntity[];
   blocks?: SlackMessageBlock[];
   channelId: string;
   text: string;
@@ -119,8 +119,8 @@ export async function postSlackMessage(input: {
               blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),
-        ...(input.attachments?.length
-          ? { attachments: input.attachments }
+        ...(input.entities?.length
+          ? { metadata: { entities: input.entities } }
           : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),

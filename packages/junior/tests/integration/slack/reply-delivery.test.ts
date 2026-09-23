@@ -145,6 +145,53 @@ describe("sendSlackReply", () => {
     });
   });
 
+  it("keeps object groups in one thread and uses text for missing or deleted objects", async () => {
+    const card = {
+      kind: "automation" as const,
+      id: "sched_reminder",
+      title: "Reminder <@U123>",
+      operation: "created" as const,
+      url: "https://junior.example.com/automations/sched_reminder",
+      trigger: "Every Monday",
+      instruction: "Full instructions stay off the preview.",
+      warning: null,
+    };
+    const timestamps = await sendSlackReply({
+      channelId: "C123",
+      conversationId: "local:cards",
+      text: "",
+      cards: [
+        ...Array.from({ length: 4 }, (_, index) => ({
+          ...card,
+          id: `sched_${index}`,
+          url: `https://junior.example.com/automations/sched_${index}`,
+        })),
+        { ...card, id: "sched_no_url", url: null },
+        { ...card, id: "sched_deleted", operation: "deleted" },
+      ],
+    });
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    expect(posts).toHaveLength(2);
+    expect(posts[0]?.params).not.toHaveProperty("thread_ts");
+    expect(posts[1]?.params).toMatchObject({ thread_ts: timestamps[0] });
+    expect(posts[0]?.params.blocks).toContainEqual({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "Reminder &lt;@U123&gt;\nEvery Monday",
+      },
+    });
+    expect(posts[1]?.params).not.toHaveProperty("metadata");
+    expect(posts[1]?.params.text).toBe("Deleted “Reminder &lt;@U123&gt;”.");
+    expect(posts[1]?.params.blocks).toContainEqual({
+      type: "section",
+      text: { type: "mrkdwn", text: "Deleted “Reminder &lt;@U123&gt;”." },
+    });
+    for (const post of posts) {
+      expect(JSON.stringify(post.params)).not.toContain(card.instruction);
+    }
+  });
+
   it("does not post empty text", async () => {
     await expect(
       sendSlackReply({

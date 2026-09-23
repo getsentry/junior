@@ -670,6 +670,7 @@ describe("Slack schedule tools", () => {
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
       },
+      cards: [{ trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles" }],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),

@@ -57,7 +57,7 @@ describe("buildSlackReplyFooter", () => {
     expect(buildSlackReplyFooter({})).toBeUndefined();
   });
 
-  it("links the ID to the core dashboard when dashboard links are configured", () => {
+  it("links to the core dashboard with a readable conversation label", () => {
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
@@ -76,6 +76,24 @@ describe("buildSlackReplyFooter", () => {
         },
       ],
     });
+    expect(
+      buildSlackReplyBlocks(
+        "",
+        buildSlackReplyFooter({
+          conversationId: "slack:C123:1700000000.000100",
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "<https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100|Conversation>",
+          },
+        ],
+      },
+    ]);
   });
 
   it("uses JUNIOR_BASE_URL for core dashboard footer links", () => {

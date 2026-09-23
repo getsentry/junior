@@ -632,17 +632,16 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
-      <Fixture title="Saved automation">
+      <Fixture title="Automation objects">
         <AutomationCard
           card={{
             kind: "automation",
             id: "sched_0123456789abcdef0123456789abcdef",
-            title: "Drink water",
+            title: "Drink water reminder",
             operation: "created",
             url: "https://junior.example.com/automations/sched_0123456789abcdef0123456789abcdef",
-            instruction:
-              "Remind the user to drink water with a short friendly message in this conversation. Then create another one-off reminder after 30 minutes.",
-            trigger: "In 30 minutes",
+            instruction: "Remind the user to drink water in this conversation.",
+            trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
           }}
         />
@@ -654,7 +653,7 @@ function TranscriptsGalleryPage() {
             operation: "deleted",
             url: null,
             instruction: "Remind the user to drink water.",
-            trigger: "In 30 minutes",
+            trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
           }}
         />
@@ -662,7 +661,8 @@ function TranscriptsGalleryPage() {
           card={{
             kind: "automation",
             id: "evt_0ffb0d2027d4b7600b64287bd6dc2b14",
-            title: "Sentry Auto-Fix PRs",
+            title:
+              "Review automated fixes across the JavaScript SDK repositories",
             operation: "updated",
             url: "https://junior.example.com/automations/evt_0ffb0d2027d4b7600b64287bd6dc2b14",
             instruction:
@@ -682,8 +682,7 @@ function TranscriptsGalleryPage() {
             instruction:
               "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",
-            warning:
-              "This automation is blocked. Connect your account to continue.",
+            warning: "Connect your GitHub account to resume this automation.",
           }}
         />
       </Fixture>

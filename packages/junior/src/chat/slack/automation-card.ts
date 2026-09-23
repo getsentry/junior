@@ -1,6 +1,5 @@
 import type { AutomationCard } from "@/chat/automations/card";
-import type { SlackMessageAttachment } from "./cards";
-import type { SlackMessageBlock } from "./footer";
+import type { SlackCard } from "./cards";
 import { escapeSlackMrkdwnText, formatSlackLink } from "./mrkdwn";
 
 function preview(text: string, length: number): string {
@@ -8,56 +7,61 @@ function preview(text: string, length: number): string {
   return compact.length > length ? `${compact.slice(0, length - 1)}…` : compact;
 }
 
-/** Render a compact saved object, with full instructions left in the dashboard. */
-export function renderSlackAutomationCard(
-  card: AutomationCard,
-): SlackMessageAttachment {
+/** Show an Automation as a native Work Object, not an operation receipt. */
+export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
   const title = preview(card.title, 160);
-  const trigger = preview(card.trigger, 250);
+  if (card.operation === "deleted") {
+    return {
+      entity: null,
+      text: escapeSlackMrkdwnText(`Deleted “${title}”.`),
+    };
+  }
+
+  const trigger = preview(card.trigger, 500);
   const warning = card.warning ? preview(card.warning, 500) : null;
-  const operation = `${card.operation[0]!.toUpperCase()}${card.operation.slice(1)}`;
-  const url = card.operation === "deleted" ? null : card.url;
-  const blocks: SlackMessageBlock[] = [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*${url ? formatSlackLink(url, title) : escapeSlackMrkdwnText(title)}*`,
+  const text = [
+    card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
+    escapeSlackMrkdwnText(trigger),
+    warning ? escapeSlackMrkdwnText(warning) : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // Work Objects need a real object URL. Do not invent one for headless installs.
+  if (!card.url) return { entity: null, text };
+
+  return {
+    text,
+    entity: {
+      entity_type: "slack#/entities/item",
+      external_ref: { id: card.id, type: "automation" },
+      url: card.url,
+      entity_payload: {
+        attributes: {
+          title: { text: title },
+          display_type: "Automation",
+        },
+        custom_fields: [
+          {
+            key: "trigger",
+            label: "When",
+            type: "string",
+            value: trigger,
+            long: true,
+          },
+          ...(warning
+            ? [
+                {
+                  key: "warning",
+                  label: "Needs attention",
+                  type: "string",
+                  value: warning,
+                  long: true,
+                },
+              ]
+            : []),
+        ],
       },
     },
-    {
-      type: "context",
-      elements: [
-        { type: "plain_text", text: `Automation · ${operation}` },
-        { type: "plain_text", text: trigger },
-      ],
-    },
-    ...(warning
-      ? [
-          {
-            type: "section" as const,
-            text: { type: "plain_text" as const, text: `⚠ ${warning}` },
-          },
-        ]
-      : []),
-    {
-      type: "context",
-      elements: [{ type: "plain_text", text: `Automation ID: ${card.id}` }],
-    },
-  ];
-  return {
-    blocks,
-    ...(warning ? { color: "warning" } : undefined),
-    fallback: escapeSlackMrkdwnText(
-      [
-        `${title} — ${operation}`,
-        trigger,
-        warning,
-        url,
-        `Automation ID: ${card.id}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    ),
   };
 }

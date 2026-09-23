@@ -48,10 +48,24 @@ inspect `message.raw` or assemble attachment text themselves.
 
 `reply.ts` owns destination-visible reply chunking, conversation footers, and
 the `sendSlackReply` helper. `outbound.ts` owns Slack API calls and immediate
-transport retries. Saved cards use Block Kit inside native Slack attachments,
-not blocks appended to the reply body. Their title links to the object; full
-instructions stay on the detail page. Attachment-only chunks keep a context
-block so Slack does not also display the notification fallback as body text.
+transport retries. Saved cards use Slack Work Objects through
+`chat.postMessage.metadata.entities`, not Block Kit attachments. Automation
+previews use `slack#/entities/item`. They show the title, trigger, and any warning.
+The opaque ID stays in `external_ref`; operation badges and full instructions
+stay out of the preview. Deleted objects use a text confirmation, not a dead
+link. Objects without a dashboard URL use compact text instead.
+
+Enable **Work Object Previews → Item** in the Slack app before deploying this
+renderer. Slack owns the card layout and app attribution. The app icon supplies
+the card icon. The initial delivery is read-only: it does not implement link
+unfurls, refresh, actions, or a custom detail panel. Slack shows the saved preview
+in its default detail panel. Do not describe these cards as live status.
+See [Slack's notification API](https://docs.slack.dev/messaging/work-objects-implementation#implementation-notifications).
+
+Reply text and accessible fallback text still travel together. Card-only chunks
+keep a context block so Slack does not also display the notification fallback
+as body text. Conversation footer links use the label “Conversation,” not an
+opaque ID. Installs without a conversation URL retain the diagnostic ID.
 `errors.ts` owns reply-failure classification. `mrkdwn.ts` owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
 status rendering.
 
