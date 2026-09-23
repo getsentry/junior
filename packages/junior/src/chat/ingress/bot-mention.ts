@@ -6,56 +6,6 @@
  * both `message` and `app_mention` paths must use this check.
  */
 
-/** Detect active mentions in message blocks, not controls or link unfurls. */
-export function blocksMentionBot(blocks: unknown, botUserId: string): boolean {
-  if (!Array.isArray(blocks) || !botUserId) return false;
-  let remainingNodes = 5_000;
-
-  function mentions(value: unknown, depth: number): boolean {
-    if (
-      !value ||
-      typeof value !== "object" ||
-      depth > 16 ||
-      --remainingNodes < 0
-    ) {
-      return false;
-    }
-    if (Array.isArray(value)) {
-      return value.slice(0, 50).some((child) => mentions(child, depth + 1));
-    }
-    const element = value as Record<string, unknown>;
-    switch (element.type) {
-      case "mrkdwn":
-      case "markdown":
-        return (
-          typeof element.text === "string" &&
-          textMentionsBot(element.text, botUserId)
-        );
-      case "user":
-        return (
-          element.user_id === botUserId &&
-          !(element.style as { code?: boolean } | undefined)?.code
-        );
-      case "section":
-        return (
-          mentions(element.text, depth + 1) ||
-          mentions(element.fields, depth + 1)
-        );
-      case "context":
-      case "rich_text":
-      case "rich_text_section":
-      case "rich_text_list":
-      case "rich_text_quote":
-        return mentions(element.elements, depth + 1);
-      default:
-        // Plain text, code blocks, and interaction data cannot mention a user.
-        return false;
-    }
-  }
-
-  return mentions(blocks, 0);
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

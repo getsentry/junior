@@ -13,22 +13,7 @@ describe("parseContent", () => {
         attachments: [],
         text: `inspect ${TRUNCATED_LABEL}`,
         formatted: parseMarkdown(`inspect [${TRUNCATED_LABEL}](${FULL_URL})`),
-        raw: {
-          blocks: [
-            {
-              type: "rich_text",
-              elements: [
-                {
-                  type: "rich_text_section",
-                  elements: [
-                    { type: "text", text: "inspect " },
-                    { type: "link", text: TRUNCATED_LABEL, url: FULL_URL },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
+        raw: {},
       }).text,
     ).toBe(`inspect [${TRUNCATED_LABEL}](${FULL_URL})`);
   });

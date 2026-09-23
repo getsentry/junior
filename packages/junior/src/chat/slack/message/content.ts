@@ -41,14 +41,14 @@ function renderTopLevelText(
 ): string {
   const blocks = readRawBlocks(message.raw);
   const blockText = renderBlockText(blocks);
-  // Custom Block Kit bodies can differ from the notification fallback. Keep
-  // the SDK's formatting for ordinary rich_text messages, which mirror text.
+  // Section blocks contain the body; text can be only a notification summary.
   if (
-    blockText.trim() &&
     Array.isArray(blocks) &&
-    blocks.some((block) => block?.type !== "rich_text")
-  )
+    blocks.some((block) => block?.type === "section") &&
+    blockText
+  ) {
     return blockText;
+  }
 
   if (message.formatted.children.length > 0) {
     return stringifyMarkdown(message.formatted).trim();
