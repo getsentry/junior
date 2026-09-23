@@ -1,6 +1,6 @@
 name: gcp
 display-name: Google Cloud Logging
-description: Read Google Cloud log entries with the connected user's IAM permissions
+description: Read Google Cloud log entries with gcloud and the connected user's IAM permissions
 
 config-keys:
   - project
@@ -11,10 +11,34 @@ env-vars:
 
 credentials:
   type: oauth-bearer
-  auth-token-env: GCP_ACCESS_TOKEN
+  auth-token-env: CLOUDSDK_AUTH_ACCESS_TOKEN
   auth-token-placeholder: host_managed_credential
   domains:
     - logging.googleapis.com
+
+command-env:
+  CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+  CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: "true"
+  CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "1"
+
+runtime-postinstall:
+  - cmd: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        version=576.0.0
+        archive="google-cloud-cli-${version}-linux-x86_64.tar.gz"
+        url="https://storage.googleapis.com/cloud-sdk-release/${archive}"
+        sha256="7094a08e8fc3772cdbfb1a8a1920300f52fec5e370c9f9c803c2a3c8824a32c2"
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fsSL "$url" -o "$tmp/$archive"
+        echo "${sha256}  $tmp/$archive" | sha256sum -c -
+        mkdir -p /vercel/sandbox/.junior/bin
+        tar -xzf "$tmp/$archive" -C /vercel/sandbox/.junior
+        ln -sfn /vercel/sandbox/.junior/google-cloud-sdk/bin/gcloud /vercel/sandbox/.junior/bin/gcloud
+        CLOUDSDK_CORE_DISABLE_USAGE_REPORTING=true gcloud --version
 
 oauth:
   client-id-env: GCP_CLIENT_ID

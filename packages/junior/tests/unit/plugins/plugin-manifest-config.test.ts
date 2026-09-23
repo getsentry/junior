@@ -20,7 +20,7 @@ describe("plugin manifest config", () => {
     expect(manifest.name).toBe("gcp");
     expect(manifest.credentials).toEqual({
       type: "oauth-bearer",
-      authTokenEnv: "GCP_ACCESS_TOKEN",
+      authTokenEnv: "CLOUDSDK_AUTH_ACCESS_TOKEN",
       authTokenPlaceholder: "host_managed_credential",
       domains: ["logging.googleapis.com"],
     });
@@ -38,6 +38,12 @@ describe("plugin manifest config", () => {
       GCP_CLIENT_SECRET: {},
     });
     expect(manifest.domains ?? []).toEqual([]);
+    expect(manifest.commandEnv).toEqual({
+      CLOUDSDK_CORE_DISABLE_PROMPTS: "1",
+      CLOUDSDK_CORE_DISABLE_USAGE_REPORTING: "true",
+      CLOUDSDK_COMPONENT_MANAGER_DISABLE_UPDATE_CHECK: "1",
+    });
+    expect(manifest.runtimePostinstall).toHaveLength(1);
   });
 
   it("applies manifest config before validation", () => {

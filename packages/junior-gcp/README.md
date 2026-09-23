@@ -1,8 +1,13 @@
 # @sentry/junior-gcp
 
-Read Google Cloud Logging entries with per-user OAuth. This package uses Junior's
-existing OAuth flow and host-side credential proxy. It adds no Google-specific
-logic to core and installs no CLI or SDK.
+Read Google Cloud Logging entries with `gcloud logging read` and per-user OAuth.
+This package uses Junior's existing OAuth flow and host-side credential proxy.
+It adds no Google-specific logic to core and does not use MCP.
+
+The manifest installs Google Cloud CLI 576.0.0 for Linux x86_64 in the Sandbox.
+The archive includes Python. The installer checks the pinned SHA-256 before
+extraction. Update checks, usage reporting, and interactive prompts are disabled.
+Rebuild the Sandbox snapshot after adding or updating this plugin.
 
 ## Setup
 
@@ -28,8 +33,10 @@ project through the normal operator process.
 Each user connects their Google account through Junior. The plugin requests only
 `https://www.googleapis.com/auth/logging.read`. It requests offline access and
 consent so Google can issue a refresh token. Junior stores and refreshes tokens
-on the host. The Sandbox receives only `GCP_ACCESS_TOKEN=host_managed_credential`.
-The host adds the real bearer token only to `logging.googleapis.com` requests.
+on the host. The Sandbox receives only the non-secret placeholder
+`CLOUDSDK_AUTH_ACCESS_TOKEN=host_managed_credential`. This CLI property avoids
+local login and credential files. The host adds the real bearer token only to
+`logging.googleapis.com` requests.
 
 Google IAM still controls which log entries the user can read. OAuth consent
 does not grant a project role. Ordinary project logs require
@@ -45,11 +52,14 @@ jr-rpc config set gcp.project PROJECT_ID
 
 ## Scope and limits
 
-The bundled `gcp` skill reads bounded pages from `entries:list`. It supports
-project logs and explicit log views, including GKE and Cloud Run logs. The
-OAuth scope excludes logging writes. The host restriction does not enforce a
-path allowlist; Google scope checks and IAM are the access boundary. Do not
-expand the scope to `cloud-platform` or `logging.admin`.
+The bundled `gcp` skill uses `gcloud logging read` with an explicit project,
+UTC window, 50-entry limit, and 60-second timeout. It supports project logs and
+explicit log views, including GKE and Cloud Run logs. The CLI handles pagination.
+
+The CLI itself is not read-only. The OAuth scope excludes logging writes, and
+the skill permits only log reads. The host restriction does not enforce a path
+allowlist; Google scope checks and IAM are the access boundary. Do not expand
+the scope to `cloud-platform` or `logging.admin`.
 
 There is no shared service account, workload identity federation, project
 inventory, live tail, Log Analytics SQL, or infrastructure mutation support.
@@ -62,5 +72,6 @@ configuration and cannot be proved by manifest tests.
 
 ## References
 
+- [gcloud logging read](https://docs.cloud.google.com/sdk/gcloud/reference/logging/read)
 - [Cloud Logging entries.list](https://docs.cloud.google.com/logging/docs/reference/v2/rest/v2/entries/list)
 - [Google OAuth web-server flow](https://developers.google.com/identity/protocols/oauth2/web-server)
