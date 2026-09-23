@@ -13,7 +13,6 @@ import {
 } from "@/chat/plugins/annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
-import { createAttachCardsTool } from "@/chat/tools/attach-cards";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   closeConversationFixture,
@@ -74,8 +73,8 @@ it("saves plugin object results once per reply, leaves background updates silent
         },
         {
           type: "toolCall",
-          name: "attachCards",
-          arguments: { refs: [{ plugin: "objects", key: annotation.key }] },
+          name: "executeTool",
+          arguments: { tool_name: "objects_save", arguments: {} },
         },
         {
           type: "toolCall",
@@ -141,19 +140,12 @@ it("saves plugin object results once per reply, leaves background updates silent
     ).toMatchObject({ meta: { cards } });
 
     harness.setModelStream(
-      createModelStream([
-        {
-          type: "toolCall",
-          name: "attachCards",
-          arguments: { refs: [{ plugin: "objects", key: annotation.key }] },
-        },
-        { type: "text", text: "Here is the saved object." },
-      ]),
+      createModelStream([{ type: "text", text: "The object has merged." }]),
     );
     await harness.continue({
       conversationId,
       idempotencyKey: "objects-2",
-      message: "Show it again.",
+      message: "Any news?",
     });
     await harness.drain();
     const later = (
@@ -164,57 +156,14 @@ it("saves plugin object results once per reply, leaves background updates silent
           event.data.type === "message" && event.data.role === "assistant",
       )
       .at(-1);
-    expect(later?.data).toMatchObject({
-      meta: { cards: [{ ...annotation, plugin: "objects", status: "merged" }] },
-    });
-    const tool = createAttachCardsTool(conversationId);
-    await expect(
-      tool.execute!(
-        { refs: [{ plugin: "objects", key: "not-in-this-conversation" }] },
-        {},
-      ),
-    ).rejects.toThrow("not available in this Conversation");
+    expect(later?.data).not.toHaveProperty("meta.cards");
 
     harness.setModelStream(
       createModelStream([
         {
           type: "toolCall",
-          name: "attachCards",
-          arguments: { refs: [{ plugin: "objects", key: annotation.key }] },
-        },
-        {
-          type: "toolCall",
-          name: "attachCards",
-          arguments: {
-            refs: [{ plugin: "objects", key: annotation.key }],
-            show: false,
-          },
-        },
-        { type: "text", text: "No card this time." },
-      ]),
-    );
-    await harness.continue({
-      conversationId,
-      idempotencyKey: "objects-hide",
-      message: "Use text only.",
-    });
-    await harness.drain();
-    const hidden = (
-      await getConversationEventStore().loadHistory(conversationId)
-    )
-      .filter(
-        (event) =>
-          event.data.type === "message" && event.data.role === "assistant",
-      )
-      .at(-1);
-    expect(hidden?.data).not.toHaveProperty("meta.cards");
-
-    harness.setModelStream(
-      createModelStream([
-        {
-          type: "toolCall",
-          name: "attachCards",
-          arguments: { refs: [{ plugin: "objects", key: annotation.key }] },
+          name: "executeTool",
+          arguments: { tool_name: "objects_save", arguments: {} },
         },
         { type: "text", text: "[[NO_REPLY]]" },
       ]),

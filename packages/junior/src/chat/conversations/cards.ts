@@ -55,14 +55,14 @@ export function messageCardText(card: MessageCard): string {
   }
 }
 
-/** Deduplicate selected objects across tools and explicit selections. */
+/** Deduplicate object cards across successful tool results. */
 export function messageCardKey(card: MessageCard): string {
   return card.kind === "object"
     ? JSON.stringify([card.plugin, card.key])
     : JSON.stringify(["junior", card.id]);
 }
 
-/** Identify an object card to select or omit from a reply. */
+/** Identify a deleted object whose pending card must be omitted. */
 export const messageCardRefSchema = z
   .object({ plugin: z.string().min(1), key: z.string().min(1) })
   .strict();

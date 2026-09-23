@@ -1,4 +1,3 @@
-import { createAttachCardsTool } from "./attach-cards";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import { botConfig } from "@/chat/config";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
@@ -106,7 +105,6 @@ export function createTools(
     updatePlan: createUpdatePlanTool(),
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
-    attachCards: createAttachCardsTool(context.conversationId),
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),

@@ -187,12 +187,6 @@ cannot set cards. Automation tools use the same saved object contract.
 start a Turn. A producer can use this path for a silent update. Returned
 `objectAnnotations` are a deliberate selection for the next visible reply.
 
-`attachCards` lists or selects annotations in the active Conversation. It does
-not resolve arbitrary URLs, read another Conversation, or fetch current provider
-state. `show: false` omits selected objects from the next reply without removing
-their annotations. Selection is not a flag on the stored object. Legacy resource
-links can be selected as generic Item cards.
-
 Pending cards come from committed successful tool results, not a scan of changed
 annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
