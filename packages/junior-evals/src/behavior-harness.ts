@@ -744,10 +744,14 @@ async function raceWithAbort<T>(
     removeAbortListener = () =>
       signal.removeEventListener("abort", handleAbort);
   });
+  const pending = operation();
   try {
-    return await Promise.race([operation(), abortPromise]);
+    return await Promise.race([pending, abortPromise]);
   } finally {
     removeAbortListener();
+    // The agent must finish its abort cleanup before the harness clears state
+    // or closes the database. Preserve the original result or abort reason.
+    await Promise.allSettled([pending]);
   }
 }
 
@@ -1982,7 +1986,16 @@ function buildRuntimeServices(
               : outcome.usage;
           observations.usage = addAgentTurnUsage(observations.usage, usage);
           if (outcome.status === "completed") {
-            observations.modelIds.add(outcome.result.diagnostics.modelId);
+            const diagnostics = outcome.result.diagnostics;
+            observations.modelIds.add(diagnostics.modelId);
+            if (diagnostics.outcome !== "success") {
+              observations.errors.push(
+                new Error(
+                  `Eval agent ${diagnostics.outcome}: ${diagnostics.errorMessage ?? "no successful reply"}`,
+                  { cause: diagnostics.providerError },
+                ),
+              );
+            }
           }
           replyState.successfulCount += 1;
           return outcome;

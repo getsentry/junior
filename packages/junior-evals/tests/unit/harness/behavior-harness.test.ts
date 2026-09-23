@@ -1,3 +1,4 @@
+import { setImmediate } from "node:timers/promises";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -33,7 +34,7 @@ const {
             };
           };
         };
-      }) => Promise<Record<string, never>>
+      }) => Promise<Record<string, unknown>>
     >(async () => ({})),
     observedRuntimeIds,
     originalStateAdapterEnv,
@@ -110,6 +111,7 @@ import {
   collectSlackArtifactsFromCapturedCalls,
   runEvalScenario,
 } from "../../../src/behavior-harness";
+import { deferred } from "../../../../junior/tests/fixtures/conversation-work";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 
@@ -155,7 +157,10 @@ describe("behavior harness", () => {
     expect(forwardedSignal?.aborted).toBe(true);
   });
 
-  it("aborts eval replies at the configured timeout", async () => {
+  it("aborts eval replies and waits for agent cleanup", async () => {
+    const cleanup = deferred();
+    const aborted = deferred();
+    let settled = false;
     executeAgentRunMock.mockImplementationOnce(async (request) => {
       const signal = request.signal;
       if (!signal) {
@@ -166,7 +171,9 @@ describe("behavior harness", () => {
           once: true,
         });
       });
-      return {};
+      aborted.resolve();
+      await cleanup.promise;
+      throw new Error("cleanup error must not replace timeout");
     });
 
     await runEvalScenario({
@@ -174,47 +181,80 @@ describe("behavior harness", () => {
       overrides: { reply_timeout_ms: 10 },
     });
 
-    await expect(
-      runtimeState.agentRunner?.run({} as never),
-    ).rejects.toMatchObject({ name: "TimeoutError" });
+    const run = runtimeState.agentRunner!.run({} as never).finally(() => {
+      settled = true;
+    });
+    const assertion = expect(run).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    await aborted.promise;
+    await setImmediate();
+    try {
+      expect(settled).toBe(false);
+    } finally {
+      cleanup.resolve();
+      await assertion;
+    }
   });
 
-  it("fails the scenario when the runtime delivers an agent failure reply", async () => {
-    const failure = new Error("provider unavailable");
-    executeAgentRunMock.mockRejectedValueOnce(failure);
-    handleNewMentionMock.mockImplementationOnce(async (thread) => {
-      try {
-        await runtimeState.agentRunner?.run({} as never);
-      } catch {
-        await thread.post(
-          "I ran into an internal error while processing that.",
-        );
-      }
-    });
-
-    await expect(
-      runEvalScenario({
-        initialEvents: [
-          {
-            type: "new_mention",
-            thread: {
-              id: "slack:CFAILURE:1700000000.0001",
-              channel_id: "CFAILURE",
-              thread_ts: "1700000000.0001",
-            },
-            message: {
-              id: "1700000000.0002",
-              text: "Help me with this task.",
-              author: { user_id: "U0TEST" },
+  it.each(["throw", "return"] as const)(
+    "fails the scenario for agent errors (%s)",
+    async (mode) => {
+      const failure = new Error("provider unavailable");
+      if (mode === "throw") {
+        executeAgentRunMock.mockRejectedValueOnce(failure);
+      } else {
+        executeAgentRunMock.mockResolvedValueOnce({
+          status: "completed",
+          result: {
+            text: "",
+            diagnostics: {
+              outcome: "provider_error",
+              modelId: "test-model",
+              errorMessage: failure.message,
+              providerError: failure,
             },
           },
+        });
+      }
+      handleNewMentionMock.mockImplementationOnce(async (thread) => {
+        try {
+          await runtimeState.agentRunner?.run({} as never);
+        } catch {
+          await thread.post(
+            "I ran into an internal error while processing that.",
+          );
+        }
+      });
+
+      await expect(
+        runEvalScenario({
+          initialEvents: [
+            {
+              type: "new_mention",
+              thread: {
+                id: "slack:CFAILURE:1700000000.0001",
+                channel_id: "CFAILURE",
+                thread_ts: "1700000000.0001",
+              },
+              message: {
+                id: "1700000000.0002",
+                text: "Help me with this task.",
+                author: { user_id: "U0TEST" },
+              },
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        message: "Eval agent execution failed",
+        errors: [
+          mode === "throw"
+            ? failure
+            : expect.objectContaining({ cause: failure }),
         ],
-      }),
-    ).rejects.toMatchObject({
-      message: "Eval agent execution failed",
-      errors: [failure],
-    });
-  });
+      });
+    },
+  );
 
   it("replays one canonical web source at different output limits", async () => {
     const previousReplayMode = process.env.VITEST_EVALS_REPLAY_MODE;
