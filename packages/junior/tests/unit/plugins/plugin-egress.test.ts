@@ -51,11 +51,13 @@ describe("plugin egress", () => {
       provider: "github",
       scope: "repo",
     };
+    const grantRequests = vi.fn();
     setPlugins([
       defineJuniorPlugin({
         manifest: githubManifest(),
         hooks: {
-          grantForEgress() {
+          grantForEgress(ctx) {
+            grantRequests(ctx.request);
             return {
               name: "user-write",
               access: "write",
@@ -95,6 +97,12 @@ describe("plugin egress", () => {
         ),
       }),
     ).rejects.toThrow("paused");
+    expect(grantRequests).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "github.issue.create",
+        bodyText: JSON.stringify({ title: "Test" }),
+      }),
+    );
     expect(pluginAuth.handleAuthRequired).toHaveBeenCalledWith({
       authorization,
       grant: {

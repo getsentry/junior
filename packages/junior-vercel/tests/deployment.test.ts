@@ -231,14 +231,14 @@ describe("Vercel deployment", () => {
     expect(plugin.packageName).toBe("@sentry/junior-vercel");
     expect(plugin.manifest).toMatchObject({
       name: "vercel",
-      apiHeaders: {
-        Authorization: "Bearer ${JUNIOR_VERCEL_TOKEN}",
-      },
       envVars: {
         JUNIOR_VERCEL_TOKEN: {},
         VERCEL_WEBHOOK_SECRET: {},
       },
     });
+    expect(plugin.manifest).not.toHaveProperty("apiHeaders");
+    expect(plugin.hooks?.grantForEgress).toBeTypeOf("function");
+    expect(plugin.hooks?.issueCredential).toBeTypeOf("function");
     expect(plugin.events?.resourceTypes).toEqual([
       expect.objectContaining({ type: "deployment" }),
     ]);

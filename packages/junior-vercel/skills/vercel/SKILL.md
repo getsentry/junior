@@ -1,11 +1,11 @@
 ---
 name: vercel
-description: Query Vercel deployments, build logs, runtime logs, and deployment status through the Vercel CLI. Use when users ask to debug Vercel deployments, inspect failed builds, fetch production or preview runtime logs, find a deployment for a project or commit SHA, or investigate Vercel-hosted app errors. Do not use it for deploying, rolling back, changing project settings, domains, env vars, caches, storage, or any other Vercel mutation.
+description: Inspect Vercel deployments and logs through the read-only CLI, or use configured Preview tools to deploy an exact commit, select a QA alias, check its target, or delete a Preview. Use for Vercel investigations and Preview QA setup. Do not use for Production deploys, rollbacks, arbitrary domains, environment changes, caches, or storage.
 ---
 
 # Vercel Operations
 
-Use this skill for read-only Vercel deployment and log investigations.
+Use the CLI for read-only investigation. Use only the opt-in Preview tools for writes.
 
 ## Read-only command allowlist
 
@@ -17,6 +17,17 @@ Run only these Vercel CLI commands:
 - `vercel help`, `vercel --help`, or `vercel <command> --help`
 
 Do not run `deploy`, `rollback`, `promote`, `remove`, `env`, `alias`, `dns`, `project`, `cache`, `blob`, `certs`, `teams`, `domains`, `git`, `link`, `login`, `logout`, `switch`, `pull`, `build`, `dev`, `redeploy`, `bisect`, `api`, or any command that creates, updates, deletes, purges, promotes, deploys, links, authenticates, or changes Vercel state.
+
+## Preview actions
+
+- Discover `vercel_preview_create`, `vercel_preview_select`, `vercel_preview_inspect`, and `vercel_preview_delete` in the tool catalog. If absent, report that Preview actions are not configured. Do not fall back to CLI writes or ask for tokens in chat.
+- The host fixes the team, project, GitHub repository, and QA alias. Conversation defaults cannot expand this scope.
+- Deploy only a trusted full commit SHA after the operator confirms isolated Preview state. Builds inherit Preview credentials and can run migrations. This tool does not provision Neon, Redis, or Slack.
+- Use `preview_create` once. Save its deployment ID and commit. Inspect before retrying an uncertain create; a timeout can occur after Vercel accepted it.
+- Use `preview_select` only when the deployment is READY and the user wants the QA alias moved. It can replace another tester's selection. It does not stop old workers.
+- Use `preview_inspect` before and after each QA group. If `aliasMatches` is false, stop and mark the results inconclusive. Do not reassign the alias as automatic recovery. Checks are not a lock and cannot detect every change between requests.
+- Delete only the exact Preview the user explicitly requests. Deletion does not clean up its database or Redis state. Do not automatically delete or restore aliases.
+- Report deployment and commit IDs. Do not claim Slack QA passed from an alias or health check alone.
 
 ## Workflow
 
@@ -60,4 +71,4 @@ Do not run `deploy`, `rollback`, `promote`, `remove`, `env`, `alias`, `dns`, `pr
 - `403` or permission denied: report that the configured Vercel token or service account cannot read the requested project/deployment/logs. Do not guess missing Vercel permission scopes.
 - Project not found: confirm `vercel.project`, `vercel.team`, and the user-provided project name or scope.
 - Rate limiting or transient network failure: retry the same bounded read command once. If it still fails, report the throttle or network failure and stop.
-- Mutation request: decline briefly and explain this skill is limited to read-only Vercel logs, deployment inspection, and deployment listing.
+- Unsupported mutation request: explain the supported Preview scope. Production deploys, environment edits, and arbitrary domain changes remain unavailable.

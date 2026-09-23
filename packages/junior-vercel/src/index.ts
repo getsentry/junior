@@ -17,8 +17,27 @@ import {
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
+import { issueVercelCredential, vercelGrantForEgress } from "./credentials.js";
+import {
+  vercelPreviewOptionsSchema,
+  type VercelPreviewOptions,
+} from "./preview.js";
+import { createVercelPreviewTools } from "./tools/preview.js";
+
+export type { VercelPreviewOptions } from "./preview.js";
+
+/** Host-owned Preview scope; omitted by default to keep all writes disabled. */
+export interface VercelPluginOptions {
+  preview?: VercelPreviewOptions;
+}
+
 /** Register Vercel runtime metadata, tools, and signed webhook ingress. */
-export function vercelPlugin(): PluginRegistration {
+export function vercelPlugin(
+  options: VercelPluginOptions = {},
+): PluginRegistration {
+  const preview = options.preview
+    ? vercelPreviewOptionsSchema.parse(options.preview)
+    : undefined;
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vercel",
     events: {
@@ -32,19 +51,17 @@ export function vercelPlugin(): PluginRegistration {
       isEnabled: () => Boolean(vercelWebhookSecret()),
     },
     manifest: {
-      apiHeaders: {
-        Authorization: "Bearer ${JUNIOR_VERCEL_TOKEN}",
-      },
       commandEnv: {
         VERCEL_TOKEN: "host_managed_credential",
       },
       configKeys: ["project", "team"],
       description:
-        "Query Vercel deployments and logs and monitor deployment outcomes",
+        "Inspect Vercel deployments and logs, monitor outcomes, and optionally manage scoped Previews",
       displayName: "Vercel",
       domains: ["api.vercel.com"],
       envVars: {
         JUNIOR_VERCEL_TOKEN: {},
+        JUNIOR_VERCEL_PREVIEW_TOKEN: {},
         VERCEL_WEBHOOK_SECRET: {},
       },
       name: "vercel",
@@ -57,6 +74,12 @@ export function vercelPlugin(): PluginRegistration {
       ],
     },
     hooks: {
+      grantForEgress(ctx) {
+        return vercelGrantForEgress(ctx.request, preview);
+      },
+      issueCredential(ctx) {
+        return issueVercelCredential(ctx.grant, preview);
+      },
       routes(ctx) {
         return [
           createVercelWebhookRoute({
@@ -66,9 +89,10 @@ export function vercelPlugin(): PluginRegistration {
         ];
       },
       tools(ctx) {
-        return {
-          deployment: createVercelDeploymentTool(ctx),
-        };
+        const tools = { deployment: createVercelDeploymentTool(ctx) };
+        if (preview)
+          return { ...tools, ...createVercelPreviewTools(ctx, preview) };
+        return tools;
       },
     },
   });
