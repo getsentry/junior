@@ -100,17 +100,14 @@ Harness override knobs (in `EvalOverrides`):
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
 
-The eval queue honors each accepted delivery's due time before invoking the worker. This includes the production event batching delay; the 60-second agent response budget starts afterward. Snapshot warmup and the egress process use the same JavaScript plugin registrations as the scenario, not package names alone. Package names expose skills but do not supply runtime dependencies or credential metadata.
+The queue waits for each delivery's due time before starting the worker. The
+60-second reply budget starts after that wait. Scenarios, snapshot warmup, and
+egress use the same plugin registrations so dependencies and credentials match.
 
-Failed scenario runs attach the partial normalized session to the original error.
-This keeps observed replies, unfinished tool calls, logs, and usage in reports.
-The case still fails and does not reach the rubric judge. The shared conversion
-lives in `src/eval-result.ts`.
-
-Worker setup installs the AI Gateway body timeout in each worker process.
-Global setup installs it separately for invocation-wide work. Quick Tunnel DNS
-checks use bounded, independent queries to system DNS and each public resolver.
-Startup failures retain every attempt and the connected tunnel's output.
+Failed runs keep their partial session in the report and still fail the case.
+`src/eval-result.ts` converts both successful and failed results. Worker and global
+setup each install the AI Gateway body timeout in their own process. Quick Tunnel
+startup tries each DNS provider separately and retains failed attempts and logs.
 
 Tool replay:
 

@@ -12,13 +12,6 @@ import type { EvalResult } from "./behavior-harness";
 
 type NormalizedMessage = EvalResult["sessionMessages"][number];
 
-interface ToolCallRecord {
-  name: string;
-  arguments?: Record<string, JsonValue>;
-  result?: JsonValue;
-  error?: { message: string };
-}
-
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
   for (const call of result.slackAdapter.statusCalls) {
@@ -70,9 +63,10 @@ function authorizationArtifacts(result: EvalResult): JsonValue {
   }));
 }
 
-function toToolCallRecord(
+function toToolEvents(
   invocation: EvalResult["toolInvocations"][number],
-): ToolCallRecord {
+  index: number,
+): TranscriptEvent[] {
   const args: Record<string, JsonValue> = {};
   if (invocation.arguments) {
     const genericArgs = toJson(invocation.arguments);
@@ -99,20 +93,35 @@ function toToolCallRecord(
     args.arguments = toJson(invocation.mcp_arguments);
   }
 
-  return {
-    name: invocation.tool,
-    ...(Object.keys(args).length > 0 ? { arguments: args } : {}),
-    ...(invocation.completed
-      ? {
-          result: toJson(
-            invocation.result ?? {
-              ok: invocation.ok ?? invocation.error === undefined,
-            },
-          ),
-        }
-      : {}),
-    ...(invocation.error ? { error: { message: invocation.error } } : {}),
-  };
+  const id = `eval-tool-${index}`;
+  const events: TranscriptEvent[] = [
+    {
+      type: "tool_call",
+      id,
+      name: invocation.tool,
+      ...(Object.keys(args).length > 0 ? { arguments: args } : {}),
+    },
+  ];
+  if (invocation.error) {
+    events.push({
+      type: "tool_result",
+      toolCallId: id,
+      name: invocation.tool,
+      error: { message: invocation.error },
+    });
+  } else if (invocation.completed) {
+    events.push({
+      type: "tool_result",
+      toolCallId: id,
+      name: invocation.tool,
+      content: toJson(
+        invocation.result ?? {
+          ok: invocation.ok ?? invocation.error === undefined,
+        },
+      ),
+    });
+  }
+  return events;
 }
 
 function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
@@ -267,64 +276,23 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   };
 }
 
-function toTranscriptEvents(
-  messages: NormalizedMessage[],
-  toolCallRecords: ToolCallRecord[],
-): TranscriptEvent[] {
-  const messageEvents: TranscriptEvent[] = messages.map((message) => ({
-    type: "message",
-    ...message,
-  }));
-  const toolEvents: TranscriptEvent[] = toolCallRecords.flatMap(
-    (call, index) => {
-      const id = `eval-tool-${index}`;
-      return [
-        {
-          type: "tool_call" as const,
-          id,
-          name: call.name,
-          ...(call.arguments ? { arguments: call.arguments } : {}),
-        },
-        ...(call.error
-          ? [
-              {
-                type: "tool_result" as const,
-                toolCallId: id,
-                name: call.name,
-                error: call.error,
-              },
-            ]
-          : call.result !== undefined
-            ? [
-                {
-                  type: "tool_result" as const,
-                  toolCallId: id,
-                  name: call.name,
-                  content: call.result,
-                },
-              ]
-            : []),
-      ];
-    },
-  );
-  return [...messageEvents, ...toolEvents];
-}
-
 /** Preserve the same session shape for successful and failed eval runs. */
 export function toEvalHarnessRun(
   result: EvalResult,
   totalMs: number,
 ): HarnessRun {
-  const toolCallRecords = result.toolInvocations.map(toToolCallRecord);
-  const messages = toSessionMessages(result);
-
   return {
     artifacts: {
       authorization_completions: authorizationArtifacts(result),
       slack_side_effects: slackSideEffectArtifacts(result),
     },
     session: {
-      events: toTranscriptEvents(messages, toolCallRecords),
+      events: [
+        ...toSessionMessages(result).map(
+          (message): TranscriptEvent => ({ type: "message", ...message }),
+        ),
+        ...result.toolInvocations.flatMap(toToolEvents),
+      ],
       metadata: toJsonRecord({
         slack_metadata: slackMetadata(result),
         log_records: result.logRecords.map(toLogMetadata),

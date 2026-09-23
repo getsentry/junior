@@ -32,14 +32,9 @@ import {
   type SteerEvent,
   runEvalScenario,
 } from "./behavior-harness";
-
 import { toEvalHarnessRun } from "./eval-result";
 
-interface NormalizedMessage {
-  role: "system" | "user" | "assistant";
-  content?: JsonValue;
-  metadata?: Record<string, JsonValue>;
-}
+type NormalizedMessage = EvalResult["sessionMessages"][number];
 
 type ReactionAddedMessage = NormalizedMessage & {
   role: "assistant";

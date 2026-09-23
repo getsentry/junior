@@ -19,14 +19,12 @@ describeEval("Slack User Status", slackEvals, (it) => {
       }),
     });
 
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "userLookup",
-          arguments: { provider: "slack", query: "U0TEST" },
-          status: "ok",
-        }),
-      ]),
+    expect(toolCalls(result.session)).toContainEqual(
+      expect.objectContaining({
+        name: "userLookup",
+        arguments: { provider: "slack", query: "U0TEST" },
+        status: "ok",
+      }),
     );
   });
 });

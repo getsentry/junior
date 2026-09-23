@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { toolCalls } from "vitest-evals/harness";
 
 const { runError, runEvalScenarioMock } = vi.hoisted(() => ({
   runError: new Error("stop after capturing harness options"),
@@ -88,7 +89,7 @@ it("includes visible Slack author names in rubric transcripts", () => {
   ]);
 });
 
-it("includes captured Slack posts in the rubric-visible transcript", async () => {
+it("preserves Slack posts and tool outcomes in the normalized session", async () => {
   runEvalScenarioMock.mockResolvedValueOnce({
     authorizationCompletions: [],
     canvases: [],
@@ -112,7 +113,11 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       },
     ],
     slackAdapter: { promptCalls: [], statusCalls: [], titleCalls: [] },
-    toolInvocations: [],
+    toolInvocations: [
+      { tool: "readFile", completed: true, result: { content: "Paris" } },
+      { tool: "webFetch", completed: true, error: "HTTP 503" },
+      { tool: "listDir", arguments: { path: "/vercel/sandbox" } },
+    ],
   } as never);
 
   const run = await slackHarness.run(
@@ -136,6 +141,19 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       content: "Paris",
     }),
   );
+  expect(toolCalls(run.session)).toMatchObject([
+    { name: "readFile", status: "ok", result: { content: "Paris" } },
+    { name: "webFetch", status: "error", error: { message: "HTTP 503" } },
+    {
+      name: "listDir",
+      status: "pending",
+      arguments: { path: "/vercel/sandbox" },
+    },
+  ]);
+  expect(JSON.parse(serializeVisibleTranscript(run.session))).toEqual([
+    { role: "user", content: "What is the capital of France?" },
+    { role: "assistant", content: "Paris" },
+  ]);
   expect(
     run.session.events.find(
       (event) => event.type === "message" && event.role === "assistant",
