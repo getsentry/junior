@@ -242,11 +242,17 @@ describe("Vercel deployment", () => {
     expect(plugin.events?.resourceTypes).toEqual([
       expect.objectContaining({ type: "deployment" }),
     ]);
-    expect(
-      plugin.hooks?.tools?.({
-        egress: { fetch: vi.fn() },
-      } as never),
-    ).toHaveProperty("deployment");
+    const tools = plugin.hooks!.tools!({
+      egress: { fetch: vi.fn() },
+    } as never);
+    expect(Object.keys(tools).sort()).toEqual([
+      "aliasAssign",
+      "aliasInspect",
+      "deployment",
+      "deploymentCreate",
+      "deploymentDelete",
+      "deploymentInspect",
+    ]);
     expect(
       plugin.hooks?.routes?.({
         events: { async publish() {} },
