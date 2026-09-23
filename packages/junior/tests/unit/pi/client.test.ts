@@ -83,16 +83,20 @@ describe("resolveGatewayModel", () => {
     vi.resetModules();
   });
 
-  it.each(["openai/gpt-6-astra", "openai/gpt-6-luna"])(
+  it.each([
+    ["openai/gpt-6-astra", 1_050_000],
+    ["openai/gpt-6-luna", 1_050_000],
+    ["anthropic/claude-opus-5.5", 1_000_000],
+  ] as const)(
     "loads %s before pi-ai publishes it",
-    async (modelId) => {
+    async (modelId, contextWindow) => {
       const { resolveGatewayModel } = await import("@/chat/pi/client");
 
       expect(resolveGatewayModel(modelId)).toEqual(
         expect.objectContaining({
           id: modelId,
           provider: "vercel-ai-gateway",
-          contextWindow: 1_050_000,
+          contextWindow,
           maxTokens: 128_000,
         }),
       );

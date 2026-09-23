@@ -65,6 +65,32 @@ const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 // metadata corrections here until the catalog includes them. Remove these
 // overrides when Pi supplies the same metadata or Junior uses a live catalog.
 const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "anthropic/claude-opus-5.5": {
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 4,
+      output: 20,
+      cacheRead: 0.2,
+      cacheWrite: 5,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      forceAdaptiveThinking: true,
+      supportsTemperature: false,
+    },
+  },
   "xai/grok-4.5": {
     id: "xai/grok-4.5",
     name: "Grok 4.5",
