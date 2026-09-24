@@ -13,6 +13,7 @@ import {
 import {
   CONVERSATION_ID,
   createConversationWorkSlackHarness,
+  deferred,
   loadConversationState,
   streamScript,
 } from "../fixtures/conversation-work";
@@ -36,6 +37,7 @@ import {
 } from "../fixtures/plugin-app";
 import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { createModelStream } from "../fixtures/model-stream";
 import { mswServer } from "../msw/server";
 
 /**
@@ -176,7 +178,7 @@ describe("mcp orchestration", () => {
     });
   });
 
-  it("searches before calling, parks for OAuth, and resumes the same turn", async () => {
+  it("searches before calling, parks for OAuth, and keeps queued work out of the resumed turn", async () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearchAndCall("Eval Auth tool completed."),
     });
@@ -186,13 +188,45 @@ describe("mcp orchestration", () => {
     await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
     expectNoSlackMcpAuth(BOB, q);
 
-    await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
+    const resumed = deferred();
+    const release = deferred();
+    q.setModelStream(
+      createModelStream([
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        {
+          type: "text",
+          text: "Eval Auth tool completed.",
+          onRequest: resumed.resolve,
+          waitFor: release.promise,
+        },
+      ]),
+    );
+    const completion = completeLatestMcpAuth({
+      userId: ALICE,
+      agentRunner: q.agentRunner,
+    });
+    try {
+      await resumed.promise;
+      q.setSubscribedShouldReply(true);
+      await q.passive(BOB, "check the build after that");
+      await expect(q.next()).resolves.toEqual({ status: "active" });
+      expect(q.replies()).not.toContain("Eval Auth tool completed.");
+    } finally {
+      release.resolve();
+      await completion;
+    }
 
     await expectMcpAuthCleared();
     await expectMcpAuthCredentialsStored(ALICE);
     expect(
-      q.replies().some((text) => text.includes("Eval Auth tool completed")),
-    ).toBe(true);
+      q.replies().filter((text) => text.includes("Eval Auth tool completed")),
+    ).toHaveLength(1);
+    q.setModelStream(streamScript("Build checked."));
+    await q.drain();
+    expect(q.replies().at(-1)).toBe("Build checked.");
+    expect(q.replies().some((text) => text.includes("internal error"))).toBe(
+      false,
+    );
     await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ state: "completed" })]),
     );

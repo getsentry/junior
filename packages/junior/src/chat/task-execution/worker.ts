@@ -1,6 +1,8 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { withActiveLock } from "@/chat/state/locks";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
@@ -361,9 +363,29 @@ export async function processConversationWork(
   message: ConversationQueueMessage,
   options: ProcessConversationWorkOptions,
 ): Promise<ConversationWorkProcessResult> {
-  return withLogContext({ conversationId: message.conversationId }, () =>
-    processConversationWorkInContext(message, options),
+  const conversationId = message.conversationId;
+  // OAuth resumes use this lock without a mailbox lease. Hold it before reading
+  // work so neither path can change history while the other is running.
+  const result = await withActiveLock(
+    options.state ?? getStateAdapter(),
+    conversationId,
+    () =>
+      withLogContext({ conversationId }, () =>
+        processConversationWorkInContext(message, options),
+      ),
   );
+  if (result.acquired) return result.value;
+  await ensureConversationWake({
+    conversationId,
+    conversationStore: options.conversationStore,
+    delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
+    idempotencyKey: nudgeIdempotencyKey("active", conversationId, now(options)),
+    nowMs: now(options),
+    queue: options.queue,
+    replaceExistingWake: true,
+    state: options.state,
+  });
+  return { status: "active" };
 }
 
 async function processConversationWorkInContext(

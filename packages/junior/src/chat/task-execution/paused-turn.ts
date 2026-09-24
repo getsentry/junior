@@ -56,8 +56,6 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { withActiveLock } from "@/chat/state/locks";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -736,19 +734,12 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    const state = getStateAdapter();
-    await state.connect();
-    await withActiveLock(state, conversationId, async () => {
-      const record = await getTurnRecordForResume(
-        conversationId,
-        running.turnId,
-      );
-      if (!record || record.state !== "running") return;
-      await failStrandedTurnWithFallback({
-        conversationId,
-        errorMessage: "Turn lost its worker before reaching a safe boundary",
-        turn: record,
-      });
+    const record = await getTurnRecordForResume(conversationId, running.turnId);
+    if (!record || record.state !== "running") return false;
+    await failStrandedTurnWithFallback({
+      conversationId,
+      errorMessage: "Turn lost its worker before reaching a safe boundary",
+      turn: record,
     });
     return false;
   }

@@ -174,8 +174,8 @@ interface ResumeSlackTurnArgs {
   run?: ResumeRun;
   lockKey?: string;
   /**
-   * When true, the caller already holds the conversation work lease.
-   * Skip the second resume lock so the queue continuation has one owner.
+   * When true, the worker holds the conversation lease and execution lock.
+   * Do not acquire that lock again for a queue continuation.
    * Authorization callbacks and other independent resumes leave this false.
    */
   ownsConversationLease?: boolean;
@@ -397,9 +397,9 @@ function buildResumedRun(
 /**
  * Resume a paused Slack Turn.
  *
- * Queue continuations pass `ownsConversationLease` and skip the second lock
- * because the worker lease is already held. Authorization callbacks and other
- * independent resumes still take the thread lock. A started resume owns its
+ * Queue continuations pass `ownsConversationLease` because the worker already
+ * holds the execution lock. Authorization callbacks and other independent
+ * resumes acquire the same lock here. A started resume owns its
  * completion work.
  * Returns false only when `beforeStart` proves the resume is stale before
  * generation begins.
@@ -421,8 +421,7 @@ async function resumeSlackTurnInContext(
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  // A worker continuation already holds the Conversation lease. Do not take
-  // another lock for the same work.
+  // The worker already holds this execution lock as well as its mailbox lease.
   const lock = args.ownsConversationLease
     ? undefined
     : await acquireActiveLock(stateAdapter, lockKey);

@@ -489,9 +489,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         /** Save new messages before completing the mailbox delivery. */
         const saveMessagesForPausedTurn = async (
           pausedTurnId: string,
-        ): Promise<boolean> => {
+        ): Promise<void> => {
           if (!conversationId) {
-            return true;
+            return;
           }
           const messagesForPausedTurn = [
             ...(options.queuedMessages ?? []),
@@ -510,7 +510,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               buildDeterministicTurnId(queued.message.id) !== pausedTurnId,
           );
           if (messagesForPausedTurn.length === 0) {
-            return true;
+            return;
           }
           const steeringMessages = (
             await resolveSteeringMessages(messagesForPausedTurn)
@@ -550,11 +550,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (pausedTurn) {
             // Save agent input before resuming the Turn. Complete the mailbox
             // delivery only after that input is visible in agent history.
-            if (!(await saveMessagesForPausedTurn(pausedTurn.turnId))) {
-              // A resumed Run is saving the same history. Keep this mailbox
-              // delivery pending until that Run finishes.
-              throw new TurnInputDeferredError();
-            }
+            await saveMessagesForPausedTurn(pausedTurn.turnId);
             try {
               await deps.pausedTurns.wake(pausedTurn);
             } catch (error) {
@@ -996,17 +992,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           // Save the batch before starting the Run so every Actor stays attached
           // to the right instruction. The first Turn checkpoint can then reuse
           // that saved history.
-          if (
-            !(await saveSteeringMessages({
-              conversationId,
-              messages: batchedSteeringMessages,
-            }))
-          ) {
-            // A resumed Run is saving the same history. Keep this mailbox
-            // delivery pending and do not start without the saved messages.
-            shouldPersistFailureState = false;
-            throw new TurnInputDeferredError();
-          }
+          await saveSteeringMessages({
+            conversationId,
+            messages: batchedSteeringMessages,
+          });
           if (batchedSteeringMessages.length > 0) {
             // A repeated mailbox delivery may reload saved steering messages.
             // Add only messages that are not already in agent history.

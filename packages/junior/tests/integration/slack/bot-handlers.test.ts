@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { instructionActors } from "@/chat/conversations/provenance";
 import {
@@ -933,116 +932,6 @@ describe("bot handlers (integration)", () => {
     expect(JSON.stringify(capturedInput?.piMessages ?? [])).toContain(
       "bob question",
     );
-  });
-
-  it("leaves the parked follow-up unconsumed while a live resume holds the thread lock", async () => {
-    const conversationId = "slack:C9PARKEDLOCK:1700000000.000";
-    const destination = slackDestination("C9PARKEDLOCK");
-    const activeSessionId = "turn_msg-original";
-    await upsertTurnRecord({
-      conversationId,
-      turnId: activeSessionId,
-      sliceId: 1,
-      state: "paused",
-      resumeReason: "yield",
-      destination,
-      source: createSlackSourceForTest("C9PARKEDLOCK"),
-      piMessages: turnPiMessages("please keep working"),
-      turnStartMessageIndex: 0,
-    });
-    const queue = createConversationWorkQueueTestAdapter();
-    const ack = vi.fn();
-    const { slackRuntime } = createRuntime({
-      queue,
-      services: {
-        agentRunner: neverRunAgentRunner(),
-      },
-    });
-    const thread = await createTestThread({
-      id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
-    });
-    const followUp = createTestMessage({
-      id: "msg-parked-locked",
-      threadId: conversationId,
-      text: "also check the logs",
-      isMention: true,
-    });
-
-    // Simulate a live resume: it holds the thread resume lock for its run.
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    const lock = await acquireActiveLock(stateAdapter, conversationId);
-    expect(lock).not.toBeNull();
-    try {
-      await expect(
-        slackRuntime.handleNewMention(thread, followUp, {
-          destination,
-          ack,
-        }),
-      ).rejects.toThrow("Turn input is deferred until the active resume ends");
-    } finally {
-      await stateAdapter.releaseLock(lock!);
-    }
-
-    // The message was not consumed and nothing was appended or scheduled: it
-    // stays pending in the mailbox for the next drain.
-    expect(ack).not.toHaveBeenCalled();
-    expect(queue.sentRecords()).toEqual([]);
-    expect(
-      JSON.stringify(await loadProjection({ conversationId })),
-    ).not.toContain("also check the logs");
-  });
-
-  it("defers a batched fresh turn while a live resume holds the thread lock", async () => {
-    const conversationId = "slack:C9BATCHLOCK:1700000000.000";
-    const destination = slackDestination("C9BATCHLOCK");
-    const ack = vi.fn();
-    const { slackRuntime } = createRuntime({
-      services: {
-        agentRunner: neverRunAgentRunner(),
-      },
-    });
-    const thread = await createTestThread({ id: conversationId });
-    const fromBob = createTestMessage({
-      id: "msg-batchlock-bob",
-      threadId: conversationId,
-      text: "bob pending ask",
-      isMention: true,
-      author: { userId: "U-bob" },
-    });
-    const fromAlice = createTestMessage({
-      id: "msg-batchlock-alice",
-      threadId: conversationId,
-      text: "alice live ask",
-      isMention: true,
-      author: { userId: "U-alice" },
-    });
-
-    // Simulate a live resume: it holds the thread resume lock, so the batch
-    // drain cannot commit provenance and the turn must defer, not run or fail.
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    const lock = await acquireActiveLock(stateAdapter, conversationId);
-    expect(lock).not.toBeNull();
-    try {
-      await expect(
-        slackRuntime.handleNewMention(thread, fromAlice, {
-          destination,
-          ack,
-          messageContext: { skipped: [fromBob], totalSinceLastHandler: 1 },
-        }),
-      ).rejects.toThrow("Turn input is deferred until the active resume ends");
-    } finally {
-      await stateAdapter.releaseLock(lock!);
-    }
-
-    // Nothing ran, nothing was consumed, nothing was committed: the batch
-    // stays pending in the mailbox for the next drain.
-    expect(ack).not.toHaveBeenCalled();
-    expect(
-      JSON.stringify(await loadProjection({ conversationId })),
-    ).not.toContain("bob pending ask");
   });
 
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
