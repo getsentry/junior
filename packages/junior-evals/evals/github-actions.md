@@ -2,7 +2,7 @@
 
 Use this when you want PR evals to run in GitHub Actions.
 
-The workflow installs the latest official `cloudflared` binary and starts a unique Quick Tunnel for each eval job. No Cloudflare account secret or fixed public hostname is required.
+The workflow installs a pinned, checksum-verified `cloudflared` binary and starts a unique Quick Tunnel for each eval job. No Cloudflare account secret or fixed public hostname is required.
 
 ## Required Secrets
 

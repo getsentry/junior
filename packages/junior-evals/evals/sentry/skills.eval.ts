@@ -9,9 +9,6 @@ import {
 } from "../../src/helpers";
 
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
-  // Deployments warm plugin runtime dependencies before serving turns. Keep
-  // that one-time setup cost outside the behavioral response-time budget.
-
   const followUpThread = {
     id: "thread-sentry-follow-up",
     channel_id: "CSENTRYFOLLOWUP",

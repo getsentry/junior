@@ -7,6 +7,8 @@ import {
 } from "vitest-evals";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import {
+  attachHarnessRunToError,
+  serializeError,
   type Harness,
   type HarnessRun,
   type JsonValue,
@@ -33,7 +35,6 @@ import {
   runEvalScenario,
 } from "./behavior-harness";
 import { runEvalWork } from "./eval-work";
-import { attachHarnessRunToError, serializeError } from "vitest-evals/harness";
 import { toEvalHarnessRun } from "./eval-result";
 
 type NormalizedMessage = EvalResult["sessionMessages"][number];
@@ -289,7 +290,7 @@ const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
 
 const judgeHarness = createJudgeHarness({
   name: "slack-rubric-judge-model",
-  run: async ({ prompt, system }, { signal }) =>
+  run: ({ prompt, system }, { signal }) =>
     runEvalWork(async () => {
       const { text } = await completeText({
         signal,
@@ -352,7 +353,7 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 /** Replays Slack events through the real runtime and returns normalized artifacts. */
 export const slackHarness: Harness<SlackEvalInput> = {
   name: "slack",
-  run: async (input, { signal }) =>
+  run: (input, { signal }) =>
     runEvalWork(async () => {
       const startedAt = Date.now();
       const logRecords: EmittedLogRecord[] = [];
