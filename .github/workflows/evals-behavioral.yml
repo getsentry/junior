@@ -1,4 +1,4 @@
-name: Behavioral evals
+name: Evals
 
 permissions:
   contents: read
@@ -10,7 +10,7 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: evals-behavioral-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:

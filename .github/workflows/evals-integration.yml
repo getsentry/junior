@@ -1,4 +1,4 @@
-name: Integration evals
+name: Evals
 
 permissions:
   contents: read
@@ -9,7 +9,7 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: evals-integration-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
