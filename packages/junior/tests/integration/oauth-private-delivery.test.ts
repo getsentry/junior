@@ -33,23 +33,16 @@ describe("OAuth private Slack delivery", () => {
     );
 
     expect(result).toBe("in_context");
-    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toMatchObject([
+      {
+        params: {
           channel: TEST_CHANNEL_ID,
           thread_ts: TEST_THREAD_TS,
           user: TEST_USER_ID,
           text: expect.stringContaining(`<${authorizationUrl}|Connect to Hex>`),
-          blocks: expect.arrayContaining([
-            expect.objectContaining({
-              accessory: expect.objectContaining({
-                type: "button",
-                url: authorizationUrl,
-              }),
-            }),
-          ]),
-        }),
-      }),
+          blocks: [{ accessory: { type: "button", url: authorizationUrl } }],
+        },
+      },
     ]);
     expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
