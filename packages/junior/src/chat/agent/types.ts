@@ -19,6 +19,7 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
+import type { ToolActionReviewer } from "@/chat/tool-support/action-review";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -173,6 +174,8 @@ export type AgentEvent =
 
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
+  /** Per-run action reviewer; production runs use Guardian when unset. */
+  actionReviewer?: ToolActionReviewer;
   attachmentStorage?: AttachmentStorage;
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;

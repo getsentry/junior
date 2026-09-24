@@ -428,10 +428,12 @@ export async function wireAgentTools(
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    reviewer: createGuardianActionReviewer({
-      completeObject,
-      modelId: botConfig.guardianModelId,
-    }),
+    reviewer:
+      args.run.environment?.actionReviewer ??
+      createGuardianActionReviewer({
+        completeObject,
+        modelId: botConfig.guardianModelId,
+      }),
   });
   const tools = createTools(
     loadableSkills,

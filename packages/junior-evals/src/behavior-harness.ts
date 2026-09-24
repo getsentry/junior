@@ -126,6 +126,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import { normalizeGitHubEvents } from "@sentry/junior-github/testing";
 import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
+import { evalActionReviewer } from "./eval-action-review";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
 import {
   evalGitHubEnv,
@@ -1695,6 +1696,7 @@ function buildRuntimeServices(
   let timeoutResumeInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
   const attachmentStorage = createMemoryAttachmentStorage();
+  const actionReviewer = evalActionReviewer();
 
   const services: JuniorRuntimeServiceOverrides = {
     ...(subscribedDecisions.length > 0
@@ -1941,6 +1943,7 @@ function buildRuntimeServices(
                 ),
                 environment: {
                   ...runRequest.environment,
+                  ...(actionReviewer ? { actionReviewer } : {}),
                   attachmentStorage:
                     runRequest.environment?.attachmentStorage ??
                     attachmentStorage,
