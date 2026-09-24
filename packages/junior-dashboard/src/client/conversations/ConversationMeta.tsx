@@ -96,16 +96,17 @@ export function ConversationPrivacyChip(props: {
 }
 
 type ResourceLinkStatus = NonNullable<
-  NonNullable<ConversationDetailReport["annotations"]>[number]["status"]
+  Extract<
+    NonNullable<ConversationDetailReport["annotations"]>[number],
+    { kind: "resource_link" }
+  >["status"]
 >;
 
 /** True when the conversation has at least one resource-link annotation. */
 export function hasConversationAnnotations(
   annotations: ConversationDetailReport["annotations"] | undefined,
 ): boolean {
-  return Boolean(
-    annotations?.some((annotation) => annotation.kind === "resource_link"),
-  );
+  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -368,7 +369,7 @@ export function ConversationAnnotations(props: {
 }) {
   const links =
     props.detail?.annotations?.filter(
-      (annotation) => annotation.kind === "resource_link",
+      (annotation) => annotation.url !== null,
     ) ?? [];
   if (links.length === 0) return null;
   return (
@@ -381,14 +382,17 @@ export function ConversationAnnotations(props: {
       {links.map((link) => (
         <a
           className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-          href={link.url}
+          href={link.url ?? undefined}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
           target="_blank"
-          title={resourceLinkTitle(link)}
+          title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
         >
-          {link.status ? (
-            <ResourceStatus status={link.status} url={link.url} />
+          {link.status && link.status in RESOURCE_STATUS_ICON ? (
+            <ResourceStatus
+              status={link.status as ResourceLinkStatus}
+              url={link.url ?? ""}
+            />
           ) : null}
           <span className="min-w-0 break-words">{link.label}</span>
         </a>

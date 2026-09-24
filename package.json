@@ -19,7 +19,7 @@
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
-    "ast-grep:lint": "ast-grep scan",
+    "ast-grep:lint": "ast-grep test --test-dir ast-grep/tests --skip-snapshot-tests && ast-grep scan",
     "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-gocd build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build",
     "build:example": "pnpm --filter @sentry/junior-example build",

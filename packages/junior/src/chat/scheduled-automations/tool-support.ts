@@ -1,3 +1,8 @@
+import {
+  ownedObjectAnnotationSchema,
+  type ObjectAnnotation,
+} from "@sentry/junior-plugin-api";
+import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { createHash } from "node:crypto";
 import {
   sourceSchema,
@@ -8,10 +13,6 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import {
-  automationCardSchema,
-  type AutomationCard,
-} from "@/chat/automations/card";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -28,6 +29,7 @@ import type {
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 export interface SchedulerToolContext {
+  conversationId: string;
   actor?: SlackActor;
   now?: () => number;
   source?: SlackSource;
@@ -99,7 +101,7 @@ const compactTaskResultSchema = z
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactTaskResultSchema,
-    cards: z.array(automationCardSchema).optional(),
+    objectCards: z.array(ownedObjectAnnotationSchema).optional(),
   })
   .strict();
 
@@ -302,19 +304,23 @@ export function compactTask(
 }
 
 /** Build the structured result shared by single-task scheduler tools. */
-export function scheduleAutomationToolResult(
+export async function scheduleAutomationToolResult(
+  conversationId: string,
   task: ScheduledAutomation,
   requesterSlackUserId?: string,
 ) {
   const automation = compactTask(task, requesterSlackUserId);
-  const card: AutomationCard = {
-    kind: "automation",
-    id: task.id,
-    title:
-      automation.title ??
-      fallbackShortTitle(automation.instruction, "Scheduled automation"),
+  const title =
+    automation.title ??
+    fallbackShortTitle(automation.instruction, "Scheduled automation");
+  const annotation: ObjectAnnotation = {
+    kind: "object",
+    objectType: "automation",
+    label: title,
+    key: task.id,
+    title,
     url: automation.dashboardUrl,
-    instruction: automation.instruction,
+    description: automation.instruction,
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
         ? `${new Intl.DateTimeFormat("en-US", {
@@ -328,9 +334,14 @@ export function scheduleAutomationToolResult(
         ? (automation.statusReason ?? "This automation is blocked.")
         : automation.status === "completed"
           ? "This automation has completed."
-          : null,
+          : undefined,
   };
-  return { automation, cards: [card] };
+  return {
+    automation,
+    objectCards: await saveObjectAnnotations(conversationId, "junior", [
+      annotation,
+    ]),
+  };
 }
 
 /** Build the structured result for listing scheduler tools. */

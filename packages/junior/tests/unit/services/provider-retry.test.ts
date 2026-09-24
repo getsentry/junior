@@ -66,7 +66,7 @@ describe("provider retry helpers", () => {
   it("finds provider errors preserved by domain wrappers", () => {
     const providerError = createProviderError("No object generated", {
       kind: "invalid_response",
-      modelId: "openai/gpt-5.6-luna",
+      modelId: "openai/gpt-6-luna",
     });
     const wrapped = new Error("Action review unavailable", {
       cause: providerError,

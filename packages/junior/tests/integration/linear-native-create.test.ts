@@ -1,3 +1,6 @@
+import { sendSlackReply } from "@/chat/slack/reply";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { http } from "msw";
@@ -5,10 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { linearPlugin } from "../../../junior-linear/src/index.js";
 import { getConversationStore, getDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import {
-  createPluginHookRunner,
-  setPlugins,
-} from "@/chat/plugins/agent-hooks";
+import { createPluginHookRunner, setPlugins } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
@@ -25,7 +25,7 @@ describe("Linear MCP create annotations", () => {
     transport = undefined;
   });
 
-  it("annotates created issues from live save_issue calls and skips updates", async () => {
+  it("annotates created issues from live save_issue calls and updates them", async () => {
     const saveCalls: Array<Record<string, unknown>> = [];
     const server = new McpServer({ name: "linear-test", version: "1.0.0" });
     server.registerTool(
@@ -59,7 +59,8 @@ describe("Linear MCP create annotations", () => {
             issue: {
               id: "issue-id",
               identifier: "ENG-123",
-              title: input.title,
+              title: input.title ?? "Linear MCP create issue",
+              status: input.state ?? "Todo",
               url: issueUrl,
             },
           },
@@ -108,7 +109,7 @@ describe("Linear MCP create annotations", () => {
       ],
       {
         onToolSuccess: async (input) => {
-          await pluginHooks.afterMcpTool({
+          return await pluginHooks.afterMcpTool({
             ...input,
             conversationId,
           });
@@ -165,31 +166,53 @@ describe("Linear MCP create annotations", () => {
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toMatchObject([
         {
-          kind: "resource_link",
+          kind: "object",
+          objectType: "task",
           key: "ENG-123",
           label: "ENG-123",
           plugin: "linear",
-          status: "open",
           url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
         },
       ]);
 
-      const updateResult = await saveIssue.execute({
-        id: "ENG-123",
-        state: "In Progress",
-      });
-      expect(updateResult).toMatchObject({
-        structuredContent: {
-          issue: {
-            identifier: "ENG-123",
-            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
-          },
+      expect(createResult.cards).toMatchObject([
+        {
+          plugin: "linear",
+          objectType: "task",
+          status: "Todo",
+          title: "Linear MCP create issue",
         },
+      ]);
+      await sendSlackReply({
+        channelId: "C123",
+        conversationId,
+        text: "Created the issue.",
+        cards: createResult.cards,
       });
+      expect(
+        getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+      ).toMatchObject({
+        entities: [
+          {
+            entity_type: "slack#/entities/task",
+            entity_payload: { fields: { status: { value: "Todo" } } },
+          },
+        ],
+      });
+      const updateResult = await createCallMcpToolTool(manager).execute!(
+        {
+          tool_name: saveIssue.name,
+          arguments: { id: "ENG-123", state: "In Progress" },
+        },
+        {},
+      );
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toHaveLength(1);
 
+      expect(updateResult.details.objectCards).toMatchObject([
+        { plugin: "linear", key: "ENG-123", status: "In Progress" },
+      ]);
       expect(saveCalls).toEqual([
         createInput,
         { id: "ENG-123", state: "In Progress" },
@@ -262,7 +285,7 @@ describe("Linear MCP create annotations", () => {
       ],
       {
         onToolSuccess: async (input) => {
-          await pluginHooks.afterMcpTool({
+          return await pluginHooks.afterMcpTool({
             ...input,
             conversationId,
           });

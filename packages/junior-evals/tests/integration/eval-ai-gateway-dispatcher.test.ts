@@ -1,10 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  getModel,
-  streamAnthropic,
-  type Message as PiAiMessage,
-} from "@/chat/pi/sdk";
+import { streamAnthropic, type Message as PiAiMessage } from "@/chat/pi/sdk";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { installEvalAiGatewayDispatcher } from "../../src/eval-ai-gateway-dispatcher";
@@ -77,7 +74,7 @@ describe("eval AI Gateway dispatcher", () => {
 
     try {
       const stream = streamAnthropic(
-        getModel("vercel-ai-gateway", "openai/gpt-5.6-sol"),
+        resolveGatewayModel("openai/gpt-5.6-sol"),
         { messages: [userMessage] },
         {
           client: {

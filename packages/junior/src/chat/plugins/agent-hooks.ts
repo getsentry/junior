@@ -1,3 +1,4 @@
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
@@ -28,6 +29,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import {
+  annotateToolResult,
+  saveObjectAnnotations,
+} from "@/chat/conversations/annotation-results";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
@@ -97,7 +102,7 @@ export interface AfterMcpToolHookInput {
 }
 
 export interface PluginHookRunner {
-  afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
+  afterMcpTool(input: AfterMcpToolHookInput): Promise<OwnedObjectAnnotation[]>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
   prepareWorkspace(
@@ -112,7 +117,7 @@ export interface PluginHookRunner {
 
 let registeredPlugins: PluginRegistration[] = [];
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
-const PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+const PLUGIN_TASK_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 const OPERATIONAL_REPORT_MAX_METRICS = 8;
 const OPERATIONAL_REPORT_MAX_WIDGETS = 12;
 const OPERATIONAL_REPORT_MAX_CHART_SERIES = 8;
@@ -400,7 +405,7 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       throw new Error(`Plugin "${name}" events is invalid`);
     }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
-      if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
+      if (!PLUGIN_TASK_NAME_RE.test(taskName)) {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must be a camelCase identifier`,
         );
@@ -767,11 +772,7 @@ export function getPluginTools(
     const pluginTools = hook(pluginContext);
     const namespace = pluginToolNamespace(pluginName);
     for (const [localName, tool] of Object.entries(pluginTools)) {
-      if (!PLUGIN_TOOL_NAME_RE.test(localName)) {
-        throw new Error(
-          `Plugin tool "${localName}" from plugin "${pluginName}" must be a camelCase identifier`,
-        );
-      }
+      // Naming conventions belong in lint, not on the turn's critical path.
       const name = `${namespace}_${localName}`;
       if (tools[name]) {
         throw new Error(
@@ -800,7 +801,18 @@ export function getPluginTools(
         description: plugin.manifest.description,
       };
       definition.exposure ??= "deferred";
-      tools[name] = definition;
+      const execute = definition.execute;
+      if (execute) {
+        // Keep prototype methods and their receiver on plugin tool instances.
+        const wrapped: AnyToolDefinition = Object.create(definition);
+        wrapped.execute = async (input, options) =>
+          annotateToolResult(
+            context.conversationId,
+            pluginName,
+            await execute.call(definition, input, options),
+          );
+        tools[name] = wrapped;
+      } else tools[name] = definition;
     }
   }
   return tools;
@@ -1500,6 +1512,7 @@ export function createPluginHookRunner(
 
   return {
     async afterMcpTool(tool) {
+      const cards: OwnedObjectAnnotation[] = [];
       for (const plugin of loaded) {
         if (plugin.manifest.name !== tool.provider) {
           continue;
@@ -1516,7 +1529,7 @@ export function createPluginHookRunner(
             })
           : undefined;
         try {
-          await hook({
+          const result = await hook({
             ...basePluginContext(plugin),
             ...(tool.conversationId
               ? { conversationId: tool.conversationId }
@@ -1531,6 +1544,15 @@ export function createPluginHookRunner(
               name: tool.toolName,
             },
           });
+          if (result && tool.conversationId) {
+            cards.push(
+              ...(await saveObjectAnnotations(
+                tool.conversationId,
+                plugin.manifest.name,
+                result.objectAnnotations,
+              )),
+            );
+          }
         } catch (error) {
           logWarn("agent.plugin.after_mcp_tool.failed", {
             "app.plugin.name": plugin.manifest.name,
@@ -1540,6 +1562,7 @@ export function createPluginHookRunner(
           });
         }
       }
+      return cards;
     },
     async prepareWorkspace(sandbox, repos, signal) {
       const preparers = new Set(

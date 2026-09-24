@@ -1,15 +1,11 @@
 import { getConversationEventStore } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
-import { readMessageCards, type MessageCard } from "./cards";
-
-const CARD_TOOLS = new Set([
-  "createEventAutomation",
-  "updateEventAutomation",
-  "deleteEventAutomation",
-  "slackScheduleCreateAutomation",
-  "slackScheduleUpdateAutomation",
-  "slackScheduleDeleteAutomation",
-]);
+import {
+  readMessageCards,
+  messageCardKey,
+  messageCardRefSchema,
+  type MessageCard,
+} from "./cards";
 
 /** Read undelivered card snapshots across resume and history replacement. */
 export async function loadPendingMessageCards(
@@ -38,26 +34,20 @@ export async function loadPendingMessageCards(
         data.type !== "tool_result" ||
         data.isError ||
         typeof data.toolName !== "string" ||
-        !CARD_TOOLS.has(data.toolName) ||
         !isRecord(data.details)
       )
         continue;
-      if (
-        data.toolName === "deleteEventAutomation" ||
-        data.toolName === "slackScheduleDeleteAutomation"
-      ) {
-        if (
-          isRecord(data.details.automation) &&
-          typeof data.details.automation.id === "string"
-        ) {
-          deleted.add(data.details.automation.id);
+      if (data.details.timed_out === true) continue;
+      if (Array.isArray(data.details.removedCards)) {
+        for (const ref of messageCardRefSchema
+          .array()
+          .parse(data.details.removedCards)) {
+          deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
-        continue;
       }
-      if (!Array.isArray(data.details.cards)) continue;
-      for (const card of readMessageCards(data.details.cards)) {
-        const key = `${card.kind}:${card.id}`;
-        if (!deleted.has(card.id) && !cards.has(key)) cards.set(key, card);
+      for (const card of readMessageCards(data.details)) {
+        const key = messageCardKey(card);
+        if (!deleted.has(key) && !cards.has(key)) cards.set(key, card);
       }
     }
     if (!page.hasOlder || page.events.length === 0)

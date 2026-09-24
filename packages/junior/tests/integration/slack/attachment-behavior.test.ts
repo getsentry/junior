@@ -18,7 +18,7 @@ async function createRuntime(
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "openai/gpt-5.4",
-    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
   };
   vi.resetModules();

@@ -1,4 +1,3 @@
-import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
@@ -238,22 +237,12 @@ function parseCrossActorMidRunMode(
 }
 
 const DEFAULT_MODEL_ID = "xai/grok-4.5";
-const DEFAULT_FAST_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-luna",
+const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
+  "anthropic/claude-opus-5.5",
 ).id;
-const DEFAULT_GUARDIAN_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-luna",
-).id;
-const DEFAULT_HANDOFF_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-sol",
-).id;
-const DEFAULT_WEB_SEARCH_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-luna",
-).id;
+const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
 

@@ -73,7 +73,7 @@ describe("chat config", () => {
     delete process.env.AI_FAST_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.fastModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.fastModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses Luna for Guardian when no override is configured", async () => {
@@ -82,7 +82,7 @@ describe("chat config", () => {
     delete process.env.AI_GUARDIAN_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.guardianModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.guardianModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses the configured Guardian model override", async () => {
@@ -130,7 +130,7 @@ describe("chat config", () => {
     await expect(loadConfig()).rejects.toThrow("Invalid option");
   });
 
-  it("uses gpt-5.6-sol for the env handoff profile", async () => {
+  it("uses Opus 5.5 with high reasoning for the default handoff profile", async () => {
     delete process.env.AI_HANDOFF_MODEL;
     delete process.env.AI_MODEL_PROFILES;
 
@@ -141,7 +141,7 @@ describe("chat config", () => {
         description: expect.stringContaining("Use for default assistant work"),
       },
       handoff: {
-        modelId: "openai/gpt-5.6-sol",
+        modelId: "anthropic/claude-opus-5.5",
         description: expect.stringContaining(
           "Use for coding and difficult multi-step work",
         ),
@@ -176,7 +176,7 @@ describe("chat config", () => {
         description: expect.stringContaining("Use for default assistant work"),
       },
       handoff: {
-        modelId: "openai/gpt-5.6-sol",
+        modelId: "anthropic/claude-opus-5.5",
         description: expect.stringContaining(
           "Use for coding and difficult multi-step work",
         ),
@@ -256,7 +256,7 @@ describe("chat config", () => {
     process.env.AI_WEB_SEARCH_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.webSearchModelId).toBe("openai/gpt-5.6-luna");
+    expect(botConfig.webSearchModelId).toBe("openai/gpt-6-luna");
   });
 
   it("uses AI_WEB_SEARCH_MODEL when configured", async () => {

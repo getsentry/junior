@@ -47,6 +47,7 @@ jobs:
               - 'packages/junior-evals/src/**'
               - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/tests/**'
@@ -188,6 +189,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
       - name: Download behavioral eval results
         uses: actions/download-artifact@v4
         with:
@@ -195,6 +199,7 @@ jobs:
           path: eval-results
           merge-multiple: true
       - name: Require all behavioral shard results
+        id: results
         run: |
           set -euo pipefail
           expected=4
@@ -214,3 +219,8 @@ jobs:
           publish-check: true
           check-name: behavioral / score
           min-pass-rate: ${{ env.EVAL_MIN_PASS_RATE }}
+      - name: Report evals to Sentry Evals
+        if: ${{ !cancelled() && steps.results.outcome == 'success' }}
+        env:
+          SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
+        run: node packages/junior-evals/scripts/report.mjs behavioral eval-results/behavioral-results-*.json

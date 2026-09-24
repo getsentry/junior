@@ -19,6 +19,34 @@ Optional fallback if you do not want to use OIDC:
 - `VERCEL_TEAM_ID`
 - `VERCEL_PROJECT_ID`
 
+## Sentry Evals Reporting
+
+Add an `evk_...` key from <https://evals.sentry.dev/settings/api-keys> as the
+GitHub Actions repository secret `SENTRY_EVALS_API_KEY`. No GitHub Environment
+is required. A missing key skips uploads, including on fork pull requests.
+
+Each suite uploads one run after execution. Behavioral and integration combine
+all shards. Dataset names are `junior-behavioral`, `junior-integration`,
+`junior-guardian`, and `junior-router`. The job summary links to the run.
+Existing score gates and artifacts stay in place, including when tests fail.
+
+`scripts/report.mjs` maps Vitest results to scores, errors, transcripts, duration,
+available usage metrics, and PR head metadata. It excludes runtime session logs
+and intentional skips. File failures and unfinished tests become errors. A crash
+before Vitest writes results has no remote report.
+
+Upload errors fail the step. Requests are not retried; rerunning the upload
+creates a new run. The script prints the URL before uploading scenarios so a
+partial run can be inspected.
+
+From the repository root, with `SENTRY_EVALS_API_KEY` set:
+
+```bash
+node packages/junior-evals/scripts/report.mjs router packages/junior-evals/router-results.json
+```
+
+Run the offline contract tests with `node --test packages/junior-evals/scripts/report.test.mjs`.
+
 ## How To Get Them
 
 ### `VERCEL_OIDC_TOKEN`

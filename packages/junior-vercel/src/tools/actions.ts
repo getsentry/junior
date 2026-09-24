@@ -123,7 +123,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
     };
   }
   return {
-    deployment_create: definePluginTool({
+    deploymentCreate: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -200,7 +200,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         );
       },
     }),
-    deployment_inspect: definePluginTool({
+    deploymentInspect: definePluginTool({
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -228,7 +228,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         );
       },
     }),
-    alias_assign: definePluginTool({
+    aliasAssign: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: true,
@@ -255,7 +255,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         };
       },
     }),
-    alias_inspect: definePluginTool({
+    aliasInspect: definePluginTool({
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -269,7 +269,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         return inspectAlias(input.alias, input.team);
       },
     }),
-    deployment_delete: definePluginTool({
+    deploymentDelete: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: true,

@@ -151,7 +151,12 @@ export function createEventAutomationTool(
         }
         // Live create retries stay idempotent. Deleted rows fall through and reactivate.
         if (existing.status !== "deleted") {
-          return eventAutomationToolResult(existing, catalog, actor.userId);
+          return eventAutomationToolResult(
+            context.conversationId,
+            existing,
+            catalog,
+            actor.userId,
+          );
         }
       }
       const title = await resolveTaskTitle({
@@ -192,6 +197,7 @@ export function createEventAutomationTool(
         },
       };
       return eventAutomationToolResult(
+        context.conversationId,
         await createEventAutomation(db, task),
         catalog,
         actor.userId,

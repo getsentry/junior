@@ -13,7 +13,7 @@ There are four independently runnable suites:
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client. The eval runtime pins standard to `xai/grok-4.5`, auxiliary work to `anthropic/claude-haiku-4.5`, Guardian review to `openai/gpt-5.6-luna`, and handoff continuation to `openai/gpt-5.6-sol`, so model-specific behavior stays reproducible.
+- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client. The eval runtime pins standard to `xai/grok-4.5`, auxiliary work to `anthropic/claude-haiku-4.5`, Guardian review to `openai/gpt-6-luna`, and handoff continuation to `openai/gpt-5.6-sol`, so model-specific behavior stays reproducible.
 
 ## Layer Boundaries
 
@@ -159,6 +159,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI verifies the pinned official binary's SHA-256 checksum before running it.
 - Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
+- Set the GitHub Actions repository secret `SENTRY_EVALS_API_KEY` to upload results to `evals.sentry.dev`. Each suite uploads one run after execution, with all shards combined. Existing score gates and artifacts stay in place. Without the key, uploads are skipped.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
 Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and Router evals only need AI Gateway access.

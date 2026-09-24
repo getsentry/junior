@@ -1,3 +1,4 @@
+import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Identity,
   type User,
@@ -183,6 +184,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           body: z.string().nullable().optional().default(null),
           draft: z.boolean(),
           html_url: z.string(),
+          merged: z.boolean(),
           number: z.number(),
           state: z.string(),
           title: z.string(),
@@ -205,6 +207,20 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         url: providerResult.html_url,
       };
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            repo: repo.ref,
+            number: providerResult.number,
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "code_change",
+            status: providerResult.merged
+              ? "merged"
+              : providerResult.state === "open" && providerResult.draft
+                ? "draft"
+                : providerResult.state,
+          }),
+        ],
         target: "updatePullRequest",
         ...data,
       };

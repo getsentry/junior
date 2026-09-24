@@ -11,6 +11,7 @@ function toolContext(response?: Response) {
           base: { ref: "release" },
           body: "Updated body",
           draft: false,
+          merged: false,
           html_url: "https://github.com/getsentry/junior/pull/691",
           number: 691,
           state: "open",
@@ -69,6 +70,7 @@ describe("updatePullRequest", () => {
       base: "release",
       number: 691,
       state: "open",
+      objectAnnotations: [{ status: "open" }],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
@@ -97,6 +99,39 @@ describe("updatePullRequest", () => {
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );
+  });
+
+  it("preserves merged status when updating a merged pull request", async () => {
+    const { tool } = toolContext(
+      new Response(
+        JSON.stringify({
+          base: { ref: "main" },
+          body: "Updated body",
+          draft: false,
+          merged: true,
+          html_url: "https://github.com/getsentry/junior/pull/691",
+          number: 691,
+          state: "closed",
+          title: "Updated title",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, title: "Updated title" },
+        { toolCallId: "update-merged-pr" },
+      ),
+    ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          key: "getsentry/junior#691",
+          status: "merged",
+          title: "Updated title",
+        },
+      ],
+    });
   });
 
   it.each([

@@ -71,12 +71,12 @@ Subscribe to the events that match your usage:
 | `app_mention`                 | Channel and thread mentions.                         |
 | `message.im`                  | Direct messages.                                     |
 | `app_home_opened`             | Connected-account App Home view.                     |
-| `entity_details_requested`    | Open and refresh Automation Work Object details.     |
+| `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
-For Automation previews, enable **Work Object Previews → Item** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
+For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 
 ## Configure interactivity
 

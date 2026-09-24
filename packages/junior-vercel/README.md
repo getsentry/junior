@@ -75,16 +75,16 @@ These defaults are optional fallbacks. If a user names a different project, team
 
 `vercelPlugin()` registers:
 
-- `vercel_deployment_create`: deploy a branch, tag, or commit from an existing
+- `vercel_deploymentCreate`: deploy a branch, tag, or commit from an existing
   project's linked GitHub repository. Preview is the default; Production is an
   explicit target. An optional full commit SHA pins the source while preserving
   branch context for Vercel integrations.
-- `vercel_deployment_inspect`: inspect an ID or hostname and return deployment
+- `vercel_deploymentInspect`: inspect an ID or hostname and return deployment
   identity, state, environment, and source when available.
-- `vercel_alias_assign`: assign a hostname to an exact deployment ID and read
+- `vercel_aliasAssign`: assign a hostname to an exact deployment ID and read
   back the alias. `matches` is false if it no longer points at that deployment.
-- `vercel_alias_inspect`: return the alias's deployment ID or redirect.
-- `vercel_deployment_delete`: delete an exact deployment ID when requested.
+- `vercel_aliasInspect`: return the alias's deployment ID or redirect.
+- `vercel_deploymentDelete`: delete an exact deployment ID when requested.
 
 Tools use the host-managed token and normal Guardian review. Vercel permissions
 still apply.

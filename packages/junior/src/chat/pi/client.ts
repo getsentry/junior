@@ -61,16 +61,36 @@ import { hasCompactedConversationContext } from "@/chat/services/context-compact
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
-// Temporary workaround. `pi-ai` only exposes a static, bundled gateway
-// catalog (`@earendil-works/pi-ai/compat` `getModels`/`getModel`), so new
-// gateway models are unknown to Junior until pi-ai ships an update. Warden
-// avoids this by using `@earendil-works/pi-coding-agent`'s `ModelRuntime`,
-// which refreshes its catalog live from Pi's hosted model list. The real
-// fix is moving Junior's gateway client onto that live-refresh path (or an
-// equivalent wrapper), not hardcoding models here. Remove each entry below
-// once it appears in the upstream static catalog or Junior gets live
-// catalog refresh.
+// Pi's bundled catalog can lag behind the gateway. Keep missing models and
+// metadata corrections here until the catalog includes them. Remove these
+// overrides when Pi supplies the same metadata or Junior uses a live catalog.
 const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "anthropic/claude-opus-5.5": {
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 4,
+      output: 20,
+      cacheRead: 0.2,
+      cacheWrite: 5,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      forceAdaptiveThinking: true,
+      supportsTemperature: false,
+    },
+  },
   "xai/grok-4.5": {
     id: "xai/grok-4.5",
     name: "Grok 4.5",
@@ -87,6 +107,37 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     },
     contextWindow: 500_000,
     maxTokens: 500_000,
+  },
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "openai/gpt-6-luna": {
+    id: "openai/gpt-6-luna",
+    name: "GPT-6 Luna",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 0.2,
+          output: 0.75,
+          cacheRead: 0.02,
+          cacheWrite: 0.25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
   },
   "openai/gpt-6-astra": {
     id: "openai/gpt-6-astra",
@@ -163,10 +214,7 @@ function extractText(message: {
     .trim();
 }
 
-/**
- * Look up a gateway model by id. Junior-owned overrides let new gateway
- * models work before pi-ai publishes an updated bundled catalog.
- */
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
 export function resolveGatewayModel(modelId: string): Model<any> {
   const matched =
     GATEWAY_MODEL_OVERRIDES[modelId] ??
@@ -213,7 +261,9 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : undefined),
+    ...(params.promptName
+      ? { "gen_ai.prompt.name": params.promptName }
+      : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
@@ -295,7 +345,9 @@ export async function completeText(params: {
               ],
             }
           : undefined),
-        ...(message.model ? { "gen_ai.response.model": message.model } : undefined),
+        ...(message.model
+          ? { "gen_ai.response.model": message.model }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -431,7 +483,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined ? { system: params.system } : undefined),
+          ...(params.system !== undefined
+            ? { system: params.system }
+            : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
             : undefined),
@@ -567,7 +621,9 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

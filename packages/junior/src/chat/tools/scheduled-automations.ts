@@ -24,6 +24,7 @@ function scheduledAutomationToolContext(
     return undefined;
   }
   return {
+    conversationId: context.conversationId,
     actor: context.actor,
     source: context.source,
     users: { resolveActor: context.resolveActorIdentity },

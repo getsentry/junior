@@ -14,7 +14,7 @@ describe("createApp profiles", () => {
       defaultProfile: "standard",
       embeddingModelId: "openai/text-embedding-3-large",
       fastModelId: "anthropic/claude-haiku-4.5",
-      guardianModelId: "openai/gpt-5.6-luna",
+      guardianModelId: "openai/gpt-6-luna",
       imageGenerationModelId: "google/gemini-3-pro-image",
       profiles: {
         standard: "anthropic/claude-sonnet-5",
@@ -29,7 +29,7 @@ describe("createApp profiles", () => {
       defaultProfile: "standard",
       embeddingModelId: "openai/text-embedding-3-large",
       fastModelId: "anthropic/claude-haiku-4.5",
-      guardianModelId: "openai/gpt-5.6-luna",
+      guardianModelId: "openai/gpt-6-luna",
       imageGenerationModelId: "google/gemini-3-pro-image",
       profiles: {
         standard: { modelId: "anthropic/claude-sonnet-5" },

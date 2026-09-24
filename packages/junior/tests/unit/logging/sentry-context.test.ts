@@ -214,7 +214,7 @@ describe("Sentry context", () => {
     await withLogContext({}, async () => {
       setTags({ modelId: "xai/grok-4.5" });
       logException(new Error("boom"), "turn.failed", {
-        "gen_ai.request.model": "openai/gpt-5.6-luna",
+        "gen_ai.request.model": "openai/gpt-6-luna",
       });
     });
 
@@ -223,7 +223,7 @@ describe("Sentry context", () => {
     );
     expect(modelTagCalls.at(-1)).toEqual([
       "gen_ai.request.model",
-      "openai/gpt-5.6-luna",
+      "openai/gpt-6-luna",
     ]);
   });
 });

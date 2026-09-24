@@ -1,3 +1,4 @@
+import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangeInput,
@@ -223,13 +224,15 @@ export function createGitHubWebhookRoute(args: {
             pullRequestOutcome.state === "merged" ? "merged" : "closed";
           await Promise.all(
             recordedOutcome.conversationIds.map((conversationId) =>
-              args.annotations.forConversation(conversationId).upsert({
-                kind: "resource_link",
-                key: `${pullRequestOutcome.repositoryFullName.toLowerCase()}#${pullRequestOutcome.number}`,
-                label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
-                url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
-                status,
-              }),
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: pullRequestOutcome.repositoryFullName,
+                  number: pullRequestOutcome.number,
+                  objectType: "code_change",
+                  status,
+                },
+              ),
             ),
           );
         }
@@ -269,13 +272,15 @@ export function createGitHubWebhookRoute(args: {
         if (recordedOutcome.applied && issueOutcome.state === "closed") {
           await Promise.all(
             recordedOutcome.conversationIds.map((conversationId) =>
-              args.annotations.forConversation(conversationId).upsert({
-                kind: "resource_link",
-                key: `${issueOutcome.repositoryFullName.toLowerCase()}#${issueOutcome.number}`,
-                label: `${issueOutcome.repositoryFullName}#${issueOutcome.number}`,
-                url: `https://github.com/${issueOutcome.repositoryFullName}/issues/${issueOutcome.number}`,
-                status: "closed",
-              }),
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: issueOutcome.repositoryFullName,
+                  number: issueOutcome.number,
+                  objectType: "task",
+                  status: "closed",
+                },
+              ),
             ),
           );
         }
