@@ -116,12 +116,13 @@ export async function setupHarnessEnvironment(
       ) ?? [],
     );
     const authActorUsers = new Set(
-      scenarioEvents(scenario).flatMap((event) =>
-        "message" in event
-          ? [event.message.author?.user_id?.trim() || TEST_USER_ID]
-          : "user_id" in event && event.user_id
-            ? [event.user_id]
-            : [],
+      [...scenarioEvents(scenario), ...(scenario.history ?? [])].flatMap(
+        (event) =>
+          "message" in event && event.type !== "assistant_reply"
+            ? [event.message.author?.user_id?.trim() || TEST_USER_ID]
+            : "user_id" in event && event.user_id
+              ? [event.user_id]
+              : [],
       ),
     );
     if (authActorUsers.size === 0) {

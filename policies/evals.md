@@ -53,6 +53,11 @@ Suite policy:
   serialization. Cover those in integration tests.
 - Do not invent parallel transcript, event-log, or tool-call schemas for eval
   assertions. Improve the harness edge instead.
+- A scenario controls three things: the agent config it instantiates, prior
+  turns preloaded through the runtime's own stores, and mocked third-party
+  APIs. Do not add harness knobs that write runtime state directly, script
+  the model, or replace a Junior-owned module. See
+  `packages/junior-evals/README.md`.
 - Keep eval replies within 60 seconds.
 - Use fixtures, mocks, or replay for external resources instead of raising
   timeouts.

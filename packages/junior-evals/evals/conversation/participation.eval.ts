@@ -2,12 +2,15 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import {
   mention,
+  reply,
   rubric,
   slackEvals,
   threadMessage,
   visibleThreadReplies,
 } from "../../src/helpers";
 
+// Every case preloads the exchange that made Junior a thread participant, so
+// the reply count is the number of replies Junior posts in the scenario itself.
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sam = { user_id: "USAM", user_name: "sam", full_name: "Sam" };
   const alex = { user_id: "UALEX", user_name: "alex", full_name: "Alex" };
@@ -21,27 +24,23 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: [
-          "The deploy changed the billing worker and the API auth flow.",
-        ],
-      },
-      initialEvents: [
+      history: [
         mention(
           "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
-          {
-            thread: sideConversationThread,
-          },
+          { thread: sideConversationThread },
         ),
+        reply("The deploy changed the billing worker and the API auth flow.", {
+          thread: sideConversationThread,
+        }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("@sam can you take the billing worker rollback?", {
           thread: sideConversationThread,
         }),
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 
   const directedFollowUpThread = {
@@ -54,15 +53,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: ["You need the budget by Friday."],
-      },
-      initialEvents: [
+      history: [
         mention("I need the budget by Friday.", {
           thread: directedFollowUpThread,
         }),
+        reply("You need the budget by Friday.", {
+          thread: directedFollowUpThread,
+        }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("What did you just say about the budget?", {
           thread: directedFollowUpThread,
         }),
@@ -74,7 +73,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(2);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const casualPronounThread = {
@@ -87,22 +86,22 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: [
-          "The deploy changed the billing worker and the API auth flow.",
-        ],
-      },
-      initialEvents: [
+      history: [
         mention(
           "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
           { thread: casualPronounThread },
         ),
+        reply("The deploy changed the billing worker and the API auth flow.", {
+          thread: casualPronounThread,
+        }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("Alex, I plan to roll back the billing worker first.", {
           author: sam,
           thread: casualPronounThread,
         }),
+      ],
+      events: [
         threadMessage("Is that the right approach?", {
           author: sam,
           thread: casualPronounThread,
@@ -110,7 +109,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 
   const domainVocabThread = {
@@ -123,21 +122,22 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: [
-          "The billing worker handles invoice processing and payment retries.",
-        ],
-      },
-      initialEvents: [
+      history: [
         mention("What does the billing worker do?", {
           thread: domainVocabThread,
         }),
+        reply(
+          "The billing worker handles invoice processing and payment retries.",
+          { thread: domainVocabThread },
+        ),
       ],
-      events: [
+      initialEvents: [
         threadMessage("Sam, I can finish the API rollout tomorrow.", {
           author: alex,
           thread: domainVocabThread,
         }),
+      ],
+      events: [
         threadMessage("What about the billing worker timeline?", {
           author: sam,
           thread: domainVocabThread,
@@ -145,7 +145,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 
   const canYouThread = {
@@ -158,17 +158,17 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: ["Here's the deployment status."],
-      },
-      initialEvents: [
+      history: [
         mention("Show me the deployment status.", { thread: canYouThread }),
+        reply("Here's the deployment status.", { thread: canYouThread }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("Alex, my deployment is still queued.", {
           author: sam,
           thread: canYouThread,
         }),
+      ],
+      events: [
         threadMessage("Can you check on this?", {
           author: sam,
           thread: canYouThread,
@@ -176,7 +176,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 
   const genuineFollowUpThread = {
@@ -189,18 +189,16 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: ["The deploy changed three services."],
-      },
-      initialEvents: [
+      history: [
         mention(
           "What changed in the last deploy? The API gateway gained request timeouts, the billing worker now backs off failed payment retries, and the auth service refreshes expired sessions.",
-          {
-            thread: genuineFollowUpThread,
-          },
+          { thread: genuineFollowUpThread },
         ),
+        reply("The deploy changed three services.", {
+          thread: genuineFollowUpThread,
+        }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("Can you explain your last response in more detail?", {
           thread: genuineFollowUpThread,
         }),
@@ -212,7 +210,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       }),
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(2);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const terseFollowUpThread = {
@@ -225,25 +223,18 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: [
-          "The deploy changed billing, auth, and the API gateway.",
-          "The three services were billing, auth, and the API gateway.",
-        ],
-      },
-      initialEvents: [
-        mention("What changed in the deploy?", {
+      history: [
+        mention("What changed in the deploy?", { thread: terseFollowUpThread }),
+        reply("The deploy changed billing, auth, and the API gateway.", {
           thread: terseFollowUpThread,
         }),
       ],
-      events: [
-        threadMessage("Which one?", {
-          thread: terseFollowUpThread,
-        }),
+      initialEvents: [
+        threadMessage("Which one?", { thread: terseFollowUpThread }),
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(2);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const humansTookFloorThread = {
@@ -256,19 +247,21 @@ describeEval("Passive Behavior", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      overrides: {
-        reply_texts: ["The deploy changed billing, auth, and the API gateway."],
-      },
-      initialEvents: [
+      history: [
         mention("What changed in the deploy?", {
           thread: humansTookFloorThread,
         }),
+        reply("The deploy changed billing, auth, and the API gateway.", {
+          thread: humansTookFloorThread,
+        }),
       ],
-      events: [
+      initialEvents: [
         threadMessage("Sam, I think auth should roll back first.", {
           author: alex,
           thread: humansTookFloorThread,
         }),
+      ],
+      events: [
         threadMessage("What about the billing worker timeline?", {
           author: sam,
           thread: humansTookFloorThread,
@@ -276,6 +269,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
     });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 });

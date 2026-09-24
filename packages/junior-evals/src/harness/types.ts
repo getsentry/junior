@@ -121,6 +121,12 @@ export interface GitHubWebhookEvent extends EvalBaseEvent {
   type: "github_webhook";
 }
 
+/** A prior Junior reply preloaded into thread and durable history without an agent run. */
+export interface AssistantReplyEvent extends EvalBaseEvent {
+  message: { id?: string; text: string };
+  type: "assistant_reply";
+}
+
 export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
@@ -131,7 +137,10 @@ export type EvalEvent =
   | EventFixture
   | GitHubWebhookEvent;
 
-type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
+export type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
+
+/** Prior turns written through the runtime's own stores before the scenario starts. */
+export type HistoryEvent = SlackMessageEvent | AssistantReplyEvent;
 
 /** Return whether a scenario event is an inbound Slack message. */
 export function isSlackMessageEvent(
@@ -175,7 +184,6 @@ export interface EvalOverrides {
   plugin_dirs?: string[];
   plugin_packages?: string[];
   reply_timeout_ms?: number;
-  reply_texts?: string[];
   skill_dirs?: string[];
   /** Agent turn deadline for every run slice, in ms. Must stay under the reply budget. */
   turn_timeout_ms?: number;
@@ -183,6 +191,8 @@ export interface EvalOverrides {
 }
 
 export interface EvalScenario {
+  /** Prior turns preloaded through the runtime's stores; no agent run happens for them. */
+  history?: HistoryEvent[];
   initialEvents: InitialEvents;
   events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
@@ -242,7 +252,7 @@ export interface EvalAttachedFile {
 
 export interface EvalAssistantPost {
   channel?: string;
-  eventType?: "channel_post" | "thread_post";
+  eventType?: "channel_post" | "history" | "thread_post";
   files: EvalAttachedFile[];
   text: string;
   thread_ts?: string;

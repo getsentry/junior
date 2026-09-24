@@ -31,6 +31,7 @@ import type {
   EvalEvent,
   EvalOverrides,
   EvalResult,
+  HistoryEvent,
   InitialEvents,
   SteerEvent,
 } from "./harness/types";
@@ -180,6 +181,8 @@ interface EvalRubric {
 }
 
 export interface SlackEvalInput {
+  /** Prior turns preloaded through the runtime's stores before the scenario starts. */
+  history?: HistoryEvent[];
   initialEvents: InitialEvents;
   events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
@@ -382,6 +385,7 @@ export const slackHarness: Harness<SlackEvalInput> = {
         assertTimeoutBudget(input);
         const result = await runEvalScenario(
           {
+            history: input.history,
             initialEvents: input.initialEvents,
             events: input.events,
             overrides: input.overrides,
@@ -658,6 +662,17 @@ export function threadMessage(
       ...event.thread,
       ...(thread.channel_type ? { channel_type: thread.channel_type } : {}),
     },
+  };
+}
+
+/** Builds a prior Junior reply to preload before the scenario starts. */
+export function reply(text: string, opts?: { thread?: ThreadOverrides }) {
+  const seq = nextId();
+  const thread = evalThread(seq, opts?.thread);
+  return {
+    type: "assistant_reply" as const,
+    thread,
+    message: { id: messageTs(seq), text },
   };
 }
 

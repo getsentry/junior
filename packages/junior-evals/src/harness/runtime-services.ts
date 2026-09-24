@@ -2,10 +2,6 @@
  * Eval-local runtime service overrides: the agent runner wrapper and vision context.
  */
 import { readFile } from "node:fs/promises";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-} from "@earendil-works/pi-ai/providers/faux";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { actorFromRun } from "@/chat/agent/types";
@@ -117,7 +113,6 @@ export function buildRuntimeServices(
   steeringDelivery: SteeringDelivery,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
-  const replyTexts = scenario.overrides?.reply_texts ?? [];
   const replyTimeoutMs =
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
@@ -143,7 +138,6 @@ export function buildRuntimeServices(
       `Eval turn timeout must be an integer below the ${replyTimeoutMs}ms reply budget, got ${turnTimeoutMs}`,
     );
   }
-  const replyState = { successfulCount: 0 };
   let activeTurnCompactionInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
   const attachmentStorage = createMemoryAttachmentStorage();
@@ -230,16 +224,6 @@ export function buildRuntimeServices(
           };
         }
         const mockImageGeneration = scenario.overrides?.mock_image_generation;
-        const replyText = replyTexts[replyState.successfulCount];
-        let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
-        if (typeof replyText === "string") {
-          scriptedStream = createFauxCore({
-            api: "eval",
-            provider: "eval",
-          });
-          scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
-        }
-
         const baseToolOverrides: ToolHooks["toolOverrides"] = {
           ...(request.environment?.toolOverrides ?? {}),
         };
@@ -274,64 +258,61 @@ export function buildRuntimeServices(
             AbortSignal.timeout(replyTimeoutMs),
           ]);
           const outcome = await raceWithAbort(replySignal, () =>
-            executeAgentRun(
-              {
-                ...runRequest,
-                signal: replySignal,
-                // The runtime owns what happens at the deadline: it aborts
-                // in-flight tools, records the boundary, and resumes the turn.
-                deadlineAtMs: Math.min(
-                  runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                  Date.now() + (turnTimeoutMs ?? replyTimeoutMs),
-                ),
-                environment: {
-                  ...runRequest.environment,
-                  attachmentStorage:
-                    runRequest.environment?.attachmentStorage ??
-                    attachmentStorage,
-                  ...(env.configuredSkillDirs.length > 0
-                    ? { skillDirs: env.configuredSkillDirs }
-                    : {}),
-                  toolOverrides,
-                },
-                onEvent: async (event) => {
-                  await runRequest.onEvent?.(event);
-                  if (event.type === "tool_started") {
-                    const evalInvocation = toEvalToolInvocation({
-                      params: event.params,
-                      toolCallId: event.toolCallId,
-                      toolName: event.toolName,
-                    });
-                    observations.toolInvocations.push(evalInvocation);
-                    pendingToolInvocations.push(evalInvocation);
-                    return;
-                  }
-                  if (event.type !== "tool_finished") {
-                    return;
-                  }
-                  const result = event.report;
-                  const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.toolCallId === result.toolCallId,
-                  );
-                  if (pendingIndex === -1) {
-                    return;
-                  }
-                  const [invocation] = pendingToolInvocations.splice(
-                    pendingIndex,
-                    1,
-                  );
-                  invocation.completed = true;
-                  invocation.ok = result.ok;
-                  if (result.error) {
-                    invocation.error = result.error;
-                  }
-                  if (result.result !== undefined) {
-                    invocation.result = result.result;
-                  }
-                },
+            executeAgentRun({
+              ...runRequest,
+              signal: replySignal,
+              // The runtime owns what happens at the deadline: it aborts
+              // in-flight tools, records the boundary, and resumes the turn.
+              deadlineAtMs: Math.min(
+                runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                Date.now() + (turnTimeoutMs ?? replyTimeoutMs),
+              ),
+              environment: {
+                ...runRequest.environment,
+                attachmentStorage:
+                  runRequest.environment?.attachmentStorage ??
+                  attachmentStorage,
+                ...(env.configuredSkillDirs.length > 0
+                  ? { skillDirs: env.configuredSkillDirs }
+                  : {}),
+                toolOverrides,
               },
-              scriptedStream?.stream,
-            ),
+              onEvent: async (event) => {
+                await runRequest.onEvent?.(event);
+                if (event.type === "tool_started") {
+                  const evalInvocation = toEvalToolInvocation({
+                    params: event.params,
+                    toolCallId: event.toolCallId,
+                    toolName: event.toolName,
+                  });
+                  observations.toolInvocations.push(evalInvocation);
+                  pendingToolInvocations.push(evalInvocation);
+                  return;
+                }
+                if (event.type !== "tool_finished") {
+                  return;
+                }
+                const result = event.report;
+                const pendingIndex = pendingToolInvocations.findIndex(
+                  (candidate) => candidate.toolCallId === result.toolCallId,
+                );
+                if (pendingIndex === -1) {
+                  return;
+                }
+                const [invocation] = pendingToolInvocations.splice(
+                  pendingIndex,
+                  1,
+                );
+                invocation.completed = true;
+                invocation.ok = result.ok;
+                if (result.error) {
+                  invocation.error = result.error;
+                }
+                if (result.result !== undefined) {
+                  invocation.result = result.result;
+                }
+              },
+            }),
           );
           const usage =
             outcome.status === "completed"
@@ -350,7 +331,6 @@ export function buildRuntimeServices(
               );
             }
           }
-          replyState.successfulCount += 1;
           return outcome;
         } catch (error) {
           // Production delivers a safe failure reply. Keep the original failure

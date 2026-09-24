@@ -97,6 +97,14 @@ For each `it()` case inside a `describeEval()` suite:
 - When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
 - Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
 
+A scenario controls three things, and nothing else:
+
+1. **Agent config.** The runtime the scenario instantiates: plugin packages and fixture dirs, skill dirs, credentials, env, and runtime service overrides. Production sets the same things at startup, so a scenario that needs different behavior configures a different runtime instead of reaching into a running one.
+2. **Preloaded history.** Prior turns written through the runtime's own stores before the first event, with `history: [mention(...), reply(...)]`. No agent runs for them. The visible thread transcript, durable agent history, and conversation messages all exist as a completed turn would have left them, and a thread Junior replied in stays subscribed.
+3. **Mocked third-party APIs.** Slack, provider HTTP, MCP fixtures, and image generation through the shared MSW handlers and fixtures.
+
+Do not add a knob that writes runtime state directly, scripts the model, or replaces a Junior-owned module. `active_turn_compaction` is the one remaining exception: the active-turn compactor takes no trigger override, so it still seeds a paused turn record.
+
 Harness override knobs (in `EvalOverrides`):
 
 - `active_turn_compaction`: seeds an active-turn compaction boundary so an eval can exercise model continuation without manufacturing oversized tool output.
@@ -105,7 +113,6 @@ Harness override knobs (in `EvalOverrides`):
 - `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
-- `reply_texts`: script the model reply for the first turns through the shared faux model stream. The real agent still runs; only the model output is fixed. Use it when a later turn is the behavior under test.
 - `reply_timeout_ms`: lower the per-reply harness timeout for a specific scenario. It cannot exceed 60 seconds. Harness tests use it; live evals keep the default.
 - `turn_timeout_ms`: shorten the agent turn deadline for every run slice, below the 60-second reply budget. The real runtime handles the deadline: it aborts in-flight tools, records the boundary, and resumes the turn. Pair it with a fixture tool that stalls, such as the eval-operation `release-push` whose first call lands remotely but stalls past the deadline.
 

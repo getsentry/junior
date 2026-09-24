@@ -78,7 +78,7 @@ export async function cleanupHarnessThreadState(
   stateAdapter: HarnessStateAdapter,
   scenario: EvalScenario,
 ): Promise<void> {
-  const events = scenarioEvents(scenario);
+  const events = [...scenarioEvents(scenario), ...(scenario.history ?? [])];
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
@@ -189,7 +189,8 @@ export function recordUserMessage(
   });
 }
 
-function recordAssistantPost(
+/** Append one assistant post to the normalized session. */
+export function recordAssistantPost(
   observations: RuntimeObservations,
   thread: TestThread,
   post: EvalAssistantPost,

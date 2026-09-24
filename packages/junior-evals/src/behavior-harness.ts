@@ -46,6 +46,7 @@ import {
   toEvalAssistantPost,
 } from "./harness/slack-artifacts";
 import { processEvents } from "./harness/event-processing";
+import { preloadHistory } from "./harness/history";
 
 function collectResults(
   threadRecordsById: Map<string, EvalThreadRecord>,
@@ -196,6 +197,13 @@ export async function runEvalScenario(
     });
 
     try {
+      if (scenario.history?.length) {
+        await preloadHistory({
+          history: scenario.history,
+          getThreadRecord,
+          observations,
+        });
+      }
       await processEvents({
         scenario,
         env,
