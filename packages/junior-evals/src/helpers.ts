@@ -134,18 +134,34 @@ export function serializeVisibleTranscript(session: NormalizedSession): string {
         event.type !== "message" ||
         (event.role !== "user" && event.role !== "assistant") ||
         typeof event.content !== "string" ||
-        event.content.trim().length === 0 ||
         event.metadata?.rubric_visible === false
       ) {
         return [];
       }
+      const files = event.metadata?.files;
+      const attachments = Array.isArray(files)
+        ? files.flatMap((file) =>
+            file &&
+            typeof file === "object" &&
+            !Array.isArray(file) &&
+            typeof file.filename === "string"
+              ? [
+                  `[attached ${file.isImage ? "image" : "file"}: ${file.filename}]`,
+                ]
+              : [],
+          )
+        : [];
+      const content = [event.content, ...attachments]
+        .filter(Boolean)
+        .join("\n");
+      if (!content.trim()) return [];
       return [
         {
           role: event.role,
           ...(event.role === "user" && event.metadata?.author_name
             ? { author: event.metadata.author_name }
             : {}),
-          content: event.content,
+          content,
         },
       ];
     }),

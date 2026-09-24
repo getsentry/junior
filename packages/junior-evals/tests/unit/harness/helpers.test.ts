@@ -26,7 +26,7 @@ it("selects visible assistant text and image attachments without assertions", ()
       {
         type: "message",
         role: "assistant",
-        content: "Shared it.",
+        content: "",
         metadata: {
           event_type: "thread_post",
           files: [{ filename: "result.png", isImage: true }],
@@ -41,8 +41,11 @@ it("selects visible assistant text and image attachments without assertions", ()
     ],
   } as never;
 
-  expect(visibleThreadReplies(session)).toHaveLength(1);
-  expect(visibleAssistantText(session)).toBe("Shared it.\n");
+  expect(visibleThreadReplies(session)).toHaveLength(0);
+  expect(visibleAssistantText(session)).toBe("\n");
+  expect(JSON.parse(serializeVisibleTranscript(session))).toEqual([
+    { role: "assistant", content: "[attached image: result.png]" },
+  ]);
   expect(hasImageAttachment(session)).toBe(true);
 });
 

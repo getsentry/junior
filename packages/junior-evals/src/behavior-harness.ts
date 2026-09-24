@@ -468,6 +468,7 @@ interface EvalSlackThreadReply {
 interface EvalThreadRecord {
   thread: TestThread;
   transcript: Message[];
+  recordedPosts: number;
 }
 
 interface QueueDelivery {
@@ -834,7 +835,6 @@ async function cleanupHarnessThreadState(
 async function createEvalThread(args: {
   fixture: EvalEventThreadFixture;
   channelStateRef?: { value: Record<string, unknown> };
-  observations: RuntimeObservations;
   stateAdapter: HarnessStateAdapter;
 }): Promise<TestThread> {
   // createTestThread already seeds Junior adapter scratch; keep subscribe state
@@ -858,17 +858,26 @@ async function createEvalThread(args: {
   };
   thread.isSubscribed = async () =>
     await args.stateAdapter.isSubscribed(thread.id);
-  const originalPost = thread.post.bind(thread);
-  thread.post = async (message: Parameters<TestThread["post"]>[0]) => {
-    const sent = await originalPost(message);
-    recordAssistantPost(
-      args.observations,
-      thread,
-      toEvalAssistantPost(thread.posts.at(-1)),
-    );
-    return sent;
-  };
   return thread;
+}
+
+// TestThread includes SDK and Slack HTTP posts. Read each once before the
+// next user message so the judge sees the delivery order.
+function recordPendingPosts(
+  records: Map<string, EvalThreadRecord>,
+  observations: RuntimeObservations,
+): void {
+  for (const record of records.values()) {
+    const posts = record.thread.posts;
+    for (const post of posts.slice(record.recordedPosts)) {
+      recordAssistantPost(
+        observations,
+        record.thread,
+        toEvalAssistantPost(post),
+      );
+    }
+    record.recordedPosts = posts.length;
+  }
 }
 
 function recordUserMessage(
@@ -897,16 +906,9 @@ function recordAssistantPost(
   thread: TestThread,
   post: EvalAssistantPost,
 ): void {
-  const attachmentSummary = post.files
-    .map(
-      (file) =>
-        `[attached ${file.isImage ? "image" : "file"}: ${file.filename}]`,
-    )
-    .join("\n");
-  const content = [post.text, attachmentSummary].filter(Boolean).join("\n");
   observations.sessionMessages.push({
     role: "assistant",
-    content,
+    content: post.text,
     metadata: {
       event_type: post.eventType ?? "thread_post",
       channel: thread.channelId,
@@ -2057,6 +2059,7 @@ async function processEvents(args: {
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
   steeringDelivery: SteeringDelivery;
+  threadRecordsById: Map<string, EvalThreadRecord>;
   signal?: AbortSignal;
 }): Promise<void> {
   const {
@@ -2143,6 +2146,7 @@ async function processEvents(args: {
     events: Array<MentionEvent | SubscribedMessageEvent>,
   ): Promise<void> => {
     for (const [index, event] of events.entries()) {
+      recordPendingPosts(args.threadRecordsById, args.observations);
       recordUserMessage(args.observations, event);
       const { thread, transcript } = await getThreadRecord(event.thread);
       const route =
@@ -2179,6 +2183,7 @@ async function processEvents(args: {
   const enqueueEvent = async (
     event: MentionEvent | SubscribedMessageEvent,
   ): Promise<void> => {
+    recordPendingPosts(args.threadRecordsById, args.observations);
     recordUserMessage(args.observations, event);
     const { thread, transcript } = await getThreadRecord(event.thread);
     const message = toSlackMessage(event, thread.id);
@@ -2600,11 +2605,7 @@ function collectResults(
   logRecords: EmittedLogRecord[],
   observations: RuntimeObservations,
 ): EvalResult {
-  const threadReplyTargets = new Set(
-    [...threadRecordsById.values()]
-      .filter((record) => record.thread.threadTs)
-      .map((record) => `${record.thread.channelId}:${record.thread.threadTs}`),
-  );
+  recordPendingPosts(threadRecordsById, observations);
   const { canvases, channelPosts, filePosts, reactions } =
     collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
   const threadPosts = [...threadRecordsById.values()].flatMap((record) =>
@@ -2614,20 +2615,6 @@ function collectResults(
       ...(record.thread.threadTs ? { thread_ts: record.thread.threadTs } : {}),
     })),
   );
-  const callbackThreadPosts = channelPosts
-    .filter(
-      (post) =>
-        post.thread_ts &&
-        threadReplyTargets.has(`${post.channel}:${post.thread_ts}`),
-    )
-    .map(
-      (post): EvalAssistantPost => ({
-        channel: post.channel,
-        files: [],
-        text: post.text,
-        thread_ts: post.thread_ts,
-      }),
-    );
 
   return {
     canvases,
@@ -2637,7 +2624,7 @@ function collectResults(
     authorizationCompletions: observations.authorizationCompletions,
     reactions,
     modelIds: [...observations.modelIds],
-    posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
+    posts: [...threadPosts, ...filePosts],
     sessionMessages: observations.sessionMessages,
     slackAdapter,
     toolInvocations: observations.toolInvocations,
@@ -2710,12 +2697,11 @@ export async function runEvalScenario(
       const thread = await createEvalThread({
         fixture,
         channelStateRef: getChannelStateRef(fixture.channel_id),
-        observations,
         stateAdapter: env.stateAdapter,
       });
       const transcript: Message[] = [];
       attachTranscriptAccessors(thread, transcript);
-      const record = { thread, transcript };
+      const record = { thread, transcript, recordedPosts: 0 };
       threadRecordsById.set(runtimeThreadId, record);
       return record;
     };
@@ -2777,6 +2763,7 @@ export async function runEvalScenario(
         observations,
         readyQueueDeliveries,
         steeringDelivery,
+        threadRecordsById,
         signal: options.signal,
       });
 
