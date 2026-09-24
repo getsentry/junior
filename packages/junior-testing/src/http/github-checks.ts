@@ -80,7 +80,12 @@ export async function interceptTestGitHubChecksHttp(
   if (request.method === "POST" && url.pathname === "/graphql") {
     const body = (await request.clone().json()) as {
       query?: string;
-      variables?: { number?: number; owner?: string; name?: string };
+      variables?: {
+        number?: number;
+        owner?: string;
+        name?: string;
+        repo?: string;
+      };
     };
     const query = body.query ?? "";
     if (
@@ -88,7 +93,9 @@ export async function interceptTestGitHubChecksHttp(
       /\bpullRequest\s*\(/.test(query) &&
       (body.variables?.owner === "getsentry" ||
         /owner:\s*"getsentry"/.test(query)) &&
-      (body.variables?.name === "junior" || /name:\s*"junior"/.test(query)) &&
+      (body.variables?.name === "junior" ||
+        body.variables?.repo === "junior" ||
+        /name:\s*"junior"/.test(query)) &&
       (body.variables?.number === 691 || /number:\s*691\b/.test(query))
     ) {
       return Response.json({

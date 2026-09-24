@@ -19,6 +19,33 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
     { id: 1, name: "test", head_sha: pr.head.sha, conclusion: "failure" },
   ]);
 
+  // gh uses $repo for the repository name, not $name.
+  const graphql = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      query: `query PullRequest($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            state headRefOid
+            commits(last: 1) {
+              nodes { commit { statusCheckRollup { contexts(first: 100) {
+                nodes { ... on CheckRun { name conclusion } }
+              } } } }
+            }
+          }
+        }
+      }`,
+      variables: { owner: "getsentry", repo: "junior", number: 691 },
+    }),
+  });
+  expect(graphql.status).toBe(200);
+  const graphqlPr = (await graphql.json()).data.repository.pullRequest;
+  expect(graphqlPr).toMatchObject({ state: "OPEN", headRefOid: pr.head.sha });
+  expect(
+    graphqlPr.commits.nodes[0].commit.statusCheckRollup.contexts.nodes,
+  ).toMatchObject([{ name: "test", conclusion: "FAILURE" }]);
+
   const run = await fetch(`${api}/actions/runs/1`).then((response) =>
     response.json(),
   );
