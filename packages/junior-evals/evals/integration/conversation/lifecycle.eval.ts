@@ -84,12 +84,18 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     });
 
     const calls = toolCalls(result.session);
-    expect(
-      calls.filter(
-        (call) =>
-          call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
-      ),
-    ).toHaveLength(1);
+    const pushCalls = calls.filter(
+      (call) =>
+        call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
+    );
+    // The runtime reports the preempted push as an attempt with unknown
+    // outcome; the agent verifies remote state instead of pushing again.
+    expect(pushCalls).toEqual([
+      expect.objectContaining({
+        status: "ok",
+        result: expect.objectContaining({ aborted: true }),
+      }),
+    ]);
     expect(calls).toContainEqual(
       expect.objectContaining({
         name: "callMcpTool",
