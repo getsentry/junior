@@ -146,7 +146,8 @@ export function createSlackScheduleCreateAutomationTool(
       let compiled;
       try {
         compiled = compileScheduleIntent({
-          defaultTimezone: getDefaultScheduleTimezone(),
+          defaultTimezone:
+            context.actor?.timezone ?? getDefaultScheduleTimezone(),
           intent: input.schedule,
           nowMs,
         });

@@ -25,7 +25,7 @@ const timezoneSchema = z
   .min(1)
   .max(80)
   .describe(
-    "IANA timezone, for example America/Los_Angeles. Omit or use null for the scheduler default.",
+    "IANA timezone explicitly requested by the user. Omit or use null to use the requester's profile timezone for a new schedule, or keep the existing timezone on updates. Do not infer it from company or office locations.",
   )
   .nullable()
   .optional();

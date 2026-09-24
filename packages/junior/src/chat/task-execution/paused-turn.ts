@@ -233,6 +233,7 @@ async function resolveSlackResumeUserActor(args: {
     ) {
       try {
         return createSlackActor(args.teamId, args.userId, {
+          timezone: workActor.timezone,
           email: workActor.email,
           fullName: workActor.fullName,
           userName: workActor.slackUserName,
