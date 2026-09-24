@@ -26,14 +26,14 @@ import {
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 import { parseSlackChannelId, parseSlackUserId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
-import {
-  type EvalEvent,
-  type EvalOverrides,
-  type EvalResult,
-  type InitialEvents,
-  type SteerEvent,
-  runEvalScenario,
-} from "./behavior-harness";
+import { runEvalScenario } from "./behavior-harness";
+import type {
+  EvalEvent,
+  EvalOverrides,
+  EvalResult,
+  InitialEvents,
+  SteerEvent,
+} from "./harness/types";
 import { runEvalWork } from "./eval-work";
 import { toEvalHarnessRun } from "./eval-result";
 

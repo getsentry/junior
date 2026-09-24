@@ -63,7 +63,7 @@ Not in scope:
 - Helpers and event builders: `src/helpers.ts`
 - Guardian harness: `src/guardian-harness.ts`
 - Router harness: `src/router-harness.ts`
-- Harness/runtime adapter: `src/behavior-harness.ts`
+- Harness/runtime adapter: `src/behavior-harness.ts` (scenario entry) with its concerns split under `src/harness/`: types, environment, auth fixtures, threads, Slack artifacts, replay tools, runtime services, event processing, and plugin tasks
 
 The ticket lookup in `evals/conversation/actors.eval.ts` uses the `eval-tracker`
 MCP fixture. It supplies two tickets with different causes and exposes a write

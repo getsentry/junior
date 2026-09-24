@@ -8,7 +8,7 @@ import {
   type JsonValue,
   type TranscriptEvent,
 } from "vitest-evals/harness";
-import type { EvalResult } from "./behavior-harness";
+import type { EvalResult } from "./harness/types";
 
 type NormalizedMessage = EvalResult["sessionMessages"][number];
 

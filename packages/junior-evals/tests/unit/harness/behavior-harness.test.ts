@@ -110,10 +110,8 @@ vi.mock("@/chat/app/factory", () => ({
   ),
 }));
 
-import {
-  collectSlackArtifactsFromCapturedCalls,
-  runEvalScenario,
-} from "../../../src/behavior-harness";
+import { runEvalScenario } from "../../../src/behavior-harness";
+import { collectSlackArtifactsFromCapturedCalls } from "../../../src/harness/slack-artifacts";
 import { deferred } from "../../../../junior/tests/fixtures/conversation-work";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
