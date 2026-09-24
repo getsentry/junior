@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { interceptTestGitHubChecksHttp } from "@sentry/junior-testing/http";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 
@@ -16,4 +17,16 @@ export const githubApiHandlers = [
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
   ),
+  http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
+    const response = await interceptTestGitHubChecksHttp(
+      request,
+      new URL(request.url),
+    );
+    if (response) return response;
+    // A matched MSW handler that returns undefined bypasses the network guard.
+    return new HttpResponse(
+      `Missing GitHub fixture for ${request.method} ${request.url}`,
+      { status: 501 },
+    );
+  }),
 ];

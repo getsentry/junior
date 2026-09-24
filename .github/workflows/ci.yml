@@ -468,6 +468,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - eval-harness-tests
       - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
@@ -519,6 +520,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - eval-harness-tests
       - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
@@ -544,6 +546,7 @@ jobs:
             "${{ needs.lint.result }}" \
             "${{ needs.typecheck.result }}" \
             "${{ needs.junior-tests.result }}" \
+            "${{ needs.eval-harness-tests.result }}" \
             "${{ needs.workspace-snapshot-lifecycle.result }}" \
             "${{ needs.plugin-tests.result }}" \
             "${{ needs.dashboard-tests.result }}" \

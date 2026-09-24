@@ -176,6 +176,11 @@ describeEval("Watches", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
+      overrides: {
+        credential_providers: ["github"],
+        github_events: true,
+        plugin_packages: ["@sentry/junior-github"],
+      },
       initialEvents: [
         event({
           eventKey: "github-delivery-checks-failed",

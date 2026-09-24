@@ -42,7 +42,10 @@ const workspaceRoot = path.resolve(
 export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
+  // Global setup runs before case timeouts and result reporting can help.
+  process.stdout.write("[evals] Preparing Postgres template\n");
   const teardownPostgres = await setupPostgres(project);
+  process.stdout.write("[evals] Postgres template ready\n");
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
@@ -120,6 +123,7 @@ export default async function setup(
     });
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    process.stdout.write("[evals] Starting public egress\n");
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
@@ -132,6 +136,7 @@ export default async function setup(
         resetTestGitHubHttpFixtures();
       },
     });
+    process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
     process.env.JUNIOR_BASE_URL = egress.baseUrl;
     for (const packages of [
       [],
@@ -151,6 +156,8 @@ export default async function setup(
     process.stdout.write(`[evals] Public egress ready at ${egress.baseUrl}\n`);
     return cleanup;
   } catch (error) {
+    // Cleanup can also stall; retain the original setup error first.
+    console.error("[evals] Global setup failed; releasing resources", error);
     try {
       await cleanup();
     } catch (cleanupError) {

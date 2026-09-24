@@ -72,7 +72,10 @@ offer from another person is not permission to change a ticket.
 
 The output cases accept labeled links, as the Slack output contract does.
 Watch summaries may use tool discovery and read-only inspection; they do not
-require a fixed tool sequence.
+require a fixed tool sequence. The failed-check case loads GitHub with fixture
+credentials. Host and Sandbox HTTP reads use the same open PR, failed check,
+and log fixtures in `junior-testing/src/http/github-checks.ts`.
+Reply-count checks include file-only replies. A reaction is not a thread reply.
 
 ## Execution Model
 
@@ -116,7 +119,9 @@ egress use the same plugin registrations so dependencies and credentials match.
 Failed runs keep their partial session in the report and still fail the case.
 `src/eval-result.ts` converts both successful and failed results. Worker and global
 setup each install the AI Gateway transport timeouts in their own process. Quick Tunnel
-startup uses normal system DNS and retains failed attempts and logs.
+startup uses normal system DNS and retains failed attempts and logs. Global
+setup reports the Postgres, egress, and snapshot phases before cases start.
+Egress teardown stops the tunnel and closes its remaining HTTP connections.
 
 Tool replay:
 

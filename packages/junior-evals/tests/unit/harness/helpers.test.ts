@@ -14,6 +14,7 @@ vi.mock("../../../src/behavior-harness", () => ({
 
 import {
   hasImageAttachment,
+  lastTurnReplies,
   serializeVisibleTranscript,
   slackHarness,
   visibleAssistantText,
@@ -21,7 +22,7 @@ import {
 } from "../../../src/helpers";
 
 it("selects visible assistant text and image attachments without assertions", () => {
-  const session = {
+  const session: Parameters<typeof visibleThreadReplies>[0] = {
     events: [
       {
         type: "message",
@@ -39,9 +40,10 @@ it("selects visible assistant text and image attachments without assertions", ()
         metadata: { event_type: "reaction_added" },
       },
     ],
-  } as never;
+  };
 
-  expect(visibleThreadReplies(session)).toHaveLength(0);
+  expect(visibleThreadReplies(session)).toEqual([session.events[0]]);
+  expect(lastTurnReplies(session)).toEqual([session.events[0]]);
   expect(visibleAssistantText(session)).toBe("\n");
   expect(JSON.parse(serializeVisibleTranscript(session))).toEqual([
     { role: "assistant", content: "[attached image: result.png]" },

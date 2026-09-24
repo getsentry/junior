@@ -79,12 +79,14 @@ export function assistantTextContent(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-/** Return non-empty assistant replies posted visibly in the active thread. */
+/** Return visible text or file replies posted in the active thread. */
 export function visibleThreadReplies(session: NormalizedSession) {
   return assistantMessages(session).filter(
     (message) =>
       message.metadata?.event_type === "thread_post" &&
-      assistantTextContent(message.content).trim().length > 0,
+      (assistantTextContent(message.content).trim().length > 0 ||
+        (Array.isArray(message.metadata.files) &&
+          message.metadata.files.length > 0)),
   );
 }
 

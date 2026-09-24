@@ -14,7 +14,17 @@ export function evalRuntimePlugins(
 ): PluginRegistration[] {
   return [
     ...(packages.includes("@sentry/junior-github")
-      ? [githubPlugin({ appPermissions: { deployments: "read" } })]
+      ? [
+          githubPlugin({
+            appPermissions: {
+              actions: "read",
+              checks: "read",
+              contents: "read",
+              deployments: "read",
+              pull_requests: "read",
+            },
+          }),
+        ]
       : []),
     ...(packages.includes("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.includes("@sentry/junior-sentry") ? [sentryPlugin()] : []),

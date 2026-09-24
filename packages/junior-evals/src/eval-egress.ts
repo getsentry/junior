@@ -73,6 +73,8 @@ function closeServer(server: Server): Promise<void> {
       if (error) reject(error);
       else resolve();
     });
+    // The tunnel is stopped. Do not wait for partial requests it left behind.
+    server.closeAllConnections();
   });
 }
 
