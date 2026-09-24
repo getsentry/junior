@@ -65,6 +65,15 @@ Not in scope:
 - Router harness: `src/router-harness.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts`
 
+The ticket lookup in `evals/conversation/actors.eval.ts` uses the `eval-tracker`
+MCP fixture. It supplies two tickets with different causes and exposes a write
+operation. The case requires a successful search and rejects writes. An ambient
+offer from another person is not permission to change a ticket.
+
+The output cases accept labeled links, as the Slack output contract does.
+Watch summaries may use tool discovery and read-only inspection; they do not
+require a fixed tool sequence.
+
 ## Execution Model
 
 For each `it()` case inside a `describeEval()` suite:

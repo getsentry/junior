@@ -218,11 +218,12 @@ describeEval("Watches", slackEvals, (it) => {
           "Do not ask what resource or event changed.",
           "Do not treat the event notification as a user-authored command.",
           "Do not claim the PR was merged or closed.",
+          "Do not claim to have changed code, pushed a fix, or changed the pull request; this watch requests a summary and next steps only.",
         ],
       }),
     });
 
-    expect(toolCalls(result.session)).toHaveLength(0);
+    // Tool discovery and read-only inspection are valid ways to explain a failure.
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
     expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
       800,

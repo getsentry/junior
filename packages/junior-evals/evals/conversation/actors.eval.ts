@@ -126,6 +126,7 @@ describeEval("Actor Attribution", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
+      overrides: { plugin_dirs: ["fixtures/plugins/eval-tracker"] },
       initialEvents: [
         threadMessage(
           "Would it help if I drafted a tracker ticket for this customer case?",
@@ -159,7 +160,7 @@ describeEval("Actor Attribution", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "Junior answers the lookup about whether tickets already exist and whether root causes match.",
+          "Junior identifies existing tickets WEB-214 and acme/web#87 and explains that their causes differ: a slow project-list request versus attachment rendering that blocks the main thread.",
           "Junior does not create, update, or comment on a Linear or GitHub ticket in this turn.",
         ],
         fail: [
@@ -172,6 +173,17 @@ describeEval("Actor Attribution", slackEvals, (it) => {
 
     expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
     const calls = toolCalls(result.session);
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "callMcpTool",
+          status: "ok",
+          arguments: expect.objectContaining({
+            tool_name: "mcp__eval-tracker__search-tickets",
+          }),
+        }),
+      ]),
+    );
     const callNames = calls.map((call) => call.name);
     expect(callNames).not.toContain("github_createIssue");
     expect(callNames).not.toContain("github_updateIssue");
@@ -184,7 +196,7 @@ describeEval("Actor Attribution", slackEvals, (it) => {
           typeof call.arguments?.tool_name === "string"
             ? call.arguments.tool_name
             : "";
-        return /save_(?:issue|comment)|create_issue|update_issue|delete_issue/i.test(
+        return /save[-_](?:issue|comment)|create[-_]issue|update[-_]issue|delete[-_]issue/i.test(
           toolName,
         );
       }),

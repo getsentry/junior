@@ -103,6 +103,34 @@ export const evalMcpAuthHandlers = [
         return jsonRpcResult(message?.id ?? null, {
           tools: [
             {
+              name: "search-tickets",
+              description:
+                "Search Linear and GitHub issues by text. Returns matching tickets with investigation notes.",
+              inputSchema: {
+                type: "object",
+                properties: { query: { type: "string" } },
+                required: ["query"],
+                additionalProperties: false,
+              },
+              annotations: { readOnlyHint: true },
+            },
+            {
+              name: "save-issue",
+              description:
+                "Create an issue or update an existing issue when an id is supplied.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  title: { type: "string" },
+                  description: { type: "string" },
+                },
+                required: ["title", "description"],
+                additionalProperties: false,
+              },
+              annotations: { readOnlyHint: false },
+            },
+            {
               name: "handbook-search",
               title: "Handbook Search",
               description: "Search the eval handbook fixture.",
@@ -281,6 +309,62 @@ export const evalMcpAuthHandlers = [
                       "pull_request.closed_unmerged",
                     ],
                   },
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "search-tickets") {
+          const query = typeof args?.query === "string" ? args.query : "";
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  tickets: [
+                    {
+                      id: "WEB-214",
+                      url: "https://linear.app/acme/issue/WEB-214",
+                      title:
+                        "Create-issue modal opens slowly from product issues",
+                      description:
+                        "Investigation: opening the modal waits for a fresh project-list request. The request takes two seconds. Cache the project list between opens.",
+                    },
+                    {
+                      id: "acme/web#87",
+                      url: "https://github.com/acme/web/issues/87",
+                      title:
+                        "Create-issue modal opens slowly from user feedback",
+                      description:
+                        "Investigation: rendering a large feedback attachment blocks the main thread. Project-list requests complete in under 50ms. Defer the attachment preview.",
+                    },
+                  ].filter((ticket) =>
+                    query
+                      .toLowerCase()
+                      .split(/\W+/)
+                      .some(
+                        (word) =>
+                          word.length > 2 &&
+                          `${ticket.title} ${ticket.description}`
+                            .toLowerCase()
+                            .includes(word),
+                      ),
+                  ),
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "save-issue") {
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  id: args?.id ?? "WEB-215",
+                  saved: true,
                 }),
               },
             ],
