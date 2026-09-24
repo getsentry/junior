@@ -18,9 +18,7 @@ Source and Actor that started it.
 
 The reliability rules are small:
 
-- The worker holds the conversation execution lock before it reads work or
-  acquires the mailbox lease. OAuth resumes use the same lock. A busy lock
-  leaves queued work pending and schedules a later wake.
+- The conversation lease is the only owner for queue-driven execution.
 - A turn may run, pause at a committed boundary, complete, or fail.
 - Soft yield and retry may continue only after the boundary advances; parking
   the same boundary twice fails the turn. Hard timeout may re-park without new
@@ -34,9 +32,11 @@ The reliability rules are small:
   releases the lease.
 - A process can stop while a turn runs. The next worker stops that turn and
   records the error. The user can start new work. Committed SQL history remains.
-- A paused turn and steering writes reuse the worker's execution lock. They
-  must not acquire it again. OAuth runs outside the queue but holds that same
-  lock until its resumed Turn finishes or pauses.
+- A paused Turn runs under the conversation lease. Slack OAuth callbacks save
+  a `turn_authorized` event for the exact checkpoint version and wake the worker.
+  They do not run the agent or write agent history. The worker checks the saved
+  authorization against the pending request before it resumes. This keeps
+  queued input and OAuth continuation under one execution owner.
 
 Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; that historical SQL label does not define execution state.
@@ -80,8 +80,7 @@ rollback support.
 ## Execution
 
 1. Ingress appends mailbox work before sending a queue nudge.
-2. The worker validates the queue callback, takes the execution lock, and
-   acquires the conversation lease.
+2. The worker validates the queue callback and acquires the conversation lease.
 3. While it owns the lease, the worker reloads durable state and routes the next
    work: `interrupt` mailbox delivery first, then a paused turn, then `defer`
    mailbox delivery. Each iteration gets a fresh mailbox delivery attempt.

@@ -6,6 +6,8 @@ import {
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
   getTurnRecord,
   listTurnSummaries,
@@ -16,6 +18,7 @@ import {
   deferred,
   loadConversationState,
   streamScript,
+  type ConversationWorkSlackHarness,
 } from "../fixtures/conversation-work";
 import {
   completeLatestMcpAuth,
@@ -60,6 +63,26 @@ const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
 );
 const ALICE = "UALICE";
 const BOB = "UBOB";
+
+async function queueCheckEvent(q: ConversationWorkSlackHarness) {
+  await appendAndEnqueueInboundMessage({
+    message: createEventInboundMessage({
+      subscription: { conversationId: CONVERSATION_ID, id: "pr-watch" },
+      receivedAtMs: Date.now() - 31_000,
+      event: {
+        eventKey: "checks-failed",
+        eventType: "pull_request.checks.failed",
+        identifier: "getsentry/junior#1913",
+        namespace: "github",
+        occurredAtMs: Date.now(),
+        trustedSummary: "PR checks failed",
+      },
+      text: "check the failed build",
+    }),
+    queue: q.wakes,
+    state: q.state,
+  });
+}
 
 describe("mcp orchestration", () => {
   let pluginApp: PluginAppFixture | undefined;
@@ -201,19 +224,21 @@ describe("mcp orchestration", () => {
         },
       ]),
     );
-    const completion = completeLatestMcpAuth({
+    await completeLatestMcpAuth({
       userId: ALICE,
       agentRunner: q.agentRunner,
+      conversationWorkQueue: q.wakes,
     });
+    const running = q.next();
     try {
       await resumed.promise;
-      q.setSubscribedShouldReply(true);
-      await q.passive(BOB, "check the build after that");
-      await expect(q.next()).resolves.toEqual({ status: "active" });
+      await queueCheckEvent(q);
+      expect(q.wakes.hasQueuedMessages()).toBe(false);
+      q.setModelStream(streamScript("Build checked."));
       expect(q.replies()).not.toContain("Eval Auth tool completed.");
     } finally {
       release.resolve();
-      await completion;
+      await running;
     }
 
     await expectMcpAuthCleared();
@@ -230,6 +255,56 @@ describe("mcp orchestration", () => {
     await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ state: "completed" })]),
     );
+  });
+
+  it("queues OAuth behind an active event Turn and resumes after it completes", async () => {
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamMcpSearch("Connected."),
+    });
+    await q.mention(ALICE, "use eval-auth");
+    await q.drain();
+    await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
+
+    const started = deferred();
+    const release = deferred();
+    q.setModelStream(
+      createModelStream([
+        {
+          type: "text",
+          text: "New request complete.",
+          onRequest: started.resolve,
+          waitFor: release.promise,
+        },
+      ]),
+    );
+    await queueCheckEvent(q);
+    const running = q.next();
+    try {
+      await started.promise;
+      q.setModelStream(streamScript("Connected."));
+      await completeLatestMcpAuth({
+        userId: ALICE,
+        agentRunner: q.agentRunner,
+        conversationWorkQueue: q.wakes,
+      });
+      await expectMcpAuthCredentialsStored(ALICE);
+      expect(q.replies()).not.toContain("New request complete.");
+      expect(q.replies()).not.toContain("Connected.");
+    } finally {
+      release.resolve();
+      await running;
+    }
+    await q.drain();
+    expect(
+      q.replies().filter((text) => text === "New request complete."),
+    ).toHaveLength(1);
+    expect(q.replies().some((text) => text.includes("internal error"))).toBe(
+      false,
+    );
+    expect(q.replies().filter((text) => text === "Connected.")).toHaveLength(1);
+    await expect(
+      getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+    ).resolves.toMatchObject({ state: "completed" });
   });
 
   it("reuses the same actor's MCP connection on a later turn without another prompt", async () => {

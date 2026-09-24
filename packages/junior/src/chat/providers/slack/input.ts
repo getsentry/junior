@@ -14,6 +14,8 @@ import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { escapeXml } from "@/chat/xml";
 
 /**
@@ -144,42 +146,56 @@ export function collectAttachments(
   ];
 }
 
-/** Save each steering message once while the worker holds the execution lock. */
+/**
+ * Save each steering message once. Return false when a resumed Run is active
+ * so the mailbox delivery stays pending.
+ */
 export async function saveSteeringMessages(args: {
   conversationId: string;
   messages: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
   }>;
-}): Promise<void> {
+}): Promise<boolean> {
   if (args.messages.length === 0) {
-    return;
+    return true;
   }
-  const projection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
-  // A repeated mailbox delivery can contain saved and unsaved messages.
-  const savedKeys = new Set(
-    projection.messages
-      .map(steeringMessageKey)
-      .filter((key): key is string => key !== undefined),
-  );
-  const missing = args.messages.filter((entry) => {
-    const key = steeringMessageKey(entry.message);
-    return key === undefined || !savedKeys.has(key);
-  });
-  if (missing.length === 0) {
-    return;
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireActiveLock(state, args.conversationId);
+  if (!lock) {
+    return false;
   }
-  await commitMessages({
-    conversationId: args.conversationId,
-    messages: [
-      ...projection.messages,
-      ...missing.map((entry) => entry.message),
-    ],
-    provenance: [
-      ...projection.provenance,
-      ...missing.map((entry) => entry.provenance),
-    ],
-  });
+  try {
+    const projection = await loadConversationProjection({
+      conversationId: args.conversationId,
+    });
+    // A repeated mailbox delivery can contain saved and unsaved messages.
+    const savedKeys = new Set(
+      projection.messages
+        .map(steeringMessageKey)
+        .filter((key): key is string => key !== undefined),
+    );
+    const missing = args.messages.filter((entry) => {
+      const key = steeringMessageKey(entry.message);
+      return key === undefined || !savedKeys.has(key);
+    });
+    if (missing.length === 0) {
+      return true;
+    }
+    await commitMessages({
+      conversationId: args.conversationId,
+      messages: [
+        ...projection.messages,
+        ...missing.map((entry) => entry.message),
+      ],
+      provenance: [
+        ...projection.provenance,
+        ...missing.map((entry) => entry.provenance),
+      ],
+    });
+    return true;
+  } finally {
+    await state.releaseLock(lock);
+  }
 }
