@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 /**
  * Own CI tunnel allocation, connector lifetime, and cleanup on the runner.
- * The eval command receives the URL and local port, never Cloudflare credentials.
+ * Child environments omit Cloudflare credentials. This is not process isolation.
  * Local evals still use Quick Tunnels without this script.
  */
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import dns from "node:dns/promises";
 import {
   appendFile,
@@ -95,11 +100,46 @@ function statePath(env) {
   return path.join(required(env, "RUNNER_TEMP"), "junior-eval-tunnel.json");
 }
 
+/** Bind cleanup state to the job and reject edits before any remote or local deletion. */
+function stateSignature(state, env) {
+  const scope = [
+    env.GITHUB_REPOSITORY,
+    env.GITHUB_RUN_ID,
+    env.GITHUB_RUN_ATTEMPT,
+    env.GITHUB_JOB,
+    env.JUNIOR_EVAL_SHARD,
+    statePath(env),
+  ];
+  return createHmac("sha256", required(env, "CLOUDFLARE_API_TOKEN"))
+    .update(JSON.stringify([scope, state]))
+    .digest("hex");
+}
+
 /** Remove only this invocation's records. Retain state if cleanup fails for a later retry. */
 export async function cleanupTunnel(env = process.env) {
   let state;
   try {
-    state = JSON.parse(await readFile(statePath(env), "utf8"));
+    const saved = JSON.parse(await readFile(statePath(env), "utf8"));
+    state = saved.state;
+    if (
+      typeof saved.signature !== "string" ||
+      !/^[a-f0-9]{64}$/.test(saved.signature) ||
+      !timingSafeEqual(
+        Buffer.from(saved.signature, "hex"),
+        Buffer.from(stateSignature(state, env), "hex"),
+      ) ||
+      state?.accountId !== required(env, "CLOUDFLARE_ACCOUNT_ID") ||
+      state?.zoneId !== required(env, "CLOUDFLARE_ZONE_ID") ||
+      !/^sentry-ci-[a-f0-9]{24}$/.test(state?.name ?? "") ||
+      state.hostname !==
+        `${state.name}.${required(env, "CLOUDFLARE_TUNNEL_BASE_DOMAIN")}` ||
+      state.tokenFile !==
+        path.join(required(env, "RUNNER_TEMP"), `${state.name}.token`)
+    ) {
+      throw new Error(
+        "Invalid eval tunnel cleanup state; no resources were deleted",
+      );
+    }
   } catch (error) {
     if (error.code === "ENOENT") return;
     throw error;
@@ -184,10 +224,12 @@ export async function createTunnel(env = process.env) {
   const name = `sentry-ci-${hash}`;
   const hostname = `${name}.${domain}`;
   const tokenFile = path.join(required(env, "RUNNER_TEMP"), `${name}.token`);
+  const state = { accountId, zoneId, name, hostname, tokenFile };
+  // Signing protects persisted targets from edits, not from code that can read the API token.
   // Exclusive creation prevents accidentally replacing a previous invocation's cleanup state.
   await writeFile(
     statePath(env),
-    JSON.stringify({ accountId, zoneId, name, hostname, tokenFile }),
+    JSON.stringify({ state, signature: stateSignature(state, env) }),
     { mode: 0o600, flag: "wx" },
   );
   console.log(`Allocating eval tunnel ${name} at https://${hostname}`);

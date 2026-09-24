@@ -92,7 +92,16 @@ The token file has mode 0600 under `RUNNER_TEMP`, outside the repository. The AP
 token is bound only to the run and cleanup steps. Cloudflare and tunnel variables
 are removed from both child environments. Only the connector receives the token
 file path; evals receive `JUNIOR_EVAL_EGRESS_URL` and `JUNIOR_EVAL_EGRESS_PORT`.
-Neither credential is sent to Vercel Sandboxes.
+Neither credential is sent to Vercel Sandboxes through this interface.
+
+**Security boundary:** environment filtering only prevents accidental inheritance.
+It does not isolate the eval child from its parent. They run as the same runner
+user. Eval code can read the parent's environment through `/proc` on Linux, read
+connector files, or modify scripts used by later steps. All code in a secret-bearing
+job must be trusted, including dependency install hooks. Do not use this wrapper
+as a boundary for untrusted PR code. Isolating such code requires a separate
+trusted job or service that owns the management token and cleanup. Splitting steps
+on the same runner does not provide that boundary.
 
 Global setup waits up to two minutes for public HTTPS to return this proxy's
 unique health ID and the real proxy's unauthenticated 401 response. It uses normal
@@ -109,6 +118,12 @@ The wrapper stops child process groups and removes the DNS record and tunnel on
 success, command failure, connector failure, SIGINT, or SIGTERM. An `always()`
 workflow step retries cleanup after cancellation or forced process termination.
 Cleanup saves exact names before allocation, so a lost create response is recoverable.
+It authenticates saved state with HMAC-SHA256 using the API token, bound to the
+repository, run, attempt, job, shard, and state path. It also checks the configured
+account and zone, exact base domain, `sentry-ci-<24 hex characters>` name, and token
+file path before any deletion. Invalid state fails closed and stays available for
+inspection. Use the original job scope and token for a cleanup retry; token rotation
+invalidates saved signatures. This protects against state edits, not token theft.
 It does not retry resource creation. Errors fail the step and retain cleanup state.
 
 A lost runner or SIGKILL can prevent all local cleanup. In that case, use the

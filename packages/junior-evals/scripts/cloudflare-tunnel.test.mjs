@@ -152,7 +152,7 @@ setInterval(() => {}, 1000);
   };
 }
 
-test("runs a child without management credentials and cleans up success and failure", async (t) => {
+test("omits management credentials from the child environment and cleans up success and failure", async (t) => {
   const f = await fixture(t);
   for (const code of [0, 7]) {
     f.pendingDns(1);
@@ -231,6 +231,46 @@ test("cleanup removes the tunnel even if DNS deletion fails and can resume", asy
   f.failCleanup(false);
   await cleanupTunnel(f.env);
   assert.equal(f.records.size, 0);
+});
+
+test("cleanup rejects edited targets and state from another job before deletion", async (t) => {
+  const f = await fixture(t);
+  const tunnel = await createTunnel(f.env);
+  const file = path.join(f.dir, "junior-eval-tunnel.json");
+  const original = await readFile(file, "utf8");
+  const saved = JSON.parse(original);
+  const victim = path.join(f.dir, "unrelated-file");
+  await writeFile(victim, "keep");
+  const requests = t.mock.method(globalThis, "fetch", async () => {
+    assert.fail("Invalid state must not make an API request");
+  });
+  for (const edit of [
+    { hostname: "production.example.com" },
+    { name: `sentry-ci-${"a".repeat(24)}` },
+    { accountId: "other-account", zoneId: "other-zone" },
+    { tokenFile: victim },
+  ]) {
+    await writeFile(
+      file,
+      JSON.stringify({ ...saved, state: { ...saved.state, ...edit } }),
+    );
+    await assert.rejects(
+      cleanupTunnel(f.env),
+      /Invalid eval tunnel cleanup state/,
+    );
+    assert.equal(await readFile(victim, "utf8"), "keep");
+    await stat(tunnel.tokenFile);
+  }
+  await writeFile(file, original);
+  await assert.rejects(
+    cleanupTunnel({ ...f.env, GITHUB_RUN_ATTEMPT: "2" }),
+    /Invalid eval tunnel cleanup state/,
+  );
+  assert.equal(requests.mock.callCount(), 0);
+  requests.mock.restore();
+  await cleanupTunnel(f.env);
+  assert.equal(f.records.size, 0);
+  assert.equal(f.tunnels.size, 0);
 });
 
 test("connector failure stops the eval command and cleans up", async (t) => {
