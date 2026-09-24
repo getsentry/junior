@@ -280,6 +280,10 @@ async function stopTunnel(tunnel: ChildProcess): Promise<void> {
 
 /** Wait until the public Quick Tunnel route reaches the real proxy handler. */
 async function waitForPublicProxy(baseUrl: string): Promise<void> {
+  // A connected tunnel can precede its DNS record. An early lookup can cache
+  // NXDOMAIN for 30 minutes. Wait before the first lookup, not after it fails.
+  // Verified on six runners: https://github.com/getsentry/junior/actions/runs/35939718977
+  await new Promise((resolve) => setTimeout(resolve, 5_000));
   const deadline = Date.now() + PUBLIC_HEALTH_TIMEOUT_MS;
   let lastError: unknown;
   while (Date.now() < deadline) {
