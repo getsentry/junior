@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { Resolver, resolve4 } from "node:dns/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { request as httpsRequest } from "node:https";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,7 +9,7 @@ import type { SandboxEgressHttpInterceptor } from "@/chat/sandbox/egress/proxy";
 const QUICK_TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/i;
 const QUICK_TUNNEL_START_TIMEOUT_MS = 30_000;
 const QUICK_TUNNEL_CONNECTED_PATTERN = /Registered tunnel connection/i;
-const PUBLIC_HEALTH_TIMEOUT_MS = 20_000;
+const PUBLIC_HEALTH_TIMEOUT_MS = 120_000;
 const QUICK_TUNNEL_ATTEMPTS = 5;
 const QUICK_TUNNEL_RETRY_BASE_DELAY_MS = 1_000;
 const QUICK_TUNNEL_RETRY_MAX_DELAY_MS = 5_000;
@@ -54,10 +52,10 @@ function requestHeadersFromNode(
   return result;
 }
 
-function listen(server: Server): Promise<number> {
+function listen(server: Server, port = 0): Promise<number> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(port, "127.0.0.1", () => {
       server.off("error", reject);
       const address = server.address();
       if (!address || typeof address === "string") {
@@ -76,33 +74,6 @@ function closeServer(server: Server): Promise<void> {
       else resolve();
     });
   });
-}
-
-/** Resolve a Quick Tunnel hostname through public DNS when system DNS is stale. */
-export async function resolveQuickTunnelIpv4(
-  hostname: string,
-): Promise<string> {
-  let addresses: string[];
-  try {
-    addresses = await resolve4(hostname);
-  } catch (systemError) {
-    const publicResolver = new Resolver();
-    publicResolver.setServers(["1.1.1.1", "8.8.8.8"]);
-    try {
-      addresses = await publicResolver.resolve4(hostname);
-    } catch (publicError) {
-      throw new AggregateError(
-        [systemError, publicError],
-        `Could not resolve ${hostname} through system or public DNS`,
-        { cause: systemError },
-      );
-    }
-  }
-  const [address] = addresses;
-  if (!address) {
-    throw new Error(`No IPv4 address resolved for ${hostname}`);
-  }
-  return address;
 }
 
 async function writeResponse(
@@ -136,9 +107,11 @@ async function writeResponse(
 /** Serve health checks and credentialed sandbox requests for the eval worker. */
 function createEvalEgressServer(options: EvalEgressOptions): {
   controlToken: string;
+  instanceId: string;
   server: Server;
 } {
   const controlToken = randomUUID();
+  const instanceId = randomUUID();
   let proxyRequest:
     | Promise<typeof import("@/handlers/sandbox-egress-proxy").ALL>
     | undefined;
@@ -152,7 +125,8 @@ function createEvalEgressServer(options: EvalEgressOptions): {
       try {
         if (incoming.url === "/health") {
           outgoing.setHeader("content-type", "application/json");
-          outgoing.end(JSON.stringify({ ok: true }));
+          outgoing.setHeader("cache-control", "no-store");
+          outgoing.end(JSON.stringify({ ok: true, instanceId }));
           return;
         }
 
@@ -219,6 +193,7 @@ function createEvalEgressServer(options: EvalEgressOptions): {
   return {
     server,
     controlToken,
+    instanceId,
   };
 }
 
@@ -304,44 +279,39 @@ async function stopTunnel(tunnel: ChildProcess): Promise<void> {
   });
 }
 
-function requestPublicProxy(baseUrl: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    void (async () => {
-      const url = new URL("/api/internal/sandbox-egress", baseUrl);
-      const address = await resolveQuickTunnelIpv4(url.hostname);
-      const request = httpsRequest(
-        {
-          headers: { host: url.hostname },
-          hostname: address,
-          method: "GET",
-          path: url.pathname,
-          port: 443,
-          servername: url.hostname,
-          timeout: 3_000,
-        },
-        (response) => {
-          response.resume();
-          response.once("end", () => resolve(response.statusCode ?? 0));
-        },
-      );
-      request.once("error", reject);
-      request.once("timeout", () => {
-        request.destroy(new Error("Public health request timed out"));
-      });
-      request.end();
-    })().catch(reject);
-  });
-}
-
-/** Wait until the public Quick Tunnel route reaches the real proxy handler. */
-async function waitForPublicProxy(baseUrl: string): Promise<void> {
+/** Verify this exact proxy instance and its auth gate through public HTTPS and system DNS. */
+async function waitForPublicProxy(
+  baseUrl: string,
+  instanceId: string,
+): Promise<void> {
   const deadline = Date.now() + PUBLIC_HEALTH_TIMEOUT_MS;
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      const status = await requestPublicProxy(baseUrl);
-      if (status === 401) return;
-      lastError = new Error(`HTTP ${status}`);
+      const health = await fetch(new URL("/health", baseUrl), {
+        signal: AbortSignal.timeout(3_000),
+        redirect: "error",
+      });
+      const body = (await health.json()) as { instanceId?: string };
+      if (!health.ok || body.instanceId !== instanceId) {
+        throw new Error("Public route did not reach this eval proxy");
+      }
+      const proxy = await fetch(
+        new URL("/api/internal/sandbox-egress", baseUrl),
+        {
+          signal: AbortSignal.timeout(3_000),
+          redirect: "error",
+        },
+      );
+      const result = (await proxy.json()) as { error?: string };
+      if (
+        proxy.status === 401 &&
+        result.error === "Missing Vercel Sandbox OIDC token"
+      )
+        return;
+      lastError = new Error(
+        `Unexpected public proxy response: HTTP ${proxy.status}`,
+      );
     } catch (error) {
       lastError = error;
     }
@@ -359,7 +329,10 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
 export async function startEvalEgress(
   options: EvalEgressOptions = {},
 ): Promise<EvalEgress> {
-  const { controlToken, server } = createEvalEgressServer(options);
+  const { controlToken, instanceId, server } = createEvalEgressServer(options);
+  const verifyPublicUrl =
+    options.verifyPublicUrl ??
+    ((url: string) => waitForPublicProxy(url, instanceId));
   let configDir: string | undefined;
   let tunnel: ChildProcess | undefined;
   let closed = false;
@@ -378,6 +351,31 @@ export async function startEvalEgress(
   };
 
   try {
+    const publicUrl = process.env.JUNIOR_EVAL_EGRESS_URL;
+    const publicPort = process.env.JUNIOR_EVAL_EGRESS_PORT;
+    if (publicUrl || publicPort) {
+      const port = Number(publicPort);
+      if (
+        !publicUrl ||
+        new URL(publicUrl).protocol !== "https:" ||
+        !Number.isInteger(port) ||
+        port < 1 ||
+        port > 65535
+      ) {
+        throw new Error(
+          "External eval egress requires an HTTPS URL and a valid local port",
+        );
+      }
+      await listen(server, port);
+      await verifyPublicUrl(publicUrl);
+      return {
+        baseUrl: publicUrl,
+        close,
+        controlToken,
+        controlUrl: new URL(RESET_PATH, `http://127.0.0.1:${port}`).href,
+        stateUrl: new URL(STATE_PATH, `http://127.0.0.1:${port}`).href,
+      };
+    }
     const port = await listen(server);
     configDir = await mkdtemp(path.join(tmpdir(), "junior-eval-egress-"));
     const configPath = path.join(configDir, "config.yml");
@@ -404,7 +402,7 @@ export async function startEvalEgress(
       );
       try {
         const baseUrl = await waitForQuickTunnel(tunnel);
-        await (options.verifyPublicUrl ?? waitForPublicProxy)(baseUrl);
+        await verifyPublicUrl(baseUrl);
         return {
           baseUrl,
           close,

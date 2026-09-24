@@ -1,7 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
 
 const originalPath = process.env.PATH;
@@ -11,6 +11,8 @@ const originalDatabaseUrl = process.env.DATABASE_URL;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   if (originalPath === undefined) delete process.env.PATH;
   else process.env.PATH = originalPath;
   if (originalAttemptMarker === undefined) {
@@ -30,6 +32,50 @@ afterEach(() => {
 });
 
 describe("eval egress", () => {
+  it("verifies an external route reaches this proxy and keeps fixture controls authenticated", async () => {
+    vi.stubEnv("JUNIOR_EVAL_EGRESS_URL", "https://suite.ci.example.com");
+    vi.stubEnv("JUNIOR_EVAL_EGRESS_PORT", "18787");
+    const realFetch = globalThis.fetch;
+    let healthRequests = 0;
+    // Substitute the public routing edge, but serve all successful requests through the real proxy.
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : input.toString(),
+        );
+        if (url.hostname === "suite.ci.example.com") {
+          if (url.pathname === "/health" && ++healthRequests === 1) {
+            return Response.json({ ok: true, instanceId: "another-job" });
+          }
+          url.protocol = "http:";
+          url.hostname = "127.0.0.1";
+          url.port = "18787";
+        }
+        return realFetch(url, init);
+      },
+    );
+    const egress = await startEvalEgress();
+    try {
+      expect(healthRequests).toBe(2);
+      expect(egress.baseUrl).toBe("https://suite.ci.example.com");
+      expect((await fetch(egress.stateUrl)).status).toBe(401);
+      expect((await fetch(egress.controlUrl, { method: "POST" })).status).toBe(
+        401,
+      );
+      expect(
+        (
+          await fetch(egress.stateUrl, {
+            headers: { authorization: `Bearer ${egress.controlToken}` },
+          })
+        ).status,
+      ).toBe(200);
+    } finally {
+      await egress.close();
+    }
+    await expect(realFetch("http://127.0.0.1:18787/health")).rejects.toThrow();
+  }, 15_000);
+
   it("retries a failed Quick Tunnel allocation through teardown", async () => {
     let resetCount = 0;
     let publicVerificationAttempts = 0;
