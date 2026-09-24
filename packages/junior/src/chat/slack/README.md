@@ -49,8 +49,14 @@ inspect `message.raw` or assemble attachment text themselves.
 `reply.ts` owns destination-visible reply chunking, conversation footers, and
 the `sendSlackReply` helper. `outbound.ts` owns Slack API calls and immediate
 transport retries. Saved cards use Slack Work Objects through
-`chat.postMessage.metadata.entities`, not Block Kit attachments. Automation
-previews use `slack#/entities/item`. They show the title, trigger, and any warning.
+`chat.postMessage.metadata.entities`, not Block Kit attachments. This is Slack's
+[notification flow](https://docs.slack.dev/messaging/work-objects-implementation#implementation-notifications):
+`app_unfurl_url` is not required. The SDK encodes metadata; do not encode it twice.
+Each entity has a URL, external reference, type, and title. `display_id` and
+`product_name` are optional attributes. Task status uses `fields`; Item status
+uses `custom_fields` with `key`, `label`, `type`, and `value`. `display_order` is
+optional. Automation previews use `slack#/entities/item`. They show the title,
+trigger, and any warning.
 The opaque ID stays in `external_ref`; operation badges and full instructions
 stay out of the preview. Deleted objects render nothing; the normal reply owns
 the confirmation. Objects without a dashboard URL use compact text instead.
@@ -68,10 +74,16 @@ line breaks; timestamps use Slack's local time display. Item entities use
 New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
 Object annotation previews use Task for tasks and Item for code changes and
-other objects. Their `external_ref` identifies the Conversation, plugin, and
-object key, not a Message snapshot. Details show the latest saved annotation, not
-a live provider lookup. Opening or refreshing details can update an earlier
-Slack preview. The saved Message and web transcript remain unchanged. Annotations
+other objects. Their `external_ref` identifies the plugin and object key. It
+stays the same across Conversations, as Slack requires for related conversations.
+The detail event's workspace, channel, and `thread_ts` (or `message_ts` for a
+root message) select a stored Conversation binding, or the canonical Slack
+Conversation ID used by ingress. The stored workspace and channel must match.
+Details show that Conversation's latest saved annotation, not a live provider
+lookup. Missing message coordinates or Conversations return `not_found`; never
+search other Conversations for facts. Earlier three-part annotation references
+return `not_found` after this cutover. Opening or refreshing details can update
+an earlier Slack preview. The saved Message and web transcript remain unchanged. Annotations
 contain last saved facts; not every provider change updates them.
 The viewer must have a linked User, belong to the same Slack workspace, and have
 access to that Conversation. Missing and inaccessible annotations return
@@ -79,7 +91,18 @@ access to that Conversation. Missing and inaccessible annotations return
 viewer-only provider fields because Slack can refresh shared previews from them.
 Automation details retain their current authoritative lookup and access checks.
 Link unfurls and actions are not implemented.
-See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
+See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane)
+and [stable object identity](https://docs.slack.dev/messaging/work-objects#marketplace-submission-launch-considerations).
+
+`slack.work_object.post.started` records a post with entities before the API call.
+`slack.work_object.post.accepted` records Slack acceptance and the message
+timestamp. These logs include entity counts and types, channel/thread IDs,
+reference types, and response warning/message counts. They omit titles, URLs,
+object keys, field values, and response text. Both events reach Sentry in
+production; other info-level events keep the existing suppression rule.
+Acceptance does not prove that Slack rendered a card.
+Existing Slack error handling owns failed posts. The transport flags stay
+unchanged.
 
 Before rollout, check a GitHub issue, pull request, and Linear issue in a test
 Slack Conversation with Item and Task previews enabled. Check initial rendering,

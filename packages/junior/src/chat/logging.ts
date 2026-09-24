@@ -217,8 +217,15 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return getSentryEnvironment() === "production" && level === "info";
+function shouldSuppressInfoLog(level: LogLevel, eventName: unknown): boolean {
+  // Keep Work Object delivery evidence when Slack accepts a post without
+  // rendering its entity. These events contain safe metadata, not content.
+  return (
+    getSentryEnvironment() === "production" &&
+    level === "info" &&
+    eventName !== "slack.work_object.post.started" &&
+    eventName !== "slack.work_object.post.accepted"
+  );
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
@@ -643,7 +650,7 @@ function emitSentry(
   body: string,
   attributes: LogAttributes,
 ): void {
-  if (shouldSuppressInfoLog(level)) {
+  if (shouldSuppressInfoLog(level, attributes["event.name"])) {
     return;
   }
 

@@ -2,26 +2,26 @@ import { annotationCard } from "@/chat/conversations/cards";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { getSlackClient } from "./client";
 import { renderSlackObjectCard } from "./object-card";
+import { slackMessageTsSchema } from "./timestamp";
 
 const eventSchema = z.object({
   trigger_id: z.string().min(1),
   user: z.string().min(1),
+  channel: z.string().min(1),
+  message_ts: slackMessageTsSchema,
+  thread_ts: slackMessageTsSchema.optional(),
   external_ref: z.object({
     type: z.literal("annotation"),
     id: z.string().max(4096),
   }),
 });
-const refSchema = z.tuple([
-  z.string().min(1),
-  z.string().min(1),
-  z.string().min(1),
-]);
+const refSchema = z.tuple([z.string().min(1), z.string().min(1)]);
 
 /** Show saved annotation facts only to a viewer who can read their Conversation. */
 export async function presentSlackAnnotationDetails(
@@ -53,7 +53,17 @@ export async function presentSlackAnnotationDetails(
     await missing();
     return;
   }
-  const [conversationId, plugin, key] = ref.data;
+  const [plugin, key] = ref.data;
+  // Object identity stays stable across threads. Slack's message coordinates
+  // select the saved facts; they do not grant the viewer access to those facts.
+  const threadTs = parsed.data.thread_ts ?? parsed.data.message_ts;
+  const conversationId =
+    (await getConversationStore().getConversationIdByProviderConversation({
+      provider: "slack",
+      providerTenantId: teamId,
+      providerDestinationId: parsed.data.channel,
+      providerConversationId: threadTs,
+    })) ?? `slack:${parsed.data.channel}:${threadTs}`;
   const db = getDb();
   const identity = await readActorIdentity({
     platform: "slack",
@@ -68,6 +78,7 @@ export async function presentSlackAnnotationDetails(
     .select({
       teamId: juniorDestinations.providerTenantId,
       provider: juniorDestinations.provider,
+      channelId: juniorDestinations.providerDestinationId,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -75,7 +86,11 @@ export async function presentSlackAnnotationDetails(
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
     .where(eq(juniorConversations.conversationId, conversationId));
-  if (location?.provider !== "slack" || location.teamId !== teamId) {
+  if (
+    location?.provider !== "slack" ||
+    location.teamId !== teamId ||
+    location.channelId !== parsed.data.channel
+  ) {
     await missing();
     return;
   }
@@ -95,10 +110,7 @@ export async function presentSlackAnnotationDetails(
     await missing();
     return;
   }
-  const entity = renderSlackObjectCard(
-    annotationCard(annotation),
-    conversationId,
-  ).entity;
+  const entity = renderSlackObjectCard(annotationCard(annotation)).entity;
   if (!entity) {
     await missing();
     return;

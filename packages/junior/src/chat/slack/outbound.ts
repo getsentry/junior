@@ -1,4 +1,5 @@
 import { SlackActionError } from "@/chat/slack/client";
+import { logInfo } from "@/chat/logging";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import type { SlackEntity } from "@/chat/slack/cards";
 
@@ -107,6 +108,26 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
+  const workObjectAttributes = input.entities?.length
+    ? {
+        "app.slack.channel_id": channelId,
+        "app.slack.thread_ts": threadTs,
+        "app.slack.work_object.count": input.entities.length,
+        "app.slack.work_object.entity_types": [
+          ...new Set(input.entities.map((entity) => entity.entity_type)),
+        ],
+        "app.slack.work_object.reference_types": [
+          ...new Set(
+            input.entities.map(
+              (entity) => entity.external_ref.type ?? "unspecified",
+            ),
+          ),
+        ],
+      }
+    : undefined;
+  if (workObjectAttributes) {
+    logInfo("slack.work_object.post.started", workObjectAttributes);
+  }
   const response = await withSlackRetries(
     () =>
       getSlackClient().chat.postMessage({
@@ -137,6 +158,18 @@ export async function postSlackMessage(input: {
   const messageTs = parseSlackMessageTs(response.ts);
   if (!messageTs) {
     throw new Error("Slack message posted without ts");
+  }
+  if (workObjectAttributes) {
+    // API acceptance does not prove that Slack rendered the Work Object.
+    // Provider warning messages can contain content; record counts only.
+    logInfo("slack.work_object.post.accepted", {
+      ...workObjectAttributes,
+      "messaging.message.id": messageTs,
+      "app.slack.warning_count":
+        response.response_metadata?.warnings?.length ?? 0,
+      "app.slack.response_message_count":
+        response.response_metadata?.messages?.length ?? 0,
+    });
   }
 
   return {
