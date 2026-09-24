@@ -34,7 +34,7 @@ Each connector uses its own tunnel token. Adding a token to an anonymous
 `cloudflared tunnel --url` command would not convert it to an account tunnel.
 
 The API token can manage all tunnels in the selected account and all DNS records
-in the selected zone. It is not restricted to the `junior-ci` hostname prefix.
+in the selected zone. It is not restricted to the `sentry-ci` hostname prefix.
 Only trusted CI code may receive it. Fork PRs do not receive repository secrets.
 Do not change these workflows to `pull_request_target` to expose secrets to forks.
 
@@ -42,15 +42,16 @@ In **GitHub → getsentry/junior → Settings → Secrets and variables → Acti
 
 - Repository secret `CLOUDFLARE_API_TOKEN`: the token value. Never log it.
 - Repository variable `CLOUDFLARE_ACCOUNT_ID`: the account ID.
-- Repository variable `CLOUDFLARE_ZONE_ID`: the `sentry.cool` zone ID.
-- Repository variable `CLOUDFLARE_TUNNEL_BASE_DOMAIN`: `junior-ci.sentry.cool`.
+- Repository variable `CLOUDFLARE_ZONE_ID`: the 32-character hexadecimal zone ID, not the name `sentry.cool`.
+- Repository variable `CLOUDFLARE_TUNNEL_BASE_DOMAIN`: `sentry.cool` (the zone name, not `junior-ci.sentry.cool`).
 
 The zone must belong to the tunnel's Cloudflare account. Do not create a tunnel
-or wildcard DNS record by hand. Provision edge TLS coverage for
-`*.junior-ci.sentry.cool` before CI runs. Universal SSL for a full `sentry.cool`
-zone covers `*.sentry.cool`, not this deeper name. An advanced wildcard certificate
-avoids waiting for a new certificate on every run. Ensure WAF, Access, and cache
-rules do not challenge or cache this CI traffic. The proxy keeps its own auth.
+or wildcard DNS record by hand. CI uses `sentry-ci-<hash>.sentry.cool`, which
+fits the `*.sentry.cool` certificate from Universal SSL. Confirm that certificate
+is Active under **SSL/TLS → Edge Certificates**. No advanced certificate is needed.
+Do not use a deeper base domain unless its wildcard has separate TLS coverage.
+Ensure WAF, Access, and cache rules do not challenge or cache this CI traffic.
+The proxy keeps its own auth.
 
 Rotate the API token by creating a replacement with these same permissions,
 updating the GitHub secret, and verifying a new job. Let existing jobs finish
@@ -74,7 +75,7 @@ the digest is missing or differs. It logs the version and adds the binary to
 
 `run` hashes the GitHub run ID, attempt, job, shard, and a fresh UUID. The fresh
 UUID also isolates repeated invocations in the same job. It creates one named
-tunnel and one proxied CNAME at `<hash>.junior-ci.sentry.cool`. No pool or locks
+tunnel and one proxied CNAME at `sentry-ci-<hash>.sentry.cool`. No pool or locks
 are needed across jobs. Each runner supports one invocation at a time on
 `127.0.0.1:18787`; different jobs use different runners. The catch-all ingress
 rule returns 404. Postgres and Redis are not tunnel targets.
@@ -98,8 +99,8 @@ Cleanup saves exact names before allocation, so a lost create response is recove
 It does not retry resource creation. Errors fail the step and retain cleanup state.
 
 A lost runner or SIGKILL can prevent all local cleanup. In that case, use the
-Cloudflare dashboard to identify the inactive `junior-ci-<hash>` tunnel from the
-failed job, delete its exact `<hash>.junior-ci.sentry.cool` CNAME, and delete the
+Cloudflare dashboard to identify the inactive `sentry-ci-<hash>` tunnel from the
+failed job, delete its exact `sentry-ci-<hash>.sentry.cool` CNAME, and delete the
 tunnel. Check the job is no longer running first. There is no automatic sweeper
 that could delete another active job's tunnel.
 

@@ -179,8 +179,8 @@ export async function createTunnel(env = process.env) {
     )
     .digest("hex")
     .slice(0, 24);
-  const name = `junior-ci-${hash}`;
-  const hostname = `${hash}.${domain}`;
+  const name = `sentry-ci-${hash}`;
+  const hostname = `${name}.${domain}`;
   const tokenFile = path.join(required(env, "RUNNER_TEMP"), `${name}.token`);
   // Exclusive creation prevents accidentally replacing a previous invocation's cleanup state.
   await writeFile(

@@ -29,7 +29,7 @@ async function fixture(t) {
     CLOUDFLARE_API_TOKEN: "management-secret",
     CLOUDFLARE_ACCOUNT_ID: "test-account",
     CLOUDFLARE_ZONE_ID: "test-zone",
-    CLOUDFLARE_TUNNEL_BASE_DOMAIN: "ci.example.com",
+    CLOUDFLARE_TUNNEL_BASE_DOMAIN: "example.com",
     TUNNEL_TOKEN: "must-not-reach-child",
     GITHUB_RUN_ID: "42",
     GITHUB_RUN_ATTEMPT: "1",
@@ -136,7 +136,7 @@ test("runs a child without management credentials and cleans up success and fail
       assert.equal(process.env.CLOUDFLARE_API_TOKEN, undefined);
       assert.equal(process.env.TUNNEL_TOKEN, undefined);
       assert.equal(process.env.JUNIOR_EVAL_EGRESS_PORT, '18787');
-      assert.match(new URL(process.env.JUNIOR_EVAL_EGRESS_URL).hostname, /^[a-f0-9]{24}\\.ci\\.example\\.com$/);
+      assert.match(new URL(process.env.JUNIOR_EVAL_EGRESS_URL).hostname, /^sentry-ci-[a-f0-9]{24}\\.example\\.com$/);
       const fs = require('node:fs');
       const timer = setInterval(() => {
         if (fs.existsSync(${JSON.stringify(path.join(f.dir, "connector-ready"))})) {
