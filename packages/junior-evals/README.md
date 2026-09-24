@@ -88,6 +88,7 @@ For each `it()` case inside a `describeEval()` suite:
 Harness override knobs (in `EvalOverrides`):
 
 - `active_turn_compaction`: seeds an active-turn compaction boundary so an eval can exercise model continuation without manufacturing oversized tool output.
+- `handoff`: seeds prior Pi history and replays only the first handoff tool call. The real runtime generates the summary with the live auxiliary model, replaces history, and continues with a live agent. This tests continuity after handoff, not whether the router or agent chooses to hand off. It cannot be combined with `reply_texts`.
 - `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.

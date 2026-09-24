@@ -17,6 +17,7 @@ import {
   fauxAssistantMessage,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { startHandoffReplay } from "./handoff-replay";
 import { botConfig } from "@/chat/config";
 import {
   getConversationEventStore,
@@ -344,6 +345,9 @@ interface EvalViewImageFixture {
 export interface EvalOverrides {
   active_turn_compaction?: {
     summary: string;
+  };
+  handoff?: {
+    history: PiMessage[];
   };
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
@@ -1701,6 +1705,7 @@ function buildRuntimeServices(
   }
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
+  let handoffStarted = false;
   let activeTurnCompactionInjected = false;
   let timeoutResumeInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
@@ -1737,7 +1742,7 @@ function buildRuntimeServices(
     agentRunner: {
       run: async (request) => {
         const pendingSteeringDelivery = steeringDelivery.deliver;
-        const runRequest = pendingSteeringDelivery
+        let runRequest = pendingSteeringDelivery
           ? {
               ...request,
               durability: {
@@ -1753,6 +1758,20 @@ function buildRuntimeServices(
               },
             }
           : request;
+        let handoffStream: ReturnType<typeof startHandoffReplay> | undefined;
+        if (scenario.overrides?.handoff && !handoffStarted) {
+          if (replyTexts.length > 0) {
+            throw new Error(
+              "Handoff replay requires live continuation responses",
+            );
+          }
+          handoffStarted = true;
+          runRequest = {
+            ...runRequest,
+            history: scenario.overrides.handoff.history,
+          };
+          handoffStream = startHandoffReplay();
+        }
         const timeoutResume = scenario.overrides?.timeout_resume;
         const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
         if (activeTurnCompaction && !activeTurnCompactionInjected) {
@@ -1995,7 +2014,7 @@ function buildRuntimeServices(
                   }
                 },
               },
-              scriptedStream?.stream,
+              handoffStream ?? scriptedStream?.stream,
             ),
           );
           const usage =
