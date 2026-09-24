@@ -177,10 +177,8 @@ export interface EvalOverrides {
   reply_timeout_ms?: number;
   reply_texts?: string[];
   skill_dirs?: string[];
-  timeout_resume?: {
-    arguments: Record<string, JsonValue>;
-    tool_name: string;
-  };
+  /** Agent turn deadline for every run slice, in ms. Must stay under the reply budget. */
+  turn_timeout_ms?: number;
   view_image_files?: EvalViewImageFixture[];
 }
 

@@ -56,20 +56,25 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   it("when a tool call is interrupted at a turn deadline, continue the task to completion", async ({
     run,
   }) => {
+    // The first release push lands remotely but stalls past the turn deadline.
+    // The runtime records the interrupted call and resumes the turn.
+    const pushTool = "mcp__eval-operation__release-push";
+    const statusTool = "mcp__eval-operation__release-status";
     const result = await run({
       overrides: {
-        timeout_resume: { tool_name: "systemTime", arguments: {} },
+        plugin_dirs: ["fixtures/plugins"],
+        turn_timeout_ms: 25_000,
       },
       initialEvents: [
         mention(
-          "Tell me the current UTC time. If the previous attempt was interrupted, continue and finish the request.",
+          "/eval-operation Ship the release and tell me the final remote status.",
         ),
       ],
       requireSandboxReady: false,
       criteria: rubric({
         pass: [
-          "The final reply reports the current time in UTC.",
-          "The assistant continues after the interrupted tool call and finishes the original request.",
+          "The final reply reports that the remote release status is shipped.",
+          "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
         ],
         fail: [
           "The reply only reports that the work was interrupted or timed out.",
@@ -78,8 +83,19 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       }),
     });
 
-    expect(toolCalls(result.session)).toContainEqual(
-      expect.objectContaining({ name: "systemTime", status: "ok" }),
+    const calls = toolCalls(result.session);
+    expect(
+      calls.filter(
+        (call) =>
+          call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
+      ),
+    ).toHaveLength(1);
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        name: "callMcpTool",
+        status: "ok",
+        arguments: expect.objectContaining({ tool_name: statusTool }),
+      }),
     );
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });

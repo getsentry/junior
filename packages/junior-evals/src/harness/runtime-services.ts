@@ -15,7 +15,6 @@ import { addAgentTurnUsage } from "@/chat/usage";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
-import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
 import type { ToolHooks } from "@/chat/tools/types";
 import { createMemoryAttachmentStorage } from "../fixtures/attachment-storage";
 import { createMockImageGenerateDeps } from "../fixtures/image-generate";
@@ -133,9 +132,19 @@ export function buildRuntimeServices(
       `Eval reply timeout must be an integer from 1 to 60000 milliseconds, got ${replyTimeoutMs}`,
     );
   }
+  const turnTimeoutMs = scenario.overrides?.turn_timeout_ms;
+  if (
+    turnTimeoutMs !== undefined &&
+    (!Number.isInteger(turnTimeoutMs) ||
+      turnTimeoutMs <= 0 ||
+      turnTimeoutMs >= replyTimeoutMs)
+  ) {
+    throw new Error(
+      `Eval turn timeout must be an integer below the ${replyTimeoutMs}ms reply budget, got ${turnTimeoutMs}`,
+    );
+  }
   const replyState = { successfulCount: 0 };
   let activeTurnCompactionInjected = false;
-  let timeoutResumeInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
   const attachmentStorage = createMemoryAttachmentStorage();
 
@@ -159,7 +168,6 @@ export function buildRuntimeServices(
               },
             }
           : request;
-        const timeoutResume = scenario.overrides?.timeout_resume;
         const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
         if (activeTurnCompaction && !activeTurnCompactionInjected) {
           activeTurnCompactionInjected = true;
@@ -221,79 +229,6 @@ export function buildRuntimeServices(
             resumeVersion: sessionRecord.version,
           };
         }
-        if (timeoutResume && !timeoutResumeInjected) {
-          timeoutResumeInjected = true;
-          await runRequest.durability?.onInputCommitted?.();
-          const nowMs = Date.now();
-          const toolCallId = "eval-timeout-resume-tool-call";
-          const abortedAttempt = {
-            target: timeoutResume.tool_name,
-            aborted: true,
-          };
-          const timedOutResult = projectTimedOutToolResult({
-            content: [{ type: "text", text: JSON.stringify(abortedAttempt) }],
-            details: abortedAttempt,
-          });
-          if (
-            !timedOutResult?.content ||
-            timedOutResult.details === undefined
-          ) {
-            throw new Error("Failed to build timeout continuation fixture");
-          }
-          const piMessages = [
-            {
-              role: "user",
-              content: [{ type: "text", text: runRequest.instruction.text }],
-              timestamp: nowMs,
-            },
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "toolCall",
-                  id: toolCallId,
-                  name: timeoutResume.tool_name,
-                  arguments: timeoutResume.arguments,
-                },
-              ],
-              stopReason: "toolUse",
-              api: "eval-timeout-resume",
-              provider: "eval-timeout-resume",
-              model: "xai/grok-4.5",
-              timestamp: nowMs,
-              usage: { input: 0, output: 0, totalTokens: 0 },
-            },
-            {
-              role: "toolResult",
-              toolCallId,
-              toolName: timeoutResume.tool_name,
-              content: timedOutResult.content,
-              details: timedOutResult.details,
-              isError: timedOutResult.isError,
-              timestamp: nowMs,
-            },
-          ] as PiMessage[];
-          const sessionRecord = await upsertTurnRecord({
-            conversationId: runRequest.conversationId,
-            turnId: runRequest.turnId,
-            sliceId: 2,
-            state: "paused",
-            piMessages,
-            resumeReason: "timeout",
-            resumedFromSliceId: 1,
-            destination: runRequest.destination,
-            source: runRequest.source,
-            surface: runRequest.surface,
-            actor: actorFromRun(runRequest),
-            errorMessage: "Agent turn timed out at the eval fixture boundary",
-            turnStartMessageIndex: 0,
-          });
-          return {
-            status: "suspended",
-            reason: "timeout" as const,
-            resumeVersion: sessionRecord.version,
-          };
-        }
         const mockImageGeneration = scenario.overrides?.mock_image_generation;
         const replyText = replyTexts[replyState.successfulCount];
         let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
@@ -343,9 +278,11 @@ export function buildRuntimeServices(
               {
                 ...runRequest,
                 signal: replySignal,
+                // The runtime owns what happens at the deadline: it aborts
+                // in-flight tools, records the boundary, and resumes the turn.
                 deadlineAtMs: Math.min(
                   runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                  Date.now() + replyTimeoutMs,
+                  Date.now() + (turnTimeoutMs ?? replyTimeoutMs),
                 ),
                 environment: {
                   ...runRequest.environment,

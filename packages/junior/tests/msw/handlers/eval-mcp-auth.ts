@@ -28,6 +28,20 @@ interface AuthorizationGrant {
 let authorizationGrant: AuthorizationGrant | undefined;
 let clientRegistered = false;
 let tokenIssued = false;
+let releasePushCalls = 0;
+
+/**
+ * The first release push lands remotely but stalls past any eval turn
+ * deadline, so the caller sees an interrupted tool call while the remote
+ * state is already shipped. Later pushes are duplicates.
+ */
+export const EVAL_RELEASE_PUSH_STALL_MS = 45_000;
+
+function stall(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms).unref();
+  });
+}
 
 function pkceChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
@@ -66,6 +80,7 @@ export function resetEvalMcpAuthMockState(): void {
   authorizationGrant = undefined;
   clientRegistered = false;
   tokenIssued = false;
+  releasePushCalls = 0;
 }
 
 export const evalMcpAuthHandlers = [
@@ -412,18 +427,34 @@ export const evalMcpAuthHandlers = [
           });
         }
         if (toolName === "release-push") {
+          releasePushCalls += 1;
+          if (releasePushCalls > 1) {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    error: "duplicate push rejected",
+                    release_status: "shipped",
+                    push_attempts: releasePushCalls,
+                  }),
+                },
+              ],
+              isError: true,
+            });
+          }
+          await stall(EVAL_RELEASE_PUSH_STALL_MS);
           return jsonRpcResult(message?.id ?? null, {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
-                  error: "duplicate push rejected",
                   release_status: "shipped",
-                  push_attempts: 2,
+                  push_attempts: 1,
                 }),
               },
             ],
-            isError: true,
+            isError: false,
           });
         }
         if (toolName === "release-status") {
@@ -432,8 +463,8 @@ export const evalMcpAuthHandlers = [
               {
                 type: "text",
                 text: JSON.stringify({
-                  release_status: "shipped",
-                  push_attempts: 1,
+                  release_status: releasePushCalls > 0 ? "shipped" : "pending",
+                  push_attempts: releasePushCalls,
                 }),
               },
             ],

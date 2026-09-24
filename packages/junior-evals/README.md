@@ -107,7 +107,7 @@ Harness override knobs (in `EvalOverrides`):
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: script the model reply for the first turns through the shared faux model stream. The real agent still runs; only the model output is fixed. Use it when a later turn is the behavior under test.
 - `reply_timeout_ms`: lower the per-reply harness timeout for a specific scenario. It cannot exceed 60 seconds. Harness tests use it; live evals keep the default.
-- `timeout_resume`: seeds a durable timeout continuation boundary with an unknown tool outcome before the real model runs. Use it to evaluate continuation behavior without wall-clock sleeps.
+- `turn_timeout_ms`: shorten the agent turn deadline for every run slice, below the 60-second reply budget. The real runtime handles the deadline: it aborts in-flight tools, records the boundary, and resumes the turn. Pair it with a fixture tool that stalls, such as the eval-operation `release-push` whose first call lands remotely but stalls past the deadline.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
 
