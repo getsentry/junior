@@ -6,6 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import dns from "node:dns/promises";
 import {
   appendFile,
   chmod,
@@ -208,13 +209,16 @@ export async function createTunnel(env = process.env) {
         ],
       },
     });
-    await request(env, "POST", `/zones/${zoneId}/dns_records`, {
+    const record = await request(env, "POST", `/zones/${zoneId}/dns_records`, {
       type: "CNAME",
       name: hostname,
       content: `${tunnel.id}.cfargotunnel.com`,
       proxied: true,
       ttl: 1,
     });
+    console.log(
+      `Created DNS record ${record.id}: ${record.name} -> ${record.content} (proxied=${record.proxied})`,
+    );
     return { baseUrl: `https://${hostname}`, tokenFile };
   } catch (error) {
     try {
@@ -267,11 +271,58 @@ async function stop(child, done) {
   }
 }
 
+/** Compare DNS answers before cleanup removes the evidence. Diagnostics never change the exit code. */
+async function reportTunnelDns(baseUrl, domain) {
+  const hostname = new URL(baseUrl).hostname;
+  const resolver = new dns.Resolver({ timeout: 2_000, tries: 1 });
+  resolver.setServers(["1.1.1.1"]);
+  const report = async (label, query) => {
+    let timer;
+    try {
+      const result = await Promise.race([
+        query(),
+        new Promise((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("diagnostic timeout")),
+            8_000,
+          );
+        }),
+      ]);
+      console.error(`Tunnel DNS ${label}: ${JSON.stringify(result)}`);
+    } catch (error) {
+      console.error(`Tunnel DNS ${label}: ${error.code ?? error.message}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  await Promise.all([
+    report("system lookup", () => dns.lookup(hostname, { all: true })),
+    report("1.1.1.1 A", () => resolver.resolve4(hostname)),
+    report("1.1.1.1 AAAA", () => resolver.resolve6(hostname)),
+    report("authoritative", async () => {
+      const nameservers = await resolver.resolveNs(domain);
+      return Promise.all(
+        nameservers.map(async (name) => {
+          const addresses = await resolver.resolve4(name);
+          const authoritative = new dns.Resolver({ timeout: 2_000, tries: 1 });
+          authoritative.setServers(addresses);
+          try {
+            return { name, addresses: await authoritative.resolve4(hostname) };
+          } catch (error) {
+            return { name, error: error.code ?? error.message };
+          }
+        }),
+      );
+    }),
+  ]);
+}
+
 /** Run one eval command, then remove the connector, DNS record, and tunnel. */
 export async function runWithTunnel(command, env = process.env) {
   if (!command.length)
     throw new Error("Usage: cloudflare-tunnel.mjs run <command> [args...]");
   let allocated = false;
+  let publicUrl;
   let connector;
   let connectorDone;
   let child;
@@ -290,6 +341,7 @@ export async function runWithTunnel(command, env = process.env) {
   try {
     const tunnel = await createTunnel(env);
     allocated = true;
+    publicUrl = tunnel.baseUrl;
     abort.signal.throwIfAborted();
     connector = spawn(
       "cloudflared",
@@ -335,6 +387,10 @@ export async function runWithTunnel(command, env = process.env) {
     // Try every cleanup operation. An API failure must not leave local children running.
     for (const task of [
       () => stop(child, childDone),
+      () =>
+        publicUrl && code !== 0 && !abort.signal.aborted
+          ? reportTunnelDns(publicUrl, env.CLOUDFLARE_TUNNEL_BASE_DOMAIN)
+          : undefined,
       () => stop(connector, connectorDone),
       () => (allocated ? cleanupTunnel(env) : undefined),
     ]) {

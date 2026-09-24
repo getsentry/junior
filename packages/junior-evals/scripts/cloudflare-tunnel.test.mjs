@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import dns from "node:dns/promises";
 import {
   chmod,
   mkdtemp,
@@ -20,6 +21,14 @@ import {
 } from "./cloudflare-tunnel.mjs";
 
 async function fixture(t) {
+  // Failed child runs report DNS before cleanup. Keep the lifecycle fixture offline.
+  const unavailable = async () => {
+    throw Object.assign(new Error("DNS unavailable"), { code: "ENOTFOUND" });
+  };
+  t.mock.method(dns, "lookup", unavailable);
+  for (const method of ["resolve4", "resolve6", "resolveNs"]) {
+    t.mock.method(dns.Resolver.prototype, method, unavailable);
+  }
   const dir = await mkdtemp(path.join(tmpdir(), "eval-tunnel-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const env = {

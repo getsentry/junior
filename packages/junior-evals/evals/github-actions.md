@@ -92,6 +92,12 @@ unique health ID and the real proxy's unauthenticated 401 response. It uses norm
 system DNS and certificate checks. A connected tunnel alone is not readiness.
 Proxy OIDC authentication and fixture-control bearer authentication are unchanged.
 
+The script logs the DNS record name, target, and proxy flag returned by Cloudflare.
+On command or connector failure, it compares system DNS, `1.1.1.1`, and the base
+domain's authoritative nameservers before cleanup. These queries are diagnostic
+only. They do not replace system DNS, extend readiness, or change the exit code.
+Each diagnostic stops waiting after eight seconds. Cancellation skips diagnostics.
+
 The wrapper stops child process groups and removes the DNS record and tunnel on
 success, command failure, connector failure, SIGINT, or SIGTERM. An `always()`
 workflow step retries cleanup after cancellation or forced process termination.
