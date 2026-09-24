@@ -414,6 +414,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - run: node --test apps/example/scripts/slack-qa-alias.test.mjs
       - run: pnpm --filter @sentry/junior-example build
         env:
           DATABASE_URL: postgres://junior:junior@localhost:5432/junior
