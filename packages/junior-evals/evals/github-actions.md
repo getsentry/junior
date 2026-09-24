@@ -8,6 +8,8 @@ The workflow installs the latest verified `cloudflared` binary and creates a uni
 
 Behavioral and integration jobs use `scripts/cloudflare-tunnel.mjs`. Guardian
 and Router jobs do not need tunnels. Local evals still use Quick Tunnels.
+The script follows the API steps in [Cloudflare's tunnel setup guide](https://developers.cloudflare.com/tunnel/get-started/#create-a-tunnel):
+create the tunnel, configure ingress, create the proxied CNAME, then start the connector.
 
 ### Credentials And Dashboard Permissions
 
@@ -80,14 +82,7 @@ are needed across jobs. Each runner supports one invocation at a time on
 `127.0.0.1:18787`; different jobs use different runners. The catch-all ingress
 rule returns 404. Postgres and Redis are not tunnel targets.
 
-Before it starts either child, the wrapper waits up to two minutes for each
-authoritative nameserver to publish the new hostname. It queries these servers
-directly so early lookups cannot put a negative answer in the runner's recursive
-DNS cache. A successful DNS API write alone does not prove publication. IPv4 must
-resolve; IPv6 may return no data when it is disabled, but not a missing hostname.
-The wait supports cancellation and retains the same resource cleanup.
-
-The wrapper then starts `cloudflared tunnel run --token-file ...` and the eval command.
+The wrapper starts `cloudflared tunnel run --token-file ...` and the eval command.
 The token file has mode 0600 under `RUNNER_TEMP`, outside the repository. The API
 token is bound only to the run and cleanup steps. Cloudflare and tunnel variables
 are removed from both child environments. Only the connector receives the token
@@ -109,10 +104,8 @@ system DNS and certificate checks. A connected tunnel alone is not readiness.
 Proxy OIDC authentication and fixture-control bearer authentication are unchanged.
 
 The script logs the DNS record name, target, and proxy flag returned by Cloudflare.
-On command or connector failure, it compares system DNS, `1.1.1.1`, and the base
-domain's authoritative nameservers before cleanup. These queries are diagnostic
-only. They do not replace system DNS, extend readiness, or change the exit code.
-Each diagnostic stops waiting after eight seconds. Cancellation skips diagnostics.
+It does not run a separate DNS readiness check. Eval global setup owns public
+readiness; a DNS answer alone cannot prove the proxy works.
 
 The wrapper stops child process groups and removes the DNS record and tunnel on
 success, command failure, connector failure, SIGINT, or SIGTERM. An `always()`
