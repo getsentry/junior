@@ -494,9 +494,7 @@ describe("mcp auth runtime slack integration", () => {
           channel: "C123",
           user: "U123",
           thread_ts: "1700000000.001",
-          text: expect.stringContaining(
-            "Click here to link your Eval Auth MCP access",
-          ),
+          text: expect.stringContaining("Connect to Eval Auth"),
         }),
       }),
     ]);

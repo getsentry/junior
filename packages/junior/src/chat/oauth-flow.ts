@@ -22,7 +22,8 @@ import type {
   OAuthAuthorization,
   OAuthAuthorizationRequest,
 } from "@/chat/oauth-authorization";
-import { formatOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
+import { buildSlackOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
+import type { SlackMessageBlock } from "@/chat/slack/footer";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -140,6 +141,7 @@ export async function deliverPrivateMessage(input: {
   threadTs?: string;
   userId: string;
   text: string;
+  blocks?: SlackMessageBlock[];
 }): Promise<PrivateDeliveryResult> {
   let client: ReturnType<typeof getSlackClient>;
   try {
@@ -157,6 +159,7 @@ export async function deliverPrivateMessage(input: {
         await postSlackMessage({
           channelId: input.channelId,
           text: input.text,
+          blocks: input.blocks,
           threadTs: input.threadTs,
         });
       } else {
@@ -164,6 +167,7 @@ export async function deliverPrivateMessage(input: {
           channelId: input.channelId,
           userId: input.userId,
           text: input.text,
+          blocks: input.blocks,
           threadTs: input.threadTs,
         });
       }
@@ -193,7 +197,11 @@ export async function deliverPrivateMessage(input: {
       return false;
     }
 
-    await postSlackMessage({ channelId: dmChannelId, text: input.text });
+    await postSlackMessage({
+      channelId: dmChannelId,
+      text: input.text,
+      blocks: input.blocks,
+    });
     return "fallback_dm";
   } catch (error) {
     logWarn("oauth.dm.fallback.failed", {
@@ -221,7 +229,7 @@ export async function deliverOAuthAuthorization(
     channelId: input.channelId,
     threadTs: input.threadTs,
     userId: input.userId,
-    text: formatOAuthAuthorizationMessage(request),
+    ...buildSlackOAuthAuthorizationMessage(request),
   });
 }
 
@@ -308,7 +316,7 @@ export async function startOAuthFlow(
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   const authorizationRequest = {
     authorizationUrl,
-    label: `Click here to link your ${formatProviderLabel(provider)} account`,
+    label: `Connect to ${formatProviderLabel(provider)}`,
     completionText: input.resumeSessionId
       ? "Once you've authorized, Junior will continue automatically."
       : "Once you've authorized, you'll see a confirmation in Slack.",
