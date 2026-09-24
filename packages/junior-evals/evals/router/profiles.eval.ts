@@ -69,6 +69,22 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
     });
   });
 
+  it("keeps verification attached to unfinished implementation", async ({
+    run,
+  }) => {
+    await run({
+      profiles,
+      fastModelId: "openai/gpt-5.6-luna",
+      conversationContext: [
+        "User: Fix duplicate deliveries after a worker restart.",
+        "Junior: I changed the retry logic, but have not run the regression tests yet.",
+      ].join("\n"),
+      expectedProfile: "handoff",
+      expectedReasoningLevel: "high",
+      messageText: "verify it before opening the PR",
+    });
+  });
+
   it("does not carry difficult work into a new routine request", async ({
     run,
   }) => {

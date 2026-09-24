@@ -54,6 +54,11 @@ vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn:
     () => async (model: any, context: any, options: any) => {
       observations.providerCalls += 1;
+      observations.handoffDescriptions.push(
+        (context.tools ?? []).find(
+          (tool: { name: string }) => tool.name === "handoff",
+        )?.description ?? "",
+      );
       observations.reasoningLevels.push(options?.reasoning ?? "unset");
       const call = observations.providerCalls;
       const routedToHandoff =
@@ -198,6 +203,7 @@ export async function resetHandoffTestState(): Promise<void> {
   observations.initialModelId = "";
   observations.initialImagePart = undefined;
   observations.initialHandoffProfiles = [];
+  observations.handoffDescriptions = [];
   observations.initialToolNames = [];
   observations.mixedBatch = false;
   observations.progressTool = false;

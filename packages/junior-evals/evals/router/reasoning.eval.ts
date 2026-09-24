@@ -55,6 +55,28 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     });
   });
 
+  it("uses task descriptions even when profile names suggest the opposite", async ({
+    run,
+  }) => {
+    await run({
+      profiles: {
+        standard: {
+          modelId: "anthropic/claude-opus-5.5",
+          description:
+            "Use for implementation, code review, and architecture decisions. Avoid for routine lookups.",
+        },
+        handoff: {
+          modelId: "openai/gpt-6-luna",
+          description:
+            "Use for routine lookups, short explanations, and status checks. Avoid for implementation and code review.",
+        },
+      },
+      expectedProfile: "handoff",
+      expectedReasoningLevel: "medium",
+      messageText: "Check whether the latest deployment is ready.",
+    });
+  });
+
   it("when a short approval continues pending implementation, route the pending task", async ({
     run,
   }) => {

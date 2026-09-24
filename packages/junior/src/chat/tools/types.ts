@@ -37,7 +37,8 @@ interface HandoffProfile {
 }
 
 interface HandoffControl {
-  /** Non-empty list of configured profiles. */
+  activeProfile: HandoffProfile;
+  /** Non-empty list of other configured profiles. */
   profiles: readonly [HandoffProfile, ...HandoffProfile[]];
   execute: (
     profile: ModelProfile,
