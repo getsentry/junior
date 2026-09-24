@@ -33,6 +33,8 @@ interface RouterEvalInput {
   expectedProfile: string;
   expectedReasoningLevel: TurnReasoningLevel;
   messageText: string;
+  profiles?: Readonly<Record<string, ModelProfileConfig>>;
+  fastModelId?: string;
 }
 
 interface RouterEvalOutput extends Record<string, JsonValue> {
@@ -62,9 +64,9 @@ async function routeTask(
     completeObject: (args) => completeObject({ ...args, signal: routeSignal }),
     conversationContext: input.conversationContext,
     defaultProfile: "standard",
-    fastModelId: resolveRouterModelId(),
+    fastModelId: input.fastModelId ?? resolveRouterModelId(),
     messageText: input.messageText,
-    profiles: ROUTER_PROFILES,
+    profiles: input.profiles ?? ROUTER_PROFILES,
   });
 }
 
@@ -73,6 +75,11 @@ export const routerHarness = createHarness<RouterEvalInput, RouterEvalOutput>({
   name: "router",
   run: async ({ input, signal }) => {
     const route = await routeTask(input, { signal });
+    if (route.confidence === undefined) {
+      throw new Error(
+        `Router did not return a model decision: ${route.reason}`,
+      );
+    }
     const output: RouterEvalOutput = {
       confidence: route.confidence ?? null,
       costUsd: route.costUsd ?? null,
@@ -112,7 +119,7 @@ export const routerHarness = createHarness<RouterEvalInput, RouterEvalOutput>({
       ],
       usage: {
         provider: "vercel-ai-gateway",
-        model: resolveRouterModelId(),
+        model: input.fastModelId ?? resolveRouterModelId(),
         ...(route.costUsd !== undefined
           ? { metadata: { costUsd: route.costUsd } }
           : {}),
