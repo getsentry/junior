@@ -4,10 +4,7 @@ import { renderSlackAutomationCard } from "./automation-card";
 import { escapeSlackMrkdwnText, formatSlackLink } from "./mrkdwn";
 
 /** Render verified annotation facts as a native Task or Item preview. */
-export function renderSlackObjectCard(
-  card: OwnedObjectAnnotation,
-  conversationId: string,
-): SlackCard {
+export function renderSlackObjectCard(card: OwnedObjectAnnotation): SlackCard {
   if (card.objectType === "automation" && card.plugin === "junior") {
     return renderSlackAutomationCard({
       id: card.key,
@@ -32,7 +29,7 @@ export function renderSlackObjectCard(
     entity: {
       entity_type: task ? "slack#/entities/task" : "slack#/entities/item",
       external_ref: {
-        id: JSON.stringify([conversationId, card.plugin, card.key]),
+        id: JSON.stringify([card.plugin, card.key]),
         type: "annotation",
       },
       url: card.url,

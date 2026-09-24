@@ -7,7 +7,7 @@ async function loadLoggingModule() {
     captureException: () => undefined,
     captureMessage: () => undefined,
     getActiveSpan: () => ({ sampled: true }),
-    logger: {},
+    logger: { info: vi.fn() },
     setTag: () => undefined,
     setUser: () => undefined,
     spanToJSON: () => ({
@@ -22,6 +22,7 @@ async function loadLoggingModule() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.resetModules();
   vi.doUnmock("@/chat/sentry");
 });
@@ -65,6 +66,28 @@ describe("structured log events", () => {
         }),
       }),
     ]);
+  });
+
+  it("retains only Work Object delivery info events in production Sentry logs", async () => {
+    vi.stubEnv("SENTRY_ENVIRONMENT", "production");
+    const { logInfo } = await loadLoggingModule();
+    const { logger } = await import("@/chat/sentry");
+    logInfo("agent.turn.started");
+    logInfo("slack.work_object.post.started", {
+      "app.slack.work_object.count": 1,
+    });
+    logInfo("slack.work_object.post.accepted", {
+      "messaging.message.id": "1700000000.000001",
+    });
+    expect(logger.info).toHaveBeenCalledTimes(2);
+    expect(logger.info).toHaveBeenCalledWith(
+      "slack.work_object.post.started",
+      expect.objectContaining({ "app.slack.work_object.count": 1 }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "slack.work_object.post.accepted",
+      expect.objectContaining({ "messaging.message.id": "1700000000.000001" }),
+    );
   });
 
   it("rejects non-namespaced application event names", async () => {

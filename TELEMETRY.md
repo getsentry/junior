@@ -103,6 +103,20 @@ fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,ap
 sort=-timestamp
 ```
 
+Work Object delivery (API acceptance, not proof of rendering).
+
+```text
+dataset=logs query='event.name:[slack.work_object.post.started,slack.work_object.post.accepted]'
+fields=timestamp,event.name,gen_ai.conversation.id,app.slack.channel_id,app.slack.thread_ts,messaging.message.id,app.slack.work_object.count,app.slack.work_object.entity_types,app.slack.work_object.reference_types,app.slack.warning_count,app.slack.response_message_count
+sort=timestamp
+```
+
+Filter by Conversation or channel/thread to compare automation and annotation
+posts. These two info events are retained in production Sentry logs.
+A started event without acceptance requires the existing Slack failure
+query above. Warning/message counts signal API diagnostics without retaining
+provider response text or object content.
+
 Scheduled automation lifecycle by task id.
 
 ```text

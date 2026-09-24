@@ -145,7 +145,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         {
           entity_type: "slack#/entities/item",
           external_ref: {
-            id: JSON.stringify([conversationId, "objects", "repo#1"]),
+            id: JSON.stringify(["objects", "repo#1"]),
             type: "annotation",
           },
           entity_payload: {
@@ -155,6 +155,18 @@ it("saves plugin object results once per reply, leaves background updates silent
         },
       ],
     });
+
+    const firstMetadata =
+      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata;
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:another-thread",
+      text: "The same object in another Conversation.",
+      cards,
+    });
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
+    ).toEqual(firstMetadata);
 
     await createPluginAnnotations({
       conversationId,

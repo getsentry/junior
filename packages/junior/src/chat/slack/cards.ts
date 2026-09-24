@@ -15,13 +15,10 @@ export interface SlackCard {
 }
 
 /** Select the Slack object renderer for a built-in card. */
-export function renderSlackCard(
-  card: MessageCard,
-  conversationId: string,
-): SlackCard {
+export function renderSlackCard(card: MessageCard): SlackCard {
   switch (card.kind) {
     case "object":
-      return renderSlackObjectCard(card, conversationId);
+      return renderSlackObjectCard(card);
     case "automation":
       return renderSlackAutomationCard(card);
   }

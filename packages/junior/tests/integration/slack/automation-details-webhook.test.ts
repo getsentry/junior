@@ -27,6 +27,11 @@ async function requestDetails(
   user = "U123",
   teamId = "T123",
   type = "automation",
+  coordinates: {
+    channel?: string;
+    message_ts?: string;
+    thread_ts?: string;
+  } = {},
 ) {
   const client = createSlackWebhookTestClient({
     signingSecret: SIGNING_SECRET,
@@ -42,9 +47,10 @@ async function requestDetails(
         user,
         external_ref: { id, type },
         trigger_id: `trigger-${id}`,
-        // The URL and channel must not grant access or select the object.
+        // The URL must not select an object or grant access.
         entity_url: "https://untrusted.example/automations/other",
         channel: "C123",
+        ...coordinates,
       },
     }),
     waitUntil: waitUntil.fn,
@@ -126,7 +132,7 @@ describe("Slack Work Object details", () => {
 
   it("shows saved annotation facts only within the viewer's Conversation access", async () => {
     await saveReminder();
-    const conversationId = "slack:D123:annotation";
+    const conversationId = "slack:D123:1700000000.000001";
     await getConversationStore().recordActivity({
       conversationId,
       actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
@@ -146,9 +152,14 @@ describe("Slack Work Object details", () => {
       status: "Started",
       url: "https://example.com/issues/1",
     });
-    const id = JSON.stringify([conversationId, "objects", "1"]);
+    const coordinates = {
+      channel: "D123",
+      message_ts: "1700000000.000002",
+      thread_ts: "1700000000.000001",
+    };
+    const id = JSON.stringify(["objects", "1"]);
     expect(
-      await requestDetails(id, "U123", "T123", "annotation"),
+      await requestDetails(id, "U123", "T123", "annotation", coordinates),
     ).toMatchObject({
       metadata: {
         entity_type: "slack#/entities/task",
@@ -173,7 +184,7 @@ describe("Slack Work Object details", () => {
       url: "https://example.com/issues/1",
     });
     expect(
-      await requestDetails(id, "U123", "T123", "annotation"),
+      await requestDetails(id, "U123", "T123", "annotation", coordinates),
     ).toMatchObject({
       metadata: {
         external_ref: { id, type: "annotation" },
@@ -183,9 +194,75 @@ describe("Slack Work Object details", () => {
         },
       },
     });
-    const denied = await requestDetails(id, "U999", "T123", "annotation");
+    await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U999",
+      email: "other@example.com",
+      emailVerified: true,
+    });
+    const denied = await requestDetails(
+      id,
+      "U999",
+      "T123",
+      "annotation",
+      coordinates,
+    );
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
+    expect(
+      await requestDetails(id, "U123", "T999", "annotation", coordinates),
+    ).toMatchObject({ error: { status: "not_found" } });
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({ error: { status: "not_found" } });
+
+    // The same object in a different thread must not borrow private facts.
+    const publicConversationId = "slack:C123:annotation";
+    await getConversationStore().recordActivity({
+      conversationId: publicConversationId,
+      actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      visibility: "public",
+    });
+    await getConversationStore().bindProviderConversation({
+      conversationId: publicConversationId,
+      provider: "slack",
+      providerTenantId: "T123",
+      providerDestinationId: "C123",
+      providerConversationId: coordinates.thread_ts,
+    });
+    // Bound, top-level notifications have message_ts without thread_ts.
+    const publicCoordinates = {
+      channel: "C123",
+      message_ts: coordinates.thread_ts,
+    };
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation", publicCoordinates),
+    ).toMatchObject({ error: { status: "not_found" } });
+    await createPluginAnnotations({
+      conversationId: publicConversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: "1",
+      label: "ENG-1",
+      title: "Public issue facts",
+      objectType: "task",
+      url: "https://example.com/issues/1",
+    });
+    expect(
+      await requestDetails(id, "U999", "T123", "annotation", publicCoordinates),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id, type: "annotation" },
+        entity_payload: {
+          attributes: { title: { text: "Public issue facts" } },
+        },
+      },
+    });
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {
