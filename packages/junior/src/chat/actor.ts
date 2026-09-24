@@ -24,10 +24,12 @@ export const storedSlackActorSchema = z
     slackUserId: exactStoredStringSchema.optional(),
     slackUserName: exactStoredStringSchema.optional(),
     teamId: exactStoredStringSchema.optional(),
+    timezone: exactStoredStringSchema.optional(),
   })
   .strict();
 
 interface BaseActor {
+  timezone?: string;
   email?: string;
   fullName?: string;
   userId: string;
@@ -56,6 +58,7 @@ export type UserActor = SlackActor | LocalActor | WebActor;
 export type Actor = UserActor | SystemActor;
 
 export interface SlackActorProfile {
+  timezone?: string;
   email?: string;
   fullName?: string;
   userName?: string;
@@ -75,6 +78,7 @@ export function isUserActor(actor: Actor | undefined): actor is UserActor {
 }
 
 interface ActorInput {
+  timezone?: string;
   email?: string;
   fullName?: string;
   platform?: UserActor["platform"];
@@ -180,6 +184,9 @@ export function createActor(
       !inputTeamId ||
       contextTeamId === inputTeamId);
   const actor = {
+    ...(canUseInputProfile && clean(input?.timezone)
+      ? { timezone: clean(input?.timezone) }
+      : undefined),
     ...(canUseInputProfile && cleanActorEmail(input?.email)
       ? { email: cleanActorEmail(input?.email) }
       : undefined),
@@ -217,6 +224,7 @@ export function createSlackActor(
   }
   const actor = createActor(
     {
+      timezone: profile?.timezone,
       email: profile?.email,
       fullName: profile?.fullName,
       platform: "slack",
@@ -264,6 +272,7 @@ export function parseStoredSlackActor(
 /** Convert a runtime Slack actor into its durable session shape. */
 export function toStoredSlackActor(actor: SlackActor): StoredSlackActor {
   return {
+    ...(actor.timezone ? { timezone: actor.timezone } : undefined),
     ...(actor.email ? { email: actor.email } : undefined),
     ...(actor.fullName ? { fullName: actor.fullName } : undefined),
     platform: actor.platform,
