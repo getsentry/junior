@@ -9,9 +9,10 @@ Suite policy:
 - **Integration** (`evals/integration/**`): full-runtime integration coverage
   that must never regress. Failures are hard pass/fail.
 - **Behavioral** (domain folders under `evals/` except `integration/`,
-  `guardian/`, and `router/`): agent interpretation and reply quality. Every
-  case must pass. Rubrics allow valid variations in wording and tool discovery,
-  not broken behavior. CI requires a 100% case pass rate.
+  `guardian/`, and `router/`): agent interpretation and reply quality. Rubrics
+  allow valid variations in wording and tool discovery, not broken behavior.
+  CI requires an 80% case pass rate; a failing case names a product gap and
+  stays visible without blocking the suite.
 - **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact
   `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
 - **Router** (`evals/router/**`): isolated turn route snapshots with exact

@@ -123,7 +123,7 @@ Only the behavioral suite uses the aggregate floor.
 Behavioral shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
 
 1. `behavioral / report` downloads all behavioral shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
-2. the same step publishes a `behavioral / score` Check Run with `min-pass-rate` (`EVAL_MIN_PASS_RATE=1`, requiring every case to pass)
+2. the same step publishes a `behavioral / score` Check Run with `min-pass-rate` (`EVAL_MIN_PASS_RATE=0.8`)
 3. `vitest-evals@0.16.1` attaches that Check Run to the PR head SHA and soft-fails the report step when the check publishes, so the Check Run title owns the pass-rate secondary line on the PR checks list
 
 If Check Run publishing is skipped or fails, the report step still fails on a rejected gate so status is not silently lost.

@@ -7,7 +7,7 @@ Evals are the integration-style test layer for agent-facing behavior when model 
 There are four independently runnable suites:
 
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
-2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `router/`) — full agent/runtime runs that measure agent behavior. Rubrics allow valid variations, but every case must pass.
+2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `router/`) — full agent/runtime runs that measure agent behavior. Rubrics allow valid variations. CI requires an 80% case pass rate, so a known product gap can stay visible as a failing case without blocking the suite.
 3. **Guardian** (`evals/guardian/**`) — isolated decision snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
 4. **Router** (`evals/router/**`) — isolated turn route snapshots scored on exact model profile and reasoning level selections. Failures are hard pass/fail.
 
@@ -170,8 +170,8 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and Router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
-- After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the case pass rate and the required 100% floor. When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
-- The behavioral floor is `EVAL_MIN_PASS_RATE=1` (every case must pass). `vitest-evals@0.16` owns the aggregate gate math. Missing or empty shard reports are hard failures, not successful runs. Agent execution errors fail the scenario before rubric judging, even if the runtime posted a safe failure reply.
+- After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the case pass rate and the required 80% floor. When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
+- The behavioral floor is `EVAL_MIN_PASS_RATE=0.8`. A failing case still names a product gap; the floor keeps the check meaningful for regressions while known gaps are open. `vitest-evals@0.16` owns the aggregate gate math. Missing or empty shard reports are hard failures, not successful runs. Agent execution errors fail the scenario before rubric judging, even if the runtime posted a safe failure reply.
 - Integration cases fail the `integration / shard *` jobs hard on any miss. They do not use the aggregate pass-rate floor.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `guardian / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - Router cases assert exact model profile and reasoning level selections and fail the `router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.

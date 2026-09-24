@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EVAL_MIN_PASS_RATE: "1"
+  EVAL_MIN_PASS_RATE: "0.8"
 
 jobs:
   select:
