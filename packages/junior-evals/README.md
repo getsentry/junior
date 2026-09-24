@@ -318,6 +318,3 @@ and plugin tasks. Failed runs retain their transcript, including cleanup errors.
 
 Gateway header and body-idle limits do not replace request cancellation.
 Judges and task titles receive the caller's signal; reply budgets stay unchanged.
-
-Remove `patches/@earendil-works__pi-ai@0.85.1.patch` when the pinned SDK handles
-capacity errors. It uses the existing retry budget and preserves quota exclusions.
