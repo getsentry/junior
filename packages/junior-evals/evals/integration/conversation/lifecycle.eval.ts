@@ -89,13 +89,12 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
         call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
     );
     // The runtime reports the preempted push as an attempt with unknown
-    // outcome; the agent verifies remote state instead of pushing again.
-    expect(pushCalls).toEqual([
-      expect.objectContaining({
-        status: "ok",
-        result: expect.objectContaining({ aborted: true }),
-      }),
-    ]);
+    // outcome and resumes the turn. Whether the agent verifies remote state
+    // before pushing again is model judgment, measured by the rubric.
+    expect(pushCalls[0]).toMatchObject({
+      status: "ok",
+      result: { aborted: true },
+    });
     expect(calls).toContainEqual(
       expect.objectContaining({
         name: "callMcpTool",
