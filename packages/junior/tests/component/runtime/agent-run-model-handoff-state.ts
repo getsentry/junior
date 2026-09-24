@@ -1,3 +1,5 @@
+import type { PiMessage } from "@/chat/pi/messages";
+
 export const observations = {
   afterHandoffModelId: "",
   afterHandoffMessages: [] as Array<{
@@ -7,6 +9,9 @@ export const observations = {
   afterHandoffProfiles: [] as string[],
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
+  initialMessages: [] as PiMessage[],
+  summaryMessages: [] as PiMessage[],
+  summaryText: "Implement the requested change and verify it.",
   initialImagePart: undefined as
     | { type: unknown; data: unknown; mimeType: unknown }
     | undefined,

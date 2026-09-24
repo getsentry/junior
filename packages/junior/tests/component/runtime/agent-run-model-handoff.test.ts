@@ -21,6 +21,11 @@ import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 import { MODEL_HANDOFF_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
+import {
+  handoffMaintenanceTranscript,
+  maintenanceHandoffSummary,
+} from "./agent-run-model-handoff-transcript";
 
 function expectedHandoffReplacementHistory() {
   return [
@@ -189,6 +194,68 @@ describe("model handoff execution", () => {
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
     expect(observations.summaryCalls).toBe(1);
+  });
+
+  it("keeps a new human request when the handoff summary selects an old maintenance task", async () => {
+    observations.summaryText = maintenanceHandoffSummary;
+    observations.routedReasoningLevel = "low";
+    const conversationId = "local:test:handoff-maintenance-transcript";
+    const history = handoffMaintenanceTranscript();
+    const actor = { platform: "local", userId: "reviewer" } as const;
+    const outcome = await executeAgentRun({
+      conversationId,
+      turnId: "turn-handoff-maintenance-transcript",
+      history,
+      actor,
+      instruction: {
+        text: "Deslop",
+        actor: { authorId: actor.userId, authorName: "Reviewer" },
+        context:
+          "Deslop means cleaning the whole changeset: code, tests, comments, PR title, and PR description. Remove jargon and overbuilt work.",
+        includeConversationContextWithHistory: true,
+      },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+    });
+
+    expect(outcome.status).toBe("completed");
+    expect(observations.providerCalls).toBe(2);
+    expect(observations.summaryCalls).toBe(1);
+
+    // Prove the fixture reached both model boundaries before checking retention.
+    expect(observations.initialMessages.slice(0, history.length)).toEqual(
+      history,
+    );
+    const currentInstruction = observations.initialMessages.find(
+      (message) =>
+        message.role === "user" &&
+        Array.isArray(message.content) &&
+        message.content.some(
+          (part) =>
+            part.type === "text" &&
+            unwrapCurrentInstruction(part.text) === "Deslop",
+        ),
+    );
+    expect(currentInstruction).toBeDefined();
+    expect(observations.summaryMessages).toContainEqual(currentInstruction);
+    expect(observations.summaryMessages).toContainEqual(history[2]);
+    expect(observations.summaryMessages).toContainEqual(history[4]);
+
+    // This is a model-input contract, not an assertion about the canned reply.
+    expect
+      .soft(observations.afterHandoffMessages)
+      .toContainEqual(currentInstruction);
+    const replacementInstructions = observations.afterHandoffMessages.flatMap(
+      (message) =>
+        message.role === "user"
+          ? (message.content ?? []).flatMap((part) => {
+              const text = typeof part.text === "string" ? part.text : "";
+              const instruction = unwrapCurrentInstruction(text);
+              return instruction === undefined ? [] : [instruction];
+            })
+          : [],
+    );
+    expect(replacementInstructions).toEqual(["Deslop"]);
   });
 
   it("blocks oversized steering after a tool handoff before the next provider request", async () => {
