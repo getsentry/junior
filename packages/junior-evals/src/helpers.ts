@@ -379,6 +379,37 @@ function usageTotal(usage: AgentTurnUsage | undefined): number | undefined {
     : undefined;
 }
 
+function normalizedTokenUsage(
+  usage: AgentTurnUsage | undefined,
+): HarnessRun["usage"] {
+  return {
+    ...(usage?.inputTokens !== undefined
+      ? { inputTokens: usage.inputTokens }
+      : {}),
+    ...(usage?.outputTokens !== undefined
+      ? { outputTokens: usage.outputTokens }
+      : {}),
+    ...(usage?.reasoningTokens !== undefined
+      ? { reasoningTokens: usage.reasoningTokens }
+      : {}),
+    ...(usageTotal(usage) !== undefined
+      ? { totalTokens: usageTotal(usage) }
+      : {}),
+  };
+}
+
+function toJudgeUsage(
+  usage: AgentTurnUsage | undefined,
+  model: string,
+): HarnessRun["usage"] {
+  return {
+    provider: GEN_AI_PROVIDER_NAME,
+    model,
+    ...normalizedTokenUsage(usage),
+    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
+  };
+}
+
 function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   const usage = result.usage;
   const metadata = toJsonRecord({
@@ -392,9 +423,6 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
       ? {
           currency: "USD",
           cost: usage.cost,
-          ...(usage.cost.total !== undefined
-            ? { costUsd: usage.cost.total }
-            : {}),
         }
       : {}),
     ...(result.modelIds.length > 1 ? { modelIds: result.modelIds } : {}),
@@ -402,18 +430,8 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   return {
     provider: GEN_AI_PROVIDER_NAME,
     ...(result.modelIds.length === 1 ? { model: result.modelIds[0] } : {}),
-    ...(usage?.inputTokens !== undefined
-      ? { inputTokens: usage.inputTokens }
-      : {}),
-    ...(usage?.outputTokens !== undefined
-      ? { outputTokens: usage.outputTokens }
-      : {}),
-    ...(usage?.reasoningTokens !== undefined
-      ? { reasoningTokens: usage.reasoningTokens }
-      : {}),
-    ...(usageTotal(usage) !== undefined
-      ? { totalTokens: usageTotal(usage) }
-      : {}),
+    ...normalizedTokenUsage(usage),
+    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
     toolCalls: result.toolInvocations.length,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
@@ -631,7 +649,7 @@ const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
 const judgeHarness = createJudgeHarness({
   name: "slack-rubric-judge-model",
   run: async ({ prompt, system }) => {
-    const { text } = await completeText({
+    const { message, text } = await completeText({
       modelId: EVAL_JUDGE_MODEL_ID,
       system,
       messages: [
@@ -643,7 +661,26 @@ const judgeHarness = createJudgeHarness({
       ],
       temperature: 0,
     });
-    return text;
+    return {
+      output: text,
+      session: {
+        events: [
+          ...(system
+            ? [
+                {
+                  type: "message" as const,
+                  role: "system" as const,
+                  content: system,
+                },
+              ]
+            : []),
+          { type: "message", role: "user", content: prompt },
+          { type: "message", role: "assistant", content: text },
+        ],
+      },
+      usage: toJudgeUsage(message.usage, message.model ?? EVAL_JUDGE_MODEL_ID),
+      errors: [],
+    };
   },
 });
 
