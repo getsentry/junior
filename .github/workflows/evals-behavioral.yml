@@ -33,11 +33,6 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/junior/src/chat/prompt.ts'
-              - 'packages/junior/src/chat/agent/**'
-              - 'packages/junior/src/chat/services/turn-router.ts'
-              - 'packages/junior/src/chat/tools/handoff/**'
-              - 'packages/junior/src/chat/tools/runtime/update-plan.ts'
               - 'packages/junior-evals/evals/agent/**'
               - 'packages/junior-evals/evals/conversation/**'
               - 'packages/junior-evals/evals/github/**'
