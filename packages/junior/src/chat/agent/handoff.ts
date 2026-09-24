@@ -145,7 +145,6 @@ export async function commitHandoff(args: {
   metadata?: CompactContextArgs["metadata"];
   onStatus?: (status: { text: string }) => void | Promise<void>;
   profile: ModelProfile;
-  runtimeContextSourceMessages?: PiMessage[];
   signal?: AbortSignal;
   sourceMessages: PiMessage[];
   triggeringToolCallId?: string;
@@ -154,9 +153,7 @@ export async function commitHandoff(args: {
   if (args.profile === args.activeModelProfile) {
     return undefined;
   }
-  const runtimeContext = retainRuntimeTurnContext(
-    args.runtimeContextSourceMessages ?? args.sourceMessages,
-  );
+  const runtimeContext = retainRuntimeTurnContext(args.sourceMessages);
   const phaseUsageSummary = extractGenAiUsageSummary(
     ...args.sourceMessages
       .slice(args.beforeMessageCount)

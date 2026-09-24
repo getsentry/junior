@@ -323,34 +323,11 @@ async function executeAgentRunInPrivacyContext(
   };
   const signal = policy.signal;
   const state = run.state ?? {};
-  const observers = {
-    onStatus: run.onEvent
-      ? async (status: { text: string }) => {
-          await run.onEvent?.({ type: "status", text: status.text });
-        }
-      : undefined,
-    onToolInvocation: run.onEvent
-      ? async (invocation: {
-          params: Record<string, unknown>;
-          toolCallId: string;
-          toolName: string;
-        }) => {
-          await run.onEvent?.({
-            type: "tool_started",
-            params: invocation.params,
-            toolCallId: invocation.toolCallId,
-            toolName: invocation.toolName,
-          });
-        }
-      : undefined,
-    onToolResult: run.onEvent
-      ? async (
-          report: import("@/chat/tool-support/tool-execution-report").ToolExecutionReport,
-        ) => {
-          await run.onEvent?.({ type: "tool_finished", report });
-        }
-      : undefined,
-  };
+  const onStatus = run.onEvent
+    ? async (status: { text: string }) => {
+        await run.onEvent?.({ type: "status", text: status.text });
+      }
+    : undefined;
   const delivery = run.delivery;
   const authorization = run.authorization;
   const durability = run.durability ?? {};
@@ -733,25 +710,21 @@ async function executeAgentRunInPrivacyContext(
       actorId: slackActor?.userId,
       runId,
     };
-    const scheduleHandoff = async (args: {
-      profile: ModelProfile;
-      runtimeContextSourceMessages?: PiMessage[];
-      signal?: AbortSignal;
-      sourceMessages: PiMessage[];
-      triggeringToolCallId?: string;
-    }) => {
+    const handoffExecute = async (
+      profile: ModelProfile,
+      options: { signal?: AbortSignal; toolCallId: string },
+    ) => {
       const pending = await commitHandoff({
         activeModelProfile,
         beforeMessageCount: runResume.beforeMessageCount,
         conversationContext: input.conversationContext,
         conversationId,
         metadata: handoffMetadata,
-        onStatus: observers.onStatus,
-        profile: args.profile,
-        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
-        signal: args.signal,
-        sourceMessages: args.sourceMessages,
-        triggeringToolCallId: args.triggeringToolCallId,
+        onStatus,
+        profile,
+        signal: options.signal,
+        sourceMessages: [...agent!.state.messages],
+        triggeringToolCallId: options.toolCallId,
         turnRoute: turnRoute!,
       });
       if (!pending) {
@@ -763,16 +736,6 @@ async function executeAgentRunInPrivacyContext(
       activeModelId = pending.modelId;
       turnRoute = pending.turnRoute;
     };
-    const handoffExecute = async (
-      profile: ModelProfile,
-      options: { signal?: AbortSignal; toolCallId: string },
-    ) =>
-      await scheduleHandoff({
-        profile,
-        signal: options.signal,
-        sourceMessages: [...agent!.state.messages],
-        triggeringToolCallId: options.toolCallId,
-      });
     const requestHandoff = handoffControl({
       activeProfile: activeModelProfile,
       enabled: handoffEnabled,
@@ -946,8 +909,7 @@ async function executeAgentRunInPrivacyContext(
           },
           modelId: activeModelId,
           modelProfile: activeModelProfile,
-          onCompactionStart: () =>
-            observers.onStatus?.({ text: "Compacting context" }),
+          onCompactionStart: () => onStatus?.({ text: "Compacting context" }),
           pendingMessages,
           piMessages: messages,
           ...(pairPendingRuntimeContext && pendingMessages
@@ -1373,33 +1335,6 @@ async function executeAgentRunInPrivacyContext(
             return result;
           };
 
-          let run: Promise<unknown>;
-          let handoffApplied = false;
-          const requestedProfile =
-            activeModelProfile === botConfig.defaultProfile
-              ? turnRoute!.profile
-              : undefined;
-          if (
-            requestedProfile &&
-            requestedProfile !== botConfig.defaultProfile
-          ) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              scheduleHandoff({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [
-                      ...(contextMessage ? [contextMessage] : []),
-                      freshPromptMessage,
-                    ]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            handoffApplied = Boolean(applyPendingHandoff());
-          }
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(
             applyActiveContextCompaction(
@@ -1418,13 +1353,7 @@ async function executeAgentRunInPrivacyContext(
             ),
             () => compactionAbortController.abort(),
           );
-          if (shouldPromptAgent && handoffApplied && !capacityUpdate) {
-            await runResume.requireDurableInputCheckpoint([
-              ...agent!.state.messages,
-              freshPromptMessage,
-            ]);
-          }
-          run =
+          let run =
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
               : agent!.continue();
