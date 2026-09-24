@@ -41,9 +41,6 @@ process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
 process.env.AI_MODEL_PROFILES = JSON.stringify({
   coding: "openai/gpt-5.6-sol",
 });
-// Integration cases assert runtime wiring. Guardian judgement is covered by
-// evals/guardian, so a live reviewer only adds nondeterministic "ask" gates.
-process.env.EVAL_ACTION_REVIEW = "allow";
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 export default defineConfig({
