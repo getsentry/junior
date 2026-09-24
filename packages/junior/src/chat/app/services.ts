@@ -18,6 +18,7 @@ import {
   type SubscribedReplyPolicy,
   type SubscribedReplyPolicyDeps,
 } from "@/chat/services/subscribed-reply-policy";
+import { createJevSubscribedReplyClassifier } from "@/chat/services/jev-subscribed-reply-classifier";
 import {
   createVisionContextService,
   type VisionContextDeps,
@@ -53,6 +54,7 @@ export interface JuniorRuntimeServiceOverrides {
 export function createJuniorRuntimeServices(
   overrides: JuniorRuntimeServiceOverrides = {},
 ): JuniorRuntimeServices {
+  const typesafeApiKey = process.env.TYPESAFE_API_KEY?.trim();
   const conversationMemory = createConversationMemoryService({
     completeText: overrides.conversationMemory?.completeText ?? completeText,
   });
@@ -83,6 +85,11 @@ export function createJuniorRuntimeServices(
     executeTurn: async (run, saveResult, timeoutMs) =>
       await executeTurn(agentRunner, run, saveResult, timeoutMs),
     subscribedReplyPolicy: createSubscribedReplyPolicy({
+      classifyReply:
+        overrides.subscribedReplyPolicy?.classifyReply ??
+        (typesafeApiKey
+          ? createJevSubscribedReplyClassifier({ apiKey: typesafeApiKey })
+          : undefined),
       completeObject:
         overrides.subscribedReplyPolicy?.completeObject ?? completeObject,
     }),

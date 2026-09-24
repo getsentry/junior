@@ -310,6 +310,41 @@ describe("subscribed reply decision", () => {
     ).toEqual([]);
   });
 
+  it("uses an injected classifier instead of the fast model", async () => {
+    const classifyReply = vi.fn(async () => ({
+      shouldReply: true,
+      shouldUnsubscribe: false,
+      confidence: 0.93,
+      reason: "direct question",
+    }));
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "can you link the PR?",
+          text: "can you link the PR?",
+        }),
+        classifyReply,
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "direct question",
+    });
+    expect(classifyReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botUserName: "junior",
+        latestMessage: "can you link the PR?",
+      }),
+    );
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
   it("projects guardian-style user/assistant evidence without tool lines", async () => {
     const completeObject = vi.fn(
       async (_request: { prompt: string; system: string }) => ({
