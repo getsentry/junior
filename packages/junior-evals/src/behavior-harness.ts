@@ -337,11 +337,6 @@ function scenarioEvents(scenario: EvalScenario): EvalEvent[] {
   ];
 }
 
-interface SubscribedDecisionFixture {
-  reason: string;
-  should_reply: boolean;
-}
-
 /** Host image fixture exposed at one model-visible sandbox path. */
 interface EvalViewImageFixture {
   path: string;
@@ -363,12 +358,10 @@ export interface EvalOverrides {
   reply_timeout_ms?: number;
   reply_texts?: string[];
   skill_dirs?: string[];
-  subscribed_decisions?: SubscribedDecisionFixture[];
   timeout_resume?: {
     arguments: Record<string, JsonValue>;
     tool_name: string;
   };
-  unset_gateway_api_key?: boolean;
   view_image_files?: EvalViewImageFixture[];
 }
 
@@ -1674,7 +1667,6 @@ function buildRuntimeServices(
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyTexts = scenario.overrides?.reply_texts ?? [];
-  const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs =
     scenario.overrides?.reply_timeout_ms &&
     scenario.overrides.reply_timeout_ms > 0
@@ -1689,7 +1681,6 @@ function buildRuntimeServices(
       `Eval reply timeout must be an integer from 1 to 60000 milliseconds, got ${replyTimeoutMs}`,
     );
   }
-  let decisionIndex = 0;
   const replyState = { successfulCount: 0 };
   let activeTurnCompactionInjected = false;
   let timeoutResumeInjected = false;
@@ -1697,33 +1688,6 @@ function buildRuntimeServices(
   const attachmentStorage = createMemoryAttachmentStorage();
 
   const services: JuniorRuntimeServiceOverrides = {
-    ...(subscribedDecisions.length > 0
-      ? {
-          subscribedReplyPolicy: {
-            // The mock bypasses the generic Zod-typed `completeObject` signature
-            // since we return a fixed fixture rather than parsing a schema.
-            completeObject: async () => {
-              const next =
-                subscribedDecisions[
-                  Math.min(decisionIndex, subscribedDecisions.length - 1)
-                ];
-              decisionIndex += 1;
-              return {
-                object: {
-                  should_reply: next.should_reply,
-                  confidence: next.should_reply ? 1 : 0,
-                  reason: next.reason,
-                },
-                text: JSON.stringify({
-                  should_reply: next.should_reply,
-                  confidence: next.should_reply ? 1 : 0,
-                  reason: next.reason,
-                }),
-              } as any;
-            },
-          },
-        }
-      : {}),
     agentRunner: {
       run: async (request) => {
         const pendingSteeringDelivery = steeringDelivery.deliver;
@@ -1889,10 +1853,6 @@ function buildRuntimeServices(
           scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
         }
 
-        const gatewaySnapshot = snapshotEnv([
-          "AI_GATEWAY_API_KEY",
-          "VERCEL_OIDC_TOKEN",
-        ]);
         const baseToolOverrides: ToolHooks["toolOverrides"] = {
           ...(request.environment?.toolOverrides ?? {}),
         };
@@ -1920,10 +1880,6 @@ function buildRuntimeServices(
               }
             : {}),
         };
-        if (scenario.overrides?.unset_gateway_api_key) {
-          delete process.env.AI_GATEWAY_API_KEY;
-          delete process.env.VERCEL_OIDC_TOKEN;
-        }
         try {
           const pendingToolInvocations: EvalToolInvocation[] = [];
           const replySignal = AbortSignal.any([
@@ -2012,10 +1968,6 @@ function buildRuntimeServices(
           // so a negative rubric cannot score that fallback as a successful run.
           observations.errors.push(error);
           throw error;
-        } finally {
-          if (scenario.overrides?.unset_gateway_api_key) {
-            gatewaySnapshot.restore();
-          }
         }
       },
     },
