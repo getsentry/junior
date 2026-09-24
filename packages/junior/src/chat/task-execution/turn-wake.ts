@@ -4,6 +4,10 @@
  * Wake-only: mailbox/lease own liveness; this just nudges the worker.
  */
 import type { StateAdapter } from "chat";
+import {
+  recordTurnAuthorization,
+  getTurnAuthorization,
+} from "./authorized-turn";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
@@ -59,7 +63,8 @@ export async function getPausedTurnRequest(args: {
     turn.state !== "paused" ||
     (turn.resumeReason !== "timeout" &&
       turn.resumeReason !== "yield" &&
-      turn.resumeReason !== "retry") ||
+      turn.resumeReason !== "retry" &&
+      !(turn.resumeReason === "auth" && (await getTurnAuthorization(turn)))) ||
     (turn.resumeReason === "timeout" && turn.sliceId < 2)
   ) {
     return undefined;
@@ -128,4 +133,13 @@ export function createPausedTurns(
       }),
     wake: (request) => wakePausedTurn(request, options),
   };
+}
+
+/** Record completed authorization and wake the sole execution owner. */
+export async function wakeAuthorizedTurn(
+  args: Parameters<typeof recordTurnAuthorization>[0],
+  queue?: ConversationWorkQueue,
+): Promise<void> {
+  const request = await recordTurnAuthorization(args);
+  if (request) await wakePausedTurn(request, { queue });
 }

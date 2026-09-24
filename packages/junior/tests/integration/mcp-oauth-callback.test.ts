@@ -760,7 +760,7 @@ describe("mcp oauth callback integration", () => {
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
     await turnSessionStoreModule.upsertTurnRecord({
-      conversationId: "conversation-4",
+      conversationId: "slack:C123:1700000000.004",
       turnId: sessionId,
       sliceId: 2,
       state: "paused",
@@ -814,7 +814,7 @@ describe("mcp oauth callback integration", () => {
     );
 
     const authProvider = await createPendingAuthSession({
-      conversationId: "conversation-4",
+      conversationId: "slack:C123:1700000000.004",
       sessionId,
       userMessage: "what did i say about the budget?",
       channelId: "C123",
@@ -839,7 +839,7 @@ describe("mcp oauth callback integration", () => {
     expect(conversation.processing.pendingAuth).toBeUndefined();
 
     const sessionRecord = await turnSessionStoreModule.getTurnRecord(
-      "conversation-4",
+      "slack:C123:1700000000.004",
       sessionId,
     );
     expect(sessionRecord?.state).toBe("abandoned");

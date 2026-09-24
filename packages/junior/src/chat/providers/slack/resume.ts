@@ -49,8 +49,6 @@ import {
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
 import {
   startProcessingReactionForMessage,
   type ProcessingReaction,
@@ -153,14 +151,6 @@ function createReadOnlyConfigService(
   };
 }
 
-/** Error raised when another worker is already resuming the Slack Turn. */
-export class ResumeTurnBusyError extends Error {
-  constructor(lockKey: string) {
-    super(`Another worker is already resuming Slack Turn "${lockKey}"`);
-    this.name = "ResumeTurnBusyError";
-  }
-}
-
 interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
@@ -172,13 +162,6 @@ interface ResumeSlackTurnArgs {
   messageTs?: SlackMessageTs;
   /** Saved Run fields. `beforeStart` may supply them after stale-work checks. */
   run?: ResumeRun;
-  lockKey?: string;
-  /**
-   * When true, the caller already holds the conversation work lease.
-   * Skip the second resume lock so the queue continuation has one owner.
-   * Authorization callbacks and other independent resumes leave this false.
-   */
-  ownsConversationLease?: boolean;
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
   executeTurn: ExecuteTurn;
@@ -215,21 +198,11 @@ interface ResumePreparedTurn {
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
-function getDefaultLockKey(
-  channelId: string,
-  threadTs: string | undefined,
-): string {
-  return threadTs ? `slack:${channelId}:${threadTs}` : `slack:${channelId}`;
-}
-
-function getResumeLogContext(
-  args: ResumeSlackTurnArgs,
-  lockKey: string,
-): LogContext {
+function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
   const actor = args.run?.actor;
   return {
     conversationId: args.conversationId,
-    messageConversationId: lockKey,
+    messageConversationId: args.conversationId,
     userId: isUserActor(actor) ? actor.userId : undefined,
     userName: isUserActor(actor) ? actor.userName : undefined,
     destinationName: args.channelId,
@@ -345,8 +318,7 @@ function buildResumedRun(
     throw new TypeError("Slack resume requires a Slack Destination");
   }
   const requestDeadline = getTurnRequestDeadline();
-  const threadId =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
+  const threadId = args.conversationId;
   const persistedLocationConfiguration =
     savedRun.environment?.locationConfiguration ??
     (savedRun.environment?.configuration
@@ -397,19 +369,15 @@ function buildResumedRun(
 /**
  * Resume a paused Slack Turn.
  *
- * Queue continuations pass `ownsConversationLease` and skip the second lock
- * because the worker lease is already held. Authorization callbacks and other
- * independent resumes still take the thread lock. A started resume owns its
- * completion work.
+ * The caller must hold the conversation work lease. This function does not
+ * acquire another execution lock. A started resume owns its completion work.
  * Returns false only when `beforeStart` proves the resume is stale before
  * generation begins.
  */
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  const lockKey =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  return withLogContext(getResumeLogContext(args, lockKey), () =>
+  return withLogContext(getResumeLogContext(args), () =>
     resumeSlackTurnInContext(args),
   );
 }
@@ -417,19 +385,6 @@ export async function resumeSlackTurn(
 async function resumeSlackTurnInContext(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const lockKey =
-    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  // A worker continuation already holds the Conversation lease. Do not take
-  // another lock for the same work.
-  const lock = args.ownsConversationLease
-    ? undefined
-    : await acquireActiveLock(stateAdapter, lockKey);
-  if (!args.ownsConversationLease && !lock) {
-    throw new ResumeTurnBusyError(lockKey);
-  }
-
   const status = createSlackWebApiAssistantStatusSession({
     channelId: args.channelId,
     threadTs: args.threadTs,
@@ -459,7 +414,7 @@ async function resumeSlackTurnInContext(
     if (preparedArgs) {
       runArgs = { ...args, ...preparedArgs };
     }
-    setTags(getResumeLogContext(runArgs, lockKey));
+    setTags(getResumeLogContext(runArgs));
 
     const savedRun = runArgs.run;
     if (!savedRun) {
@@ -510,7 +465,7 @@ async function resumeSlackTurnInContext(
     const conversationId = runArgs.conversationId;
     const visibility = (await getConversationStore().get({ conversationId }))
       ?.visibility;
-    const visibleConversationId = lockKey;
+    const visibleConversationId = args.conversationId;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
       | ReturnType<typeof coerceThreadConversationState>
@@ -763,8 +718,7 @@ async function resumeSlackTurnInContext(
       replyTimeoutMs,
     );
     if (outcome.status !== "completed") {
-      // Expected pauses defer their handlers until the lock is released,
-      // mirroring the failure path below.
+      // Finish reaction cleanup before running pause or failure handlers.
       await status.clear();
       const onAuthPause = runArgs.onAuthPause;
       const onSuspend = runArgs.onSuspend;
@@ -785,8 +739,8 @@ async function resumeSlackTurnInContext(
         // Queue continue already owns the lease. After a hard timeout, return
         // the lease so the next wake starts with a full request budget.
         if (
-          runArgs.ownsConversationLease &&
-          (outcome.reason === "timeout" || savedRun.durability?.shouldYield?.())
+          outcome.reason === "timeout" ||
+          savedRun.durability?.shouldYield?.()
         ) {
           throw new CooperativeTurnYieldError();
         }
@@ -842,10 +796,6 @@ async function resumeSlackTurnInContext(
     // Lease owner must requeue after a hard timeout park. Do not convert this
     // into a user-visible resume failure.
     if (isCooperativeTurnYieldError(runError)) {
-      if (lock) {
-        await stateAdapter.releaseLock(lock);
-      }
-      await processingReaction?.stop();
       throw runError;
     }
 
@@ -874,9 +824,6 @@ async function resumeSlackTurnInContext(
       await processingReaction?.complete();
     } else {
       await processingReaction?.stop();
-    }
-    if (lock) {
-      await stateAdapter.releaseLock(lock);
     }
   }
 

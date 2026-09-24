@@ -251,51 +251,6 @@ describe("Slack resume result handling", () => {
     ).toEqual([expect.stringContaining("Final resumed answer")]);
   });
 
-  it("releases the thread lock before scheduling a suspended continuation", async () => {
-    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const onSuspend = vi.fn(async () => {
-      const stateAdapter = getStateAdapter();
-      await stateAdapter.connect();
-      const lock = await stateAdapter.acquireLock(
-        "slack:C123:1700000000.013",
-        60_000,
-      );
-      expect(lock).not.toBeNull();
-      if (lock) {
-        await stateAdapter.releaseLock(lock);
-      }
-    });
-
-    await resumeSlackTurn({
-      messageText: "continue this turn",
-      conversationId: "slack:C123:1700000000.013",
-      turnId: "turn-resume-lock-release",
-      channelId: "C123",
-      threadTs: "1700000000.013",
-      run: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.013"),
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      executeTurn: createTestTurnExecution({
-        run: async () => ({
-          status: "suspended" as const,
-          reason: "timeout" as const,
-          resumeVersion: 3,
-        }),
-      }),
-      onSuspend,
-    });
-
-    expect(onSuspend).toHaveBeenCalledOnce();
-    expect(onSuspend).toHaveBeenCalledWith(3);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
-  });
-
   it("runs failure handling when suspended continuation scheduling fails", async () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const onFailure = vi.fn(async () => undefined);
@@ -317,7 +272,7 @@ describe("Slack resume result handling", () => {
       executeTurn: createTestTurnExecution({
         run: async () => ({
           status: "suspended" as const,
-          reason: "timeout" as const,
+          reason: "yield" as const,
           resumeVersion: 3,
         }),
       }),
