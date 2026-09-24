@@ -2,6 +2,7 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
+  assistantTextContent,
   hasImageAttachment,
   mention,
   rubric,
@@ -117,6 +118,10 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     ]);
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
-    expect(visibleThreadReplies(result.session).length).toBeLessThanOrEqual(1);
+    // The image is a separate Slack post; limit acknowledgements, not files.
+    const textReplies = visibleThreadReplies(result.session).filter(
+      (reply) => assistantTextContent(reply.content).trim().length > 0,
+    );
+    expect(textReplies.length).toBeLessThanOrEqual(1);
   });
 });
