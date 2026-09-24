@@ -26,10 +26,26 @@ async function fixture(t) {
     throw Object.assign(new Error("DNS unavailable"), { code: "ENOTFOUND" });
   };
   t.mock.method(dns, "lookup", unavailable);
-  for (const method of ["resolve4", "resolve6", "resolveNs"]) {
-    t.mock.method(dns.Resolver.prototype, method, unavailable);
-  }
   const dir = await mkdtemp(path.join(tmpdir(), "eval-tunnel-test-"));
+  let pendingAnswers = 0;
+  t.mock.method(dns.Resolver.prototype, "resolveNs", async () => [
+    "ns1.example.com",
+    "ns2.example.com",
+  ]);
+  t.mock.method(dns.Resolver.prototype, "resolve4", async function (name) {
+    if (name.startsWith("ns"))
+      return [name.startsWith("ns1") ? "192.0.2.1" : "192.0.2.2"];
+    if (this.getServers().includes("192.0.2.2") && pendingAnswers > 0) {
+      pendingAnswers--;
+      assert.equal((await readdir(dir)).includes("connector-ready"), false);
+      assert.equal((await readdir(dir)).includes("child-started"), false);
+      return unavailable();
+    }
+    return ["192.0.2.3"];
+  });
+  t.mock.method(dns.Resolver.prototype, "resolve6", async () => {
+    throw Object.assign(new Error("IPv6 disabled"), { code: "ENODATA" });
+  });
   t.after(() => rm(dir, { recursive: true, force: true }));
   const env = {
     ...process.env,
@@ -121,6 +137,9 @@ setInterval(() => {}, 1000);
   return {
     dir,
     env,
+    pendingDns: (count) => {
+      pendingAnswers = count;
+    },
     tunnels,
     records,
     configs,
@@ -136,6 +155,7 @@ setInterval(() => {}, 1000);
 test("runs a child without management credentials and cleans up success and failure", async (t) => {
   const f = await fixture(t);
   for (const code of [0, 7]) {
+    f.pendingDns(1);
     const result = await runWithTunnel(
       [
         process.execPath,
@@ -147,6 +167,7 @@ test("runs a child without management credentials and cleans up success and fail
       assert.equal(process.env.JUNIOR_EVAL_EGRESS_PORT, '18787');
       assert.match(new URL(process.env.JUNIOR_EVAL_EGRESS_URL).hostname, /^sentry-ci-[a-f0-9]{24}\\.example\\.com$/);
       const fs = require('node:fs');
+      fs.writeFileSync(${JSON.stringify(path.join(f.dir, "child-started"))}, 'started');
       const timer = setInterval(() => {
         if (fs.existsSync(${JSON.stringify(path.join(f.dir, "connector-ready"))})) {
           clearInterval(timer); process.exit(${code});
@@ -166,6 +187,7 @@ test("runs a child without management credentials and cleans up success and fail
       false,
     );
     await rm(path.join(f.dir, "connector-ready"));
+    await rm(path.join(f.dir, "child-started"));
   }
   assert.deepEqual(
     f.configs[0].config.ingress.map((rule) => rule.service),
@@ -247,6 +269,23 @@ test("SIGTERM stops the child and removes its tunnel", async (t) => {
   assert.equal(await running, 130);
   assert.equal(f.tunnels.size, 0);
   assert.equal(f.records.size, 0);
+  await rm(path.join(f.dir, "connector-ready"));
+
+  // Cancellation must also clean resources before either subprocess starts.
+  f.pendingDns(Infinity);
+  const waiting = runWithTunnel(
+    [process.execPath, "-e", "process.exit(99)"],
+    f.env,
+  );
+  while (!f.records.size) {
+    assert.ok(Date.now() < deadline, "DNS record was not allocated");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  process.emit("SIGTERM");
+  assert.equal(await waiting, 130);
+  assert.equal(f.tunnels.size, 0);
+  assert.equal(f.records.size, 0);
+  assert.equal((await readdir(f.dir)).includes("connector-ready"), false);
 });
 
 test("latest installer checks the exact release asset digest before making it executable", async (t) => {

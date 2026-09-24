@@ -17,6 +17,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 
 const API = "https://api.cloudflare.com/client/v4";
 const PORT = 18787;
@@ -271,6 +272,95 @@ async function stop(child, done) {
   }
 }
 
+/** Publish the new name before recursive lookups can cache a negative answer. */
+async function waitForTunnelDns(baseUrl, domain, signal) {
+  const hostname = new URL(baseUrl).hostname;
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(120_000)]);
+  const resolvers = [];
+  const createResolver = () => {
+    const resolver = new dns.Resolver({ timeout: 2_000, tries: 1 });
+    resolvers.push(resolver);
+    return resolver;
+  };
+  const cancel = () => resolvers.forEach((resolver) => resolver.cancel());
+  deadline.addEventListener("abort", cancel, { once: true });
+  let lastError;
+  try {
+    const discovery = createResolver();
+    // A deeper base domain can use the parent zone's nameservers.
+    let zone = domain;
+    let nameservers;
+    while (!nameservers) {
+      deadline.throwIfAborted();
+      try {
+        nameservers = await discovery.resolveNs(zone);
+      } catch (error) {
+        if (
+          !["ENODATA", "ENOTFOUND"].includes(error.code) ||
+          !zone.includes(".")
+        )
+          throw error;
+        zone = zone.slice(zone.indexOf(".") + 1);
+      }
+    }
+    const authorities = await Promise.all(
+      nameservers.map(async (name) => {
+        const addresses = await discovery.resolve4(name);
+        const resolver = createResolver();
+        resolver.setServers(addresses);
+        return { name, resolver };
+      }),
+    );
+    if (!authorities.length) throw new Error(`No nameservers for ${domain}`);
+    console.log(`Waiting for DNS publication of ${hostname}`);
+    while (true) {
+      deadline.throwIfAborted();
+      const results = await Promise.allSettled(
+        authorities.map(async ({ name, resolver }) => {
+          // Check both record types. Recursive clients can query either first.
+          await Promise.all([
+            resolver.resolve4(hostname),
+            resolver.resolve6(hostname).catch((error) => {
+              // IPv6 can be disabled. NODATA is valid; NXDOMAIN is not.
+              if (error.code !== "ENODATA") throw error;
+            }),
+          ]);
+          return name;
+        }),
+      );
+      const failures = results.filter((result) => result.status === "rejected");
+      if (!failures.length) {
+        console.log(
+          `DNS published on all ${authorities.length} nameservers for ${hostname}`,
+        );
+        return;
+      }
+      for (const { reason } of failures) {
+        if (
+          ![
+            "ENOTFOUND",
+            "ENODATA",
+            "ETIMEOUT",
+            "ESERVFAIL",
+            "ECONNREFUSED",
+          ].includes(reason.code)
+        )
+          throw reason;
+        lastError = reason;
+      }
+      await delay(1_000, undefined, { signal: deadline });
+    }
+  } catch (error) {
+    if (signal.aborted) throw signal.reason;
+    throw new Error(`DNS publication failed for ${hostname}`, {
+      cause: lastError ?? error,
+    });
+  } finally {
+    deadline.removeEventListener("abort", cancel);
+    cancel();
+  }
+}
+
 /** Compare DNS answers before cleanup removes the evidence. Diagnostics never change the exit code. */
 async function reportTunnelDns(baseUrl, domain) {
   const hostname = new URL(baseUrl).hostname;
@@ -342,6 +432,11 @@ export async function runWithTunnel(command, env = process.env) {
     const tunnel = await createTunnel(env);
     allocated = true;
     publicUrl = tunnel.baseUrl;
+    await waitForTunnelDns(
+      publicUrl,
+      env.CLOUDFLARE_TUNNEL_BASE_DOMAIN,
+      abort.signal,
+    );
     abort.signal.throwIfAborted();
     connector = spawn(
       "cloudflared",
@@ -382,7 +477,8 @@ export async function runWithTunnel(command, env = process.env) {
     ]);
     code = result.code ?? 1;
   } catch (error) {
-    errors.push(error);
+    if (abort.signal.aborted) code = 130;
+    else errors.push(error);
   } finally {
     // Try every cleanup operation. An API failure must not leave local children running.
     for (const task of [

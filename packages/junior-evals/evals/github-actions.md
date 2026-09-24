@@ -80,7 +80,14 @@ are needed across jobs. Each runner supports one invocation at a time on
 `127.0.0.1:18787`; different jobs use different runners. The catch-all ingress
 rule returns 404. Postgres and Redis are not tunnel targets.
 
-The wrapper starts `cloudflared tunnel run --token-file ...` and the eval command.
+Before it starts either child, the wrapper waits up to two minutes for each
+authoritative nameserver to publish the new hostname. It queries these servers
+directly so early lookups cannot put a negative answer in the runner's recursive
+DNS cache. A successful DNS API write alone does not prove publication. IPv4 must
+resolve; IPv6 may return no data when it is disabled, but not a missing hostname.
+The wait supports cancellation and retains the same resource cleanup.
+
+The wrapper then starts `cloudflared tunnel run --token-file ...` and the eval command.
 The token file has mode 0600 under `RUNNER_TEMP`, outside the repository. The API
 token is bound only to the run and cleanup steps. Cloudflare and tunnel variables
 are removed from both child environments. Only the connector receives the token
