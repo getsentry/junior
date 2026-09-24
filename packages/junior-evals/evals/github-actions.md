@@ -93,12 +93,12 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 ## Triggering Evals On A PR
 
-Four independent workflows run on pull requests:
+Four independent workflows run on pull requests. All use the display name `Evals`, with separate concurrency groups:
 
-- `Behavioral evals` runs Slack/agent evals when behavioral eval files/harness changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
-- `Integration evals` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
-- `Guardian evals` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
-- `Router evals` runs isolated turn route snapshots when Router eval files/harness changed or the PR has `trigger-evals-router` / `trigger-evals`
+- `evals-behavioral.yml` runs Slack/agent evals when behavioral eval files/harness changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
+- `evals-integration.yml` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
+- `evals-guardian.yml` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
+- `evals-router.yml` runs isolated turn route snapshots when Router eval files/harness changed or the PR has `trigger-evals-router` / `trigger-evals`
 
 Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy and turn router changes.
 
@@ -109,7 +109,7 @@ Guardian and Router evals only need gateway credentials. Behavioral and integrat
 After adding secrets:
 
 1. Push a commit to the PR, or add the matching `trigger-evals*` label.
-2. Open the matching `Behavioral evals`, `Integration evals`, `Guardian evals`, or `Router evals` workflow summary.
+2. Open the `Evals` workflow summary for the matching suite. Use its workflow file or job names to identify the suite.
 3. Confirm its `*/select` job reports `will_run: true` and the required credentials as ready.
 4. For behavioral runs, confirm each `behavioral / shard *` job has a shard summary, `behavioral / report` has the combined summary, and the `behavioral / score` Check Run shows the pass-rate gate title.
 5. For integration runs, confirm the `integration / shard *` jobs completed. Any case miss fails those jobs hard.

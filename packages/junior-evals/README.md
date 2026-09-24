@@ -125,11 +125,11 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 
 ## Optional CI Runs
 
-- On pull requests, four independent workflows run and report their own suites:
-  - `Behavioral evals`: Slack/agent evals (`behavioral / shard *` + `behavioral / report` → `behavioral / score` Check Run)
-  - `Integration evals`: system evals (`integration / shard *`)
-  - `Guardian evals`: isolated Guardian snapshots (`guardian / run`)
-  - `Router evals`: isolated turn route snapshots (`router / run`)
+- On pull requests, four independent workflows use the display name `Evals`. Each has its own concurrency group and reports its own suite:
+  - `evals-behavioral.yml`: Slack/agent evals (`behavioral / shard *` + `behavioral / report` → `behavioral / score` Check Run)
+  - `evals-integration.yml`: system evals (`integration / shard *`)
+  - `evals-guardian.yml`: isolated Guardian snapshots (`guardian / run`)
+  - `evals-router.yml`: isolated turn route snapshots (`router / run`)
 - Suite labels follow `trigger-evals-[domain]`:
   - `trigger-evals` starts all suites
   - `trigger-evals-behavioral`, `trigger-evals-integration`, `trigger-evals-guardian`, and `trigger-evals-router` start one suite
