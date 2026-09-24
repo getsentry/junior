@@ -22,42 +22,33 @@ describe("oauth callback harnesses", () => {
     mcpOauthCallbackGetMock.mockReset();
   });
 
-  it.each([
-    {
-      label: "generic OAuth",
-      run: () =>
-        runOauthCallbackRoute({
-          provider: "eval-oauth",
-          state: "oauth-state-1",
-          code: "eval-oauth-code",
-        }),
-      expectedError:
-        'OAuth callback route returned 200 without registering waitUntil() work for provider "eval-oauth"',
-    },
-    {
-      label: "MCP OAuth",
-      run: () =>
-        runMcpOauthCallbackRoute({
-          provider: "eval-auth",
-          state: "auth-session-1",
-          code: "eval-auth-code",
-        }),
-      expectedError:
-        'MCP OAuth callback route returned 200 without registering waitUntil() work for provider "eval-auth"',
-    },
-  ])(
-    "fails when the $label callback route returns success without registering waitUntil() work",
-    async ({ run, expectedError }) => {
-      oauthCallbackGetMock.mockResolvedValue(
-        new Response("ok", { status: 200 }),
-      );
-      mcpOauthCallbackGetMock.mockResolvedValue(
-        new Response("ok", { status: 200 }),
-      );
+  it("fails when the generic OAuth callback omits expected background work", async () => {
+    oauthCallbackGetMock.mockResolvedValue(new Response("ok", { status: 200 }));
 
-      await expect(run()).rejects.toThrow(expectedError);
-    },
-  );
+    await expect(
+      runOauthCallbackRoute({
+        provider: "eval-oauth",
+        state: "oauth-state-1",
+        code: "eval-oauth-code",
+      }),
+    ).rejects.toThrow(
+      'OAuth callback route returned 200 without registering waitUntil() work for provider "eval-oauth"',
+    );
+  });
+
+  it("accepts an MCP OAuth callback that completes without background work", async () => {
+    const response = new Response("ok", { status: 200 });
+    mcpOauthCallbackGetMock.mockResolvedValue(response);
+
+    // MCP callbacks queue continuation before returning, not in waitUntil().
+    await expect(
+      runMcpOauthCallbackRoute({
+        provider: "eval-auth",
+        state: "auth-session-1",
+        code: "eval-auth-code",
+      }),
+    ).resolves.toBe(response);
+  });
 
   it.each([
     {
