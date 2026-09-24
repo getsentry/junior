@@ -24,9 +24,8 @@ export const githubApiHandlers = [
     );
     if (response) return response;
     // A matched MSW handler that returns undefined bypasses the network guard.
-    return new HttpResponse(
-      `Missing GitHub fixture for ${request.method} ${request.url}`,
-      { status: 501 },
+    throw new Error(
+      `[HTTP MOCK] Unhandled external request: ${request.method} ${request.url}`,
     );
   }),
 ];

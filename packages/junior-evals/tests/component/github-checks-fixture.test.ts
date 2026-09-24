@@ -68,7 +68,6 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
 
   // Unspecified paths fail at the fixture edge; they cannot reach live GitHub.
   const unknown = new URL(`${api}/actions/runs/999`);
-  expect((await fetch(unknown)).status).toBe(501);
   expect(
     (
       await interceptTestHttp({
