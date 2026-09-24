@@ -11,7 +11,8 @@ import {
   type PluginUserPageLink,
 } from "@sentry/junior-plugin-api";
 
-import { deleteDashboardResource, fetchDashboardJson } from "../../http";
+import { z } from "zod";
+import { deleteDashboardResource, fetchDashboardJson, post } from "../../http";
 import { useDebouncedSearchParam } from "../../searchParams";
 
 export type PluginUserPageRecord = PluginUserPageContent["records"][number];
@@ -64,8 +65,13 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     [query.data?.pages],
   );
   const action = useMutation({
-    mutationFn: (recordAction: PluginUserPageRecordAction) =>
-      deleteDashboardResource(recordAction.href),
+    mutationFn: async (recordAction: PluginUserPageRecordAction) => {
+      if (recordAction.method === "POST") {
+        await post(z.object({ ok: z.literal(true) }), recordAction.href, {});
+      } else {
+        await deleteDashboardResource(recordAction.href);
+      }
+    },
     onMutate: () => ({ pluginName: page.pluginName }),
     onSuccess: async (_result, _recordAction, context) => {
       // Drop detail caches first so a forgotten permalink is not refetched
