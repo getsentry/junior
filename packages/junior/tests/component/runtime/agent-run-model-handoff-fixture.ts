@@ -72,7 +72,6 @@ vi.mock("@/chat/pi/traced-stream", () => ({
         sequencedProfile ?? observations.requestedProfile;
       if (call === 1) {
         observations.initialModelId = model.id;
-        observations.initialMessages = structuredClone(context.messages ?? []);
         observations.initialImagePart = (
           (context.messages ?? []) as Array<{
             content?: Array<{
@@ -202,7 +201,6 @@ export async function resetHandoffTestState(): Promise<void> {
   observations.afterHandoffProfiles = [];
   observations.afterHandoffToolNames = [];
   observations.initialModelId = "";
-  observations.initialMessages = [];
   observations.summaryMessages = [];
   observations.summaryText = "Implement the requested change and verify it.";
   observations.initialImagePart = undefined;

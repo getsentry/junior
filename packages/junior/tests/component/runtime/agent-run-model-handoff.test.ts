@@ -21,7 +21,7 @@ import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 import { MODEL_HANDOFF_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
-import { unwrapCurrentInstruction } from "@/chat/current-instruction";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   handoffMaintenanceTranscript,
   maintenanceHandoffSummary,
@@ -222,40 +222,33 @@ describe("model handoff execution", () => {
     expect(observations.providerCalls).toBe(2);
     expect(observations.summaryCalls).toBe(1);
 
-    // Prove the fixture reached both model boundaries before checking retention.
-    expect(observations.initialMessages.slice(0, history.length)).toEqual(
-      history,
+    const instruction = renderCurrentInstruction("Deslop", {
+      authorId: actor.userId,
+      authorName: "Reviewer",
+    });
+    expect(observations.summaryMessages).toEqual(
+      expect.arrayContaining([
+        ...history,
+        expect.objectContaining({
+          role: "user",
+          content: [{ type: "text", text: instruction }],
+        }),
+      ]),
     );
-    const currentInstruction = observations.initialMessages.find(
-      (message) =>
-        message.role === "user" &&
-        Array.isArray(message.content) &&
-        message.content.some(
-          (part) =>
-            part.type === "text" &&
-            unwrapCurrentInstruction(part.text) === "Deslop",
-        ),
-    );
-    expect(currentInstruction).toBeDefined();
-    expect(observations.summaryMessages).toContainEqual(currentInstruction);
-    expect(observations.summaryMessages).toContainEqual(history[2]);
-    expect(observations.summaryMessages).toContainEqual(history[4]);
 
-    // This is a model-input contract, not an assertion about the canned reply.
-    expect
-      .soft(observations.afterHandoffMessages)
-      .toContainEqual(currentInstruction);
-    const replacementInstructions = observations.afterHandoffMessages.flatMap(
-      (message) =>
-        message.role === "user"
-          ? (message.content ?? []).flatMap((part) => {
-              const text = typeof part.text === "string" ? part.text : "";
-              const instruction = unwrapCurrentInstruction(text);
-              return instruction === undefined ? [] : [instruction];
-            })
-          : [],
+    // The summary must not replace the human instruction or its author.
+    const instructions = observations.afterHandoffMessages.flatMap((message) =>
+      message.role === "user"
+        ? (message.content ?? []).flatMap((part) =>
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            part.text.startsWith("<current-instruction")
+              ? [part.text]
+              : [],
+          )
+        : [],
     );
-    expect(replacementInstructions).toEqual(["Deslop"]);
+    expect(instructions).toEqual([instruction]);
   });
 
   it("blocks oversized steering after a tool handoff before the next provider request", async () => {

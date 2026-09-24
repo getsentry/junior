@@ -9,7 +9,6 @@ export const observations = {
   afterHandoffProfiles: [] as string[],
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
-  initialMessages: [] as PiMessage[],
   summaryMessages: [] as PiMessage[],
   summaryText: "Implement the requested change and verify it.",
   initialImagePart: undefined as

@@ -60,12 +60,6 @@ export const maintenanceHandoffSummary = [
   "## User preference",
   "The user asked to Deslop PR #42. They accepted the clean cutover without backward compatibility. Do not revisit unfurl_links.",
   "",
-  "## Current PR state",
-  "Draft PR example/widgets#42 on fix/work-object-contract. Stable object IDs and delivery logs are implemented. Tests and typecheck pass.",
-  "",
-  "## Review/event history",
-  "The deployment status and screenshot report were not actionable. No review thread was resolved.",
-  "",
   "## Next steps",
   "For any new PR event, inspect whether it is actionable review feedback or a failed check. If actionable, make a scoped fix, verify it, push, and report. Otherwise remain silent.",
 ].join("\n");
