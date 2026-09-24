@@ -41,6 +41,9 @@ jobs:
               - 'packages/junior-evals/evals/sentry/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/cloudflare-tunnel*'
+              - 'packages/junior-evals/tests/component/eval-egress.test.ts'
+              - '.github/workflows/evals-behavioral.yml'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/src/behavior-harness.ts'
@@ -125,6 +128,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      CLOUDFLARE_TUNNEL_BASE_DOMAIN: ${{ vars.CLOUDFLARE_TUNNEL_BASE_DOMAIN }}
+      JUNIOR_EVAL_SHARD: ${{ matrix.shard }}
       JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -135,25 +142,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Install cloudflared
-        run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
-            --output "$RUNNER_TEMP/cloudflared"
-          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
-          chmod +x "$RUNNER_TEMP/cloudflared"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/cloudflared" version
+      - name: Install latest cloudflared
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node packages/junior-evals/scripts/cloudflare-tunnel.mjs install
       - name: Verify eval egress lifecycle
-        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
+        run: |
+          node --test packages/junior-evals/scripts/cloudflare-tunnel.test.mjs
+          pnpm --filter @sentry/junior-evals test tests/component/eval-egress.test.ts
       - name: Run behavioral evals
         id: run
         continue-on-error: true
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           VITEST_EVALS_OUTPUT_FILE: behavioral-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+        run: node packages/junior-evals/scripts/cloudflare-tunnel.mjs run pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+      - name: Remove eval tunnel
+        if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node packages/junior-evals/scripts/cloudflare-tunnel.mjs cleanup
       - name: Require behavioral eval results
         id: results
         if: steps.run.conclusion != 'skipped'
