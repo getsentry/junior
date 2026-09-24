@@ -198,6 +198,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
     AI_FAST_MODEL: "test-fast-model",
     AI_HANDOFF_MODEL: "test-handoff-model",
     AI_MODEL: "test-model",
+    AI_MODEL_PROFILES: JSON.stringify({ standard: "test-model" }),
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -258,7 +259,7 @@ vi.mock("@/chat/pi/client", () => ({
     };
   },
   getGatewayApiKey: () => undefined,
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
 vi.mock("@/chat/prompt", async (importOriginal) => ({

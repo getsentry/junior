@@ -243,7 +243,8 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Model profiles and steering
 
-The app owns model ids, fixed reasoning levels, and task-fit descriptions.
+`model-profile.ts` owns the default model ids, fixed reasoning levels, and
+task-fit descriptions. Apps can replace them through `createApp()`.
 `services/turn-router.ts` selects a profile for each new Turn when handoff is
 enabled. It selects reasoning independently, then applies any fixed level from
 the selected profile. A saved Turn route, or a later handoff in that Turn, wins
@@ -257,8 +258,7 @@ that description after each switch. The system prompt points to this contract
 before skill selection; it does not repeat the task-fit descriptions.
 
 The system prompt owns when a plan helps. The `updatePlan` tool owns plan input
-and status rules. Keep these rules in one place instead of repeating examples
-in the always-loaded prompt.
+and status rules.
 
 ## Task agent input
 

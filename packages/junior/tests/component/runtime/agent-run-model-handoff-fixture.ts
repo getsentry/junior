@@ -8,7 +8,10 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const config = actual.readChatConfig({
     ...process.env,
     AI_HANDOFF_MODEL: "openai/gpt-5.6-sol",
-    AI_MODEL_PROFILES: JSON.stringify({ coding: "openai/gpt-5.4" }),
+    AI_MODEL_PROFILES: JSON.stringify({
+      standard: "xai/grok-4.5",
+      coding: "openai/gpt-5.4",
+    }),
   });
   return { ...actual, botConfig: config.bot };
 });

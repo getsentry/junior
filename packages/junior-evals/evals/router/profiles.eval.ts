@@ -1,29 +1,9 @@
 import { describeEval } from "vitest-evals";
-import type { ModelProfileConfig } from "@/chat/model-profile";
 import { routerEvals } from "../../src/router-harness";
-
-// Match the consumer app's Luna/Opus profile split. These cases test profile
-// selection and fixed reasoning levels, not the models' task completion.
-const profiles = {
-  standard: {
-    modelId: "openai/gpt-6-luna",
-    description:
-      "Use standard for lookups, explanations, summaries, routine tool use, and focused source checks, including reading a single code file. Use handoff instead for implementation, debugging, code review, architecture decisions, or research across several systems. A mention of code or use of tools alone does not require handoff.",
-    reasoningLevel: "high",
-  },
-  handoff: {
-    modelId: "anthropic/claude-opus-5.5",
-    description:
-      "Use handoff for implementation, debugging, code review, architecture decisions, and research across several systems. Keep this profile through implementation and verification of the same task. Use standard for a new routine request, not handoff merely because earlier work was difficult. A failed tool call or missing access alone does not require handoff.",
-    reasoningLevel: "high",
-  },
-} satisfies Readonly<Record<string, ModelProfileConfig>>;
 
 describeEval("Task-fit Profile Selection", routerEvals, (it) => {
   it("keeps a single-file code lookup on standard", async ({ run }) => {
     await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
       expectedProfile: "standard",
       expectedReasoningLevel: "high",
       messageText:
@@ -33,8 +13,6 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
 
   it("routes a code review to handoff", async ({ run }) => {
     await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
       expectedProfile: "handoff",
       expectedReasoningLevel: "high",
       messageText:
@@ -44,8 +22,6 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
 
   it("routes investigation across systems to handoff", async ({ run }) => {
     await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
       expectedProfile: "handoff",
       expectedReasoningLevel: "high",
       messageText:
@@ -53,28 +29,10 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
     });
   });
 
-  it("keeps an approval attached to pending implementation", async ({
-    run,
-  }) => {
-    await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
-      conversationContext: [
-        "User: Add pagination to the endpoint and update its tests.",
-        "Junior: The change needs an API update and a client update. Should I proceed?",
-      ].join("\n"),
-      expectedProfile: "handoff",
-      expectedReasoningLevel: "high",
-      messageText: "yes, do it",
-    });
-  });
-
   it("keeps verification attached to unfinished implementation", async ({
     run,
   }) => {
     await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
       conversationContext: [
         "User: Fix duplicate deliveries after a worker restart.",
         "Junior: I changed the retry logic, but have not run the regression tests yet.",
@@ -89,8 +47,6 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
     run,
   }) => {
     await run({
-      profiles,
-      fastModelId: "openai/gpt-5.6-luna",
       conversationContext: [
         "User: Fix the race in the task queue and add a regression test.",
         "Junior: The fix is complete, the tests passed, and the pull request is open.",

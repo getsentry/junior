@@ -26,8 +26,8 @@ related:
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                           |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
-| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `xai/grok-4.5`.                                                    |
-| `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                   |
+| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
 | `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
 | `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
@@ -190,7 +190,9 @@ already joined. Leave it unset in production unless you are testing that path.
 
 ## Profiles
 
-Pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
+Without overrides, Junior uses GPT-6 Luna High for `standard` and Claude Opus 5.5 High for `handoff`. Keep these shared defaults unless the app needs different behavior.
+
+To override them, pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
 
 ```ts
 const app = await createApp({
