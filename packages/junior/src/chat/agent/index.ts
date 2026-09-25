@@ -64,6 +64,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
+import { toModelMessages } from "@/chat/pi/model-messages";
 import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
@@ -1064,6 +1065,7 @@ async function executeAgentRunInPrivacyContext(
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
+      convertToLlm: toModelMessages,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
         ...(streamFn ? { base: streamFn } : undefined),

@@ -34,8 +34,21 @@ describe("model message history", () => {
     Object.assign(botConfig, originalBotConfig);
     await closeConversationFixture();
   });
-  it("keeps earlier model messages unchanged", async () => {
-    const agent = await createAgent();
+  it("keeps earlier model messages and serialized tool arguments unchanged", async () => {
+    const toolArguments = {
+      explanation: "Check the result before replying.",
+      plan: [
+        { status: "in_progress", step: "Check the result" },
+        { status: "pending", step: "Reply to the user" },
+      ],
+    };
+    const agent = await createAgent({
+      responses: [
+        { type: "toolCall", name: "updatePlan", arguments: toolArguments },
+        "First response.",
+        "Second response.",
+      ],
+    });
 
     await agent.run("first request");
     const first = agent.snapshot();
@@ -46,6 +59,21 @@ describe("model message history", () => {
     expect(second.systemPrompt).toBe(first.systemPrompt);
     expect(second.messages.slice(0, first.messages.length)).toEqual(
       first.messages,
+    );
+    const toolCall = (messages: typeof first.messages) =>
+      messages
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) => message.content)
+        .find((part) => part.type === "toolCall");
+    const firstCall = toolCall(first.messages);
+    const secondCall = toolCall(second.messages);
+    expect(firstCall?.arguments).toEqual(toolArguments);
+    expect(first.messages).toContainEqual(
+      expect.objectContaining({ role: "toolResult", isError: false }),
+    );
+    // Object equality misses key reordering from the SQL jsonb round trip.
+    expect(JSON.stringify(secondCall?.arguments)).toBe(
+      JSON.stringify(firstCall?.arguments),
     );
   });
 

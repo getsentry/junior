@@ -44,6 +44,11 @@ facts:
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
 
+The payload uses `jsonb`, which does not preserve object-key order. The Pi
+model-input conversion sorts tool-argument keys on every request, including
+nested objects. This keeps fresh and replayed arguments identical for prompt
+caching without changing stored history, argument values, or array order.
+
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
 message arrived twice. `message_handled` remains the compact lifecycle fact

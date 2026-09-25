@@ -26,7 +26,7 @@ type PreviousTurn = {
 type AgentFixtureOptions = {
   botConfig?: Partial<BotConfig>;
   previousTurns?: PreviousTurn[];
-  responses?: string[];
+  responses?: Array<string | Parameters<typeof createModelStream>[0][number]>;
 };
 
 /**
@@ -46,10 +46,11 @@ export async function createAgent(
   ];
   const model = vi.fn(
     createModelStream(
-      responses.map((text) => ({
-        type: "text" as const,
-        text,
-      })),
+      responses.map((response) =>
+        typeof response === "string"
+          ? { type: "text" as const, text: response }
+          : response,
+      ),
     ),
   );
   const conversation = await createConversationWebHarness(model);
