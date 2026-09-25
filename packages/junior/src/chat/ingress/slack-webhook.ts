@@ -1,5 +1,13 @@
 import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
-import type { SlackAdapter, SlackEvent } from "@chat-adapter/slack";
+import type { SlackAdapter } from "@chat-adapter/slack";
+import {
+  slackAssistantThreadSchema,
+  slackEventEnvelopeSchema,
+  slackInteractivePayloadSchema,
+  type SlackEventEnvelope,
+  type SlackInboundEvent,
+  type SlackInteractivePayload,
+} from "./slack-payload";
 import {
   ChannelImpl,
   ThreadImpl,
@@ -75,30 +83,8 @@ import {
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
-type SlackMessageEvent = {
-  blocks?: Array<{ type: string; text?: { type: string; text: string } }>;
-  bot_id?: string;
-  channel?: string;
-  channel_type?: string;
-  event_ts?: string;
-  subtype?: string;
-  text?: string;
-  thread_ts?: string;
-  ts?: string;
-  type?: string;
-  user?: string;
-};
-
-type SlackEventEnvelope = {
-  enterprise_id?: string;
-  event?: SlackMessageEvent & Record<string, unknown>;
-  is_enterprise_install?: boolean;
-  team_id?: string;
-  type?: string;
-};
-
 function slackEventLogContext(
-  event: SlackMessageEvent | undefined,
+  event: SlackInboundEvent | undefined,
 ): LogContext {
   const channelId = event?.channel?.trim() || undefined;
   const threadTs = event?.thread_ts?.trim() || event?.ts?.trim() || undefined;
@@ -136,17 +122,6 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
   "ekm_access_denied",
   "tombstone",
 ]);
-
-interface SlackInteractivePayload {
-  actions?: Array<{
-    action_id?: string;
-    selected_option?: { value?: string };
-    value?: string;
-  }>;
-  team?: { id?: string };
-  type?: string;
-  user?: { id?: string; name?: string; team_id?: string; username?: string };
-}
 
 class SlackEventPersistenceError extends Error {
   readonly cause: unknown;
@@ -199,16 +174,16 @@ function installationFromEnvelope(
   };
 }
 
-function isDmEvent(event: SlackMessageEvent): boolean {
+function isDmEvent(event: SlackInboundEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
 }
 
-function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
+function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
-function normalizeMessageThreadId(message: Message): {
-  message: Message;
+function normalizeMessageThreadId(message: Message<unknown>): {
+  message: Message<unknown>;
   threadId: string;
 } {
   const threadId = normalizeIncomingSlackThreadId(message.threadId, message);
@@ -220,7 +195,7 @@ function normalizeMessageThreadId(message: Message): {
 
 async function buildThread(args: {
   adapter: SlackAdapter;
-  message: Message;
+  message: Message<unknown>;
   route: SlackConversationRoute;
   state: StateAdapter;
 }): Promise<ThreadImpl> {
@@ -238,11 +213,9 @@ async function buildThread(args: {
   });
 }
 
-function shouldIgnoreMessage(message: Message): boolean {
+function shouldIgnoreMessage(message: Message<unknown>): boolean {
   return (
-    message.author.isMe === true ||
-    !parseActorUserId(message.author.userId) ||
-    !isSlackWorkspaceMember(message.raw as Record<string, unknown> | undefined)
+    message.author.isMe === true || !parseActorUserId(message.author.userId)
   );
 }
 
@@ -273,7 +246,7 @@ async function resolveSlackConversationId(args: {
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
-  message: Message;
+  message: Message<unknown>;
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
@@ -357,7 +330,7 @@ async function handleSlackThreadStop(args: {
   canonicalThreadId: string;
   conversationStore?: ConversationStore;
   installation: SlackInstallationContext;
-  message: Message;
+  message: Message<unknown>;
   queue: ConversationWorkQueue;
   route: SlackConversationRoute;
   state: StateAdapter;
@@ -415,9 +388,9 @@ async function handleSlackThreadStop(args: {
 
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
-  event: SlackMessageEvent;
+  event: SlackInboundEvent;
   installation: SlackInstallationContext;
-  message: Message;
+  message: Message<unknown>;
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
@@ -439,7 +412,8 @@ async function routeParsedMessage(args: {
       args.event.blocks?.some(
         (block) =>
           block.type === "section" &&
-          block.text?.type === "mrkdwn" &&
+          typeof block.text === "object" &&
+          block.text.type === "mrkdwn" &&
           textMentionsBot(block.text.text, botUserId),
       )),
   );
@@ -557,16 +531,11 @@ async function handleSlackEvent(args: {
       state,
       task: async () => {
         if (event.type === "assistant_thread_started") {
-          const assistantThread = (event as Record<string, unknown>)
-            .assistant_thread as
-            | {
-                channel_id?: string;
-                context?: { channel_id?: string };
-                thread_ts?: string;
-                user_id?: string;
-              }
-            | undefined;
-          if (assistantThread?.channel_id && assistantThread.thread_ts) {
+          const parsed = slackAssistantThreadSchema.safeParse(
+            event.assistant_thread,
+          );
+          if (parsed.success) {
+            const assistantThread = parsed.data;
             await args.services.runtime.handleAssistantThreadStarted({
               channelId: assistantThread.channel_id,
               context: { channelId: assistantThread.context?.channel_id },
@@ -582,16 +551,11 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "assistant_thread_context_changed") {
-          const assistantThread = (event as Record<string, unknown>)
-            .assistant_thread as
-            | {
-                channel_id?: string;
-                context?: { channel_id?: string };
-                thread_ts?: string;
-                user_id?: string;
-              }
-            | undefined;
-          if (assistantThread?.channel_id && assistantThread.thread_ts) {
+          const parsed = slackAssistantThreadSchema.safeParse(
+            event.assistant_thread,
+          );
+          if (parsed.success) {
+            const assistantThread = parsed.data;
             await args.services.runtime.handleAssistantContextChanged({
               channelId: assistantThread.channel_id,
               context: { channelId: assistantThread.context?.channel_id },
@@ -632,7 +596,8 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
-          const message = adapter.parseMessage(event as SlackEvent);
+          if (!isSlackWorkspaceMember(event)) return;
+          const message = adapter.parseMessage(event);
           const routed = await withLock(
             state,
             `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
@@ -835,10 +800,11 @@ async function handleSlackForm(args: {
   if (!rawPayload) {
     return new Response("Missing payload", { status: 400 });
   }
-  const payload = parseJson(rawPayload) as SlackInteractivePayload | undefined;
-  if (!payload) {
+  const result = slackInteractivePayloadSchema.safeParse(parseJson(rawPayload));
+  if (!result.success) {
     return new Response("Invalid payload JSON", { status: 400 });
   }
+  const payload = result.data;
   const installation = installationFromInteractive(payload);
 
   enqueue(
@@ -890,14 +856,14 @@ export async function handleSlackWebhook(args: {
     });
   }
 
-  const parsed = parseJson(body) as SlackEventEnvelope | undefined;
-  if (!parsed) {
+  const result = slackEventEnvelopeSchema.safeParse(parseJson(body));
+  if (!result.success) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
+  const parsed = result.data;
   if (parsed.type === "url_verification") {
-    const challenge = (parsed as { challenge?: unknown }).challenge;
-    return Response.json({ challenge });
+    return Response.json({ challenge: parsed.challenge });
   }
 
   if (parsed.type === "event_callback") {

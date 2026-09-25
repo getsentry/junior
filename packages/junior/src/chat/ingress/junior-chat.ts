@@ -104,7 +104,7 @@ export class JuniorChat<
             });
             return;
           }
-          if (!isSlackWorkspaceMember(message.raw as Record<string, unknown>)) {
+          if (!isSlackWorkspaceMember(message.raw)) {
             return;
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
@@ -119,7 +119,7 @@ export class JuniorChat<
     }
 
     const message = messageOrFactory;
-    if (!isSlackWorkspaceMember(message.raw as Record<string, unknown>)) {
+    if (!isSlackWorkspaceMember(message.raw)) {
       return Promise.resolve();
     }
 

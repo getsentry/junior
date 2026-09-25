@@ -224,6 +224,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
+      '@slack/types':
+        specifier: ^2.21.1
+        version: 2.21.1
       '@slack/web-api':
         specifier: ^7.16.0
         version: 7.16.0

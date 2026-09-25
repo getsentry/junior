@@ -165,6 +165,16 @@ delegation without becoming the execution actor or a general task owner.
   or author team data blocks the message before routing, storage, or reactions.
   The event's `team` and envelope's `team_id` do not prove author membership.
   Do not query Slack for missing membership data.
+- Use `@slack/types` for Slack event fields and Block Kit output. Validate unknown
+  webhook and Chat SDK input before reading it. `ingress/slack-payload.ts` checks
+  the fields ingress uses against upstream types and preserves other event fields
+  for the adapter. It does not claim to validate a complete Slack event.
+  Slack defines author teams on `AppMentionEvent`, but omits them from
+  `GenericMessageEvent`. The Chat SDK event type omits them too. Keep this gap
+  explicit; do not use a cast to prove membership. `SlackAdapter.parseMessage`
+  returns `Message<unknown>` even though `Message` has a raw type parameter.
+  Validate its raw input instead of casting the result. Events API envelopes and
+  interactive payloads have local schemas because `@slack/types` does not define them.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the

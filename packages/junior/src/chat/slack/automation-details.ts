@@ -1,3 +1,4 @@
+import type { SlackEvent } from "@slack/types";
 import { z } from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { readViewerAutomationSummary } from "@/chat/automations/read";
@@ -139,7 +140,12 @@ const detailsEventSchema = z.object({
     id: z.string().min(1),
     type: z.literal("automation"),
   }),
-});
+}) satisfies z.ZodType<
+  Pick<
+    Extract<SlackEvent, { type: "entity_details_requested" }>,
+    "trigger_id" | "user" | "external_ref"
+  >
+>;
 
 /** Answer a Work Object open or refresh with current, viewer-visible facts. */
 export async function presentSlackAutomationDetails(

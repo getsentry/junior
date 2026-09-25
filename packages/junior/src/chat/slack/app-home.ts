@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
+import type { WebClient } from "@slack/web-api";
+import type { KnownBlock, SectionBlock } from "@slack/types";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
@@ -109,8 +110,8 @@ async function hasConnectedMcpAccount(
   );
   return Boolean(
     credentials?.tokens ||
-      credentials?.clientInformation ||
-      credentials?.discoveryState,
+    credentials?.clientInformation ||
+    credentials?.discoveryState,
   );
 }
 

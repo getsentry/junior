@@ -1,3 +1,4 @@
+import type { SlackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -322,7 +323,7 @@ export function slackEnvelope(input: {
   threadTs?: string;
   ts?: string;
   user?: string;
-}) {
+}): Pick<SlackEventsApiEnvelope, "team_id" | "type" | "event"> {
   const channel = input.channel ?? "C123";
   const ts = input.ts ?? "1712345.0001";
   return {
@@ -330,6 +331,7 @@ export function slackEnvelope(input: {
     type: "event_callback",
     event: {
       type: input.eventType ?? "app_mention",
+      subtype: undefined,
       user: input.user ?? "U123",
       user_team: "T123",
       text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,

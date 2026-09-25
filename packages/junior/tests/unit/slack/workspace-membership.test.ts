@@ -24,6 +24,9 @@ describe("isSlackWorkspaceMember", () => {
 
   it.each([
     undefined,
+    null,
+    "not an event",
+    [],
     {},
     { team: LOCAL_TEAM, team_id: LOCAL_TEAM },
     { user_team: EXTERNAL_TEAM },
@@ -31,6 +34,7 @@ describe("isSlackWorkspaceMember", () => {
     { user_team: EXTERNAL_TEAM, source_team: LOCAL_TEAM },
     { user_team: "", source_team: LOCAL_TEAM },
     { user_team: 123, source_team: LOCAL_TEAM },
+    { user_team: null, source_team: LOCAL_TEAM },
     { source_team: 123 },
   ])("rejects an external or unknown author: %j", (raw) => {
     runWithWorkspaceTeamId(LOCAL_TEAM, () => {

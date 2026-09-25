@@ -45,15 +45,16 @@ describe("Slack webhook auth boundary", () => {
       state,
     };
 
-    const rejected = await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest({
-        ...envelope,
-        event: { ...envelope.event, user_team: undefined },
-      }),
-      services,
-    });
-
-    expect(rejected.status).toBe(200);
+    for (const userTeam of [undefined, 123]) {
+      const rejected = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          ...envelope,
+          event: { ...envelope.event, user_team: userTeam },
+        }),
+        services,
+      });
+      expect(rejected.status).toBe(200);
+    }
     expect(queue.queuedMessages()).toEqual([]);
     expect(
       await getConversationWorkState({ conversationId: threadId, state }),
@@ -117,6 +118,35 @@ describe("Slack webhook auth boundary", () => {
       await bot.shutdown();
     },
   );
+
+  it("rejects malformed signed payloads before durable state is required", async () => {
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+    const queue = createConversationWorkQueueTestAdapter();
+    const adapter = createSlackAdapterFixture();
+    const envelope = slackEnvelope({});
+    for (const payload of [
+      null,
+      { ...envelope, event: { ...envelope.event, channel: 123 } },
+    ]) {
+      const response = await handleSlackWebhook({
+        request: slackWebhookRequest(payload),
+        waitUntil: waitUntil.fn,
+        services: {
+          getSlackAdapter: () => adapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+        },
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(queue.sentRecords()).toEqual([]);
+    expect(waitUntil.pendingCount()).toBe(0);
+    expect(slackApiOutbox.messages()).toEqual([]);
+    expect(slackApiOutbox.reactions()).toEqual([]);
+  });
 
   it("rejects invalid Slack signatures before durable state is required", async () => {
     const client = createSlackWebhookTestClient({

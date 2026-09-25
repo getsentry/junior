@@ -23,7 +23,7 @@ import type {
   OAuthAuthorizationRequest,
 } from "@/chat/oauth-authorization";
 import { buildSlackOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
-import type { SlackMessageBlock } from "@/chat/slack/footer";
+import type { KnownBlock } from "@slack/types";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -141,7 +141,7 @@ export async function deliverPrivateMessage(input: {
   threadTs?: string;
   userId: string;
   text: string;
-  blocks?: SlackMessageBlock[];
+  blocks?: KnownBlock[];
 }): Promise<PrivateDeliveryResult> {
   let client: ReturnType<typeof getSlackClient>;
   try {
