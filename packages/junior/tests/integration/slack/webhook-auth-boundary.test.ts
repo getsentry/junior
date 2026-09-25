@@ -18,6 +18,7 @@ import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-clien
 import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { usersInfoOk } from "../../fixtures/slack/factories/api";
+import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
@@ -46,16 +47,17 @@ describe("Slack webhook auth boundary", () => {
       await state.subscribe(threadId);
       const queue = createConversationWorkQueueTestAdapter();
       const adapter = createSlackAdapterFixture();
-      const envelope = slackEnvelope({
+      const envelope = slackEventsApiEnvelope({
         channel,
+        ts: threadTs,
         threadTs,
         eventType,
-        text: "hello",
+        user: "U123",
+        text:
+          eventType === "app_mention"
+            ? `<@${adapter.botUserId}> hello`
+            : "hello",
       });
-      if (eventType === "app_mention") {
-        envelope.event.text = `<@${adapter.botUserId}> hello`;
-      }
-      const event = { ...envelope.event, user_team: undefined };
       const services = {
         getSlackAdapter: () => adapter,
         queue,
@@ -69,7 +71,7 @@ describe("Slack webhook auth boundary", () => {
           body: { ...profile, user: { ...profile.user, team_id: teamId } },
         });
         const rejected = await handleSlackWebhookAndFlush({
-          request: slackWebhookRequest({ ...envelope, event }),
+          request: slackWebhookRequest(envelope),
           services,
         });
         expect(rejected.status).toBe(200);
@@ -86,7 +88,7 @@ describe("Slack webhook auth boundary", () => {
 
       queueSlackApiError("users.info", { error: "missing_scope" });
       const failed = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest({ ...envelope, event }),
+        request: slackWebhookRequest(envelope),
         services,
       });
       expect(failed.status).toBe(503);
@@ -94,10 +96,10 @@ describe("Slack webhook auth boundary", () => {
       expect(slackApiOutbox.reactions()).toEqual([]);
 
       queueSlackApiResponse("users.info", {
-        body: { ...profile, user: { ...profile.user, team_id: "T123" } },
+        body: profile,
       });
       const accepted = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest({ ...envelope, event }),
+        request: slackWebhookRequest(envelope),
         services,
       });
       expect(accepted.status).toBe(200);
@@ -130,17 +132,23 @@ describe("Slack webhook auth boundary", () => {
       const waitUntil = client.waitUntil();
       const threadId = "slack:D123:1712345.0001";
 
-      const profile = usersInfoOk({ userId: "U123" });
-      queueSlackApiResponse("users.info", {
-        body: { ...profile, user: { ...profile.user, team_id: "T123" } },
-      });
-      for (const [index, userTeam] of ["TEXTERNAL", undefined].entries()) {
+      for (const [index, teamId] of ["TEXTERNAL", "T123"].entries()) {
+        const profile = usersInfoOk({ userId: "U123" });
+        queueSlackApiResponse("users.info", {
+          body: { ...profile, user: { ...profile.user, team_id: teamId } },
+        });
         const message = createTestMessage({
           id: `1712345.000${index + 1}`,
           threadId,
-          text: userTeam ?? "verified",
+          text: teamId,
           author: { userId: "U123" },
-          raw: { user: "U123", user_team: userTeam },
+          raw: {
+            ...slackEventsApiEnvelope({
+              eventType: "message",
+              channel: "D123",
+              user: "U123",
+            }).event,
+          },
         });
         await runWithWorkspaceTeamId("T123", () =>
           bot.processMessage(
@@ -153,7 +161,7 @@ describe("Slack webhook auth boundary", () => {
         await waitUntil.flush();
       }
 
-      expect(handled).toEqual(["verified"]);
+      expect(handled).toEqual(["T123"]);
       await bot.shutdown();
     },
   );
@@ -197,6 +205,7 @@ describe("Slack webhook auth boundary", () => {
     const adapter = createSlackAdapterFixture();
     const queue = createConversationWorkQueueTestAdapter();
     const envelope = slackEnvelope({
+      eventType: "message",
       channel: "D123",
       threadTs: "1712345.0001",
     });

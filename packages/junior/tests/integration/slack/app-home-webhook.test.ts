@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { Message } from "chat";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { parseContent } from "@/chat/slack/message/content";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
@@ -143,12 +141,10 @@ describe("Slack webhook: App Home events", () => {
         event: {
           type: "app_mention",
           user: "U123",
-          user_team: "T123",
           text: `<@${BOT_USER_ID}> hello`,
           channel: "C123",
           ts: "1712345.0001",
           event_ts: "1712345.0001",
-          channel_type: "channel",
         },
       }),
       waitUntil: waitUntil.fn,
@@ -177,7 +173,8 @@ describe("Slack webhook: App Home events", () => {
     await expect(responsePromise).resolves.toMatchObject({ status: 200 });
   });
 
-  it("routes block-only mentions from other Slack bots with the full request", async () => {
+  // Classic bot messages have no user: https://docs.slack.dev/reference/events/message/bot_message/
+  it("drops classic bot messages without a verified author, even with a block mention", async () => {
     const state = createMemoryState();
     const client = createSlackWebhookTestClient({
       signingSecret: SIGNING_SECRET,
@@ -194,7 +191,6 @@ describe("Slack webhook: App Home events", () => {
           type: "message",
           subtype: "bot_message",
           bot_id: "B_DEPLOY",
-          user_team: "T123",
           username: "Deploy Bot",
           text: "Daily summary: 9 unregistered options",
           blocks: [
@@ -224,24 +220,15 @@ describe("Slack webhook: App Home events", () => {
 
     expect(response.status).toBe(200);
     expect(waitUntil.pendingCount()).toBe(0);
-    expect(queue.queuedMessages()).toEqual([
-      {
-        schemaVersion: 2,
+    expect(queue.queuedMessages()).toEqual([]);
+    expect(
+      await getConversationWorkState({
         conversationId: "slack:C123:1712345.0002",
-      },
-    ]);
-    const work = await getConversationWorkState({
-      conversationId: "slack:C123:1712345.0002",
-      state,
-    });
-    const inbound = work?.messages[0];
-    expect(inbound?.delivery).toBe("interrupt");
-    const message = Message.fromJSON(
-      inbound?.input.metadata?.message as ReturnType<Message["toJSON"]>,
-    );
-    expect(parseContent(message).text).toBe(
-      `<@${BOT_USER_ID}> remove the options below\n\`example.retired-option\``,
-    );
+        state,
+      }),
+    ).toBeUndefined();
+    expect(slackApiOutbox.messages()).toEqual([]);
+    expect(slackApiOutbox.reactions()).toEqual([]);
   });
 
   it("removes only the disconnected provider account identity", async () => {

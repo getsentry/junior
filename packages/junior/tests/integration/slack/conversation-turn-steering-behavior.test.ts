@@ -214,10 +214,15 @@ describe("Slack behavior: durable turn steering", () => {
     expect(slackApiOutbox.reactionAdds().at(-1)?.params.name).toBe(
       "white_check_mark",
     );
-    const calls = slackApiOutbox.calls();
+    const messages = slackApiOutbox.messages();
+    const reactions = slackApiOutbox.reactionAdds();
+    const removals = slackApiOutbox.reactionRemovals();
     await harness.send();
     await harness.drain();
-    expect(slackApiOutbox.calls()).toEqual(calls);
+    expect(slackApiOutbox.messages()).toEqual(messages);
+    expect(slackApiOutbox.reactionAdds()).toEqual(reactions);
+    expect(slackApiOutbox.reactionRemovals()).toEqual(removals);
+    expect(harness.wakes.queuedMessages()).toEqual([]);
   });
 
   it("steers same-actor explicit mentions and then processes follow-up messages", async () => {
