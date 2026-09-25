@@ -160,12 +160,11 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Slack message ingress accepts only authors whose `user_team`, or fallback
-  `source_team`, matches the installation workspace. Missing workspace or author
-  team data blocks the message before routing, storage, or a receipt reaction.
-  This includes DMs, mentions, and subscribed messages. A local channel or
-  envelope `team_id` is not proof of author membership. Ingress does not query
-  Slack for missing membership data, so those messages stay blocked.
+- Slack messages require an author team that matches the installation workspace.
+  Use `user_team`, or `source_team` when `user_team` is absent. Missing workspace
+  or author team data blocks the message before routing, storage, or reactions.
+  The event's `team` and envelope's `team_id` do not prove author membership.
+  Do not query Slack for missing membership data.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the
