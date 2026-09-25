@@ -48,6 +48,19 @@ message timestamp, `app.slack.work_object.accepted`, warning and response messag
 counts, known diagnostic codes, and whether it echoed `message.metadata.entities`.
 No extra delivery logs are emitted. Production info logs stay suppressed.
 
+A returned response with warnings or diagnostic messages creates one warning-level
+Sentry issue event named `Slack chat.postMessage returned warnings`. It keeps the
+active trace link, message timestamp, request summary, and response diagnostics.
+Issues group by the method and sorted known codes; unknown codes use one fallback
+group. An accepted post is not retried or failed because of a warning.
+
+For public Conversations, the issue also includes bounded excerpts from only
+`response_metadata.warnings` and `.messages` (20 entries each, 2000 characters per
+entry). Quoted values other than known schema keys, URLs, emails, and common
+credential forms are redacted. These excerpts are not added to spans. Private or
+unknown Conversation visibility omits all diagnostic prose. No request payload
+or full Slack response is captured.
+
 Diagnostic text can contain submitted values. These attributes never store raw
 response text, object titles, URLs, or reference IDs. Known schema keys in
 `[json-pointer:/...]` hints are kept; other path segments become `*`. This

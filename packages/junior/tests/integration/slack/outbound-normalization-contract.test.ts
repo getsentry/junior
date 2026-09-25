@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as Sentry from "@/chat/sentry";
+import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import type { SlackEntity } from "@/chat/slack/work-object";
 import {
@@ -26,6 +27,7 @@ import {
 
 describe("Slack contract: outbound normalization", () => {
   const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
+  const events: Sentry.ErrorEvent[] = [];
   let client: ReturnType<typeof Sentry.init>;
 
   beforeAll(() => {
@@ -33,6 +35,10 @@ describe("Slack contract: outbound normalization", () => {
       dsn: "https://public@example.com/1",
       tracesSampleRate: 1,
       defaultIntegrations: false,
+      beforeSend: (event) => {
+        events.push(event);
+        return null;
+      },
       transport: () => ({
         send: async () => ({ statusCode: 200 }),
         flush: async () => true,
@@ -52,6 +58,7 @@ describe("Slack contract: outbound normalization", () => {
 
   beforeEach(() => {
     spans.length = 0;
+    events.length = 0;
     process.env.SLACK_BOT_TOKEN =
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
     setPlugins([]);
@@ -64,6 +71,8 @@ describe("Slack contract: outbound normalization", () => {
       text: "hello",
     });
 
+    await client?.flush();
+    expect(events).toHaveLength(0);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -76,9 +85,13 @@ describe("Slack contract: outbound normalization", () => {
     ]);
   });
 
-  it.each([false, true])(
-    "records safe delivery diagnostics on the completed request span with entities=%s",
-    async (includeEntities) => {
+  it.each([
+    { includeEntities: false, privacy: undefined },
+    { includeEntities: true, privacy: "public" as const },
+    { includeEntities: true, privacy: "private" as const },
+  ])(
+    "captures warning issues and span diagnostics with $privacy visibility and entities=$includeEntities",
+    async ({ includeEntities, privacy }) => {
       const entities: SlackEntity[] = includeEntities
         ? [
             {
@@ -95,16 +108,58 @@ describe("Slack contract: outbound normalization", () => {
         body: {
           ok: true,
           ts: "1700000000.000200",
-          response_metadata: { warnings: ["missing_charset"] },
+          response_metadata: {
+            warnings: ["invalid_metadata_format"],
+            messages: [
+              '[WARN] missing "event_type" for "private-title" at https://private.example/pull/1 user@example.com xoxb-private-token Bearer private-bearer API_KEY=private-key',
+            ],
+            unrelated: "private-response-data",
+          },
           message: { metadata: { entities } },
         },
       });
-      await postSlackMessage({
-        channelId: "C123",
-        threadTs: "1700000000.000100",
-        text: "private-message",
-        entities,
+      const post = () =>
+        postSlackMessage({
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+          text: "private-message",
+          entities,
+        });
+      const result = await (privacy
+        ? runWithConversationPrivacy(privacy, post)
+        : post());
+      await client?.flush();
+      expect(result.ts).toBe("1700000000.000200");
+      expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        message: "Slack chat.postMessage returned warnings",
+        level: "warning",
+        fingerprint: [
+          "slack.chat.postMessage.warning",
+          "invalid_metadata_format",
+        ],
+        contexts: {
+          trace: { trace_id: spans[0]?.trace_id, span_id: spans[0]?.span_id },
+        },
+        extra: {
+          "messaging.message.id": "1700000000.000200",
+          "app.slack.warning_count": 1,
+          "app.slack.diagnostic_text_omitted": privacy !== "public",
+        },
       });
+      expect(events[0]?.extra?.["app.slack.response_diagnostics"]).toEqual(
+        privacy === "public"
+          ? {
+              warnings: ["invalid_metadata_format"],
+              messages: [
+                '[WARN] missing "event_type" for [value] at [url] [email] [token] Bearer [redacted] [credential]',
+              ],
+            }
+          : undefined,
+      );
+      expect(JSON.stringify(events)).not.toContain("private-");
+      expect(JSON.stringify(events)).not.toContain("private.example");
       expect(spans).toHaveLength(1);
       const attributes = spans[0]?.data;
       expect(attributes).toMatchObject({
@@ -128,7 +183,7 @@ describe("Slack contract: outbound normalization", () => {
         "app.slack.work_object.accepted": true,
         "messaging.message.id": "1700000000.000200",
         "app.slack.warning_count": 1,
-        "app.slack.diagnostic_codes": ["missing_charset"],
+        "app.slack.diagnostic_codes": ["invalid_metadata_format"],
         "app.slack.work_object.response_entity_count": entities.length,
       });
       expect(JSON.stringify(spans)).not.toContain("private-");

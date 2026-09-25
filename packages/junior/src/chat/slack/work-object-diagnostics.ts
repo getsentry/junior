@@ -1,4 +1,7 @@
 import { isRecord } from "@/chat/coerce";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { getLogContextAttributes } from "@/chat/logging";
+import { captureMessage } from "@/chat/sentry";
 
 // Slack can quote submitted values. Keep only known codes and schema keys.
 const codes = new Set([
@@ -14,6 +17,8 @@ const codes = new Set([
 ]);
 const pathFields = new Set([
   "metadata",
+  "event_type",
+  "event_payload",
   "entities",
   "entity_type",
   "entity_payload",
@@ -38,6 +43,73 @@ const pathFields = new Set([
   "link",
   "display_order",
 ]);
+
+/** Capture accepted Slack response warnings without turning them into retries. */
+export function captureSlackPostWarning(
+  response: unknown,
+  attributes: Record<string, unknown>,
+  diagnostics: ReturnType<typeof slackWorkObjectDiagnostics>,
+): void {
+  if (
+    diagnostics["app.slack.warning_count"] === 0 &&
+    diagnostics["app.slack.response_message_count"] === 0
+  ) {
+    return;
+  }
+  const metadata =
+    isRecord(response) && isRecord(response.response_metadata)
+      ? response.response_metadata
+      : {};
+  const publicText = getCurrentConversationPrivacy() === "public";
+  const summaries: Record<string, string[]> = {};
+  if (publicText) {
+    // Only these diagnostic fields may contain public excerpts, never the response body.
+    for (const key of ["warnings", "messages"] as const) {
+      const values = metadata[key];
+      if (!Array.isArray(values)) continue;
+      summaries[key] = values
+        .slice(0, 20)
+        .filter((value): value is string => typeof value === "string")
+        .map((value) =>
+          value
+            .slice(0, 2000)
+            .replace(
+              /(["'`])([^\n]*?)\1/g,
+              (_match, quote: string, text: string) =>
+                pathFields.has(text) ? `${quote}${text}${quote}` : "[value]",
+            )
+            .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "[url]")
+            .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+            .replace(/\b(?:xox[baprs]-|sk-)[A-Za-z0-9_-]+/g, "[token]")
+            .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+            .replace(
+              /\b(?:[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY)|authorization|cookie)\s*[=:]\s*\S+/gi,
+              "[credential]",
+            )
+            .replace(/\s+/g, " ")
+            .slice(0, 2000),
+        );
+    }
+  }
+  const knownCodes = diagnostics["app.slack.diagnostic_codes"];
+  captureMessage("Slack chat.postMessage returned warnings", {
+    level: "warning",
+    fingerprint: [
+      "slack.chat.postMessage.warning",
+      ...(knownCodes.length ? [...knownCodes].sort() : ["unknown"]),
+    ],
+    tags: { "app.slack.method": "chat.postMessage" },
+    extra: {
+      ...getLogContextAttributes(),
+      ...attributes,
+      ...diagnostics,
+      "app.slack.diagnostic_text_omitted": !publicText,
+      ...(publicText
+        ? { "app.slack.response_diagnostics": summaries }
+        : undefined),
+    },
+  });
+}
 
 /** Summarize Slack response diagnostics without retaining submitted values. */
 export function slackWorkObjectDiagnostics(response: unknown) {

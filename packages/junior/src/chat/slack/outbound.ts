@@ -1,6 +1,9 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
-import { slackWorkObjectDiagnostics } from "./work-object-diagnostics";
+import {
+  captureSlackPostWarning,
+  slackWorkObjectDiagnostics,
+} from "./work-object-diagnostics";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
@@ -154,12 +157,18 @@ export async function postSlackMessage(input: {
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       });
       // The request span ends when this callback returns. Acceptance is not rendering.
-      setSpanAttributes({
-        ...slackWorkObjectDiagnostics(response),
+      const diagnostics = slackWorkObjectDiagnostics(response);
+      const responseAttributes = {
         "app.slack.work_object.accepted":
           response.ok === true && Boolean(parseSlackMessageTs(response.ts)),
         "messaging.message.id": parseSlackMessageTs(response.ts),
-      });
+      };
+      setSpanAttributes({ ...diagnostics, ...responseAttributes });
+      captureSlackPostWarning(
+        response,
+        { ...workObjectAttributes, ...responseAttributes },
+        diagnostics,
+      );
       return response;
     },
     3,
