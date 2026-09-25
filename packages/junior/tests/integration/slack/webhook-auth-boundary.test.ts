@@ -84,16 +84,14 @@ describe("Slack webhook auth boundary", () => {
 
       vi.useFakeTimers({ toFake: ["Date"] });
       const profile = usersInfoOk({ userId: "U123" });
-      for (const teamId of [undefined, "TEXTERNAL"]) {
-        queueSlackApiResponse("users.info", {
-          body: { ...profile, user: { ...profile.user, team_id: teamId } },
-        });
-        const rejected = await handleSlackWebhookAndFlush({
-          request: slackWebhookRequest(envelope),
-          services,
-        });
-        expect(rejected.status).toBe(200);
-      }
+      queueSlackApiResponse("users.info", {
+        body: { ...profile, user: { ...profile.user, team_id: "TEXTERNAL" } },
+      });
+      const rejected = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(envelope),
+        services,
+      });
+      expect(rejected.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
       expect(
         await getConversationWorkState({ conversationId: threadId, state }),
@@ -106,15 +104,6 @@ describe("Slack webhook auth boundary", () => {
 
       // External users are briefly cached too. Recheck after that entry expires.
       vi.setSystemTime(Date.now() + 30_001);
-      queueSlackApiError("users.info", { error: "missing_scope" });
-      const failed = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(envelope),
-        services,
-      });
-      expect(failed.status).toBe(503);
-      expect(queue.queuedMessages()).toEqual([]);
-      expect(slackApiOutbox.reactions()).toEqual([]);
-
       queueSlackApiResponse("users.info", {
         body: profile,
       });
@@ -131,58 +120,54 @@ describe("Slack webhook auth boundary", () => {
     },
   );
 
-  it.each(["app_mention"] as const)(
-    "uses %s author fields without a lookup and rejects external authors",
-    async (eventType) => {
-      const state = createMemoryState();
-      await state.connect();
-      const adapter = createSlackAdapterFixture();
-      const queue = createConversationWorkQueueTestAdapter();
-      const threadTs = "1712345.0001";
-      const threadId = `slack:C123:${threadTs}`;
-      await state.subscribe(threadId);
-      const services = {
-        getSlackAdapter: () => adapter,
-        queue,
-        runtime: createNoopSlackWebhookRuntime(),
+  it("uses mention author fields without a lookup and rejects external authors", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const adapter = createSlackAdapterFixture();
+    const queue = createConversationWorkQueueTestAdapter();
+    const threadTs = "1712345.0001";
+    const threadId = `slack:C123:${threadTs}`;
+    await state.subscribe(threadId);
+    const services = {
+      getSlackAdapter: () => adapter,
+      queue,
+      runtime: createNoopSlackWebhookRuntime(),
+      state,
+    };
+    // Bolt's mention fixture has different team and user_team values.
+    // Change IDs only.
+    // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L717-L744
+    for (const [index, team] of ["TEXTERNAL", "T123"].entries()) {
+      const envelope = slackEventsApiEnvelope({
+        channel: "C123",
+        ts: `1712345.000${index + 2}`,
+        threadTs,
+        text: `<@${adapter.botUserId}> hello`,
+      });
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          ...envelope,
+          is_ext_shared_channel: true,
+          event: {
+            ...envelope.event,
+            team: "T123",
+            user_team: team,
+            source_team: team,
+          },
+        }),
+        services,
+      });
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toHaveLength(index);
+      const work = await getConversationWorkState({
+        conversationId: threadId,
         state,
-      };
-      // Bolt's mention fixture has different team and user_team values.
-      // Change IDs only.
-      // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L717-L744
-      for (const [index, team] of ["TEXTERNAL", "T123"].entries()) {
-        const envelope = slackEventsApiEnvelope({
-          eventType,
-          channel: "C123",
-          ts: `1712345.000${index + 2}`,
-          threadTs,
-          text: `<@${adapter.botUserId}> hello`,
-        });
-        const response = await handleSlackWebhookAndFlush({
-          request: slackWebhookRequest({
-            ...envelope,
-            is_ext_shared_channel: true,
-            event: {
-              ...envelope.event,
-              team: "T123",
-              user_team: team,
-              source_team: team,
-            },
-          }),
-          services,
-        });
-        expect(response.status).toBe(200);
-        expect(queue.queuedMessages()).toHaveLength(index);
-        const work = await getConversationWorkState({
-          conversationId: threadId,
-          state,
-        });
-        expect(work !== undefined).toBe(index === 1);
-      }
-      expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
-      await state.disconnect();
-    },
-  );
+      });
+      expect(work !== undefined).toBe(index === 1);
+    }
+    expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
+    await state.disconnect();
+  });
 
   it("shares membership lookups, isolates users and workspaces, and rechecks expired access", async () => {
     const state = createMemoryState();
@@ -246,10 +231,18 @@ describe("Slack webhook auth boundary", () => {
     queueSlackApiError("users.info", { error: "missing_scope" });
     expect((await send()).status).toBe(503);
     expect(queue.queuedMessages()).toHaveLength(4);
-    // Failed refreshes do not poison the cache or reuse the expired grant.
+    // Incomplete responses must not renew the expired grant either.
+    const incomplete = usersInfoOk({ userId: "U123" });
+    queueSlackApiResponse("users.info", {
+      body: { ...incomplete, user: { ...incomplete.user, team_id: undefined } },
+    });
+    expect((await send()).status).toBe(200);
+    expect(queue.queuedMessages()).toHaveLength(4);
+
+    // Errors and incomplete responses are not cached; the next lookup can succeed.
     expect((await send()).status).toBe(200);
     expect(queue.queuedMessages()).toHaveLength(5);
-    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(5);
+    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(6);
 
     // A signed explicit external author overrides the newly cached grant.
     // user_team is documented in Slack's Enterprise event example.
@@ -258,7 +251,7 @@ describe("Slack webhook auth boundary", () => {
     ).toBe(200);
     expect((await send()).status).toBe(200);
     expect(queue.queuedMessages()).toHaveLength(5);
-    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(5);
+    expect(getCapturedSlackApiCalls("users.info")).toHaveLength(6);
     await state.disconnect();
   });
 

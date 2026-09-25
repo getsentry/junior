@@ -7,8 +7,13 @@ import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { withLock } from "@/chat/state/locks";
 export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
-// Shared state is app-scoped; workspace and user IDs isolate installations.
-// Reads do not renew expiry. A changed membership can remain valid for 5 minutes.
+// Slack Connect admits external authors, but user_team is not guaranteed.
+// Missing user_team must neither grant access nor block local authors.
+// Resolve it through users.info instead.
+// https://docs.slack.dev/reference/events/app_mention
+
+// Avoid a lookup per message. Reads do not extend the five-minute window
+// during which a changed membership can remain valid.
 const MEMBER_TTL_MS = 5 * 60 * 1000;
 const NON_MEMBER_TTL_MS = 30 * 1000;
 
@@ -46,7 +51,9 @@ export async function isSlackWorkspaceMember(
   }
   const explicitlyExternal = authorTeam !== undefined;
 
-  // Neither event.team, source_team, nor envelope context grants membership.
+  // event.team and envelope teams can describe the receiving workspace;
+  // source_team describes message origin. Neither proves author membership.
+  // https://docs.slack.dev/enterprise/developing-for-enterprise-orgs#events_api
   // Explicit external authors must override even a recent positive lookup.
   if (!explicitlyExternal) {
     const cached = await state.get<boolean>(key);
@@ -64,6 +71,8 @@ export async function isSlackWorkspaceMember(
       }
       const cached = await state.get<boolean>(key);
       if (typeof cached === "boolean") return cached;
+      // External users in shared channels can have is_stranger: false.
+      // https://docs.slack.dev/apis/slack-connect/#members
       const user = await lookupSlackUserProfile(userId);
       const authorTeam = parseSlackTeamId(user.team_id);
       // Do not cache failures or incomplete/mismatched user responses.

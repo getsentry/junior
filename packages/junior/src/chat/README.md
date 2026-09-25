@@ -160,25 +160,16 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Slack messages require a user ID and an author team that matches the
-  installation workspace. A workspace-valued `user_team` supplies that evidence
-  without an API call. An explicit external author overrides cached membership.
-  Missing author teams and Enterprise-valued `user_team` use a cached
-  `users.info` result. On a miss, require a matching user ID and `team_id` and
-  reject deleted users. Store the verdict in app-scoped shared state, keyed by
-  workspace and user ID. Positive results expire after five minutes; negative
-  results expire after 30 seconds. Reads do not renew expiry. Concurrent misses
-  share a lookup through the state lock. Failures and incomplete responses are
-  not cached. Lookup and state failures reach the webhook's retryable boundary.
-  Unknown authors stay blocked before message storage, routing, or reactions.
-  The five-minute cache can delay a membership change by at most five minutes;
-  explicit external author fields replace a cached grant immediately.
-  `event.team`, `source_team`, envelope team IDs, and the external-sharing flag
-  do not grant membership. `source_team` describes message origin, not user
-  membership.
-  See [Slack's field definitions](https://docs.slack.dev/enterprise/developing-for-enterprise-orgs#events_api).
-  Keep documented minimal message fixtures unchanged. Add optional fields only
-  in targeted cases with an upstream payload or fixture reference.
+- Verify Slack authors before storage, routing, or reactions. Require a user ID
+  and a matching workspace-valued `user_team`, or verify membership through
+  `users.info`. Event delivery and message origin do not prove membership.
+  Cache lookups by workspace and user for five minutes (members) or 30 seconds
+  (non-members). Reads do not extend expiry. An explicit external `user_team`
+  overrides cached membership. Lookup and state errors reach the retryable
+  webhook boundary. See `ingress/workspace-membership.ts` for field rules and
+  Slack references.
+- Keep documented minimal Slack message fixtures unchanged. Add optional fields
+  only in targeted cases with an upstream payload or fixture reference.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
