@@ -160,6 +160,7 @@ export function createEventAutomationTool(
         }
       }
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,

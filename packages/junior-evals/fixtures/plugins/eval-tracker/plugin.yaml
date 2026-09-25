@@ -1,0 +1,9 @@
+name: eval-tracker
+display-name: Issue Tracker
+description: Search Linear and GitHub tickets and save issue updates.
+
+mcp:
+  url: https://eval-mcp.example.test/mcp
+  allowed-tools:
+    - search-tickets
+    - save-issue

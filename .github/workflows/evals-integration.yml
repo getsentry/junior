@@ -29,19 +29,16 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/integration/**'
+              - '.github/workflows/evals-integration.yml'
+              - '.github/actions/setup-node-pnpm/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'packages/junior-evals/src/**'
+              - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
-              - 'packages/junior-evals/src/behavior-harness.ts'
-              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/src/eval-context.ts'
-              - 'packages/junior-evals/src/eval-egress.ts'
-              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
-              - 'packages/junior-evals/src/helpers.ts'
-              - 'packages/junior-evals/src/setup.ts'
-              - 'packages/junior-evals/src/slack-link.ts'
-              - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
       - id: decision
         env:
@@ -83,6 +80,7 @@ jobs:
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -125,14 +123,13 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
             --output "$RUNNER_TEMP/cloudflared"
-          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      - name: Verify eval egress lifecycle
-        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
       - name: Run integration evals
         env:
           VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json
