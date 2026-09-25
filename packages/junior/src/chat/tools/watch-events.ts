@@ -143,6 +143,9 @@ export function createWatchEventsTool(
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
+      if (input.namespace === "junior" && input.resourceType === "timer") {
+        throw new ToolInputError("Use watchTimer to create a timer Watch.");
+      }
       // TODO(subagents): child conversations (`agent:…`) still store watches on
       // their own id. When subagents matter, store the parent root id or give
       // children the parent's destination and worker path.
