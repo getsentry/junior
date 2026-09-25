@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
@@ -21,11 +21,66 @@ import {
   createConversationFixture,
 } from "../../../fixtures/conversation";
 import { testViewer } from "../../../fixtures/user";
+import {
+  createSlackAdapterFixture,
+  createNoopSlackWebhookRuntime,
+  handleSlackWebhookAndFlush,
+  slackEnvelope,
+  slackWebhookRequest,
+} from "../../../fixtures/conversation-work";
+import { slackApiOutbox } from "../../../fixtures/slack-api-outbox";
+import { cancelConversationPendingMessagesForViewer } from "@/api/conversations/cancel-pending-messages";
 
 describe("conversation cancel pending messages API", () => {
   afterEach(async () => {
     await closeConversationFixture();
     await closeDb();
+    vi.unstubAllEnvs();
+  });
+
+  it("clears a queued Slack receipt when a participant cancels it", async () => {
+    vi.stubEnv("SLACK_SIGNING_SECRET", "slack-signature-fixture");
+    vi.stubEnv("SLACK_BOT_TOKEN", "slack-bot-fixture");
+    const { conversationStore, queue, state } =
+      await createConversationFixture();
+    const adapter = createSlackAdapterFixture();
+    const conversationId = "slack:C123:1712345.0001";
+    await conversationStore.recordActivity({
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        slackUserId: "U123",
+        email: "alice@example.com",
+      },
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      nowMs: Date.now(),
+      source: "slack",
+      visibility: "public",
+    });
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({ text: "<@U0BOT> do this later" }),
+      ),
+      services: {
+        getSlackAdapter: () => adapter,
+        queue,
+        state,
+        conversationStore,
+        runtime: createNoopSlackWebhookRuntime(),
+      },
+    });
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    const result = await cancelConversationPendingMessagesForViewer(
+      testViewer("alice@example.com"),
+      conversationId,
+    );
+    expect(result.cancelledCount).toBe(1);
+    expect(slackApiOutbox.reactionRemovals()[0]?.params).toMatchObject({
+      channel: "C123",
+      timestamp: "1712345.0001",
+      name: "eyes",
+    });
   });
 
   it("cancels accepted web mailbox rows for participants", async () => {

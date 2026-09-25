@@ -46,6 +46,7 @@ export function shouldKeepProcessingReactionForToolInvocation(
 export async function startProcessingReaction(args: {
   message: Message;
   thread: Thread;
+  timeoutMs?: number;
 }): Promise<ProcessingReaction> {
   if (args.message.author.isMe) {
     return noProcessingReaction;
@@ -60,19 +61,43 @@ export async function startProcessingReaction(args: {
   return startProcessingReactionForMessage({
     channelId,
     timestamp: messageTs,
+    timeoutMs: args.timeoutMs,
   });
+}
+
+/** Clear processing UI for a message, including queued input cancelled before a Turn. */
+export async function stopProcessingReactionForMessage(args: {
+  channelId: string;
+  timestamp: SlackMessageTs;
+}): Promise<boolean> {
+  try {
+    await removeReactionFromMessage({
+      ...args,
+      emoji: getChatConfig().slack.processingReactionEmoji,
+    });
+    return true;
+  } catch (error) {
+    logException(error, "slack.processing.reaction_remove.failed", {
+      "app.slack.action": "reactions.remove",
+      "messaging.message.id": args.timestamp,
+      ...getSlackErrorObservabilityAttributes(error),
+    });
+    return false;
+  }
 }
 
 /** Start Junior's automatic Slack processing reaction for a known Slack message. */
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
   timestamp: SlackMessageTs;
+  timeoutMs?: number;
 }): Promise<ProcessingReaction> {
   try {
     await addReactionToMessage({
       channelId: args.channelId,
       timestamp: args.timestamp,
       emoji: getChatConfig().slack.processingReactionEmoji,
+      timeoutMs: args.timeoutMs,
     });
   } catch (error) {
     logException(error, "slack.processing.reaction_add.failed", {
@@ -89,21 +114,7 @@ export async function startProcessingReactionForMessage(args: {
       return false;
     }
 
-    try {
-      await removeReactionFromMessage({
-        channelId: args.channelId,
-        timestamp: args.timestamp,
-        emoji: getChatConfig().slack.processingReactionEmoji,
-      });
-      return true;
-    } catch (error) {
-      logException(error, "slack.processing.reaction_remove.failed", {
-        "app.slack.action": "reactions.remove",
-        "messaging.message.id": args.timestamp,
-        ...getSlackErrorObservabilityAttributes(error),
-      });
-      return false;
-    }
+    return stopProcessingReactionForMessage(args);
   };
 
   return {

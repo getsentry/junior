@@ -24,6 +24,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
@@ -83,6 +84,40 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("accepts a DM even when its receipt reaction is rate limited", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    const adapter = createSlackAdapterFixture();
+    queueSlackApiError("reactions.add", {
+      error: "ratelimited",
+      status: 429,
+      headers: { "retry-after": "60" },
+    });
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          channel: "D123",
+          eventType: "message",
+          text: "deploy status",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => adapter,
+        queue,
+        state,
+        runtime: createNoopSlackWebhookRuntime(),
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
+      channel: "D123",
+      name: "eyes",
+      timestamp: "1712345.0001",
+    });
+  });
 
   it("returns retryable response when a routing-state read fails before persistence", async () => {
     const queue = createConversationWorkQueueTestAdapter();

@@ -25,6 +25,9 @@ import {
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
+import { stopProcessingReactionForMessage } from "@/chat/providers/slack/processing-reaction";
+import { getMessageTs } from "@/chat/runtime/thread-context";
+import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -467,6 +470,32 @@ function parseSlackMetadata(
 ): SlackConversationMessageMetadata | undefined {
   const parsed = slackConversationMessageMetadataSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+/** Clear processing reactions for Slack input cancelled before a worker owns it. */
+export async function clearSlackPendingReactions(args: {
+  adapter: SlackAdapter;
+  messages: readonly InboundMessage[];
+  state?: StateAdapter;
+}): Promise<void> {
+  for (const record of args.messages) {
+    if (record.source !== "slack") continue;
+    const metadata = parseSlackMetadata(record.input.metadata);
+    if (!metadata || metadata.route !== "mention") continue;
+    const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+    const target = parseSlackThreadId(metadata.thread.id);
+    if (!timestamp || !target) continue;
+    await runWithSlackInstallation({
+      adapter: args.adapter,
+      installation: metadata.installation ?? {},
+      state: args.state,
+      task: () =>
+        stopProcessingReactionForMessage({
+          channelId: target.channelId,
+          timestamp,
+        }),
+    });
+  }
 }
 
 function compareInboundMessages(
