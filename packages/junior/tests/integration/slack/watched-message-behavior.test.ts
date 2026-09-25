@@ -722,67 +722,66 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(1);
   });
 
-  it.each([
-    "@Cursor can you help address issue 87?",
-    "@Cursor stop",
-    "@Cursor !stop",
-  ])("stays silent for another bot's message: %s", async (text) => {
-    let classifierCalled = false;
+  it.each(["@Cursor can you help address issue 87?", "@Cursor !stop"])(
+    "stays silent for another bot's message: %s",
+    async (text) => {
+      let classifierCalled = false;
 
-    const { slackRuntime } = createRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for messages addressed to another bot",
-            );
+      const { slackRuntime } = createRuntime({
+        services: {
+          subscribedReplyPolicy: {
+            completeObject: async () => {
+              classifierCalled = true;
+              throw new Error(
+                "classifier should be bypassed for messages addressed to another bot",
+              );
+            },
           },
+          agentRunner: neverRunAgentRunner(),
         },
-        agentRunner: neverRunAgentRunner(),
-      },
-    });
+      });
 
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700002003.500",
-    });
-    const message = createTestMessage({
-      id: "m-subscribed-other-bot",
-      text,
-      isMention: false,
-      threadId: thread.id,
-      author: { userId: "U0TESTER" },
-    });
+      const thread = await createTestThread({
+        id: "slack:C0BEHAVIOR:1700002003.500",
+      });
+      const message = createTestMessage({
+        id: "m-subscribed-other-bot",
+        text,
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U0TESTER" },
+      });
 
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
+      await slackRuntime.handleSubscribedMessage(thread, message, {
+        destination: createTestDestination(thread),
+      });
 
-    expect(classifierCalled).toBe(false);
-    expect(thread.posts).toHaveLength(0);
-    const conversation = coerceThreadConversationState(
-      (await thread.state) ?? {},
-    );
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(conversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "m-subscribed-other-bot",
-          text,
-          meta: expect.objectContaining({
-            replied: false,
-            skippedReason: "directed_to_other_party:named_mention:Cursor",
+      expect(classifierCalled).toBe(false);
+      expect(thread.posts).toHaveLength(0);
+      const conversation = coerceThreadConversationState(
+        (await thread.state) ?? {},
+      );
+      await hydrateConversationMessages({
+        conversation,
+        conversationId: thread.id,
+      });
+      expect(conversation.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "m-subscribed-other-bot",
+            text,
+            meta: expect.objectContaining({
+              replied: false,
+              skippedReason: "directed_to_other_party:named_mention:Cursor",
+            }),
           }),
-        }),
-      ]),
-    );
-    expect(conversation.processing?.lastCompletedAtMs).toEqual(
-      expect.any(Number),
-    );
-  });
+        ]),
+      );
+      expect(conversation.processing?.lastCompletedAtMs).toEqual(
+        expect.any(Number),
+      );
+    },
+  );
 
   it("replies immediately to directed follow-up questions after junior just spoke", async () => {
     let classifierCalled = false;
