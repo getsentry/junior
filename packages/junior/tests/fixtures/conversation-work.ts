@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -65,7 +66,10 @@ interface QueueSendHold {
  */
 export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   #idempotentMessageIds = new Map<string, string>();
-  #queuedMessages: ConversationQueueMessage[] = [];
+  #queuedMessages: Array<{
+    message: ConversationQueueMessage;
+    availableAtMs: number;
+  }> = [];
   #rejectSends = false;
   #sendHolds: QueueSendHold[] = [];
   #sendAttempts: ConversationQueueSendRecord[] = [];
@@ -85,7 +89,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   }
 
   queuedMessages(): ConversationQueueMessage[] {
-    return this.#queuedMessages.map((message) => ({ ...message }));
+    return this.#queuedMessages.map(({ message }) => ({ ...message }));
   }
 
   rejectSends(): void {
@@ -131,7 +135,10 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       return { messageId: duplicateMessageId };
     }
     const messageId = `queue-${this.#sentRecords.length + 1}`;
-    this.#queuedMessages.push({ ...message });
+    this.#queuedMessages.push({
+      message: { ...message },
+      availableAtMs: Date.now() + Math.max(0, options?.delayMs ?? 0),
+    });
     this.#sentRecords.push(record);
     if (options?.idempotencyKey) {
       this.#idempotentMessageIds.set(options.idempotencyKey, messageId);
@@ -144,12 +151,26 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     return { messageId };
   }
 
+  /** Deliver the next payload immediately when a test controls the clock. */
   takeMessage(): ConversationQueueMessage {
-    const message = this.#queuedMessages.shift();
-    if (!message) {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
       throw new Error("Expected queued conversation work payload");
     }
-    return message;
+    return entry.message;
+  }
+
+  /** Honor queue delays when running evals against the real clock. */
+  async takeReadyMessage(
+    signal?: AbortSignal,
+  ): Promise<ConversationQueueMessage> {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
+      throw new Error("Expected queued conversation work payload");
+    }
+    const waitMs = entry.availableAtMs - Date.now();
+    if (waitMs > 0) await delay(waitMs, undefined, { signal });
+    return entry.message;
   }
 }
 

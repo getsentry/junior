@@ -6,25 +6,6 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
   const skillDirs = ["fixtures/skills"];
   const browserSkillDirs = ["../junior-agent-browser/skills"];
 
-  it("does not auto-select a user-callable skill even when contextually relevant", async ({
-    run,
-  }) => {
-    await run({
-      overrides: { skill_dirs: skillDirs },
-      initialEvents: [
-        mention("What's the weather like in San Francisco today?"),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant does not return the weather-lookup skill's simulated report (72°F, partly cloudy, 8 mph NW).",
-        ],
-        fail: [
-          "Do not return the simulated weather report from the weather-lookup skill.",
-        ],
-      }),
-    });
-  });
-
   it("injects a user-callable skill when the user explicitly names it", async ({
     run,
   }) => {

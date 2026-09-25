@@ -1,4 +1,18 @@
 # Changelog
+## 0.224.0
+
+### New Features ✨
+
+- (slack) Make private authorization prompts clearer by @sentry-junior in [#1919](https://github.com/getsentry/junior/pull/1919)
+
+### Bug Fixes 🐛
+
+- (runtime) Resume OAuth turns through the conversation worker by @sentry-junior in [#1913](https://github.com/getsentry/junior/pull/1913)
+
+### Internal Changes 🔧
+
+- Remove CLAUDE.md by @sentry-junior in [#1916](https://github.com/getsentry/junior/pull/1916)
+
 ## 0.223.0
 
 ### New Features ✨

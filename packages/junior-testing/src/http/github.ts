@@ -1,3 +1,5 @@
+import { interceptTestGitHubChecksHttp } from "./github-checks";
+
 const GITHUB_API_HOST = "api.github.com";
 
 interface EvalIssue {
@@ -411,12 +413,12 @@ export async function interceptTestGitHubHttp(input: {
   request: Request;
   upstreamUrl: URL;
 }): Promise<Response | undefined> {
-  if (
-    input.provider !== "github" ||
-    input.upstreamUrl.hostname !== GITHUB_API_HOST
-  ) {
-    return undefined;
-  }
-
+  if (input.provider !== "github") return undefined;
+  const checks = await interceptTestGitHubChecksHttp(
+    input.request,
+    input.upstreamUrl,
+  );
+  if (checks) return checks;
+  if (input.upstreamUrl.hostname !== GITHUB_API_HOST) return undefined;
   return await githubResponse(input.request, input.upstreamUrl);
 }

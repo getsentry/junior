@@ -28,7 +28,11 @@ export function installEvalAiGatewayDispatcher(
     (dispatch) => (options, handler) =>
       dispatch(
         requestOrigin(options.origin) === normalizedTargetOrigin
-          ? { ...options, bodyTimeout: bodyTimeoutMs }
+          ? {
+              ...options,
+              headersTimeout: bodyTimeoutMs,
+              bodyTimeout: bodyTimeoutMs,
+            }
           : options,
         handler,
       ),

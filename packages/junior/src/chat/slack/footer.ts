@@ -28,6 +28,7 @@ interface SlackSectionBlock {
     text: SlackPlainTextObject;
     url: string;
     action_id: string;
+    style?: "primary";
   };
 }
 

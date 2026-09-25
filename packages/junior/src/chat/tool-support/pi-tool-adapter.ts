@@ -49,6 +49,7 @@ import {
   ToolActionRejectedError,
   type ToolActionReview,
 } from "@/chat/tool-support/action-review";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createPiAgentTools(
@@ -363,6 +364,30 @@ export function createPiAgentTools(
               toolName,
             });
           } catch (error) {
+            if (
+              signal?.aborted &&
+              !(
+                error instanceof AuthorizationPauseError ||
+                error instanceof AuthorizationFlowDisabledError ||
+                error instanceof ToolActionRejectedError
+              )
+            ) {
+              // The host preempted this attempt, so its outcome is unknown.
+              // Report the same fact bash reports for a command timeout
+              // instead of a failure the model would retry.
+              const preempted = makeStructuredToolOutput({
+                aborted: true as const,
+                target: executionToolName,
+              });
+              await notifyToolResult({
+                ok: true,
+                params: executionParams,
+                result: preempted.details,
+                toolCallId,
+                toolName: executionToolName,
+              });
+              return { ...preempted, isError: false };
+            }
             await notifyToolResult({
               error: error instanceof Error ? error.message : String(error),
               ok: false,

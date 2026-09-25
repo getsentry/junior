@@ -61,6 +61,7 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
+    sequence: { setupFiles: "list", hooks: "stack" },
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     // Strict system-correctness cases. Any failure fails the suite hard.
     include: ["evals/integration/**/*.eval.ts"],
@@ -70,6 +71,7 @@ export default defineConfig({
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
+      path.resolve(__dirname, "src/eval-cleanup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
