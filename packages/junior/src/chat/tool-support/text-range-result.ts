@@ -112,7 +112,7 @@ export function sliceFileContent(params: {
     total_lines: lines.length,
     ...(truncationReasons.length > 0
       ? { truncation_reasons: truncationReasons }
-      : {}),
+      : undefined),
     truncated,
   };
 
@@ -122,8 +122,8 @@ export function sliceFileContent(params: {
     truncated,
     ...(characterLimitReached
       ? { character_limit_reached: MAX_READ_CHARS }
-      : {}),
-    ...(lineTruncated ? { line_truncated: true } : {}),
+      : undefined),
+    ...(lineTruncated ? { line_truncated: true } : undefined),
     ...(endLine < lines.length
       ? {
           continuation: {
@@ -137,7 +137,7 @@ export function sliceFileContent(params: {
               : "file has more lines",
           },
         }
-      : {}),
+      : undefined),
   });
 }
 

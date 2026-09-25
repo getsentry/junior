@@ -1,3 +1,4 @@
+import type { AppMentionEvent, GenericMessageEvent } from "@slack/types";
 import {
   TEST_CHANNEL_ID,
   TEST_THREAD_TS,
@@ -168,16 +169,9 @@ export interface SlackEventsApiEnvelope {
   type: "event_callback";
   event_id: string;
   event_time: number;
-  event: {
-    type: "app_mention" | "message";
-    user: string;
-    text: string;
-    channel: string;
-    ts: string;
-    event_ts: string;
-    channel_type?: "channel" | "group" | "im" | "mpim";
-    thread_ts?: string;
-  };
+  event: (AppMentionEvent | GenericMessageEvent) &
+    Pick<AppMentionEvent, "user_team" | "source_team"> &
+    Partial<Pick<GenericMessageEvent, "channel_type">>;
 }
 
 function deriveChannelType(
@@ -221,13 +215,15 @@ export function slackEventsApiEnvelope(
     event_time: 1700000000,
     event: {
       type: input.eventType ?? "app_mention",
+      subtype: undefined,
       user: input.user ?? TEST_USER_ID,
+      user_team: "T0TEST",
       text: input.text ?? "<@U0APP> hello",
       channel,
       ts,
       event_ts: input.eventTs ?? ts,
-      ...(channelType ? { channel_type: channelType } : {}),
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      channel_type: channelType ?? "channel",
+      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
     },
   };
 }

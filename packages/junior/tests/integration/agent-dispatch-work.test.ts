@@ -3,34 +3,26 @@ import {
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
-  getDispatchStorageKey,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
-import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
-import {
-  createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
-  enqueueAgentDispatch,
-} from "@/chat/agent-dispatch/work";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  listTurnSummaries,
-  recordTurnSummary,
-} from "@/chat/task-execution/turn-cursor";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
+import {
+  createModelAgentRunner,
+  neverRunAgentRunner,
+} from "../fixtures/agent-runner";
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchTestRuntime as createDispatchRuntime,
-  createAgentDispatchWorkerContext as createContext,
+  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -57,33 +49,45 @@ describe("agent dispatch conversation work", () => {
       undefined,
       input,
     );
-    const run = vi.fn(async (request) => {
-      expect(request.instruction.text).toBe(input);
-      await request.durability.onInputCommitted?.();
-      const piMessages = await deliverAssistantMessagesForTest(request, [
-        { text: "Done" },
-      ]);
-      return completedAgentRun({
-        text: "Done",
-        piMessages,
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success",
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    });
-    const runtime = createDispatchRuntime({ agentRunner: { run } });
+    const modelStream = vi.fn(
+      createModelStream([{ type: "text", text: "Done" }]),
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(modelStream),
+    );
 
-    await runtime.runDispatchTurn(dispatch, {
-      ack: vi.fn(async () => {}),
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
     });
 
-    expect(run).toHaveBeenCalledOnce();
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({ text: "Done" }),
+      }),
+    ]);
+    await expect(
+      state.get(
+        turnCursorKey(
+          getDispatchConversationId(dispatch),
+          getDispatchTurnId(dispatch.id),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      dispatchId: dispatch.id,
+      publishExternally: true,
+    });
+    expect(modelStream).toHaveBeenCalledOnce();
+    const instruction = modelStream.mock.calls[0]?.[1].messages.at(-1);
+    if (!instruction) {
+      throw new Error("Expected one model instruction");
+    }
+    expect(getUserMessageInstructionText(instruction)).toMatchInlineSnapshot(`
+      "Post snake_case as written.
+      - Keep this bullet."
+    `);
   });
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
@@ -91,254 +95,166 @@ describe("agent dispatch conversation work", () => {
       "shared-runtime",
       undefined,
       undefined,
-      { label: "Scheduled task", detail: "Weekly" },
+      { label: "Scheduled automation", detail: "Weekly" },
     );
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const run = vi.fn(async (request) => {
-      expect(request).toMatchObject({
-        conversationId: `agent-dispatch:${dispatch.id}`,
-        turnId: `dispatch:${dispatch.id}`,
-        actor: { platform: "system", name: "scheduler" },
-        credentialContext: {
-          actor: { platform: "system", name: "scheduler" },
-        },
-        destination,
-        destinationVisibility: "private",
-        dispatch: {
-          id: dispatch.id,
-          plugin: "scheduler",
-          replyAttribution: {
-            label: "Scheduled task",
-            detail: "Weekly",
-          },
-        },
-        surface: "api",
-        disabledFeatures: ["interactive-auth"],
-      });
-      await request.durability.onInputCommitted?.();
-      const piMessages = await deliverAssistantMessagesForTest(request, [
-        { text: "Scheduled digest" },
-      ]);
-      return completedAgentRun({
-        text: "Scheduled digest",
-        piMessages,
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success",
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    });
-    const runtime = createDispatchRuntime({ agentRunner: { run } });
-    const dispatchWorker = createAgentDispatchConversationWorker({
-      resumeTurn: vi.fn(),
-      runTurn: runtime.runDispatchTurn,
-    });
-    const slackWorker = vi.fn(async () => ({
-      status: "completed" as const,
-    }));
-    const route = createAgentDispatchWorkRouter({
-      dispatchWorker,
-      fallbackWorker: slackWorker,
-    });
+    const agentRunner = createModelAgentRunner(
+      createModelStream([{ type: "text", text: "Scheduled digest" }]),
+    );
+    const run = vi.spyOn(agentRunner, "run");
+    const {
+      queue,
+      run: runWork,
+      state,
+    } = await createAgentDispatchWorkHarness(agentRunner);
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     const queueMessage = queue.takeMessage();
     await processConversationQueueMessage(queueMessage, {
       queue,
-      run: route,
+      run: runWork,
       state,
     });
     await processConversationQueueMessage(queueMessage, {
       queue,
-      run: route,
+      run: runWork,
       state,
     });
 
-    expect(run).toHaveBeenCalledOnce();
-    expect(slackWorker).not.toHaveBeenCalled();
     expect(queue.hasQueuedMessages()).toBe(false);
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       channel: destination.channelId,
-      text: "Scheduled digest\n\nScheduled task · Weekly",
+      text: "Scheduled digest\n\nScheduled automation · Weekly",
     });
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: expect.any(String),
       status: "completed",
     });
+    expect(run).toHaveBeenCalledOnce();
+    expect(run.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: `agent-dispatch:${dispatch.id}`,
+      turnId: `dispatch:${dispatch.id}`,
+      actor: { platform: "system", name: "scheduler" },
+      credentialContext: {
+        actor: { platform: "system", name: "scheduler" },
+      },
+      destination,
+      dispatch: {
+        id: dispatch.id,
+        plugin: "scheduler",
+        replyAttribution: {
+          label: "Scheduled automation",
+          detail: "Weekly",
+        },
+      },
+      source: { kind: "scheduled_automation" },
+      surface: "api",
+      disabledFeatures: ["interactive-auth"],
+    });
   });
 
-  it("retries a transient runtime failure instead of treating it as terminal", async () => {
-    const dispatch = await createDispatch("runtime-retry");
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    let runCount = 0;
-    const agentRunner = {
-      run: vi.fn(async (request) => {
-        runCount += 1;
-        if (runCount === 1) {
-          throw new Error("provider temporarily unavailable");
-        }
-        await request.durability.onInputCommitted?.();
-        const piMessages = await deliverAssistantMessagesForTest(request, [
-          { text: "Recovered scheduled digest" },
-        ]);
-        return completedAgentRun({
-          text: "Recovered scheduled digest",
-          piMessages,
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        });
-      }),
-    };
-    const runtime = createDispatchRuntime({ agentRunner });
-    const route = createAgentDispatchWorkRouter({
-      dispatchWorker: createAgentDispatchConversationWorker({
-        resumeTurn: vi.fn(),
-        runTurn: runtime.runDispatchTurn,
-      }),
-      fallbackWorker: vi.fn(async () => ({
-        status: "completed" as const,
-      })),
-    });
+  it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
+    const dispatch = await createDispatch(
+      "outcome-thread-binding",
+      undefined,
+      { kind: "scheduled_automation" },
+      undefined,
+      "Post the scheduled digest.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000200" },
+        },
+      ],
+      { ...destination, threadTs: "1700000000.000200" },
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Scheduled digest" }]),
+      ),
+    );
 
     await enqueueAgentDispatch(dispatch, { queue, state });
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run: route,
-        state,
-      }),
-    ).resolves.toEqual({ status: "failed" });
-
-    expect(agentRunner.run).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "running",
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
     });
-    await expect(
-      listTurnSummaries(getDispatchConversationId(dispatch)),
-    ).resolves.toEqual([
-      expect.not.objectContaining({ dispatchOutcome: expect.anything() }),
-    ]);
 
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run: route,
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(agentRunner.run).toHaveBeenCalledTimes(2);
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: destination.channelId,
-          text: "Recovered scheduled digest",
-        }),
-      }),
-    ]);
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "completed",
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: destination.channelId,
+      thread_ts: "1700000000.000200",
     });
   });
 
-  it.each(["awaiting_resume", "running"] as const)(
-    "resumes durable %s work even when recovery has mailbox input",
-    async (sessionState) => {
-      const dispatch = await createDispatch("cutover-resume");
-      const conversationId = getDispatchConversationId(dispatch);
-      const sessionId = getDispatchTurnId(dispatch.id);
-      const queue = createConversationWorkQueueTestAdapter();
-      const state = getStateAdapter();
-      await state.connect();
-      const nowMs = Date.now();
-      await state.set(
-        getDispatchStorageKey(dispatch.id),
+  it("sends successful work to each outcome destination in order", async () => {
+    const dispatch = await createDispatch(
+      "multiple-message-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Send the result to both destinations.",
+      [
         {
-          ...dispatch,
-          attempt: 1,
-          lastCallbackAtMs: nowMs - 2_000,
-          leaseExpiresAtMs: nowMs - 1_000,
-          maxAttempts: 5,
-          status: sessionState,
-          version: 2,
+          action: "send_message",
+          destination: { ...destination, channelId: "D123" },
         },
-        JUNIOR_THREAD_STATE_TTL_MS,
-      );
-      await recordTurnSummary({
-        actor: dispatch.actor,
-        conversationId,
-        destination: dispatch.destination,
-        destinationVisibility: dispatch.destinationVisibility,
-        dispatchId: dispatch.id,
-        turnId: sessionId,
-        sliceId: 2,
-        source: dispatch.source,
-        // Turn checkpoint status (dispatch status above stays SQL-bound).
-        state: sessionState === "awaiting_resume" ? "paused" : sessionState,
-        surface: "api",
-      });
-      const runTurn = vi.fn();
-      const resumeTurn = vi.fn(async () => {
-        await recordTurnSummary({
-          actor: dispatch.actor,
-          conversationId,
-          destination: dispatch.destination,
-          destinationVisibility: dispatch.destinationVisibility,
-          dispatchId: dispatch.id,
-          dispatchOutcome: "completed",
-          turnId: sessionId,
-          sliceId: 2,
-          source: dispatch.source,
-          state: "completed",
-          surface: "api",
-        });
-      });
-      const worker = createAgentDispatchConversationWorker({
-        resumeTurn,
-        runTurn,
-      });
-
-      await recoverPendingDispatchMailboxAppends({
-        conversationWorkQueue: queue,
-        nowMs,
-      });
-      expect(queue.sentRecords()).toEqual([
         {
-          conversationId,
-          idempotencyKey: `agent-dispatch:${dispatch.id}`,
+          action: "send_message",
+          destination: { ...destination, channelId: "C456" },
         },
-      ]);
-      await processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run: async (context) => await worker(context, dispatch.id),
-        state,
-      });
+      ],
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Work complete" }]),
+      ),
+    );
 
-      expect(runTurn).not.toHaveBeenCalled();
-      expect(resumeTurn).toHaveBeenCalledOnce();
-      expect(queue.hasQueuedMessages()).toBe(false);
-      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-        status: "completed",
-      });
-    },
-  );
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(
+      slackApiOutbox.messages().map((message) => message.params.channel),
+    ).toEqual(["D123", "C456"]);
+  });
+
+  it("completes work with no outcomes without posting the model result", async () => {
+    const dispatch = await createDispatch(
+      "no-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      [],
+    );
+    const agentRunner = createModelAgentRunner(
+      createModelStream([{ type: "text", text: "Maintenance complete" }]),
+    );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, state } =
+      await createAgentDispatchWorkHarness(agentRunner);
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+      outcomes: [],
+    });
+    expect(runAgent).toHaveBeenCalledOnce();
+    expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+  });
 
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");
@@ -367,58 +283,20 @@ describe("agent dispatch conversation work", () => {
       },
     );
     await persistConversationMessages({ conversation, conversationId });
-    const agentRunner = { run: vi.fn() };
-    const runtime = createDispatchRuntime({ agentRunner });
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn: vi.fn(),
-      runTurn: runtime.runDispatchTurn,
-    });
-    const { ack, context } = createContext(dispatch);
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      neverRunAgentRunner(),
+    );
 
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
     });
 
-    expect(agentRunner.run).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
+    expect(queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: "1700000000.000009",
-      status: "completed",
-    });
-  });
-
-  it("uses a durable delivery receipt when the worker died before outcome persistence", async () => {
-    const dispatch = await createDispatch("delivery-receipt-fence");
-    await recordTurnSummary({
-      actor: dispatch.actor,
-      conversationId: getDispatchConversationId(dispatch),
-      destination: dispatch.destination,
-      destinationVisibility: dispatch.destinationVisibility,
-      dispatchId: dispatch.id,
-      resultMessageId: "1700000000.000012",
-      turnId: getDispatchTurnId(dispatch.id),
-      sliceId: 1,
-      source: dispatch.source,
-      state: "running",
-      surface: "api",
-    });
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
-    const { ack, context } = createContext(dispatch);
-
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      resultMessageTs: "1700000000.000012",
       status: "completed",
     });
   });

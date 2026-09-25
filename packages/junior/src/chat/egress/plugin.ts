@@ -77,12 +77,12 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         activeEgressId: credentialContext.egressId,
         credentialContext,
         deps: {
-          ...(deps.fetch ? { fetch: deps.fetch } : {}),
+          ...(deps.fetch ? { fetch: deps.fetch } : undefined),
           recordAuthRequired: async (signal) => {
             await deps.pluginAuth.handleAuthRequired({
               ...(signal.authorization
                 ? { authorization: signal.authorization }
-                : {}),
+                : undefined),
               grant: signal.grant,
               kind: signal.kind ?? "auth_required",
               message: signal.message,

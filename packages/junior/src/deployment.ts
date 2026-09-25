@@ -9,6 +9,8 @@ export const JUNIOR_RETENTION_CRON_SCHEDULE = "0 4 * * *";
 export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
   "/api/internal/agent/continue";
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";
+export const JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE =
+  "/api/internal/workspace/snapshots";
 export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =
   "api/internal/agent/continue.ts";
 

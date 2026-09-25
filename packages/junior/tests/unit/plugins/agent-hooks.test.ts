@@ -6,9 +6,10 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   pluginToolOutputSchema,
-  RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
-  RESOURCE_EVENT_TEXT_MAX_LENGTH,
-  type ResourceEvent,
+  EVENT_SUMMARY_MAX_LENGTH,
+  EVENT_TEXT_MAX_LENGTH,
+  type Event,
+  type ToolExposure,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -30,11 +31,13 @@ vi.mock("@/chat/plugins/viewer", () => ({
   resolveViewerUser: resolveViewerUserMock,
 }));
 import {
+  applyPluginFormatMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
+  getPluginProfileReports,
   getPluginRoutes,
   getPluginSlackConversationLink,
   getPluginTools,
@@ -42,7 +45,10 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { SandboxSession } from "@/chat/sandbox/workspace";
+import type {
+  SandboxCommandInput,
+  SandboxSession,
+} from "@/chat/sandbox/workspace";
 
 const demoToolResultSchema = pluginToolOutputSchema.extend({
   message: z.string(),
@@ -51,6 +57,7 @@ const demoToolResultSchema = pluginToolOutputSchema.extend({
 function demoPluginTool(
   description = "Demo tool",
   approvalMode?: "auto" | "review" | "approve",
+  exposure?: ToolExposure,
 ) {
   return definePluginTool({
     approvalMode,
@@ -62,6 +69,7 @@ function demoPluginTool(
     },
     describeProposal: () => `${description} proposal`,
     description,
+    exposure,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
     execute: () => ({ message: "done" }),
@@ -212,6 +220,44 @@ describe("agent plugin hooks", () => {
     ).toBe("private");
   });
 
+  it("applies formatMarkdown transforms and fails open on plugin errors", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "a-demo",
+          displayName: "A Demo",
+          description: "A demo",
+        },
+        hooks: {
+          formatMarkdown({ text }) {
+            return text.replaceAll("alpha", "beta");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "z-demo",
+          displayName: "Z Demo",
+          description: "Z demo",
+        },
+        hooks: {
+          formatMarkdown() {
+            throw new Error("boom");
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
+      expect(logWarnMock).toHaveBeenCalledWith(
+        "plugin.format_markdown.hook.failed",
+        expect.objectContaining({ "app.plugin.name": "z-demo" }),
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("collects system prompt contributions from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
@@ -243,7 +289,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_SOURCE),
+        getPluginSystemPromptContributions("local"),
       ).resolves.toEqual([
         { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
         { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
@@ -270,7 +316,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_SOURCE),
+        getPluginSystemPromptContributions("local"),
       ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);
@@ -568,10 +614,15 @@ describe("agent plugin hooks", () => {
           displayName: "Agent Demo",
           description: "Agent demo",
         },
+        events: {
+          resourceTypes: [
+            { type: "demo", supportedEvents: ["demo.completed"] },
+          ],
+        },
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
-            expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            expect(ctx.events.canSubscribe).toBe(true);
             resolveActor = ctx.users.resolveActor;
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
@@ -582,6 +633,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
@@ -611,6 +663,51 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("allows watch hints for conversations", () => {
+    const webActor = {
+      platform: "web" as const,
+      userId: "dashboard:alice",
+      email: "alice@example.com",
+    };
+    const webSource = createWebSource("local:web:dashboard-1", "public");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        events: {
+          resourceTypes: [
+            { type: "demo", supportedEvents: ["demo.completed"] },
+          ],
+        },
+        hooks: {
+          tools(ctx) {
+            expect(ctx.events.canSubscribe).toBe(true);
+            return {
+              demoTool: demoPluginTool("Demo tool", "review"),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        conversationId: "local:web:dashboard-1",
+        destination: LOCAL_DESTINATION,
+        actor: webActor,
+        egress: TEST_EGRESS,
+        source: webSource,
+        workspace: {} as any,
+      });
+
+      expect(tools).toHaveProperty("agentDemo_demoTool");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("warns when a plugin tool omits behavioral annotations", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
@@ -635,6 +732,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
@@ -656,7 +754,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("preserves plugin tool instances while adding internal identity", () => {
+  it("preserves plugin tool methods while adding internal identity", async () => {
     const prototypeTool = new PrototypeTool();
     const previous = setPlugins([
       defineJuniorPlugin({
@@ -667,7 +765,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.resourceEvents.canSubscribe).toBe(false);
+            expect(ctx.events.canSubscribe).toBe(false);
             return {
               prototypeTool,
             };
@@ -677,13 +775,16 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_prototypeTool).toBe(prototypeTool);
+      expect(Object.getPrototypeOf(tools.agentDemo_prototypeTool)).toBe(
+        prototypeTool,
+      );
       expect(tools.prototypeTool).toBeUndefined();
       expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
@@ -695,10 +796,10 @@ describe("agent plugin hooks", () => {
         id: "agent-demo",
         description: "Agent demo",
       });
-      const prototypeResult = tools.agentDemo_prototypeTool?.execute?.(
+      const prototypeResult = (await tools.agentDemo_prototypeTool?.execute?.(
         {},
         {},
-      ) as ReturnType<PrototypeTool["execute"]> | undefined;
+      )) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
         message: "done",
       });
@@ -726,6 +827,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -739,7 +841,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("rejects plugin tools with invalid names", () => {
+  it("preserves explicit plugin tool exposure", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -750,21 +852,59 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              "not-valid": demoPluginTool(),
+              directTool: demoPluginTool("Direct tool", undefined, "direct"),
+              defaultTool: demoPluginTool(),
             };
           },
         },
       }),
     ]);
     try {
-      expect(() =>
-        getPluginTools({
-          destination: LOCAL_DESTINATION,
-          egress: TEST_EGRESS,
-          source: LOCAL_SOURCE,
-          workspace: {} as any,
-        }),
-      ).toThrow("must be a camelCase identifier");
+      const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+
+      expect(tools.agentDemo_directTool?.exposure).toBe("direct");
+      expect(tools.agentDemo_defaultTool?.exposure).toBe("deferred");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("registers plugin tools without enforcing the lint naming convention", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              deployment_create: demoPluginTool(),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+      expect(tools.agentDemo_deployment_create?.identity).toEqual({
+        id: "agent-demo.deployment_create",
+        name: "deployment_create",
+        plugin: "agent-demo",
+      });
     } finally {
       setPlugins(previous);
     }
@@ -792,6 +932,7 @@ describe("agent plugin hooks", () => {
         [],
         {},
         {
+          conversationId: LOCAL_DESTINATION.conversationId,
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
           source: LOCAL_SOURCE,
@@ -842,6 +983,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         mcpToolManager: {
@@ -941,7 +1083,7 @@ describe("agent plugin hooks", () => {
   it("collects route handlers from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        resourceEvents: {
+        events: {
           resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
           normalizeIdentifier: (identifier) => identifier.toLowerCase(),
         },
@@ -956,17 +1098,13 @@ describe("agent plugin hooks", () => {
               {
                 path: "/demo",
                 async handler() {
-                  await ctx.resourceEvents.publish({
+                  await ctx.events.publish({
                     eventKey: "demo:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
                     identifier: "Resource:1",
-                    trustedSummary: "s".repeat(
-                      RESOURCE_EVENT_SUMMARY_MAX_LENGTH + 1,
-                    ),
-                    untrustedText: "u".repeat(
-                      RESOURCE_EVENT_TEXT_MAX_LENGTH + 1,
-                    ),
+                    trustedSummary: "s".repeat(EVENT_SUMMARY_MAX_LENGTH + 1),
+                    untrustedText: "u".repeat(EVENT_TEXT_MAX_LENGTH + 1),
                   });
                   return new Response("demo");
                 },
@@ -977,8 +1115,8 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const publish = vi.fn(async (_event: ResourceEvent) => {});
-      const routes = getPluginRoutes({ resourceEvents: { publish } });
+      const publish = vi.fn(async (_event: Event) => {});
+      const routes = getPluginRoutes({ events: { publish } });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -995,18 +1133,14 @@ describe("agent plugin hooks", () => {
         }),
       );
       const published = publish.mock.calls[0]?.[0];
-      expect(published?.trustedSummary).toHaveLength(
-        RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
-      );
-      expect(published?.untrustedText).toHaveLength(
-        RESOURCE_EVENT_TEXT_MAX_LENGTH,
-      );
+      expect(published?.trustedSummary).toHaveLength(EVENT_SUMMARY_MAX_LENGTH);
+      expect(published?.untrustedText).toHaveLength(EVENT_TEXT_MAX_LENGTH);
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("rejects plugin-supplied resource event namespaces", async () => {
+  it("rejects plugin-supplied event namespaces", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -1020,7 +1154,7 @@ describe("agent plugin hooks", () => {
               {
                 path: "/demo",
                 async handler() {
-                  await ctx.resourceEvents.publish({
+                  await ctx.events.publish({
                     eventKey: "other:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
@@ -1038,7 +1172,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ resourceEvents: { publish } });
+      const [route] = getPluginRoutes({ events: { publish } });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1052,12 +1186,12 @@ describe("agent plugin hooks", () => {
   it.each([
     {
       label: "without a registration",
-      resourceEvents: undefined,
+      events: undefined,
       error: "without an active registration",
     },
     {
       label: "while its registration is disabled",
-      resourceEvents: {
+      events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
         isEnabled: () => false,
       },
@@ -1065,56 +1199,53 @@ describe("agent plugin hooks", () => {
     },
     {
       label: "when the event type is undeclared",
-      resourceEvents: {
+      events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
       },
-      error: 'did not register resource event "demo.deleted"',
+      error: 'did not register event "demo.deleted"',
     },
-  ])(
-    "rejects resource event publication $label",
-    async ({ resourceEvents, error }) => {
-      const previous = setPlugins([
-        defineJuniorPlugin({
-          ...(resourceEvents ? { resourceEvents } : {}),
-          manifest: {
-            name: "agent-demo",
-            displayName: "Agent Demo",
-            description: "Agent demo",
-          },
-          hooks: {
-            routes(ctx) {
-              return [
-                {
-                  path: "/demo",
-                  async handler() {
-                    await ctx.resourceEvents.publish({
-                      eventKey: "demo:event",
-                      eventType: "demo.deleted",
-                      occurredAtMs: 1,
-                      identifier: "resource:1",
-                      trustedSummary: "Demo deleted",
-                    });
-                    return new Response("demo");
-                  },
+  ])("rejects event publication $label", async ({ events, error }) => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        ...(events ? { events } : undefined),
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          routes(ctx) {
+            return [
+              {
+                path: "/demo",
+                async handler() {
+                  await ctx.events.publish({
+                    eventKey: "demo:event",
+                    eventType: "demo.deleted",
+                    occurredAtMs: 1,
+                    identifier: "resource:1",
+                    trustedSummary: "Demo deleted",
+                  });
+                  return new Response("demo");
                 },
-              ];
-            },
+              },
+            ];
           },
-        }),
-      ]);
-      try {
-        const publish = vi.fn(async () => {});
-        const [route] = getPluginRoutes({ resourceEvents: { publish } });
+        },
+      }),
+    ]);
+    try {
+      const publish = vi.fn(async () => {});
+      const [route] = getPluginRoutes({ events: { publish } });
 
-        await expect(
-          route!.handler(new Request("http://localhost/demo")),
-        ).rejects.toThrow(error);
-        expect(publish).not.toHaveBeenCalled();
-      } finally {
-        setPlugins(previous);
-      }
-    },
-  );
+      await expect(
+        route!.handler(new Request("http://localhost/demo")),
+      ).rejects.toThrow(error);
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      setPlugins(previous);
+    }
+  });
 
   it("rejects invalid route methods from configured plugins", () => {
     const previous = setPlugins([
@@ -1140,7 +1271,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
@@ -1174,7 +1305,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
@@ -1213,7 +1344,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',
@@ -1492,6 +1623,77 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("collects profile reports and skips plugin failures", async () => {
+    const subject = {
+      email: "subject@example.com",
+      id: "user-subject",
+      identities: [],
+    };
+    const viewer = {
+      email: "viewer@example.com",
+      id: "user-viewer",
+      identities: [],
+    };
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async profileReport(ctx) {
+            expect(ctx.nowMs).toBe(123);
+            expect(ctx.subject).toEqual(subject);
+            expect(ctx.viewer).toEqual(viewer);
+            expect("set" in ctx.state).toBe(false);
+            return {
+              title: "Agent Demo",
+              metrics: [{ label: "prs", value: "2" }],
+            };
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "broken-demo",
+          displayName: "Broken Demo",
+          description: "Broken demo",
+        },
+        hooks: {
+          profileReport() {
+            throw new Error("database unavailable");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "empty-demo",
+          displayName: "Empty Demo",
+          description: "Empty demo",
+        },
+        hooks: {
+          profileReport() {
+            return undefined;
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        getPluginProfileReports({ nowMs: 123, subject, viewer }),
+      ).resolves.toEqual([
+        {
+          pluginName: "agent-demo",
+          title: "Agent Demo",
+          metrics: [{ label: "prs", value: "2" }],
+        },
+      ]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("runs sandbox and tool lifecycle hooks from configured plugins", async () => {
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];
     const previous = setPlugins([
@@ -1575,6 +1777,138 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("runs Workspace preparation non-interactively with owner cancellation", async () => {
+    const runCommand = vi.fn(async (_input: SandboxCommandInput) => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    }));
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async workspacePrepare(ctx) {
+            await ctx.sandbox.run({
+              cmd: "git",
+              args: ["clone", "https://example.com/demo.git", "demo"],
+              cwd: ctx.sandbox.root,
+            });
+            return async () => {
+              await ctx.sandbox.run({
+                cmd: "git",
+                args: ["-C", "demo", "reset", "--hard"],
+                cwd: ctx.sandbox.root,
+              });
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const controller = new AbortController();
+      const sandbox = {
+        ...fakeSandbox([]),
+        runCommand,
+      };
+
+      const finalize = await createPluginHookRunner().prepareWorkspace(
+        sandbox,
+        [
+          {
+            provider: "agent-demo",
+            repo: "example/demo",
+          },
+        ],
+        controller.signal,
+      );
+
+      expect(runCommand).toHaveBeenCalledTimes(1);
+      await finalize();
+      expect(runCommand).toHaveBeenCalledTimes(2);
+      const command = runCommand.mock.calls[0]?.[0];
+      expect(command).toMatchObject({
+        cmd: "bash",
+        cwd: "/vercel/sandbox",
+        signal: controller.signal,
+      });
+      expect(command?.args?.[0]).toBe("-c");
+      expect(command?.args?.[1]).toContain("GIT_TERMINAL_PROMPT");
+      expect(command?.args?.[1]).toContain(
+        "'git' 'clone' 'https://example.com/demo.git' 'demo'",
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects unhandled Workspace repository providers before preparation", async () => {
+    const workspacePrepare = vi.fn(async () => {});
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: { workspacePrepare },
+      }),
+    ]);
+    try {
+      await expect(
+        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
+          {
+            provider: "agent-demo",
+            repo: "example/demo",
+          },
+          {
+            provider: "missing-provider",
+            repo: "example/missing",
+          },
+        ]),
+      ).rejects.toThrow(
+        "Workspace repository providers have no preparation hook: missing-provider",
+      );
+      expect(workspacePrepare).not.toHaveBeenCalled();
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects colliding Workspace checkout paths from short repository names", async () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "github",
+          displayName: "GitHub",
+          description: "GitHub",
+        },
+        hooks: {
+          async workspacePrepare() {},
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
+          {
+            provider: "github",
+            repo: "getsentry/sentry",
+          },
+          {
+            provider: "github",
+            repo: "acme/sentry",
+          },
+        ]),
+      ).rejects.toThrow("Workspace checkout path collision: repos/sentry");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("materializes beforeToolExecute actors from the live actors getter per call", async () => {
     const seenActorSets: unknown[][] = [];
     const previous = setPlugins([
@@ -1620,6 +1954,7 @@ describe("agent plugin hooks", () => {
 describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
+      conversationId: LOCAL_DESTINATION.conversationId,
       destination: LOCAL_DESTINATION,
       egress: TEST_EGRESS,
       source: LOCAL_SOURCE,
@@ -1653,6 +1988,7 @@ describe("getPluginTools channel resolution", () => {
   it("passes runtime-owned destination directly to plugin hooks", () => {
     const source = slackSource("DDM");
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source,
       destination: {
         platform: "slack",
@@ -1670,10 +2006,18 @@ describe("getPluginTools channel resolution", () => {
     });
   });
 
-  it("computes channelCapabilities from source channelId", () => {
+  it("computes channelCapabilities from the Conversation Location", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("DDM"),
+      location: {
+        id: "location:T123:DDM",
+        provider: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+        threadTs: "1712345.0001",
+      },
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -1687,8 +2031,30 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
+  it("exposes Slack context and Actor for an Agent invocation", () => {
+    const ctx = capturePluginContext({
+      conversationId: "agent-invocation:invocation-1",
+      source: { kind: "agent_invocation" },
+      actor: TEST_ACTOR,
+      destination: SLACK_DESTINATION,
+      location: {
+        id: "location:T123:DDM",
+        provider: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+      },
+      egress: TEST_EGRESS,
+      workspace: {} as any,
+    });
+
+    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.actor).toEqual(TEST_ACTOR);
+    expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
+  });
+
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("DDM"),
       destination: {
         platform: "slack",
@@ -1709,6 +2075,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("CSOURCE"),
       destination: {
         platform: "slack",

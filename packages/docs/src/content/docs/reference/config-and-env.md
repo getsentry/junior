@@ -13,35 +13,43 @@ related:
 
 ## Core runtime
 
-| Variable                                    | Required    | Purpose                                                                                                                                                                                          |
-| ------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                                                               |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                                                                       |
-| `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                                                   |
-| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                                                                          |
-| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                                                  |
-| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                                     |
-| `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.                       |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                                         |
-| `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                                       |
-| `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                                                |
-| `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                                           |
-| `AI_MODEL`                                  | No          | Standard model for main agent runs. Defaults to `xai/grok-4.5`.                                                                                                                                  |
-| `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                                        |
-| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                                      |
-| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-5.6-luna`.                                                                                                                             |
-| `AI_HANDOFF_MODEL`                          | No          | Model for the built-in `handoff` profile. Defaults to `openai/gpt-5.6-sol`.                                                                                                                      |
-| `AI_MODEL_PROFILES`                         | No          | JSON object mapping additional named handoff profiles to model IDs, for example `{"coding":"openai/gpt-5.6-sol"}`. Names must match `^[a-z][a-z0-9_-]*$`; `standard` and `handoff` are reserved. |
-| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                                                 |
-| `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                                                             |
-| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                                                                      |
-| `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory.                      |
-| `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.                             |
-| `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                                               |
-| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                                            |
-| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                                               |
-| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
-| `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                                         |
+| Variable                                    | Required    | Purpose                                                                                                                                                                     |
+| ------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                                          |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                                                  |
+| `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                              |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                                                     |
+| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
+| `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
+| `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
+| `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                           |
+| `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
+| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
+| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
+| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
+| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
+| `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
+| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
+| `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
+| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
+| `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
+| `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
+| `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
+| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                       |
+| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                          |
+| `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                      |
+| `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                    |
+| `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public artifacts. Vercel sets this when an OIDC-enabled Blob store is connected to the project.        |
+| `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                       |
+
+For Vercel deployments, create a private Blob store and connect it to the
+project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
+It supplies `BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
+`BLOB_READ_WRITE_TOKEN` for local development, CI, non-Vercel hosts, or as a
+fallback. See [Deploy to Vercel](/start-here/deploy-to-vercel/#configure-attachment-storage).
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
@@ -61,7 +69,7 @@ hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
 context, and bounded user, assistant, tool-call, and tool-result evidence using
 the Codex Guardian transcript selection rules. Guardian defaults to
-`openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+`openai/gpt-6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
@@ -119,6 +127,22 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
+## Brief generation
+
+Brief generation is off by default. Enable it in app configuration when each
+Conversation needs a durable Brief:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  briefs: { enabled: true },
+});
+```
+
+This option costs one default-model call per completed Turn. The example app and
+`junior chat` enable it.
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same
@@ -131,6 +155,10 @@ import { createApp } from "@sentry/junior";
 
 const app = await createApp({
   experimental: {
+    // Reply to non-mention messages in Slack threads Junior already joined.
+    // Off by default. Without this, Junior only replies to explicit @mentions
+    // and event notifications in those threads.
+    "passive-routing": true,
     // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
     // unless you are testing the #879 runtime.
     subagents: true,
@@ -140,6 +168,62 @@ const app = await createApp({
 
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
+
+## Remote ACP
+
+Every Junior app mounts `GET`, `POST`, and `DELETE /api/acp`. No app option
+enables the route. Configure the dashboard to let ACP clients authenticate with
+Google. The client must support ACP URL elicitation. Junior asks the user to
+enter the verification code shown by the client, then uses the dashboard Google
+sign-in flow. Personal tokens do not grant access to this route.
+
+ACP stores short-lived connection, authorization, and stream records in the
+configured `StateAdapter`. Production Redis state lets requests reach different
+app instances. It does not need process affinity. Memory state remains local to
+one process. A client must reconnect and call `session/load` when its live SSE
+request reaches the deployment request limit. Run `pnpm acp:local` in this
+repository for a loopback test with the official ACP SDK client. ACP remains a
+pre-stable surface.
+
+`passive-routing` turns on replies to non-mention messages in threads Junior
+already joined. Leave it unset in production unless you are testing that path.
+
+## Profiles
+
+Without overrides, Junior uses GPT-6 Luna High for `standard` and Claude Opus 5.5 High for `handoff`. Keep these shared defaults unless the app needs different behavior.
+
+To override them, pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
+
+```ts
+const app = await createApp({
+  defaultProfile: "standard",
+  profiles: {
+    standard: {
+      modelId: "xai/grok-4.5",
+      description:
+        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
+    },
+    coding: {
+      modelId: "openai/gpt-5.6-sol",
+      description:
+        "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
+      reasoningLevel: "high",
+    },
+  },
+  fastModelId: "openai/gpt-6-luna",
+  guardianModelId: "openai/gpt-6-luna",
+  embeddingModelId: "openai/text-embedding-3-small",
+  webSearchModelId: "openai/gpt-6-luna",
+  imageGenerationModelId: "google/gemini-3-pro-image",
+  visionModelId: "openai/gpt-5.6-sol",
+});
+```
+
+Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
+
+Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+
+The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
 
 ## Install-wide config defaults
 

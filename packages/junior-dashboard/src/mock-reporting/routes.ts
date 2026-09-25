@@ -4,6 +4,8 @@ import {
   apiErrorSchema,
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -13,29 +15,38 @@ import {
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
-  taskExecutionListSchema,
-  taskListSchema,
-  taskParamsSchema,
-  taskRunListSchema,
+  pluginOperationalReportFeedSchema,
+  automationExecutionListSchema,
+  automationListSchema,
+  automationParamsSchema,
+  automationRunListSchema,
 } from "@sentry/junior/api/schema";
+import { mockChartPng } from "./chart-png";
 import {
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationFeed,
   readMockConversationPendingMessages,
   readMockConversationStats,
+  readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
+  readMockPeopleCode,
   readMockPeopleDirectory,
+  readMockPeoplePluginReports,
   readMockPeopleProfile,
+  readMockPluginReports,
   readMockPersonalSpend,
-  readMockTaskExecutions,
-  readMockTaskList,
+  readMockAutomationExecutions,
+  readMockAutomationList,
+  setMockConversationArchived,
 } from "./fixtures";
 
 function errorResponse(error: string, status: 400 | 404): Response {
@@ -48,6 +59,13 @@ export function createMockReportingApi(): Hono<{
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
 
+  app.get("/code", () =>
+    jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
+  );
+  app.get("/plugin-reports", () =>
+    jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
+  );
+
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
@@ -56,6 +74,26 @@ export function createMockReportingApi(): Hono<{
     const report = email ? readMockPersonalSpend(email) : undefined;
     return report
       ? jsonResponse(personalSpendReportSchema, report)
+      : errorResponse("Person not found.", 404);
+  });
+  app.get("/people/:email/plugin-reports", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return jsonResponse(
+      pluginOperationalReportFeedSchema,
+      readMockPeoplePluginReports(params.data.email),
+    );
+  });
+  app.get("/people/:email/code", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockPeopleCode(params.data.email);
+    return report
+      ? jsonResponse(codePersonReportSchema, report)
       : errorResponse("Person not found.", 404);
   });
   app.get("/people/:email", (c) => {
@@ -88,10 +126,29 @@ export function createMockReportingApi(): Hono<{
     if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
-    return jsonResponse(
-      conversationFeedSchema,
-      readMockConversationFeed(query.data.actorEmail),
+    const report = readMockConversationFeed(
+      query.data.actorEmail,
+      query.data.status,
     );
+    if (!query.data.q) {
+      return jsonResponse(conversationFeedSchema, report);
+    }
+    const archived = readMockConversationFeed(
+      query.data.actorEmail,
+      "archived",
+    );
+    const search = query.data.q.toLowerCase();
+    const conversations = new Map(
+      [...report.conversations, ...archived.conversations].map(
+        (conversation) => [conversation.conversationId, conversation],
+      ),
+    );
+    return jsonResponse(conversationFeedSchema, {
+      ...report,
+      conversations: [...conversations.values()].filter((conversation) =>
+        conversation.displayTitle.toLowerCase().includes(search),
+      ),
+    });
   });
   app.get("/conversations/stats", () =>
     jsonResponse(conversationStatsReportSchema, readMockConversationStats()),
@@ -144,33 +201,100 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationDetailReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
-  app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
-  app.get("/tasks/runs", () => {
-    const tasks = readMockTaskList().tasks;
-    const runs = tasks.flatMap((task) => {
-      const report = readMockTaskExecutions(task.kind, task.id);
+  app.patch("/conversations/:conversationId/archive", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = archiveConversationBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationArchived(
+      params.data.conversationId,
+      body.data.archived,
+    );
+    return result
+      ? jsonResponse(archiveConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  // Fixed bodies so dashboard mock can exercise image/file attachment cards.
+  app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
+    const conversationId = c.req.param("conversationId");
+    const attachmentId = c.req.param("attachmentId");
+    if (!conversationId || !attachmentId) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    if (!readMockConversationDetail(conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    if (attachmentId === "qa-chart-png") {
+      return new Response(mockChartPng, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'inline; filename="chart.png"',
+          "content-type": "image/png",
+          "content-length": String(mockChartPng.byteLength),
+        },
+      });
+    }
+    if (attachmentId === "qa-notes-txt") {
+      const body = "mock attachment notes\n";
+      return new Response(body, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'attachment; filename="notes.txt"',
+          "content-type": "text/plain",
+          "content-length": String(Buffer.byteLength(body)),
+        },
+      });
+    }
+    return errorResponse("Attachment not found.", 404);
+  });
+  app.get("/automations", (c) => {
+    const report = readMockAutomationList();
+    const query = c.req.query("q")?.trim().toLowerCase();
+    return jsonResponse(automationListSchema, {
+      ...report,
+      automations: query
+        ? report.automations.filter((automation) =>
+            automation.title.toLowerCase().includes(query),
+          )
+        : report.automations,
+    });
+  });
+  app.get("/automations/runs", () => {
+    const automations = readMockAutomationList().automations;
+    const runs = automations.flatMap((automation) => {
+      const report = readMockAutomationExecutions(
+        automation.kind,
+        automation.id,
+      );
       return (report?.executions ?? []).map((run) => ({
         ...run,
-        kind: task.kind,
-        taskId: task.id,
-        taskTitle: task.title,
+        kind: automation.kind,
+        automationId: automation.id,
+        automationTitle: automation.title,
       }));
     });
-    return jsonResponse(taskRunListSchema, {
+    return jsonResponse(automationRunListSchema, {
       runs: runs.sort((left, right) =>
         right.executedAt.localeCompare(left.executedAt),
       ),
       truncated: false,
     });
   });
-  app.get("/tasks/:kind/:id/executions", (c) => {
-    const params = taskParamsSchema.safeParse(c.req.param());
+  app.get("/automations/:kind/:id/executions", (c) => {
+    const params = automationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockTaskExecutions(params.data.kind, params.data.id);
+    const report = readMockAutomationExecutions(
+      params.data.kind,
+      params.data.id,
+    );
     return report
-      ? jsonResponse(taskExecutionListSchema, report)
+      ? jsonResponse(automationExecutionListSchema, report)
       : errorResponse("Task not found.", 404);
   });
 

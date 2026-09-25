@@ -1,5 +1,7 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  MessageAttachment,
+  MessageCard,
   PluginOperationalReportFeed,
   Plugin,
   SkillReport,
@@ -8,6 +10,8 @@ import type {
   ActorIdentity,
   ConversationStatsReport,
   ConversationSummaryReport,
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -78,7 +82,13 @@ export type TranscriptViewStructuredEventPart = {
   version: number;
 };
 
+export type TranscriptViewAttachmentsDeliveredPart = {
+  attachments: MessageAttachment[];
+  type: "attachments_delivered";
+};
+
 export type TranscriptViewPart =
+  | TranscriptViewAttachmentsDeliveredPart
   | TranscriptViewContextEventPart
   | TranscriptViewStructuredEventPart
   | TranscriptViewReasoningPart
@@ -95,11 +105,14 @@ export type TranscriptViewTurnContext = {
 };
 
 export type TranscriptViewMessage = {
+  cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
   contexts?: TranscriptViewTurnContext[];
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Short summary supplied by the Event publisher. */
+  trustedSummary?: string;
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
   /** Whether a non-mention message was used as input to a turn. */
@@ -115,7 +128,11 @@ export type TranscriptViewMessage = {
     reasoningLevel: string;
     source: "configured" | "inherited" | "router";
   };
-  outcome?: "error" | "delivery_failed";
+  eventId?: string;
+  failureCode?: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
+  attachments?: MessageAttachment[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
@@ -126,7 +143,10 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
-  archivedAt?: string;
+  activityPreview?: ConversationSummaryReport["activityPreview"];
+  annotations?: ConversationSummaryReport["annotations"];
+  sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
+  archivedAt?: string | null;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
@@ -138,13 +158,16 @@ export type Conversation = {
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
+  locationUrl?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
+  participants?: ConversationSummaryReport["participants"];
   sentryTraceUrl?: string;
-  sourceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
+  isPriority?: boolean;
+  unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };
 

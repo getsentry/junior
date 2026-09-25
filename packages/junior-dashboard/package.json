@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.150.1",
+  "version": "0.227.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
     "src"
   ],
   "scripts": {
-    "build": "pnpm --filter @sentry/junior-plugin-api build && pnpm --filter @sentry/junior build && pnpm run build:client && pnpm run build:css && pnpm run build:server && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "pnpm --filter @sentry/junior-plugin-api build && pnpm --filter @sentry/junior build && pnpm run build:client && pnpm run build:css && pnpm run build:server",
     "build:client": "tsup --config tsup.client.config.ts",
     "build:css": "tailwindcss -i src/tailwind.css -o dist/tailwind.css --minify",
     "build:server": "tsup --config tsup.config.ts",
@@ -50,6 +50,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@tailwindcss/cli": "^4.3.0",
     "@tanstack/eslint-plugin-query": "^5.101.4",
     "@types/node": "^25.9.1",
@@ -57,7 +58,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "4.1.7",
     "eslint": "^10.8.0",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

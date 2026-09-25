@@ -240,6 +240,8 @@ async function prepareLocalChatRun(
   // subagents here so spawnAgent matches the wired child-worker path.
   const { setExperimentalFeatures } = await import("@/chat/experimental");
   setExperimentalFeatures({ subagents: true });
+  const { setBriefsConfig } = await import("@/chat/briefs/registration");
+  setBriefsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -262,9 +264,7 @@ async function prepareLocalChatRun(
       fallbackWorker: async () => {
         throw new Error("Local child queue received non-invocation work");
       },
-      invocationWorker: createAgentInvocationWorker({
-        agentRunner,
-      }),
+      invocationWorker: createAgentInvocationWorker(agentRunner),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -275,7 +275,7 @@ async function prepareLocalChatRun(
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });
-  const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+  const oauthCallback = await startLocalOAuthCallbackServer();
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {

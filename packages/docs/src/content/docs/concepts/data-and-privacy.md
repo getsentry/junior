@@ -15,13 +15,13 @@ Junior stores the data needed to continue work, deliver replies, and operate the
 
 ## Stored Data
 
-| Data | Purpose |
-| ---- | ------- |
-| Messages | Transcript display, delivery, and search |
-| Agent history | Continue turns across tools, pauses, and retries |
-| Tasks and watches | Run later or follow resource events |
-| Artifacts | Deliver files created during work |
-| Plugin records | Support features from installed plugins |
+| Data                    | Purpose                                          |
+| ----------------------- | ------------------------------------------------ |
+| Messages                | Transcript display, delivery, and search         |
+| Agent history           | Continue turns across tools, pauses, and retries |
+| Automations and watches | Run later or follow events                       |
+| Artifacts               | Deliver files created during work                |
+| Plugin records          | Support features from installed plugins          |
 
 Sandbox files are temporary. Junior must persist or deliver a file before the sandbox disappears.
 
@@ -29,7 +29,7 @@ Sandbox files are temporary. Junior must persist or deliver a file before the sa
 
 The model receives content selected for the active conversation, including the current thread, loaded skills, and tool results. Installed memory features may add content allowed for that actor and destination.
 
-Junior uses normalized resource events instead of storing complete webhook payloads. Secret values and unrelated private conversations do not belong in model context.
+Junior uses normalized events instead of storing complete webhook payloads. Secret values and unrelated private conversations do not belong in model context.
 
 ## Visibility
 

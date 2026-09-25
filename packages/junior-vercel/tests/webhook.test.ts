@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type { EventInput } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelWebhookRoute } from "../src/webhooks/handler";
-import { normalizeVercelResourceEvents } from "../src/webhooks/resource-events";
+import { normalizeVercelEvents } from "../src/webhooks/events";
 
 const SECRET = "vercel-webhook-secret";
 const COMMIT_SHA = "abcdef0123456789abcdef0123456789abcdef01";
@@ -48,11 +48,11 @@ function signedRequest(body: unknown, secret = SECRET): Request {
 }
 
 function routeFixture() {
-  const events: ResourceEventInput[] = [];
+  const events: EventInput[] = [];
   return {
     events,
     route: createVercelWebhookRoute({
-      resourceEvents: {
+      events: {
         async publish(event) {
           events.push(event);
         },
@@ -62,7 +62,7 @@ function routeFixture() {
   };
 }
 
-describe("Vercel webhook resource events", () => {
+describe("Vercel webhook events", () => {
   it.each([
     ["deployment.succeeded", "succeeded"],
     ["deployment.error", "failed"],
@@ -70,9 +70,7 @@ describe("Vercel webhook resource events", () => {
   ] as const)(
     "normalizes %s across project, target, and commit watches",
     (eventType, outcome) => {
-      expect(
-        normalizeVercelResourceEvents({ body: webhookBody(eventType) }),
-      ).toEqual([
+      expect(normalizeVercelEvents({ body: webhookBody(eventType) })).toEqual([
         {
           eventKey: `vercel:evt_delivery_123:${eventType}`,
           eventType,
@@ -108,13 +106,35 @@ Deployment: dpl_123abc`,
     },
   );
 
+  it("ignores whitespace-only project IDs", () => {
+    const body = webhookBody();
+    body.payload.project.id = " ";
+
+    expect(normalizeVercelEvents({ body })).toEqual([]);
+  });
+
+  it("accepts an opaque Vercel project ID", () => {
+    const body = webhookBody();
+    body.payload.project.id = "QmLegacyProject123";
+
+    expect(normalizeVercelEvents({ body })).toEqual([
+      expect.objectContaining({ identifier: "QmLegacyProject123" }),
+      expect.objectContaining({
+        identifier: "QmLegacyProject123:production",
+      }),
+      expect.objectContaining({
+        identifier: `QmLegacyProject123:production:${COMMIT_SHA}`,
+      }),
+    ]);
+  });
+
   it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
     const body = webhookBody("deployment.succeeded", null);
     body.payload.deployment.meta = {
       gitlabCommitSha: COMMIT_SHA.toUpperCase(),
     };
 
-    expect(normalizeVercelResourceEvents({ body })).toEqual([
+    expect(normalizeVercelEvents({ body })).toEqual([
       expect.objectContaining({
         identifier: "prj_junior",
       }),
@@ -132,7 +152,7 @@ Deployment: dpl_123abc`,
     const body = webhookBody();
     body.payload.deployment.meta = {};
 
-    expect(normalizeVercelResourceEvents({ body })).toEqual([
+    expect(normalizeVercelEvents({ body })).toEqual([
       {
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
@@ -176,13 +196,13 @@ Deployment: dpl_123abc`,
     ];
 
     for (const payload of payloads) {
-      expect(normalizeVercelResourceEvents({ body: payload })).toEqual([]);
+      expect(normalizeVercelEvents({ body: payload })).toEqual([]);
     }
   });
 
   it("rejects a non-numeric event timestamp", () => {
     expect(
-      normalizeVercelResourceEvents({
+      normalizeVercelEvents({
         body: { ...webhookBody(), createdAt: "2026-07-22T12:00:00Z" },
       }),
     ).toEqual([]);
@@ -217,7 +237,7 @@ Deployment: dpl_123abc`,
     const publish = vi.fn(async () => {});
     const [route] =
       vercelPlugin().hooks?.routes?.({
-        resourceEvents: { publish },
+        events: { publish },
       } as never) ?? [];
 
     const response = await route?.handler(signedRequest(webhookBody()));
@@ -269,7 +289,7 @@ Deployment: dpl_123abc`,
 
   it("propagates publisher failures so Vercel can retry", async () => {
     const route = createVercelWebhookRoute({
-      resourceEvents: {
+      events: {
         publish: vi.fn(async () => {
           throw new Error("queue unavailable");
         }),

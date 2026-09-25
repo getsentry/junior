@@ -1,0 +1,51 @@
+import { TranscriptAttachment } from "./TranscriptAttachment";
+
+import { getDashboardAgentName } from "../agentName";
+import { formatMessageTimestamp } from "../format";
+import type {
+  ConversationTranscript,
+  TranscriptViewAttachmentsDeliveredPart,
+} from "../types";
+import {
+  TranscriptHeadingMeta,
+  TranscriptHeadingRow,
+} from "./TranscriptHeadingRow";
+import { TranscriptMessageShell } from "./TranscriptMessageShell";
+
+/** Render host-delivered conversation attachments as first-class transcript media. */
+export function TranscriptAttachmentsDeliveredView(props: {
+  conversation: ConversationTranscript;
+  part: TranscriptViewAttachmentsDeliveredPart;
+  timestamp?: number;
+}) {
+  const timestamp = formatMessageTimestamp(props.timestamp);
+
+  return (
+    <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
+      <TranscriptHeadingRow
+        left={
+          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-cyan-100">
+            {getDashboardAgentName()}
+          </span>
+        }
+        leftClassName="text-xs leading-snug text-cyan-100/70"
+        right={
+          timestamp ? (
+            <TranscriptHeadingMeta className="text-xs leading-snug text-dashboard-text-muted md:leading-none">
+              {timestamp}
+            </TranscriptHeadingMeta>
+          ) : undefined
+        }
+      />
+      <div className="grid min-w-0 w-full max-w-full gap-2">
+        {props.part.attachments.map((attachment) => (
+          <TranscriptAttachment
+            attachment={attachment}
+            conversationId={props.conversation.conversationId}
+            key={attachment.id}
+          />
+        ))}
+      </div>
+    </TranscriptMessageShell>
+  );
+}

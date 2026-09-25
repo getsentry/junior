@@ -1,7 +1,13 @@
+import { createHash } from "node:crypto";
+import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 
 import { personalSpendRefreshDelay } from "../src/client/api";
+import { fetchDashboardJson } from "../src/client/http";
+import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
+import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
   readConversationData,
@@ -24,6 +30,18 @@ function event(seq: number): ConversationReportEvent {
 describe("dashboard client API", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("preserves stored web Message ids when deriving them in the browser", async () => {
+    const conversationId = "slack:C1:123";
+    const idempotencyKey = "attempt-1";
+    const storedId = `api-msg:${createHash("sha256")
+      .update(`${conversationId}\u0000${idempotencyKey}`)
+      .digest("hex")
+      .slice(0, 24)}`;
+    expect(await webMessageId({ conversationId, idempotencyKey })).toBe(
+      storedId,
+    );
   });
 
   it("restarts Google sign-in when product API auth expires", async () => {
@@ -125,6 +143,35 @@ describe("dashboard client API", () => {
     expect(personalSpendRefreshDelay("2026-08-03T11:54:00.000Z", nowMs)).toBe(
       1_000,
     );
+  });
+
+  it("detects a newer server version without false positives", () => {
+    expect(dashboardVersionDrift("999.0.0")).toBe(true);
+    expect(dashboardVersionDrift(JUNIOR_VERSION)).toBe(false);
+    expect(dashboardVersionDrift("unknown")).toBe(false);
+    expect(dashboardVersionDrift()).toBe(false);
+  });
+
+  it("publishes the server version from dashboard responses", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          { events: [], eventHistory: { status: "available" }, generatedAt },
+          { headers: { [DASHBOARD_VERSION_HEADER]: "999.0.0" } },
+        ),
+      ),
+    );
+
+    await readConversationEvents("slack:C1:123", "history cursor");
+
+    expect(dispatchEvent).toHaveBeenCalledOnce();
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({
+      detail: "999.0.0",
+      type: "junior:dashboard-version",
+    });
   });
 
   it("does not redirect for non-auth product API failures", async () => {

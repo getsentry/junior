@@ -1,21 +1,16 @@
-import type { SlackListsItemsListResponse } from "@slack/web-api";
+import type { RichTextBlock } from "@slack/types";
+import type {
+  FilesInfoResponse,
+  SlackListsItemsCreateArguments,
+  SlackListsItemsUpdateArguments,
+  SlackListsItemsListResponse,
+} from "@slack/web-api";
 import {
   getFilePermalink,
   getSlackClient,
   withSlackRetries,
 } from "@/chat/slack/client";
 import type { SlackUserId } from "@/chat/slack/ids";
-
-type RichTextBlock = {
-  type: "rich_text";
-  elements: Array<{
-    type: string;
-    elements: Array<{
-      type: string;
-      text: string;
-    }>;
-  }>;
-};
 
 export interface ListColumnMap {
   titleColumnId?: string;
@@ -24,27 +19,13 @@ export interface ListColumnMap {
   dueDateColumnId?: string;
 }
 
-interface SlackListsSchemaColumnResponse {
-  id: string;
-  key: string;
-  name: string;
-  type: string;
-  is_primary_column?: boolean;
-}
+type SlackListsSchemaColumnResponse = NonNullable<
+  NonNullable<NonNullable<FilesInfoResponse["file"]>["list_metadata"]>["schema"]
+>[number];
+type SlackListsItem = NonNullable<SlackListsItemsListResponse["items"]>[number];
 
-type SlackListsItemField =
-  | { column_id: string; rich_text: RichTextBlock[] }
-  | { column_id: string; user: string[] }
-  | { column_id: string; date: string[] }
-  | { column_id: string; checkbox: boolean };
-
-interface SlackListsItem {
-  id: string;
-  fields: unknown[];
-}
-
-function normalizeKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+function normalizeKey(value: string | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
 
 /** Infer well-known column roles (title, completed, assignee, due date) from a list schema. */
@@ -93,7 +74,10 @@ export function inferListColumnMap(
   };
 }
 
-function richTextField(columnId: string, value: string): SlackListsItemField {
+function richTextField(
+  columnId: string,
+  value: string,
+): { column_id: string; rich_text: RichTextBlock[] } {
   return {
     column_id: columnId,
     rich_text: [
@@ -106,8 +90,8 @@ function richTextField(columnId: string, value: string): SlackListsItemField {
           },
         ],
       },
-    ] as RichTextBlock[],
-  } as SlackListsItemField;
+    ],
+  };
 }
 
 const DEFAULT_TODO_SCHEMA = [
@@ -163,10 +147,7 @@ export async function getListColumnMap(listId: string): Promise<ListColumnMap> {
     3,
     { action: "files.info", idempotent: true },
   );
-  const file = response.file as
-    | { list_metadata?: { schema?: SlackListsSchemaColumnResponse[] } }
-    | undefined;
-  return inferListColumnMap(file?.list_metadata?.schema ?? []);
+  return inferListColumnMap(response.file?.list_metadata?.schema);
 }
 
 /** Add one or more items to an existing Slack list. */
@@ -190,9 +171,9 @@ export async function addListItems(input: {
   const createdItemIds: string[] = [];
 
   for (const title of input.titles) {
-    const initialFields: SlackListsItemField[] = [
-      richTextField(listColumnMap.titleColumnId, title),
-    ];
+    const initialFields: NonNullable<
+      SlackListsItemsCreateArguments["initial_fields"]
+    > = [richTextField(listColumnMap.titleColumnId, title)];
 
     if (input.assigneeUserId && listColumnMap.assigneeColumnId) {
       initialFields.push({
@@ -212,7 +193,7 @@ export async function addListItems(input: {
       () =>
         client.slackLists.items.create({
           list_id: input.listId,
-          initial_fields: initialFields as never,
+          initial_fields: initialFields,
         }),
       3,
       { action: "slackLists.items.create" },
@@ -278,14 +259,14 @@ export async function updateListItem(input: {
     Object.keys(input.listColumnMap).length > 0
       ? input.listColumnMap
       : await getListColumnMap(input.listId);
-  const cells: Array<{ row_id: string } & SlackListsItemField> = [];
+  const cells: SlackListsItemsUpdateArguments["cells"] = [];
 
   if (typeof input.completed === "boolean" && listColumnMap.completedColumnId) {
     cells.push({
       row_id: input.itemId,
       column_id: listColumnMap.completedColumnId,
       checkbox: input.completed,
-    } as { row_id: string } & SlackListsItemField);
+    });
   }
 
   if (
@@ -295,11 +276,8 @@ export async function updateListItem(input: {
   ) {
     cells.push({
       row_id: input.itemId,
-      ...(richTextField(
-        listColumnMap.titleColumnId,
-        input.title,
-      ) as SlackListsItemField),
-    } as { row_id: string } & SlackListsItemField);
+      ...richTextField(listColumnMap.titleColumnId, input.title),
+    });
   }
 
   if (cells.length === 0) {
@@ -312,7 +290,7 @@ export async function updateListItem(input: {
     () =>
       client.slackLists.items.update({
         list_id: input.listId,
-        cells: cells as never,
+        cells,
       }),
     3,
     { action: "slackLists.items.update" },

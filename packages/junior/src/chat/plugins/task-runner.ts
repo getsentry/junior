@@ -7,6 +7,7 @@
  */
 import type {
   Actor,
+  Location,
   PluginRegistration,
   PluginRunContext,
   PluginRunTranscriptEntry,
@@ -14,12 +15,14 @@ import type {
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
+
 import {
   getPiMessageRole,
   instructionTextForProjection,
@@ -29,8 +32,9 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
@@ -43,14 +47,15 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
+import { coreTaskRegistrations } from "@/chat/briefs/registration";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
+  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
-} from "./task-message";
-import { sendVercelPluginTask } from "./task-queue";
+} from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
@@ -91,7 +96,8 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = message as unknown as Record<string, unknown>;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const record = message as Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,
@@ -125,7 +131,7 @@ function messageProvenance(
 ): PluginRunTranscriptProvenance {
   return {
     authority: provenance.authority,
-    ...(provenance.actor ? { actor: provenance.actor } : {}),
+    ...(provenance.actor ? { actor: provenance.actor } : undefined),
   };
 }
 
@@ -170,7 +176,7 @@ function runTranscriptEntry(
     type: "toolResult",
     toolName,
     isError: isToolResultError(message),
-    ...(text ? { text } : {}),
+    ...(text ? { text } : undefined),
   };
 }
 
@@ -203,7 +209,7 @@ function turnMessagesWithProvenance(
 
 /** Recover the Slack context author identity from a persisted thread message. */
 function slackContextAuthor(
-  source: { teamId: string },
+  location: { teamId: string },
   message: ConversationMessage,
 ): Actor | undefined {
   const userId = message.author?.userId?.trim();
@@ -212,10 +218,14 @@ function slackContextAuthor(
   }
   return {
     platform: "slack",
-    teamId: source.teamId,
+    teamId: location.teamId,
     userId,
-    ...(message.author?.userName ? { userName: message.author.userName } : {}),
-    ...(message.author?.fullName ? { fullName: message.author.fullName } : {}),
+    ...(message.author?.userName
+      ? { userName: message.author.userName }
+      : undefined),
+    ...(message.author?.fullName
+      ? { fullName: message.author.fullName }
+      : undefined),
   };
 }
 
@@ -250,26 +260,19 @@ function messageExistedAtRunCompletion(
 /**
  * Project bounded public-thread context into the run transcript.
  *
- * Prior public Slack messages are durable conversation evidence a completed run
- * may have acted on, so passive consumers can cite them. They are always
- * context authority (never instruction), and only public Slack sources
- * contribute; private and local sources add nothing here.
+ * Prior public Slack messages from the current Conversation are durable
+ * evidence a completed run may have acted on, so passive consumers can cite
+ * them. They are always context authority (never instruction), and private or
+ * local Conversations add nothing here.
  */
 async function loadConversationContextTranscriptEntries(
   record: TurnRecord,
-  source: PluginRunContext["source"],
+  location: Location | undefined,
+  visibility: ConversationPrivacy | undefined,
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
-  // Prior conversation evidence is a Slack public-channel concern only.
-  switch (source.platform) {
-    case "slack":
-      if (source.visibility === "private") {
-        return [];
-      }
-      break;
-    case "web":
-    case "local":
-      return [];
+  if (location?.provider !== "slack" || visibility !== "public") {
+    return [];
   }
   const state = await getPersistedThreadState(record.conversationId);
   const conversation = coerceThreadConversationState(state);
@@ -289,14 +292,14 @@ async function loadConversationContextTranscriptEntries(
     if (!text) {
       continue;
     }
-    const author = slackContextAuthor(source, message);
+    const author = slackContextAuthor(location, message);
     entries.push({
       type: "message",
       role: "user",
       text,
       provenance: {
         authority: "context",
-        ...(author ? { actor: author } : {}),
+        ...(author ? { actor: author } : undefined),
       },
       isRunActor: sameActorIdentity(author, runActor),
     });
@@ -336,17 +339,37 @@ async function loadPluginRun(
   if (record.state !== "completed") {
     throw new Error("Completed plugin task session record is not completed");
   }
-  const routing = await resolveTurnSessionRouting({
+  const conversationStore = getConversationStore();
+  const routing = await resolveConversationRouting({
+    conversationId: params.conversationId,
+    conversationStore,
+  });
+  if (!routing) {
+    throw new Error(
+      `Conversation ${params.conversationId} is missing durable routing metadata`,
+    );
+  }
+  // TODO(dcramer): Remove the session Source fallback after every deployed
+  // Turn cursor stores Source.
+  const source = record.source ?? routing.source;
+  if (!source) {
+    throw new Error("Completed plugin task session record is missing Source");
+  }
+  const conversation = await conversationStore.get({
     conversationId: params.conversationId,
   });
-  // Singular run.actor comes from committed instruction provenance, or the
-  // dispatch record for system-only runs. Optional only for legacy actor-less
-  // records (plugins must fail closed on authority-sensitive work).
+  // The Turn Actor owns the run.
+  // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
+  // deployed Turn cursor can omit Actor.
   const runActor =
+    record.actor ??
     record.actors[0] ??
     (record.dispatchId
       ? (await getDispatchRecord(record.dispatchId))?.actor
       : undefined);
+  const actorUser = runActor
+    ? (await readActorIdentity(runActor))?.user
+    : undefined;
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),
@@ -360,22 +383,25 @@ async function loadPluginRun(
   const contextEntries = (
     await loadConversationContextTranscriptEntries(
       record,
-      routing.source,
+      conversation?.location,
+      conversation?.visibility,
       runActor,
     )
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
   return pluginRunContextSchema.parse({
+    ...(actorUser ? { actorUserId: actorUser.id } : undefined),
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: routing.destination,
-    // Derived from the full run provenance on the record, not the sliced or
-    // stripped transcript, so it reflects every committed instruction actor.
+    ...(routing.location ? { locationId: routing.location.id } : undefined),
+    // Read Actors from the full run record, not the shorter transcript.
+    // This includes every Actor that supplied an instruction.
     actors: record.actors,
-    ...(runActor ? { actor: runActor } : {}),
+    ...(runActor ? { actor: runActor } : undefined),
     runId: record.turnId,
-    source: routing.source,
+    source,
     transcript: [...contextEntries, ...runEntries],
   });
 }
@@ -416,7 +442,7 @@ function taskPluginContext(
 }
 
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = getPlugins().find(
+  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -432,7 +458,10 @@ export async function scheduleSessionCompletedPluginTasks(
   options: ScheduleSessionCompletedPluginTasksOptions = {},
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = getPlugins().flatMap((plugin) =>
+  const taskRegistrations = [
+    ...getPlugins(),
+    ...coreTaskRegistrations(),
+  ].flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
   if (taskRegistrations.length === 0) {

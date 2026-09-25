@@ -11,11 +11,16 @@ export function PageHeader(props: {
   description: ReactNode;
   onRangeChange?(value: TimeRangeDays): void;
   range?: TimeRangeDays;
+  rangeOptions?: TimeRangeDays[];
   title: ReactNode;
 }) {
   const rangeActions =
     props.range !== undefined && props.onRangeChange ? (
-      <TimeRangeSelector onChange={props.onRangeChange} value={props.range} />
+      <TimeRangeSelector
+        onChange={props.onRangeChange}
+        {...(props.rangeOptions ? { options: props.rangeOptions } : {})}
+        value={props.range}
+      />
     ) : undefined;
   const actions = props.actions ?? rangeActions;
 

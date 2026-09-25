@@ -115,8 +115,8 @@ export async function listDir(params: {
         : bounded.content.split("\n"),
     entry_count: output.length,
     total_entries: entries.length,
-    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    ...(entryLimitReached ? { entry_limit_reached: limit } : {}),
+    ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+    ...(entryLimitReached ? { entry_limit_reached: limit } : undefined),
   });
 }
 

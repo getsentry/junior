@@ -1,17 +1,17 @@
 import type {
   Actor,
   Identity,
-  LocalInvocationContext,
+  InvocationContext,
   PluginContext,
   PluginEmbedder,
   PluginModel,
-  SlackInvocationContext,
   User,
-  WebInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
+import { objectAnnotationSchema } from "./object-annotations";
 import type { SlackConversationLink } from "./operations";
+import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -140,6 +140,22 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+/** Complete Workspace repository preparation after credential egress is removed. */
+export type WorkspaceFinalize = () => Promise<void> | void;
+
+/**
+ * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
+ * Implementations should refresh complete checkouts and replace missing or
+ * partial ones.
+ */
+export interface WorkspacePrepareHookContext extends PluginContext {
+  repos: Array<{
+    path: string;
+    repo: string;
+  }>;
+  sandbox: PluginSandbox;
+}
+
 export interface SandboxPrepareHookContext extends PluginContext {
   actor?: Actor;
   sandbox: PluginSandbox;
@@ -154,6 +170,13 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   tool: {
     input: Record<string, unknown>;
     name: string;
+  };
+  /**
+   * Resolve the current actor's stored identity and linked user.
+   * Same contract as tool registration; used for commit attribution.
+   */
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
 }
 
@@ -203,6 +226,8 @@ export const pluginToolContinuationSchema = z
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
+    /** Object results to save and show with the next reply. Omit for silent updates. */
+    objectAnnotations: z.array(objectAnnotationSchema).optional(),
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
@@ -283,6 +308,9 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
+/** Control whether a tool is visible to the model and available in the tool catalog. */
+export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+
 export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
@@ -290,6 +318,8 @@ export interface PluginToolDefinition<
 > extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
+  /** Override the host's default tool exposure. */
+  exposure?: ToolExposure;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -438,7 +468,7 @@ function createZodTool<
             return outputSchema.parse(result);
           },
         }
-      : {}),
+      : undefined),
   } as PluginToolDefinition<
     z.output<TInputSchema>,
     z.output<TOutputSchema>,
@@ -490,8 +520,8 @@ export function definePluginTool<
 
 export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of the source Slack conversation exposed to this plugin.
-   * Recomputed from `source.channelId`, not from `destination`.
+   * What Slack tools can do in the Conversation Location.
+   * Computed from Location, not from Source or Destination.
    */
   channelCapabilities: {
     canAddReactions: boolean;
@@ -506,9 +536,23 @@ export interface SlackToolRegistrationHookContext {
   >;
 }
 
-export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource-event subscription. */
+export interface PluginEventToolContext {
+  /** Whether this invocation can create a working watch. */
   canSubscribe: boolean;
+  /** Create a temporary watch for the current conversation. */
+  subscribe(input: {
+    events: string[];
+    intent: string;
+    resource: SubscribableResource;
+  }): Promise<WatchResult>;
+}
+
+export interface PluginWorkspaceToolContext {
+  /** Find named Workspaces that include one provider repository. */
+  findByRepository(input: {
+    provider: string;
+    repo: string;
+  }): Promise<string[]>;
 }
 
 interface BaseToolRegistrationHookContext extends PluginContext {
@@ -524,7 +568,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   egress: PluginEgress;
   mcp?: PluginMcp;
   model: PluginModel;
-  resourceEvents: PluginResourceEventToolContext;
+  events: PluginEventToolContext;
   /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
   sandbox: PluginSandbox;
   state: PluginState;
@@ -533,24 +577,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
   userText?: string;
+  workspaces: PluginWorkspaceToolContext;
 }
 
-interface SlackToolRegistrationContext
-  extends BaseToolRegistrationHookContext, SlackInvocationContext {
-  slack: SlackToolRegistrationHookContext;
-}
-
-interface LocalToolRegistrationContext
-  extends BaseToolRegistrationHookContext, LocalInvocationContext {
-  slack?: never;
-}
-
-interface WebToolRegistrationContext
-  extends BaseToolRegistrationHookContext, WebInvocationContext {
-  slack?: never;
-}
-
-export type ToolRegistrationHookContext =
-  | LocalToolRegistrationContext
-  | SlackToolRegistrationContext
-  | WebToolRegistrationContext;
+export type ToolRegistrationHookContext = BaseToolRegistrationHookContext &
+  InvocationContext & {
+    /** Slack tool details when the Conversation has a Slack Location. */
+    slack?: SlackToolRegistrationHookContext;
+  };

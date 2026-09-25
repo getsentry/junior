@@ -176,3 +176,15 @@ export function createSandboxSession(
     },
   };
 }
+
+/** Best-effort stop; ignore secondary stop failures during cleanup. */
+export async function stopSession(
+  session: { stop: () => Promise<unknown> } | null | undefined,
+): Promise<void> {
+  if (!session) return;
+  try {
+    await session.stop();
+  } catch {
+    // Best-effort stop during cleanup.
+  }
+}

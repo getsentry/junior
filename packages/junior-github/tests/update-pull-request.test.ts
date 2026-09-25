@@ -1,7 +1,5 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
-
 const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 function toolContext(response?: Response) {
@@ -13,6 +11,7 @@ function toolContext(response?: Response) {
           base: { ref: "release" },
           body: "Updated body",
           draft: false,
+          merged: false,
           html_url: "https://github.com/getsentry/junior/pull/691",
           number: 691,
           state: "open",
@@ -30,11 +29,15 @@ function toolContext(response?: Response) {
     },
     conversationId: "slack:C123:123.456",
     egress: { fetch },
-    resourceEvents: { canSubscribe: true },
+    log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+    events: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },
-  } as unknown as ToolRegistrationHookContext;
+    users: {
+      resolveActor: async () => undefined,
+    },
+  };
   return { fetch, tool: createGitHubUpdatePullRequestTool(ctx) };
 }
 
@@ -47,7 +50,7 @@ describe("updatePullRequest", () => {
     }
   });
 
-  it("updates mutable pull request fields and preserves Junior-owned body metadata", async () => {
+  it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 
@@ -67,6 +70,7 @@ describe("updatePullRequest", () => {
       base: "release",
       number: 691,
       state: "open",
+      objectAnnotations: [{ status: "open" }],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
@@ -91,10 +95,43 @@ describe("updatePullRequest", () => {
       body: expect.stringContaining("Updated body"),
     });
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer**.");
+    expect(body.body).toContain("via **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );
+  });
+
+  it("preserves merged status when updating a merged pull request", async () => {
+    const { tool } = toolContext(
+      new Response(
+        JSON.stringify({
+          base: { ref: "main" },
+          body: "Updated body",
+          draft: false,
+          merged: true,
+          html_url: "https://github.com/getsentry/junior/pull/691",
+          number: 691,
+          state: "closed",
+          title: "Updated title",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691, title: "Updated title" },
+        { toolCallId: "update-merged-pr" },
+      ),
+    ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          key: "getsentry/junior#691",
+          status: "merged",
+          title: "Updated title",
+        },
+      ],
+    });
   });
 
   it.each([

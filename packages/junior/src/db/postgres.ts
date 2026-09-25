@@ -9,6 +9,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
 
 const { Pool } = pg;
 
@@ -18,7 +19,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
 
-  constructor(private readonly pool: PgPool) {}
+  constructor(
+    private readonly pool: PgPool,
+    private readonly connectionString: string,
+  ) {}
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -133,7 +137,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
+      connectionString: this.connectionString,
+      driver: "postgres",
+    });
   }
 }
 
@@ -150,5 +157,6 @@ export function createPostgresJuniorSqlExecutor(args: {
       max: 3,
       statement_timeout: args.statementTimeoutMs,
     }),
+    args.connectionString,
   );
 }

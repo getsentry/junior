@@ -1,23 +1,29 @@
 /**
- * Authenticated REST resources for viewer-visible memories.
+ * Authenticated REST access to memory.
  *
- * HTTP identity is one verified user whose linked identities authorize
- * personal and public workspace scopes.
+ * The signed-in User can read public memory and private memory that they own.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
+  type PluginConversationEventReader,
   type PluginConversationEventStats,
   type PluginRouteApp,
   type User,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
-  createViewerMemories,
+  archiveMemory,
+  getMemory,
+  getMemoryStats,
+  getMemoryTimeline,
+  getMemoryTimelineHours,
   InvalidMemoryCursorError,
-  PersonalMemoryNotFoundError,
-  type PersonalMemoryRecord,
-} from "./personal";
+  listMemories,
+  MemoryNotFoundError,
+  type MemoryView,
+} from "./viewer";
+import { parseCapturedMemories } from "./events";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -41,9 +47,25 @@ export const memoryListResponseSchema = z
   })
   .strict();
 
+export const conversationMemorySchema = z
+  .object({
+    capturedAt: z.iso.datetime(),
+    content: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.enum(["preference", "procedure", "knowledge"]),
+    visibility: z.enum(["private", "public"]),
+  })
+  .strict();
+
+export const conversationMemoryListResponseSchema = z
+  .object({ memories: z.array(conversationMemorySchema) })
+  .strict();
+
+const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 const memoryDashboardDaySchema = z
   .object({
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     personal: z.number().int().min(0),
     public: z.number().int().min(0),
   })
@@ -52,7 +74,7 @@ const memoryDashboardDaySchema = z
 const memoryCostDaySchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     events: z.number().int().min(0),
   })
   .strict();
@@ -61,8 +83,11 @@ export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
+    extractionHours: z.array(memoryCostDaySchema).min(24).optional(),
     generatedAt: z.iso.datetime(),
+    hours: z.array(memoryDashboardDaySchema).min(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
+    recallHours: z.array(memoryCostDaySchema).min(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -95,6 +120,7 @@ const memoryListQuerySchema = z
   .strict();
 
 interface MemoryApiOptions {
+  conversationEvents: PluginConversationEventReader;
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
   users: {
@@ -109,15 +135,13 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(
-  memory: PersonalMemoryRecord,
-): z.output<typeof memoryApiSchema> {
+function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
     ...(memory.expiresAtMs !== undefined
       ? { expiresAt: new Date(memory.expiresAtMs).toISOString() }
-      : {}),
+      : undefined),
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
@@ -125,6 +149,12 @@ function apiMemory(
     sourcePlatform: memory.sourcePlatform,
     visibility: memory.visibility,
   };
+}
+
+function currentMemoryVisibility(
+  scope: "personal" | "conversation" | "private" | "public",
+): "private" | "public" {
+  return scope === "personal" || scope === "private" ? "private" : "public";
 }
 
 function viewerEmail(context: unknown): string | undefined {
@@ -135,7 +165,7 @@ function viewerEmail(context: unknown): string | undefined {
   return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
 }
 
-/** Create the authenticated viewer-memory REST app. */
+/** Create the authenticated memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {
@@ -146,9 +176,12 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
+      const conversationPath = /^\/conversations\/([^/]+)\/memories$/.exec(
+        url.pathname,
+      );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath) {
+      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -156,30 +189,95 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Method not allowed." }, 405);
       }
 
-      const user = await options.users.resolve(email);
-      if (!user) return json({ error: "Authentication required." }, 401);
+      const viewer = await options.users.resolve(email);
+      if (!viewer) return json({ error: "Authentication required." }, 401);
+      const userId = viewer.id;
 
-      const memories = createViewerMemories(options.db, user);
       try {
         if (isDashboard && isRead) {
-          const [stats, days, extractionDays, recallDays] = await Promise.all([
-            memories.stats(),
-            memories.timeline({ days: 90 }),
+          const [
+            stats,
+            days,
+            hours,
+            extractionDays,
+            extractionHours,
+            recallDays,
+            recallHours,
+          ] = await Promise.all([
+            getMemoryStats(options.db, userId),
+            getMemoryTimeline(options.db, userId, 90),
+            getMemoryTimelineHours(options.db, userId, 7 * 24),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
+            }),
+            options.eventStats.costsByHour({
+              eventName: "memories_captured",
+              hours: 7 * 24,
             }),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_recalled",
             }),
+            options.eventStats.costsByHour({
+              eventName: "memories_recalled",
+              hours: 7 * 24,
+            }),
           ]);
+          const { private: personal, ...dashboardStats } = stats;
           const body = memoryDashboardResponseSchema.parse({
-            days,
+            days: days.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             extractionDays,
+            extractionHours,
             generatedAt: new Date().toISOString(),
+            hours: hours.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             recallDays,
-            stats,
+            recallHours,
+            stats: { ...dashboardStats, personal },
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (conversationPath && isRead) {
+          const events = await options.conversationEvents.list({
+            conversationId: decodeURIComponent(conversationPath[1]!),
+            eventName: "memories_captured",
+            viewer,
+          });
+          if (!events) return json({ error: "Conversation not found." }, 404);
+          const memories = new Map<
+            string,
+            z.input<typeof conversationMemorySchema>
+          >();
+          for (const event of events) {
+            for (const memory of parseCapturedMemories(
+              event.version,
+              event.content,
+            )) {
+              if (!memories.has(memory.id)) {
+                memories.set(memory.id, {
+                  capturedAt: event.createdAt,
+                  content: memory.content,
+                  id: memory.id,
+                  kind: memory.kind,
+                  visibility: currentMemoryVisibility(memory.scope),
+                });
+              }
+            }
+          }
+          const body = conversationMemoryListResponseSchema.parse({
+            memories: [...memories.values()],
           });
           return request.method === "HEAD"
             ? new Response(null, {
@@ -195,14 +293,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             limit: url.searchParams.get("limit") ?? undefined,
             q: url.searchParams.get("q") ?? undefined,
           });
-          const page = await memories.list({
+          const page = await listMemories(options.db, userId, {
             cursor: query.cursor,
             limit: query.limit,
-            ...(query.q ? { query: query.q } : {}),
+            ...(query.q ? { query: query.q } : undefined),
           });
           const body = memoryListResponseSchema.parse({
             memories: page.memories.map(apiMemory),
-            ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+            ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
           });
           return request.method === "HEAD"
             ? new Response(null, {
@@ -213,19 +311,23 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         }
 
         if (memoryPath && isRead) {
-          const memory = memoryApiSchema.parse(
-            apiMemory(await memories.get(decodeURIComponent(memoryPath[1]!))),
+          const memory = await getMemory(
+            options.db,
+            userId,
+            decodeURIComponent(memoryPath[1]!),
           );
+          const body = memoryApiSchema.parse(apiMemory(memory));
           return request.method === "HEAD"
             ? new Response(null, {
                 headers: { "cache-control": "no-store" },
                 status: 200,
               })
-            : json(memory);
+            : json(body);
         }
 
         if (memoryPath && request.method === "DELETE") {
-          await memories.archive(decodeURIComponent(memoryPath[1]!));
+          const id = decodeURIComponent(memoryPath[1]!);
+          await archiveMemory(options.db, userId, id);
           return new Response(null, {
             headers: { "cache-control": "no-store" },
             status: 204,
@@ -238,7 +340,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         ) {
           return json({ error: "Invalid memory request." }, 400);
         }
-        if (error instanceof PersonalMemoryNotFoundError) {
+        if (error instanceof MemoryNotFoundError) {
           return json({ error: error.message }, 404);
         }
         throw error;

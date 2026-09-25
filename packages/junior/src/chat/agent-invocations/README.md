@@ -15,8 +15,8 @@ stores the terminal result for its parent to read later.
   idempotency key. Optional reasoning level is per-invocation policy, not
   binding state.
 - An invocation without a name gets an invocation-scoped child conversation.
-- Child conversation lineage is immutable. Bindings and invocation content are
-  purged with their root conversation tree. Recursive delegation is disabled
+- `parentConversationId` is immutable. Bindings and invocation content are
+  purged with their root Conversation tree. Recursive delegation is disabled
   until depth, cancellation, and authority rules are defined. Children cannot
   spawn, hand off model profiles, or otherwise override their run policy.
 - Each parent may keep at most
@@ -46,10 +46,13 @@ conversation tree.
    result or error onto the invocation.
 7. The heartbeat repairs invocations left in `mailboxStatus: "pending"`.
 
-The child conversation has no provider destination. Each invocation carries
-the actor, credential context, source, and destination that bound its tool
-execution. Child output is an internal result; provider delivery remains owned
-by the parent-facing runtime.
+A Conversation created for an Agent invocation stores `parentConversationId`.
+It uses the same Conversation type as all other work. It does not copy the
+parent Conversation's Location or receive Delivery. Its Run reads the parent
+Conversation's Location when tools need it. Output stays inside Junior. Agent
+invocation fields still carry the Actor, credentials, Source, and Destination
+until the final Run interface removes Destination. The final Run carries the
+parent Location once, separate from Source and Delivery.
 
 ## Current Boundary
 
@@ -64,8 +67,8 @@ visibility, source, parent conversation, and idempotency from the active tool
 call. Child runs set
 `disabledFeatures: ["handoff", "interactive-auth", "subagents"]` so they cannot
 hand off models, start interactive OAuth pauses, or spawn further children.
-TODO(#881, #883): children may still need a way to force interactive auth when a
-delegated tool requires credentials the parent can already request.
+TODO(dcramer): Issues #881 and #883 track a way for children to force interactive
+auth when a delegated tool requires credentials the parent can already request.
 
 This slice does not yet expose result recovery, inject child results into a
 parent turn, support recursive children, or implement cancellation. Those

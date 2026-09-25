@@ -1,6 +1,6 @@
 # @sentry/junior-vercel
 
-`@sentry/junior-vercel` adds read-only Vercel deployment and log investigation workflows through the Vercel CLI. Signed Vercel webhooks can also notify an existing Junior conversation when a deployment succeeds, fails, or is canceled.
+`@sentry/junior-vercel` adds Vercel deployment and alias tools, plus CLI workflows for deployment and log investigation. Signed Vercel webhooks can also notify an existing Junior conversation when a deployment succeeds, fails, or is canceled.
 
 ## Install
 
@@ -31,7 +31,7 @@ Set a Vercel token in the Junior deployment environment:
 JUNIOR_VERCEL_TOKEN=...
 ```
 
-Use a Vercel service account or token with the smallest project/team access that covers the deployments users need to inspect.
+Use a Vercel service account or token with access to the required projects and actions. The same token handles reads and writes.
 
 ## Optional deployment webhooks
 
@@ -43,15 +43,15 @@ https://<junior-host>/api/webhooks/vercel
 
 The endpoint must be publicly reachable. Subscribe it to `deployment.succeeded`, `deployment.error`, and `deployment.canceled`, select the projects Junior should monitor, and save the one-time secret as a sensitive `VERCEL_WEBHOOK_SECRET` value in Junior's Production environment. Redeploy Junior after adding it.
 
-Deployment watches use Vercel's canonical `prj_...` ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
+Deployment watches use Vercel's project ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
 
 Supported scopes (`deployment` resource type):
 
-- `prj_...` for every deployment in the project
-- `prj_...:production` for every production deployment
-- `prj_...:production:<sha>` for one commit-scoped deployment
+- `<project-id>` for every deployment in the project
+- `<project-id>:production` for every production deployment
+- `<project-id>:production:<sha>` for one commit-scoped deployment
 
-Create the conversation watch or event task before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
+Create the conversation watch or event automation before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
 ## Auth model
 
@@ -71,15 +71,36 @@ jr-rpc config set vercel.team sentry
 
 These defaults are optional fallbacks. If a user names a different project, team, deployment, or URL in a request, Junior should follow the explicit request instead.
 
-## Read-only scope
+## Deployment and alias tools
 
-The bundled skill limits Junior to:
+`vercelPlugin()` registers:
 
-- `vercel logs`
-- `vercel inspect`
-- `vercel list` / `vercel ls`
-- Vercel CLI help commands
+- `vercel_deploymentCreate`: deploy a branch, tag, or commit from an existing
+  project's linked GitHub repository. Preview is the default; Production is an
+  explicit target. An optional full commit SHA pins the source while preserving
+  branch context for Vercel integrations.
+- `vercel_deploymentInspect`: inspect an ID or hostname and return deployment
+  identity, state, environment, and source when available.
+- `vercel_aliasAssign`: assign a hostname to an exact deployment ID and read
+  back the alias. `matches` is false if it no longer points at that deployment.
+- `vercel_aliasInspect`: return the alias's deployment ID or redirect.
+- `vercel_deploymentDelete`: delete an exact deployment ID when requested.
 
-It is intended for deployment status, build-log, runtime-log, and failed-deployment investigations. It is not for deploys, rollbacks, env vars, domains, caches, storage, aliases, or other Vercel mutations.
+Tools use the host-managed token and normal Guardian review. Vercel permissions
+still apply.
+
+Tools return selected fields, not full deployment records that may contain
+secrets. Creates start a build; inspect readiness before using the deployment.
+Check provider state before retrying a write whose response was lost.
+
+Use the Vercel CLI for logs, local source uploads, and other operations not
+covered by the tools.
+
+## Limits
+
+Alias checks are not locks. Moving an alias does not stop older workers or
+identify which build handled a delayed event. Builds inherit project settings
+and credentials and may run migrations. The plugin does not isolate databases
+or other state. Preview deployments do not run Vercel Cron.
 
 Full setup guide: https://junior.sentry.dev/extend/vercel-plugin/

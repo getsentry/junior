@@ -10,12 +10,16 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { juniorConversations } from "./conversations";
+import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 
 /**
  * Append-only canonical conversation history. `history_version` partitions
  * model-history replacements, while `(conversation_id, seq)` is the stable
  * event identity and lease-fencing tripwire.
+ *
+ * `actor_identity_id` is the first-class author identity for human-authored
+ * events. Message payloads may still carry display author fields in `meta`.
  */
 export const juniorConversationEvents = pgTable(
   "junior_conversation_events",
@@ -27,6 +31,9 @@ export const juniorConversationEvents = pgTable(
     idempotencyKey: text("idempotency_key"),
     type: text("type").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    actorIdentityId: text("actor_identity_id").references(
+      () => juniorIdentities.id,
+    ),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
@@ -47,6 +54,11 @@ export const juniorConversationEvents = pgTable(
     index("junior_conversation_events_type_idx").on(
       table.conversationId,
       table.type,
+      table.seq,
+    ),
+    index("junior_conversation_events_actor_identity_idx").on(
+      table.actorIdentityId,
+      table.conversationId,
       table.seq,
     ),
     index("junior_conversation_events_message_search_idx")

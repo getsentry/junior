@@ -1,14 +1,7 @@
-/**
- * Run-scoped skill discovery and restore.
- *
- * Discovers the skills available to one run slice and rehydrates active skill
- * handles from durable Pi history and explicit invocation, so resumed slices
- * keep the skill state the conversation already established.
- */
+/** Run-scoped skill discovery and explicit invocation. */
 import { logInfo } from "@/chat/logging";
 import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { inferLoadedSkillNamesFromPiMessages } from "@/chat/pi/derived-state";
 import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
@@ -53,27 +46,51 @@ export async function discoverRunSkills(args: {
   return availableSkills;
 }
 
-/** Rehydrate active skill handles from durable Pi history and explicit invocation. */
-export async function restoreSkillRuntime(args: {
+function lastLoadedSkillName(messages: readonly PiMessage[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as {
+      details?: unknown;
+      isError?: unknown;
+      role?: unknown;
+      skill_name?: unknown;
+      toolName?: unknown;
+    };
+    if (
+      message.role !== "toolResult" ||
+      message.toolName !== "loadSkill" ||
+      message.isError === true
+    ) {
+      continue;
+    }
+    const details = message.details;
+    const skillName =
+      details && typeof details === "object" && "skill_name" in details
+        ? (details as { skill_name?: unknown }).skill_name
+        : message.skill_name;
+    if (typeof skillName === "string" && skillName.trim()) {
+      return skillName;
+    }
+  }
+  return undefined;
+}
+
+/** Load the explicit skill, or recover the last skill loaded in a resumed turn. */
+export async function loadRunSkill(args: {
   activeSkills: Skill[];
+  currentTurnMessages: readonly PiMessage[];
   invokedSkill: SkillMetadata | null;
-  priorPiMessages: PiMessage[] | undefined;
+  resumed: boolean;
   skillSandbox: SkillSandbox;
-}): Promise<void> {
-  for (const skillName of inferLoadedSkillNamesFromPiMessages(
-    args.priorPiMessages,
-  )) {
-    const restoredSkill = await args.skillSandbox.loadSkill(skillName);
-    if (restoredSkill) {
-      upsertActiveSkill(args.activeSkills, restoredSkill);
-    }
+}): Promise<Skill | null> {
+  const skillName =
+    args.invokedSkill?.name ??
+    (args.resumed ? lastLoadedSkillName(args.currentTurnMessages) : undefined);
+  if (!skillName) {
+    return null;
   }
-  if (args.invokedSkill) {
-    const restoredSkill = await args.skillSandbox.loadSkill(
-      args.invokedSkill.name,
-    );
-    if (restoredSkill) {
-      upsertActiveSkill(args.activeSkills, restoredSkill);
-    }
+  const loadedSkill = await args.skillSandbox.loadSkill(skillName);
+  if (loadedSkill) {
+    upsertActiveSkill(args.activeSkills, loadedSkill);
   }
+  return loadedSkill;
 }

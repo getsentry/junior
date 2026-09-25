@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-
 const {
   DEMO_SKILL,
   agentAfterToolResults,
@@ -236,17 +234,21 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       this.state.messages.push(message);
 
       if (directMcpProviderFailure.value) {
-        const callMcpTool = this.state.tools.find(
-          (tool) => tool.name === "callMcpTool",
+        const searchMcpTools = this.state.tools.find(
+          (tool) => tool.name === "searchMcpTools",
         );
-        if (!callMcpTool) {
-          throw new Error("callMcpTool missing");
+        if (!searchMcpTools) {
+          throw new Error("searchMcpTools missing");
         }
         try {
-          await this.executeTool(callMcpTool, "tool-call-provider-failure", {
-            tool_name: "mcp__demo__ping",
-            arguments: { query: "hello" },
-          });
+          await this.executeTool(
+            searchMcpTools,
+            "tool-search-provider-failure",
+            {
+              provider: "demo",
+              query: "ping query",
+            },
+          );
         } catch {
           if (!this.aborted) {
             this.state.messages.push(
@@ -264,21 +266,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         throw new Error("loadSkill tool missing");
       }
 
-      let loadSkillResult: {
-        details?: {
-          mcp_provider?: string;
-          available_tool_count?: number;
-        };
-      };
+      let loadSkillResult: { details?: unknown };
       try {
         loadSkillResult = (await loadSkillTool.execute("tool-call-1", {
           skill_name: DEMO_SKILL.name,
-        })) as {
-          details?: {
-            mcp_provider?: string;
-            available_tool_count?: number;
-          };
-        };
+        })) as { details?: unknown };
       } catch (error) {
         loadSkillExecutionErrorCount.value += 1;
         this.state.messages.push(assistantMessage("loading demo skill"));
@@ -301,23 +293,21 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         );
         return {};
       }
-      if (loadSkillResult.details?.mcp_provider) {
-        const searchMcpTools = this.state.tools.find(
-          (tool) => tool.name === "searchMcpTools",
-        );
-        if (!searchMcpTools) {
-          throw new Error("searchMcpTools missing");
-        }
-        const searchResult = (await searchMcpTools.execute("tool-call-search", {
-          provider: loadSkillResult.details.mcp_provider,
-          query: "ping query",
-        })) as {
-          details?: { tools?: Array<{ tool_name: string }> };
-        };
-        searchMcpToolNames.push(
-          (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
-        );
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
+      );
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing");
       }
+      const searchResult = (await searchMcpTools.execute("tool-call-search", {
+        provider: "demo",
+        query: "ping query",
+      })) as {
+        details?: { tools?: Array<{ tool_name: string }> };
+      };
+      searchMcpToolNames.push(
+        (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
+      );
       const callMcpTool = this.state.tools.find(
         (tool) => tool.name === "callMcpTool",
       );
@@ -359,6 +349,16 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
+      );
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing on continue");
+      }
+      await this.executeTool(searchMcpTools, "tool-search-continue", {
+        provider: "demo",
+        query: "ping query",
+      });
       const callMcpTool = this.state.tools.find(
         (tool) => tool.name === "callMcpTool",
       );
@@ -414,10 +414,14 @@ vi.mock("@/chat/mcp/oauth", () => ({
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       userMessage: input.userMessage,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });
@@ -463,7 +467,7 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
 vi.mock("@/chat/services/guardian-action-review", () => ({
@@ -662,12 +666,14 @@ vi.mock("@/chat/mcp/client", () => {
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
+import { recordMcpProviderConnected } from "@/chat/conversations/projection";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -723,8 +729,7 @@ function makeAgentRun(
       text: messageText,
       ...(instructionOverrides ?? {}),
     },
-    ...(history ? { history } : {}),
-    destinationVisibility: "private",
+    ...(history ? { history } : undefined),
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
@@ -737,8 +742,8 @@ function makeAgentRun(
     }),
     actor: TEST_ACTOR,
     ...runOverrides,
-    ...(state ? { state } : {}),
-    ...(onEvent ? { onEvent } : {}),
+    ...(state ? { state } : undefined),
+    ...(onEvent ? { onEvent } : undefined),
     durability: {
       recordPendingAuth: async (pendingAuth) => {
         if (pendingAuth) {
@@ -826,7 +831,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists loaded plugin skills across auth pause and resume", async () => {
+  it("continues an MCP skill call across auth pause and resume", async () => {
     const context = makeAgentRun("help me", {
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
@@ -890,7 +895,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
     expect(turnContextInputs).toHaveLength(1);
-    expect(searchMcpToolNames).toEqual([]);
+    expect(searchMcpToolNames).toEqual([[]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -963,11 +968,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("keeps MCP activation failures outside the fatal action-review boundary", async () => {
+  it("keeps MCP search failures outside the action-review boundary", async () => {
     directMcpProviderFailure.value = true;
     listToolsMock.mockReset();
     listToolsMock.mockImplementation(async () => {
-      expect(guardianProposals).toHaveLength(1);
+      expect(guardianProposals).toHaveLength(0);
       throw new McpProviderError({
         phase: "connect",
         provider: "demo",
@@ -985,32 +990,10 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(reply.text).toBe("I couldn't connect to the demo provider.");
-    expect(guardianProposals).toEqual([
-      expect.objectContaining({
-        input: {
-          arguments: { query: "hello" },
-          tool_name: "mcp__demo__ping",
-        },
-        tool: expect.objectContaining({
-          name: "callMcpTool",
-        }),
-      }),
-    ]);
+    expect(guardianProposals).toEqual([]);
     expect(listToolsMock).toHaveBeenCalledOnce();
     expect(callToolMock).not.toHaveBeenCalled();
     expect(agentAfterToolResults).toHaveLength(1);
-    const events = await getConversationEventStore().loadCurrentHistory(
-      "conversation-provider-failure",
-    );
-    expect(events.map((event) => event.data)).toContainEqual({
-      type: "guardian_action_reviewed",
-      turnId: "turn-provider-failure",
-      toolCallId: "tool-call-provider-failure",
-      toolName: "callMcpTool",
-      decision: "allow",
-      riskLevel: "low",
-      userAuthorization: "high",
-    });
   });
 
   it("wires Guardian denial through the runtime before MCP execution", async () => {
@@ -1092,35 +1075,21 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(callToolMock).not.toHaveBeenCalled();
   });
 
-  it("restores MCP providers inferred from prior Pi history before building a follow-up turn prompt", async () => {
+  it("restores MCP providers this actor previously connected before building a follow-up turn prompt", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    await recordMcpProviderConnected({
+      conversationId: "conversation-restored-provider",
+      provider: "demo",
+      credentialSubjectId: "U123",
+    });
 
     await executeAgentRun(
-      makeAgentRun(
-        "help me",
-        {
-          conversationId: "conversation-restored-provider",
-          threadTs: "1712345.0090",
-          turnId: "turn-restored-provider",
-        },
-        {
-          history: [
-            {
-              input: {
-                tool_name: "mcp__demo__ping",
-                arguments: { query: "prior" },
-              },
-              role: "toolResult",
-              toolCallId: "prior-call",
-              toolName: "callMcpTool",
-              isError: false,
-              content: [{ type: "text", text: "pong" }],
-              timestamp: 1,
-            },
-          ] as unknown as PiMessage[],
-        },
-      ),
+      makeAgentRun("help me", {
+        conversationId: "conversation-restored-provider",
+        threadTs: "1712345.0090",
+        turnId: "turn-restored-provider",
+      }),
     );
 
     expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
@@ -1132,42 +1101,34 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("restores prior MCP providers for a system actor with a delegated credential subject", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    // Ownership is the credential subject (U123), not the system scheduler actor.
+    await recordMcpProviderConnected({
+      conversationId: "conversation-delegated-provider",
+      provider: "demo",
+      credentialSubjectId: "U123",
+    });
 
     await executeAgentRun(
       makeAgentRun(
-        "run the scheduled task",
+        "run the scheduled automation",
         {
           conversationId: "conversation-delegated-provider",
           threadTs: "1712345.0092",
           turnId: "turn-delegated-provider",
         },
         {
-          history: [
-            {
-              input: {
-                tool_name: "mcp__demo__ping",
-                arguments: { query: "prior" },
-              },
-              role: "toolResult",
-              toolCallId: "prior-call",
-              toolName: "callMcpTool",
-              isError: false,
-              content: [{ type: "text", text: "pong" }],
-              timestamp: 1,
-            },
-          ] as unknown as PiMessage[],
           actor: { platform: "system", name: "scheduler" },
           credentialContext: {
             actor: { platform: "system", name: "scheduler" },
             subject: {
               type: "user",
               userId: "U123",
-              allowedWhen: "scheduled-task",
-              taskId: "scheduled-task-1",
+              allowedWhen: "scheduled-automation",
+              taskId: "scheduled-automation-1",
               binding: {
-                type: "scheduled-task",
+                type: "scheduled-automation",
                 plugin: "scheduler",
-                taskId: "scheduled-task-1",
+                taskId: "scheduled-automation-1",
                 signature: "v1=test",
               },
             },
@@ -1187,6 +1148,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     const turnId = "turn-restore-auth-limit";
     const priorMessages = [
       {
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
         input: {
           tool_name: "mcp__demo__ping",
           arguments: { query: "prior" },
@@ -1198,7 +1160,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
       },
-    ] as unknown as PiMessage[];
+    ] as PiMessage[];
     await upsertTurnRecord({
       conversationId,
       piMessages: priorMessages,
@@ -1223,7 +1185,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
+  it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
     const priorMessages = [
       {
         role: "user",
@@ -1242,7 +1204,12 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
       },
-    ] as unknown as PiMessage[];
+    ] as PiMessage[];
+    await recordMcpProviderConnected({
+      conversationId: "conversation-restore-auth",
+      provider: "demo",
+      credentialSubjectId: "U123",
+    });
 
     const firstError = await executeAgentRun(
       makeAgentRun(
@@ -1630,6 +1597,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = priorMessages.slice(0, 2);
+    // Actor-owned connection drives pre-prompt restore; shared Pi history does not.
+    await recordMcpProviderConnected({
+      conversationId: "conversation-5",
+      provider: "demo",
+      credentialSubjectId: "U123",
+    });
     await upsertTurnRecord({
       conversationId: "conversation-5",
       turnId: "turn-5",

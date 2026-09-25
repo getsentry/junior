@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import type { Scope } from "@/chat/sentry";
 const sentry = vi.hoisted(() => {
   const scope = {
     setContext: vi.fn(),
@@ -122,7 +122,8 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      scope as unknown as Parameters<typeof logging.setSentryScopeContext>[0],
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      scope as Scope,
       {
         conversationId: "thread_123",
         userId: "U123",
@@ -213,7 +214,7 @@ describe("Sentry context", () => {
     await withLogContext({}, async () => {
       setTags({ modelId: "xai/grok-4.5" });
       logException(new Error("boom"), "turn.failed", {
-        "gen_ai.request.model": "openai/gpt-5.6-luna",
+        "gen_ai.request.model": "openai/gpt-6-luna",
       });
     });
 
@@ -222,7 +223,7 @@ describe("Sentry context", () => {
     );
     expect(modelTagCalls.at(-1)).toEqual([
       "gen_ai.request.model",
-      "openai/gpt-5.6-luna",
+      "openai/gpt-6-luna",
     ]);
   });
 });

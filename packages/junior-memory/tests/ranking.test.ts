@@ -11,22 +11,20 @@ function memory(id: string, observedAtMs = NOW_MS): MemoryRecord {
     id,
     kind: "knowledge",
     observedAtMs,
-    scope: "conversation",
+    scope: "public",
     subjectType: "conversation",
   };
 }
 
 function match(
   id: string,
-  input: Omit<MemoryMatch, "memory" | "sourceKey"> & {
+  input: Omit<MemoryMatch, "memory"> & {
     observedAtMs?: number;
-    sourceKey?: string;
   },
 ): MemoryMatch {
   return {
     ...input,
     memory: memory(id, input.observedAtMs),
-    sourceKey: input.sourceKey ?? "slack:T123:C456",
   };
 }
 
@@ -48,31 +46,21 @@ describe("memory retrieval ranking", () => {
     );
   });
 
-  it("uses source proximity and observation age only after relevance ties", () => {
+  it("uses observation age only after relevance ties", () => {
     const ranked = rankMemoryMatches(
       [
-        match("other-channel-new", {
-          lexical: { rank: 1 },
-          sourceKey: "slack:T123:C999",
-        }),
-        match("same-channel-old", {
+        match("older", {
           lexical: { rank: 1 },
           observedAtMs: NOW_MS - 120 * 24 * 60 * 60 * 1000,
-          sourceKey: "slack:T123:C456",
         }),
-        match("same-channel-new", {
+        match("newer", {
           lexical: { rank: 1 },
-          sourceKey: "slack:T123:C456",
         }),
       ],
-      { channelPrefix: "slack:T123:C456", nowMs: NOW_MS },
+      { nowMs: NOW_MS },
     );
 
-    expect(ranked.map(({ memory }) => memory.id)).toEqual([
-      "same-channel-new",
-      "same-channel-old",
-      "other-channel-new",
-    ]);
+    expect(ranked.map(({ memory }) => memory.id)).toEqual(["newer", "older"]);
   });
 
   it("applies optional modality weights without comparing raw scores", () => {

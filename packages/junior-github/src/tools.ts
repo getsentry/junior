@@ -6,23 +6,43 @@ import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
 import { createGitHubIssueTool } from "./tools/create-issue.js";
 import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
 import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
+import type { GitHubPullRequestSubscriptionConfig } from "./events/pull-request.js";
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
+import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
+import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
+import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
+import { createGitHubSubmitPullRequestReviewTool } from "./tools/submit-pull-request-review.js";
 
 /** Build the GitHub plugin's runtime tools from their per-tool modules. */
 export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
+  botEmail?: string,
+  pullRequestSubscription?: GitHubPullRequestSubscriptionConfig,
 ): Record<string, PluginToolDefinition> {
   return {
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
     createIssue: createGitHubIssueTool(ctx),
-    createPullRequest: createGitHubPullRequestTool(ctx),
+    createPullRequest: createGitHubPullRequestTool(
+      ctx,
+      pullRequestSubscription,
+    ),
     getDeployment: createGitHubGetDeploymentTool(ctx),
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     getRelease: createGitHubGetReleaseTool(ctx),
     getRepository: createGitHubGetRepositoryTool(ctx),
+    resolvePullRequestReviewThread:
+      createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
+    submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(
+      ctx.egress,
+    ),
+    updateIssue: createGitHubUpdateIssueTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
+    updatePullRequestFeedback: createGitHubUpdatePullRequestFeedbackTool(
+      ctx,
+      botEmail,
+    ),
   };
 }

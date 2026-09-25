@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
   type Model,
 } from "@earendil-works/pi-ai";
+import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 
 const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
   const span = {
@@ -25,7 +26,19 @@ vi.mock("@/chat/sentry", () => ({
 }));
 
 function fakeModel(id: string): Model<"anthropic-messages"> {
-  return { id } as unknown as Model<"anthropic-messages">;
+  return { id } as Model<"anthropic-messages">;
+}
+
+function spanStartOptions(value: unknown): {
+  name?: string;
+  op?: string;
+  attributes: Record<string, unknown>;
+} {
+  return value as {
+    name?: string;
+    op?: string;
+    attributes: Record<string, unknown>;
+  };
 }
 
 function fakeMessage(): AssistantMessage {
@@ -70,7 +83,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -79,10 +92,7 @@ describe("createTracedStreamFn", () => {
 
     expect(returned).toBe(stream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
-    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
-      name: string;
-      op: string;
-    };
+    const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.op).toBe("gen_ai.chat");
     expect(opts.name).toBe("chat openai/gpt-5.4");
   });
@@ -92,7 +102,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       {
@@ -102,9 +112,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
-      attributes: Record<string, unknown>;
-    };
+    const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["gen_ai.provider.name"]).toBe("vercel-ai-gateway");
     expect(opts.attributes["server.address"]).toBe("ai-gateway.vercel.sh");
     expect(opts.attributes["server.port"]).toBe(443);
@@ -132,7 +140,7 @@ describe("createTracedStreamFn", () => {
       "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
-      base: base as unknown as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "private",
     });
     await traced(
@@ -144,9 +152,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
-      attributes: Record<string, unknown>;
-    };
+    const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["app.conversation.privacy"]).toBe("private");
     expect(opts.attributes["gen_ai.input.message_count"]).toBe(1);
     expect(opts.attributes["gen_ai.input.content_chars"]).toBe(
@@ -178,7 +184,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: base as unknown as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "public",
     });
     const returned = await traced(
@@ -214,7 +220,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: base as unknown as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "public",
     });
     await traced(
@@ -270,9 +276,7 @@ describe("createTracedStreamFn", () => {
     expect(msg).not.toHaveProperty("usage");
 
     // input messages should also be in canonical format
-    const startOpts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
-      attributes: Record<string, unknown>;
-    };
+    const startOpts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     const inputMessages = JSON.parse(
       startOpts.attributes["gen_ai.input.messages"] as string,
     );
@@ -287,7 +291,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -312,7 +316,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
 
     await withLogContext(
       { conversationId: "conv_123", runId: "run_456" },
@@ -325,9 +329,7 @@ describe("createTracedStreamFn", () => {
       },
     );
 
-    const opts = startInactiveSpan.mock.calls[0]?.[0] as {
-      attributes: Record<string, unknown>;
-    };
+    const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["gen_ai.conversation.id"]).toBe("conv_123");
     expect(opts.attributes["app.run.id"]).toBe("run_456");
     // wrapper-supplied attributes still present
@@ -339,7 +341,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
 
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -350,7 +352,7 @@ describe("createTracedStreamFn", () => {
             content: [
               {
                 type: "text",
-                text: "Context compaction summary for future Junior turns:\nsummary",
+                text: `${COMPACTION_SUMMARY_PREFIX}\nsummary`,
               },
             ],
             timestamp: 0,
@@ -360,9 +362,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    const opts = startInactiveSpan.mock.calls[0]?.[0] as {
-      attributes: Record<string, unknown>;
-    };
+    const opts = spanStartOptions(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["gen_ai.conversation.compacted"]).toBe(true);
   });
 
@@ -371,7 +371,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -403,7 +403,7 @@ describe("createTracedStreamFn", () => {
       throw new Error("gateway down");
     });
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await expect(
       traced(
         fakeModel("openai/gpt-5.4"),
@@ -427,7 +427,8 @@ describe("createTracedStreamFn", () => {
     };
     const base = vi.fn(() => fakeStream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -449,7 +450,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

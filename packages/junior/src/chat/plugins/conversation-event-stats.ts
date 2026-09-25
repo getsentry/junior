@@ -13,7 +13,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const costRowSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
-    date: z.string().date(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/),
     events: z.number().int().nonnegative(),
   })
   .strict();
@@ -46,6 +46,58 @@ export function createPluginConversationEventStats(
   now: () => number = Date.now,
 ): PluginConversationEventStats {
   return {
+    async costsByHour(input) {
+      const eventName = registeredEventName(plugin, input.eventName);
+      const hourCount = input.hours ?? 24;
+      const end = new Date(now());
+      end.setUTCMinutes(0, 0, 0);
+      const start = new Date(end.getTime() - (hourCount - 1) * 60 * 60 * 1_000);
+      const endExclusive = new Date(end.getTime() + 60 * 60 * 1_000);
+      const date = sql<string>`TO_CHAR(
+        ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
+        'YYYY-MM-DD"T"HH24'
+      )`;
+      const cost = sql<number>`CASE
+        WHEN jsonb_typeof(${juniorConversationEvents.payload}->'content'->'costUsd') = 'number'
+          THEN (${juniorConversationEvents.payload}->'content'->>'costUsd')::double precision
+        ELSE 0
+      END`;
+      const rows = await getDb()
+        .select({
+          costUsd: sql<number>`SUM(${cost})::double precision`.mapWith(Number),
+          date,
+          events: sql<number>`COUNT(*)::integer`.mapWith(Number),
+        })
+        .from(juniorConversationEvents)
+        .where(
+          and(
+            eq(juniorConversationEvents.type, "structured_event"),
+            sql`${juniorConversationEvents.payload}->>'namespace' = ${plugin.manifest.name}`,
+            sql`${juniorConversationEvents.payload}->>'name' = ${eventName}`,
+            gte(juniorConversationEvents.createdAt, start),
+            lt(juniorConversationEvents.createdAt, endExclusive),
+          ),
+        )
+        .groupBy(date);
+      const byHour = new Map(
+        z
+          .array(costRowSchema)
+          .parse(rows)
+          .map((row) => [row.date, row]),
+      );
+      return Array.from({ length: hourCount }, (_, index) => {
+        const hour = new Date(start.getTime() + index * 60 * 60 * 1_000);
+        const key = hour.toISOString().slice(0, 13);
+        return (
+          byHour.get(key) ??
+          ({
+            costUsd: 0,
+            date: key,
+            events: 0,
+          } satisfies PluginConversationEventCostDay)
+        );
+      });
+    },
     async costsByDay(input) {
       const eventName = registeredEventName(plugin, input.eventName);
       const end = startOfUtcDay(now());

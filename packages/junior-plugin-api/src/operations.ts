@@ -3,9 +3,13 @@ import type { PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
-import type { ResourceEventPublisher } from "./resource-events";
+import type { EventPublisher } from "./events";
 import type { PluginConversationAnnotations } from "./annotations";
-import type { PluginConversationEventStats } from "./conversation-events";
+import type {
+  PluginConversationEventReader,
+  PluginConversationEventStats,
+} from "./conversation-events";
+import type { CodeChangePublisher } from "./code";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -18,6 +22,31 @@ export interface HeartbeatHookContext extends PluginContext {
 
 export interface HeartbeatResult {
   dispatchCount?: number;
+}
+
+export interface UnfinishedWorkHookContext extends PluginContext {
+  /** Bounded conversation candidates selected by the host. */
+  conversationIds: string[];
+}
+
+export interface UnfinishedWorkResult {
+  /** Candidate conversations that have plugin-owned work to finish. */
+  conversationIds: string[];
+  /**
+   * Candidate conversations that have any associated plugin-owned work,
+   * finished or unfinished. Omit when the plugin cannot distinguish assignment.
+   *
+   * The host uses this with unfinished work and finish times to set feed
+   * `isPriority`. Finished assigned work stays out of Priority unless the
+   * conversation has activity after the finish time.
+   */
+  assignedConversationIds?: string[];
+  /**
+   * Latest time when all known work finished, keyed by conversation id.
+   * ISO-8601 timestamps. Used with conversation activity to decide whether
+   * finished work still belongs in Priority.
+   */
+  finishedWorkAtByConversationId?: Record<string, string>;
 }
 
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";
@@ -65,7 +94,7 @@ export interface PluginOperationalBarChartWidget {
   emptyText?: string;
   id: string;
   series: PluginOperationalChartSeries[];
-  timeRangeDays?: Array<7 | 30 | 90>;
+  timeRangeDays?: Array<1 | 7 | 30 | 90>;
   title: string;
   type: "bar_chart";
 }
@@ -86,6 +115,16 @@ export interface OperationalReportHookContext extends PluginContext {
   eventStats: PluginConversationEventStats;
   nowMs: number;
   state: PluginReadState;
+}
+
+/** Read-only context for one person-scoped plugin report on a profile page. */
+export interface ProfileReportHookContext extends PluginContext {
+  nowMs: number;
+  state: PluginReadState;
+  /** Canonical user for the profile being viewed. */
+  subject: User;
+  /** Canonical user for the authenticated viewer. */
+  viewer: User;
 }
 
 export type PluginRouteMethod =
@@ -118,11 +157,14 @@ export type PluginRouteApp = {
 
 export interface RouteRegistrationHookContext extends PluginContext {
   annotations: PluginConversationAnnotations;
+  /** Provider-neutral write boundary for Junior's native code index. */
+  codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
+  conversationEvents: PluginConversationEventReader;
   eventStats: PluginConversationEventStats;
   users: {
     /** Resolve or create the canonical user for one verified email. */

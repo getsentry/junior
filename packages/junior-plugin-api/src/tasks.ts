@@ -1,8 +1,8 @@
 /**
  * Public plugin background-task contracts.
  *
- * Plugins register small task handlers, while Junior core owns durable
- * scheduling, queue delivery, retries, and the bounded run projection.
+ * Plugins register small task handlers. Junior core owns scheduling, delivery,
+ * retries, and the bounded run projection.
  */
 import { z } from "zod";
 import type { PluginConversationEvents } from "./conversation-events";
@@ -50,9 +50,13 @@ export type PluginRunTranscriptProvenance = z.output<
 /** Runtime-owned completed-run projection exposed to plugin tasks. */
 export const pluginRunContextSchema = z
   .object({
+    /** User linked to the Actor, when known. */
+    actorUserId: z.string().min(1).optional(),
     completedAtMs: z.number().finite(),
     conversationId: z.string().min(1),
     destination: destinationSchema,
+    /** Location associated with this Conversation. */
+    locationId: z.string().min(1).optional(),
     /**
      * All distinct actors annotated on this run's committed instruction-authority
      * messages, in first-seen order. Attribution provenance only, never an

@@ -2,9 +2,11 @@ import {
   definePromptContext,
   type UserPromptContribution,
   type Actor,
+  type Identity,
   type PluginConversationEvents,
   type PluginLogger,
   type Source,
+  type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { MemoryAgent, MemoryRecallResult } from "./agent";
@@ -17,7 +19,6 @@ import {
 } from "./store";
 import { memoryRuntimeContextSchema } from "./types";
 
-const DEFAULT_RECALL_LIMIT = 5;
 const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
@@ -29,9 +30,13 @@ export interface MemoryRecallContext {
   embedder?: MemoryEmbeddingProvider;
   events?: PluginConversationEvents;
   log: PluginLogger;
+  locationId?: string;
   actor?: Actor;
   source: Source;
   text: string;
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 }
 
 function trimContent(content: string, maxLength: number): string {
@@ -51,6 +56,7 @@ const recalledMemorySchema = z
     id: z.string().min(1),
     content: z.string().min(1).max(MAX_MEMORY_LINE_CHARS),
     observedAtMs: z.number().finite(),
+    // Stored version 1 uses the old scope labels. Prompt rendering ignores them.
     scope: z.enum(["personal", "conversation"]),
     kind: z.enum(["preference", "procedure", "knowledge"]),
   })
@@ -59,7 +65,8 @@ const recalledMemorySchema = z
 /** Structured snapshot retained for one automatic memory recall. */
 export const memoryRecallContextSchema = z
   .object({
-    memories: z.array(recalledMemorySchema).min(1).max(DEFAULT_RECALL_LIMIT),
+    // Count is a safety rail only. Admission packs by MAX_PROMPT_CHARS.
+    memories: z.array(recalledMemorySchema).min(1).max(RECALL_CANDIDATE_LIMIT),
   })
   .strict();
 
@@ -82,7 +89,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
       id: memory.id,
       content,
       observedAtMs: memory.observedAtMs,
-      scope: memory.scope,
+      scope: memory.scope === "private" ? "personal" : "conversation",
       kind: memory.kind,
     });
     totalChars += line.length + 1;
@@ -119,7 +126,7 @@ async function emitRecallOutcome(args: {
   await args.events?.emit(
     memoriesRecalledEvent({
       memories: args.memories,
-      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
     }),
   );
 }
@@ -138,12 +145,15 @@ export async function createMemoryPromptContributions(
   if (!context.text.trim()) {
     return undefined;
   }
+  const actorUser = (await context.users.resolveActor())?.user;
   const runtimeContext = memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
-      : {}),
-    ...(context.actor ? { actor: context.actor } : {}),
+      : undefined),
+    ...(context.actor ? { actor: context.actor } : undefined),
+    ...(context.locationId ? { locationId: context.locationId } : undefined),
     source: context.source,
+    ...(actorUser ? { userId: actorUser.id } : undefined),
   });
   let embeddingCostUsd: number | undefined;
   const sourceEmbedder = context.embedder;
@@ -164,7 +174,7 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : {}),
+      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
       events: context.events,
       memories: [],
     });
@@ -187,12 +197,11 @@ export async function createMemoryPromptContributions(
   );
   const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined)
-    .slice(0, DEFAULT_RECALL_LIMIT);
+    .filter((memory): memory is MemoryRecord => memory !== undefined);
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({
-    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
     memories: selected.map(({ id }) => id),
   });

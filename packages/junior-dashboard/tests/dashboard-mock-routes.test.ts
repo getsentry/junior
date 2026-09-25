@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   actorDirectoryReportSchema,
+  codeOverviewReportSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   type ConversationSummaryReport,
@@ -8,8 +9,11 @@ import {
 
 import { createDashboardApp } from "../src/app";
 import {
+  ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
+  NOW,
+  setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
 const DASHBOARD_QA_CHILD_IDS = [
@@ -18,7 +22,10 @@ const DASHBOARD_QA_CHILD_IDS = [
 ];
 
 describe("dashboard canonical-event mock routes", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    // Keep the default archived fixture available for later visual/mock runs.
+    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+  });
 
   it("derives public location bounds independently of summary order", () => {
     const summary = (
@@ -63,7 +70,6 @@ describe("dashboard canonical-event mock routes", () => {
   });
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
-    vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
@@ -74,6 +80,15 @@ describe("dashboard canonical-event mock routes", () => {
     await expect(me.json()).resolves.toEqual({
       user: { email: "dev@example.com", emailVerified: true },
     });
+
+    const code = await app.fetch(new Request("http://localhost/api/code"));
+    expect(code.status).toBe(200);
+    const codeOverview = codeOverviewReportSchema.parse(await code.json());
+    expect(codeOverview.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ repository: "getsentry/junior" }),
+      ]),
+    );
 
     const conversations = await app.fetch(
       new Request("http://localhost/api/conversations"),
@@ -96,9 +111,46 @@ describe("dashboard canonical-event mock routes", () => {
     expect(body.conversations.map((item) => item.conversationId)).toContain(
       DASHBOARD_QA_CONVERSATION_ID,
     );
+    expect(body.conversations.map((item) => item.conversationId)).not.toContain(
+      ARCHIVED_CONVERSATION_ID,
+    );
     expect(body.conversations.map((item) => item.conversationId)).not.toEqual(
       expect.arrayContaining(DASHBOARD_QA_CHILD_IDS),
     );
+
+    const archived = await app.fetch(
+      new Request("http://localhost/api/conversations?status=archived"),
+    );
+    expect(archived.status).toBe(200);
+    const archivedBody = (await archived.json()) as typeof body;
+    expect(
+      archivedBody.conversations.map((item) => item.conversationId),
+    ).toEqual([ARCHIVED_CONVERSATION_ID]);
+
+    const restore = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}/archive`,
+        {
+          body: JSON.stringify({
+            archived: false,
+            lastSeenAt: NOW,
+          }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+    expect(restore.status).toBe(200);
+    await expect(restore.json()).resolves.toEqual({ archivedAt: null });
+
+    const restoredFeed = await app.fetch(
+      new Request("http://localhost/api/conversations"),
+    );
+    const restoredBody = (await restoredFeed.json()) as typeof body;
+    expect(
+      restoredBody.conversations.map((item) => item.conversationId),
+    ).toContain(ARCHIVED_CONVERSATION_ID);
+    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
     expect(
       body.conversations
         .filter((item) => item.channel?.startsWith("C"))
@@ -136,9 +188,8 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     );
     expect(statsBody.costUsd).toBeGreaterThan(0);
-    expect(
-      Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
-    ).toBe(89 * 24 * 60 * 60 * 1000);
+    expect(statsBody.windowEnd).toBe(NOW);
+    expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 
     const people = await app.fetch(new Request("http://localhost/api/people"));
     const peopleBody = actorDirectoryReportSchema.parse(await people.json());
@@ -244,14 +295,58 @@ describe("dashboard canonical-event mock routes", () => {
           event.data.assistant !== undefined,
       ),
     ).toBe(true);
-    expect(dashboardQa.annotations).toEqual([
-      expect.objectContaining({
-        kind: "resource_link",
-        key: "getsentry/junior#1081",
-        plugin: "github",
-        status: "open",
-      }),
+    expect(dashboardQa.annotations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/getsentry#21571",
+          plugin: "github",
+          status: "merged",
+        }),
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/getsentry#21572",
+          plugin: "github",
+          status: "open",
+        }),
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/getsentry#21569",
+          plugin: "github",
+          status: "draft",
+        }),
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/sentry#121727",
+          plugin: "github",
+          status: "merged",
+        }),
+      ]),
+    );
+    expect(dashboardQa.annotations).toHaveLength(4);
+    expect(dashboardQa.sidebarAnnotations).toEqual([
+      {
+        icon: "git-merge",
+        key: "getsentry/getsentry#21571",
+        label: "getsentry",
+      },
+      {
+        icon: "git-pull-request",
+        key: "getsentry/getsentry#21572",
+        label: "getsentry",
+      },
+      {
+        icon: "circle-dashed",
+        key: "getsentry/getsentry#21569",
+        label: "getsentry",
+      },
+      {
+        icon: "git-merge",
+        key: "getsentry/sentry#121727",
+        label: "sentry",
+      },
     ]);
+    expect(dashboardQa.unfinishedWork).toBe(true);
 
     const failed = await readDetail("slack:CQA777:1770014400.000500");
     expect(failed.events.at(-1)?.data).toMatchObject({

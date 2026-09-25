@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Workspace } from "@/chat/workspaces/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type {
   PluginRuntimeDependency,
@@ -77,15 +78,41 @@ function floatingMaxAgeMs(): number {
     : DEFAULT_FLOATING_MAX_AGE_MS;
 }
 
-/** Build the dependency profile that selects a reusable sandbox snapshot. */
-export function create(runtime: string): Profile | null {
+/** Locale-independent string order for stable profile hashes. */
+function compareCodePoints(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function workspaceRecipe(workspace: Workspace) {
+  // Sort repos so profile hashes stay stable when query order differs.
+  const repos = [...workspace.repos]
+    .map(({ provider, repo }) => ({
+      provider,
+      repo,
+    }))
+    .sort((left, right) => {
+      const provider = compareCodePoints(left.provider, right.provider);
+      if (provider !== 0) return provider;
+      return compareCodePoints(left.repo, right.repo);
+    });
+  return {
+    id: workspace.id,
+    repos,
+    setupScript: workspace.setupScript,
+  };
+}
+
+/** Build the complete profile that selects one reusable sandbox snapshot. */
+export function create(runtime: string, workspace?: Workspace): Profile | null {
   const dependencies = mergeDependencies([
     ...GLOBAL_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
   ]);
   const pluginPostinstall = pluginCatalogRuntime.getRuntimePostinstall();
   const postinstall = [...GLOBAL_RUNTIME_POSTINSTALL, ...pluginPostinstall];
-  if (dependencies.length === 0 && postinstall.length === 0) {
+  if (dependencies.length === 0 && postinstall.length === 0 && !workspace) {
     return null;
   }
 
@@ -94,7 +121,9 @@ export function create(runtime: string): Profile | null {
   // containing them expire on the same schedule as floating npm selectors.
   const floating =
     dependencies.some((dependency) => isFloating(dependency)) ||
-    pluginPostinstall.length > 0;
+    pluginPostinstall.length > 0 ||
+    Boolean(workspace);
+  // Omit workspace when unset so base profiles keep pre-workspace hashes.
   const hash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -103,6 +132,7 @@ export function create(runtime: string): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
+        ...(workspace ? { workspace: workspaceRecipe(workspace) } : undefined),
       }),
     )
     .digest("hex");
@@ -117,8 +147,11 @@ export function create(runtime: string): Profile | null {
 }
 
 /** Return the current dependency profile hash without building its snapshot. */
-export function hash(runtime: string): string | undefined {
-  return create(runtime)?.hash;
+export function hash(
+  runtime: string,
+  workspace?: Workspace,
+): string | undefined {
+  return create(runtime, workspace)?.hash;
 }
 
 /** Decide whether a cached snapshot has outlived a floating profile. */

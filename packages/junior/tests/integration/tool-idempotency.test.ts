@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
@@ -19,7 +18,6 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
 
@@ -54,19 +52,8 @@ function slackContext(channelId: string): SlackToolContext {
   const parsedChannelId = requireSlackChannelId(channelId);
   const teamId = requireSlackTeamId("T123");
   return {
-    destination: {
-      platform: "slack" as const,
-      teamId,
-      channelId: parsedChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: parsedChannelId,
-
-      visibility: "private",
-    }),
     destinationChannelId: parsedChannelId,
-    sourceChannelId: parsedChannelId,
+    locationChannelId: parsedChannelId,
     teamId,
   };
 }
@@ -193,15 +180,9 @@ describe("tool idempotency", () => {
     });
 
     const sharedChannelId = requireSlackChannelId("C0SHARED");
-    const teamId = requireSlackTeamId("T123");
     const tool = createSlackCanvasCreateTool(
       {
         ...slackContext("D123"),
-        destination: {
-          platform: "slack" as const,
-          teamId,
-          channelId: sharedChannelId,
-        },
         destinationChannelId: sharedChannelId,
       },
       createToolState(),
@@ -227,7 +208,8 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      LOCAL_CONTEXT as unknown as SlackToolContext,
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      LOCAL_CONTEXT as SlackToolContext,
       state,
     );
 

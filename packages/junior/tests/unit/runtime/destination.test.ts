@@ -35,14 +35,6 @@ describe("destination context", () => {
         channelId: "C123",
       }),
     ).toBeUndefined();
-    expect(
-      parseDestination({
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1700000000.000",
-      }),
-    ).toBeUndefined();
   });
 
   it("parses canonical serialized destinations without repair", () => {
@@ -51,11 +43,13 @@ describe("destination context", () => {
         platform: "slack",
         teamId: "T123",
         channelId: "C123",
+        threadTs: "1700000000.000",
       }),
     ).toEqual({
       platform: "slack",
       teamId: "T123",
       channelId: "C123",
+      threadTs: "1700000000.000",
     });
   });
 

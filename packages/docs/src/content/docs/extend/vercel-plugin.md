@@ -1,24 +1,21 @@
 ---
 title: Vercel Plugin
-description: Configure read-only Vercel investigations and deployment resource events.
+description: Configure Vercel deployments, aliases, investigations, and deployment events.
 type: tutorial
-summary: Let Junior inspect Vercel deployments and receive signed deployment outcomes in Slack.
+summary: Let Junior deploy apps, manage aliases, investigate logs, and receive deployment outcomes in Slack.
 prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /operate/security-hardening/
   - /operate/sandbox-snapshots/
 ---
 
-Use the Vercel plugin to inspect deployments, fetch build logs, search runtime
-logs, and respond to deployment outcomes through resource subscriptions and
-event tasks.
-
-Junior keeps this plugin read-only. Its runtime registration installs the CLI
-and injects host-managed Vercel API auth, while the bundled skill limits Junior
-to `vercel logs`, `vercel inspect`, `vercel list`, and CLI help commands.
+Use the Vercel plugin to deploy apps, manage aliases, investigate logs, and
+respond to deployment outcomes through watches and event automations.
+The plugin provides tools and installs the Vercel CLI. Both use one host-managed
+token and normal Guardian review.
 
 ## Install
 
@@ -70,23 +67,23 @@ Default Vercel team slug or ID used to resolve projects.
 <details class="plugin-config">
 <summary><code>JUNIOR_VERCEL_TOKEN</code></summary>
 
-Host-managed access token for deployment and log inspection.
+Host-managed access token for Vercel operations, including reads and writes.
 
 - **Define:** Set `JUNIOR_VERCEL_TOKEN` in the deployment environment
 - **Required:** Yes
 - **Environment override:** `JUNIOR_VERCEL_TOKEN`
 
-Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the projects and teams users need to inspect.
+Create a [Vercel access token](https://vercel.com/account/tokens) with access to the projects, teams, and actions users need.
 
 </details>
 
 <details class="plugin-config">
 <summary><code>VERCEL_WEBHOOK_SECRET</code></summary>
 
-Account webhook secret used to verify deployment resource events.
+Account webhook secret used to verify deployment events.
 
 - **Define:** Set `VERCEL_WEBHOOK_SECRET` in the deployment environment
-- **Required:** Yes for resource events; otherwise no
+- **Required:** Yes for events; otherwise no
 - **Environment override:** `VERCEL_WEBHOOK_SECRET`
 
 </details>
@@ -113,14 +110,14 @@ Pro and Enterprise teams.
 Junior verifies Vercel's `x-vercel-signature` against the untouched request body
 before accepting a delivery.
 
-## Resource subscriptions
+## Watches
 
-Set `VERCEL_WEBHOOK_SECRET` to enable resource subscriptions. See
-[Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
-between temporary subscriptions and durable event tasks.
+Set `VERCEL_WEBHOOK_SECRET` to enable watches. See
+[Watches](/concepts/watches/) for the difference between temporary watches
+and durable event automations.
 
-Deployment watches use Vercel's `prj_...` project ID. Users can give a project
-name or ID. Junior gets the project ID from Vercel's authenticated project API.
+Deployment watches use Vercel's project ID. Users can give a project name or
+ID. Junior gets the project ID from Vercel's authenticated project API.
 Include the team slug or ID when projects with the same name may exist in more
 than one account.
 
@@ -128,35 +125,36 @@ than one account.
 
 One Vercel project, optionally limited to a target or one commit. Identifier:
 
-`prj_...[:preview|production|staging][:full-commit-sha]`
+`<project-id>[:preview|production|staging][:full-commit-sha]`
 
-- `prj_...` watches every deployment for the project.
-- `prj_...:production` watches every production deployment.
-- `prj_...:production:<sha>` watches one production deployment for that commit.
+- `<project-id>` watches every deployment for the project.
+- `<project-id>:production` watches every production deployment.
+- `<project-id>:production:<sha>` watches one production deployment for that
+  commit.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.succeeded</code></summary>
 
 The deployment completed successfully.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.error</code></summary>
 
 The deployment failed.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.canceled</code></summary>
 
 The deployment was canceled.
 
 </details>
 
-Create the subscription or event task before the deployment finishes. Junior
-does not replay earlier webhooks. Project- and target-scoped watches keep
+Create the watch or event automation before the deployment finishes. Junior does
+not replay earlier webhooks. Project- and target-scoped watches keep
 receiving later deployments; commit-scoped watches complete on the terminal
 event.
 
@@ -197,19 +195,40 @@ Confirm Junior can query Vercel successfully:
 1. Ask Junior a Vercel question in a channel, for example: `Show production error logs for junior-prod from the last hour.`
 2. Confirm the thread returns a bounded summary with the project, environment,
    time window, and filters used.
-3. Confirm Junior does not run mutation commands for requests such as deploys,
-   rollbacks, env changes, cache purges, or domain changes.
+3. Verify a requested Preview deployment on a test project and inspect its
+   deployment ID and state. Confirm mutations still pass normal runtime review.
 
 If deployment webhooks are enabled, also verify one signed delivery:
 
 1. Ask Junior: `Whenever production deployments fail for junior-prod, tell me in this channel.`
-2. Ask Junior to list the active event tasks or watches in the same conversation
+2. Ask Junior to list the active event automations or watches in the same conversation
    and confirm the Vercel project ID, optional `production` target, and event
    types are correct.
 3. Trigger a matching deployment.
 4. In **Team Settings → Webhooks**, open the delivery and confirm the endpoint
    returned `202` with `Accepted` when the response body is shown.
 5. Confirm Junior posts the terminal outcome in the original conversation.
+
+## Deployment and alias tools
+
+These tools are available with `vercelPlugin()` and the existing token:
+
+- `vercel_deploymentCreate`: supply a project, Git ref, optional team, and
+  optional full commit SHA. It uses the project's linked GitHub repository.
+  Preview is the default target; Production must be selected explicitly.
+- `vercel_deploymentInspect`: inspect an exact deployment ID or hostname.
+- `vercel_aliasAssign`: assign an alias hostname to a deployment ID, then read
+  back the target. It can replace live traffic.
+- `vercel_aliasInspect`: read the alias's current deployment ID or redirect.
+- `vercel_deploymentDelete`: delete the exact deployment the user requests.
+
+Use the CLI for logs, local source uploads, and other Git providers.
+A create starts a build; inspect its state before use. If a response is lost,
+inspect Vercel state before retrying a write.
+
+Alias checks can detect changed targets but are not locks. Moving an alias does
+not stop older workers. Deployments inherit build settings and credentials and
+can run migrations. Use isolated state for QA that must not affect shared data.
 
 ## Failure modes
 
@@ -225,11 +244,12 @@ If deployment webhooks are enabled, also verify one signed delivery:
   before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and
   should be stopped once enough evidence is captured.
-- Mutation requests: the plugin is read-only and the skill will decline these.
+- Mutation denied: respect the runtime review or Vercel permission result. Do
+  not retry through another command to bypass it.
 - Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`
   and `SLACK_BOT_TOKEN`, redeploy, and provide a project name or configure
   `vercel.project` for the conversation. Multi-workspace Slack OAuth mode does
-  not support resource-event delivery yet.
+  not support event delivery yet.
 - Webhook delivery returns `401`: the Vercel account webhook secret does not
   match `VERCEL_WEBHOOK_SECRET`, or the request lacks `x-vercel-signature`.
 - Webhook delivery returns `202 Ignored`: the signed event is unsupported or
@@ -239,10 +259,10 @@ If deployment webhooks are enabled, also verify one signed delivery:
   Junior domain and is not blocked by deployment protection, login, or another
   access-control layer.
 - Vercel accepts the webhook but no Slack update appears: confirm the original
-  conversation still has an active subscription or event task for the same
+  conversation still has an active watch or event automation for the same
   project, optional target, optional commit SHA, and event type.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/resource-subscriptions/) and
+Review [Watches](/concepts/watches/) and
 [Sandbox Snapshots](/operate/sandbox-snapshots/).

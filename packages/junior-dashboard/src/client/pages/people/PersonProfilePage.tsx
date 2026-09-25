@@ -4,13 +4,23 @@ import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
 import { Link, useParams } from "react-router";
 import type {
   ActorProfileReport,
+  CodePersonReport,
   ConversationStatsItem,
+  PluginOperationalReport,
 } from "@sentry/junior/api/schema";
 
-import { useActorProfileData } from "../../api";
+import {
+  useActorCodeData,
+  useActorPluginReportsData,
+  useActorProfileData,
+} from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
@@ -21,6 +31,8 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { ProfileCodeActivity } from "./ProfileCodeActivity";
+import { ProfilePluginReports } from "./ProfilePluginReports";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -32,13 +44,23 @@ export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
   const query = useActorProfileData(email);
+  const pluginReportsQuery = useActorPluginReportsData(email);
+  const codeQuery = useActorCodeData(email);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
   return (
     <PageLayout>
       {query.data ? (
-        <Profile profile={query.data} />
+        <Profile
+          code={codeQuery.data}
+          codeError={Boolean(codeQuery.error)}
+          codeLoading={codeQuery.isPending}
+          pluginReports={pluginReportsQuery.data?.reports ?? []}
+          pluginReportsError={Boolean(pluginReportsQuery.error)}
+          pluginReportsLoading={pluginReportsQuery.isPending}
+          profile={query.data}
+        />
       ) : (
         <Card padding="md">
           <EmptyTelemetry>Profile failed to load.</EmptyTelemetry>
@@ -49,9 +71,18 @@ export function PersonProfilePage() {
 }
 
 /** Present one actor's activity and dimensions. */
-export function Profile(props: { profile: ActorProfileReport }) {
+export function Profile(props: {
+  code?: CodePersonReport;
+  codeError?: boolean;
+  codeLoading?: boolean;
+  pluginReports?: PluginOperationalReport[];
+  pluginReportsError?: boolean;
+  pluginReportsLoading?: boolean;
+  profile: ActorProfileReport;
+}) {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const profile = props.profile;
+  const pluginReports = props.pluginReports ?? [];
   const displayName =
     profile.actor.fullName ??
     profile.actor.slackUserName ??
@@ -85,8 +116,45 @@ export function Profile(props: { profile: ActorProfileReport }) {
           id="profile-metrics-title"
           title="Usage over time"
         />
-        <SystemMetricCharts days={profile.activityDays.slice(-range)} />
+        <SystemMetricCharts
+          bucketUnit={timeRangeBucketUnit(range)}
+          days={selectTimeSeries({
+            days: profile.activityDays,
+            hours: profile.activityHours,
+            sixHours: profile.activitySixHours,
+            range,
+            emptySixHour: (date) => ({
+              active: 0,
+              conversations: 0,
+              date,
+              durationMs: 0,
+              failed: 0,
+            }),
+          })}
+        />
       </section>
+
+      {props.codeError ? (
+        <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
+          <div className="font-display text-sm font-medium text-dashboard-text-muted">
+            Code activity failed to load.
+          </div>
+        </Card>
+      ) : null}
+      {!props.codeLoading && props.code ? (
+        <ProfileCodeActivity range={range} report={props.code} />
+      ) : null}
+
+      {props.pluginReportsError ? (
+        <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
+          <div className="font-display text-sm font-medium text-dashboard-text-muted">
+            Plugin activity failed to load.
+          </div>
+        </Card>
+      ) : null}
+      {!props.pluginReportsLoading ? (
+        <ProfilePluginReports range={range} reports={pluginReports} />
+      ) : null}
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
         <aside className="grid min-w-0 gap-4 lg:order-2">
@@ -125,10 +193,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
           </Card>
-          <div className="grid min-w-0 gap-5 md:grid-cols-2">
-            <LeaderboardSection items={profile.locations} title="Places" />
-            <LeaderboardSection items={profile.surfaces} title="Surfaces" />
-          </div>
+          <LeaderboardSection items={profile.surfaces} title="Surfaces" />
         </div>
       </div>
     </div>

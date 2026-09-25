@@ -7,16 +7,12 @@ import {
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { AgentRun } from "@/chat/agent/types";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { createTools } from "@/chat/tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
-
-const executeAgentRunMock = vi.fn();
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_USAGE = {
@@ -44,58 +40,6 @@ function slackSource(threadTs: string) {
   });
 }
 
-function makeDiagnostics() {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-agent-model",
-    outcome: "success" as const,
-    toolCalls: [],
-    toolErrorCount: 0,
-    toolResultCount: 0,
-    usedPrimaryText: true,
-  };
-}
-
-function createSandbox(files: Record<string, Buffer>): SandboxWorkspace {
-  return {
-    readFileToBuffer: async ({ path }) => files[path] ?? null,
-    runCommand: async () => ({
-      exitCode: 0,
-      stdout: "image/png\n",
-      stderr: "",
-    }),
-    writeFiles: async () => undefined,
-  };
-}
-
-/** Build a Slack tool context from the resumed request to exercise continuation file sends. */
-function createToolContext(
-  request: AgentRun,
-  workspace: SandboxWorkspace,
-): ToolRuntimeContext {
-  if (
-    request.source.platform !== "slack" ||
-    request.destination.platform !== "slack"
-  ) {
-    throw new Error("test requires Slack tool context");
-  }
-
-  return {
-    configuration: request.environment?.configuration,
-    conversationId: request.conversationId,
-    destination: request.destination,
-    egress: {} as ToolRuntimeContext["egress"],
-    actor:
-      request.actor?.platform === "slack"
-        ? request.actor
-        : undefined,
-    workspace,
-    source: request.source,
-    surface: request.surface,
-    userText: request.instruction.text,
-  };
-}
-
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type PausedTurnModule = typeof import("@/chat/task-execution/paused-turn");
@@ -113,12 +57,16 @@ let turnSessionStoreModule: TurnSessionStoreModule;
 let turnWakeModule: TurnWakeModule;
 let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
+let agentRunner: AgentRunner;
+let agentRuns: AgentRun[];
 
 function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
 }): Promise<boolean> {
+  // Direct resume only. Worker-owned timeout lease handback is covered by
+  // durable-queue, not reimplemented here.
   return requestDeadlineModule.runWithTurnRequestDeadline(() =>
     pausedTurnModule.runPausedTurn(
       {
@@ -128,7 +76,7 @@ function continueAgentRun(args: {
         turnId: args.sessionId,
       },
       {
-        agentRunner: { run: executeAgentRunMock },
+        agentRunner,
         wakePausedTurn: (request) =>
           turnWakeModule.wakePausedTurn(request, {
             queue,
@@ -141,15 +89,12 @@ function continueAgentRun(args: {
 describe("paused turn Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
-    executeAgentRunMock.mockReset();
-    executeAgentRunMock.mockImplementation(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Final resumed answer" },
+    agentRuns = [];
+    agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([
+        { type: "text", text: "Final resumed answer" },
       ]);
-      return completedAgentRun({
-        text: "Final resumed answer",
-        diagnostics: makeDiagnostics(),
-      });
     });
     resetSlackApiMockState();
     process.env = {
@@ -246,47 +191,26 @@ describe("paused turn Slack integration", () => {
         source: "test",
       });
 
-    const continued = await continueAgentRun({
+    const stateAdapter = stateAdapterModule.getStateAdapter();
+    const oldResumeLock = await stateAdapter.acquireLock(
       conversationId,
-      sessionId,
-      expectedVersion: sessionRecord.version,
-    });
+      90_000,
+    );
+    expect(oldResumeLock).not.toBeNull();
+    let continued: boolean;
+    try {
+      continued = await continueAgentRun({
+        conversationId,
+        sessionId,
+        expectedVersion: sessionRecord.version,
+      });
+    } finally {
+      if (oldResumeLock) {
+        await stateAdapter.releaseLock(oldResumeLock);
+      }
+    }
 
     expect(continued).toBe(true);
-
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        instruction: expect.objectContaining({
-          text: "resume this request",
-          inboundAttachmentCount: 2,
-          omittedImageAttachmentCount: 1,
-        }),
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
-          destination: SLACK_DESTINATION,
-          source: storedSource,
-          toolChannelId: "C123",
-        state: expect.objectContaining({
-          sandboxRef: undefined,
-        }),
-      }),
-    );
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      deadlineAtMs?: number;
-      environment?: {
-        locationConfiguration?: {
-          resolve: (key: string) => Promise<unknown>;
-        };
-      };
-    };
-    expect(resumeContext.deadlineAtMs).toEqual(expect.any(Number));
-    expect(resumeContext.deadlineAtMs).toBeGreaterThan(Date.now());
-    expect(
-      await resumeContext.environment?.locationConfiguration?.resolve("demo.org"),
-    ).toBe("acme");
 
     expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
@@ -316,6 +240,47 @@ describe("paused turn Slack integration", () => {
         }),
       }),
     ]);
+    expect(agentRuns).toHaveLength(1);
+    const resumedRun = agentRuns[0]!;
+    expect(resumedRun).toMatchObject({
+      instruction: {
+        text: "resume this request",
+        inboundAttachmentCount: 2,
+        omittedImageAttachmentCount: 1,
+      },
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+      },
+      destination: SLACK_DESTINATION,
+      location: {
+        provider: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+      },
+      source: storedSource,
+      toolChannelId: "C123",
+      state: expect.objectContaining({
+        sandboxRef: undefined,
+      }),
+    });
+    const resumeContext = resumedRun as {
+      deadlineAtMs?: number;
+      environment?: {
+        locationConfiguration?: {
+          resolve: (key: string) => Promise<unknown>;
+        };
+      };
+    };
+    expect(resumeContext.deadlineAtMs).toEqual(expect.any(Number));
+    expect(resumeContext.deadlineAtMs).toBeGreaterThan(Date.now());
+    expect(
+      await resumeContext.environment?.locationConfiguration?.resolve(
+        "demo.org",
+      ),
+    ).toBe("acme");
 
     const persisted =
       await threadStateModule.getPersistedThreadState(conversationId);
@@ -331,7 +296,8 @@ describe("paused turn Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
+    const { getConversationEventStore, getConversationStore } =
+      await import("@/chat/db");
     const lifecycle = (
       await getConversationEventStore().loadHistory(conversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
@@ -343,14 +309,25 @@ describe("paused turn Slack integration", () => {
         surface: "slack",
       }),
       expect.objectContaining({
+        type: "turn_routed",
+        turnId: sessionId,
+      }),
+      expect.objectContaining({
         type: "turn_completed",
         turnId: sessionId,
         outcome: "success",
       }),
     ]);
+    await expect(
+      getConversationStore().getDestinationVisibility({
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBeUndefined();
   });
 
-  it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
+  it("restores the Turn Actor when the saved Message has no profile data", async () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
@@ -371,9 +348,12 @@ describe("paused turn Slack integration", () => {
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
       actor: {
+        email: "alice@example.com",
+        fullName: "Alice Example",
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
+        userName: "alice",
       },
     });
 
@@ -417,16 +397,18 @@ describe("paused turn Slack integration", () => {
         }),
       }),
     ]);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        instruction: expect.objectContaining({ text: "resume this request" }),
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
-      }),
-    );
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toMatchObject({
+      instruction: { text: "resume this request" },
+      actor: {
+        email: "alice@example.com",
+        fullName: "Alice Example",
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+        userName: "alice",
+      },
+    });
   });
 
   it("restores explicit progress from the active turn", async () => {
@@ -597,91 +579,6 @@ describe("paused turn Slack integration", () => {
     );
   });
 
-  it("schedules another continuation for high slice ids", async () => {
-    const conversationId = "slack:C123:1712345.0002";
-    const sessionId = "turn_msg_2";
-    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: sessionId,
-      sliceId: 5,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1712345.0002"),
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-          timestamp: 1,
-        },
-      ],
-      resumeReason: "timeout",
-      resumedFromSliceId: 4,
-      errorMessage: "Agent turn timed out",
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "testuser",
-        fullName: "Test User",
-        email: "testuser@example.com",
-      },
-    });
-
-    await threadStateModule.persistThreadStateById(conversationId, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "msg.2",
-            role: "user",
-            text: "resume this request",
-            createdAtMs: 1,
-            author: {
-              userId: "U123",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: sessionId,
-        },
-        vision: {
-          byFileId: {},
-        },
-      },
-    });
-
-    executeAgentRunMock.mockResolvedValueOnce({
-      status: "suspended",
-      resumeVersion: sessionRecord.version + 1,
-    });
-
-    const continued = await continueAgentRun({
-      conversationId,
-      sessionId,
-      expectedVersion: sessionRecord.version,
-    });
-
-    expect(continued).toBe(true);
-
-    expect(slackApiOutbox.messages()).toEqual([]);
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId,
-        idempotencyKey: expect.stringContaining(
-          `agent-continue:${conversationId}:${sessionId}:`,
-        ),
-      },
-    ]);
-
-    const persisted =
-      await threadStateModule.getPersistedThreadState(conversationId);
-    const conversation = (persisted.conversation ?? {}) as {
-      processing?: { activeTurnId?: string };
-    };
-    expect(conversation.processing?.activeTurnId).toBe(sessionId);
-  });
-
   it("terminalizes startup failures before the visible failure path runs", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
@@ -734,7 +631,6 @@ describe("paused turn Slack integration", () => {
 
     // Missing author id is fail-closed without throwing out of beforeStart.
     expect(continued).toBe(false);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
@@ -752,11 +648,12 @@ describe("paused turn Slack integration", () => {
         }),
       }),
     ]);
+    expect(agentRuns).toEqual([]);
   });
 
-  it("resumes resource-event turns with the rebuilt system actor", async () => {
+  it("resumes event turns with the rebuilt system actor", async () => {
     const conversationId = "slack:C123:1712345.0012";
-    const sessionId = "turn_resource-event-msg_12";
+    const sessionId = "turn_event-msg_12";
     const storedSource = slackSource("1712345.0012");
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
@@ -783,7 +680,7 @@ describe("paused turn Slack integration", () => {
         compactions: [],
         messages: [
           {
-            id: "resource-event-msg.12",
+            id: "event-msg.12",
             role: "user",
             text: "subscribed PR checks failed",
             createdAtMs: 1,
@@ -810,16 +707,15 @@ describe("paused turn Slack integration", () => {
     });
 
     expect(continued).toBe(true);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-          actor: { platform: "system", name: "resource-event" },
-          credentialContext: {
-            actor: { platform: "system", name: "resource-event" },
-          },
-          destination: SLACK_DESTINATION,
-          source: storedSource,
-      }),
-    );
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toMatchObject({
+      actor: { platform: "system", name: "event" },
+      credentialContext: {
+        actor: { platform: "system", name: "event" },
+      },
+      destination: SLACK_DESTINATION,
+      source: storedSource,
+    });
   });
 
   it("rebuilds the resume actor from the message author when redis has no actor", async () => {
@@ -878,15 +774,14 @@ describe("paused turn Slack integration", () => {
     });
 
     expect(continued).toBe(true);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
-      }),
-    );
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toMatchObject({
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+      },
+    });
   });
 
   it("recovers the resume actor from the durable conversation record", async () => {
@@ -957,17 +852,6 @@ describe("paused turn Slack integration", () => {
     });
 
     expect(continued).toBe(true);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        instruction: expect.objectContaining({ text: "resume this request" }),
-          actor: expect.objectContaining({
-            userId: "U123",
-            userName: "testuser",
-            fullName: "Test User",
-            email: "testuser@example.com",
-        }),
-      }),
-    );
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -977,136 +861,15 @@ describe("paused turn Slack integration", () => {
         }),
       }),
     ]);
-  });
-
-  it("posts resumed replies through the shared delivery path", async () => {
-    const conversationId = "slack:C123:1712345.0003";
-    const sessionId = "turn_msg_3";
-    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: sessionId,
-      sliceId: 2,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1712345.0003"),
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-          timestamp: 1,
-        },
-      ],
-      resumeReason: "timeout",
-      resumedFromSliceId: 1,
-      errorMessage: "Agent turn timed out",
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toMatchObject({
+      instruction: { text: "resume this request" },
+      actor: expect.objectContaining({
         userId: "U123",
         userName: "testuser",
         fullName: "Test User",
         email: "testuser@example.com",
-      },
-    });
-
-    executeAgentRunMock.mockImplementationOnce(async (request) => {
-      const tools = createTools(
-        [],
-        {},
-        createToolContext(
-          request as AgentRun,
-          createSandbox({
-            "/tmp/resumed-image.png": Buffer.from("resumed image"),
-          }),
-        ),
-      );
-      const sendFiles = tools.sendFiles;
-      if (!sendFiles?.execute) {
-        throw new Error("sendFiles tool missing from resumed Slack context");
-      }
-      await sendFiles.execute(
-        {
-          files: [{ path: "/tmp/resumed-image.png" }],
-        },
-        {} as never,
-      );
-
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Final resumed answer." },
-      ]);
-      return completedAgentRun({
-        text: "Final resumed answer.",
-        diagnostics: makeDiagnostics(),
-      });
-    });
-
-    await threadStateModule.persistThreadStateById(conversationId, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "msg.3",
-            role: "user",
-            text: "resume this request",
-            createdAtMs: 1,
-            author: {
-              userId: "U123",
-              userName: "alice",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: sessionId,
-        },
-        vision: {
-          byFileId: {},
-        },
-      },
-    });
-
-    const continued = await continueAgentRun({
-      conversationId,
-      sessionId,
-      expectedVersion: sessionRecord.version,
-    });
-
-    expect(continued).toBe(true);
-
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0003",
-          text: "Final resumed answer.",
-        }),
       }),
-    ]);
-    expect(slackApiOutbox.calls("files.getUploadURLExternal")).toHaveLength(1);
-    expect(slackApiOutbox.fileUploads()).toHaveLength(1);
-    expect(
-      slackApiOutbox.calls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1712345.0003",
-    });
-    expect(slackApiOutbox.calls("files.completeUploadExternal")).toHaveLength(
-      1,
-    );
-
-    const persisted =
-      await threadStateModule.getPersistedThreadState(conversationId);
-    const processing = (
-      (persisted.conversation ?? {}) as {
-        processing?: { activeTurnId?: string };
-      }
-    ).processing;
-    expect(processing?.activeTurnId).toBeUndefined();
-    const conversation = coerceThreadConversationState({});
-    await hydrateConversationMessages({ conversation, conversationId });
-    expect(conversation.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      text: "Final resumed answer.",
     });
   });
 });

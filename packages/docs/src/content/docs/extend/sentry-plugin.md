@@ -6,11 +6,11 @@ prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /operate/security-hardening/
 ---
 
-Use the Sentry plugin to investigate issues with a user's Sentry account and respond to new issues through resource subscriptions and event tasks.
+Use the Sentry plugin to investigate issues with a user's Sentry account and respond to new issues through watches and event automations.
 
 Junior stores each user's OAuth grant and uses it only for that user's requests. Webhooks use a separate internal integration.
 
@@ -89,7 +89,7 @@ OAuth client secret used when a user connects their Sentry account.
 Organization slug allowed to send issue webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_ORG` in the deployment environment
-- **Required:** Yes for resource events; otherwise no
+- **Required:** Yes for events; otherwise no
 - **Environment override:** `SENTRY_WEBHOOK_ORG`
 
 </details>
@@ -100,7 +100,7 @@ Organization slug allowed to send issue webhooks.
 Internal integration client secret used to verify issue webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_SECRET` in the deployment environment
-- **Required:** Yes for resource events; otherwise no
+- **Required:** Yes for events; otherwise no
 - **Environment override:** `SENTRY_WEBHOOK_SECRET`
 
 </details>
@@ -137,15 +137,15 @@ https://<junior-host>/api/webhooks/sentry
 
 Junior verifies each webhook signature and accepts webhooks only from the configured organization.
 
-## Resource subscriptions
+## Watches
 
-Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable resource subscriptions. See [Resource Subscriptions](/concepts/resource-subscriptions/) for the difference between temporary subscriptions and durable event tasks.
+Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
 
 ### `issue`
 
 Subscribe to one issue with `org/project#issueId`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.created</code></summary>
 
 The issue was created.
@@ -156,14 +156,14 @@ The issue was created.
 
 Subscribe to all new issues in a project with `org/project`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.created</code></summary>
 
 An issue was created in the project.
 
 </details>
 
-Create the subscription or event task before the issue arrives. Junior does not replay earlier webhooks.
+Create the watch or event automation before the issue arrives. Junior does not replay earlier webhooks.
 
 ## Verify
 
@@ -183,9 +183,9 @@ Create the subscription or event task before the issue arrives. Junior does not 
 - **Sentry returns `401`:** Reconnect Sentry to replace the stale or revoked token.
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project.
-- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching subscription or event task exists.
+- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/resource-subscriptions/) and [Security Hardening](/operate/security-hardening/).
+Review [Watches](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).

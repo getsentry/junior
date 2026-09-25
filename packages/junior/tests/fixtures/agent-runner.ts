@@ -1,12 +1,15 @@
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  createAgentRunner,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRun } from "@/chat/agent/types";
+import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 
 function assistantMessage(text: string): AssistantMessage {
   return fauxAssistantMessage(text);
@@ -23,6 +26,27 @@ export const realAgentRunner: AgentRunner = {
     return await executeAgentRun(run);
   },
 };
+
+/** Create native Turn execution with a test AgentRunner. */
+export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
+  return async (run, saveResult, timeoutMs) =>
+    await executeTurn(agentRunner, run, saveResult, timeoutMs);
+}
+
+/** Run the real agent while replacing only model output. */
+export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
+  return createModelAgentRunnerForRun(() => streamFn);
+}
+
+/** Run the real agent while choosing a fixed model stream for each run. */
+export function createModelAgentRunnerForRun(
+  streamForRun: (run: AgentRun) => StreamFn,
+): AgentRunner {
+  return createAgentRunner(async (run) => {
+    const { executeAgentRun } = await import("@/chat/agent");
+    return await executeAgentRun(run, streamForRun(run));
+  });
+}
 
 /**
  * Guard runner for paths that must never reach agent execution; failing loud
@@ -66,21 +90,4 @@ export async function deliverAssistantMessagesForTest(
     await run.delivery(message);
   }
   return history;
-}
-
-/** Script completed assistant messages through the production delivery port. */
-export function scriptedAssistantMessageRunner(args: {
-  messages: Array<{ text: string }>;
-  result: AgentRunResult;
-}): AgentRunner {
-  return {
-    run: async (run) => {
-      await deliverAssistantMessagesForTest(
-        run,
-        args.messages,
-        args.result.piMessages,
-      );
-      return completedAgentRun(args.result);
-    },
-  };
 }

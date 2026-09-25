@@ -1,10 +1,17 @@
+import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -21,18 +28,32 @@ import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
 import {
+  conversationAttachmentHeaders,
+  requireConversationAttachment,
+} from "./attachments";
+import {
   appendConversationMessageForViewer,
   createConversationForViewer,
 } from "./create";
 import { readConversationDetail } from "./detail";
+import { forkConversationForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 
 /** Create the HTTP routes owned by the conversations API. */
-export function createConversationRoutes(): Hono<JuniorApiEnv> {
+export function createConversationRoutes(options: {
+  attachmentStorage: AttachmentStorage;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
+  const messageBodyLimit = bodyLimit({
+    maxSize: 4_450_000,
+    onError: () => {
+      throwApiError(413, "Images must total 3 MB or less.");
+    },
+  });
 
   app.get(
     "/",
@@ -42,13 +63,15 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail } = context.req.valid("query");
+      const { actorEmail, q, status } = context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : {}),
-          ...(viewer ? { viewer } : {}),
+          ...(actorEmail ? { actorEmail } : undefined),
+          ...(q ? { q } : undefined),
+          status,
+          ...(viewer ? { viewer } : undefined),
         }),
       );
     },
@@ -61,6 +84,7 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
   app.post(
     "/",
     requireViewer,
+    messageBodyLimit,
     validateRequest(
       "json",
       createConversationBodySchema,
@@ -71,7 +95,11 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await createConversationForViewer(viewer, body),
+        await createConversationForViewer(
+          viewer,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
   );
@@ -79,6 +107,7 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
   app.post(
     "/:conversationId/messages",
     requireViewer,
+    messageBodyLimit,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -95,13 +124,44 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await appendConversationMessageForViewer(viewer, conversationId, body),
+        await appendConversationMessageForViewer(
+          viewer,
+          conversationId,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
   );
 
+  app.post(
+    "/:conversationId/forks",
+    requireViewer,
+    bodyLimit({ maxSize: 4096 }),
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      forkConversationBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        forkConversationResponseSchema,
+        await forkConversationForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
   app.patch(
     "/:conversationId/archive",
+    requireViewer,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -113,11 +173,12 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       "Invalid request body.",
     ),
     async (context) => {
+      const viewer = context.get("viewer");
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
         archiveConversationResponseSchema,
-        await archiveConversation(conversationId, body),
+        await archiveConversation(viewer, conversationId, body),
       );
     },
   );
@@ -140,7 +201,7 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       const viewer = context.get("viewer");
       const report = await readConversationEvents(conversationId, before, {
         limit,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
@@ -166,6 +227,60 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
     },
   );
 
+  app.delete(
+    "/:conversationId/pending-messages",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      cancelConversationPendingMessagesBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        cancelConversationPendingMessagesResponseSchema,
+        await cancelConversationPendingMessagesForViewer(
+          viewer,
+          conversationId,
+          body,
+        ),
+      );
+    },
+  );
+
+  app.get(
+    "/:conversationId/attachments/:attachmentId",
+    validateRequest(
+      "param",
+      conversationAttachmentParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { attachmentId, conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const opened = await requireConversationAttachment({
+        attachmentId,
+        conversationId,
+        storage: options.attachmentStorage,
+        ...(viewer ? { viewer } : undefined),
+      });
+      return new Response(opened.body, {
+        headers: conversationAttachmentHeaders({
+          bytes: opened.attachment.bytes,
+          contentType: opened.attachment.contentType,
+          filename: opened.attachment.filename,
+        }),
+      });
+    },
+  );
+
   app.get(
     "/:conversationId",
     validateRequest(
@@ -184,7 +299,7 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       const viewer = context.get("viewer");
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationDetailReportSchema, report);

@@ -6,13 +6,23 @@ export function pathWithSearch(
   pathname: string,
   search: string | URLSearchParams | undefined,
 ): string {
-  const query =
+  const ambient =
     typeof search === "string"
       ? search.startsWith("?")
         ? search.slice(1)
         : search
       : (search?.toString() ?? "");
-  return query ? `${pathname}?${query}` : pathname;
+  const separator = pathname.indexOf("?");
+  const path = separator === -1 ? pathname : pathname.slice(0, separator);
+  const existing =
+    separator === -1 ? "" : pathname.slice(separator + 1).replace(/^\?+/, "");
+  // Path-owned params win when a caller already baked a query into `pathname`.
+  const merged = new URLSearchParams(ambient);
+  for (const [key, value] of new URLSearchParams(existing)) {
+    merged.set(key, value);
+  }
+  const query = merged.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 /** Accept only one of the allowed enum values from a query param. */

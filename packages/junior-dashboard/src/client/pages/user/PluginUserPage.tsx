@@ -2,6 +2,7 @@ import { Boxes, Trash2 } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
+import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
@@ -113,9 +114,9 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
         ) : null}
         {query.error ? (
           <Card padding="md">
-            <p className="m-0 text-sm text-rose-300">
+            <InlineError>
               Could not load {props.page.label.toLowerCase()}. Try again.
-            </p>
+            </InlineError>
           </Card>
         ) : records.length === 0 ? (
           <Card padding="md">
@@ -185,9 +186,9 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
               onLoadMore={() => void query.fetchNextPage()}
             />
             {action.error ? (
-              <p className="m-0 text-center text-sm text-rose-300">
+              <InlineError className="text-center">
                 Could not complete this action. Try again.
-              </p>
+              </InlineError>
             ) : null}
           </div>
         )}

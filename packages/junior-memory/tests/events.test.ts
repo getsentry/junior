@@ -1,7 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { memoriesCapturedEvent, memoriesRecalledEvent } from "../src/events";
+import {
+  memoriesCapturedEvent,
+  memoriesCapturedEventV1,
+  memoriesRecalledEvent,
+} from "../src/events";
 
 describe("memory conversation events", () => {
+  it("renders stored capture events with legacy scope values", () => {
+    const legacy = memoriesCapturedEventV1.parse({
+      memories: [
+        {
+          content: "Use pnpm.",
+          id: "memory-v1",
+          kind: "preference",
+          observedAtMs: 1,
+          scope: "personal",
+        },
+      ],
+    });
+    expect(
+      memoriesCapturedEventV1.renderEvent(legacy)?.details?.[0]?.metadata,
+    ).toEqual(["preference", "private"]);
+
+    expect(() =>
+      memoriesCapturedEvent.parse({
+        costUsd: 0.0042,
+        memories: [
+          {
+            content: "Release notes live in Notion.",
+            id: "memory-v2",
+            kind: "knowledge",
+            observedAtMs: 2,
+            scope: "conversation",
+          },
+        ],
+      }),
+    ).toThrow(/scope/);
+  });
+
   it("omits empty extraction results from transcript presentation", () => {
     expect(
       memoriesCapturedEvent.renderEvent({
@@ -30,7 +66,7 @@ describe("memory conversation events", () => {
           id: "memory-1",
           kind: "knowledge",
           observedAtMs: 1,
-          scope: "conversation",
+          scope: "public",
         },
       ],
     });
@@ -48,14 +84,14 @@ describe("memory conversation events", () => {
           id: "memory-1",
           kind: "preference",
           observedAtMs: 1,
-          scope: "personal",
+          scope: "private",
         },
         {
           content: "Keep events expandable.",
           id: "memory-2",
           kind: "knowledge",
           observedAtMs: 2,
-          scope: "conversation",
+          scope: "public",
         },
       ],
     });

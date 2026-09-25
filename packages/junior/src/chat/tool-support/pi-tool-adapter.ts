@@ -17,7 +17,10 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
+import {
+  buildPlanStatus,
+  buildReportedProgressStatus,
+} from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -46,6 +49,7 @@ import {
   ToolActionRejectedError,
   type ToolActionReview,
 } from "@/chat/tool-support/action-review";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createPiAgentTools(
@@ -149,11 +153,11 @@ export function createPiAgentTools(
               typeof toolInput.env === "object" &&
               !Array.isArray(toolInput.env)
                 ? toolInput.env
-                : {}),
+                : undefined),
               ...beforeTool.env,
             },
           }
-        : {}),
+        : undefined),
     };
     await onToolCall?.(toolCallId, toolName, toolInput);
     try {
@@ -178,12 +182,12 @@ export function createPiAgentTools(
           "app.guardian.decision": error.decision,
           ...(error.riskLevel
             ? { "app.guardian.risk_level": error.riskLevel }
-            : {}),
+            : undefined),
           ...(error.userAuthorization
             ? {
                 "app.guardian.user_authorization": error.userAuthorization,
               }
-            : {}),
+            : undefined),
         });
       }
       throw error;
@@ -194,14 +198,14 @@ export function createPiAgentTools(
       ? await sandboxTools!.execute({
           toolName,
           input: sandboxInput,
-          ...(signal ? { signal } : {}),
+          ...(signal ? { signal } : undefined),
           ...(toolName === "grep" || toolName === "findFiles"
             ? { setToolCallSpanAttributes: setSpanAttributes }
-            : {}),
+            : undefined),
         })
       : await toolDef.execute(executionInput, {
           experimental_context: sandbox,
-          ...(signal ? { signal } : {}),
+          ...(signal ? { signal } : undefined),
           conversationPrivacy: effectiveConversationPrivacy,
           toolCallId,
         });
@@ -252,7 +256,9 @@ export function createPiAgentTools(
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
-        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
+        ...(hasProjectedPrivateResult
+          ? privateTraceResultAttributes()
+          : undefined),
         ...toGenAiPayloadTraceAttributes(
           "gen_ai.tool.call.result",
           resultAttributeValue,
@@ -275,10 +281,12 @@ export function createPiAgentTools(
     executionToolName: string,
     params: Record<string, unknown>,
   ) => {
-    if (executionToolName !== "reportProgress") {
-      return;
-    }
-    const status = buildReportedProgressStatus(params);
+    const status =
+      executionToolName === "updatePlan"
+        ? buildPlanStatus(params)
+        : executionToolName === "reportProgress"
+          ? buildReportedProgressStatus(params)
+          : undefined;
     if (status) {
       await onStatus?.(status);
     }
@@ -356,6 +364,30 @@ export function createPiAgentTools(
               toolName,
             });
           } catch (error) {
+            if (
+              signal?.aborted &&
+              !(
+                error instanceof AuthorizationPauseError ||
+                error instanceof AuthorizationFlowDisabledError ||
+                error instanceof ToolActionRejectedError
+              )
+            ) {
+              // The host preempted this attempt, so its outcome is unknown.
+              // Report the same fact bash reports for a command timeout
+              // instead of a failure the model would retry.
+              const preempted = makeStructuredToolOutput({
+                aborted: true as const,
+                target: executionToolName,
+              });
+              await notifyToolResult({
+                ok: true,
+                params: executionParams,
+                result: preempted.details,
+                toolCallId,
+                toolName: executionToolName,
+              });
+              return { ...preempted, isError: false };
+            }
             await notifyToolResult({
               error: error instanceof Error ? error.message : String(error),
               ok: false,
@@ -391,7 +423,7 @@ export function createPiAgentTools(
           "gen_ai.tool.call.id": toolCallId,
           ...(toolArgumentsAttribute
             ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
-            : {}),
+            : undefined),
         },
       );
       if (result instanceof ToolActionRejectedError) {

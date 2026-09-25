@@ -12,12 +12,17 @@ export const personParamsSchema = z
 export const peopleConversationStatsItemSchema =
   conversationStatsItemSchema.omit({ costUsd: true });
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const peopleMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const actorActivityDayReportSchema = z
   .object({
     active: z.number(),
     conversations: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: peopleMetricBucketSchema,
     durationMs: z.number(),
     failed: z.number(),
     tokens: z.number().optional(),
@@ -28,7 +33,7 @@ export const peopleActivityDayReportSchema = z
   .object({
     activePeople: z.number(),
     conversations: z.number(),
-    date: z.string(),
+    date: peopleMetricBucketSchema,
   })
   .strict();
 
@@ -43,6 +48,26 @@ export const actorTotalsReportSchema = z
   })
   .strict();
 
+/** Spend and activity for one people-directory range, plus the prior period's spend. */
+export const actorWindowMetricsSchema = z
+  .object({
+    conversations: z.number().int().nonnegative(),
+    costUsd: z.number().finite().nonnegative(),
+    durationMs: z.number().finite().nonnegative(),
+    priorCostUsd: z.number().finite().nonnegative(),
+  })
+  .strict();
+
+/** People-directory ranges that match the dashboard range control. */
+export const actorDirectoryWindowsSchema = z
+  .object({
+    1: actorWindowMetricsSchema,
+    7: actorWindowMetricsSchema,
+    30: actorWindowMetricsSchema,
+    90: actorWindowMetricsSchema,
+  })
+  .strict();
+
 export const identifiedActorSchema = actorIdentitySchema
   .extend({ email: z.string().min(1) })
   .strict();
@@ -52,12 +77,15 @@ export const actorSummaryReportSchema = actorTotalsReportSchema
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
     actor: identifiedActorSchema,
+    windows: actorDirectoryWindowsSchema,
   })
   .strict();
 
 export const actorDirectoryReportSchema = z
   .object({
     activityDays: z.array(peopleActivityDayReportSchema),
+    activityHours: z.array(peopleActivityDayReportSchema).optional(),
+    activitySixHours: z.array(peopleActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     people: z.array(actorSummaryReportSchema),
     source: z.literal("conversation_index"),
@@ -69,6 +97,8 @@ export const actorDirectoryReportSchema = z
 export const actorProfileReportSchema = z
   .object({
     activityDays: z.array(actorActivityDayReportSchema),
+    activityHours: z.array(actorActivityDayReportSchema).optional(),
+    activitySixHours: z.array(actorActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     locations: z.array(peopleConversationStatsItemSchema),
     recentConversations: z.array(conversationSummaryReportSchema),
@@ -106,6 +136,8 @@ export type PeopleActivityDayReport = z.infer<
   typeof peopleActivityDayReportSchema
 >;
 export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
+export type ActorWindowMetrics = z.infer<typeof actorWindowMetricsSchema>;
+export type ActorDirectoryWindows = z.infer<typeof actorDirectoryWindowsSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;
 export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;

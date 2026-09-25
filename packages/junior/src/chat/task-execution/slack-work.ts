@@ -8,20 +8,27 @@ import {
   type StateAdapter,
 } from "chat";
 import { z } from "zod";
+import { logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
-} from "@/chat/runtime/slack-runtime";
+} from "@/chat/providers/slack/runtime";
 import {
   isCooperativeTurnYieldError,
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
+import {
+  normalizeIncomingSlackThreadId,
+  withNormalizedThreadId,
+} from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
-import type { ConversationStore } from "@/chat/conversations/store";
+import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
+import { removeReactionFromMessage } from "@/chat/slack/outbound";
+import { getMessageTs } from "@/chat/runtime/thread-context";
+import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -35,15 +42,15 @@ import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-i
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
 import {
-  isResourceEventSlackMessage,
-  RESOURCE_EVENT_SLACK_AUTHOR_ID,
-} from "@/chat/resource-events/actor";
-import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
+import {
+  botConfig,
+  getChatConfig,
+  type CrossActorMidRunMode,
+} from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -398,14 +405,15 @@ const slackConversationMessageMetadataSchema = z.union([
   slackConversationMessageMetadataBaseSchema.strict(),
   slackConversationMessageMetadataBaseSchema
     .extend({
-      kind: z.literal("resource_event"),
-      resourceEvent: z
+      kind: z.literal("event"),
+      event: z
         .object({
           eventKey: z.string(),
           eventType: z.string(),
           namespace: z.string(),
           identifier: z.string(),
           subscriptionId: z.string(),
+          trustedSummary: z.string().optional(),
         })
         .strict(),
     })
@@ -434,26 +442,6 @@ interface SlackInboxTurnRuntime {
   ): Promise<void>;
 }
 
-interface SlackResourceEventInboundInput {
-  event: {
-    eventKey: string;
-    eventType: string;
-    occurredAtMs: number;
-    namespace: string;
-    identifier: string;
-  };
-  subscription: {
-    conversationId: string;
-    destination: {
-      channelId: string;
-      platform: "slack";
-      teamId: string;
-    };
-    id: string;
-  };
-  text: string;
-}
-
 export interface CreateSlackConversationWorkerOptions {
   crossActorMidRunMode?: CrossActorMidRunMode;
   getSlackAdapter: () => SlackAdapter;
@@ -465,7 +453,6 @@ export interface CreateSlackConversationWorkerOptions {
     conversationId: string,
     options: { shouldYield: () => boolean },
   ) => Promise<boolean>;
-  conversationStore?: ConversationStore;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
 }
@@ -478,136 +465,6 @@ function requireSlackAuthorId(message: Message): string {
   return authorId;
 }
 
-function parseSlackConversationId(
-  conversationId: string,
-): { channelId: string; threadTs: string } | undefined {
-  const parts = conversationId.split(":");
-  if (parts.length !== 3 || parts[0] !== "slack" || !parts[1] || !parts[2]) {
-    return undefined;
-  }
-  return { channelId: parts[1], threadTs: parts[2] };
-}
-
-function slackSerializedThread(input: {
-  channelId: string;
-  message: SerializedMessage;
-  threadTs: string;
-}): z.output<typeof serializedThreadSchema> {
-  return {
-    _type: "chat:Thread",
-    adapterName: "slack",
-    channelId: input.channelId,
-    currentMessage: input.message,
-    id: `slack:${input.channelId}:${input.threadTs}`,
-    isDM: input.channelId.startsWith("D"),
-  };
-}
-
-/**
- * Serialize a synthetic resource-event mailbox message without a native Slack
- * message timestamp so Slack Web API calls cannot target the internal id.
- */
-function slackSerializedResourceEventMessage(input: {
-  channelId: string;
-  eventType: string;
-  id: string;
-  text: string;
-  threadTs: string;
-  timestampIso: string;
-}): SerializedMessage {
-  return {
-    _type: "chat:Message",
-    attachments: [],
-    author: {
-      userId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
-      userName: "junior-event",
-      fullName: "Junior event",
-      isBot: true,
-      isMe: false,
-    },
-    formatted: { type: "root", children: [] },
-    id: input.id,
-    metadata: {
-      dateSent: input.timestampIso,
-      edited: false,
-    },
-    raw: {
-      channel: input.channelId,
-      event_type: "resource_event",
-      resource_event_type: input.eventType,
-      thread_ts: input.threadTs,
-      type: "message",
-      user: RESOURCE_EVENT_SLACK_AUTHOR_ID,
-    },
-    text: input.text,
-    threadId: `slack:${input.channelId}:${input.threadTs}`,
-  };
-}
-
-/** Create a Slack mailbox record for a subscribed resource-event notification. */
-export function createSlackResourceEventInboundMessage(
-  input: SlackResourceEventInboundInput,
-): InboundMessage {
-  const slack = parseSlackConversationId(input.subscription.conversationId);
-  if (!slack) {
-    throw new Error(
-      "Resource event delivery currently requires a Slack conversation",
-    );
-  }
-  const destination = input.subscription.destination;
-  if (destination.channelId !== slack.channelId) {
-    throw new Error(
-      "Resource event subscription destination does not match Slack conversation",
-    );
-  }
-  const messageId = `resource-event-${input.subscription.id}-${input.event.eventKey}`;
-  const timestampIso = new Date(input.event.occurredAtMs).toISOString();
-  const message = slackSerializedResourceEventMessage({
-    channelId: slack.channelId,
-    eventType: input.event.eventType,
-    id: messageId,
-    text: input.text,
-    threadTs: slack.threadTs,
-    timestampIso,
-  });
-  const thread = slackSerializedThread({
-    channelId: slack.channelId,
-    message,
-    threadTs: slack.threadTs,
-  });
-  return {
-    conversationId: input.subscription.conversationId,
-    createdAtMs: input.event.occurredAtMs,
-    destination,
-    inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
-    delivery: "defer",
-    source: "resource_event",
-    receivedAtMs: Date.now(),
-    publishExternally: true,
-    input: {
-      text: input.text,
-      authorId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
-      metadata: {
-        kind: "resource_event",
-        installation: {
-          teamId: destination.teamId,
-        },
-        platform: "slack",
-        route: "subscribed",
-        thread,
-        message,
-        resourceEvent: {
-          eventKey: input.event.eventKey,
-          eventType: input.event.eventType,
-          namespace: input.event.namespace,
-          identifier: input.event.identifier,
-          subscriptionId: input.subscription.id,
-        },
-      } satisfies SlackConversationMessageMetadata,
-    },
-  };
-}
-
 function getConnectedState(stateAdapter?: StateAdapter): StateAdapter {
   return stateAdapter ?? getStateAdapter();
 }
@@ -618,6 +475,41 @@ function parseSlackMetadata(
 ): SlackConversationMessageMetadata | undefined {
   const parsed = slackConversationMessageMetadataSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+/** Clear cancelled Slack receipts without failing the stop or cancellation. */
+export async function clearSlackPendingReactions(args: {
+  getSlackAdapter: () => SlackAdapter;
+  messages: readonly InboundMessage[];
+  state?: StateAdapter;
+}): Promise<void> {
+  for (const record of args.messages) {
+    if (record.source !== "slack") continue;
+    try {
+      const metadata = parseSlackMetadata(record.input.metadata);
+      if (!metadata || metadata.route !== "mention") continue;
+      const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+      const target = parseSlackThreadId(metadata.thread.id);
+      if (!timestamp || !target) continue;
+      await runWithSlackInstallation({
+        adapter: args.getSlackAdapter(),
+        installation: metadata.installation ?? {},
+        state: args.state,
+        task: () =>
+          removeReactionFromMessage({
+            channelId: target.channelId,
+            timestamp,
+            emoji: getChatConfig().slack.processingReactionEmoji,
+          }),
+      });
+    } catch (error) {
+      // Receipts are optional UI. Adapter and installation failures must not
+      // undo cancellation or prevent cleanup of the other queued messages.
+      logException(error, "slack.processing.pending_reaction_cleanup.failed", {
+        "messaging.message.id": record.inboundMessageId,
+      });
+    }
+  }
 }
 
 function compareInboundMessages(
@@ -671,9 +563,6 @@ async function bindSlackActorIdentities(args: {
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();
   for (const message of args.messages) {
-    if (isResourceEventSlackMessage(message)) {
-      continue;
-    }
     const authorId = requireSlackAuthorId(message);
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
@@ -705,17 +594,15 @@ function restoreThread(args: {
     args.threadJson.id,
     args.message,
   );
-  if (args.message.threadId !== threadId) {
-    (args.message as unknown as { threadId: string }).threadId = threadId;
-  }
+  const message = withNormalizedThreadId(args.message, threadId);
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
     id: threadId,
     channelId: args.threadJson.channelId,
     channelVisibility: args.threadJson.channelVisibility,
-    currentMessage: args.message,
-    initialMessage: args.message,
+    currentMessage: message,
+    initialMessage: message,
     isDM: args.threadJson.isDM,
     isSubscribedContext: args.isSubscribedContext,
   });
@@ -760,16 +647,23 @@ export function createSlackConversationWorker(
         context.destination,
         "Slack paused-turn recovery",
       );
-      await runWithSlackInstallation({
-        adapter,
-        installation: { teamId: destination.teamId },
-        state,
-        task: async () => {
-          await options.runNextPausedTurn(context.conversationId, {
-            shouldYield: context.shouldYield,
-          });
-        },
-      });
+      try {
+        await runWithSlackInstallation({
+          adapter,
+          installation: { teamId: destination.teamId },
+          state,
+          task: async () => {
+            await options.runNextPausedTurn(context.conversationId, {
+              shouldYield: context.shouldYield,
+            });
+          },
+        });
+      } catch (error) {
+        if (isCooperativeTurnYieldError(error)) {
+          return { status: "yielded" } satisfies ConversationWorkerResult;
+        }
+        throw error;
+      }
       return { status: "completed" };
     }
 
@@ -777,7 +671,6 @@ export function createSlackConversationWorker(
     if (!latestRecord) {
       return { status: "completed" };
     }
-
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(
@@ -794,12 +687,15 @@ export function createSlackConversationWorker(
       installation: getInstallation(records),
       state,
       task: async () => {
-        const messages = records.map((record) =>
-          restoreMessage({ adapter, record }),
-        );
         const destination = requireSlackDestination(
           context.destination,
           "Slack conversation work",
+        );
+        const messages = records.map((record) =>
+          restoreMessage({
+            adapter,
+            record,
+          }),
         );
         await bindSlackActorIdentities({
           lookupSlackUser: actorLookup,
@@ -847,12 +743,12 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
-              .filter(
-                (record) => record.publishExternally === context.publishExternally,
-              )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({ adapter, record }),
+                message: restoreMessage({
+                  adapter,
+                  record,
+                }),
               }))
               .filter(
                 (candidate) =>
@@ -868,12 +764,18 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               conversationId: context.conversationId,
               destination,
-              publishExternally: context.publishExternally,
               messageContext,
               drainSteeringMessages,
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
+              stopSignal: context.stopSignal?.(),
+              subscribeThread: async () =>
+                await subscribeSlackThreadForMessage({
+                  messageCreatedAtMs: latestRecord.createdAtMs,
+                  state,
+                  thread,
+                }),
             });
           } else {
             await options.runtime.handleSubscribedMessage(
@@ -882,12 +784,12 @@ export function createSlackConversationWorker(
               {
                 conversationId: context.conversationId,
                 destination,
-                publishExternally: context.publishExternally,
                 messageContext,
                 drainSteeringMessages,
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
+                stopSignal: context.stopSignal?.(),
               },
             );
           }
@@ -949,7 +851,6 @@ export function buildSlackInboundMessage(args: {
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,
-    publishExternally: true,
     input: {
       text: args.message.text || " ",
       authorId,

@@ -32,7 +32,11 @@ Verify the target exists for every inventoried package before mutating files:
 pnpm view <package>@<target> version
 ```
 
-Stop if any package lacks the target on npm.
+Allow for npm security scanning and propagation delays after publication:
+
+- If a version or tarball is missing, retry affected packages after 30, 60, and 120 seconds. Keep the same target; do not retry auth failures as publication delays.
+- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available.
+- If still unavailable, leave app files unchanged and do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
 
 ### 3. Build release context
 
@@ -123,17 +127,17 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 
 ## Automatic updates from GitHub releases
 
-When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event task on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event task for ongoing automation; use a temporary watch only when following one manually initiated update.
+When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event automation on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event automation for ongoing automation; use a temporary watch only when following one manually initiated update.
 
 ## Stop conditions
 
-- Any Junior package lacks the target version on npm.
+- Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
 - Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.

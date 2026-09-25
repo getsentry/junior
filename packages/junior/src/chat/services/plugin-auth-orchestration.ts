@@ -113,10 +113,10 @@ function pluginAuthRequiredSignal(details: unknown):
     provider: parsedSignal.provider,
     grant: parsedSignal.grant,
     kind: parsedSignal.kind,
-    ...(parsedSignal.message ? { message: parsedSignal.message } : {}),
+    ...(parsedSignal.message ? { message: parsedSignal.message } : undefined),
     ...(parsedSignal.authorization
       ? { authorization: parsedSignal.authorization }
-      : {}),
+      : undefined),
   };
 }
 
@@ -160,19 +160,19 @@ export function createPluginAuthOrchestration(
           provider,
           actorId: input.actorId,
           sessionId: input.sessionId,
-          ...(options?.scope ? { scope: options.scope } : {}),
+          ...(options?.scope ? { scope: options.scope } : undefined),
         })
       : false;
 
     if (!reusingPendingLink) {
       const oauthResult = await startOAuthFlow(provider, {
         actorId: input.actorId,
-        ...(input.actor ? { actor: input.actor } : {}),
+        ...(input.actor ? { actor: input.actor } : undefined),
         channelId: input.channelId,
         destination: input.destination,
         source: input.source,
         threadTs: input.threadTs,
-        ...(options?.scope ? { scope: options.scope } : {}),
+        ...(options?.scope ? { scope: options.scope } : undefined),
         resumeConversationId: input.conversationId,
         resumeSessionId: input.sessionId,
         authorization: input.authorization,
@@ -193,7 +193,7 @@ export function createPluginAuthOrchestration(
         kind: "plugin",
         provider,
         actorId: input.actorId,
-        ...(options?.scope ? { scope: options.scope } : {}),
+        ...(options?.scope ? { scope: options.scope } : undefined),
         sessionId: input.sessionId,
         linkSentAtMs: reusingPendingLink
           ? input.pendingAuth!.linkSentAtMs

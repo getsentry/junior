@@ -41,18 +41,18 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
         ? "Explicit"
         : "Other";
   return {
-    actions:
-      memory.visibility === "private"
-        ? [
-            {
-              confirmation: "Forget this memory?",
-              href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
-              label: "Forget",
-              method: "DELETE",
-              tone: "danger",
-            },
-          ]
-        : [],
+    actions: [
+      {
+        confirmation:
+          memory.visibility === "public"
+            ? "Forget this memory for everyone?"
+            : "Forget this memory?",
+        href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+        label: "Forget",
+        method: "DELETE",
+        tone: "danger",
+      },
+    ],
     id: memory.id,
     metadata: [
       { label: "Type", value: titleCase(memory.kind) },

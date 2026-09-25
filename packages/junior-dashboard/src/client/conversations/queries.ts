@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -13,16 +13,35 @@ import type {
   ConversationFeed,
   ConversationPendingMessagesReport,
   ConversationSummaryReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  webMessageId,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
+import {
+  DashboardApiError,
+  del,
+  fetchDashboardJson,
+  patch,
+  post,
+} from "../http";
+import {
+  conversationOutboxMessageForSubmit,
+  conversationOutboxQueryKey,
+  failConversationOutboxMessage,
+  mergeConversationMailboxMessages,
+  acceptConversationOutboxMessage,
+  upsertConversationOutboxMessage,
+  type ConversationMailboxMessage,
+  type ConversationOutboxMessage,
+} from "./conversationOutbox";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -30,6 +49,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "./transcript";
 
@@ -40,6 +60,14 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
 
 function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
+}
+
+/** Read active/archived status from a dashboard conversations query key. */
+function conversationFeedStatus(
+  queryKey: readonly unknown[],
+): "active" | "archived" | undefined {
+  const status = queryKey[queryKey.length - 1];
+  return status === "active" || status === "archived" ? status : undefined;
 }
 
 type ArchivedConversationSnapshot = {
@@ -96,41 +124,44 @@ export function usePendingArchiveConversationUpdates() {
   });
 }
 
-/** Return the stable cache key for one conversation mailbox snapshot. */
-export function conversationPendingMessagesQueryKey(
-  conversationId: string | undefined,
-) {
-  return ["conversation", conversationId, "pending-messages"] as const;
+type ConversationSnapshot = ConversationDetailReport & {
+  mailbox?: ConversationPendingMessagesReport;
+};
+
+/** Read the mailbox before history so acknowledged input is already committed. */
+async function readConversationSnapshot(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<ConversationSnapshot> {
+  const mailbox = await readConversationPendingMessages(conversationId, signal);
+  const detail = await readConversationData(conversationId, signal);
+  return { ...detail, mailbox };
 }
 
-/** Define the bounded, polling conversation-detail resource. */
+/** Refresh history and mailbox as one visible snapshot, including idle input. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
+  options?: { awaitingMessage?: boolean },
 ) {
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
-    queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    queryFn: ({ signal }) => readConversationSnapshot(conversationId!, signal),
+    structuralSharing: (previous, next) => {
+      if (!next || typeof next !== "object") return next;
+      if (!previous || typeof previous !== "object") return next;
+      return reuseConversationEventReferences(
+        previous as ConversationSnapshot,
+        next as ConversationSnapshot,
+      );
+    },
     refetchInterval: (query) =>
-      query.state.data?.status === "active" ? 2_000 : false,
-    retry: false,
-  });
-}
-
-/** Define the bounded mailbox snapshot polled while work may still be queued. */
-export function conversationPendingMessagesQueryOptions(
-  conversationId: string | undefined,
-  options?: { activeConversation?: boolean },
-) {
-  return queryOptions({
-    enabled: Boolean(conversationId),
-    queryKey: conversationPendingMessagesQueryKey(conversationId),
-    queryFn: ({ signal }) =>
-      readConversationPendingMessages(conversationId!, signal),
-    refetchInterval: (query) =>
-      options?.activeConversation || Boolean(query.state.data?.messages.length)
+      options?.awaitingMessage ||
+      query.state.data?.status === "active" ||
+      Boolean(query.state.data?.mailbox?.messages.length) ||
+      Boolean(query.state.data?.mailbox?.authorization)
         ? 2_000
-        : false,
+        : 10_000,
     retry: false,
   });
 }
@@ -142,18 +173,28 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
+      images?: InputImage[];
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
-    onSuccess: async (accepted) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
-        }),
-      ]);
+    onSuccess: (accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(accepted.conversationId),
+        (current) =>
+          upsertConversationOutboxMessage(current, {
+            ...conversationOutboxMessageForSubmit({
+              ...args,
+              messageId: accepted.messageId,
+            }),
+            status: "accepted",
+          }),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(accepted.conversationId),
+      });
     },
   });
 }
@@ -161,14 +202,112 @@ export function useCreateConversation() {
 /** Add one dashboard message and refresh the shared transcript. */
 export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
+  const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
-    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+    mutationFn: (args: {
+      idempotencyKey: string;
+      message: string;
+      images?: InputImage[];
+    }) =>
       post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         args,
       ),
-    onSuccess: async () => {
+    onMutate: async (args) => {
+      // Use the durable id from the first render. No server read is needed,
+      // and a poll that beats POST cannot create a second copy.
+      const messageId = await webMessageId({
+        conversationId,
+        idempotencyKey: args.idempotencyKey,
+      });
+      const optimistic = conversationOutboxMessageForSubmit({
+        ...args,
+        messageId,
+      });
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) => upsertConversationOutboxMessage(current, optimistic),
+      );
+    },
+    onError: (_error, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          failConversationOutboxMessage(current, args.idempotencyKey),
+      );
+    },
+    onSuccess: (accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          acceptConversationOutboxMessage(
+            current,
+            args.idempotencyKey,
+            accepted.messageId,
+          ),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+    },
+  });
+}
+
+/** Cancel accepted human-facing mailbox rows for the open conversation. */
+export function useCancelConversationPendingMessages(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      inboundMessageIds: string[];
+      receivedBefore: string;
+    }) =>
+      del(
+        cancelConversationPendingMessagesResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+        args,
+      ),
+    onMutate: async (args) => {
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+      const previousPending = queryClient.getQueryData<ConversationSnapshot>(
+        conversationDetailQueryKey(conversationId),
+      );
+      if (previousPending?.mailbox) {
+        queryClient.setQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+          {
+            ...previousPending,
+            mailbox: {
+              ...previousPending.mailbox,
+              messages: previousPending.mailbox.messages.filter(
+                (message) =>
+                  !args.inboundMessageIds.includes(message.inboundMessageId),
+              ),
+            },
+          },
+        );
+      }
+      return { previousPending };
+    },
+    onError: (_error, _args, context) => {
+      if (context?.previousPending) {
+        queryClient.setQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+          (current) =>
+            current
+              ? { ...current, mailbox: context.previousPending?.mailbox }
+              : current,
+        );
+      }
+    },
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],
@@ -176,10 +315,6 @@ export function useAppendConversationMessage(conversationId: string) {
         queryClient.invalidateQueries({
           exact: true,
           queryKey: conversationDetailQueryKey(conversationId),
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(conversationId),
         }),
       ]);
     },
@@ -191,7 +326,7 @@ export function useArchiveConversation(
   conversationId: string,
   options?: {
     onError?(): void;
-    onSuccess?(archived: boolean): void;
+    onSuccess?(archivedAt: string | null): void;
   },
 ) {
   const queryClient = useQueryClient();
@@ -219,29 +354,28 @@ export function useArchiveConversation(
         queryClient.getQueryData<ArchivedConversationSnapshot>(
           archivedQueryKey,
         );
-      const archivedAt = args.archived ? new Date().toISOString() : undefined;
-      const archivedSnapshot = args.archived
-        ? (buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
-          previousArchivedSnapshot)
-        : previousArchivedSnapshot;
+      const archivedAt = args.archived ? new Date().toISOString() : null;
+      // Snapshot from any loaded feed, including archived-only fixtures that
+      // were never archived through this client session.
+      const archivedSnapshot =
+        buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
+        previousArchivedSnapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
         const conversationExists = feed.conversations.some(
           (conversation) => conversation.conversationId === conversationId,
         );
+        const feedStatus = conversationFeedStatus(queryKey);
         const shouldRestore =
           !args.archived &&
           !conversationExists &&
-          Boolean(
-            archivedSnapshot?.feedQueryHashes.includes(
-              JSON.stringify(queryKey),
-            ),
-          );
+          Boolean(archivedSnapshot) &&
+          feedStatus !== "archived";
         const conversations = shouldRestore
           ? [
               ...feed.conversations,
-              { ...archivedSnapshot!.conversation, archivedAt: undefined },
+              { ...archivedSnapshot!.conversation, archivedAt: null },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
           : feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
@@ -292,14 +426,19 @@ export function useArchiveConversation(
       }
       options?.onError?.();
     },
-    onSuccess: (_result, args) => {
+    onSuccess: (result, args) => {
+      queryClient.setQueryData<ConversationDetailReport>(
+        conversationDetailQueryKey(conversationId),
+        (detail) =>
+          detail ? { ...detail, archivedAt: result.archivedAt } : detail,
+      );
       if (!args.archived) {
         queryClient.removeQueries({
           exact: true,
           queryKey: archivedConversationQueryKey(conversationId),
         });
       }
-      options?.onSuccess?.(args.archived);
+      options?.onSuccess?.(result.archivedAt);
     },
     onSettled: async () => {
       await Promise.all([
@@ -339,13 +478,55 @@ function buildArchivedConversationSnapshot(
 /** Fetch a bounded conversation snapshot and older pages on demand. */
 export function useConversationData(conversationId: string | undefined) {
   const queryClient = useQueryClient();
-  const detail = useQuery(conversationDetailQueryOptions(conversationId));
-  const pending = useQuery(
-    conversationPendingMessagesQueryOptions(conversationId, {
-      activeConversation: detail.data?.status === "active",
-    }),
+  const outbox = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache. Never replace optimistic rows with an empty fetch result.
+    queryFn: async (): Promise<ConversationOutboxMessage[]> =>
+      queryClient.getQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+      ) ?? [],
+    queryKey: conversationOutboxQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const awaitingMessage = outbox.data.some(
+    (message) => message.status !== "failed",
   );
-  const historyStatus = detail.data?.eventHistory.status;
+  const detail = useQuery(
+    conversationDetailQueryOptions(conversationId, { awaitingMessage }),
+  );
+  // Defer the whole server snapshot, not history alone. Queue removal and the
+  // matching transcript must paint together while composer input stays urgent.
+  const deferredDetail = useDeferredValue(detail.data);
+  // Defer refreshes only within this Conversation. First load and navigation
+  // must use the current query, never an empty or different Conversation snapshot.
+  const detailData =
+    deferredDetail && deferredDetail.conversationId === conversationId
+      ? deferredDetail
+      : detail.data;
+  const mailbox = detailData?.mailbox;
+  // Accept is not visibility. Keep a local row until either server resource
+  // contains its real Message id. History and mailbox arrive in one render.
+  useEffect(() => {
+    if (!mailbox || !detailData) return;
+    const observedIds = new Set(
+      mailbox.messages.map((message) => message.messageId),
+    );
+    for (const event of detailData.events) {
+      if (event.data.type === "message") observedIds.add(event.data.messageId);
+    }
+    queryClient.setQueryData<ConversationOutboxMessage[]>(
+      conversationOutboxQueryKey(conversationId),
+      (current) => {
+        const next = current?.filter(
+          (message) => !observedIds.has(message.messageId),
+        );
+        return next?.length === current?.length ? current : next;
+      },
+    );
+  }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
+  const historyStatus = detailData?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
     [conversationId, historyStatus],
@@ -360,33 +541,47 @@ export function useConversationData(conversationId: string | undefined) {
       ...(await readConversationEvents(conversationId!, pageParam, signal)),
       requestedBefore: pageParam,
     }),
-    initialPageParam: detail.data?.previousCursor ?? "",
+    initialPageParam: detailData?.previousCursor ?? "",
     getNextPageParam: (_page, pages) =>
-      nextConversationHistoryCursor(detail.data?.previousCursor, pages),
+      nextConversationHistoryCursor(detailData?.previousCursor, pages),
     retry: false,
   });
 
   const historyPages = history.data?.pages;
   const data = useMemo(
     () =>
-      detail.data
-        ? buildConversationTranscript(detail.data, historyPages ?? [])
+      detailData
+        ? buildConversationTranscript(detailData, historyPages ?? [])
         : undefined,
-    [detail.data, historyPages],
+    [detailData, historyPages],
   );
-  const pendingMessages = pending.data?.messages ?? [];
+  // Live polls mint fresh server arrays every 2s. Reuse the previous list when
+  // visible mailbox rows are unchanged so the reply footer can skip work while
+  // the reader types.
+  const pendingMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
+    undefined,
+  );
+  const pendingMessages = useMemo(() => {
+    const next = mergeConversationMailboxMessages(
+      mailbox?.messages,
+      outbox.data,
+      pendingMessagesRef.current,
+    );
+    pendingMessagesRef.current = next;
+    return next;
+  }, [outbox.data, mailbox?.messages]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
-    detail.data &&
-    (conversationHistoryChanged(detail.data, historyPages ?? []) ||
+    detailData &&
+    (conversationHistoryChanged(detailData, historyPages ?? []) ||
       invalidHistoryCursor),
   );
   const historyError = invalidHistoryCursor ? null : history.error;
   const historyNeedsReconciliation = Boolean(
-    detail.data?.previousCursor &&
+    detailData?.previousCursor &&
     history.data &&
     conversationHistoryBridgeCursor(
-      detail.data.previousCursor,
+      detailData.previousCursor,
       history.data.pages,
     ) &&
     !shouldRefreshDetail &&
@@ -422,16 +617,18 @@ export function useConversationData(conversationId: string | undefined) {
     historyVersion: conversationHistoryVersion(historyPages ?? []),
     hasPreviousPage: history.data
       ? history.hasNextPage
-      : Boolean(detail.data?.previousCursor),
+      : Boolean(detailData?.previousCursor),
     isPending: detail.isPending,
     isLoadingPreviousPage,
+    pendingAuthorization: mailbox?.authorization,
+    pendingGeneratedAt: mailbox?.generatedAt,
     pendingMessages,
     loadCompleteTranscript: () => {
-      if (!conversationId || !detail.data) {
+      if (!conversationId || !detailData) {
         throw new Error("Cannot load a conversation without an id");
       }
       return loadCompleteConversationTranscript({
-        detail: detail.data,
+        detail: detailData,
         historyPages: history.data?.pages ?? [],
         readPage: (before) => readConversationEvents(conversationId, before),
       });
@@ -439,7 +636,7 @@ export function useConversationData(conversationId: string | undefined) {
     loadPreviousPage: () => {
       const hasPreviousPage = history.data
         ? history.hasNextPage
-        : Boolean(detail.data?.previousCursor);
+        : Boolean(detailData?.previousCursor);
       if (conversationId && hasPreviousPage && !history.isFetchingNextPage) {
         void history.fetchNextPage();
       }

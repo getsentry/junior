@@ -1,11 +1,10 @@
 import {
   Bookmark,
   BrainCircuit,
-  ChevronRight,
   CircleAlert,
   Database,
   Globe2,
-  LockKeyhole,
+  Lock,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -14,15 +13,18 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { FilterTabList } from "../../components/FilterBar";
-import { LoadingView } from "../../components/LoadingView";
+import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
-import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
@@ -34,9 +36,18 @@ import {
   useMemoryDashboardData,
 } from "./memoryDashboard";
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
+import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
+
+/**
+ * Leading memory column flexes; type and date columns stay equal fixed
+ * widths on `sm` and up. Below `sm` those columns are hidden, so the grid
+ * collapses to just the label and trailing visibility icon.
+ */
+const MEMORY_GRID =
+  "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_7rem_9rem_auto]";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -48,30 +59,20 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const overview = location.pathname === basePath;
   const library = location.pathname === libraryPath || Boolean(memoryId);
   if (!overview && !library) return <Navigate replace to={basePath} />;
-  const libraryHref = pathWithSearch(libraryPath, location.search);
 
   return (
-    <div className="min-w-0">
-      <SecondaryNavigation
-        ariaLabel="Memory navigation"
-        items={[
-          { end: true, label: "Overview", to: basePath },
-          { label: "Memories", to: libraryHref },
-        ]}
+    <MemoryPageLayout>
+      <PageHeader
+        description={props.page.description}
+        {...(overview ? { onRangeChange: setRange, range } : {})}
+        title={props.page.label}
       />
-      <PageLayout className="gap-6 sm:gap-8">
-        <PageHeader
-          description={props.page.description}
-          {...(overview ? { onRangeChange: setRange, range } : {})}
-          title={props.page.label}
-        />
-        {overview ? (
-          <MemoryOverview range={range} />
-        ) : (
-          <MemoryLibrary libraryPath={libraryPath} page={props.page} />
-        )}
-      </PageLayout>
-    </div>
+      {overview ? (
+        <MemoryOverview range={range} />
+      ) : (
+        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+      )}
+    </MemoryPageLayout>
   );
 }
 
@@ -87,24 +88,41 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
   }
   if (!dashboardQuery.data) {
     return (
-      <>
-        <Card className="min-h-64 animate-pulse">
-          <span className="sr-only">Loading memory history</span>
-        </Card>
-        <div className="h-24 animate-pulse border-y border-white/[0.06]">
-          <span className="sr-only">Loading memory summary</span>
-        </div>
-      </>
+      <PageContentSkeleton
+        className="gap-6 sm:gap-8"
+        label="Loading memory history"
+        variant="overview"
+      />
     );
   }
   return (
     <>
       <section className="grid gap-4 xl:grid-cols-2">
-        <MemoryTimeline days={dashboardQuery.data.days} range={props.range} />
-        <MemoryCostChart
-          extractionDays={dashboardQuery.data.extractionDays}
+        <MemoryTimeline
+          bucketUnit={timeRangeBucketUnit(props.range)}
+          days={selectTimeSeries({
+            days: dashboardQuery.data.days,
+            hours: dashboardQuery.data.hours,
+            range: props.range,
+            emptySixHour: (date) => ({ date, personal: 0, public: 0 }),
+          })}
           range={props.range}
-          recallDays={dashboardQuery.data.recallDays}
+        />
+        <MemoryCostChart
+          bucketUnit={timeRangeBucketUnit(props.range)}
+          extractionDays={selectTimeSeries({
+            days: dashboardQuery.data.extractionDays,
+            hours: dashboardQuery.data.extractionHours,
+            range: props.range,
+            emptySixHour: (date) => ({ costUsd: 0, date, events: 0 }),
+          })}
+          range={props.range}
+          recallDays={selectTimeSeries({
+            days: dashboardQuery.data.recallDays,
+            hours: dashboardQuery.data.recallHours,
+            range: props.range,
+            emptySixHour: (date) => ({ costUsd: 0, date, events: 0 }),
+          })}
         />
       </section>
       <MemorySummary data={dashboardQuery.data} />
@@ -170,9 +188,7 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading memories" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <section className="grid gap-4" aria-labelledby="memory-library-title">
@@ -220,7 +236,9 @@ function MemoryLibrary(props: {
         value={filter}
       />
 
-      {query.error ? (
+      {loading ? (
+        <PageContentSkeleton label="Loading memories" variant="panel" />
+      ) : query.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
           {query.error.message}
@@ -267,18 +285,20 @@ function MemoryLibrary(props: {
             onLoadMore={() => void query.fetchNextPage()}
           />
           {action.error ? (
-            <p className="m-0 text-center text-sm text-rose-300">
+            <InlineError className="text-center">
               Could not complete this action. Try again.
-            </p>
+            </InlineError>
           ) : null}
         </div>
       )}
-      <MemoryDetailsDrawer
-        action={action}
-        onAction={runAction}
-        onClose={() => navigate(memoryPath(props.libraryPath))}
-        record={selectedRecord}
-      />
+      {!loading ? (
+        <MemoryDetailsDrawer
+          action={action}
+          onAction={runAction}
+          onClose={() => navigate(memoryPath(props.libraryPath))}
+          record={selectedRecord}
+        />
+      ) : null}
     </section>
   );
 }
@@ -286,14 +306,16 @@ function MemoryLibrary(props: {
 function MemoryListHeader() {
   return (
     <div
-      aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+      className={cn(
+        "hidden items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid",
+        MEMORY_GRID,
+      )}
+      role="row"
     >
-      <span>Memory</span>
-      <span>Visibility</span>
-      <span>Type</span>
-      <span>Learned</span>
-      <span aria-hidden="true" className="size-4" />
+      <div>Memory</div>
+      <div>Type</div>
+      <div>Learned</div>
+      <div className="sr-only">Visibility</div>
     </div>
   );
 }
@@ -469,77 +491,67 @@ function MemoryRow(props: {
       <button
         aria-expanded={props.selected}
         aria-label={`View memory details: ${props.record.title}`}
-        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
+        className={cn(
+          "grid min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left",
+          MEMORY_GRID,
+        )}
         onClick={props.onSelect}
         type="button"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className={cn(
-              "grid size-8 shrink-0 place-items-center rounded border",
-              props.selected
-                ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
-            )}
-          >
-            <BrainCircuit aria-hidden="true" size={15} />
-          </div>
-          <div className="min-w-0 flex-1">
+        <div className="min-w-0 overflow-hidden">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <VisibilityIcon
+              className="sm:hidden"
+              isPublic={isPublic}
+              size={14}
+            />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
               {props.record.title}
             </h3>
-            <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-xs text-dashboard-text-muted">
-              <span className="truncate">Source: {source}</span>
-              <span
-                aria-hidden="true"
-                className="text-dashboard-text-muted opacity-30 sm:hidden"
-              >
-                ·
-              </span>
-              <span className="truncate sm:hidden">
-                {kind} · {visibility} · {shortDate(remembered)}
-              </span>
-            </div>
+          </div>
+          <div className="mt-1.5 truncate font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            Source: {source}
+            <span className="sm:hidden">
+              {" "}
+              · {kind} · {shortDate(remembered)}
+            </span>
           </div>
         </div>
-        <span
-          className={cn(
-            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:inline-flex",
-            isPublic
-              ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
-              : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
-          )}
-        >
-          {isPublic ? (
-            <Globe2 aria-hidden="true" size={11} />
-          ) : (
-            <LockKeyhole aria-hidden="true" size={11} />
-          )}
-          {visibility}
-        </span>
-        <span
-          className={cn(
-            "hidden w-fit rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:block",
-            memoryKindClass(kind),
-          )}
-        >
+        <span className="hidden truncate font-mono text-xs text-dashboard-text-muted sm:block">
           {kind}
         </span>
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "shrink-0 transition-transform",
-            props.selected
-              ? "translate-x-0.5 text-cyan-200"
-              : "text-dashboard-text-muted group-hover:text-dashboard-text",
-          )}
-          size={16}
+        <VisibilityIcon
+          className="hidden justify-self-center sm:inline-flex"
+          isPublic={isPublic}
+          size={15}
         />
       </button>
     </SelectableRow>
+  );
+}
+
+/** Render the lock (private) or globe (public) mark for one memory's visibility. */
+function VisibilityIcon(props: {
+  className?: string;
+  isPublic: boolean;
+  size: number;
+}) {
+  const Icon = props.isPublic ? Globe2 : Lock;
+  const label = props.isPublic ? "Public" : "Private";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center text-dashboard-text-muted",
+        props.className,
+      )}
+      title={label}
+    >
+      <Icon aria-hidden="true" size={props.size} />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 
@@ -549,14 +561,4 @@ function metadataValue(record: PluginUserPageRecord, label: string): string {
 
 function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
-}
-
-function memoryKindClass(kind: string): string {
-  if (kind === "Preference") {
-    return "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100";
-  }
-  if (kind === "Procedure") {
-    return "border-amber-300/20 bg-amber-300/[0.07] text-amber-100";
-  }
-  return "border-violet-300/20 bg-violet-300/[0.07] text-violet-100";
 }

@@ -139,7 +139,7 @@ export function parseOAuthTokenResponse(
   } = {
     accessToken,
     refreshToken: resolvedRefreshToken,
-    ...(scope ? { scope } : {}),
+    ...(scope ? { scope } : undefined),
   };
 
   if (expiresIn !== undefined) {

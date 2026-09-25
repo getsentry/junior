@@ -1,6 +1,6 @@
 # @sentry/junior-notion
 
-`@sentry/junior-notion` adds read-only Notion search workflows for pages and data sources to Junior through Notion's hosted MCP server.
+`@sentry/junior-notion` adds Notion search, fetch, and limited write workflows for pages and data sources to Junior through Notion's hosted MCP server.
 
 Install it alongside `@sentry/junior`:
 
@@ -18,7 +18,15 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
 
 This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
 
-Junior intentionally keeps this package read-only by exposing only Notion's `notion-search` and `notion-fetch` MCP tools. The plugin does not expose create, update, move, or other write-capable Notion tools.
+The package exposes a deliberately limited Notion MCP surface:
+
+- `notion-search`
+- `notion-fetch`
+- `notion-create-pages`
+- `notion-update-page`
+- `notion-move-pages`
+
+It does not expose broader administrative or destructive Notion tools such as database deletion or unrestricted schema changes.
 
 ## Search limitations
 
@@ -34,5 +42,6 @@ This package uses Notion MCP search and fetch rather than the older REST helper 
 - Notion MCP requires user-based OAuth and does not support bearer token authentication.
 - This package is not suitable for fully headless or unattended automation.
 - Users can disconnect from Junior App Home with `Unlink`, or by asking Junior to disconnect Notion.
+- Existing OAuth connections may need reauthorization if Notion requires additional scopes for write tools.
 
 Full setup guide: https://junior.sentry.dev/extend/notion-plugin/

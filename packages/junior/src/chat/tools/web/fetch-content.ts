@@ -5,6 +5,7 @@ import {
   MAX_FETCH_BYTES,
   MAX_FETCH_CHARS,
 } from "@/chat/tools/web/constants";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { readResponseBody, withTimeout } from "@/chat/tools/web/network";
 
 export { MAX_FETCH_CHARS };
@@ -227,7 +228,12 @@ export async function extractWebFetchResponse(
   const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
 
   if (!response.ok) {
-    throw new Error(`fetch failed: ${response.status}`);
+    const message = `fetch failed: ${response.status}`;
+    // Client-side misses are model-repairable. Upstream 5xx stays a system error.
+    if (response.status >= 400 && response.status < 500) {
+      throw new ToolInputError(message);
+    }
+    throw new Error(message);
   }
 
   const contentType = (
@@ -238,7 +244,9 @@ export async function extractWebFetchResponse(
     !contentType.includes("json") &&
     !contentType.includes("xml")
   ) {
-    throw new Error(`unsupported content type: ${contentType || "unknown"}`);
+    throw new ToolInputError(
+      `unsupported content type: ${contentType || "unknown"}`,
+    );
   }
 
   const body = await withTimeout(
@@ -250,7 +258,7 @@ export async function extractWebFetchResponse(
   return {
     url: url.toString(),
     content: extracted.content,
-    ...(extracted.title ? { title: extracted.title } : {}),
+    ...(extracted.title ? { title: extracted.title } : undefined),
     content_type: contentType || "unknown",
     source_bytes: Buffer.byteLength(body, "utf8"),
     extracted_chars: extracted.extractedChars,

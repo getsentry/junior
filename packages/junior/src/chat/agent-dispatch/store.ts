@@ -6,13 +6,14 @@ import {
   isSlackDestination,
   replyAttributionSchema,
   sourceSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getConversationStore } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -65,6 +66,7 @@ const dispatchRecordSchema = z
     replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
   })
@@ -118,16 +120,6 @@ const dispatchRecordSchema = z
     }
   });
 
-// TODO(v0.116.0): Remove legacy dispatch execution fields after records written
-// by the callback-owned lifecycle have expired.
-const storedDispatchRecordSchema = dispatchRecordSchema.extend({
-  attempt: z.number().int().nonnegative().optional(),
-  lastCallbackAtMs: z.number().finite().optional(),
-  leaseExpiresAtMs: z.number().finite().optional(),
-  maxAttempts: z.number().int().positive().optional(),
-  version: z.number().int().positive().optional(),
-});
-
 /** Return the durable key for one plugin-facing dispatch projection. */
 export function getDispatchStorageKey(id: string): string {
   return `${DISPATCH_PREFIX}:record:${id}`;
@@ -138,8 +130,6 @@ function dispatchLockKey(id: string): string {
 }
 
 function pendingDispatchMailboxAppendIndexKey(): string {
-  // TODO(v0.116.0): Rename after the old callback-owned incomplete index has
-  // aged out. Reusing the key preserves pending pre-cutover mailbox appends.
   return `${DISPATCH_PREFIX}:incomplete`;
 }
 
@@ -170,38 +160,12 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
   return `dispatch_${digest}`;
 }
 
-/** Parse current and rollout-compatible dispatch projection records. */
+/** Parse one durable dispatch projection record. */
 export function parseDispatchRecord(
   value: unknown,
 ): DispatchRecord | undefined {
-  const parsed = parseStoredDispatchRecord(value);
-  return parsed?.record;
-}
-
-function parseStoredDispatchRecord(value: unknown):
-  | {
-      legacyLeaseExpiresAtMs?: number;
-      record: DispatchRecord;
-    }
-  | undefined {
-  const parsed = storedDispatchRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    return undefined;
-  }
-  const {
-    attempt: _attempt,
-    lastCallbackAtMs: _lastCallbackAtMs,
-    leaseExpiresAtMs: _leaseExpiresAtMs,
-    maxAttempts: _maxAttempts,
-    version: _version,
-    ...record
-  } = parsed.data;
-  return {
-    ...(typeof parsed.data.leaseExpiresAtMs === "number"
-      ? { legacyLeaseExpiresAtMs: parsed.data.leaseExpiresAtMs }
-      : {}),
-    record: record as DispatchRecord,
-  };
+  const parsed = dispatchRecordSchema.safeParse(value);
+  return parsed.success ? (parsed.data as DispatchRecord) : undefined;
 }
 
 /** Return the isolated durable conversation id for one dispatch. */
@@ -216,25 +180,6 @@ export function getDispatchInputMessageId(dispatchId: string): string {
   return `agent-dispatch:${dispatchId}`;
 }
 
-/**
- * Return the synthetic input id written by the pre-conversation-work runner.
- *
- * TODO(v0.116.0): Remove after v0.114 dispatch sessions can no longer resume.
- */
-export function getLegacyDispatchInputMessageId(dispatchId: string): string {
-  return `dispatch:${dispatchId}:user`;
-}
-
-/** Return every persisted input id accepted while resuming one dispatch. */
-export function getDispatchInputMessageIds(
-  dispatchId: string,
-): readonly string[] {
-  return [
-    getDispatchInputMessageId(dispatchId),
-    getLegacyDispatchInputMessageId(dispatchId),
-  ];
-}
-
 /** Return the stable turn id used by every run of one dispatch. */
 export function getDispatchTurnId(dispatchId: string): string {
   return `dispatch:${dispatchId}`;
@@ -246,8 +191,10 @@ function toDispatchProjection(record: DispatchRecord): DispatchProjection {
     status: record.status,
     ...(record.resultMessageTs
       ? { resultMessageTs: record.resultMessageTs }
-      : {}),
-    ...(record.errorMessage ? { errorMessage: record.errorMessage } : {}),
+      : undefined),
+    ...(record.errorMessage
+      ? { errorMessage: record.errorMessage }
+      : undefined),
   };
 }
 
@@ -364,17 +311,20 @@ export async function createOrGetDispatch(args: {
       createdAtMs: args.nowMs,
       ...(args.options.credentialSubject
         ? { credentialSubject: args.options.credentialSubject }
-        : {}),
+        : undefined),
       destination: args.options.destination,
       destinationVisibility: args.options.destinationVisibility,
       id,
       idempotencyKey: args.options.idempotencyKey,
       input: args.options.input,
-      ...(metadata ? { metadata } : {}),
+      ...(metadata ? { metadata } : undefined),
       plugin: args.plugin,
       ...(args.options.replyAttribution
         ? { replyAttribution: args.options.replyAttribution }
-        : {}),
+        : undefined),
+      ...(args.options.outcomes
+        ? { outcomes: args.options.outcomes }
+        : undefined),
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,
@@ -438,22 +388,22 @@ export async function markDispatchAwaitingResume(
   );
 }
 
-async function recordEventTaskExecution(
+async function recordEventAutomationExecution(
   previous: DispatchRecord | undefined,
   next: DispatchRecord | undefined,
   status: "blocked" | "completed" | "failed",
 ): Promise<void> {
   if (!next || next.status !== status || previous?.status === status) return;
   if (next.plugin !== "junior") return;
-  const eventTaskId = next.metadata?.eventTaskId;
-  if (!eventTaskId) return;
+  const eventAutomationId = next.metadata?.eventAutomationId;
+  if (!eventAutomationId) return;
   // Only link a conversation when enqueue already created the durable row.
   // Early failed/blocked dispatches can terminate before that write, and the
   // execution table still FKs conversation_id when present.
   const conversationId = getDispatchConversationId(next);
   const conversation = await getConversationStore().get({ conversationId });
-  await recordTaskExecution("event", eventTaskId, {
-    ...(conversation ? { conversationId } : {}),
+  await recordAutomationExecution("event", eventAutomationId, {
+    ...(conversation ? { conversationId } : undefined),
     executionId: next.id,
     nowMs: next.updatedAtMs,
     status,
@@ -473,11 +423,11 @@ export async function markDispatchBlocked(
       : {
           ...record,
           errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "blocked",
         },
   );
-  await recordEventTaskExecution(previous, next, "blocked");
+  await recordEventAutomationExecution(previous, next, "blocked");
   return next;
 }
 
@@ -493,11 +443,11 @@ export async function markDispatchCompleted(
       : {
           ...record,
           errorMessage: undefined,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "completed",
         },
   );
-  await recordEventTaskExecution(previous, next, "completed");
+  await recordEventAutomationExecution(previous, next, "completed");
   return next;
 }
 
@@ -514,11 +464,11 @@ export async function markDispatchFailed(
       : {
           ...record,
           errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "failed",
         },
   );
-  await recordEventTaskExecution(previous, next, "failed");
+  await recordEventAutomationExecution(previous, next, "failed");
   return next;
 }
 
@@ -541,28 +491,12 @@ export async function listPendingDispatchMailboxAppends(): Promise<string[]> {
     : [...new Set(pendingDispatchMailboxAppendIndexSchema.parse(stored))];
 }
 
-/**
- * Atomically move a rollout-era record behind conversation-owned execution.
- *
- * Rewriting the canonical record under the dispatch lock removes the callback
- * version/lease claim before mailbox work can become visible.
- */
+/** Load the dispatch under lock before its mailbox append becomes visible. */
 export async function claimDispatchMailboxAppend(
   id: string,
-  nowMs: number,
 ): Promise<DispatchRecord | undefined> {
   return await withDispatchLock(id, async (state) => {
-    const stored = parseStoredDispatchRecord(
-      await state.get(getDispatchStorageKey(id)),
-    );
-    if (
-      !stored ||
-      (stored.legacyLeaseExpiresAtMs && stored.legacyLeaseExpiresAtMs > nowMs)
-    ) {
-      return undefined;
-    }
-    await putRecord(state, stored.record);
-    return stored.record;
+    return parseDispatchRecord(await state.get(getDispatchStorageKey(id)));
   });
 }
 

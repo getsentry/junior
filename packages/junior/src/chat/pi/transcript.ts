@@ -1,11 +1,10 @@
 /**
  * Pi transcript utilities.
  *
- * Shape predicates and durable-history manipulation for raw Pi messages,
- * shared by the agent executor and the services that persist, trim, or
- * summarize transcripts. The utilities here strip stale
- * `<runtime-turn-context>` bootstrap blocks before history is reused or
- * replaced; an active completed projection may retain its current bootstrap.
+ * Shape predicates and message projections for raw Pi messages, shared by the
+ * agent executor and services that compare, summarize, or replace history.
+ * Normal model replay keeps `<runtime-turn-context>` unchanged. Narrow
+ * projections can omit it when they do not represent model history.
  */
 import type {
   AssistantMessage,
@@ -70,19 +69,23 @@ function isStandaloneRuntimeContextMessage(
   );
 }
 
-// Prior-thread context blocks the runtime embeds inside the same user-turn text
-// that carries the <current-instruction> block (see buildUserTurnText and
-// buildConversationContext). Each holds other participants' verbatim messages,
-// so completed-run projections must drop them and keep only the instruction.
+// Prior-thread context blocks the runtime embeds beside the <current-instruction>
+// block (see buildUserTurnText and renderThreadContextForPrompt). Each holds
+// other participants' verbatim messages, so completed-run projections must drop
+// them and keep only the instruction. Legacy tag names stay stripable for older
+// durable history.
 const EMBEDDED_THREAD_CONTEXT_TAGS = [
+  "thread-context",
   "recent-thread-messages",
   "thread-compactions",
   "thread-transcript",
   "thread-background",
 ] as const;
 
+// Greedy body so a raw closing tag inside ambient text cannot end the match
+// early; the last matching closer wins for that envelope name.
 const EMBEDDED_THREAD_CONTEXT_PATTERN = new RegExp(
-  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*?</\\1>`,
+  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*</\\1>`,
   "g",
 );
 
@@ -210,18 +213,21 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
 /**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *
- * Live user prompts embed prior-thread context blocks (`<thread-transcript>`,
- * `<recent-thread-messages>`, `<thread-compactions>`, `<thread-background>`) in
- * the same message that carries the `<current-instruction>` block. Those blocks
- * hold other participants' verbatim messages, so completed-run projections
- * consumed by plugins must expose only the instruction authored by this turn's
- * actor — otherwise per-entry provenance can be defeated by reading another
- * user's text out of an instruction-authority entry. Prior thread context is
- * projected separately as per-author context-authority entries, so dropping it
- * here is non-lossy for plugins. This is projection-only; it never touches what
- * the model sees during a live run.
+ * Live user prompts embed prior-thread context as `<thread-context
+ * authority="evidence-only">` (or legacy transcript/background blocks) beside
+ * the `<current-instruction>` block. Those blocks hold other participants'
+ * verbatim messages, so completed-run projections consumed by plugins must
+ * expose only the instruction authored by this turn's actor — otherwise
+ * per-entry provenance can be defeated by reading another user's text out of an
+ * instruction-authority entry. Prior thread context is projected separately as
+ * per-author context-authority entries, so dropping it here is non-lossy for
+ * plugins. This is projection-only; it never touches what the model sees during
+ * a live run.
  */
 export function instructionTextForProjection(text: string): string {
+  // Drop ambient envelopes first, then read the instruction. Unwrapping before
+  // strip would let ambient text that embeds a full <current-instruction>
+  // block win over the real turn instruction.
   const withoutContext = text
     .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
     .trim();
@@ -252,7 +258,7 @@ export function getUserMessageInstructionText(message: PiMessage): string {
   return instructionTextForProjection(text).trim();
 }
 
-/** Remove volatile runtime context before reusing messages as history. */
+/** Remove runtime context from a non-model projection or explicit replacement. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
   return messages.flatMap((message, index) => {
     if (isStandaloneRuntimeContextMessage(messages, index)) {

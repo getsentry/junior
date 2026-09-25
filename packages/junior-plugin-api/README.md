@@ -42,8 +42,12 @@ reports, and other typed hook surfaces exported by this package.
 
 - Hook context carries the active source, actor, conversation, plugin metadata,
   database, logging, and only the host capabilities required by that hook.
+- Source uses `kind` to state what produced the input. Events,
+  scheduled automations, event automations, Plugin dispatches, and Agent invocations do not
+  name a provider. Actor and Destination still use `platform` to name one.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
+- `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
@@ -58,14 +62,15 @@ reports, and other typed hook surfaces exported by this package.
   binds the plugin namespace and owns access to the conversation event log.
   Event `costUsd` is additive operation cost and must not duplicate cost
   already recorded in the conversation's agent model usage.
-- Tool hooks may lazily resolve the active actor's canonical identity and linked
-  user through `ctx.users.resolveActor()`.
+- Profile report hooks return the same bounded operational report content for
+  one subject user on a person profile. Core owns viewer authorization,
+  collection, sanitization, and browser rendering.
+- Tool hooks may resolve the active Actor's Identity and User through
+  `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
-  canonical user resolution. Routes that do not need personal ownership do not
-  query identity storage.
-- User page readers receive the canonical viewer `User` with linked identities.
-  Plugins return bounded data and do not mount their own page routes or browser
-  code.
+  User lookup. Routes that do not need User data do not query identity storage.
+- User page readers receive the signed-in `User`. Plugins return limited data.
+  They do not mount their own page routes or browser code.
 
 ## User Pages
 
@@ -142,3 +147,22 @@ Plugins and skills follow `../../policies/security.md`,
 `../../policies/data-redaction.md`, and
 `../../policies/provider-boundaries.md`. Skills explain capability use; they do
 not bootstrap runtimes or credentials.
+
+## Object annotations
+
+A tool can return `objectAnnotations` through `pluginToolOutputSchema` to save
+object facts and attach a card to the next visible reply. The host assigns the
+plugin owner. Use a stable `key` within the plugin, a compact `label`, a `title`,
+a verified HTTP(S) `url` (or null), and an `objectType`: `task`, `code_change`,
+`automation`, or `item`. Status and description are optional. Automations also
+use `trigger` and `warning`. Do not send Slack layout JSON or infer facts that
+the provider did not return.
+
+Show at most four fact attributes plus status. Hide code-change size counts
+and source update times without removing them from saved annotations.
+
+The `afterMcpTool` hook can return `{ objectAnnotations }` after a successful
+hosted tool call. Use `ctx.annotations.upsert` instead when facts must change
+without selecting a reply card, such as a background webhook update. Only return
+facts that can be shared with the current Conversation. Message snapshots remain
+separate from the latest annotation and do not grant access to the provider.

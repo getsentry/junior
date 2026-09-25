@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-linear",
-  "version": "0.150.1",
+  "version": "0.227.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -23,9 +23,10 @@
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -33,9 +34,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@types/node": "^25.9.1",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }

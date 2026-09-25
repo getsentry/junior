@@ -103,7 +103,7 @@ async function upsertIdentityRecord(
           nowMs,
           ...(existing?.displayName || identity.displayName
             ? { displayName: existing?.displayName ?? identity.displayName }
-            : {}),
+            : undefined),
         })
       : undefined;
   if (
@@ -174,7 +174,7 @@ async function upsertIdentityRecord(
         ? {
             setWhere: sql`${juniorIdentities.userId} IS NULL OR ${juniorIdentities.userId} = excluded.user_id`,
           }
-        : {}),
+        : undefined),
     })
     .returning({
       id: juniorIdentities.id,
@@ -189,7 +189,7 @@ async function upsertIdentityRecord(
   }
   return {
     id: row.id,
-    ...(row.userId ? { userId: row.userId } : {}),
+    ...(row.userId ? { userId: row.userId } : undefined),
   };
 }
 

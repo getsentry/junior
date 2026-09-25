@@ -79,34 +79,45 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: slackChannelRefParam.optional(),
+      channel_id: slackChannelRefParam.nullable().optional(),
       limit: z.coerce
         .number()
         .int()
         .min(1)
         .max(1000)
         .describe("Maximum number of messages to return across pages.")
+        .nullable()
         .optional(),
       cursor: z
         .string()
         .min(1)
-        .describe("Optional cursor to continue from a prior call.")
+        .describe(
+          "Cursor from `next_cursor` in a prior result. Use null or omit it for the first page; never invent a cursor.",
+        )
+        .nullable()
         .optional(),
       oldest: slackTimestampParam(
         "Oldest message timestamp (Slack ts) for range filtering.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       latest: slackTimestampParam(
         "Latest message timestamp (Slack ts) for range filtering.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       inclusive: booleanInput(
         "Whether oldest/latest bounds should be inclusive.",
-      ).optional(),
+      )
+        .nullable()
+        .optional(),
       max_pages: z.coerce
         .number()
         .int()
         .min(1)
         .max(10)
         .describe("Maximum number of API pages to traverse in a single call.")
+        .nullable()
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
@@ -121,15 +132,16 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
     }) => {
       const target = await resolveOptionalSlackChannelRef({
         field: "channel_id",
-        value: channel_id,
+        value: channel_id ?? undefined,
         defaultChannelId: context.destinationChannelId,
+        teamId: context.teamId,
       });
       const targetChannelId = target.channelId;
 
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,
-          context.sourceChannelId,
+          context.locationChannelId,
         ],
         targetChannelId,
         teamId: context.teamId,
@@ -140,7 +152,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       const normalizedOldest = normalizeRangeTimestamp(
         "oldest",
-        oldest,
+        oldest ?? undefined,
         targetChannelId,
       );
       if (!normalizedOldest.ok) {
@@ -148,7 +160,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       }
       const normalizedLatest = normalizeRangeTimestamp(
         "latest",
-        latest,
+        latest ?? undefined,
         targetChannelId,
       );
       if (!normalizedLatest.ok) {
@@ -159,11 +171,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         listChannelMessages({
           channelId: targetChannelId,
           limit: limit ?? 100,
-          cursor,
+          cursor: cursor ?? undefined,
           oldest: normalizedOldest.value,
           latest: normalizedLatest.value,
-          inclusive,
-          maxPages: max_pages,
+          inclusive: inclusive ?? undefined,
+          maxPages: max_pages ?? undefined,
         });
 
       let result: Awaited<ReturnType<typeof listChannelMessages>> | undefined;
@@ -231,11 +243,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       return {
         channel_id: targetChannelId,
-        ...(channelName ? { channel_name: channelName } : {}),
-        ...(joined ? { joined_channel: true } : {}),
+        ...(channelName ? { channel_name: channelName } : undefined),
+        ...(joined ? { joined_channel: true } : undefined),
         count: result.messages.length,
         messages: result.messages,
-        ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
+        ...(result.nextCursor ? { next_cursor: result.nextCursor } : undefined),
       };
     },
   });

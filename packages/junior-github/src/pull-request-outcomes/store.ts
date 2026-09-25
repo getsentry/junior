@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -21,6 +21,7 @@ const githubPullRequestOutcomeInputSchema = z
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
     state: githubPullRequestStateSchema,
+    title: z.string().min(1).optional(),
     updatedAt: z.date(),
   })
   .strict();
@@ -66,7 +67,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     closedAt: input.closedAt ?? null,
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
-      : {}),
+      : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
@@ -89,6 +90,7 @@ export async function recordGitHubPullRequestOutcome(
 ): Promise<{
   applied: boolean;
   commitComposition: GitHubPullRequestCommitComposition | undefined;
+  conversationIds: string[];
 }> {
   const outcome = githubPullRequestOutcomeInputSchema.parse(input);
   const values = projectionValues(outcome);
@@ -104,10 +106,12 @@ export async function recordGitHubPullRequestOutcome(
       )
       .returning({
         commitComposition: juniorGitHubPullRequests.commitComposition,
+        conversationIds: juniorGitHubPullRequests.conversationIds,
       });
     return {
       applied: updated.length > 0,
       commitComposition: updated[0]?.commitComposition ?? undefined,
+      conversationIds: updated[0]?.conversationIds ?? [],
     };
   }
 
@@ -121,11 +125,112 @@ export async function recordGitHubPullRequestOutcome(
     })
     .returning({
       commitComposition: juniorGitHubPullRequests.commitComposition,
+      conversationIds: juniorGitHubPullRequests.conversationIds,
     });
   return {
     applied: inserted.length > 0,
     commitComposition: inserted[0]?.commitComposition ?? undefined,
+    conversationIds: inserted[0]?.conversationIds ?? [],
   };
+}
+
+function conversationIdsForPullRequests(
+  rows: Array<{ conversationIds: string[] }>,
+  conversationIds: string[],
+): string[] {
+  const candidates = new Set(conversationIds);
+  return [
+    ...new Set(
+      rows.flatMap((row) =>
+        row.conversationIds.filter((conversationId) =>
+          candidates.has(conversationId),
+        ),
+      ),
+    ),
+  ];
+}
+
+/** Return candidate conversations that have an associated unmerged pull request. */
+export async function listGitHubUnfinishedWork(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<string[]> {
+  if (conversationIds.length === 0) return [];
+  const values = sql.join(
+    conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(
+      and(
+        ne(juniorGitHubPullRequests.state, "merged"),
+        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
+      ),
+    );
+  return conversationIdsForPullRequests(rows, conversationIds);
+}
+
+/** Return the latest merge time for each candidate conversation. */
+export async function listGitHubFinishedWork(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<Record<string, string>> {
+  if (conversationIds.length === 0) return {};
+  const values = sql.join(
+    conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db
+    .select({
+      conversationIds: juniorGitHubPullRequests.conversationIds,
+      mergedAt: juniorGitHubPullRequests.mergedAt,
+    })
+    .from(juniorGitHubPullRequests)
+    .where(
+      and(
+        eq(juniorGitHubPullRequests.state, "merged"),
+        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
+      ),
+    );
+  const candidates = new Set(conversationIds);
+  const finishedAtById = new Map<string, Date>();
+  for (const row of rows) {
+    if (!row.mergedAt) continue;
+    for (const conversationId of row.conversationIds) {
+      if (!candidates.has(conversationId)) continue;
+      const current = finishedAtById.get(conversationId);
+      if (!current || row.mergedAt > current) {
+        finishedAtById.set(conversationId, row.mergedAt);
+      }
+    }
+  }
+  return Object.fromEntries(
+    conversationIds.flatMap((conversationId) => {
+      const finishedAt = finishedAtById.get(conversationId);
+      return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
+    }),
+  );
+}
+
+/** Return candidate conversations linked to any Junior-owned pull request. */
+export async function listGitHubAssignedWork(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<string[]> {
+  if (conversationIds.length === 0) return [];
+  const values = sql.join(
+    conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(
+      sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
+    );
+  return conversationIdsForPullRequests(rows, conversationIds);
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */

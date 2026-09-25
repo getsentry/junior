@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
@@ -57,7 +57,7 @@ describe("buildSlackReplyFooter", () => {
     expect(buildSlackReplyFooter({})).toBeUndefined();
   });
 
-  it("links the ID to the core dashboard when dashboard links are configured", () => {
+  it("links the conversation ID to the core dashboard", () => {
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
@@ -76,6 +76,24 @@ describe("buildSlackReplyFooter", () => {
         },
       ],
     });
+    expect(
+      buildSlackReplyBlocks(
+        "",
+        buildSlackReplyFooter({
+          conversationId: "slack:C123:1700000000.000100",
+        }),
+      ),
+    ).toEqual([
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "*ID:* <https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100|slack:C123:1700000000.000100>",
+          },
+        ],
+      },
+    ]);
   });
 
   it("uses JUNIOR_BASE_URL for core dashboard footer links", () => {
@@ -153,34 +171,37 @@ describe("buildSlackReplyBlocks", () => {
     ]);
   });
 
-  it("does not emit blocks when the reply has no visible text", () => {
+  it("keeps the footer for replies with only attachments", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
     });
 
-    expect(buildSlackReplyBlocks("   ", footer)).toBeUndefined();
+    expect(buildSlackReplyBlocks("   ", footer)).toEqual([
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: "*ID:* slack:C123:1700000000.000100" },
+        ],
+      },
+    ]);
   });
 });
 
 describe("getDashboardTaskLink", () => {
-  it("builds a task detail URL when dashboard links are configured", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+  it("builds an automation detail URL when dashboard links are configured", async () => {
+    const { getDashboardTaskLink } = await import("@/chat/dashboard-link");
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
     });
 
     expect(getDashboardTaskLink("sched_abc")).toBe(
-      "https://junior.example.com/ops/tasks/sched_abc",
+      "https://junior.example.com/ops/automations/sched_abc",
     );
   });
 
   it("returns undefined when dashboard links are disabled", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+    const { getDashboardTaskLink } = await import("@/chat/dashboard-link");
     expect(getDashboardTaskLink("sched_abc")).toBeUndefined();
   });
 });

@@ -170,15 +170,15 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : {}),
-    ...(input.provider ? { "app.provider.name": input.provider } : {}),
-    ...(input.grantName ? { "app.grant.name": input.grantName } : {}),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : {}),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : {}),
-    ...(input.host ? { "server.address": input.host } : {}),
-    ...(input.method ? { "http.request.method": input.method } : {}),
-    ...(input.path ? { "url.path": input.path } : {}),
-    ...(input.status ? { "http.response.status_code": input.status } : {}),
+    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.provider ? { "app.provider.name": input.provider } : undefined),
+    ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
+    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
+    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.host ? { "server.address": input.host } : undefined),
+    ...(input.method ? { "http.request.method": input.method } : undefined),
+    ...(input.path ? { "url.path": input.path } : undefined),
+    ...(input.status ? { "http.response.status_code": input.status } : undefined),
   };
 }
 
@@ -244,8 +244,8 @@ function githubPermissionHeaders(upstream: Response): {
   );
   const sso = upstream.headers.get("x-github-sso");
   return {
-    ...(acceptedPermissions ? { acceptedPermissions } : {}),
-    ...(sso ? { sso } : {}),
+    ...(acceptedPermissions ? { acceptedPermissions } : undefined),
+    ...(sso ? { sso } : undefined),
   };
 }
 
@@ -253,7 +253,7 @@ function permissionDeniedMessage(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
 ): string {
-  return `${provider} returned HTTP 403 after Junior injected the ${grant.name} grant. Junior forwarded the request; this is not a local runtime block.`;
+  return `${provider} returned HTTP 403 after the runtime injected the ${grant.name} grant. The request was forwarded; this is not a local runtime block.`;
 }
 
 function isEgressAuthRequired(error: unknown): error is EgressAuthRequired {
@@ -314,20 +314,42 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
-function isGrantSelectionBodyVisible(input: {
+type GitHubBodyInspection = "graphql" | "pull-request-review";
+
+/** Identify GitHub writes whose body determines whether a grant is safe. */
+function githubBodyInspection(input: {
   provider: string;
+  requestMethod: string;
   upstreamUrl: URL;
-}): boolean {
-  return (
-    input.provider === "github" &&
-    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-    input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
-  );
+}): GitHubBodyInspection | undefined {
+  if (
+    input.provider !== "github" ||
+    input.requestMethod.toUpperCase() !== "POST" ||
+    input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
+  ) {
+    return undefined;
+  }
+  const pathname = input.upstreamUrl.pathname.toLowerCase();
+  if (pathname.endsWith("/graphql")) {
+    return "graphql";
+  }
+  return /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
+    pathname,
+  )
+    ? "pull-request-review"
+    : undefined;
+}
+
+function grantSelectionBodyTooLargeMessage(
+  inspection: GitHubBodyInspection,
+): string {
+  return inspection === "graphql"
+    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {
   body: ArrayBuffer | undefined;
-  operation?: string;
   provider: string;
   request: Request;
   upstreamUrl: URL;
@@ -336,15 +358,14 @@ function grantSelectionBodyText(input: {
     return undefined;
   }
   if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    if (
-      !input.operation &&
-      input.provider === "github" &&
-      input.request.method.toUpperCase() === "POST" &&
-      input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-      input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
-    ) {
+    const inspection = githubBodyInspection({
+      provider: input.provider,
+      requestMethod: input.request.method,
+      upstreamUrl: input.upstreamUrl,
+    });
+    if (inspection) {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        grantSelectionBodyTooLargeMessage(inspection),
       );
     }
     return undefined;
@@ -508,7 +529,7 @@ function leaseLogAttributes(input: {
     ...routingAttributes(input.request, input.upstreamUrl),
     ...(input.upstream
       ? upstreamPermissionAttributes(input.provider, input.upstream)
-      : {}),
+      : undefined),
   };
 }
 
@@ -524,7 +545,7 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : {}),
+    ...(input.authorization ? { authorization: input.authorization } : undefined),
     message: input.message,
   });
 }
@@ -540,7 +561,7 @@ async function recordSandboxPermissionDenied(input: {
   await setSandboxEgressPermissionDeniedSignal(input.credentialContext, {
     provider: input.provider,
     grant: input.lease.grant,
-    ...(input.lease.account ? { account: input.lease.account } : {}),
+    ...(input.lease.account ? { account: input.lease.account } : undefined),
     message: input.message,
     source: "upstream",
     status: input.upstream.status,
@@ -548,7 +569,7 @@ async function recordSandboxPermissionDenied(input: {
     upstreamPath: displayedUpstreamPath(input.upstreamUrl),
     ...(input.provider === "github"
       ? githubPermissionHeaders(input.upstream)
-      : {}),
+      : undefined),
   });
 }
 
@@ -579,8 +600,9 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  const bodyForGrantSelection = isGrantSelectionBodyVisible({
+  const bodyForGrantSelection = githubBodyInspection({
     provider,
+    requestMethod: request.method,
     upstreamUrl,
   })
     ? await requestBodyBytes(request)
@@ -590,12 +612,11 @@ export async function executeCredentialedEgressRequest(input: {
     grantSelection = await selectSandboxEgressGrant({
       bodyText: grantSelectionBodyText({
         body: bodyForGrantSelection,
-        ...(operation ? { operation } : {}),
         provider,
         request,
         upstreamUrl,
       }),
-      ...(operation ? { operation } : {}),
+      ...(operation ? { operation } : undefined),
       provider,
       method: request.method,
       upstreamUrl,
@@ -627,15 +648,17 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  let lease: SandboxEgressCredentialLease;
-  try {
-    lease = await issueCredentialLease(
-      provider,
-      grantSelection,
-      credentialContext,
-    );
-  } catch (error) {
-    if (error instanceof SandboxEgressCredentialError) {
+  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
+    try {
+      return await issueCredentialLease(
+        provider,
+        grantSelection,
+        credentialContext,
+      );
+    } catch (error) {
+      if (!(error instanceof SandboxEgressCredentialError)) {
+        throw error;
+      }
       await recordAuthRequired({
         credentialContext,
         provider: error.provider,
@@ -670,23 +693,32 @@ export async function executeCredentialedEgressRequest(input: {
         message: error.message,
       });
     }
-    throw error;
   }
 
-  const attributes = (status: number, upstream?: Response) =>
+  let leaseOrResponse = await resolveLease();
+  if (leaseOrResponse instanceof Response) {
+    return leaseOrResponse;
+  }
+  let lease = leaseOrResponse;
+
+  const attributes = (
+    activeLease: SandboxEgressCredentialLease,
+    status: number,
+    upstream?: Response,
+  ) =>
     leaseLogAttributes({
       egressId: activeEgressId,
-      lease,
+      lease: activeLease,
       provider,
       request,
       status,
-      ...(upstream ? { upstream } : {}),
+      ...(upstream ? { upstream } : undefined),
       upstreamUrl,
     });
 
   if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
     logWarn("sandbox.egress.transform.missing", {
-      ...attributes(403),
+      ...attributes(lease, 403),
       "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
         (transform) => transform.domain,
       ),
@@ -698,111 +730,98 @@ export async function executeCredentialedEgressRequest(input: {
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const headers = requestHeaders(
-    request,
-    lease,
-    upstreamUrl.hostname,
-    deps.tracePropagation ?? {},
-  );
   const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
-  const intercepted = await deps.interceptHttp?.({
-    provider,
-    request: new Request(upstreamUrl, {
+  // One retry after upstream 403: clear/replace the cached lease, then try again.
+  let retriedAfter403 = false;
+
+  while (true) {
+    const headers = requestHeaders(
+      request,
+      lease,
+      upstreamUrl.hostname,
+      deps.tracePropagation ?? {},
+    );
+    const intercepted = await deps.interceptHttp?.({
+      provider,
+      request: new Request(upstreamUrl, {
+        method: request.method,
+        headers,
+        ...(body !== undefined ? { body } : undefined),
+      }),
+      upstreamUrl,
+    });
+    if (intercepted) {
+      return intercepted;
+    }
+
+    const requestBody =
+      body instanceof ArrayBuffer ? body.slice(0) : body;
+    const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,
-      ...(body !== undefined ? { body } : {}),
-    }),
-    upstreamUrl,
-  });
-  if (intercepted) {
-    return intercepted;
-  }
-
-  const upstream = await fetchImpl(upstreamUrl, {
-    method: request.method,
-    headers,
-    ...(body !== undefined ? { body } : {}),
-    redirect: "manual",
-  });
-  try {
-    const effects = await onPluginEgressResponse({
-      provider,
-      grant: lease.grant,
-      method: request.method,
-      ...(operation ? { operation } : {}),
-      upstreamUrl,
-      response: {
-        headers: new Headers(upstream.headers),
-        readText: async (maxBytes) =>
-          await responseTextWithinLimit(upstream, maxBytes),
-        status: upstream.status,
-      },
+      ...(requestBody !== undefined ? { body: requestBody } : undefined),
+      redirect: "manual",
     });
-    if (effects.permissionDenied) {
-      await recordPermissionDenied({
+    let pluginPermissionDenied: { message: string } | undefined;
+    try {
+      const effects = await onPluginEgressResponse({
+        provider,
+        grant: lease.grant,
+        method: request.method,
+        ...(operation ? { operation } : undefined),
+        upstreamUrl,
+        response: {
+          headers: new Headers(upstream.headers),
+          readText: async (maxBytes) =>
+            await responseTextWithinLimit(upstream, maxBytes),
+          status: upstream.status,
+        },
+      });
+      pluginPermissionDenied = effects.permissionDenied;
+    } catch (error) {
+      if (!isEgressAuthRequired(error)) {
+        throw error;
+      }
+      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await recordAuthRequired({
         credentialContext,
         provider,
-        lease,
-        message: effects.permissionDenied.message,
-        upstream,
-        upstreamUrl,
+        grant: lease.grant,
+        authorization: error.authorization ?? lease.authorization,
+        message: error.message,
       });
-      logWarn("sandbox.egress.upstream_permission.classified", {
-        ...attributes(upstream.status, upstream),
+      logWarn("sandbox.egress.upstream_auth_requirement.classified", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+      await upstream.body?.cancel().catch(() => undefined);
+      return authRequiredResponse({
+        provider,
+        grant: lease.grant,
+        message: error.message,
       });
     }
-  } catch (error) {
-    if (!isEgressAuthRequired(error)) {
-      throw error;
+    logSandboxEgressUpstreamRequest({
+      egressId: activeEgressId,
+      grantAccess: lease.grant.access,
+      grantName: lease.grant.name,
+      grantReason: lease.grant.reason,
+      provider,
+      request,
+      upstream,
+      upstreamUrl,
+    });
+    if (upstream.status >= 400) {
+      logWarn("sandbox.egress.upstream_response.failed", {
+        ...attributes(lease, upstream.status, upstream),
+        "error.type": `http_${upstream.status}`,
+      });
     }
-    await clearCredentialLease(provider, lease.grant, credentialContext);
-    await recordAuthRequired({
-      credentialContext,
-      provider,
-      grant: lease.grant,
-      authorization: error.authorization ?? lease.authorization,
-      message: error.message,
-    });
-    logWarn("sandbox.egress.upstream_auth_requirement.classified", {
-      ...attributes(upstream.status, upstream),
-    });
-    await upstream.body?.cancel().catch(() => undefined);
-    return authRequiredResponse({
-      provider,
-      grant: lease.grant,
-      message: error.message,
-    });
-  }
-  logSandboxEgressUpstreamRequest({
-    egressId: activeEgressId,
-    grantAccess: lease.grant.access,
-    grantName: lease.grant.name,
-    grantReason: lease.grant.reason,
-    provider,
-    request,
-    upstream,
-    upstreamUrl,
-  });
-  if (upstream.status >= 400) {
-    logWarn("sandbox.egress.upstream_response.failed", {
-      ...attributes(upstream.status, upstream),
-      "error.type": `http_${upstream.status}`,
-    });
-  }
-  if (
-    upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
-    upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS
-  ) {
-    logWarn("sandbox.egress.upstream_auth.rejected", {
-      ...attributes(upstream.status, upstream),
-      ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
-        ? {
-            "app.sandbox.egress.www_authenticate":
-              upstream.headers.get("www-authenticate") ?? undefined,
-          }
-        : {}),
-    });
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status, upstream),
+        "app.sandbox.egress.www_authenticate":
+          upstream.headers.get("www-authenticate") ?? undefined,
+      });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordAuthRequired({
         credentialContext,
@@ -817,22 +836,72 @@ export async function executeCredentialedEgressRequest(input: {
         grant: lease.grant,
         message: `Provider rejected the injected ${provider} credential.\n`,
       });
-    } else {
+    }
+    if (
+      upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
+      !retriedAfter403
+    ) {
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await upstream.body?.cancel().catch(() => undefined);
+      logWarn("sandbox.egress.upstream_auth.retrying", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+      leaseOrResponse = await resolveLease();
+      if (leaseOrResponse instanceof Response) {
+        return leaseOrResponse;
+      }
+      lease = leaseOrResponse;
+      retriedAfter403 = true;
+      continue;
+    }
+    if (upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) {
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status, upstream),
+      });
       await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordPermissionDenied({
         credentialContext,
         provider,
         lease,
-        message: permissionDeniedMessage(provider, lease.grant),
+        message:
+          pluginPermissionDenied?.message ??
+          permissionDeniedMessage(provider, lease.grant),
         upstream,
         upstreamUrl,
       });
+      if (pluginPermissionDenied) {
+        logWarn("sandbox.egress.upstream_permission.classified", {
+          ...attributes(lease, upstream.status, upstream),
+        });
+      }
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders(upstream),
+      });
     }
-  }
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders(upstream),
-  });
+    if (pluginPermissionDenied) {
+      await recordPermissionDenied({
+        credentialContext,
+        provider,
+        lease,
+        message: pluginPermissionDenied.message,
+        upstream,
+        upstreamUrl,
+      });
+      logWarn("sandbox.egress.upstream_permission.classified", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+    }
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders(upstream),
+    });
+  }
 }

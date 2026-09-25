@@ -104,10 +104,14 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
       Object.entries(components).filter(([, value]) => value !== undefined),
     ),
     ...(row.reasoningTokens === null
-      ? {}
+      ? undefined
       : { reasoningTokens: row.reasoningTokens }),
-    ...(row.totalTokens === null ? {} : { totalTokens: row.totalTokens }),
-    ...(Object.keys(definedCost).length > 0 ? { cost: definedCost } : {}),
+    ...(row.totalTokens === null
+      ? undefined
+      : { totalTokens: row.totalTokens }),
+    ...(Object.keys(definedCost).length > 0
+      ? { cost: definedCost }
+      : undefined),
   };
   return hasAgentTurnUsage(result)
     ? agentTurnUsageSchema.parse(result)
@@ -122,7 +126,14 @@ export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
   options: { conversationId: string; includeDescendants?: boolean },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
-  const modelId = sql<string>`concat(${message}->>'provider', '/', ${message}->>'model')`;
+  // Prefer the model field when it already carries a vendor prefix so usage keys
+  // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
+  // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
+  const modelId = sql<string>`case
+    when position('/' in coalesce(${message}->>'model', '')) > 0
+      then ${message}->>'model'
+    else concat(${message}->>'provider', '/', ${message}->>'model')
+  end`;
   const inputTokens = token("input", "inputTokens");
   const outputTokens = token("output", "outputTokens");
   const cachedInputTokens = token("cacheRead", "cachedInputTokens");
@@ -164,6 +175,8 @@ export async function readConversationModelUsageFromSql(
           ? eq(juniorConversations.rootConversationId, options.conversationId)
           : eq(juniorConversationEvents.conversationId, options.conversationId),
         eq(juniorConversationEvents.type, "assistant_message"),
+        // Fork history is replay context, not another model call.
+        sql`coalesce(${juniorConversationEvents.idempotencyKey}, '') not like 'fork:history:%'`,
         sql`jsonb_typeof(${message}->'provider') = 'string'`,
         sql`jsonb_typeof(${message}->'model') = 'string'`,
         sql`coalesce(${message}->>'provider', '') <> ''`,

@@ -37,6 +37,7 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
+import { isVisionImageMediaType } from "@/chat/attachments/media";
 import type {
   AgentAttachment,
   AgentInstruction,
@@ -77,17 +78,25 @@ export interface PromptAssembly {
   userContentParts: UserContentPart[];
 }
 
-function isStructuredThreadContext(context: string): boolean {
-  return /^<(recent-thread-messages|thread-(compactions|transcript))>/.test(
-    context,
-  );
-}
-
+/**
+ * Keep host-owned thread history as one evidence-only block.
+ *
+ * Producers already emit `<thread-context>`. Only wrap plain unstructured
+ * background text so ambient messages never look like more instruction.
+ */
 function renderThreadContextForPrompt(context: string): string {
-  if (isStructuredThreadContext(context)) {
+  if (
+    /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+      context,
+    )
+  ) {
     return context;
   }
-  return ["<thread-background>", context, "</thread-background>"].join("\n");
+  return [
+    '<thread-context authority="evidence-only">',
+    context,
+    "</thread-context>",
+  ].join("\n");
 }
 
 /** Render the current actor's instruction without host-owned thread context. */
@@ -246,7 +255,14 @@ function buildUserTurnInput(args: {
       continue;
     }
 
-    if (attachment.mediaType.startsWith("image/")) {
+    if (attachment.attachmentId) {
+      userContentParts.push({
+        type: "text",
+        text: `Stored attachment: ${JSON.stringify({ attachment_id: attachment.attachmentId, filename: attachment.filename, media_type: attachment.mediaType })}. Use loadAttachment to access the original file.`,
+      });
+    }
+
+    if (isVisionImageMediaType(attachment.mediaType)) {
       if (!attachment.data) {
         throw new Error("Image attachment is missing image data");
       }
@@ -449,7 +465,15 @@ export async function assemblePrompt(args: {
   explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[];
   resumedFromSessionRecord: boolean;
-  run: Pick<AgentRun, "source" | "destination" | "dispatch" | "slackConversation">;
+  run: Pick<
+    AgentRun,
+    | "source"
+    | "destination"
+    | "dispatch"
+    | "slackConversation"
+    | "location"
+    | "delivery"
+  >;
   spanContext: LogContext;
   turnId: string;
   toolGuidance: Array<{
@@ -490,12 +514,16 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
+  const platform =
+    args.run.delivery && args.run.location?.provider === "slack"
+      ? "slack"
+      : "local";
   const systemPromptContributions =
-    await getPluginSystemPromptContributions(source);
+    await getPluginSystemPromptContributions(platform);
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt({ source }), pluginSystemPrompt]
+  const baseInstructions = [buildSystemPrompt(platform), pluginSystemPrompt]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =
@@ -604,7 +632,7 @@ export async function assemblePrompt(args: {
     inputMessagesAttribute,
     ...(trimmedPrompt.promptTimestamp !== undefined
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
-      : {}),
+      : undefined),
     promptHistoryMessages,
     shouldPromptAgent,
     turnContexts: pluginUserPromptContributions.flatMap((contribution) =>

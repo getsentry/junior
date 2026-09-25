@@ -27,10 +27,15 @@ import {
   isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
-  findSingleRepositoryDirectory,
-  resolveRepositoryInstructions,
+  getWorkspaceSnapshotNotReadyError,
+  workspaceSnapshotNotReadyUserMessage,
+} from "@/chat/sandbox/snapshot/not-ready-error";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
+import {
+  listRepositoryDirectories,
+  resolveRepositoryInstructionsForDirectories,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
@@ -47,6 +52,7 @@ import {
   type SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
+import type { Workspace } from "@/chat/workspaces/types";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
 import {
@@ -80,16 +86,18 @@ export interface SandboxTools {
 }
 
 export interface SandboxAccess {
-  /** Resolve the AGENTS.md bundle for the selected repository directory. */
+  /** Resolve AGENTS.md instructions for each repository directory in the Workspace. */
   captureRepositoryInstructions(): Promise<RepositoryInstructions | undefined>;
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
 }
 
 export interface SandboxOptions {
   sandboxRef?: SandboxRef;
+  workspace?: Workspace;
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
@@ -98,6 +106,11 @@ export interface SandboxOptions {
   credentialEgress?: CredentialContext;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
+  prepareWorkspace?: (
+    workspace: SandboxWorkspace,
+    recipe: Workspace,
+    signal?: AbortSignal,
+  ) => Promise<() => Promise<void>>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -117,6 +130,19 @@ function createSandboxUnavailableToolError(
     `The temporary sandbox became unavailable during ${operation}, so the operation did not complete reliably. The next sandbox operation will use a fresh session. It may have produced side effects; retry only if it is safe.`,
     { cause },
   );
+}
+
+/** Tool result when the Workspace sandbox is still preparing. */
+function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
+  const notReady = getWorkspaceSnapshotNotReadyError(cause);
+  if (!notReady) {
+    throw new Error("expected WorkspaceSnapshotNotReadyError");
+  }
+  return makeStructuredToolOutput({
+    status: "building" as const,
+    workspace: notReady.workspaceName,
+    message: workspaceSnapshotNotReadyUserMessage(notReady),
+  });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -196,12 +222,14 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       consumeSandboxEgressPermissionDeniedSignal(egressId),
     ]);
     return {
-      ...(authRequired ? { authRequired } : {}),
-      ...(permissionDenied ? { permissionDenied } : {}),
+      ...(authRequired ? { authRequired } : undefined),
+      ...(permissionDenied ? { permissionDenied } : undefined),
     };
   };
+  let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
+    workspace: options.workspace,
     skills: options.skills,
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
@@ -215,12 +243,13 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
                 ? {
                     credentialToken: sandboxEgressCredentialTokenFor(sessionId),
                   }
-                : {}),
+                : undefined),
               traceConfig: tracePropagation,
               traceHeaders,
             })
         : undefined,
     onSandboxPrepare: options.prepare,
+    onWorkspacePrepare: options.prepareWorkspace,
     onSandboxRefChanged: options.onSandboxRefChanged,
   });
   const createToolCallContext = (
@@ -249,7 +278,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             return async (input) =>
               await runCommand({
                 ...input,
-                ...(signal ? { signal } : {}),
+                ...(signal ? { signal } : undefined),
               });
           }));
       },
@@ -347,9 +376,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           const response = await executeBash({
             command,
             cwd,
-            ...(env ? { env } : {}),
-            ...(timeoutMs ? { timeoutMs } : {}),
-            ...(context.signal ? { signal: context.signal } : {}),
+            ...(env ? { env } : undefined),
+            ...(timeoutMs ? { timeoutMs } : undefined),
+            ...(context.signal ? { signal: context.signal } : undefined),
           });
           setSpanAttributes({
             "process.exit.code": response.exitCode,
@@ -401,8 +430,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       stderr: result.stderr,
       stdout_truncated: result.stdoutTruncated,
       stderr_truncated: result.stderrTruncated,
-      ...(authRequired ? { auth_required: authRequired } : {}),
-      ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
+      ...(authRequired ? { auth_required: authRequired } : undefined),
+      ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
     }) as T;
   };
 
@@ -425,7 +454,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         try {
           const content = await fs.readFile(hostPath, {
             encoding: "utf8",
-            ...(context.signal ? { signal: context.signal } : {}),
+            ...(context.signal ? { signal: context.signal } : undefined),
           });
           setSpanAttributes({
             "app.sandbox.path.length": filePath.length,
@@ -604,16 +633,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : undefined),
           ...(typeof rawInput.ignoreCase === "boolean"
             ? { ignoreCase: rawInput.ignoreCase }
-            : {}),
+            : undefined),
           ...(typeof rawInput.literal === "boolean"
             ? { literal: rawInput.literal }
-            : {}),
-          ...(contextLines ? { context: contextLines } : {}),
-          ...(limit ? { limit } : {}),
+            : undefined),
+          ...(contextLines ? { context: contextLines } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -652,8 +681,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(limit ? { limit } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -677,8 +706,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await listDir({
           fs: fileSystem,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(limit ? { limit } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -735,6 +764,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
     } catch (error) {
       params.signal?.throwIfAborted();
+      if (getWorkspaceSnapshotNotReadyError(error)) {
+        return createWorkspaceSnapshotNotReadyToolResult(error) as T;
+      }
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
@@ -758,6 +790,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
+      const notReady = getWorkspaceSnapshotNotReadyError(error);
+      if (notReady) {
+        throw new ToolInputError(workspaceSnapshotNotReadyUserMessage(notReady), {
+          cause: notReady,
+        });
+      }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
@@ -787,14 +825,28 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         return undefined;
       }
       const { fs } = await runtime.tools();
-      const selected = await findSingleRepositoryDirectory(fs);
-      if (!selected) return undefined;
-      return await resolveRepositoryInstructions({
-        cwd: selected,
+      const workspaceDirectories =
+        activeWorkspace?.repos
+          .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
+          .filter((checkoutPath): checkoutPath is string =>
+            Boolean(checkoutPath),
+          )
+          .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
+        [];
+      const directories =
+        workspaceDirectories.length > 0
+          ? workspaceDirectories
+          : await listRepositoryDirectories(fs);
+      return await resolveRepositoryInstructionsForDirectories({
+        directories,
         fs,
       });
     },
     workspace,
+    async switchWorkspace(recipe, signal) {
+      await runtime.switchWorkspace(recipe, signal);
+      activeWorkspace = recipe;
+    },
     tools: {
       supports(toolName: string) {
         return SANDBOX_TOOL_NAMES.has(toolName);

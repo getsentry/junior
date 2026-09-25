@@ -53,12 +53,12 @@ function getToolErrorAttributes(
 
   return {
     "app.slack.error_code": error.code,
-    ...(error.apiError ? { "app.slack.api_error": error.apiError } : {}),
-    ...(error.detail ? { "app.slack.detail": error.detail } : {}),
+    ...(error.apiError ? { "app.slack.api_error": error.apiError } : undefined),
+    ...(error.detail ? { "app.slack.detail": error.detail } : undefined),
     ...(error.detailLine !== undefined
       ? { "app.slack.detail_line": error.detailLine }
-      : {}),
-    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : {}),
+      : undefined),
+    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : undefined),
   };
 }
 
@@ -86,7 +86,7 @@ export function handleToolExecutionError(
     ...getOAuthProviderErrorAttributes(error),
     ...(error instanceof PluginCredentialFailureError
       ? { "app.credential.provider": error.provider }
-      : {}),
+      : undefined),
   };
   if (setExecutionSpanAttributes) {
     setExecutionSpanAttributes(errorAttributes);
@@ -100,7 +100,7 @@ export function handleToolExecutionError(
         "app.credential.provider": error.provider,
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
-        ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+        ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : undefined),
         "error.type": errorType,
       });
     }
@@ -111,7 +111,7 @@ export function handleToolExecutionError(
     logWarn("agent.tool_call.failed", {
       "gen_ai.operation.name": "execute_tool",
       "gen_ai.tool.name": toolName,
-      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : undefined),
       ...errorAttributes,
       "exception.message": errorMessage,
     });
@@ -126,7 +126,7 @@ export function handleToolExecutionError(
     logException(error, "agent.tool_call.failed", {
       "gen_ai.operation.name": "execute_tool",
       "gen_ai.tool.name": toolName,
-      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+      ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : undefined),
       ...errorAttributes,
       ...getToolErrorAttributes(error),
     });

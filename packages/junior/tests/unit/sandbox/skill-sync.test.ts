@@ -4,9 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
-import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
-
 const temporaryDirectories: string[] = [];
 
 async function makeSkill(): Promise<string> {
@@ -60,7 +58,7 @@ describe("sandbox skill sync", () => {
       async writeFiles(files: Array<{ path: string }>) {
         writtenPaths.push(...files.map((file) => file.path));
       },
-    } as unknown as SandboxSession;
+    };
 
     await syncSkillsToSandbox({
       sandbox,
@@ -109,7 +107,7 @@ describe("sandbox skill sync", () => {
         return null;
       },
       async writeFiles() {},
-    } as unknown as SandboxSession;
+    };
 
     const sync = syncSkillsToSandbox({
       sandbox,

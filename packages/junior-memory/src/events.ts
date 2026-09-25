@@ -3,13 +3,30 @@ import { z } from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
+const capturedMemoryFields = {
+  content: z.string().min(1),
+  id: z.string().min(1),
+  kind: z.enum(MEMORY_KINDS),
+  observedAtMs: z.number().finite(),
+};
+
+const legacyCapturedMemorySchema = z
+  .object({
+    ...capturedMemoryFields,
+    scope: z.enum(["personal", "conversation"]),
+  })
+  .strict();
+
 const capturedMemorySchema = z
   .object({
-    content: z.string().min(1),
-    id: z.string().min(1),
-    kind: z.enum(MEMORY_KINDS),
-    observedAtMs: z.number().finite(),
+    ...capturedMemoryFields,
     scope: z.enum(MEMORY_SCOPES),
+  })
+  .strict();
+
+const legacyCapturedMemoriesSchema = z
+  .object({
+    memories: z.array(legacyCapturedMemorySchema).min(1).max(100),
   })
   .strict();
 
@@ -22,14 +39,26 @@ const capturedMemoriesSchema = z
 
 const recalledMemoriesSchema = z
   .object({
-    memories: z.array(z.string().min(1)).max(5),
+    // Matches the automatic-recall candidate window; admission packs by char budget.
+    memories: z.array(z.string().min(1)).max(20),
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
 
-function renderCapturedMemories(
-  event: z.output<typeof capturedMemoriesSchema>,
+function currentScope(
+  scope: "personal" | "conversation" | "private" | "public",
 ) {
+  if (scope === "personal") return "private";
+  if (scope === "conversation") return "public";
+  return scope;
+}
+
+function renderCapturedMemories(event: {
+  memories: Array<
+    | z.output<typeof legacyCapturedMemorySchema>
+    | z.output<typeof capturedMemorySchema>
+  >;
+}) {
   const count = event.memories.length;
   if (count === 0) return undefined;
   return {
@@ -37,7 +66,7 @@ function renderCapturedMemories(
     title: `${count} ${count === 1 ? "memory" : "memories"} captured`,
     details: event.memories.map((memory) => ({
       title: memory.content,
-      metadata: [memory.kind, memory.scope],
+      metadata: [memory.kind, currentScope(memory.scope)],
     })),
   };
 }
@@ -46,11 +75,7 @@ function renderCapturedMemories(
 export const memoriesCapturedEventV1 = defineConversationEvent({
   name: "memories_captured",
   version: 1,
-  schema: z
-    .object({
-      memories: z.array(capturedMemorySchema).min(1).max(100),
-    })
-    .strict(),
+  schema: legacyCapturedMemoriesSchema,
   renderEvent: renderCapturedMemories,
 });
 
@@ -71,6 +96,24 @@ export const memoriesRecalledEvent = defineConversationEvent({
     return undefined;
   },
 });
+
+type CapturedMemory =
+  | z.output<typeof legacyCapturedMemorySchema>
+  | z.output<typeof capturedMemorySchema>;
+
+/** Parse one supported stored memory-capture event. */
+export function parseCapturedMemories(
+  version: number,
+  content: unknown,
+): CapturedMemory[] {
+  if (version === memoriesCapturedEventV1.version) {
+    return legacyCapturedMemoriesSchema.parse(content).memories;
+  }
+  if (version === memoriesCapturedEvent.version) {
+    return capturedMemoriesSchema.parse(content).memories;
+  }
+  return [];
+}
 
 /** Select the stable, safe memory fields retained in conversation history. */
 export function capturedMemory(memory: MemoryRecord) {

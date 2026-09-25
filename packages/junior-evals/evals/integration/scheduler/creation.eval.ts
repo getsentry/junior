@@ -1,19 +1,18 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { getDb } from "@/chat/db";
-import {
-  createSchedulerSqlStore,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+import { listScheduledAutomationsForTeam } from "@/chat/scheduled-automations/tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
-import { scheduledTaskCreateCalls } from "./helpers";
+import { scheduledAutomationCreateCalls } from "./helpers";
 
 describeEval("Schedule Creation", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
   }) => {
     const result = await run({
-      initialEvents: [mention("@bot remind me in 1 minute to wash my hands")],
+      initialEvents: [
+        mention("@bot send me a direct reminder in 1 minute to wash my hands"),
+      ],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
@@ -26,16 +25,17 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
+      outcomes: [{ action: "send_message", destination: "task_creator" }],
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
   });
 
   it("when asked for a terse one-off reminder, create it without recurrence", async ({
@@ -55,7 +55,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
@@ -64,7 +64,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
   });
 
   it("when asked to tell the channel something later, preserve the future work in the schedule", async ({
@@ -75,18 +75,45 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         mention("@bot in 2 minutes tell the channel standup moved"),
       ],
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 2, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
-    expect(createCall.arguments?.task).toMatch(/standup moved/i);
-    expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
+    expect(createCall.arguments?.instruction).toMatch(/\bstandup\b/i);
+    expect(createCall.arguments?.instruction).toMatch(/\bmoved\b/i);
+    expect(createCall.arguments?.instruction).not.toMatch(
+      /\bschedul(?:e|ing)\b/i,
+    );
+  });
+
+  it("when asked for nightly fix PRs, omit success notifications by default", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        mention(
+          "@bot every night at 2am Pacific, open PRs to fix failing CI checks in getsentry/junior.",
+        ),
+      ],
+    });
+    const createCalls = scheduledAutomationCreateCalls(result.session);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]!.arguments?.outcomes ?? []).toEqual([]);
+    expect(createCalls[0]!.arguments?.schedule).toMatchObject({
+      kind: "recurring",
+      frequency: "daily",
+      time: "02:00",
+      timezone: "America/Los_Angeles",
+    });
   });
 
   it("when asked to schedule clear recurring work, create it in the active channel", async ({
@@ -117,9 +144,12 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]!.arguments).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
       schedule: {
         kind: "recurring",
         frequency: "weekly",
@@ -128,9 +158,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
       },
     });
     const stored = (
-      await createSchedulerSqlStore(
-        getDb() as unknown as SchedulerDb,
-      ).listTasksForTeam("TEVAL")
+      await listScheduledAutomationsForTeam(getDb(), "TEVAL")
     ).find((task) => task.task.text.toLowerCase().includes("scheduler"));
     expect(stored).toMatchObject({
       destination: {

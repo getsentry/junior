@@ -1,14 +1,20 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
+  type Identity,
+  type User,
+  type Actor,
+  type PluginLogger,
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
@@ -26,7 +32,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Replacement pull request body. Junior appends requester attribution and the conversation footer.",
+        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
       ),
     base: z
       .string()
@@ -64,10 +70,11 @@ interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("updatePullRequest"),
-  ...pullRequestSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  pullRequestSchema.extend({
+    target: z.literal("updatePullRequest"),
+  }),
+);
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
@@ -103,10 +110,18 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-/** Update mutable PR metadata while preserving Junior-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(
-  ctx: ToolRegistrationHookContext,
-) {
+/** Update mutable PR metadata while preserving runtime-owned body attribution. */
+export function createGitHubUpdatePullRequestTool(ctx: {
+  actor?: Actor;
+  conversationId?: string;
+  egress: PluginEgress;
+  log: PluginLogger;
+  events: { canSubscribe: boolean };
+  slack?: { conversationLink?: { url?: string } };
+  users: {
+    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+  };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -129,18 +144,18 @@ export function createGitHubUpdatePullRequestTool(
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
       const payload = {
-        ...(update.title !== undefined ? { title: update.title } : {}),
+        ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                appendGitHubRequesterAttribution(update.body, ctx.actor),
+                await appendGitHubRequesterAttribution(update.body, ctx),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),
             }
-          : {}),
-        ...(update.base !== undefined ? { base: update.base } : {}),
-        ...(update.state !== undefined ? { state: update.state } : {}),
+          : undefined),
+        ...(update.base !== undefined ? { base: update.base } : undefined),
+        ...(update.state !== undefined ? { state: update.state } : undefined),
       };
       const response = await ctx.egress.fetch({
         provider: "github",
@@ -170,12 +185,13 @@ export function createGitHubUpdatePullRequestTool(
           body: z.string().nullable().optional().default(null),
           draft: z.boolean(),
           html_url: z.string(),
+          merged: z.boolean(),
           number: z.number(),
           state: z.string(),
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubPullRequestSubscribable({
             number: providerResult.number,
             repo: repo.ref,
@@ -187,11 +203,26 @@ export function createGitHubUpdatePullRequestTool(
         draft: providerResult.draft,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            ...githubObjectFacts("code_change", parsed),
+            repo: repo.ref,
+            number: providerResult.number,
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "code_change",
+            status: providerResult.merged
+              ? "merged"
+              : providerResult.state === "open" && providerResult.draft
+                ? "draft"
+                : providerResult.state,
+          }),
+        ],
         target: "updatePullRequest",
         ...data,
       };

@@ -1,8 +1,6 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetReleaseTool } from "../src/tools/get-release";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
-
 const RELEASE = {
   created_at: "2026-08-04T05:15:00Z",
   draft: false,
@@ -19,8 +17,8 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
-    resourceEvents: { canSubscribe: true },
-  } as unknown as ToolRegistrationHookContext;
+    events: { canSubscribe: true },
+  };
   return { adapter, tool: createGitHubGetReleaseTool(ctx) };
 }
 

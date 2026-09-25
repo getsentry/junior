@@ -11,6 +11,7 @@ import {
   type RuntimePluginModule,
 } from "@/build/virtual-config";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
+import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -19,6 +20,7 @@ import {
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
+  JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -228,6 +230,33 @@ function configureVercelDeployment(
     ],
   };
 
+  const existingSnapshotJobRule =
+    nitro.options.vercel.functionRules[
+      JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
+    ] ?? {};
+  const existingSnapshotJobTriggers = Array.isArray(
+    existingSnapshotJobRule.experimentalTriggers,
+  )
+    ? existingSnapshotJobRule.experimentalTriggers
+    : [];
+  const otherSnapshotJobTriggers = existingSnapshotJobTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+
+  nitro.options.vercel.functionRules[
+    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE
+  ] = {
+    ...existingSnapshotJobRule,
+    maxDuration: defaultMaxDuration,
+    experimentalTriggers: [
+      ...otherSnapshotJobTriggers,
+      {
+        type: VERCEL_QUEUE_TRIGGER_TYPE,
+        topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
+      },
+    ],
+  };
+
   return defaultMaxDuration;
 }
 
@@ -280,7 +309,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
                 pluginModule:
                   runtimeModuleForResolvedPluginModule(pluginModule),
               }
-            : {}),
+            : undefined),
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,

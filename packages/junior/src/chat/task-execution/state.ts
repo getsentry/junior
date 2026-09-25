@@ -67,7 +67,7 @@ const inboundMessageSourceSchema = z.enum([
   "internal",
   "local",
   "plugin",
-  "resource_event",
+  "event",
   "scheduler",
   "slack",
   "web",
@@ -99,9 +99,6 @@ export type AgentInput = z.output<typeof agentInputSchema>;
 /** Durable delivery modes for pending inbound mailbox work. */
 export const inboundMessageDeliverySchema = z.enum(["defer", "interrupt"]);
 
-/** Whether this turn also publishes assistant output to the conversation destination. */
-export const publishExternallySchema = z.boolean();
-
 export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
@@ -118,18 +115,30 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
-    publishExternally: publishExternallySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
 
+/** Redis mailbox shape kept for deployed workers that still require this field. */
+const storedInboundMessageSchema = inboundMessageSchema.extend({
+  publishExternally: z.boolean(),
+});
+
+type StoredInboundMessage = z.output<typeof storedInboundMessageSchema>;
+
 export interface Lease {
   acquiredAtMs: number;
   expiresAtMs: number;
   lastCheckInAtMs: number;
   token: string;
+}
+
+/** Durable request to stop one Conversation run. */
+export interface ConversationStop {
+  inboundMessageIds: string[];
+  runId: string;
 }
 
 export interface ConversationExecution {
@@ -146,6 +155,8 @@ export interface ConversationExecution {
   updatedAtMs?: number;
 }
 
+// TODO(dcramer): Rename this Redis-only shape to ConversationExecutionState
+// without changing the v2 wire format. SQL owns the durable Conversation.
 export interface Conversation {
   channelName?: string;
   conversationId: string;
@@ -202,6 +213,27 @@ export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessa
   queueMessageId?: string;
 }
 
+/** Result of requesting that the current Conversation run stop. */
+export type StopConversationWorkResult =
+  | { status: "no_work" }
+  | { runId: string; status: "requested"; pendingMessages: InboundMessage[] };
+
+/** Result of clearing one stop observed by the matching leased run. */
+export interface CompleteConversationStopResult {
+  status: "cleared" | "lost_lease" | "none";
+  removedInboundMessageIds: string[];
+}
+
+/** Result of an append that rejects new work while a Conversation is runnable. */
+export type AppendExclusiveInboundMessageResult =
+  | AppendInboundMessageResult
+  | { status: "active" };
+
+/** Exclusive append result with an optional queue delivery id. */
+export type AppendAndEnqueueExclusiveInboundMessageResult =
+  | AppendAndEnqueueInboundMessageResult
+  | { status: "active" };
+
 export interface RequestConversationWorkResult {
   status: "created" | "updated";
 }
@@ -233,6 +265,10 @@ type RedisCommandClient = {
 
 function conversationKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:${conversationId}`;
+}
+
+function conversationStopKey(conversationId: string): string {
+  return `${CONVERSATION_PREFIX}:stop:${conversationId}`;
 }
 
 function indexLockKey(indexKey: string): string {
@@ -276,7 +312,7 @@ function upgradedPendingMessage(
         ...duplicate.input,
         ...(inputHasAttachments(duplicate.input) ||
         !inputHasAttachments(stored.input)
-          ? {}
+          ? undefined
           : { attachments: stored.input.attachments }),
       }
     : inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
@@ -333,8 +369,19 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
 }
 
 function normalizeMessage(value: unknown): InboundMessage | undefined {
-  const parsed = inboundMessageSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  const parsed = storedInboundMessageSchema.safeParse(value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const { publishExternally: _publishExternally, ...message } = parsed.data;
+  return message;
+}
+
+function storeMessage(
+  message: InboundMessage,
+  publishExternally: boolean,
+): StoredInboundMessage {
+  return { ...message, publishExternally };
 }
 
 /** Whether this is the final attempt before an unacked message is dead-lettered. */
@@ -374,6 +421,21 @@ function normalizeLease(value: unknown): Lease | undefined {
   };
 }
 
+function normalizeStop(value: unknown): ConversationStop | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
+    ? uniqueStrings(
+        value.inboundMessageIds.filter(
+          (id): id is string => typeof id === "string",
+        ),
+      )
+    : [];
+  const runId = toOptionalString(value.runId);
+  return runId ? { inboundMessageIds, runId } : undefined;
+}
+
 /** Decode execution state and repair idle records that still own work. */
 function normalizeExecution(
   conversationId: string,
@@ -409,6 +471,7 @@ function normalizeExecution(
     : [];
 
   const lease = normalizeLease(value.lease);
+  const runId = toOptionalString(value.runId);
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -429,7 +492,7 @@ function normalizeExecution(
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
     retryCount: toOptionalNumber(value.retryCount),
-    runId: toOptionalString(value.runId),
+    runId,
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
 }
@@ -461,13 +524,16 @@ function normalizeConversation(
   ) {
     return undefined;
   }
+  // Pending messages without destination use the conversation destination.
+  // Only a conflicting explicit message destination is invalid.
   if (
     execution.pendingMessages.length > 0 &&
-    execution.pendingMessages.some((message) =>
-      message.destination
-        ? !destination || !sameDestination(message.destination, destination)
-        : Boolean(destination),
-    )
+    execution.pendingMessages.some((message) => {
+      if (!message.destination) {
+        return false;
+      }
+      return !destination || !sameDestination(message.destination, destination);
+    })
   ) {
     return undefined;
   }
@@ -478,19 +544,19 @@ function normalizeConversation(
     lastActivityAtMs,
     updatedAtMs,
     execution,
-    ...(destination ? { destination } : {}),
+    ...(destination ? { destination } : undefined),
     ...(toOptionalString(value.title)
       ? { title: toOptionalString(value.title) }
-      : {}),
+      : undefined),
     ...(toOptionalString(value.channelName)
       ? { channelName: toOptionalString(value.channelName) }
-      : {}),
+      : undefined),
     ...(normalizeActor(value.actor)
       ? { actor: normalizeActor(value.actor) }
-      : {}),
+      : undefined),
     ...(normalizeSource(value.source)
       ? { source: normalizeSource(value.source) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -506,8 +572,8 @@ function emptyConversation(args: {
     createdAtMs: args.nowMs,
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.source ? { source: args.source } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.source ? { source: args.source } : undefined),
     execution: {
       status: "idle",
       inboundMessageIds: [],
@@ -945,16 +1011,30 @@ async function writeConversation(
     ...conversation,
     execution,
   };
-  const fenced = await state.extendLock(
-    lock,
-    CONVERSATION_MUTATION_LOCK_TTL_MS,
-  );
-  if (!fenced) {
-    throw new ConversationMutationFencedError(next.conversationId);
-  }
+  await fenceConversationMutation(state, lock, next.conversationId);
+  // TODO(dcramer): Remove the stored publishExternally field after no deployed
+  // mailbox reader requires it. Destination is used only to write this old
+  // Redis shape. Current workers ignore the field.
+  const hasSlackDestination = next.destination?.platform === "slack";
+  const stored = {
+    ...next,
+    execution: {
+      ...next.execution,
+      pendingMessages: next.execution.pendingMessages.map((message) =>
+        storeMessage(
+          message,
+          hasSlackDestination &&
+            (message.source === "slack" ||
+              message.source === "event" ||
+              message.source === "plugin" ||
+              message.source === "scheduler"),
+        ),
+      ),
+    },
+  };
   await state.set(
     conversationKey(next.conversationId),
-    next,
+    stored,
     JUNIOR_THREAD_STATE_TTL_MS,
   );
   await upsertIndexEntry({
@@ -997,10 +1077,12 @@ function assertSameOptionalConversationDestination(args: {
   current: Destination | undefined;
   next: Destination | undefined;
 }): void {
-  if (!args.current && !args.next) {
+  // Next without destination keeps the conversation destination. First set is
+  // allowed when current is empty. Only a conflicting next is an error.
+  if (!args.next || !args.current) {
     return;
   }
-  if (args.current && args.next && sameDestination(args.current, args.next)) {
+  if (sameDestination(args.current, args.next)) {
     return;
   }
   throw new Error(
@@ -1024,7 +1106,7 @@ function conversationWorkState(
             leaseToken: lease.token,
           },
         }
-      : {}),
+      : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
   };
@@ -1062,12 +1144,12 @@ export function hasRunnableConversationWork(
   return hasRunnableWork(conversation);
 }
 
-/** Persist one inbound message idempotently in its conversation mailbox. */
-export async function appendInboundMessage(args: {
+async function appendInboundMessageWithAdmission(args: {
+  exclusive: boolean;
   message: InboundMessage;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<AppendInboundMessageResult> {
+}): Promise<AppendExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(
     { conversationId: args.message.conversationId, state: args.state },
@@ -1125,13 +1207,21 @@ export async function appendInboundMessage(args: {
         );
         return { status: "duplicate" };
       }
+      if (args.exclusive && hasRunnableWork(current)) {
+        return { status: "active" };
+      }
 
-      const status =
-        current.execution.lease && current.execution.status === "running"
-          ? "running"
-          : current.execution.lease
-            ? "paused"
-            : "pending";
+      let status: ExecutionStatus;
+      if (current.execution.lease) {
+        status = current.execution.status === "running" ? "running" : "paused";
+      } else if (
+        current.execution.status === "paused" &&
+        args.message.delivery === "defer"
+      ) {
+        status = "paused";
+      } else {
+        status = "pending";
+      }
       const next: Conversation = {
         ...current,
         destination: current.destination ?? args.message.destination,
@@ -1161,6 +1251,34 @@ export async function appendInboundMessage(args: {
       return { status: "appended" };
     },
   );
+}
+
+/** Persist one inbound message idempotently in its conversation mailbox. */
+export async function appendInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AppendInboundMessageResult> {
+  const result = await appendInboundMessageWithAdmission({
+    ...args,
+    exclusive: false,
+  });
+  if (result.status === "active") {
+    throw new Error("Non-exclusive mailbox append returned active");
+  }
+  return result;
+}
+
+/** Append only when the Conversation has no other runnable work. */
+export async function appendExclusiveInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AppendExclusiveInboundMessageResult> {
+  return await appendInboundMessageWithAdmission({
+    ...args,
+    exclusive: true,
+  });
 }
 
 /** Mark a conversation runnable when there is no new mailbox message. */
@@ -1242,19 +1360,19 @@ export async function recordConversationActivity(args: {
       ...current,
       ...((current.destination ?? args.destination)
         ? { destination: current.destination ?? args.destination }
-        : {}),
+        : undefined),
       ...((current.source ?? args.source)
         ? { source: current.source ?? args.source }
-        : {}),
+        : undefined),
       ...((current.channelName ?? args.channelName)
         ? { channelName: current.channelName ?? args.channelName }
-        : {}),
+        : undefined),
       ...((current.actor ?? args.actor)
         ? { actor: current.actor ?? args.actor }
-        : {}),
+        : undefined),
       ...((current.title ?? args.title)
         ? { title: current.title ?? args.title }
-        : {}),
+        : undefined),
       lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
       updatedAtMs: nowMs,
       execution: executionWithPendingMessages(
@@ -1311,19 +1429,19 @@ export async function recordConversationExecution(args: {
           ...current,
           ...((current.destination ?? args.destination)
             ? { destination: current.destination ?? args.destination }
-            : {}),
+            : undefined),
           ...((current.source ?? args.source)
             ? { source: current.source ?? args.source }
-            : {}),
+            : undefined),
           ...((current.channelName ?? args.channelName)
             ? { channelName: current.channelName ?? args.channelName }
-            : {}),
+            : undefined),
           ...((current.actor ?? args.actor)
             ? { actor: current.actor ?? args.actor }
-            : {}),
+            : undefined),
           ...((current.title ?? args.title)
             ? { title: current.title ?? args.title }
-            : {}),
+            : undefined),
           createdAtMs: Math.min(current.createdAtMs, args.createdAtMs),
           lastActivityAtMs: Math.max(
             current.lastActivityAtMs,
@@ -1612,6 +1730,201 @@ export async function ackMessages(args: {
   });
 }
 
+function isHumanFacingMessage(message: InboundMessage): boolean {
+  return message.source === "web" || message.source === "slack";
+}
+
+async function readConversationStop(
+  state: StateAdapter,
+  conversationId: string,
+): Promise<ConversationStop | undefined> {
+  return normalizeStop(await state.get(conversationStopKey(conversationId)));
+}
+
+async function fenceConversationMutation(
+  state: StateAdapter,
+  lock: Lock,
+  conversationId: string,
+): Promise<void> {
+  if (!(await state.extendLock(lock, CONVERSATION_MUTATION_LOCK_TTL_MS))) {
+    throw new ConversationMutationFencedError(conversationId);
+  }
+}
+
+/** Return whether one Conversation run has a durable stop request. */
+export async function hasConversationStop(args: {
+  conversationId: string;
+  runId: string;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const state = await getConnectedState(args.state);
+  return (
+    (await readConversationStop(state, args.conversationId))?.runId ===
+    args.runId
+  );
+}
+
+/** Persist a stop request for the current run without process affinity. */
+export async function stopConversationWork(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<StopConversationWorkResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || !hasRunnableWork(current)) {
+      return { status: "no_work" };
+    }
+
+    const runId = current.execution.runId ?? randomUUID();
+    const pendingMessages =
+      current.execution.pendingMessages.filter(isHumanFacingMessage);
+    const inboundMessageIds = pendingMessages.map(
+      (message) => message.inboundMessageId,
+    );
+    if (current.execution.runId === undefined) {
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(current, { ...current.execution, runId }, nowMs),
+      );
+    }
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.set(
+      conversationStopKey(args.conversationId),
+      { inboundMessageIds, runId } satisfies ConversationStop,
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+    return { runId, status: "requested", pendingMessages };
+  });
+}
+
+/** Clear one observed stop request and discard older human-facing mailbox work. */
+export async function completeConversationStop(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  runId: string;
+  state?: StateAdapter;
+}): Promise<CompleteConversationStopResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return { status: "lost_lease", removedInboundMessageIds: [] };
+    }
+    const stop = await readConversationStop(state, args.conversationId);
+    if (!stop || stop.runId !== args.runId) {
+      return { status: "none", removedInboundMessageIds: [] };
+    }
+
+    const stoppedInboundMessageIds = new Set(stop.inboundMessageIds);
+    const removedInboundMessageIds: string[] = [];
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => {
+        const shouldStop = stoppedInboundMessageIds.has(
+          message.inboundMessageId,
+        );
+        if (shouldStop) {
+          removedInboundMessageIds.push(message.inboundMessageId);
+        }
+        return !shouldStop;
+      },
+    );
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+        },
+        nowMs,
+      ),
+    );
+    await fenceConversationMutation(state, lock, args.conversationId);
+    await state.delete(conversationStopKey(args.conversationId));
+    return { status: "cleared", removedInboundMessageIds };
+  });
+}
+
+/** Cancel human-facing pending mailbox rows without requiring a worker lease. */
+export async function cancelHumanFacingPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{
+  cancelledInboundMessageIds: string[];
+  cancelledMessages: InboundMessage[];
+}> {
+  const nowMs = args.nowMs ?? now();
+  const requestedIds =
+    args.inboundMessageIds === undefined
+      ? undefined
+      : new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return { cancelledInboundMessageIds: [], cancelledMessages: [] };
+    }
+
+    const cancelledInboundMessageIds: string[] = [];
+    const cancelledMessages: InboundMessage[] = [];
+    const pendingMessages: InboundMessage[] = [];
+    for (const message of current.execution.pendingMessages) {
+      const isRequested =
+        requestedIds === undefined ||
+        requestedIds.has(message.inboundMessageId);
+      const isInSnapshot =
+        args.receivedBeforeMs === undefined ||
+        message.receivedAtMs <= args.receivedBeforeMs;
+      if (isHumanFacingMessage(message) && isRequested && isInSnapshot) {
+        cancelledInboundMessageIds.push(message.inboundMessageId);
+        cancelledMessages.push(message);
+        continue;
+      }
+      pendingMessages.push(message);
+    }
+
+    if (cancelledInboundMessageIds.length === 0) {
+      return { cancelledInboundMessageIds, cancelledMessages };
+    }
+
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
+        },
+        nowMs,
+      ),
+    );
+
+    return { cancelledInboundMessageIds, cancelledMessages };
+  });
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
@@ -1755,6 +2068,8 @@ export async function completeConversationWork(args: {
   leaseToken: string;
   madeProgress?: boolean;
   nowMs?: number;
+  /** Keep a raced stop runnable after a stop-aware adapter returns. */
+  resumeIfStopped?: boolean;
   state?: StateAdapter;
 }): Promise<"completed" | "lost_lease" | "pending"> {
   const nowMs = args.nowMs ?? now();
@@ -1764,7 +2079,11 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
-    const needsRun = current.execution.status === "paused";
+    const stopped =
+      args.resumeIfStopped === true &&
+      (await readConversationStop(state, args.conversationId))?.runId ===
+        current.execution.runId;
+    const needsRun = current.execution.status === "paused" || stopped;
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -1971,6 +2290,7 @@ export async function deleteConversationState(args: {
 }): Promise<void> {
   await withConversationMutation(args, async (state) => {
     await state.delete(conversationKey(args.conversationId));
+    await state.delete(conversationStopKey(args.conversationId));
     await removeIndexEntry({
       state,
       indexKey: CONVERSATION_ACTIVE_INDEX_KEY,

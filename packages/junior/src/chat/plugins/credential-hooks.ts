@@ -121,9 +121,9 @@ export async function selectPluginGrant(
   const result = await hook({
     ...basePluginContext(plugin),
     request: {
-      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
       method: input.method,
-      ...(input.operation ? { operation: input.operation } : {}),
+      ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),
     },
   });
@@ -175,7 +175,7 @@ export async function onPluginEgressResponse(
     },
     request: {
       method: input.method,
-      ...(input.operation ? { operation: input.operation } : {}),
+      ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),
     },
     response: input.response,
@@ -247,7 +247,7 @@ export async function issuePluginCredential(
     grant: input.grant,
     ...(input.credentialSubject
       ? { credentialSubject: input.credentialSubject }
-      : {}),
+      : undefined),
     tokens: {
       ...(currentUserId
         ? {
@@ -273,7 +273,7 @@ export async function issuePluginCredential(
                 ),
             },
           }
-        : {}),
+        : undefined),
       ...(credentialSubjectUserId
         ? {
             credentialSubject: {
@@ -298,7 +298,7 @@ export async function issuePluginCredential(
                 ),
             },
           }
-        : {}),
+        : undefined),
     },
   });
   return parseCredentialResult(result, plugin.manifest.name);

@@ -137,6 +137,12 @@ describe("normalizeSlackReplyMarkdown", () => {
       "```python\nhttps://example.com/code**\n```\n\n<https://example.com/outside>**",
     );
   });
+
+  it("leaves provider-owned references unchanged without a plugin", () => {
+    expect(
+      normalizeSlackReplyMarkdown("opened getsentry/junior#1509 for review"),
+    ).toBe("opened getsentry/junior#1509 for review");
+  });
 });
 
 describe("buildSlackOutputMessage", () => {

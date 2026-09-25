@@ -19,7 +19,15 @@ import {
   type SubagentTranscriptTarget,
 } from "../src/client/conversations/SubagentTranscriptDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
-import { TranscriptHeader } from "../src/client/conversations/TranscriptHeader";
+import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
+import {
+  ConversationAnnotations,
+  ConversationStats,
+} from "../src/client/conversations/ConversationMeta";
+import {
+  conversationFromDetail,
+  setDashboardTimeZone,
+} from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
 import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -72,7 +80,7 @@ function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view="rich" />
+        <ConversationTranscriptView conversation={detail} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -89,6 +97,7 @@ function systemData(): SystemData {
       componentGallery: false,
       sentryConversationLinks: false,
       timeZone: "UTC",
+      version: "0.0.0-test",
     },
     me: { user: { email: "viewer@example.com" } },
     conversationStats: {
@@ -201,6 +210,22 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("italic text");
   });
 
+  it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html).toContain(
+      'href="https://github.com/getsentry/getsentry/pull/21513"',
+    );
+    expect(html).not.toContain("pull/21513**");
+    expect(html).not.toContain(">**</");
+    expect(html).toContain("<strong");
+    expect(html).toContain("PR is up:");
+  });
+
   it("renders code-like user prose as markdown", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
@@ -304,19 +329,33 @@ describe("dashboard canonical-event components", () => {
 
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
-      <TranscriptHeader
-        onChange={() => {}}
+      <ConversationHeader
+        annotations={null}
+        archive={{
+          archived: false,
+          disabled: false,
+          error: false,
+          onClick: () => {},
+          pending: false,
+        }}
+        conversationId="conversation-1"
+        identity={null}
+        live={false}
         onSearchChange={() => {}}
-        redacted={false}
+        onViewChange={() => {}}
+        privacy={null}
         search=""
-        value="raw"
+        stats={null}
+        title="Header QA"
+        view="raw"
       />,
     );
-    expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
-    expect(html.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
-    expect(html).toContain("Conversation");
-    expect(html).toContain("Event log");
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('aria-label="Event log"');
     expect(html).toContain('aria-label="Search transcript"');
+    expect(html).toContain('aria-label="Conversation details"');
+    expect(html).toContain('aria-label="Archive"');
   });
 
   it("shows responding state independently from live transcript following", () => {
@@ -338,10 +377,12 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain("Junior is responding");
+    expect(liveHtml).toContain("Junior is thinking…");
+    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
-    expect(quietHtml).not.toContain("Junior is responding");
-    expect(completedHtml).not.toContain("Junior is responding");
+    expect(quietHtml).not.toContain("Junior is thinking…");
+    expect(completedHtml).not.toContain("Junior is thinking…");
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -381,15 +422,16 @@ describe("dashboard canonical-event components", () => {
     );
     const completeTranscriptHtml = renderTranscript(conversation(events));
 
-    // Conversation-level totals only render from complete history. Turns are the
-    // unique header signal; tool chips may still label visible activity on partial pages.
+    // Conversation header no longer shows turn or tool totals.
     expect(partialHtml).not.toContain("1 turn");
-    expect(completeHtml).toContain("1 turn");
-    // Transcript does not mirror conversation turn totals in a segment row.
+    expect(completeHtml).not.toContain("1 turn");
+    expect(partialHtml).not.toContain("1 tool call");
+    expect(completeHtml).not.toContain("1 tool call");
+    // Transcript collapses activity to a uniform event count.
     expect(partialTranscriptHtml).not.toContain("1 turn");
     expect(completeTranscriptHtml).not.toContain("1 turn");
-    expect(partialTranscriptHtml).toContain("1 tool call");
-    expect(completeTranscriptHtml).toContain("1 tool call");
+    expect(partialTranscriptHtml).toContain("1 event");
+    expect(completeTranscriptHtml).toContain("1 event");
   });
 
   it("renders each user message with its own actor", () => {
@@ -415,11 +457,82 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
+  it("shows a Slack icon for Slack-origin messages only", () => {
+    const slackHtml = renderTranscript(
+      conversation(
+        [
+          event(0, {
+            messageId: "unknown-user-source",
+            role: "user",
+            text: "Unknown source.",
+            type: "message",
+          }),
+          event(1, {
+            messageId: "slack-user",
+            role: "user",
+            source: "slack",
+            text: "From Slack.",
+            type: "message",
+          }),
+          event(2, {
+            messageId: "slack-assistant",
+            role: "assistant",
+            source: "slack",
+            text: "Posted to Slack.",
+            type: "message",
+          }),
+          event(3, {
+            messageId: "dashboard-user",
+            role: "user",
+            source: "web",
+            text: "Continued from the dashboard.",
+            type: "message",
+          }),
+          event(4, {
+            messageId: "dashboard-assistant",
+            role: "assistant",
+            source: "web",
+            text: "Stays in Junior.",
+            type: "message",
+          }),
+        ],
+        { surface: "slack" },
+      ),
+    );
+    const dashboardRootHtml = renderTranscript(
+      conversation([
+        event(0, {
+          messageId: "web-message",
+          role: "user",
+          source: "web",
+          text: "From the dashboard.",
+          type: "message",
+        }),
+      ]),
+    );
+
+    expect(slackHtml).toContain('aria-label="Slack"');
+    expect(slackHtml).not.toContain(">Slack<");
+    // Known Slack user + assistant only. Null/web stay unmarked.
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
+    expect(dashboardRootHtml).not.toContain("Dashboard");
+    expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
+  });
+
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(
       conversationDetailQueryKey("conversation-1"),
-      conversation([], { status: "active" }),
+      conversation(
+        [
+          event(0, {
+            type: "turn_lifecycle",
+            turnId: "turn-1",
+            state: "started",
+          }),
+        ],
+        { status: "active" },
+      ),
     );
     const failedClient = conversationQueryClient();
     failedClient.setQueryData(
@@ -431,37 +544,59 @@ describe("dashboard canonical-event components", () => {
     const failedHtml = renderConversationPageWithClient(failedClient);
 
     expect(activeHtml).not.toContain(">active</span>");
-    expect(activeHtml).toContain("Junior is responding");
+    expect(activeHtml).toContain("Junior is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
   });
 
   it("renders conversation resource links without pull request assumptions", () => {
-    const queryClient = conversationQueryClient();
-    queryClient.setQueryData(
-      conversationDetailQueryKey("conversation-1"),
-      conversation([], {
-        annotations: [
-          {
-            kind: "resource_link",
-            key: "getsentry/junior#1081",
-            label: "getsentry/junior#1081",
-            plugin: "github",
-            status: "open",
-            url: "https://github.com/getsentry/junior/issues/1081",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:01.000Z",
-          },
-        ],
-      }),
+    const html = renderToStaticMarkup(
+      <ConversationAnnotations
+        detail={conversation([], {
+          annotations: [
+            {
+              kind: "resource_link",
+              key: "getsentry/junior#1081",
+              label: "getsentry/junior#1081",
+              plugin: "github",
+              status: "open",
+              url: "https://github.com/getsentry/junior/issues/1081",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+        })}
+      />,
     );
-
-    const html = renderConversationPageWithClient(queryClient);
 
     expect(html).toContain("getsentry/junior#1081");
     expect(html).toContain('title="Open"');
     expect(html).not.toContain("Linked resources");
     expect(html).not.toContain("Pull requests");
     expect(html).not.toContain("Open pull request");
+  });
+
+  it("renders open pull request resource links with the pull request icon", () => {
+    const html = renderToStaticMarkup(
+      <ConversationAnnotations
+        detail={conversation([], {
+          annotations: [
+            {
+              kind: "resource_link",
+              key: "getsentry/junior#1081",
+              label: "getsentry/junior#1081",
+              plugin: "github",
+              status: "open",
+              url: "https://github.com/getsentry/junior/pull/1081",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(html).toContain("getsentry/junior#1081");
+    expect(html).toContain('title="Open pull request"');
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {
@@ -516,7 +651,7 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
-    expect(staleHtml).not.toContain("Junior is responding");
+    expect(staleHtml).not.toContain("Junior is thinking…");
   });
 
   it("renders redacted visible events without exposing text", () => {
@@ -531,7 +666,7 @@ describe("dashboard canonical-event components", () => {
           }),
           event(1, {
             type: "message",
-            messageId: "resource-event",
+            messageId: "event",
             role: "user",
             eventType: "pull_request.merged",
             redacted: true,
@@ -550,6 +685,9 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders failure and context lifecycle rows", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const sentryEventUrl =
+      "https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
@@ -562,13 +700,21 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
+          failureReason: "network",
+          eventId,
+          sentryEventUrl,
         }),
       ]),
     );
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Agent response failed");
+    expect(html).toContain("Model connection failed");
+    expect(html).toContain('data-transcript-failure-reason="network"');
+    expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
+    expect(html).toContain(`event_id=${eventId}`);
+    // React serializes & as &amp; in HTML attributes.
+    expect(html).toContain(`href="${sentryEventUrl.replaceAll("&", "&amp;")}"`);
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -591,6 +737,47 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('data-transcript-rail-event="structured_event"');
     expect(html).toContain("lucide-brain");
     expect(html).toContain("2 memories captured");
+  });
+
+  it("renders delivered attachments as transcript media, not tool chrome", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "attachments_delivered",
+          attachments: [
+            {
+              id: "att-1",
+              filename: "chart.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+            {
+              id: "att-2",
+              filename: "notes.txt",
+              contentType: "text/plain",
+              bytes: 42,
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(html).not.toContain(
+      'data-transcript-rail-event="attachments_delivered"',
+    );
+    expect(html).toContain("Junior");
+    expect(html).not.toContain("files delivered");
+    expect(html).toContain('alt="chart.png"');
+    expect(html).toContain("notes.txt");
+    expect(html).toContain("text/plain · 42 B");
+    expect(html).toContain("image/png · 17.8 KB");
+    expect(html).toContain(">Close<");
+    expect(html).toContain(
+      "/api/conversations/conversation-1/attachments/att-1",
+    );
+    expect(html).toContain(
+      "/api/conversations/conversation-1/attachments/att-2",
+    );
   });
 
   it("keeps recalled memory context collapsed on its user message", () => {
@@ -629,6 +816,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="View turn context"');
+    expect(html).toContain("hidden justify-end md:flex");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Release notes live in Notion.");
     expect(html).not.toContain("memory-1");
@@ -641,15 +829,14 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "delivery",
+          failureCode: "delivery_failed",
         }),
       ]),
     );
     expect(html).toContain("Message delivery failed");
-    expect(html).toContain(
-      "Junior could not deliver this message to its destination.",
-    );
-    expect(html).not.toContain("Agent response failed");
+    expect(html).toContain("Junior could not deliver this message.");
+    expect(html).not.toContain("Model connection failed");
+    expect(html).not.toContain("Internal error");
   });
 
   it("renders one in-progress row for a tool start", () => {
@@ -795,7 +982,6 @@ describe("dashboard canonical-event components", () => {
           <ConversationTranscriptView
             conversation={conversation(events)}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
@@ -840,6 +1026,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("child detail answer");
     expect(html).toContain("/conversations/child-1");
     expect(html).toContain("Open conversation");
+    expect(html).toContain('aria-label="Search transcript"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('aria-label="Event log"');
   });
 
   it("keeps the terminal parent error when child detail says completed", () => {
@@ -887,7 +1076,6 @@ describe("dashboard canonical-event components", () => {
               }),
             ])}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
@@ -1148,9 +1336,8 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Back to people");
     expect(html).not.toContain("System / people");
     expect(html).not.toContain('aria-label="Search recent conversations"');
-    expect(html).toContain(">Places<");
+    expect(html).not.toContain(">Places<");
     expect(html).toContain(">Surfaces<");
-    expect(html.indexOf(">Places<")).toBeGreaterThan(activityStart);
     expect(html.indexOf(">Surfaces<")).toBeGreaterThan(activityStart);
     expect(html).not.toContain(">active days<");
     expect(html).not.toContain(">runs<");
@@ -1281,6 +1468,16 @@ describe("dashboard canonical-event components", () => {
       "This plugin does not expose operational activity yet.",
     );
 
+    const reportOnlyPluginHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins/briefs"]}>
+        <SystemPage data={loading} />
+      </MemoryRouter>,
+    );
+    expect(reportOnlyPluginHtml).toContain("Loading plugin");
+    expect(reportOnlyPluginHtml).toContain(
+      "Loading plugin details and operational reports.",
+    );
+
     const stale = systemData();
     stale.pluginReportsError = true;
     stale.plugins = [plugin("scheduler")];
@@ -1334,29 +1531,20 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain('aria-label="Conversations per day"');
-    expect(systemHtml).toContain("Cache hit rate");
-    expect(systemHtml).toContain("75.0%");
-    expect(systemHtml).toContain("Input token cache");
+    expect(systemHtml).toContain("Missing data in 1 of 1");
+    expect(systemHtml).toContain("Input cache");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
-    expect(systemHtml).toContain(
-      'class="inline-flex h-full min-w-0 flex-1 items-end"',
-    );
-    expect(systemHtml).toContain(
-      'class="flex w-full min-w-0 flex-col justify-end',
-    );
-    expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
-      systemHtml.indexOf("Input token cache"),
-    );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
     expect(systemHtml).toContain('aria-label="System navigation"');
     expect(systemHtml).toContain('href="/system/people"');
     expect(systemHtml).toContain('href="/system/locations"');
+    expect(systemHtml).toContain('href="/system/workspaces"');
     expect(systemHtml).toContain('href="/system/plugins"');
     expect(systemHtml).toContain(">Plugins</a>");
     expect(systemHtml).not.toContain(">Capabilities<");
@@ -1364,6 +1552,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">Skills<");
     expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
+
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
@@ -1397,7 +1586,9 @@ describe("dashboard canonical-event components", () => {
       }),
       plugin("scheduler", {}),
     ];
-    data.skills = [{ name: "scheduled-tasks", pluginProvider: "scheduler" }];
+    data.skills = [
+      { name: "scheduled-automations", pluginProvider: "scheduler" },
+    ];
     data.pluginReports!.reports = [
       {
         metrics: [{ label: "active tasks", value: "4" }],
@@ -1418,7 +1609,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduled-tasks<");
+    expect(html).toContain(">scheduled-automations<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });
@@ -1532,7 +1723,7 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
+    expect(html).toContain('aria-label="Jul 31, Cost: $0.0042"');
     expect(html).toContain(">$0.0042</text>");
     expect(html).toContain('x1="104"');
   });
@@ -1568,10 +1759,50 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Created: 89"');
-    expect(html).toContain('aria-label="2026-07-25, Created: 83"');
-    expect(html).not.toContain('aria-label="2026-07-24, Created: 82"');
+    expect(html).toContain('aria-label="Jul 31, Created: 89"');
+    expect(html).toContain('aria-label="Jul 25, Created: 83"');
+    expect(html).not.toContain('aria-label="Jul 24, Created: 82"');
     expect(html).not.toContain('aria-label="Reporting period"');
+  });
+
+  it("renders 24 trailing hour categories for the 24h range", () => {
+    // Pin the display timezone so hour-bucket rendering is deterministic
+    // regardless of the test runner's own local timezone.
+    setDashboardTimeZone("America/Los_Angeles");
+    const categories = Array.from({ length: 48 }, (_, index) => {
+      const date = new Date("2026-07-30T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      const label = date.toISOString().slice(0, 13);
+      return {
+        id: label,
+        label,
+        values: { created: index },
+      };
+    });
+    const html = renderToStaticMarkup(
+      <PluginReports
+        range={1}
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories,
+                id: "hourly-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                timeRangeDays: [1, 7, 30, 90],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    // Hour buckets render in the dashboard timezone (America/Los_Angeles).
+    expect(html).toContain('aria-label="Jul 31, 4 PM, Created: 47"');
+    expect(html).toContain('aria-label="Jul 30, 5 PM, Created: 24"');
+    expect(html).not.toContain('aria-label="Jul 30, 4 PM, Created: 23"');
   });
 
   it("renders an all-zero chart with a stable zero scale", () => {
@@ -1671,7 +1902,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("tokens");
     expect(html).toContain("1.2k");
   });
-  it("links a task-triggered conversation with compact source metadata", () => {
+  it("links an automation-triggered conversation with compact source metadata", () => {
     const detail = conversation([], {
       sourceTask: {
         id: "sched_source_task",
@@ -1680,18 +1911,23 @@ describe("dashboard canonical-event components", () => {
         title: "Refresh YC company data",
       },
     });
-    client.setQueryData(
-      conversationDetailQueryKey(detail.conversationId),
-      detail,
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ConversationStats
+          conversation={conversationFromDetail(detail)}
+          detail={detail}
+        />
+      </MemoryRouter>,
     );
-
-    const html = renderConversationPageWithClient(client);
 
     expect(html).toMatch(
-      /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled automation<\/a>/,
     );
+    // Full automation instructions stay off hover chrome; open the automation page for those.
+    expect(html).not.toContain("Update getsentry/yc-scraper");
+    expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
-      "Triggered by Scheduled Task · Update getsentry/yc-scraper",
+      "Triggered by Scheduled automation · Update getsentry/yc-scraper",
     );
   });
 

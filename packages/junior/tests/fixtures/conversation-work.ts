@@ -1,5 +1,25 @@
+import type { SlackEventsApiEnvelope } from "./slack/factories/events";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
+import {
+  createFauxCore,
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { createConversationWork } from "@/chat/app/conversation-work";
+import { executeAgentRun } from "@/chat/agent";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
+import { getConversationStore } from "@/chat/db";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -9,10 +29,14 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { readProxyProperty } from "./proxy-property";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_DESTINATION = {
@@ -43,7 +67,10 @@ interface QueueSendHold {
  */
 export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   #idempotentMessageIds = new Map<string, string>();
-  #queuedMessages: ConversationQueueMessage[] = [];
+  #queuedMessages: Array<{
+    message: ConversationQueueMessage;
+    availableAtMs: number;
+  }> = [];
   #rejectSends = false;
   #sendHolds: QueueSendHold[] = [];
   #sendAttempts: ConversationQueueSendRecord[] = [];
@@ -63,7 +90,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   }
 
   queuedMessages(): ConversationQueueMessage[] {
-    return this.#queuedMessages.map((message) => ({ ...message }));
+    return this.#queuedMessages.map(({ message }) => ({ ...message }));
   }
 
   rejectSends(): void {
@@ -109,7 +136,10 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       return { messageId: duplicateMessageId };
     }
     const messageId = `queue-${this.#sentRecords.length + 1}`;
-    this.#queuedMessages.push({ ...message });
+    this.#queuedMessages.push({
+      message: { ...message },
+      availableAtMs: Date.now() + Math.max(0, options?.delayMs ?? 0),
+    });
     this.#sentRecords.push(record);
     if (options?.idempotencyKey) {
       this.#idempotentMessageIds.set(options.idempotencyKey, messageId);
@@ -122,12 +152,26 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     return { messageId };
   }
 
+  /** Deliver the next payload immediately when a test controls the clock. */
   takeMessage(): ConversationQueueMessage {
-    const message = this.#queuedMessages.shift();
-    if (!message) {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
       throw new Error("Expected queued conversation work payload");
     }
-    return message;
+    return entry.message;
+  }
+
+  /** Honor queue delays when running evals against the real clock. */
+  async takeReadyMessage(
+    signal?: AbortSignal,
+  ): Promise<ConversationQueueMessage> {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
+      throw new Error("Expected queued conversation work payload");
+    }
+    const waitMs = entry.availableAtMs - Date.now();
+    if (waitMs > 0) await delay(waitMs, undefined, { signal });
+    return entry.message;
   }
 }
 
@@ -147,7 +191,7 @@ export function observeConversationMutationLock(args: {
   return {
     isHeld: () => held,
     state: new Proxy(args.state, {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop === "acquireLock") {
           return async (key: string, ttlMs: number) => {
             const lock = await target.acquireLock(key, ttlMs);
@@ -169,7 +213,7 @@ export function observeConversationMutationLock(args: {
             }
           };
         }
-        const value = Reflect.get(target, prop, receiver);
+        const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter,
@@ -201,7 +245,6 @@ export function inboundMessage(
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,
-    publishExternally: true,
     input: {
       text: `message ${inboundMessageId}`,
       authorId: "U123",
@@ -226,7 +269,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
   let blocked = false;
   const indexLockKey = `${CONVERSATION_BY_ACTIVITY_INDEX_KEY}:lock`;
   return new Proxy(state, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "acquireLock") {
         return async (key: string, ttlMs: number) => {
           if (!blocked && key === indexLockKey) {
@@ -236,7 +279,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
           return target.acquireLock(key, ttlMs);
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as StateAdapter;
@@ -250,7 +293,7 @@ export function delayMutationLockUntil(args: {
 }): StateAdapter {
   const mutationLockKey = `junior:conversation:v2:mutation:${args.conversationId}`;
   return new Proxy(args.state, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "acquireLock") {
         return async (key: string, ttlMs: number) => {
           if (key === mutationLockKey && Date.now() < args.readyAtMs) {
@@ -259,7 +302,7 @@ export function delayMutationLockUntil(args: {
           return target.acquireLock(key, ttlMs);
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as StateAdapter;
@@ -280,7 +323,7 @@ export function slackEnvelope(input: {
   threadTs?: string;
   ts?: string;
   user?: string;
-}) {
+}): Pick<SlackEventsApiEnvelope, "team_id" | "type" | "event"> {
   const channel = input.channel ?? "C123";
   const ts = input.ts ?? "1712345.0001";
   return {
@@ -288,13 +331,15 @@ export function slackEnvelope(input: {
     type: "event_callback",
     event: {
       type: input.eventType ?? "app_mention",
+      subtype: undefined,
       user: input.user ?? "U123",
+      user_team: "T123",
       text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
       channel,
       ts,
       event_ts: ts,
       channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
     },
   };
 }
@@ -341,4 +386,231 @@ export function createNoopSlackWebhookRuntime() {
     handleNewMention: async () => {},
     handleSubscribedMessage: async () => {},
   };
+}
+
+export const THREAD_TS = "1712345.0001";
+
+export type ModelStreamStep =
+  | string
+  | { tool: string; args?: Record<string, unknown> }
+  | (() => Promise<ReturnType<typeof fauxAssistantMessage>>);
+
+function buildStreamResponses(steps: ModelStreamStep[]) {
+  return steps.map((step) => {
+    if (typeof step === "function") {
+      return step;
+    }
+    if (typeof step === "string") {
+      return fauxAssistantMessage(step);
+    }
+    return fauxAssistantMessage([fauxToolCall(step.tool, step.args ?? {})], {
+      stopReason: "toolUse",
+    });
+  });
+}
+
+/** Model stream that returns one completed assistant reply per call. */
+export function streamReplies(...texts: string[]): StreamFn {
+  const faux = createFauxCore({ api: "test", provider: "test" });
+  const built = buildStreamResponses(texts);
+  if (built.length === 0) {
+    throw new Error("streamReplies requires at least one reply");
+  }
+  faux.setResponses(built);
+  return faux.stream;
+}
+
+/**
+ * Queue model steps and repeat the last reply for resume / follow-up model
+ * calls in the same agent run. Fake only generation; tools still run for real.
+ */
+export function streamScript(...steps: ModelStreamStep[]): StreamFn {
+  const faux = createFauxCore({ api: "test", provider: "test" });
+  const built = buildStreamResponses(steps);
+  const last = built.at(-1);
+  if (!last) {
+    throw new Error("streamScript requires at least one step");
+  }
+  faux.setResponses([...built, ...Array.from({ length: 12 }, () => last)]);
+  return faux.stream;
+}
+
+export type ConversationWorkSlackHarness = {
+  agentRunner: AgentRunner;
+  state: StateAdapter;
+  wakes: ConversationWorkQueueTestAdapter;
+  replies: () => string[];
+  authLinksFor: (userId: string) => ReturnType<typeof getCapturedSlackApiCalls>;
+  setModelStream: (next: StreamFn) => void;
+  setSubscribedShouldReply: (shouldReply: boolean) => void;
+  next: (
+    requestStartedAtMs?: number,
+  ) => Promise<Awaited<ReturnType<typeof processConversationQueueMessage>>>;
+  drain: () => Promise<void>;
+  send: (input?: {
+    eventType?: "app_mention" | "message";
+    text?: string;
+    threadTs?: string;
+    ts?: string;
+    user?: string;
+  }) => Promise<Response>;
+  mention: (user: string, text: string) => Promise<string>;
+  /** Non-mention thread message (subscribed path). */
+  passive: (user: string, text: string) => Promise<string>;
+};
+
+/**
+ * Compose the production Slack ingress → durable queue → worker → agent path.
+ * Fake only model generation at the executeAgentRun stream boundary and Slack
+ * HTTP at the adapter boundary.
+ */
+export async function createConversationWorkSlackHarness(
+  options: {
+    agentRunner?: AgentRunner;
+    modelStream?: StreamFn;
+    /** Default subscribed-message classifier outcome. */
+    subscribedShouldReply?: boolean;
+  } = {},
+): Promise<ConversationWorkSlackHarness> {
+  const state = getStateAdapter();
+  await state.connect();
+  const wakes = createConversationWorkQueueTestAdapter();
+  const adapter = createSlackAdapterFixture();
+  let modelStream = options.modelStream ?? streamReplies("Deploy checked.");
+  let subscribedShouldReply = options.subscribedShouldReply ?? false;
+  const agentRunner: AgentRunner = options.agentRunner ?? {
+    run: async (request) => await executeAgentRun(request, modelStream),
+  };
+  const work = createConversationWork({
+    agentRunner,
+    conversationStore: getConversationStore(),
+    getSlackAdapter: () => adapter,
+    queue: wakes,
+    services: {
+      agentRunner,
+      subscribedReplyPolicy: {
+        completeObject: async ({ schema }) => ({
+          object: schema.parse({
+            should_reply: subscribedShouldReply,
+            should_unsubscribe: false,
+            confidence: 1,
+            reason: subscribedShouldReply
+              ? "test_follow_up"
+              : "side_conversation",
+          }),
+        }),
+      },
+      visionContext: {
+        listThreadReplies: async () => [],
+      },
+    },
+    state,
+  });
+
+  let messageSeq = 0;
+  const nextTs = () => {
+    messageSeq += 1;
+    return `1712345.${String(messageSeq).padStart(4, "0")}`;
+  };
+
+  const services = {
+    getSlackAdapter: () => adapter,
+    queue: wakes,
+    runtime: work.runtime,
+    state,
+  };
+
+  const post = async (input: {
+    eventType: "app_mention" | "message";
+    user: string;
+    text: string;
+  }) => {
+    const ts = nextTs();
+    const mention = input.eventType === "app_mention";
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          eventType: input.eventType,
+          text: mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text,
+          threadTs: THREAD_TS,
+          ts,
+          user: input.user,
+        }),
+      ),
+      services,
+    });
+    return ts;
+  };
+
+  return {
+    agentRunner,
+    state,
+    wakes,
+    setModelStream(next: StreamFn) {
+      modelStream = next;
+    },
+    setSubscribedShouldReply(shouldReply: boolean) {
+      subscribedShouldReply = shouldReply;
+    },
+    replies: () =>
+      slackApiOutbox
+        .messages()
+        .map((call) => call.params.text)
+        .filter((text): text is string => typeof text === "string"),
+    authLinksFor: (userId: string) =>
+      getCapturedSlackApiCalls("chat.postEphemeral").filter(
+        (call) => String(call.params.user ?? "") === userId,
+      ),
+    next: async (requestStartedAtMs?: number) => {
+      const process = async () =>
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run: work.run,
+          state,
+        });
+      return requestStartedAtMs === undefined
+        ? await process()
+        : await runWithTurnRequestDeadline(process, requestStartedAtMs);
+    },
+    drain: async () => {
+      for (let i = 0; i < 12 && wakes.hasQueuedMessages(); i += 1) {
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run: work.run,
+          state,
+        });
+      }
+      if (wakes.hasQueuedMessages()) {
+        throw new Error("queue still has work after drain");
+      }
+    },
+    send: async (input = {}) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            text: `<@${SLACK_BOT_USER_ID}> inspect the deploy`,
+            ...input,
+          }),
+        ),
+        services,
+      }),
+    mention: async (user: string, text: string) =>
+      await post({ eventType: "app_mention", user, text }),
+    passive: async (user: string, text: string) =>
+      await post({ eventType: "message", user, text }),
+  };
+}
+
+/** Load the fixture conversation's persisted thread state with messages. */
+export async function loadConversationState(
+  conversationId = CONVERSATION_ID,
+): Promise<ThreadConversationState> {
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(conversationId),
+  );
+  await hydrateConversationMessages({
+    conversation,
+    conversationId,
+  });
+  return conversation;
 }

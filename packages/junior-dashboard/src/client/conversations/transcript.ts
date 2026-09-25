@@ -29,6 +29,8 @@ export function buildConversationTranscript(
     });
   }
 
+  if (historyPages.length === 0) return detail;
+
   return {
     ...detail,
     events: orderedEvents([
@@ -201,4 +203,52 @@ function withoutModelUsage(
 ): ConversationDetailReport {
   const { modelUsage: _modelUsage, ...restricted } = detail;
   return restricted;
+}
+
+/**
+ * Reuse an unchanged event array without holding back fresh detail metadata.
+ * Sequence and timestamp cover immutable event facts. Attachment metadata can
+ * arrive after a Slack download, so compare it without walking other payloads.
+ */
+export function reuseConversationEventReferences(
+  previous: ConversationDetailReport | undefined,
+  next: ConversationDetailReport,
+): ConversationDetailReport {
+  if (!previous || previous.events === next.events) return next;
+  if (!sameConversationEventVersion(previous.events, next.events)) return next;
+  return { ...next, events: previous.events };
+}
+
+function sameConversationEventVersion(
+  previous: ConversationReportEvent[],
+  next: ConversationReportEvent[],
+): boolean {
+  if (previous.length !== next.length) return false;
+  for (let index = 0; index < previous.length; index += 1) {
+    const left = previous[index]!;
+    const right = next[index]!;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt)
+      return false;
+    if (
+      left.data.type === "message" &&
+      right.data.type === "message" &&
+      JSON.stringify(left.data.attachments) !==
+        JSON.stringify(right.data.attachments)
+    )
+      return false;
+  }
+  return true;
+}
+
+/** Show thinking only after a Turn starts, not when input merely enters the queue. */
+export function conversationIsResponding(
+  detail: ConversationDetailReport | undefined,
+): boolean {
+  if (detail?.status !== "active") return false;
+  for (let index = detail.events.length - 1; index >= 0; index -= 1) {
+    const data = detail.events[index]!.data;
+    if (data.type === "turn_lifecycle") return data.state === "started";
+  }
+  // An active Turn can start before the bounded history window.
+  return Boolean(detail.previousCursor);
 }

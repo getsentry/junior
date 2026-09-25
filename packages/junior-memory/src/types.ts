@@ -3,13 +3,13 @@ import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
-export const MEMORY_SCOPES = ["personal", "conversation"] as const;
+export const MEMORY_SCOPES = ["private", "public"] as const;
 export const MEMORY_SUBJECT_TYPES = [
   "user",
   "conversation",
   "general",
 ] as const;
-// Durable attribution follows Source platform, including dashboard/web roots.
+// Durable attribution follows Source kind, including dashboard roots.
 export const MEMORY_SOURCE_PLATFORMS = ["slack", "local", "web"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
@@ -22,12 +22,15 @@ export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
 
 const nonEmptyStringSchema = z.string().min(1);
 
-/** Runtime-owned memory invocation fields used for scope and source authority. */
+/** Host data used to set memory access, subject, and source. */
 export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
+    locationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
     source: sourceSchema,
+    /** User linked to the active Actor. */
+    userId: nonEmptyStringSchema.optional(),
   })
   .strict();
 

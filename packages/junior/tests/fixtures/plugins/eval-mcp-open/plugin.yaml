@@ -1,0 +1,8 @@
+name: eval-mcp-open
+display-name: Eval MCP Open
+description: Eval-only open MCP fixture with no OAuth
+
+mcp:
+  url: https://eval-mcp.example.test/mcp
+  allowed-tools:
+    - handbook-search

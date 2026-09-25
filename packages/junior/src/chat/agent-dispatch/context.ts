@@ -3,8 +3,8 @@ import type {
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
-  bindEventTaskCredentialSubject,
-  bindScheduledTaskCredentialSubject,
+  bindEventAutomationCredentialSubject,
+  bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
 import { getDb } from "@/chat/db";
@@ -31,15 +31,15 @@ function bindDispatchCredentialSubject(
 ): BoundDispatchOptions {
   const { credentialSubject, ...baseOptions } = options;
   if (!credentialSubject) {
-    return baseOptions;
+    return { ...baseOptions, source: { kind: "plugin_dispatch" } };
   }
   if ("binding" in credentialSubject) {
     throw new Error("Dispatch credentialSubject binding is runtime-owned");
   }
 
   const boundSubject =
-    credentialSubject.allowedWhen === "scheduled-task"
-      ? bindScheduledTaskCredentialSubject({
+    credentialSubject.allowedWhen === "scheduled-automation"
+      ? bindScheduledAutomationCredentialSubject({
           plugin,
           subject: credentialSubject,
         })
@@ -55,6 +55,7 @@ function bindDispatchCredentialSubject(
   return {
     ...baseOptions,
     credentialSubject: boundSubject,
+    source: { kind: "plugin_dispatch" },
   };
 }
 
@@ -127,13 +128,13 @@ export function createHeartbeatContext(args: {
   };
 }
 
-/** Create and enqueue one core-owned event task dispatch. */
-export async function dispatchEventTask(args: {
+/** Create and enqueue one core-owned event automation dispatch. */
+export async function dispatchEventAutomation(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
     credentialSubject?: {
-      allowedWhen: "event-task";
+      allowedWhen: "event-automation";
       taskId: string;
       type: "user";
       userId: string;
@@ -141,10 +142,10 @@ export async function dispatchEventTask(args: {
   };
 }) {
   const plugin = "junior";
-  const { credentialSubject, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
-    ? bindEventTaskCredentialSubject({
+    ? bindEventAutomationCredentialSubject({
         plugin,
         subject: credentialSubject,
       })
@@ -154,7 +155,9 @@ export async function dispatchEventTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
-    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+    ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
+    source: { kind: "event_automation" },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -164,13 +167,13 @@ export async function dispatchEventTask(args: {
   });
 }
 
-/** Create and enqueue one core-owned scheduled task dispatch. */
-export async function dispatchScheduledTask(args: {
+/** Create and enqueue one core-owned scheduled automation dispatch. */
+export async function dispatchScheduledAutomation(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
     credentialSubject?: {
-      allowedWhen: "scheduled-task";
+      allowedWhen: "scheduled-automation";
       taskId: string;
       type: "user";
       userId: string;
@@ -178,10 +181,10 @@ export async function dispatchScheduledTask(args: {
   };
 }) {
   const plugin = "scheduler";
-  const { credentialSubject, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
-    ? bindScheduledTaskCredentialSubject({
+    ? bindScheduledAutomationCredentialSubject({
         plugin,
         subject: credentialSubject,
       })
@@ -191,7 +194,9 @@ export async function dispatchScheduledTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
-    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+    ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
+    source: { kind: "scheduled_automation" },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -201,7 +206,7 @@ export async function dispatchScheduledTask(args: {
   });
 }
 
-/** Read the bounded outcome for one core-owned scheduled task dispatch. */
-export async function getScheduledTaskDispatch(id: string) {
+/** Read the bounded outcome for one core-owned scheduled automation dispatch. */
+export async function getScheduledAutomationDispatch(id: string) {
   return await getPluginDispatchProjection({ plugin: "scheduler", id });
 }

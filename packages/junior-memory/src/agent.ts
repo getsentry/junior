@@ -135,29 +135,44 @@ const memoryReviewDecisionSchema = z.discriminatedUnion("decision", [
     })
     .strict(),
 ]);
-const memoryReviewResponseSchema = z.discriminatedUnion("decision", [
-  z
-    .object({
-      decision: z.literal("store"),
-      kind: memoryKindSchema.describe(
-        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use knowledge for shared project, channel, operational, or runbook facts.",
+// Model-facing schemas are one flat object with required nullable fields.
+// Strict structured-output providers reject a union at the root and any
+// optional property.
+const memoryReviewResponseSchema = z
+  .object({
+    decision: z.enum(["store", "reject"]),
+    kind: memoryKindSchema
+      .nullable()
+      .describe(
+        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use knowledge for shared project, channel, operational, or runbook facts. Null when rejecting.",
       ),
-      canonicalFact: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored memory text. It must be self-contained and must not include actor names, actor/user labels, source labels, or first- or second-person wording.",
-        ),
-      expiresAtMs: expiresAtMsSchema,
-    })
-    .strict(),
-  z
-    .object({
-      decision: z.literal("reject"),
-      reason: memoryRejectReasonSchema,
-    })
-    .strict(),
-]);
+    canonicalFact: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe(
+        "Stored memory text. It must be self-contained and must not include actor names, actor/user labels, source labels, or first- or second-person wording. Null when rejecting.",
+      ),
+    expiresAtMs: expiresAtMsSchema,
+    reason: memoryRejectReasonSchema
+      .nullable()
+      .describe("Reject reason. Null when storing."),
+  })
+  .strict();
+const memorySupersessionResponseSchema = z
+  .object({
+    decision: z.enum(["duplicate", "supersedes_old", "distinct", "uncertain"]),
+    duplicateId: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe("Existing memory id for duplicate, otherwise null."),
+    supersededIds: z
+      .array(z.string().min(1))
+      .nullable()
+      .describe("Existing memory ids for supersedes_old, otherwise null."),
+  })
+  .strict();
 const extractedMemorySchema = z
   .object({
     kind: memoryKindSchema.describe(
@@ -187,11 +202,14 @@ const extractMemoriesResponseSchema = z
       .array(extractedMemorySchema)
       .max(5)
       .describe(
-        "Accepted public/shareable durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
+        "Accepted durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
       ),
   })
   .strict();
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
+type MemorySupersessionResponse = z.output<
+  typeof memorySupersessionResponseSchema
+>;
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
@@ -235,7 +253,7 @@ export interface MemoryAgent {
 const MEMORY_REVIEW_SYSTEM = [
   "You are Junior's memory review agent.",
   "Review one memory candidate and return one structured review decision.",
-  "Store only public/shareable, self-contained facts that are useful beyond this turn.",
+  "Store only self-contained facts that are useful beyond this turn and safe for the current Source.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
@@ -244,7 +262,7 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
-  "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
+  "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
 const MEMORY_RECALL_SYSTEM = [
   "You are Junior's memory recall relevance agent.",
@@ -277,9 +295,7 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function actorLabel(
-  actor: z.output<typeof actorSchema> | undefined,
-): string {
+function actorLabel(actor: z.output<typeof actorSchema> | undefined): string {
   if (!actor) {
     return "none";
   }
@@ -296,12 +312,19 @@ function actorLabel(
 }
 
 function sourceLabel(source: z.output<typeof sourceSchema>): string {
-  switch (source.platform) {
+  switch (source.kind) {
     case "slack":
       return `slack:${source.teamId}:${source.channelId}`;
     case "web":
     case "local":
-      return `${source.platform}:${source.conversationId}`;
+      return `${source.kind}:${source.conversationId}`;
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return source.kind;
   }
 }
 
@@ -351,7 +374,7 @@ function existingMemoriesContext(request: ExtractSessionRequest): string {
 
 /**
  * Passive extraction offers personal preferences only on single-actor runs.
- * Multi-actor runs restrict extraction to conversation-scoped kinds.
+ * Multi-actor runs restrict extraction to conversation-subject kinds.
  */
 function allowedExtractionKinds(actorCount: number): Set<MemoryKind> {
   return actorCount === 1
@@ -388,7 +411,7 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "</candidate>",
     "",
     "<rules>",
-    "- Return store only when the candidate is public/shareable, durable, and self-contained.",
+    "- Return store only when the candidate is durable, self-contained, and safe for the current Source.",
     "- First classify the memory kind: preference, procedure, or knowledge.",
     "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
@@ -404,6 +427,7 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "- Reject third-party personal profile facts, even if they mention a name.",
     "- Reject vague content such as 'remember this' unless the candidate or current-user-message contains the concrete fact.",
     "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
+    "- When storing, set reason to null. When rejecting, set kind, canonicalFact, and expiresAtMs to null.",
     "- If unsure, reject.",
     "</rules>",
     "</memory-review-input>",
@@ -541,6 +565,7 @@ function preferenceAdjudicationPrompt(
     "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
     "- Do not supersede memories from different topics even if they are both preferences.",
     "- duplicateId and supersededIds may contain only ids from existing-memories.",
+    "- Set duplicateId to null unless the decision is duplicate. Set supersededIds to null unless the decision is supersedes_old.",
     "- If unsure, return uncertain.",
     "</rules>",
     "</memory-preference-adjudication-input>",
@@ -564,18 +589,22 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
           candidateIds.has(id),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({
-        schema: memorySupersessionDecisionSchema,
+        schema: memorySupersessionResponseSchema,
         system: MEMORY_PREFERENCE_ADJUDICATION_SYSTEM,
         prompt: preferenceAdjudicationPrompt(request),
         maxTokens: 400,
       });
-      return memorySupersessionDecisionSchema.parse(result.object);
+      return memorySupersessionFromResponse(
+        memorySupersessionResponseSchema.parse(result.object),
+      );
     },
     async extractSessionMemories(rawRequest) {
       const request = extractSessionRequestSchema.parse(rawRequest);
@@ -589,7 +618,9 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         memories: extractedMemoriesFromResponse(
           extractMemoriesResponseSchema.parse(result.object),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
     async reviewCreateRequest(rawRequest) {
@@ -616,13 +647,32 @@ function memoryReviewFromResponse(
       content: response.canonicalFact,
       ...(response.expiresAtMs !== null
         ? { expiresAtMs: response.expiresAtMs }
-        : {}),
+        : undefined),
     });
   }
   return parseMemoryReview({
     decision: "reject",
     reason: response.reason,
   });
+}
+
+function memorySupersessionFromResponse(
+  response: MemorySupersessionResponse,
+): MemorySupersessionDecision {
+  switch (response.decision) {
+    case "duplicate":
+      return memorySupersessionDecisionSchema.parse({
+        decision: "duplicate",
+        duplicateId: response.duplicateId,
+      });
+    case "supersedes_old":
+      return memorySupersessionDecisionSchema.parse({
+        decision: "supersedes_old",
+        supersededIds: response.supersededIds,
+      });
+    default:
+      return { decision: response.decision };
+  }
 }
 
 function extractedMemoriesFromResponse(

@@ -2,29 +2,85 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type {
+  ConversationAnnotationInput,
+  EventInput,
+} from "@sentry/junior-plugin-api";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
-import { buildGitHubOutcomeReport } from "../src/outcomes/report";
+import {
+  listGitHubAssignedWork,
+  listGitHubFinishedWork,
+  listGitHubUnfinishedWork,
+} from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
-  normalizeGitHubResourceEvents,
+  needsCheckSuitePullRequestFacts,
+  normalizeGitHubEvents,
+  parseCheckSuiteFactsTarget,
+  parseCheckSuitePublishTargets,
   selectFailingChecks,
-} from "../src/webhooks/resource-events";
+} from "../src/webhooks/events";
+
+/** Minimal repository object for check_suite webhook fixtures. */
+function checkSuiteRepository(repo = "getsentry/junior", id = 1) {
+  const [owner, name] = repo.split("/") as [string, string];
+  return {
+    id,
+    name,
+    full_name: repo,
+    owner: { login: owner },
+  };
+}
+
+/** Minimal same-repo check_suite pull_requests entry (GitHub CheckRunPullRequest). */
+function checkSuitePullRequest(
+  number: number,
+  repo = "getsentry/junior",
+  repositoryId = 1,
+  headRef?: string,
+): {
+  base: { repo: { id: number; name: string; url: string }; sha: string };
+  head: {
+    ref?: string;
+    repo: { id: number; name: string; url: string };
+    sha: string;
+  };
+  id: number;
+  number: number;
+  url: string;
+} {
+  const [owner, name] = repo.split("/");
+  const repoUrl = `https://api.github.com/repos/${owner}/${name}`;
+  return {
+    id: number,
+    number,
+    url: `${repoUrl}/pulls/${number}`,
+    head: {
+      ...(headRef ? { ref: headRef } : undefined),
+      sha: "abcdef1234567890",
+      repo: { id: repositoryId, name: name!, url: repoUrl },
+    },
+    base: {
+      sha: "0000000000000000",
+      repo: { id: repositoryId, name: name!, url: repoUrl },
+    },
+  };
+}
+
 import { mswServer } from "./msw";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +96,7 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
     "0004_marvelous_toad_men.sql",
     "0005_github_cost_associations.sql",
     "0006_fat_korvac.sql",
+    "0007_shallow_millenium_guard.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
@@ -49,6 +106,73 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
 async function migrationSql(name: string): Promise<string> {
   return await readFile(resolve(__dirname, `../migrations/${name}`), "utf8");
 }
+
+it("returns only candidate conversations with unmerged pull requests", async () => {
+  const fixture = await createGitHubFixture();
+  const at = new Date("2026-07-01T12:00:00.000Z");
+  try {
+    await fixture
+      .db()
+      .insert(juniorGitHubPullRequests)
+      .values([
+        {
+          pullRequestId: "open-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 1,
+          state: "open",
+          conversationIds: ["conversation-open", "conversation-shared"],
+          openedAt: at,
+          updatedAt: at,
+        },
+        {
+          pullRequestId: "merged-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 2,
+          state: "merged",
+          conversationIds: ["conversation-merged", "conversation-shared"],
+          openedAt: at,
+          mergedAt: at,
+          updatedAt: at,
+        },
+      ]);
+
+    await expect(
+      listGitHubUnfinishedWork(fixture.db(), [
+        "conversation-open",
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-unrelated",
+      ]),
+    ).resolves.toEqual(["conversation-open", "conversation-shared"]);
+    await expect(
+      listGitHubFinishedWork(fixture.db(), [
+        "conversation-open",
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-unrelated",
+      ]),
+    ).resolves.toEqual({
+      "conversation-merged": "2026-07-01T12:00:00.000Z",
+      "conversation-shared": "2026-07-01T12:00:00.000Z",
+    });
+    await expect(
+      listGitHubAssignedWork(fixture.db(), [
+        "conversation-open",
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-unrelated",
+      ]).then((ids) => [...ids].sort()),
+    ).resolves.toEqual([
+      "conversation-merged",
+      "conversation-open",
+      "conversation-shared",
+    ]);
+  } finally {
+    await fixture.close();
+  }
+});
 
 function pullRequestPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -153,7 +277,7 @@ function signedRequest(body: unknown, eventName = "pull_request"): Request {
 
 function webhookRoute(
   fixture: GitHubFixture,
-  published: ResourceEventInput[] = [],
+  published: EventInput[] = [],
   botEmail: () => string | undefined = () =>
     "264270552+sentry-junior[bot]@users.noreply.github.com",
   classifyPullRequestCommits?: () => Promise<
@@ -163,14 +287,44 @@ function webhookRoute(
     message: string,
     metadata?: Record<string, unknown>,
   ) => void = () => {},
+  annotations: Array<{
+    annotation: ConversationAnnotationInput;
+    conversationId: string;
+  }> = [],
+  markFeedbackReviewing: Parameters<
+    typeof createGitHubWebhookRoute
+  >[0]["markFeedbackReviewing"] = async () => {},
+  hasMatch: () => Promise<boolean> = async () => true,
 ) {
   return createGitHubWebhookRoute({
+    annotations: {
+      forConversation(conversationId) {
+        return {
+          async upsert(annotation) {
+            annotations.push({ annotation, conversationId });
+          },
+          async remove() {},
+          async list() {
+            return [];
+          },
+        };
+      },
+    },
+    appIdEnv: "GITHUB_APP_ID",
     botEmail,
     classifyPullRequestCommits,
+    codeChanges: {
+      async associateConversations() {},
+      async record() {},
+    },
     db: fixture.db(),
     installationId: () => "456",
+    installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
-    resourceEvents: {
+    markFeedbackReviewing,
+    privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+    events: {
+      hasMatch,
       async publish(event) {
         published.push(event);
       },
@@ -184,10 +338,15 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("GitHub webhook resource events", () => {
+describe("GitHub webhook events", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+  });
+
   it("uses the provider merge timestamp", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
-    const events = normalizeGitHubResourceEvents({
+    const events = normalizeGitHubEvents({
       body: {
         action: "closed",
         repository: { full_name: "getsentry/junior" },
@@ -223,17 +382,21 @@ describe("GitHub webhook resource events", () => {
   it("normalizes non-draft opens as opened and ready for review", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
     const untrustedText =
-      "Title: feat(github): expose pull_request.opened\n\nAdds pull_request.opened resource events.";
-    const events = normalizeGitHubResourceEvents({
+      "Title: feat(github): expose pull_request.opened\n\nAdds pull_request.opened events.";
+    const events = normalizeGitHubEvents({
       body: {
         action: "opened",
         repository: { full_name: "getsentry/junior" },
         pull_request: {
-          body: "Adds pull_request.opened resource events.\n",
+          body: "Adds pull_request.opened events.\n",
           created_at: "2026-07-10T12:00:00.000Z",
           draft: false,
           number: 946,
           title: "feat(github): expose pull_request.opened",
+          user: {
+            email: "author@example.com",
+            login: "octocat",
+          },
         },
       },
       deliveryId: "delivery-opened",
@@ -247,6 +410,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -255,6 +423,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -263,6 +436,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -271,6 +449,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
     ]);
@@ -279,7 +462,7 @@ describe("GitHub webhook resource events", () => {
   it("keeps draft opens as opened only until ready_for_review", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "opened",
           repository: { full_name: "getsentry/junior" },
@@ -288,6 +471,7 @@ describe("GitHub webhook resource events", () => {
             draft: true,
             number: 946,
             title: "wip",
+            user: { login: "octocat" },
           },
         },
         deliveryId: "delivery-draft-opened",
@@ -300,6 +484,7 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        data: { isDraft: true, authorUsername: "octocat" },
         untrustedText: "Title: wip",
       },
       {
@@ -308,12 +493,13 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        data: { isDraft: true, authorUsername: "octocat" },
         untrustedText: "Title: wip",
       },
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "ready_for_review",
           repository: { full_name: "getsentry/junior" },
@@ -322,6 +508,10 @@ describe("GitHub webhook resource events", () => {
             number: 946,
             title: "ready",
             updated_at: "2026-07-11T12:00:00.000Z",
+            user: {
+              email: "author@example.com",
+              login: "octocat",
+            },
           },
         },
         deliveryId: "delivery-ready",
@@ -334,6 +524,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText: "Title: ready",
       },
       {
@@ -342,13 +537,17 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText: "Title: ready",
       },
     ]);
   });
 
   it("normalizes review, comment, and check events into exact subscription contracts", () => {
-    vi.setSystemTime(1_000);
     const cases = [
       {
         eventName: "pull_request_review",
@@ -405,7 +604,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946, pull_request: { url: "https://api.test/pr" } },
-          comment: { body: "please revise", user: { login: "reviewer" } },
+          comment: {
+            body: "please revise",
+            id: 101,
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -415,6 +618,12 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 101,
+              commentKind: "conversation",
+            },
             untrustedText: "please revise",
           },
         ],
@@ -425,7 +634,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           pull_request: { number: 946 },
-          comment: { body: "change this line", user: { login: "reviewer" } },
+          comment: {
+            body: "change this line",
+            id: 202,
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -436,6 +649,12 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 202,
+              commentKind: "review",
+            },
             untrustedText: "change this line",
           },
         ],
@@ -444,7 +663,7 @@ describe("GitHub webhook resource events", () => {
         eventName: "check_suite",
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/junior" },
+          repository: checkSuiteRepository("getsentry/junior"),
           check_suite: {
             app: { name: "GitHub Actions", slug: "github-actions" },
             conclusion: "failure",
@@ -453,7 +672,10 @@ describe("GitHub webhook resource events", () => {
               "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
             id: 99,
             latest_check_runs_count: 3,
-            pull_requests: [{ number: 946 }, { number: 947 }],
+            pull_requests: [
+              checkSuitePullRequest(946),
+              checkSuitePullRequest(947),
+            ],
           },
         },
         expected: [
@@ -503,7 +725,7 @@ describe("GitHub webhook resource events", () => {
 
     for (const testCase of cases) {
       expect(
-        normalizeGitHubResourceEvents({
+        normalizeGitHubEvents({
           body: testCase.body,
           deliveryId: "delivery-event",
           eventName: testCase.eventName,
@@ -520,40 +742,255 @@ describe("GitHub webhook resource events", () => {
     }
   });
 
-  it("attaches failing check-run handles when enrichment data is provided", () => {
-    vi.setSystemTime(1_000);
+  it("emits repository check suite events for bare branch builds", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/junior" },
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "failure",
+            head_branch: "main",
+            head_sha: "abcdef1234567890",
+            id: 55,
+            latest_check_runs_count: 2,
+            pull_requests: [],
+          },
+        },
+        deliveryId: "delivery-bare-branch",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-bare-branch:pull_request.checks.failed",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub repository getsentry/junior checks failed for abcdef123456 on main.",
+        data: {
+          repo: "getsentry/junior",
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "main",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 55,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=55",
+          appName: "GitHub Actions",
+          latestCheckRunsCount: 2,
+        },
+      },
+    ]);
+  });
+
+  it("attaches headBranch from the check suite webhook without a pull request API load", () => {
+    expect(needsCheckSuitePullRequestFacts(["headBranch"])).toBe(false);
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "failure",
+            head_branch: "feature/checks",
+            head_sha: "abcdef1234567890",
+            id: 66,
+            pull_requests: [
+              checkSuitePullRequest(
+                946,
+                "getsentry/junior",
+                1,
+                "feature/checks",
+              ),
+            ],
+          },
+        },
+        deliveryId: "delivery-head-branch",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-head-branch:pull_request.checks.failed:946",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#946",
+        trustedSummary:
+          "GitHub PR getsentry/junior#946 checks failed for abcdef123456 on feature/checks.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 946,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "feature/checks",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 66,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-head-branch:pull_request.checks.failed:946",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#946 checks failed for abcdef123456 on feature/checks.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 946,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "feature/checks",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 66,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
+  });
+
+  it("emits recovered check suite events without draft or author fields", () => {
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
+          },
+        },
+        deliveryId: "delivery-recovered",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#10",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:11",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#11",
+        trustedSummary:
+          "GitHub PR getsentry/junior#11 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 11,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:11",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#11 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 11,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
+  });
+
+  it("attaches failing check-run handles when check suite data is provided", () => {
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
           check_suite: {
             app: { name: "GitHub Actions" },
             conclusion: "failure",
             head_sha: "abcdef1234567890abcdef1234567890abcdef12",
             id: 42,
-            pull_requests: [{ number: 691 }],
+            pull_requests: [checkSuitePullRequest(691)],
           },
         },
-        deliveryId: "delivery-enriched",
+        checkSuiteFacts: {
+          failingChecks: [
+            {
+              checkRunId: 11,
+              conclusion: "failure",
+              htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
+              name: "test",
+            },
+            {
+              checkRunId: 12,
+              conclusion: "timed_out",
+              name: "lint",
+            },
+          ],
+        },
+        deliveryId: "delivery-check-suite-facts",
         eventName: "check_suite",
-        failingChecks: [
-          {
-            checkRunId: 11,
-            conclusion: "failure",
-            htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
-            name: "test",
-          },
-          {
-            checkRunId: 12,
-            conclusion: "timed_out",
-            name: "lint",
-          },
-        ],
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#691",
@@ -588,7 +1025,8 @@ describe("GitHub webhook resource events", () => {
         ].join("\n"),
       },
       {
-        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -635,6 +1073,269 @@ describe("GitHub webhook resource events", () => {
     ).toBe(
       "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
     );
+  });
+
+  it("drops check-suite PRs whose base is a foreign fork of the suite repo", () => {
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/sentry", 873328),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+            id: 89021857045,
+            pull_requests: [
+              {
+                id: 113,
+                number: 113,
+                url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
+                head: {
+                  sha: "8105236768dd1da43379152ee11900be8983ae03",
+                  repo: {
+                    id: 873328,
+                    url: "https://api.github.com/repos/getsentry/sentry",
+                    name: "sentry",
+                  },
+                },
+                base: {
+                  sha: "6cea12f09116576aafb4e003226b94c8b9c1c0b0",
+                  repo: {
+                    id: 638019593,
+                    url: "https://api.github.com/repos/kkpan11/sentry",
+                    name: "sentry",
+                  },
+                },
+              },
+              checkSuitePullRequest(999001, "getsentry/sentry", 873328),
+            ],
+          },
+        },
+        deliveryId: "delivery-foreign-prs",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey:
+          "github:delivery-foreign-prs:pull_request.checks.recovered:999001",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/sentry#999001",
+        trustedSummary:
+          "GitHub PR getsentry/sentry#999001 check suite recovered for 8105236768dd.",
+        data: {
+          repo: "getsentry/sentry",
+          pullRequest: 999001,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          checkSuiteId: 89021857045,
+          checkSuiteUrl:
+            "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey:
+          "github:delivery-foreign-prs:pull_request.checks.recovered:999001",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/sentry",
+        trustedSummary:
+          "GitHub PR getsentry/sentry#999001 check suite recovered for 8105236768dd.",
+        data: {
+          repo: "getsentry/sentry",
+          pullRequest: 999001,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          checkSuiteId: 89021857045,
+          checkSuiteUrl:
+            "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
+  });
+
+  it("loads failed check-run lists only for failed or timed out suites", () => {
+    expect(
+      parseCheckSuiteFactsTarget({
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/sentry", 873328),
+        check_suite: {
+          conclusion: "success",
+          head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+          id: 89021857045,
+          pull_requests: [
+            checkSuitePullRequest(999001, "getsentry/sentry", 873328),
+          ],
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseCheckSuiteFactsTarget({
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/sentry", 873328),
+        check_suite: {
+          conclusion: "failure",
+          head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+          id: 89021857045,
+          pull_requests: [
+            {
+              id: 113,
+              number: 113,
+              url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
+              head: {
+                sha: "8105236768dd1da43379152ee11900be8983ae03",
+                repo: {
+                  id: 873328,
+                  url: "https://api.github.com/repos/getsentry/sentry",
+                  name: "sentry",
+                },
+              },
+              base: {
+                sha: "6cea12f09116576aafb4e003226b94c8b9c1c0b0",
+                repo: {
+                  id: 638019593,
+                  url: "https://api.github.com/repos/kkpan11/sentry",
+                  name: "sentry",
+                },
+              },
+            },
+            checkSuitePullRequest(999001, "getsentry/sentry", 873328),
+          ],
+        },
+      }),
+    ).toEqual({
+      checkSuiteId: 89021857045,
+      headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadFailingChecks: true,
+      loadPullRequestFacts: false,
+      owner: "getsentry",
+      pullRequestNumbers: [999001],
+      repoName: "sentry",
+    });
+  });
+
+  it("loads pull request match fields only when a filter needs them", () => {
+    expect(needsCheckSuitePullRequestFacts(["repo"])).toBe(false);
+    expect(needsCheckSuitePullRequestFacts(["isDraft"])).toBe(true);
+    expect(
+      parseCheckSuiteFactsTarget(
+        {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
+          },
+        },
+        { loadPullRequestFacts: true },
+      ),
+    ).toEqual({
+      checkSuiteId: 7,
+      headSha: "abcdef1234567890",
+      loadFailingChecks: false,
+      loadPullRequestFacts: true,
+      owner: "getsentry",
+      pullRequestNumbers: [10, 11],
+      repoName: "junior",
+    });
+    expect(
+      parseCheckSuitePublishTargets({
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/junior"),
+        check_suite: {
+          conclusion: "success",
+          head_sha: "abcdef1234567890",
+          id: 7,
+          pull_requests: [checkSuitePullRequest(10)],
+        },
+      }),
+    ).toEqual({
+      eventTypes: ["pull_request.checks.recovered"],
+      identifiers: ["getsentry/junior", "getsentry/junior#10"],
+    });
+  });
+
+  it("attaches loaded pull request match fields on check suite events", () => {
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [checkSuitePullRequest(10)],
+          },
+        },
+        checkSuiteFacts: {
+          pullRequestFactsByNumber: {
+            10: {
+              authorUsername: "octocat",
+              isDraft: false,
+            },
+          },
+        },
+        deliveryId: "delivery-match-facts",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#10",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          authorUsername: "octocat",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          authorUsername: "octocat",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
   });
 
   it("keeps only failed runs and drops runs from other suites", () => {
@@ -684,14 +1385,17 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("normalizes issue lifecycle and comments for issue and repository tasks", () => {
-    vi.setSystemTime(1_000);
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946 },
-          comment: { body: "ordinary issue", user: { login: "reviewer" } },
+          comment: {
+            body: "ordinary issue",
+            id: 303,
+            user: { login: "reviewer" },
+          },
         },
         deliveryId: "delivery-issue-comment",
         eventName: "issue_comment",
@@ -718,7 +1422,7 @@ describe("GitHub webhook resource events", () => {
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "closed",
           repository: { full_name: "getsentry/junior" },
@@ -754,7 +1458,7 @@ describe("GitHub webhook resource events", () => {
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "reopened",
           repository: { full_name: "getsentry/junior" },
@@ -916,6 +1620,70 @@ describe("GitHub-owned issue outcomes", () => {
       await fixture.close();
     }
   });
+
+  it("marks associated conversation resource annotations closed", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        annotations,
+      );
+      expect(
+        (
+          await route.handler(
+            signedRequest(
+              issueLifecyclePayload({
+                createdAt: "2026-07-01T12:00:00.000Z",
+                id: 3020,
+                number: 990,
+              }),
+              "issues",
+            ),
+          )
+        ).status,
+      ).toBe(202);
+      expect(
+        (
+          await route.handler(
+            signedRequest(
+              issueLifecyclePayload({
+                action: "closed",
+                closedAt: "2026-07-03T12:00:00.000Z",
+                createdAt: "2026-07-01T12:00:00.000Z",
+                id: 3020,
+                number: 990,
+                updatedAt: "2026-07-03T12:00:00.000Z",
+              }),
+              "issues",
+            ),
+          )
+        ).status,
+      ).toBe(202);
+
+      expect(annotations).toEqual([
+        {
+          annotation: {
+            kind: "resource_link",
+            key: "getsentry/junior#990",
+            label: "getsentry/junior#990",
+            status: "closed",
+            url: "https://github.com/getsentry/junior/issues/990",
+          },
+          conversationId: "slack:C123:1712345.0001",
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 describe("GitHub-owned pull request outcomes", () => {
@@ -969,9 +1737,129 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("does not mark pull request comments without an event consumer", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {});
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+        async () => false,
+      );
+      const body = {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: { body: "status", id: 101 },
+      };
+      expect(
+        (await route.handler(signedRequest(body, "issue_comment"))).status,
+      ).toBe(202);
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
+      expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("marks pull request comments before publishing their events", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {
+      expect(published).toEqual([]);
+    });
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: {
+              body: "please revise",
+              id: 101,
+              user: { login: "reviewer" },
+            },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(markFeedbackReviewing).toHaveBeenCalledWith({
+        commentId: 101,
+        commentKind: "conversation",
+        repo: "getsentry/junior",
+      });
+      expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("publishes comment events when the reviewing reaction fails", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const errors: string[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        (message) => errors.push(message),
+        undefined,
+        async () => {
+          throw new Error("reaction unavailable");
+        },
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: { body: "please revise", id: 101 },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(published).toHaveLength(2);
+      expect(errors).toEqual(["GitHub pull request feedback reaction failed"]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects unsigned deliveries before touching storage", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const response = await route.handler(
@@ -992,7 +1880,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("ignores signed deliveries from another installation", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const response = await route.handler(
@@ -1060,6 +1948,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("derives ownership identity from the configured bot email environment", async () => {
     const fixture = await createGitHubFixture();
+    const codeChangesRecord = vi.fn(async () => {});
     vi.stubEnv(
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
@@ -1071,10 +1960,25 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
-        resourceEvents: { async publish() {} },
+        codeChanges: {
+          async associateConversations() {},
+          record: codeChangesRecord,
+        },
+        events: { async publish() {} },
       });
 
       expect(
@@ -1085,12 +1989,23 @@ describe("GitHub-owned pull request outcomes", () => {
       ).resolves.toEqual([
         expect.objectContaining({ pullRequestId: "1001", state: "open" }),
       ]);
+      expect(codeChangesRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          number: 946,
+          providerId: "1001",
+          repository: expect.objectContaining({
+            name: "getsentry/junior",
+            providerId: "2001",
+          }),
+          state: "open",
+        }),
+      );
     } finally {
       await fixture.close();
     }
   });
 
-  it("classifies commits through repository-scoped production plugin wiring", async () => {
+  it("classifies commits through production plugin wiring", async () => {
     const fixture = await createGitHubFixture();
     const tokenBodies: unknown[] = [];
     const commitRequests: Request[] = [];
@@ -1133,10 +2048,25 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const plugin = githubPlugin();
       const [route] = plugin.hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
+        },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
-        resourceEvents: { async publish() {} },
+        events: { async publish() {} },
       });
       const opened = pullRequestPayload();
       await route!.handler(signedRequest(opened));
@@ -1180,13 +2110,19 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
       const route = webhookRoute(
         fixture,
         published,
         undefined,
         async () => "mixed",
+        undefined,
+        annotations,
       );
       const opened = pullRequestPayload();
       expect((await route.handler(signedRequest(opened))).status).toBe(202);
@@ -1251,6 +2187,30 @@ describe("GitHub-owned pull request outcomes", () => {
         state: "merged",
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
+      expect(annotations.slice(-2)).toEqual(
+        expect.arrayContaining([
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#946",
+              label: "getsentry/junior#946",
+              status: "merged",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            conversationId: "slack:C123:1712345.0001",
+          },
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#946",
+              label: "getsentry/junior#946",
+              status: "merged",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            conversationId: "slack:C456:1719999.0002",
+          },
+        ]),
+      );
       expect(published).toEqual([
         expect.objectContaining({
           eventType: "pull_request.opened",
@@ -1268,7 +2228,7 @@ describe("GitHub-owned pull request outcomes", () => {
           eventType: "pull_request.ready_for_review",
           identifier: "getsentry/junior",
         }),
-        // Duplicate open delivery still publishes resource events; outcome
+        // Duplicate open delivery still publishes events; outcome
         // storage remains idempotent.
         expect.objectContaining({
           eventType: "pull_request.opened",
@@ -1468,313 +2428,6 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("reports daily creation with 7/30/90-day chart ranges", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(
-        fixture,
-        [],
-        undefined,
-        async () => "junior_only",
-      );
-      const mergedOpen = lifecyclePayload({
-        createdAt: "2026-05-01T12:00:00.000Z",
-        id: 1101,
-        number: 951,
-      });
-      const closedOpen = lifecyclePayload({
-        createdAt: "2026-05-01T12:00:00.000Z",
-        id: 1102,
-        number: 952,
-      });
-      const oldOpen = lifecyclePayload({
-        createdAt: "2026-05-01T12:00:00.000Z",
-        id: 1103,
-        number: 953,
-      });
-      const quarterlyOpen = lifecyclePayload({
-        createdAt: "2026-05-20T12:00:00.000Z",
-        id: 1104,
-        number: 954,
-      });
-      const monthlyOpen = lifecyclePayload({
-        createdAt: "2026-07-10T12:00:00.000Z",
-        id: 1105,
-        number: 955,
-      });
-      const recentOpen = lifecyclePayload({
-        createdAt: "2026-07-29T12:00:00.000Z",
-        id: 1106,
-        number: 956,
-      });
-      await route.handler(signedRequest(mergedOpen));
-      await route.handler(signedRequest(closedOpen));
-      await route.handler(signedRequest(oldOpen));
-      await route.handler(signedRequest(quarterlyOpen));
-      await route.handler(signedRequest(monthlyOpen));
-      await route.handler(signedRequest(recentOpen));
-      await route.handler(
-        signedRequest(
-          lifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-30T12:00:00.000Z",
-            createdAt: "2026-05-01T12:00:00.000Z",
-            id: 1101,
-            merged: true,
-            mergedAt: "2026-07-30T12:00:00.000Z",
-            number: 951,
-            updatedAt: "2026-07-30T12:00:00.000Z",
-          }),
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-05-10T12:00:00.000Z",
-            id: 3101,
-            number: 971,
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-10T12:00:00.000Z",
-            id: 3102,
-            number: 972,
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-29T12:00:00.000Z",
-            id: 3103,
-            number: 973,
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-20T12:00:00.000Z",
-            createdAt: "2026-05-10T12:00:00.000Z",
-            id: 3101,
-            number: 971,
-            stateReason: "not_planned",
-            updatedAt: "2026-07-20T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          lifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-15T12:00:00.000Z",
-            createdAt: "2026-05-01T12:00:00.000Z",
-            id: 1102,
-            number: 952,
-            updatedAt: "2026-07-15T12:00:00.000Z",
-          }),
-        ),
-      );
-
-      const rows = await fixture.db().select().from(juniorGitHubPullRequests);
-      expect(rows).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            pullRequestId: "1101",
-            state: "merged",
-          }),
-          expect.objectContaining({
-            pullRequestId: "1102",
-            state: "closed_unmerged",
-          }),
-          expect.objectContaining({ pullRequestId: "1103", state: "open" }),
-          expect.objectContaining({ pullRequestId: "1104", state: "open" }),
-          expect.objectContaining({ pullRequestId: "1105", state: "open" }),
-          expect.objectContaining({ pullRequestId: "1106", state: "open" }),
-        ]),
-      );
-
-      const report = await buildGitHubOutcomeReport({
-        db: fixture.db(),
-        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
-      });
-      expect(report.title).toBe("GitHub activity");
-      expect(report.metrics).toEqual([
-        { label: "PR closure merge rate · 30d", value: "50%" },
-        {
-          label: "Median PR merge time · merged in 30d",
-          value: "90d",
-        },
-        {
-          label: "Median issue close time · closed in 30d",
-          value: "71d",
-        },
-        { label: "PR cost · opened in 30d", value: "$0.00" },
-        { label: "Median PR cost · opened in 30d", value: "—" },
-        { label: "Issue cost · opened in 30d", value: "$0.00" },
-        { label: "Median issue cost · opened in 30d", value: "—" },
-      ]);
-      expect(report.widgets?.[0]?.timeRangeDays).toEqual([7, 30, 90]);
-      expect(report.widgets?.[0]?.title).toBe("Pull requests created");
-      expect(report.widgets?.[0]?.series).toEqual([
-        { key: "created", label: "Created" },
-      ]);
-      expect(report.widgets?.[0]?.categories).toHaveLength(90);
-      expect(report.widgets?.[0]?.categories.at(-3)).toEqual({
-        id: "2026-07-29",
-        label: "2026-07-29",
-        values: { created: 1 },
-      });
-      expect(report.widgets?.[0]?.categories.at(-2)).toEqual({
-        id: "2026-07-30",
-        label: "2026-07-30",
-        values: { created: 0 },
-      });
-      expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
-        closed: "1",
-        created: "2",
-        juniorOnly: "1",
-        medianCost: "—",
-        merged: "1",
-        mergeRate: "50%",
-        repository: "getsentry/junior",
-      });
-      expect(report.recordSets?.[0]?.fields?.slice(0, 3)).toEqual([
-        { key: "repository", label: "Repository" },
-        { key: "created", label: "Created" },
-        { key: "juniorOnly", label: "Junior-only merges" },
-      ]);
-      expect(report.widgets?.[1]?.timeRangeDays).toEqual([7, 30, 90]);
-      expect(report.widgets?.[1]?.title).toBe("Issues created");
-      expect(report.widgets?.[1]?.series).toEqual([
-        { key: "created", label: "Created" },
-      ]);
-      expect(report.widgets?.[1]?.categories).toHaveLength(90);
-      expect(report.widgets?.[1]?.categories.at(-3)).toEqual({
-        id: "2026-07-29",
-        label: "2026-07-29",
-        values: { created: 1 },
-      });
-      expect(report.widgets?.[1]?.categories.at(-12)).toEqual({
-        id: "2026-07-20",
-        label: "2026-07-20",
-        values: { created: 0 },
-      });
-      expect(report.recordSets?.[1]?.records?.[0]?.values).toEqual({
-        completed: "0",
-        created: "2",
-        duplicate: "0",
-        medianCost: "—",
-        notPlanned: "1",
-        repository: "getsentry/junior",
-        unknown: "0",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("reports only the Junior-only merge count", async () => {
-    const fixture = await createGitHubFixture();
-    const openedAt = new Date("2026-07-10T12:00:00.000Z");
-    const mergedAt = new Date("2026-07-11T12:00:00.000Z");
-    try {
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([
-          {
-            commitComposition: "junior_only",
-            mergedAt,
-            number: 981,
-            openedAt,
-            pullRequestId: "composition-junior",
-            repositoryFullName: "getsentry/junior",
-            repositoryId: "2001",
-            state: "merged",
-            updatedAt: mergedAt,
-          },
-          {
-            commitComposition: "mixed",
-            mergedAt,
-            number: 982,
-            openedAt,
-            pullRequestId: "composition-mixed",
-            repositoryFullName: "getsentry/junior",
-            repositoryId: "2001",
-            state: "merged",
-            updatedAt: mergedAt,
-          },
-          {
-            mergedAt,
-            number: 983,
-            openedAt,
-            pullRequestId: "composition-unknown",
-            repositoryFullName: "getsentry/junior",
-            repositoryId: "2001",
-            state: "merged",
-            updatedAt: mergedAt,
-          },
-        ]);
-
-      const report = await buildGitHubOutcomeReport({
-        db: fixture.db(),
-        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
-      });
-      expect(report.metrics).not.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ label: expect.stringMatching(/Junior/i) }),
-        ]),
-      );
-      expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
-        juniorOnly: "1",
-      });
-      expect(report.recordSets?.[0]?.records?.[0]?.values).not.toHaveProperty(
-        "commitComposition",
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("reports zero outcomes without loading any pull request records", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const report = await buildGitHubOutcomeReport({
-        db: fixture.db(),
-        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
-      });
-
-      expect(report.metrics).toEqual([
-        { label: "PR closure merge rate · 30d", value: "—" },
-        {
-          label: "Median PR merge time · merged in 30d",
-          value: "—",
-        },
-        {
-          label: "Median issue close time · closed in 30d",
-          value: "—",
-        },
-        { label: "PR cost · opened in 30d", value: "$0.00" },
-        { label: "Median PR cost · opened in 30d", value: "—" },
-        { label: "Issue cost · opened in 30d", value: "$0.00" },
-        { label: "Median issue cost · opened in 30d", value: "—" },
-      ]);
-      expect(report.recordSets?.[0]?.records).toEqual([]);
-      expect(report.recordSets?.[1]?.records).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it.each([
     {
       label: "configured bot without the Junior footer",
@@ -1809,7 +2462,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("does not adopt a human PR but still publishes its subscription event", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const opened = pullRequestPayload();
@@ -1878,301 +2531,6 @@ describe("GitHub-owned pull request outcomes", () => {
       const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
       expect(row?.state).toBe("open");
       expect(row?.updatedAt.toISOString()).toBe("2026-07-04T12:00:00.000Z");
-    } finally {
-      await fixture.close();
-    }
-  });
-});
-
-describe("GitHub cost associations", () => {
-  it("tracks issue conversations and linked PR issues", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(fixture);
-      const prOpened = pullRequestPayload({
-        pull_request: {
-          ...(pullRequestPayload().pull_request as Record<string, unknown>),
-          body: "Fixes #1201 and GetSentry/Other#1202\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC999%3A1711111.0001 -->\n<!-- junior-session-footer:end -->",
-          id: 5101,
-          number: 1301,
-        },
-      });
-      expect((await route.handler(signedRequest(prOpened))).status).toBe(202);
-
-      const issueOpened = issueLifecyclePayload({
-        createdAt: "2026-07-10T12:00:00.000Z",
-        id: 4101,
-        number: 1201,
-      });
-      expect(
-        (await route.handler(signedRequest(issueOpened, "issues"))).status,
-      ).toBe(202);
-      const crossRepositoryIssue = {
-        ...issueLifecyclePayload({
-          createdAt: "2026-07-10T12:00:00.000Z",
-          id: 4102,
-          number: 1202,
-        }),
-        repository: { full_name: "getsentry/other", id: 2002 },
-      };
-      expect(
-        (await route.handler(signedRequest(crossRepositoryIssue, "issues")))
-          .status,
-      ).toBe(202);
-
-      await expect(
-        fixture.db().select().from(juniorGitHubIssues),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          conversationIds: ["slack:C123:1712345.0001"],
-          issueId: "4101",
-          number: 1201,
-        }),
-        expect.objectContaining({
-          issueId: "4102",
-          number: 1202,
-          repositoryFullName: "getsentry/other",
-        }),
-      ]);
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          conversationIds: ["slack:C999:1711111.0001"],
-          pullRequestId: "5101",
-        }),
-      ]);
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequestIssues),
-      ).resolves.toEqual([
-        {
-          issueNumber: 1201,
-          issueRepositoryFullName: "getsentry/junior",
-          pullRequestId: "5101",
-        },
-        {
-          issueNumber: 1202,
-          issueRepositoryFullName: "getsentry/other",
-          pullRequestId: "5101",
-        },
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("ignores links from untracked PRs without aborting the webhook", async () => {
-    const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
-    try {
-      const route = webhookRoute(fixture, published);
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-10T12:00:00.000Z",
-            id: 4201,
-            number: 1201,
-          }),
-          "issues",
-        ),
-      );
-      const untrackedPr = pullRequestPayload({
-        pull_request: {
-          ...(pullRequestPayload().pull_request as Record<string, unknown>),
-          body: "Fixes #1201",
-          id: 5201,
-          number: 1301,
-        },
-      });
-
-      await expect(
-        route.handler(signedRequest(untrackedPr)),
-      ).resolves.toMatchObject({
-        status: 202,
-      });
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequestIssues),
-      ).resolves.toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("rolls conversation cost into PR and issue stats with linked-issue inclusion", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      await fixture.execute(`
-        CREATE TABLE junior_conversations (
-          conversation_id text PRIMARY KEY,
-          root_conversation_id text,
-          usage_json jsonb
-        );
-      `);
-      await fixture.execute(`
-        INSERT INTO junior_conversations (conversation_id, root_conversation_id, usage_json)
-        VALUES
-          ('slack:issue', 'slack:issue', '{"cost":{"total":1.25}}'::jsonb),
-          ('slack:pr', 'slack:pr', '{"cost":{"total":2.5}}'::jsonb),
-          ('slack:pr-child', 'slack:pr', '{"cost":{"total":0.5}}'::jsonb);
-      `);
-
-      const openedAt = new Date("2026-07-10T12:00:00.000Z");
-      await fixture
-        .db()
-        .insert(juniorGitHubIssues)
-        .values({
-          conversationIds: ["slack:issue"],
-          number: 1201,
-          openedAt,
-          issueId: "issue-cost",
-          repositoryFullName: "getsentry/junior",
-          repositoryId: "2001",
-          state: "open",
-          updatedAt: openedAt,
-        });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values({
-          conversationIds: ["slack:pr"],
-          number: 1301,
-          openedAt,
-          pullRequestId: "pr-cost",
-          repositoryFullName: "getsentry/junior",
-          repositoryId: "2001",
-          state: "open",
-          updatedAt: openedAt,
-        });
-      await fixture.db().insert(juniorGitHubPullRequestIssues).values({
-        issueNumber: 1201,
-        issueRepositoryFullName: "getsentry/junior",
-        pullRequestId: "pr-cost",
-      });
-
-      const report = await buildGitHubOutcomeReport({
-        db: fixture.db(),
-        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
-      });
-
-      expect(report.metrics).toEqual(
-        expect.arrayContaining([
-          { label: "PR cost · opened in 30d", value: "$4.25" },
-          { label: "Median PR cost · opened in 30d", value: "$4.25" },
-          { label: "Issue cost · opened in 30d", value: "$4.25" },
-          { label: "Median issue cost · opened in 30d", value: "$4.25" },
-        ]),
-      );
-      expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
-        medianCost: "$4.25",
-        repository: "getsentry/junior",
-      });
-      expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
-        medianCost: "$4.25",
-        repository: "getsentry/junior",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("dedupes shared conversation trees across linked PRs and issues in totals", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      await fixture.execute(`
-        CREATE TABLE junior_conversations (
-          conversation_id text PRIMARY KEY,
-          root_conversation_id text,
-          usage_json jsonb
-        );
-      `);
-      await fixture.execute(`
-        INSERT INTO junior_conversations (conversation_id, root_conversation_id, usage_json)
-        VALUES
-          ('slack:issue', 'slack:issue', '{"cost":{"total":1}}'::jsonb),
-          ('slack:pr-a', 'slack:pr-a', '{"cost":{"total":2}}'::jsonb),
-          ('slack:pr-b', 'slack:pr-b', '{"cost":{"total":3}}'::jsonb);
-      `);
-
-      const openedAt = new Date("2026-07-10T12:00:00.000Z");
-      await fixture
-        .db()
-        .insert(juniorGitHubIssues)
-        .values({
-          conversationIds: ["slack:issue"],
-          number: 1201,
-          openedAt,
-          issueId: "issue-shared",
-          repositoryFullName: "getsentry/junior",
-          repositoryId: "2001",
-          state: "open",
-          updatedAt: openedAt,
-        });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([
-          {
-            conversationIds: ["slack:pr-a"],
-            number: 1301,
-            openedAt,
-            pullRequestId: "pr-a",
-            repositoryFullName: "getsentry/junior",
-            repositoryId: "2001",
-            state: "open",
-            updatedAt: openedAt,
-          },
-          {
-            conversationIds: ["slack:pr-b"],
-            number: 1302,
-            openedAt,
-            pullRequestId: "pr-b",
-            repositoryFullName: "getsentry/junior",
-            repositoryId: "2001",
-            state: "open",
-            updatedAt: openedAt,
-          },
-        ]);
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequestIssues)
-        .values([
-          {
-            issueNumber: 1201,
-            issueRepositoryFullName: "getsentry/junior",
-            pullRequestId: "pr-a",
-          },
-          {
-            issueNumber: 1201,
-            issueRepositoryFullName: "getsentry/junior",
-            pullRequestId: "pr-b",
-          },
-        ]);
-
-      const report = await buildGitHubOutcomeReport({
-        db: fixture.db(),
-        nowMs: Date.parse("2026-07-31T12:00:00.000Z"),
-      });
-
-      // Per-entity medians still include linked issue work:
-      // PR A = 3, PR B = 4, issue = 1+2+3 = 6
-      // Window/repo totals dedupe shared trees once:
-      // PR total = 1+2+3 = 6, issue total = 6
-      expect(report.metrics).toEqual(
-        expect.arrayContaining([
-          { label: "PR cost · opened in 30d", value: "$6.00" },
-          { label: "Median PR cost · opened in 30d", value: "$3.50" },
-          { label: "Issue cost · opened in 30d", value: "$6.00" },
-          { label: "Median issue cost · opened in 30d", value: "$6.00" },
-        ]),
-      );
-      expect(report.recordSets?.[0]?.records?.[0]?.values).toMatchObject({
-        medianCost: "$3.50",
-        repository: "getsentry/junior",
-      });
-      expect(report.recordSets?.[1]?.records?.[0]?.values).toMatchObject({
-        medianCost: "$6.00",
-        repository: "getsentry/junior",
-      });
     } finally {
       await fixture.close();
     }

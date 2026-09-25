@@ -15,7 +15,7 @@ import type {
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
-import { inlineManifestSource } from "./inline-manifest-source";
+import { inlineManifestSource, mcpAuthSource } from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -227,6 +227,14 @@ const oauthSourceSchema = z
   })
   .passthrough();
 
+const mcpAuthSourceSchema = z
+  .object({
+    issuer: nonEmptyTrimmedString,
+    "key-id": nonEmptyTrimmedString,
+    "private-key-env": envVarString,
+  })
+  .passthrough();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -235,6 +243,7 @@ const mcpSourceSchema = z
       })
       .optional(),
     url: httpsUrlString,
+    auth: mcpAuthSourceSchema.optional(),
     headers: stringMapSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
@@ -360,6 +369,11 @@ function manifestConfigPatch(
       setDefined(mcp, "transport", config.mcp.transport);
       setDefined(mcp, "url", config.mcp.url);
       setDefined(mcp, "headers", config.mcp.headers);
+      setDefined(
+        mcp,
+        "auth",
+        config.mcp.auth && mcpAuthSource(config.mcp.auth),
+      );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
       result.mcp = mcp;
@@ -508,9 +522,36 @@ function assertDeclaredEnvReferences(
     }
     if (envVars[name]?.default !== undefined) {
       throw new Error(
-        `${context} references env var ${name}, but API header env vars must not declare defaults`,
+        `${context} references env var ${name}, but header env vars must not declare defaults`,
       );
     }
+  }
+}
+
+function assertDeclaredHeaderEnvReferences(
+  headers: Record<string, string> | undefined,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  prefix: string,
+): void {
+  for (const [key, headerValue] of Object.entries(headers ?? {})) {
+    assertDeclaredEnvReferences(headerValue, envVars, `${prefix}.${key}`);
+  }
+}
+
+function assertDeclaredHostSecretEnv(
+  name: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  context: string,
+): void {
+  if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
+    throw new Error(
+      `${context} uses env var ${name} which is not declared in env-vars`,
+    );
+  }
+  if (envVars[name]?.default !== undefined) {
+    throw new Error(
+      `${context} uses env var ${name}, but host secret env vars must not declare defaults`,
+    );
   }
 }
 
@@ -523,9 +564,7 @@ function normalizeRequiredApiHeaders(
   if (!apiHeaders) {
     throw new Error(`${prefix} must contain at least one header`);
   }
-  for (const [key, headerValue] of Object.entries(apiHeaders)) {
-    assertDeclaredEnvReferences(headerValue, envVars, `${prefix}.${key}`);
-  }
+  assertDeclaredHeaderEnvReferences(apiHeaders, envVars, prefix);
   return apiHeaders;
 }
 
@@ -583,31 +622,42 @@ function normalizeCommandEnv(
   );
 }
 
+/** Collect every env var that carries a host-only secret for one plugin. */
+function hostOnlyEnvNames(manifest: {
+  apiHeaders?: Record<string, string> | undefined;
+  credentials?: PluginCredentials | undefined;
+  oauth?: PluginOAuthConfig | undefined;
+  mcp?: PluginMcpConfig | undefined;
+}): Set<string> {
+  const names = new Set<string>();
+  if (manifest.mcp?.auth) {
+    names.add(manifest.mcp.auth.privateKeyEnv);
+  }
+  for (const value of [
+    ...Object.values(manifest.apiHeaders ?? {}),
+    ...Object.values(manifest.mcp?.headers ?? {}),
+  ]) {
+    for (const name of envReferences(value)) {
+      names.add(name);
+    }
+  }
+  if (manifest.credentials?.authTokenEnv) {
+    names.add(manifest.credentials.authTokenEnv);
+  }
+  if (manifest.oauth) {
+    names.add(manifest.oauth.clientIdEnv);
+    names.add(manifest.oauth.clientSecretEnv);
+  }
+  return names;
+}
+
 function assertCommandEnvDoesNotExposeHostSecretRefs(
   commandEnv: Record<string, string> | undefined,
-  apiHeaders: Record<string, string> | undefined,
-  credentials: PluginCredentials | undefined,
-  oauth: PluginOAuthConfig | undefined,
+  hostOnlyRefs: Set<string>,
   pluginName: string,
 ): void {
   if (!commandEnv) {
     return;
-  }
-
-  const hostOnlyRefs = new Set<string>();
-  for (const value of Object.values(apiHeaders ?? {})) {
-    for (const name of envReferences(value)) {
-      hostOnlyRefs.add(name);
-    }
-  }
-  if (credentials) {
-    if (credentials.authTokenEnv) {
-      hostOnlyRefs.add(credentials.authTokenEnv);
-    }
-  }
-  if (oauth) {
-    hostOnlyRefs.add(oauth.clientIdEnv);
-    hostOnlyRefs.add(oauth.clientSecretEnv);
   }
 
   for (const [key, value] of Object.entries(commandEnv)) {
@@ -677,11 +727,11 @@ function normalizeCredentials(
   return {
     type: "oauth-bearer",
     domains,
-    ...(apiHeaders ? { apiHeaders } : {}),
+    ...(apiHeaders ? { apiHeaders } : undefined),
     authTokenEnv: result.data["auth-token-env"],
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
-      : {}),
+      : undefined),
   } satisfies OAuthBearerCredentials;
 }
 
@@ -831,10 +881,10 @@ function normalizeRuntimePostinstall(
       cmd: result.data.cmd,
       ...(normalizedArgs && normalizedArgs.length > 0
         ? { args: normalizedArgs }
-        : {}),
+        : undefined),
       ...(typeof result.data.sudo === "boolean"
         ? { sudo: result.data.sudo }
-        : {}),
+        : undefined),
     });
   }
 
@@ -944,17 +994,38 @@ function normalizeMcp(
         forbiddenKeys: FORBIDDEN_API_HEADER_NAMES,
       })
     : undefined;
+  assertDeclaredHeaderEnvReferences(
+    headers,
+    envVars,
+    `Plugin ${name} mcp.headers`,
+  );
+  if (result.data.auth) {
+    assertDeclaredHostSecretEnv(
+      result.data.auth["private-key-env"],
+      envVars,
+      `Plugin ${name} mcp.auth.private-key-env`,
+    );
+  }
 
   return {
     transport: "http",
     url: result.data.url,
-    ...(headers ? { headers } : {}),
+    ...(result.data.auth
+      ? {
+          auth: {
+            issuer: result.data.auth.issuer,
+            keyId: result.data.auth["key-id"],
+            privateKeyEnv: result.data.auth["private-key-env"],
+          },
+        }
+      : undefined),
+    ...(headers ? { headers } : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
-      : {}),
+      : undefined),
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
-      : {}),
+      : undefined),
   } satisfies PluginMcpConfig;
 }
 
@@ -1089,14 +1160,14 @@ function parseManifestSource(
     displayName: data["display-name"],
     description: data.description,
     configKeys,
-    ...(domains ? { domains } : {}),
-    ...(apiHeaders ? { apiHeaders } : {}),
-    ...(commandEnv ? { commandEnv } : {}),
-    ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
-    ...(credentials ? { credentials } : {}),
-    ...(runtimeDependencies ? { runtimeDependencies } : {}),
-    ...(runtimePostinstall ? { runtimePostinstall } : {}),
-    ...(mcp ? { mcp } : {}),
+    ...(domains ? { domains } : undefined),
+    ...(apiHeaders ? { apiHeaders } : undefined),
+    ...(commandEnv ? { commandEnv } : undefined),
+    ...(Object.keys(envVars).length > 0 ? { envVars } : undefined),
+    ...(credentials ? { credentials } : undefined),
+    ...(runtimeDependencies ? { runtimeDependencies } : undefined),
+    ...(runtimePostinstall ? { runtimePostinstall } : undefined),
+    ...(mcp ? { mcp } : undefined),
   };
 
   if (data.oauth) {
@@ -1133,23 +1204,21 @@ function parseManifestSource(
       clientSecretEnv: result.data["client-secret-env"],
       authorizeEndpoint: result.data["authorize-endpoint"],
       tokenEndpoint: result.data["token-endpoint"],
-      ...(result.data.scope ? { scope: result.data.scope } : {}),
-      ...(authorizeParams ? { authorizeParams } : {}),
+      ...(result.data.scope ? { scope: result.data.scope } : undefined),
+      ...(authorizeParams ? { authorizeParams } : undefined),
       ...(result.data["token-auth-method"]
         ? { tokenAuthMethod: result.data["token-auth-method"] }
-        : {}),
-      ...(tokenExtraHeaders ? { tokenExtraHeaders } : {}),
+        : undefined),
+      ...(tokenExtraHeaders ? { tokenExtraHeaders } : undefined),
       ...(result.data["treat-empty-scope-as-unreported"]
         ? { treatEmptyScopeAsUnreported: true }
-        : {}),
+        : undefined),
     };
   }
 
   assertCommandEnvDoesNotExposeHostSecretRefs(
     data["command-env"],
-    apiHeaders,
-    credentials,
-    manifest.oauth,
+    hostOnlyEnvNames({ apiHeaders, credentials, oauth: manifest.oauth, mcp }),
     data.name,
   );
   assertCommandEnvHostRefsAreExplicitlyExposed(
@@ -1186,7 +1255,7 @@ function parseManifestSource(
     manifest.target = {
       type: result.data.type,
       configKey: qualifiedKey,
-      ...(commandFlags ? { commandFlags } : {}),
+      ...(commandFlags ? { commandFlags } : undefined),
     };
   }
 

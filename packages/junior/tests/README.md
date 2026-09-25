@@ -13,10 +13,22 @@ documents the package-local harness and commands.
 - `msw/`: shared outbound HTTP interception and captured request helpers.
 - `fixtures/slack/`: canonical Slack payload and identifier factories.
 
-Integration tests may fake an external boundary through the shared harnesses,
-but may not mock Junior-owned `@/` modules. `pnpm test-architecture:check`
-enforces this rule. A test that needs internal module replacement belongs in
-`component/` unless it is rewritten to use real wiring.
+Integration tests compose real Junior wiring. They may fake only Slack and LLMs,
+and only through the shared harnesses (Slack MSW/outbox fixtures and
+`fixtures/model-stream.ts`). They must not mock Junior-owned `@/` modules or
+other external edges such as `@vercel/sandbox`. `pnpm test-architecture:check`
+also blocks Pi agent mocks, manufactured agent outcomes, scripted agent runners,
+and unsafe Slack double casts. These rules have no exceptions. Rewrite a test
+through real wiring or remove it when stronger coverage owns the behavior.
+
+A test that needs internal module replacement, or a non-Slack/non-LLM external
+fake, belongs in `component/` unless it is rewritten to use real wiring.
+
+Every schema passed to `completeObject` must pass
+`strictProviderSchemaProblems` from `@sentry/junior-testing/structured-output`
+in its owning unit test. Strict structured-output providers reject optional
+properties, unions at the root, and string formats such as `uri`, and the
+gateway only reports this at request time.
 
 Use `../../junior-evals/README.md` for model-dependent behavior and
 `../../docs/src/content/docs/contribute/local-agent-validation.md` for local
@@ -40,6 +52,15 @@ Slack HTTP tests use the global MSW setup in `msw/setup.ts`, handlers in
 `msw/handlers/slack-api.ts`, and factories in `fixtures/slack/factories/`.
 Do not create per-test MSW servers or mock the Slack SDK for outbound contract
 tests.
+
+Use `fixtures/slack-harness.ts` to build Slack messages and threads. Messages
+use the Chat SDK `Message`. Threads and sent messages include the required Chat
+SDK fields and methods. Do not cast partial objects to `SlackAdapter`, `Thread`,
+or `Message`.
+
+Agent integration tests use `fixtures/model-stream.ts` to set fixed model
+output. Use it with the real agent. Do not replace the agent runner only to
+control model output.
 
 ## Postgres Harness
 

@@ -1,9 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type {
-  PluginRoute,
-  ResourceEventPublisher,
-} from "@sentry/junior-plugin-api";
-import { normalizeSentryResourceEvents } from "./resource-events.js";
+import type { PluginRoute, EventPublisher } from "@sentry/junior-plugin-api";
+import { normalizeSentryEvents } from "./events.js";
 
 function verifySentrySignature(
   body: string,
@@ -26,9 +23,9 @@ function parseJson(body: string): unknown {
   }
 }
 
-/** Create the public, signed Sentry resource-event webhook route. */
+/** Create the public, signed Sentry event webhook route. */
 export function createSentryWebhookRoute(args: {
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
   webhookOrg(): string | undefined;
   webhookSecret(): string | undefined;
 }): PluginRoute {
@@ -58,7 +55,7 @@ export function createSentryWebhookRoute(args: {
           status: 503,
         });
       }
-      const events = normalizeSentryResourceEvents({
+      const events = normalizeSentryEvents({
         body,
         hookResource,
         hookTimestamp:
@@ -66,7 +63,7 @@ export function createSentryWebhookRoute(args: {
         webhookOrg,
       });
       for (const event of events) {
-        await args.resourceEvents.publish(event);
+        await args.events.publish(event);
       }
       return new Response(events.length ? "Accepted" : "Ignored", {
         status: 202,

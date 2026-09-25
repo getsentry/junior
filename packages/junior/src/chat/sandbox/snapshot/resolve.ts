@@ -5,13 +5,18 @@ import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { trace } from "@/chat/sandbox/snapshot/span";
-import { createSandboxSession } from "@/chat/sandbox/workspace";
+import {
+  createSandboxSession,
+  type SandboxSession,
+} from "@/chat/sandbox/workspace";
+import type { Workspace } from "@/chat/workspaces/types";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 // Snapshot resolution owns cache and lock coordination. Profile selection and
 // sandbox installation stay in their neighboring modules.
-const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
+// v2 adds required buildDurationMs. Old v1 keys age out via TTL.
+const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile:v2";
 const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";
 const SNAPSHOT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_BUILD_LOCK_BUFFER_MS = 30 * 1000;
@@ -24,6 +29,7 @@ const cachedSnapshotSchema = z
     runtime: z.string(),
     createdAtMs: z.number(),
     dependencyCount: z.number(),
+    buildDurationMs: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -50,8 +56,10 @@ export interface Snapshot {
   cacheHit: boolean;
   resolveOutcome: ResolveOutcome;
   rebuildReason?: RebuildReason;
+  /** Present when the Redis registry has a concrete snapshot entry. */
+  createdAtMs?: number;
+  buildDurationMs?: number;
 }
-
 export type ProgressPhase =
   | "resolve_start"
   | "cache_hit"
@@ -62,6 +70,8 @@ export type ProgressPhase =
 type LockResult = {
   snapshotId: string;
   source: "cache_hit" | "cache_hit_after_lock_wait" | "built";
+  createdAtMs: number;
+  buildDurationMs: number;
 };
 
 function profileCacheKey(profileHash: string): string {
@@ -73,7 +83,7 @@ function profileLockKey(profileHash: string): string {
 }
 
 /** Read one cached snapshot pointer; only a missing key is a cache miss. */
-async function getCachedSnapshot(
+export async function getCachedSnapshot(
   profileHash: string,
 ): Promise<CachedSnapshot | null> {
   const state = getStateAdapter();
@@ -111,7 +121,8 @@ async function build(
   runtime: string,
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<string> {
+  prepare?: (sandbox: SandboxSession) => Promise<void>,
+): Promise<{ snapshotId: string; buildDurationMs: number }> {
   return await trace(
     "sandbox.snapshot.build",
     "sandbox.snapshot.build",
@@ -120,6 +131,7 @@ async function build(
       "app.sandbox.snapshot.dependency_count": value.dependencyCount,
     },
     async () => {
+      const startedAtMs = Date.now();
       const sandboxCredentials = getVercelSandboxCredentials();
       const resources = getSandboxResources();
       const sandbox = createSandboxSession(
@@ -128,14 +140,15 @@ async function build(
           runtime,
           signal,
           ...(sandboxCredentials ?? {}),
-          ...(resources ? { resources } : {}),
+          ...(resources ? { resources } : undefined),
         }),
       );
 
       try {
         await install.dependencies(sandbox, value.dependencies, signal);
         await install.postinstall(sandbox, value.postinstall, signal);
-        return await trace(
+        await prepare?.(sandbox);
+        const snapshotId = await trace(
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",
           {
@@ -146,6 +159,10 @@ async function build(
             return snapshot.snapshotId;
           },
         );
+        return {
+          snapshotId,
+          buildDurationMs: Math.max(0, Date.now() - startedAtMs),
+        };
       } finally {
         try {
           await sandbox.stop();
@@ -164,6 +181,8 @@ async function withBuildLock(
   callback: () => Promise<{
     snapshotId: string;
     source: "cache_hit" | "built";
+    createdAtMs: number;
+    buildDurationMs: number;
   }>,
   canUseCachedSnapshot: (cached: CachedSnapshot) => boolean,
   onWaitingForLock?: () => void | Promise<void>,
@@ -203,6 +222,8 @@ async function withBuildLock(
           return {
             snapshotId: cached.snapshotId,
             source: "cache_hit_after_lock_wait",
+            createdAtMs: cached.createdAtMs,
+            buildDurationMs: cached.buildDurationMs,
           };
         }
 
@@ -216,6 +237,8 @@ async function withBuildLock(
                 result.source === "built"
                   ? "built"
                   : "cache_hit_after_lock_wait",
+              createdAtMs: result.createdAtMs,
+              buildDurationMs: result.buildDurationMs,
             };
           } finally {
             await state.releaseLock(lock);
@@ -231,6 +254,8 @@ async function withBuildLock(
         return {
           snapshotId: cached.snapshotId,
           source: "cache_hit_after_lock_wait",
+          createdAtMs: cached.createdAtMs,
+          buildDurationMs: cached.buildDurationMs,
         };
       }
 
@@ -275,6 +300,8 @@ export async function resolve(params: {
   staleSnapshotId?: string;
   onProgress?: (phase: ProgressPhase) => void | Promise<void>;
   signal?: AbortSignal;
+  workspace?: Workspace;
+  prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
 }): Promise<Snapshot> {
   return await trace(
     "sandbox.snapshot.resolve",
@@ -286,7 +313,7 @@ export async function resolve(params: {
     async () => {
       params.signal?.throwIfAborted();
       await params.onProgress?.("resolve_start");
-      const currentProfile = profile.create(params.runtime);
+      const currentProfile = profile.create(params.runtime, params.workspace);
       if (!currentProfile) {
         return {
           dependencyCount: 0,
@@ -309,6 +336,8 @@ export async function resolve(params: {
           dependencyCount: currentProfile.dependencyCount,
           cacheHit: true,
           resolveOutcome: "cache_hit",
+          createdAtMs: cached.createdAtMs,
+          buildDurationMs: cached.buildDurationMs,
         };
       }
 
@@ -341,25 +370,35 @@ export async function resolve(params: {
             return {
               snapshotId: latest.snapshotId,
               source: "cache_hit",
+              createdAtMs: latest.createdAtMs,
+              buildDurationMs: latest.buildDurationMs,
             };
           }
 
           await params.onProgress?.("building_snapshot");
-          const nextSnapshotId = await build(
+          const built = await build(
             currentProfile,
             params.runtime,
             params.timeoutMs,
             params.signal,
+            params.prepareWorkspace,
           );
+          const createdAtMs = Date.now();
           await setCachedSnapshot({
             profileHash: currentProfile.hash,
-            snapshotId: nextSnapshotId,
+            snapshotId: built.snapshotId,
             runtime: params.runtime,
-            createdAtMs: Date.now(),
+            createdAtMs,
             dependencyCount: currentProfile.dependencyCount,
+            buildDurationMs: built.buildDurationMs,
           });
           await params.onProgress?.("build_complete");
-          return { snapshotId: nextSnapshotId, source: "built" };
+          return {
+            snapshotId: built.snapshotId,
+            source: "built",
+            createdAtMs,
+            buildDurationMs: built.buildDurationMs,
+          };
         },
         canUseCachedSnapshot,
         async () => {
@@ -377,7 +416,9 @@ export async function resolve(params: {
           Boolean(params.forceRebuild),
           lockResult.source,
         ),
-        ...(rebuildReason ? { rebuildReason } : {}),
+        createdAtMs: lockResult.createdAtMs,
+        buildDurationMs: lockResult.buildDurationMs,
+        ...(rebuildReason ? { rebuildReason } : undefined),
       };
     },
   );

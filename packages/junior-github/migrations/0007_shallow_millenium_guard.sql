@@ -1,0 +1,1 @@
+CREATE INDEX "junior_github_pull_requests_unmerged_conversations_idx" ON "junior_github_pull_requests" USING gin ("conversation_ids") WHERE "junior_github_pull_requests"."state" <> 'merged';

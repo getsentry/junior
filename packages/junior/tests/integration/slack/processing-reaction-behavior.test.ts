@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -6,22 +6,14 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
-  deliverAssistantMessagesForTest,
+  createModelAgentRunner,
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
-
-function successDiagnostics(toolCalls: string[] = []) {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-agent-model",
-    outcome: "success" as const,
-    toolCalls,
-    toolErrorCount: 0,
-    toolResultCount: toolCalls.length,
-    usedPrimaryText: true,
-  };
-}
+import { createModelStream } from "../../fixtures/model-stream";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { getConversationEventStore } from "@/chat/db";
 
 function reactionCall(name: string, timestamp: string) {
   return expect.objectContaining({
@@ -37,21 +29,11 @@ describe("Slack behavior: processing reaction", () => {
   it("adds eyes before mention work and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Done." },
-              ]);
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: successDiagnostics(),
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -100,13 +82,7 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("assistant should not run for skipped message");
-            },
-          },
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -152,18 +128,11 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: successDiagnostics(),
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -195,84 +164,19 @@ describe("Slack behavior: processing reaction", () => {
     ]);
   });
 
-  it("does not react to synthetic resource-event notifications", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Done." },
-              ]);
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: successDiagnostics(),
-              });
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0PROCESSING:1700007160.000000",
-    });
-    await slackRuntime.handleSubscribedMessage(
-      thread,
-      createTestMessage({
-        id: "resource-event-resub-1-check-suite-1",
-        text: "[event notification]\n\nA subscribed resource changed.",
-        isMention: false,
-        threadId: thread.id,
-        author: {
-          userId: "UJRNEVENT",
-          userName: "junior-event",
-          fullName: "Junior event",
-          isBot: true,
-        },
-        raw: {
-          channel: "C0PROCESSING",
-          event_type: "resource_event",
-          thread_ts: "1700007160.000000",
-          // Historical malformed records used the synthetic mailbox id as raw.ts.
-          // It must still never be treated as a Slack Web API message target.
-          ts: "resource-event-resub-1-check-suite-1",
-          type: "message",
-          user: "UJRNEVENT",
-        },
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.posts).toHaveLength(1);
-    expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-    expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-  });
-
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              await context.onEvent?.({
-                type: "tool_started",
-                params: { emoji: ":eyes:" },
-                toolCallId: "tool-call-eyes",
-                toolName: "addReaction",
-              });
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: successDiagnostics(["addReaction"]),
-              });
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":eyes:" },
             },
-          },
-        },
+            { type: "text", text: "Done." },
+          ]),
+        ),
       },
     });
 
@@ -295,37 +199,26 @@ describe("Slack behavior: processing reaction", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toEqual([
+      reactionCall("eyes", "1700007201.000000"),
+      reactionCall("eyes", "1700007201.000000"),
+    ]);
     expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
   });
 
   it("clears eyes and marks complete for reaction-only no-reply turns", async () => {
-    const turnLifecycle = {
-      complete: vi.fn(),
-      fail: vi.fn(),
-      start: vi.fn(),
-    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          turnLifecycle,
-          agentRunner: {
-            run: async (request) => {
-              const context = request;
-
-              await context.onEvent?.({
-                type: "tool_started",
-                params: { emoji: ":heart:" },
-                toolCallId: "tool-call-heart",
-                toolName: "addReaction",
-              });
-              return completedAgentRun({
-                text: "",
-                diagnostics: successDiagnostics(["addReaction"]),
-              });
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":heart:" },
             },
-          },
-        },
+            { type: "text", text: NO_REPLY_MARKER },
+          ]),
+        ),
       },
     });
 
@@ -350,17 +243,19 @@ describe("Slack behavior: processing reaction", () => {
 
     expect(slackApiOutbox.reactionAdds()).toEqual([
       reactionCall("eyes", "1700007301.000000"),
+      reactionCall("heart", "1700007301.000000"),
       reactionCall("white_check_mark", "1700007301.000000"),
     ]);
     expect(slackApiOutbox.reactionRemovals()).toEqual([
       reactionCall("eyes", "1700007301.000000"),
     ]);
     expect(thread.posts).toHaveLength(0);
-    expect(turnLifecycle.complete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: thread.id,
-        outcome: "no_reply",
-      }),
-    );
+    const lifecycleEvents = (
+      await getConversationEventStore().loadHistory(thread.id)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycleEvents.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      outcome: "no_reply",
+    });
   });
 });

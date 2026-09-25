@@ -16,7 +16,7 @@ async function writePluginPackage(
     path.join(packageRoot, "package.json"),
     JSON.stringify({
       name: packageName,
-      ...(entryPoint ? { main: "index.js" } : {}),
+      ...(entryPoint ? { main: "index.js" } : undefined),
     }),
     "utf8",
   );

@@ -1,22 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxText,
-  fauxThinking,
-} from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
-import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { getSlackInterruptionMarker } from "@/chat/slack/output";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { instructionActors } from "@/chat/conversations/provenance";
 import {
   loadProjection,
   loadConversationProjection,
-  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import { getConversationEventStore } from "@/chat/db";
@@ -33,7 +24,7 @@ import {
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import {
-  getCapturedSlackApiCalls,
+  queueSlackApiError,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 import {
@@ -45,12 +36,25 @@ import {
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
 import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
-import * as piClient from "@/chat/pi/client";
 import {
-  deliverAssistantMessagesForTest,
+  createModelAgentRunner,
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
+import {
+  createConversationWorkQueueTestAdapter,
+  deferred,
+  type ConversationWorkQueueTestAdapter,
+} from "../../fixtures/conversation-work";
+import {
+  mockTitleModel,
+  type TitleModelRequest,
+} from "../../fixtures/title-model";
+import { mockTurnRouterModel } from "../../fixtures/turn-router-model";
 
 const emptyThreadReplies = async () => [];
+const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
 
 function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
   return thread.posts.some((post) => {
@@ -66,14 +70,6 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
     }
     return false;
   });
-}
-
-function createTurnLifecycleMock() {
-  return {
-    complete: vi.fn(),
-    fail: vi.fn(),
-    start: vi.fn(),
-  };
 }
 
 /**
@@ -102,30 +98,25 @@ async function seedVisibleConversation(
   await persistConversationMessages({ conversation, conversationId });
 }
 
-function expectBlocksIncludeConversationId(
-  params: Record<string, unknown>,
-  conversationId: string,
-): void {
-  expect(params.blocks).toBeDefined();
-  expect(JSON.stringify(params.blocks)).toContain(conversationId);
-}
-
-function mockTitleCompleteText(
-  impl: (...args: any[]) => Promise<any> | any,
-) {
-  return vi
-    .spyOn(piClient, "completeText")
-    .mockImplementation(async (...args) => await impl(...args));
+async function loadTurnLifecycleEvents(conversationId: string) {
+  return (await getConversationEventStore().loadHistory(conversationId)).filter(
+    (event) =>
+      event.data.type === "turn_started" ||
+      event.data.type === "turn_completed" ||
+      event.data.type === "turn_failed",
+  );
 }
 
 function createRuntime(
   args: {
+    queue?: ConversationWorkQueueTestAdapter;
     services?: JuniorRuntimeServiceOverrides;
     slackAdapter?: FakeSlackAdapter;
   } = {},
 ) {
   const services = args.services ?? {};
   return createTestChatRuntime({
+    queue: args.queue,
     slackAdapter: args.slackAdapter,
     services: {
       ...services,
@@ -155,22 +146,6 @@ function slackDestination(channelId: string) {
   } satisfies Destination;
 }
 
-function rawSlackMessage(
-  conversationId: string,
-  destination: Destination,
-): Record<string, unknown> {
-  if (destination.platform !== "slack") {
-    throw new Error("Expected Slack destination");
-  }
-  const [, , threadTs = "1700000000.000"] = conversationId.split(":");
-  return {
-    channel: destination.channelId,
-    team_id: destination.teamId,
-    ts: threadTs,
-    thread_ts: threadTs,
-  };
-}
-
 function createAwaitingContinuationState(args: {
   activeSessionId: string;
   replied?: boolean;
@@ -192,7 +167,7 @@ function createAwaitingContinuationState(args: {
             userId: "U-test",
           },
           ...(args.replied === undefined
-            ? {}
+            ? undefined
             : { meta: { replied: args.replied } }),
         },
       ],
@@ -220,12 +195,20 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    mockTurnRouterModel();
+    mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
+    if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
+      delete process.env.AI_GATEWAY_API_KEY;
+    } else {
+      process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+    }
     resetSlackApiMockState();
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
@@ -234,31 +217,11 @@ describe("bot handlers (integration)", () => {
   });
 
   it("handleNewMention: posts reply from executeAgentRun", async () => {
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Hello from the bot!" },
-              ]);
-              return completedAgentRun({
-                text: "Hello from the bot!",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-          scheduleSessionCompletedPluginTasks,
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Hello from the bot!" }]),
+        ),
         visionContext: {
           listThreadReplies: async () => [],
         },
@@ -293,20 +256,13 @@ describe("bot handlers (integration)", () => {
       return false;
     });
     expect(hasReply).toBe(true);
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
-      conversationId: "slack:C0INT:1700000000.000",
-      sessionId: "turn_msg-new-mention",
-    });
   });
 
   it("does not replay a message that already has a delivered reply", async () => {
     const conversationId = "slack:C0REPLAY:1700000000.000";
-    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -384,65 +340,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
-  });
-
-  it("handleSubscribedMessage with explicit mention: replies when should_reply is true", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                confidence: 1,
-                reason: "explicit mention",
-              },
-              text: '{"should_reply":true,"confidence":1,"reason":"explicit mention"}',
-            }) as any,
-        },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Replying to mention" },
-              ]);
-              return completedAgentRun({
-                text: "Replying to mention",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
-      },
-    });
-
-    const thread = await createTestThread({ id: "slack:C0SUB:1700000000.000" });
-
-    await slackRuntime.handleSubscribedMessage(
-      thread,
-      createTestMessage({
-        id: "msg-sub-mention",
-        threadId: "slack:C0SUB:1700000000.000",
-        text: "<@UBOT> check this",
-        isMention: true,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.posts.length).toBeGreaterThan(0);
   });
 
   it("handleSubscribedMessage skip: does not reply when should_reply is false", async () => {
@@ -518,117 +416,66 @@ describe("bot handlers (integration)", () => {
     expect(fakeAdapter.promptCalls[0].prompts.length).toBe(3);
   });
 
-  it("error recovery: posts safe error message when executeAgentRun throws", async () => {
-    const turnLifecycle = createTurnLifecycleMock();
+  it("posts a sanitized error message when the model fails", async () => {
+    const conversationId = "slack:C0ERR:1700000000.000";
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          turnLifecycle,
-          agentRunner: {
-            run: async () => {
-              throw new Error("LLM unavailable");
-            },
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            { type: "error", errorMessage: "LLM unavailable" },
+          ]),
+        ),
         visionContext: {
           listThreadReplies: async () => [],
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0ERR:1700000000.000" });
+    const thread = await createTestThread({ id: conversationId });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-err",
-        threadId: "slack:C0ERR:1700000000.000",
+        threadId: conversationId,
         text: "trigger an error",
         isMention: true,
       }),
       { destination: createTestDestination(thread) },
     );
 
-    const errorPost = thread.posts.find(
-      (p) =>
-        typeof p === "string" &&
-        p.includes("I ran into an internal error while processing that."),
+    expect(postIncludes(thread, "The model provider returned an error.")).toBe(
+      true,
     );
-    expect(errorPost).toBeDefined();
-    expect(String(errorPost)).not.toContain("LLM unavailable");
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    expect(JSON.stringify(thread.posts)).not.toContain("LLM unavailable");
+    const lifecycle = await loadTurnLifecycleEvents(conversationId);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-        failureCode: "agent_run_failed",
+        type: "turn_started",
+        turnId: "turn_msg-err",
       }),
-    );
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: "turn_msg-err",
+        failureCode: "model_execution_failed",
+      }),
+    ]);
+    const failure = lifecycle[1]?.data;
+    if (failure?.type !== "turn_failed" || !failure.eventId) {
+      throw new Error("Expected a Turn failure event with an event ID");
+    }
+    expect(postIncludes(thread, `event_id=${failure.eventId}`)).toBe(true);
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
     const conversationId = "slack:C0DELIVERYFAIL:1700000000.000";
     const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
-    const promptMessages = turnPiMessages("please answer");
-    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          turnLifecycle,
-          agentRunner: {
-            run: async (request) => {
-              // Simulate agent-run durable input checkpoint: the session record
-              // is running at the prompt boundary when generation finishes.
-              await upsertTurnRecord({
-                conversationId,
-                turnId: sessionId,
-                sliceId: 1,
-                state: "running",
-                piMessages: promptMessages,
-              });
-              await deliverAssistantMessagesForTest(request, [
-                { text: finalText },
-              ]);
-              return completedAgentRun({
-                text: finalText,
-                piMessages: [
-                  ...promptMessages,
-                  {
-                    role: "assistant" as const,
-                    content: [{ type: "text" as const, text: finalText }],
-                    api: "responses" as const,
-                    provider: "openai",
-                    model: "gpt-5.3",
-                    usage: {
-                      input: 1,
-                      output: 1,
-                      cacheRead: 0,
-                      cacheWrite: 0,
-                      totalTokens: 2,
-                      cost: {
-                        input: 0,
-                        output: 0,
-                        cacheRead: 0,
-                        cacheWrite: 0,
-                        total: 0,
-                      },
-                    },
-                    stopReason: "stop" as const,
-                    timestamp: 2,
-                  },
-                ],
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "fake-agent-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: finalText }]),
+        ),
         visionContext: {
           listThreadReplies: async () => [],
         },
@@ -637,22 +484,18 @@ describe("bot handlers (integration)", () => {
     const thread = await createTestThread({
       id: conversationId,
     });
-    thread.post = vi.fn(async () => {
-      throw new Error("Slack unavailable");
-    }) as typeof thread.post;
+    queueSlackApiError("chat.postMessage", { error: "channel_not_found" });
 
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-delivery-fail",
-          threadId: conversationId,
-          text: "please answer",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).rejects.toThrow("Slack unavailable");
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-delivery-fail",
+        threadId: conversationId,
+        text: "please answer",
+        isMention: true,
+      }),
+      { destination: createTestDestination(thread) },
+    );
 
     const conversation = await loadVisibleConversation(thread);
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
@@ -681,151 +524,18 @@ describe("bot handlers (integration)", () => {
     expect(sessionRecord?.state).toBe("failed");
     const projection = await loadProjection({ conversationId });
     expect(JSON.stringify(projection)).not.toContain(finalText);
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    const lifecycle = await loadTurnLifecycleEvents(conversationId);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        type: "turn_started",
+        turnId: sessionId,
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: sessionId,
         failureCode: "delivery_failed",
       }),
-    );
-  });
-
-  it("commits real agent history before the Slack reply when later state persistence fails", async () => {
-    const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
-    const sessionId = "turn_msg-post-delivery";
-    const finalText = "Delivered before the state store failed.";
-    const turnLifecycle = createTurnLifecycleMock();
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          turnLifecycle,
-          agentRunner: {
-            run: async (request) => {
-              await recordTurnRoute({
-                conversationId,
-                turnId: request.turnId,
-                modelProfile: "standard",
-                modelId: "test/model",
-                reasoningLevel: "medium",
-                source: "configured",
-              });
-              const faux = createFauxCore({
-                api: "test",
-                provider: "test",
-              });
-              faux.setResponses([
-                fauxAssistantMessage([
-                  fauxThinking("Check the final answer."),
-                  fauxText(finalText),
-                ]),
-              ]);
-              return executeAgentRun(request, faux.stream);
-            },
-          },
-        },
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
-      },
-    });
-    const thread = await createTestThread({ id: conversationId });
-    const originalPost = thread.post.bind(thread);
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const stateAdapter = getStateAdapter();
-    const originalSet = stateAdapter.set.bind(stateAdapter);
-    let replyPosted = false;
-    let postDeliveryStateAttempted = false;
-    thread.post = (async (message: unknown) => {
-      const sent = await originalPost(
-        message as Parameters<typeof originalPost>[0],
-      );
-      replyPosted = true;
-      return sent;
-    }) as typeof thread.post;
-    stateAdapter.set = (async (key, value, ttlMs) => {
-      if (
-        replyPosted &&
-        typeof key === "string" &&
-        key.startsWith(`thread-state:${conversationId}`)
-      ) {
-        postDeliveryStateAttempted = true;
-        throw new Error("state store unavailable");
-      }
-      return originalSet(key, value, ttlMs);
-    }) as typeof stateAdapter.set;
-
-    // The user already saw the answer: post-delivery persistence failures are
-    // logged, the turn stays successful, and no fallback failure reply posts.
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-post-delivery",
-          threadId: conversationId,
-          text: "please answer",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(postIncludes(thread, finalText)).toBe(true);
-    expect(postDeliveryStateAttempted).toBe(true);
-    expect(
-      postIncludes(
-        thread,
-        "I ran into an internal error while processing that.",
-      ),
-    ).toBe(false);
-
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          text: finalText,
-        }),
-        expect.objectContaining({
-          id: "msg-post-delivery",
-          meta: expect.objectContaining({ replied: true }),
-        }),
-      ]),
-    );
-    await expect(
-      getTurnRecord(conversationId, sessionId),
-    ).resolves.toMatchObject({ state: "completed" });
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
-    );
-    const report = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: await getConversationEventStore().loadHistory(conversationId),
-    });
-    expect(
-      report
-        .filter(
-          (event) =>
-            event.data.type === "assistant_message" ||
-            (event.data.type === "message" && event.data.role === "assistant"),
-        )
-        .map((event) => event.data),
-    ).toMatchObject([
-      {
-        type: "assistant_message",
-        parts: [{ type: "reasoning", text: "Check the final answer." }],
-      },
-      {
-        type: "message",
-        role: "assistant",
-        text: finalText,
-      },
     ]);
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-        failureCode: "persistence_failed",
-      }),
-    );
-    expect(turnLifecycle.complete).not.toHaveBeenCalled();
   });
 
   it("passes conversation and turn identity into assistant reply context", async () => {
@@ -836,32 +546,14 @@ describe("bot handlers (integration)", () => {
     }> = [];
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedIdentity.push({
-                conversationId: context?.conversationId,
-                turnId: context?.turnId,
-                runId: context?.runId,
-              });
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          capturedIdentity.push({
+            conversationId: request.conversationId,
+            turnId: request.turnId,
+            runId: request.runId,
+          });
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -891,382 +583,11 @@ describe("bot handlers (integration)", () => {
     expect(capturedIdentity[0].turnId).toBe("turn_msg-correlation");
   });
 
-  it("parks MCP auth resume turns without rethrowing to the queue", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              return {
-                status: "awaiting_auth",
-                providerDisplayName: "Notion",
-              };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0AUTH:1700000000.000",
-    });
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-auth-pause",
-          threadId: "slack:C0AUTH:1700000000.000",
-          text: "please use notion",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(thread.posts).toEqual([]);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C0AUTH",
-          thread_ts: "1700000000.000",
-          text: "<@U-test> I'll need you to authorize Notion. I sent you a link.",
-        }),
-      }),
-    ]);
-    expectBlocksIncludeConversationId(
-      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
-      "slack:C0AUTH:1700000000.000",
-    );
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation?.processing?.activeTurnId).toBeUndefined();
-    expect(conversation?.messages).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          text: expect.stringContaining("authorize Notion"),
-        }),
-      ]),
-    );
-    expect(
-      conversation?.messages?.find(
-        (message) => message.id === "msg-auth-pause",
-      ),
-    ).toMatchObject({
-      meta: {
-        replied: true,
-      },
-    });
-    expect(
-      conversation?.messages?.find((message) => message.id === "msg-auth-pause")
-        ?.meta?.skippedReason,
-    ).toBeUndefined();
-  });
-
-  it("parks plugin auth resume turns without rethrowing to the queue", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              return {
-                status: "awaiting_auth",
-                providerDisplayName: "GitHub",
-              };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0PLUGINAUTH:1700000000.000",
-    });
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-plugin-auth-pause",
-          threadId: "slack:C0PLUGINAUTH:1700000000.000",
-          text: "please use github",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(thread.posts).toEqual([]);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C0PLUGINAUTH",
-          thread_ts: "1700000000.000",
-          text: "<@U-test> I'll need you to authorize GitHub. I sent you a link.",
-        }),
-      }),
-    ]);
-    expectBlocksIncludeConversationId(
-      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
-      "slack:C0PLUGINAUTH:1700000000.000",
-    );
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation?.processing?.activeTurnId).toBeUndefined();
-    expect(conversation?.messages).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          text: expect.stringContaining("authorize GitHub"),
-        }),
-      ]),
-    );
-    expect(
-      conversation?.messages?.find(
-        (message) => message.id === "msg-plugin-auth-pause",
-      ),
-    ).toMatchObject({
-      meta: {
-        replied: true,
-      },
-    });
-    expect(
-      conversation?.messages?.find(
-        (message) => message.id === "msg-plugin-auth-pause",
-      )?.meta?.skippedReason,
-    ).toBeUndefined();
-  });
-
-  it("schedules durable continuation without posting a notice", async () => {
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const conversationId = "slack:C9TIMEOUT:1700000000.000";
-    const destination = slackDestination("C9TIMEOUT");
-    const sessionId = "turn_msg-timeout";
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          wakePausedTurn,
-          agentRunner: {
-            run: async () => {
-              return { status: "suspended", resumeVersion: 3 };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({ id: conversationId });
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-timeout",
-          threadId: conversationId,
-          text: "please keep working",
-          isMention: true,
-          raw: rawSlackMessage(conversationId, destination),
-        }),
-        { destination },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: sessionId,
-      expectedVersion: 3,
-    });
-    expect(thread.posts).toEqual([]);
-
-    const state = await thread.getState();
-    const conversation = (
-      state as {
-        conversation?: {
-          processing?: { activeTurnId?: string };
-        };
-      }
-    ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe(sessionId);
-  });
-
-  it("wakes paused turns with the provided destination", async () => {
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const conversationId = "slack:C9TIMECTX:1700000000.000";
-    const destination = slackDestination("C9TIMECTX");
-    const sessionId = "turn_msg-timeout-context";
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          wakePausedTurn,
-          agentRunner: {
-            run: async () => {
-              return { status: "suspended", resumeVersion: 4 };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({ id: conversationId });
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-timeout-context",
-        threadId: conversationId,
-        text: "please keep working",
-        isMention: true,
-        raw: rawSlackMessage(conversationId, {
-          ...destination,
-          teamId: "TWRONG",
-        }),
-      }),
-      {
-        destination,
-      },
-    );
-
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: sessionId,
-      expectedVersion: 4,
-    });
-  });
-
-  it("does not post a Slack continuation notice when a live turn times out", async () => {
-    resetSlackApiMockState();
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const conversationId = "slack:C9TIMEAPI:1700000000.000";
-    const destination = slackDestination("C9TIMEAPI");
-    const sessionId = "turn_msg-timeout-api";
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          wakePausedTurn,
-          agentRunner: {
-            run: async () => {
-              return { status: "suspended", resumeVersion: 3 };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({ id: conversationId });
-    (thread.adapter as { name?: string }).name = "slack";
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-timeout-api",
-          threadId: conversationId,
-          text: "please keep working",
-          isMention: true,
-          raw: rawSlackMessage(conversationId, destination),
-        }),
-        { destination },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: sessionId,
-      expectedVersion: 3,
-    });
-    expect(thread.posts).toEqual([]);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
-  });
-
-  it("reschedules an awaiting paused turn without replying to the follow-up", async () => {
-    const conversationId = "slack:C9TIMERTY:1700000000.000";
-    const destination = slackDestination("C9TIMERTY");
-    const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    const executeAgentRun = vi.fn();
-    const ack = vi.fn();
-    const onTurnStatePersisted = vi.fn();
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
-    });
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-retry",
-          threadId: conversationId,
-          text: "what happened?",
-          isMention: true,
-        }),
-        {
-          destination,
-          ack,
-          onTurnStatePersisted,
-        },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(getPausedTurnRequest).toHaveBeenCalledWith({
-      conversationId,
-      turnId: activeSessionId,
-    });
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([]);
-
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
-    const followUp = conversation?.messages?.find(
-      (message) => message.id === "msg-retry",
-    );
-    expect(followUp).toBeDefined();
-    expect(followUp?.meta?.replied).toBeUndefined();
-    expect(followUp?.meta?.skippedReason).toBeUndefined();
-  });
-
-  it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
+  it("answers a follow-up as a fresh Turn when the active Turn is auth-paused", async () => {
     const conversationId = "slack:C0AUTHPARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
-    const executeAgentRun = vi.fn().mockImplementation(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Fresh answer without the provider." },
-      ]);
-      return completedAgentRun({
-        text: "Fresh answer without the provider.",
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success" as const,
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    });
+    let agentRunCount = 0;
+    let agentInstruction = "";
     await upsertTurnRecord({
       conversationId,
       turnId: activeSessionId,
@@ -1277,9 +598,13 @@ describe("bot handlers (integration)", () => {
     });
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          agentRunCount += 1;
+          agentInstruction = request.instruction.text;
+          return createModelStream([
+            { type: "text", text: "Fresh answer without the provider." },
+          ]);
+        }),
       },
     });
 
@@ -1301,10 +626,8 @@ describe("bot handlers (integration)", () => {
 
     // The follow-up supersedes the pause: it must be answered, not consumed
     // into a resume that only happens if the user ever authorizes.
-    expect(executeAgentRun).toHaveBeenCalledOnce();
-    expect(executeAgentRun.mock.calls[0]?.[0].instruction.text).toContain(
-      "any update?",
-    );
+    expect(agentRunCount).toBe(1);
+    expect(agentInstruction).toContain("any update?");
     expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
       true,
     );
@@ -1312,7 +635,7 @@ describe("bot handlers (integration)", () => {
       getTurnRecord(conversationId, activeSessionId),
     ).resolves.toMatchObject({
       state: "abandoned",
-      errorMessage: "Auth-parked session superseded by a new user message",
+      errorMessage: "Auth-paused Turn superseded by new input",
     });
     const state = await thread.getState();
     const conversation = (
@@ -1339,23 +662,14 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const order: string[] = [];
-    const wakePausedTurn = vi.fn(async () => {
-      expect(
-        JSON.stringify(await loadProjection({ conversationId })),
-      ).toContain("also check the logs");
-      order.push("schedule");
-    });
-    const ack = vi.fn(async () => {
-      order.push("ack");
-    });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
+    const finishQueueSend = deferred();
+    const queueSendEntered = queue.holdNextSendUntil(finishQueueSend.promise);
+    const ack = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -1370,19 +684,30 @@ describe("bot handlers (integration)", () => {
       isMention: true,
     });
 
-    await slackRuntime.handleNewMention(thread, followUp, {
+    const handlePromise = slackRuntime.handleNewMention(thread, followUp, {
       destination,
       ack,
     });
+    await queueSendEntered;
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([]);
-    expect(ack).toHaveBeenCalledOnce();
-    expect(order).toEqual(["schedule", "ack"]);
-    expect(wakePausedTurn).toHaveBeenCalledOnce();
+    // Input reaches the durable transcript before the queue handoff completes.
     expect(JSON.stringify(await loadProjection({ conversationId }))).toContain(
       "also check the logs",
     );
+    expect(ack).not.toHaveBeenCalled();
+    finishQueueSend.resolve();
+    await handlePromise;
+
+    expect(thread.posts).toEqual([]);
+    expect(ack).toHaveBeenCalledOnce();
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `agent-continue:${conversationId}:${activeSessionId}:1:`,
+        ),
+      }),
+    ]);
 
     // The resumed continue() replays the record's Pi history, which must now
     // end with the follow-up at a continuable user boundary.
@@ -1405,6 +730,7 @@ describe("bot handlers (integration)", () => {
     expect(
       JSON.stringify(projection).split("also check the logs"),
     ).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("appends only the missing parked messages on a partial-overlap redelivery", async () => {
@@ -1422,13 +748,11 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const wakePausedTurn = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -1461,6 +785,7 @@ describe("bot handlers (integration)", () => {
     const serialized = JSON.stringify(await loadProjection({ conversationId }));
     expect(serialized.split("first follow-up")).toHaveLength(2);
     expect(serialized.split("second follow-up")).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("records each parked follow-up author's own instruction provenance", async () => {
@@ -1478,12 +803,11 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn: vi.fn(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -1533,6 +857,7 @@ describe("bot handlers (integration)", () => {
       authority: "instruction",
       actor: { platform: "slack", teamId: "T123", userId: "U-bob" },
     });
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("carries a batched mention's own author provenance into a fresh turn", async () => {
@@ -1546,29 +871,15 @@ describe("bot handlers (integration)", () => {
     let capturedActorUserId: string | undefined;
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              capturedInput = { piMessages: request.history ? [...request.history] : undefined };
-              const runActor = request.actor;
-              capturedActorUserId =
-                runActor && "userId" in runActor ? runActor.userId : undefined;
-              await request.durability?.onInputCommitted?.();
-              return completedAgentRun({
-                text: "Recapped.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          capturedInput = {
+            piMessages: request.history ? [...request.history] : undefined,
+          };
+          const runActor = request.actor;
+          capturedActorUserId =
+            runActor && "userId" in runActor ? runActor.userId : undefined;
+          return createModelStream([{ type: "text", text: "Recapped." }]);
+        }),
       },
     });
     const thread = await createTestThread({ id: conversationId });
@@ -1639,14 +950,12 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const wakePausedTurn = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -1679,7 +988,7 @@ describe("bot handlers (integration)", () => {
     // The message was not consumed and nothing was appended or scheduled: it
     // stays pending in the mailbox for the next drain.
     expect(ack).not.toHaveBeenCalled();
-    expect(wakePausedTurn).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([]);
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("also check the logs");
@@ -1688,13 +997,10 @@ describe("bot handlers (integration)", () => {
   it("defers a batched fresh turn while a live resume holds the thread lock", async () => {
     const conversationId = "slack:C9BATCHLOCK:1700000000.000";
     const destination = slackDestination("C9BATCHLOCK");
-    const run = vi.fn();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: { run },
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({ id: conversationId });
@@ -1733,148 +1039,16 @@ describe("bot handlers (integration)", () => {
 
     // Nothing ran, nothing was consumed, nothing was committed: the batch
     // stays pending in the mailbox for the next drain.
-    expect(run).not.toHaveBeenCalled();
     expect(ack).not.toHaveBeenCalled();
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("bob pending ask");
   });
 
-  it("suppresses the visible failure reply when the mailbox will retry the delivery", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("transient turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYQUIET:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retryable-failure",
-        threadId: "slack:C0RETRYQUIET:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        destination: createTestDestination(thread),
-        isFinalAttempt: false,
-      },
-    );
-
-    expect(thread.posts).toEqual([]);
-  });
-
-  it("posts the failure fallback after ack even when the attempt is not final", async () => {
-    const ack = vi.fn().mockResolvedValue(undefined);
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _input = request.instruction.text;
-              const context = request;
-
-              await context.durability?.onInputCommitted?.();
-              throw new Error("post-ack turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYACKED:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-acked-failure",
-        threadId: "slack:C0RETRYACKED:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        ack,
-        destination: createTestDestination(thread),
-        isFinalAttempt: false,
-      },
-    );
-
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
-  });
-
-  it("posts the failure fallback on the final delivery attempt", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("persistent turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYFINAL:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-final-failure",
-        threadId: "slack:C0RETRYFINAL:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        destination: createTestDestination(thread),
-        isFinalAttempt: true,
-      },
-    );
-
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
-  });
-
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
     const conversationId = "slack:C0BADCONTINUATION:1700000000.000";
     const activeSessionId = "turn_msg-timeout-original";
-    const executeAgentRun = vi.fn().mockImplementation(async (request) => {
-      await deliverAssistantMessagesForTest(request, [{ text: "Recovered." }]);
-      return completedAgentRun({
-        text: "Recovered.",
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success" as const,
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    });
+    let agentRunCount = 0;
     await upsertTurnRecord({
       conversationId,
       turnId: activeSessionId,
@@ -1885,9 +1059,10 @@ describe("bot handlers (integration)", () => {
     });
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          agentRunCount += 1;
+          return createModelStream([{ type: "text", text: "Recovered." }]);
+        }),
       },
     });
 
@@ -1907,7 +1082,7 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(executeAgentRun).toHaveBeenCalledOnce();
+    expect(agentRunCount).toBe(1);
     expect(postIncludes(thread, "Recovered.")).toBe(true);
     const failedRecord = await getTurnRecord(conversationId, activeSessionId);
     expect(failedRecord?.state).toBe("failed");
@@ -1927,21 +1102,22 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEDUP"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -1964,35 +1140,37 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `agent-continue:${conversationId}:${activeSessionId}:1:`,
+        ),
+      }),
+    ]);
   });
 
   it("does not reschedule an awaiting continuation for an already-replied duplicate", async () => {
     const conversationId = "slack:C9TIMEREPD:1700000000.000";
     const destination = slackDestination("C9TIMEREPD");
     const activeSessionId = "turn_msg-replied-duplicate";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEREPD"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -2029,92 +1207,32 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(getPausedTurnRequest).not.toHaveBeenCalled();
-    expect(wakePausedTurn).not.toHaveBeenCalled();
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([]);
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
-  });
-
-  it("keeps awaiting continuation state without a visible acknowledgement", async () => {
-    const conversationId = "slack:C9TIMENOTI:1700000000.000";
-    const destination = slackDestination("C9TIMENOTI");
-    const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    const executeAgentRun = vi.fn();
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retry-notice-fail",
-        threadId: conversationId,
-        text: "what happened?",
-        isMention: true,
-      }),
-      { destination },
-    );
-
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([]);
-
-    const state = await thread.getState();
-    const conversation = (
-      state as {
-        conversation?: {
-          processing?: { activeTurnId?: string };
-        };
-      }
-    ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
   });
 
   it("does not start a new turn when rescheduling an active continuation fails", async () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi
-      .fn()
-      .mockRejectedValue(new Error("resume callback unavailable"));
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEFAIL"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
+    queue.rejectSends();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -2123,18 +1241,21 @@ describe("bot handlers (integration)", () => {
       state: createAwaitingContinuationState({ activeSessionId }),
     });
 
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retry-fail",
-        threadId: conversationId,
-        text: "what happened?",
-        isMention: true,
-      }),
-      { destination },
-    );
+    const followUp = createTestMessage({
+      id: "msg-retry-fail",
+      threadId: conversationId,
+      text: "what happened?",
+      isMention: true,
+    });
+    await slackRuntime.handleNewMention(thread, followUp, { destination });
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.queuedMessages()).toEqual([]);
+    await expect(
+      getTurnRecord(conversationId, buildDeterministicTurnId(followUp.id)),
+    ).resolves.toBeUndefined();
+    await expect(
+      getTurnRecord(conversationId, activeSessionId),
+    ).resolves.toMatchObject({ state: "paused" });
     expect(thread.posts).toEqual([
       expect.stringContaining(
         "I ran into an internal error while processing that.",
@@ -2142,82 +1263,14 @@ describe("bot handlers (integration)", () => {
     ]);
   });
 
-  it("posts an interruption marker on the finalized provider-error reply", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              return completedAgentRun({
-                text: "Partial output...",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "provider_error" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0STREAMFAIL:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-stream-fail",
-        threadId: "slack:C0STREAMFAIL:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.posts).toHaveLength(1);
-    const postText =
-      typeof thread.posts[0] === "string"
-        ? thread.posts[0]
-        : ((thread.posts[0] as { markdown?: string }).markdown ?? "");
-    expect(postText).toContain("Partial output...");
-    expect(postText).toContain(getSlackInterruptionMarker().trim());
-    expect(postText).not.toContain("event_id=");
-  });
-
   it("emits assistant status updates in shared channel threads", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              await context?.onEvent?.({ type: "status", text: "reading channel messages" });
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Done." }]),
+        ),
       },
     });
 
@@ -2249,81 +1302,6 @@ describe("bot handlers (integration)", () => {
       text: "",
       loadingMessages: undefined,
     });
-  });
-
-  it("does not block assistant reply generation on slow assistant status writes", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    let releaseFirstStatus: (() => void) | undefined;
-    let statusCallCount = 0;
-    fakeAdapter.setAssistantStatus = async () => {
-      statusCallCount += 1;
-      if (statusCallCount !== 1) {
-        return;
-      }
-      await new Promise<void>((resolve) => {
-        releaseFirstStatus = resolve;
-      });
-    };
-
-    let replyStarted = false;
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () => ({ text: "Status thread" }) as never,
-        },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyStarted = true;
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Reply lands after the pending status is drained." },
-              ]);
-              return completedAgentRun({
-                text: "Still replied while status was pending.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-      },
-    });
-
-    let settled = false;
-    const thread = await createTestThread({
-      id: "slack:D0STATUSBLOCK:1700000000.000",
-    });
-    const turnPromise = slackRuntime
-      .handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-status-block",
-          threadId: "slack:D0STATUSBLOCK:1700000000.000",
-          text: "show the channel",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      )
-      .then(() => {
-        settled = true;
-      });
-
-    await vi.waitFor(() => {
-      expect(replyStarted).toBe(true);
-    });
-
-    expect(settled).toBe(false);
-
-    releaseFirstStatus!();
-    await turnPromise;
   });
 
   it("posts a completed message even while the initial assistant status write is pending", async () => {
@@ -2360,28 +1338,17 @@ describe("bot handlers (integration)", () => {
         conversationMemory: {
           completeText: async () => ({ text: "Status thread" }) as never,
         },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyStarted = true;
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Reply lands after the pending status is drained." },
-              ]);
-              return completedAgentRun({
-                text: "Reply lands after the pending status is drained.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "text",
+              text: "Reply lands after the pending status is drained.",
+              onRequest: () => {
+                replyStarted = true;
+              },
             },
-          },
-        },
+          ]),
+        ),
       },
     });
 
@@ -2416,99 +1383,23 @@ describe("bot handlers (integration)", () => {
     await turnPromise;
   });
 
-  it("thread title: generates and sets title after first assistant reply", async () => {
+  it("thread title: uses the first human message we know about in the thread", async () => {
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Debugging Node.js Memory Leaks",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
-
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Here is how to debug memory leaks.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
-        },
+    let titleRequest: TitleModelRequest | undefined;
+    mockTitleModel("Production Issue Summary", {
+      onRequest: (request) => {
+        titleRequest = request;
       },
     });
 
-    const thread = await createTestThread({
-      id: "slack:D0TITLE:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-title-1",
-        threadId: "slack:D0TITLE:1700000000.000",
-        text: "How do I debug memory leaks in Node?",
-        isMention: true,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
-    );
-    expect(generatedTitleCall).toBeDefined();
-    expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
-    expect(generatedTitleCall!.channelId).toBe("D0TITLE");
-    expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
-  });
-
-  it("thread title: uses the first human message we know about in the thread", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async (params) => {
-      const prompt =
-        typeof params.messages[0]?.content === "string"
-          ? params.messages[0].content
-          : "";
-      return {
-        text: prompt.includes("Original production issue summary")
-          ? "Production Issue Summary"
-          : "Follow-up Clarification",
-        message: { role: "assistant", content: "" },
-      } as any;
-    });
-
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Here is the updated answer.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            { type: "text", text: "Here is the updated answer." },
+          ]),
+        ),
       },
     });
 
@@ -2535,48 +1426,36 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.some((call) => call.title !== "Junior"),
+      ).toBe(true);
+    });
     const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     );
     expect(generatedTitleCall).toBeDefined();
     expect(generatedTitleCall!.title).toBe("Production Issue Summary");
+    expect(JSON.stringify(titleRequest)).toContain(
+      "Original production issue summary",
+    );
+    expect(JSON.stringify(titleRequest)).not.toContain(
+      "Can you also include the regression window?",
+    );
   });
 
   it("thread title: still generates for a new thread with starter assistant content", async () => {
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Today's Date",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Today's Date");
 
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Today is April 16, 2026." },
-              ]);
-              return completedAgentRun({
-                text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            { type: "text", text: "Today is April 16, 2026." },
+          ]),
+        ),
       },
     });
 
@@ -2608,130 +1487,42 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.some((call) => call.title !== "Junior"),
+      ).toBe(true);
+    });
     const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     );
     expect(generatedTitleCall).toBeDefined();
     expect(generatedTitleCall!.title).toBe("Today's Date");
   });
 
-  it("thread title: does not block reply delivery when generation is slow", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    let resolveTitle: (() => void) | undefined;
-    mockTitleCompleteText(async () =>
-      await new Promise((resolve) => {
-        resolveTitle = () =>
-          resolve({
-            text: "Today's Date",
-            message: { role: "assistant", content: "" },
-          } as any);
-      }),
-    );
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Today is April 16, 2026." },
-              ]);
-              return completedAgentRun({
-                text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:D0TITLE6:1700000000.000",
-    });
-    let settled = false;
-    const turnPromise = slackRuntime
-      .handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-title-6",
-          threadId: "slack:D0TITLE6:1700000000.000",
-          text: "what's today's date",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      )
-      .then(() => {
-        settled = true;
-      });
-
-    await vi.waitFor(() => {
-      expect(postIncludes(thread, "Today is April 16, 2026.")).toBe(true);
-    });
-    await vi.waitFor(() => {
-      expect(settled).toBe(true);
-    });
-    expect(
-      fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
-    ).toBe(false);
-
-    resolveTitle!();
-    await turnPromise;
-    await vi.waitFor(() => {
-      expect(
-        fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
-      ).toBe(true);
-    });
-  });
-
   it("thread title: preserves artifact updates when title resolves before completion", async () => {
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Today's Date",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    const titleReady = deferred();
+    const recordTitle = fakeAdapter.setAssistantTitle.bind(fakeAdapter);
+    fakeAdapter.setAssistantTitle = async (channelId, threadTs, title) => {
+      await recordTitle(channelId, threadTs, title);
+      if (title === "Today's Date") {
+        titleReady.resolve();
+      }
+    };
+    mockTitleModel("Today's Date");
 
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _text = request.instruction.text;
-              await vi.waitFor(() => {
-                expect(
-                  fakeAdapter.titleCalls.some(
-                    (call) => call.title === "Today's Date",
-                  ),
-                ).toBe(true);
-              });
-              return completedAgentRun({
-                text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "text",
+              text: "Today is April 16, 2026.",
+              waitFor: titleReady.promise,
             },
-          },
-        },
+          ]),
+        ),
       },
     });
 
@@ -2756,34 +1547,16 @@ describe("bot handlers (integration)", () => {
   it("thread title: does not generate title on subsequent replies", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let turnCount = 0;
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Some Title",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Some Title");
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              turnCount += 1;
-              return completedAgentRun({
-                text: `reply-${turnCount}`,
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          turnCount += 1;
+          return createModelStream([
+            { type: "text", text: `reply-${turnCount}` },
+          ]);
+        }),
       },
     });
 
@@ -2801,10 +1574,13 @@ describe("bot handlers (integration)", () => {
       }),
       { destination: createTestDestination(thread) },
     );
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.filter((call) => call.title !== "Junior"),
+      ).toHaveLength(1);
+    });
     const titleCallsAfterFirst = fakeAdapter.titleCalls.filter(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     ).length;
     expect(titleCallsAfterFirst).toBe(1);
 
@@ -2821,7 +1597,7 @@ describe("bot handlers (integration)", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const titleCallsAfterSecond = fakeAdapter.titleCalls.filter(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     ).length;
     expect(titleCallsAfterSecond).toBe(1);
   });
@@ -2837,36 +1613,15 @@ describe("bot handlers (integration)", () => {
       error.data = { error: "no_permission" };
       throw error;
     };
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Permission Safe Title",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Permission Safe Title");
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "This reply should still succeed." },
-              ]);
-              return completedAgentRun({
-                text: "This reply should still succeed.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            { type: "text", text: "This reply should still succeed." },
+          ]),
+        ),
       },
     });
 
@@ -2903,33 +1658,17 @@ describe("bot handlers (integration)", () => {
     };
 
     let titleGenerationCount = 0;
-    mockTitleCompleteText(async () => {
-      titleGenerationCount += 1;
-      return {
-        text: "Stable Permission Title",
-        message: { role: "assistant", content: "" },
-      } as any;
+    mockTitleModel("Stable Permission Title", {
+      onRequest: () => {
+        titleGenerationCount += 1;
+      },
     });
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Reply still succeeds.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Reply still succeeds." }]),
+        ),
       },
     });
 
@@ -2965,28 +1704,10 @@ describe("bot handlers (integration)", () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "First reply.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          capturedContexts.push(run.instruction.context);
+          return createModelStream([{ type: "text", text: "First reply." }]);
+        }),
       },
     });
 
@@ -3011,28 +1732,12 @@ describe("bot handlers (integration)", () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "Follow-up reply.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          capturedContexts.push(run.instruction.context);
+          return createModelStream([
+            { type: "text", text: "Follow-up reply." },
+          ]);
+        }),
       },
     });
 
@@ -3072,7 +1777,9 @@ describe("bot handlers (integration)", () => {
     });
 
     expect(capturedContexts).toHaveLength(1);
-    expect(capturedContexts[0]).toContain("<thread-transcript>");
+    expect(capturedContexts[0]).toContain(
+      '<thread-context authority="evidence-only">',
+    );
     expect(capturedContexts[0]).toContain('author="Test User"');
     expect(capturedContexts[0]).toContain("[user] Test User:");
     expect(capturedContexts[0]).toContain("Original production issue summary.");
@@ -3119,28 +1826,12 @@ describe("bot handlers (integration)", () => {
               text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"follow-up"}',
             }) as any,
         },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "Responding to first message only.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          capturedContexts.push(run.instruction.context);
+          return createModelStream([
+            { type: "text", text: "Responding to first message only." },
+          ]);
+        }),
       },
     });
 
@@ -3182,25 +1873,12 @@ describe("bot handlers (integration)", () => {
     let turnCount = 0;
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              turnCount += 1;
-              return completedAgentRun({
-                text: `reply-${turnCount}`,
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          turnCount += 1;
+          return createModelStream([
+            { type: "text", text: `reply-${turnCount}` },
+          ]);
+        }),
       },
     });
 

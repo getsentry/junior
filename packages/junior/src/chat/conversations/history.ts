@@ -12,11 +12,7 @@ import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { conversationMessageProvenanceSchema } from "./provenance";
-
-const handoffModelProfileSchema = modelProfileSchema.refine(
-  (profile) => profile !== "standard",
-  "handoff profile must not be standard",
-);
+import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
 const userMessageEventDataSchema = z
   .object({
@@ -87,7 +83,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("handoff"),
-      modelProfile: handoffModelProfileSchema,
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       reasoningLevel: z.string().min(1).optional(),
       triggeringToolCallId: z.string().min(1).optional(),
@@ -121,6 +117,16 @@ export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
 const mcpProviderConnectedEventDataSchema = z
   .object({
     type: z.literal("mcp_provider_connected"),
+    provider: z.string().min(1),
+    credentialSubjectId: z.string().min(1),
+  })
+  .strict();
+
+// Migration-only fact for connections recorded before credential ownership.
+// Readers keep it replayable, but writers cannot append it and restore ignores it.
+const unownedMcpProviderConnectedEventDataSchema = z
+  .object({
+    type: z.literal("mcp_provider_connected_unowned"),
     provider: z.string().min(1),
   })
   .strict();
@@ -231,7 +237,7 @@ export const conversationTurnSurfaceSchema = z.enum([
   "internal",
 ]);
 
-/** Stable, privacy-safe classification for a failed turn. */
+/** Where a failed turn stopped. */
 export const conversationTurnFailureCodeSchema = z.enum([
   "agent_run_failed",
   "delivery_failed",
@@ -239,9 +245,36 @@ export const conversationTurnFailureCodeSchema = z.enum([
   "persistence_failed",
 ]);
 
-/** Failure classification persisted without raw provider or exception data. */
+/** Where a failed turn stopped. */
 export type ConversationTurnFailureCode = z.output<
   typeof conversationTurnFailureCodeSchema
+>;
+
+/**
+ * Why a failed turn stopped.
+ * Values are fixed labels only. Do not store raw exception text.
+ */
+export const conversationTurnFailureReasonSchema = z.enum([
+  "auth",
+  "permission",
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+  "unknown",
+  "empty_output",
+  "tool_errors",
+  "suppressed_output",
+]);
+
+/** Why a failed turn stopped. */
+export type ConversationTurnFailureReason = z.output<
+  typeof conversationTurnFailureReasonSchema
 >;
 
 const turnStartedEventDataSchema = z
@@ -293,11 +326,31 @@ const structuredConversationEventDataSchema = z
   })
   .strict();
 
+/** Durable attachment metadata on host-owned delivery events. */
+const deliveredAttachmentSchema = z
+  .object({
+    id: z.string().min(1),
+    filename: z.string().min(1),
+    contentType: z.string().min(1),
+    bytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** Host-owned transcript item for files delivered to humans this turn. */
+const attachmentsDeliveredEventDataSchema = z
+  .object({
+    type: z.literal("attachments_delivered"),
+    attachments: z.array(deliveredAttachmentSchema).min(1),
+    toolCallId: z.string().min(1).optional(),
+    turnId: z.string().min(1).optional(),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
     turnId: z.string().min(1),
-    outcome: z.enum(["success", "no_reply"]),
+    outcome: z.enum(["success", "no_reply", "cancelled"]),
   })
   .strict();
 
@@ -306,6 +359,7 @@ const turnFailedEventDataSchema = z
     type: z.literal("turn_failed"),
     turnId: z.string().min(1),
     failureCode: conversationTurnFailureCodeSchema,
+    failureReason: conversationTurnFailureReasonSchema.optional(),
     eventId: z
       .string()
       .regex(/^[a-f0-9]{32}$/i)
@@ -355,6 +409,7 @@ const appendableConversationEventDataSchema = z.union([
   turnStartedEventDataSchema,
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
+  attachmentsDeliveredEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -366,6 +421,7 @@ const appendableConversationEventDataSchema = z.union([
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
   historyReplacementEventDataSchema,
+  unownedMcpProviderConnectedEventDataSchema,
 ]);
 
 /** One durable conversation event's validated data. */
@@ -383,6 +439,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "assistant_message",
   "tool_result",
   "mcp_provider_connected",
+  "mcp_provider_connected_unowned",
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
@@ -392,6 +449,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_started",
   "turn_context",
   "structured_event",
+  "attachments_delivered",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -435,10 +493,15 @@ const conversationEventEnvelopeSchema = z
  * `schemaVersion` is persisted with every physical event row.
  */
 export const conversationEventSchema = z.union([
-  conversationEventEnvelopeSchema.extend({
-    schemaVersion: z.literal(1),
-    data: conversationEventDataSchema,
-  }),
+  conversationEventEnvelopeSchema
+    .extend({
+      schemaVersion: z.union([z.literal(1), z.literal(2)]),
+      data: conversationEventDataSchema,
+    })
+    .refine(
+      (event) =>
+        event.schemaVersion === 1 || isEncodedHistoryType(event.data.type),
+    ),
   conversationEventEnvelopeSchema.extend({
     data: unknownConversationEventDataSchema,
   }),
@@ -449,7 +512,7 @@ export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
 /** A decoded message-summary event and its readable history boundary. */
 export type MessagesSummarizedEvent = Omit<
-  Extract<ConversationEvent, { schemaVersion: 1 }>,
+  Extract<ConversationEvent, { schemaVersion: 1 | 2 }>,
   "data"
 > & {
   data: Extract<ConversationEventData, { type: "messages_summarized" }>;
@@ -470,7 +533,7 @@ const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
 /**
  * Decode a physical event row without making old or future event types
  * unreadable. Unsupported rows stay opaque until an upgrade migration defines
- * their semantics; known version-one events remain strict so corrupt canonical
+ * their semantics; supported events remain strict so corrupt canonical
  * data cannot be mistaken for compatibility data.
  */
 export function decodeStoredConversationEvent(
@@ -479,6 +542,12 @@ export function decodeStoredConversationEvent(
   const stored = storedConversationEventSchema.parse(value);
   const { type, payload, ...envelope } = stored;
   const knownType = knownConversationEventTypeSchema.safeParse(type).success;
+  if (stored.schemaVersion === 2 && isEncodedHistoryType(type)) {
+    return conversationEventSchema.parse({
+      ...envelope,
+      data: { ...decodeHistoryPayload(type, payload), type },
+    });
+  }
   if (stored.schemaVersion === 1 && knownType) {
     const data =
       typeof payload === "object" && payload !== null && !Array.isArray(payload)
@@ -527,12 +596,15 @@ export interface ConversationEventPage {
 
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
-  /** Append events atomically, optionally preserving conversation activity. */
+  /**
+   * Append events atomically and return each event's sequence and history version.
+   * Archive clears only for human user activity, not every non-preserve write.
+   */
   append(
     conversationId: string,
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
-  ): Promise<void>;
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,
@@ -553,6 +625,8 @@ export interface ConversationEventStore {
   loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Current model-history version, or zero when no event exists. */
+  loadCurrentHistoryVersion(conversationId: string): Promise<number>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */

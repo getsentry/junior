@@ -197,6 +197,7 @@ describe("dashboard canonical event reporting", () => {
   it("aggregates per-model tokens and costs without counting replayed history", async () => {
     const conversationId = "slack:C-reporting:model-usage";
     await recordRoot(conversationId, "public");
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const componentUsageMessage = {
       role: "assistant",
       api: "responses",
@@ -215,7 +216,8 @@ describe("dashboard canonical event reporting", () => {
           total: 0.037,
         },
       },
-    } as unknown as PiMessage;
+    } as PiMessage;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
     const totalOnlyUsageMessage = {
       role: "assistant",
       api: "responses",
@@ -225,7 +227,7 @@ describe("dashboard canonical event reporting", () => {
       stopReason: "stop",
       timestamp: 11,
       usage: { totalTokens: 7, cost: { total: 0.005 } },
-    } as unknown as PiMessage;
+    } as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
@@ -268,6 +270,47 @@ describe("dashboard canonical event reporting", () => {
             total: 0.042,
           },
         },
+      },
+    ]);
+  });
+
+  it("keys gateway assistant usage by the vendor model id", async () => {
+    const conversationId = "slack:C-reporting:gateway-model-usage";
+    await recordRoot(conversationId, "public");
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const gatewayUsageMessage = {
+      role: "assistant",
+      api: "responses",
+      provider: "vercel-ai-gateway",
+      model: "openai/gpt-5.6-sol",
+      content: [],
+      stopReason: "stop",
+      timestamp: 10,
+      usage: {
+        input: 12,
+        output: 4,
+        totalTokens: 16,
+        cost: { total: 0.03 },
+      },
+    } as PiMessage;
+    const { getConversationEventStore } = await import("@/chat/db");
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: historyItemFromPiMessage(gatewayUsageMessage, {
+          authority: "context",
+        }),
+        createdAtMs: 10,
+      },
+    ]);
+
+    expect((await requireDetail(conversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5.6-sol",
+        usage: expect.objectContaining({
+          inputTokens: 12,
+          outputTokens: 4,
+          totalTokens: 16,
+        }),
       },
     ]);
   });
@@ -425,13 +468,27 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("owner@example.com"),
+        viewer: rootViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === rootConversationId,
     );
     expect(rootParticipantSummary).toBeDefined();
-    expect(rootParticipantDetail).toMatchObject(rootParticipantSummary ?? {});
+    expect(rootParticipantSummary).toMatchObject({
+      isPriority: expect.any(Boolean),
+    });
+    // Feed-only Priority/work fields are absent on detail reports.
+    expect(rootParticipantDetail).toMatchObject({
+      conversationId: rootParticipantSummary!.conversationId,
+      cumulativeDurationMs: rootParticipantSummary!.cumulativeDurationMs,
+      displayTitle: rootParticipantSummary!.displayTitle,
+      isParticipant: rootParticipantSummary!.isParticipant,
+      lastProgressAt: rootParticipantSummary!.lastProgressAt,
+      lastSeenAt: rootParticipantSummary!.lastSeenAt,
+      startedAt: rootParticipantSummary!.startedAt,
+      status: rootParticipantSummary!.status,
+      surface: rootParticipantSummary!.surface,
+    });
     const childParticipantDetail = await readConversationDetail(
       childConversationId,
       { viewer: rootViewer! },
@@ -465,6 +522,7 @@ describe("dashboard canonical event reporting", () => {
       status: "available",
     });
     const { getConversationStore, getDb } = await import("@/chat/db");
+    const { resolveViewerUser } = await import("@/chat/plugins/viewer");
     const [rootRow] = await getDb()
       .select({ destinationId: juniorConversations.destinationId })
       .from(juniorConversations)
@@ -553,9 +611,13 @@ describe("dashboard canonical event reporting", () => {
       .set({ destinationId: null })
       .where(eq(juniorConversations.conversationId, destinationlessRoot));
 
+    const destinationlessViewer = await resolveViewerUser(
+      "destinationless-owner@example.com",
+    );
+    expect(destinationlessViewer).toBeDefined();
     await expect(
       readConversationDetail(destinationlessRoot, {
-        viewer: testViewer("destinationless-owner@example.com"),
+        viewer: destinationlessViewer!,
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "available" },
@@ -563,7 +625,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const destinationlessSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("destinationless-owner@example.com"),
+        viewer: destinationlessViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === destinationlessRoot,
@@ -587,9 +649,11 @@ describe("dashboard canonical event reporting", () => {
       .set({ rootConversationId: foreignRoot })
       .where(eq(juniorConversations.conversationId, malformedTopLevel));
 
+    const foreignViewer = await resolveViewerUser("foreign-owner@example.com");
+    expect(foreignViewer).toBeDefined();
     await expect(
       readConversationDetail(malformedTopLevel, {
-        viewer: testViewer("foreign-owner@example.com"),
+        viewer: foreignViewer!,
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -597,12 +661,12 @@ describe("dashboard canonical event reporting", () => {
     });
     const malformedSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("foreign-owner@example.com"),
+        viewer: foreignViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === malformedTopLevel,
     );
-    expect(malformedSummary).toMatchObject({ isParticipant: false });
+    expect(malformedSummary).toBeUndefined();
   });
 
   it("lets requested-row expiry win and stamps both root and child purges", async () => {

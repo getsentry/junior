@@ -1,6 +1,6 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import type { HarnessRun } from "vitest-evals/harness";
-import { beforeAll, expect } from "vitest";
+import { expect } from "vitest";
 import {
   assistantTextContent,
   authorizationCompletions,
@@ -10,10 +10,8 @@ import {
   visibleAssistantText,
 } from "../../../src/helpers";
 import { readEvalEgressFixtureState } from "../../../src/setup";
-import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
 
 type EvalRun = HarnessRun;
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 function publicOAuthUrls(result: EvalRun): string[] {
   return (
@@ -62,10 +60,6 @@ function matchingThreadReplies(
 }
 
 describeEval("OAuth Workflows", slackEvals, (it) => {
-  beforeAll(async () => {
-    await warmSandboxSnapshot();
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
-
   const mcpAuthResumeThread = {
     id: "thread-auth-resume",
     channel_id: "CAUTHRESUME",

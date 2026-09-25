@@ -68,10 +68,10 @@ describe("load_skill tool", () => {
     expect(loaded[0]).toMatchObject({
       ...(firstSkill.pluginProvider
         ? { pluginProvider: firstSkill.pluginProvider }
-        : {}),
+        : undefined),
       ...(firstSkill.allowedTools
         ? { allowedTools: firstSkill.allowedTools }
-        : {}),
+        : undefined),
     });
   });
 

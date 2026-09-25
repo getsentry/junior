@@ -14,8 +14,15 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./conversations/transcriptRenderModel";
-import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
+import {
+  transcriptFailureDescription,
+  transcriptFailureTitle,
+} from "./conversations/transcriptFailure";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 import type {
   Conversation,
   ConversationTranscript,
@@ -103,12 +110,7 @@ function appendTranscriptMessages(
   for (const entry of groupTranscriptMessages(messages)) {
     if (entry.kind === "message") {
       if (entry.message.eventType) {
-        appendResourceEvent(
-          lines,
-          conversationTranscript,
-          entry.message,
-          redacted,
-        );
+        appendEvent(lines, conversationTranscript, entry.message, redacted);
       } else if (entry.message.context) {
         appendMessageContext(
           lines,
@@ -126,7 +128,10 @@ function appendTranscriptMessages(
       appendFailure(
         lines,
         conversationTranscript,
-        entry.outcome,
+        entry.failureCode,
+        entry.failureReason,
+        entry.eventId,
+        entry.sentryEventUrl,
         entry.timestamp,
       );
       continue;
@@ -179,6 +184,22 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "attachments_delivered") {
+      const count = entry.part.attachments.length;
+      lines.push(
+        "",
+        `### ${count === 1 ? "1 file delivered" : `${count} files delivered`}`,
+      );
+      addEventMeta(lines, conversationTranscript, entry.timestamp);
+      for (const attachment of entry.part.attachments) {
+        lines.push(
+          "",
+          `- ${attachment.filename} (${attachment.contentType}, ${attachment.bytes} bytes)`,
+        );
+      }
+      continue;
+    }
+
     appendTool(lines, conversationTranscript, entry.part, entry.timestamp);
   }
 }
@@ -197,22 +218,26 @@ function appendReasoning(
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  outcome: "error" | "delivery_failed",
+  failureCode: ConversationTurnFailureCode,
+  failureReason: ConversationTurnFailureReason | undefined,
+  eventId: string | undefined,
+  sentryEventUrl: string | undefined,
   timestamp: number | undefined,
 ): void {
-  lines.push(
-    "",
-    outcome === "delivery_failed"
-      ? "### Message delivery failed"
-      : "### Agent response failed",
-  );
+  lines.push("", `### ${transcriptFailureTitle(failureCode, failureReason)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  lines.push(
-    "",
-    outcome === "delivery_failed"
-      ? `${getDashboardAgentName()} could not deliver this message to its destination.`
-      : `The model response ended before ${getDashboardAgentName()} could complete this turn.`,
-  );
+  lines.push("", transcriptFailureDescription(failureCode, failureReason));
+  addMetaLine(lines, "Code", failureCode);
+  if (failureReason) {
+    addMetaLine(lines, "Reason", failureReason);
+  }
+  if (eventId) {
+    addMetaLine(
+      lines,
+      "Event id",
+      sentryEventUrl ? `[${eventId}](${sentryEventUrl})` : eventId,
+    );
+  }
 }
 
 function appendContextEvent(
@@ -228,8 +253,8 @@ function appendContextEvent(
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   if (event.type === "handoff") {
-    addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Model", event.modelId);
+    addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Reasoning", event.reasoningLevel);
   } else {
     addMetaLine(lines, "Profile", event.modelProfile);
@@ -275,7 +300,7 @@ function appendContextEvent(
   }
 }
 
-function appendResourceEvent(
+function appendEvent(
   lines: string[],
   conversationTranscript: ConversationTranscript,
   message: TranscriptViewMessage,

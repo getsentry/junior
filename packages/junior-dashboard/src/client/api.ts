@@ -1,9 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+  statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   actorDirectoryReportSchema,
@@ -11,9 +14,9 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  taskExecutionListSchema,
-  taskListSchema,
-  taskRunListSchema,
+  automationExecutionListSchema,
+  automationListSchema,
+  automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -87,58 +90,74 @@ export function usePluginUserPagesData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData(actorEmail?: string) {
+export function useConversationsData(search = "") {
   return useQuery({
-    queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
-    queryFn: ({ signal }) => {
-      const query = new URLSearchParams();
-      if (actorEmail) query.set("actorEmail", actorEmail);
-      const search = query.toString();
-      return fetchDashboardJson(
+    queryKey: ["dashboard", "conversations", "viewer", { search }],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${search ? `?${search}` : ""}`,
+        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
-      );
-    },
+      ),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }
 
-/** Fetch the signed-in viewer's scheduled and event tasks. */
-export function useTasksData(enabled: boolean) {
+/** Fetch repository and code change analytics. */
+export function useCodeOverviewData() {
   return useQuery({
-    enabled,
-    queryKey: ["dashboard", "tasks"],
+    queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+      fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
     retry: false,
   });
 }
 
-/** Fetch newest runs across all viewer-visible tasks. */
-export function useTaskRunsData(enabled: boolean) {
+/** Fetch the signed-in viewer's scheduled and event automations. */
+export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks", "runs"],
+    queryKey: ["dashboard", "automations", search],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskRunListSchema, "/api/tasks/runs", signal),
+      fetchDashboardJson(
+        automationListSchema,
+        `/api/automations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Fetch newest runs across all viewer-visible automations. */
+export function useAutomationRunsData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "automations", "runs"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationRunListSchema,
+        "/api/automations/runs",
+        signal,
+      ),
     retry: false,
   });
 }
 
 /** Fetch terminal executions for one viewer-visible task. */
-export function useTaskExecutionsData(
+export function useAutomationExecutionsData(
   enabled: boolean,
   kind: "scheduled" | "event" | undefined,
-  taskId: string | undefined,
+  automationId: string | undefined,
 ) {
   return useQuery({
-    enabled: enabled && Boolean(kind && taskId),
-    queryKey: ["dashboard", "tasks", kind, taskId, "executions"],
+    enabled: enabled && Boolean(kind && automationId),
+    queryKey: ["dashboard", "automations", kind, automationId, "executions"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        taskExecutionListSchema,
-        `/api/tasks/${kind}/${encodeURIComponent(taskId!)}/executions`,
+        automationExecutionListSchema,
+        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/executions`,
         signal,
       ),
     retry: false,
@@ -164,6 +183,36 @@ export function useActorProfileData(email: string | undefined) {
       fetchDashboardJson(
         actorProfileReportSchema,
         `/api/people/${encodeURIComponent(email!)}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch person-scoped plugin reports for one People profile. */
+export function useActorPluginReportsData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "plugin-reports"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        pluginOperationalReportFeedSchema,
+        `/api/people/${encodeURIComponent(email!)}/plugin-reports`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch person-scoped native code activity for one People profile. */
+export function useActorCodeData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code`,
         signal,
       ),
     retry: false,
@@ -242,6 +291,16 @@ export function usePluginReportsData() {
   });
 }
 
+/** Fetch named daily counters used by Workspace usage charts. */
+export function useStatsData() {
+  return useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(statsReportSchema, "/api/stats", signal),
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -265,12 +324,12 @@ export function useSystemData(coreData: DashboardCoreData) {
           conversationStatsError: Boolean(conversationStatsQuery.error),
           ...(conversationStatsQuery.data
             ? { conversationStats: conversationStatsQuery.data }
-            : {}),
+            : undefined),
           conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
-            : {}),
+            : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,

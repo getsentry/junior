@@ -66,12 +66,12 @@ export function readSlackRawMessageContext(
   const authorTeamId = parseSlackTeamId(raw.data.user_team);
 
   return {
-    ...(channelId ? { channelId } : {}),
-    ...(threadTs ? { threadTs } : {}),
-    ...(messageTs ? { messageTs } : {}),
-    ...(nestedMessageTs ? { nestedMessageTs } : {}),
-    ...(teamId ? { teamId } : {}),
-    ...(authorTeamId ? { authorTeamId } : {}),
+    ...(channelId ? { channelId } : undefined),
+    ...(threadTs ? { threadTs } : undefined),
+    ...(messageTs ? { messageTs } : undefined),
+    ...(nestedMessageTs ? { nestedMessageTs } : undefined),
+    ...(teamId ? { teamId } : undefined),
+    ...(authorTeamId ? { authorTeamId } : undefined),
   };
 }
 

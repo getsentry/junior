@@ -182,8 +182,7 @@ describe("junior native authentication events", () => {
       details: [
         {
           title: "Forked conversation",
-          description:
-            "Source message `msg-1` in `local:web:source-1`",
+          description: "Source message `msg-1` in `local:web:source-1`",
           metadata: ["seq 2"],
         },
       ],

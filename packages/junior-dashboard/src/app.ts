@@ -1,6 +1,4 @@
 import { Hono, type Context, type Next } from "hono";
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 import {
   authenticatePersonalToken,
   createJuniorApi,
@@ -11,6 +9,8 @@ import {
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
+import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -22,30 +22,53 @@ import {
   dashboardProfileUpdateSchema,
 } from "./api/schema";
 import {
-  dashboardAvatarHeaderAsset,
-  dashboardClientAsset,
-  dashboardTailwindAsset,
-} from "./assets";
-import {
   createDashboardAuth,
+  dashboardBearerSession,
+  dashboardPersonalBearerToken,
+  dashboardSessionIsAuthorized,
   resolveGoogleHostedDomainHint,
   sanitizeDashboardSession,
+  verifiedDashboardSessionEmail,
   type DashboardAuth,
   type DashboardSession,
 } from "./auth";
-import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
+import { resetMockConversationArchiveState } from "./mock-reporting/fixtures";
 import { createMockReportingApi } from "./mock-reporting/routes";
-import { resolveDashboardBaseURL } from "./url";
+import {
+  DASHBOARD_AVATAR_HEADER_PATH,
+  DASHBOARD_CLIENT_PATH,
+  DASHBOARD_INSTALL_ICON_PATH,
+  DASHBOARD_MANIFEST_PATH,
+  dashboardPagePaths,
+  readDashboardAvatarHeader,
+  readDashboardClient,
+  renderDashboard,
+  renderFavicon,
+  renderForbiddenPage,
+  renderInstallIcon,
+  renderManifest,
+} from "./shell";
+import { normalizeDashboardPath, resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
-const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
-const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
-const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
 /** Process-local display names for mock reporting only. */
 const mockDisplayNamesByEmail = new Map<string, string>();
+
+/**
+ * Clear process-local mock reporting state so tests sharing a worker do not
+ * leak state. Call this from the built dashboard (`dist/app.js`), not
+ * `src/app.ts` directly: tsup inlines `./mock-reporting/fixtures` into this
+ * bundle, so an unbundled import elsewhere would reset a different copy of
+ * the module state than the one the running server reads.
+ */
+export function resetMockDashboardState(): void {
+  mockDisplayNamesByEmail.clear();
+  resetMockConversationArchiveState();
+}
 
 export interface JuniorDashboardOptions {
   agentName?: string;
@@ -63,6 +86,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -71,37 +95,12 @@ interface DashboardPluginRoute {
   pluginName: string;
 }
 
-type Variables = JuniorApiVariables & {
-  authSession: DashboardSession;
-};
+type Variables = JuniorApiVariables & { authSession: DashboardSession };
 
 function hasSentryConversationLinks(): boolean {
   return Boolean(
     process.env.SENTRY_DSN?.trim() && process.env.SENTRY_ORG_SLUG?.trim(),
   );
-}
-
-function normalizePath(path: string, fallback: string): string {
-  const value = path.trim() || fallback;
-  const withSlash = value.startsWith("/") ? value : `/${value}`;
-  return stripTrailingSlashes(withSlash);
-}
-
-function stripTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 1 && value.charCodeAt(end - 1) === 47) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function normalizeValues(values: string[] | undefined): string[] {
@@ -193,12 +192,20 @@ function isDashboardPagePath(
   return false;
 }
 
+interface DashboardReturnPathOptions {
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
+  componentGallery?: boolean;
+}
+
 function dashboardReturnPath(
   url: URL,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string | undefined {
-  if (!isDashboardPagePath(url.pathname, basePath, options)) {
+  if (
+    !isDashboardPagePath(url.pathname, basePath, options) &&
+    !isAuthPath(url.pathname, options.authenticatedRoutes ?? [])
+  ) {
     return undefined;
   }
 
@@ -209,7 +216,7 @@ function dashboardReturnPath(
 function requestedReturnPath(
   url: URL,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string | undefined {
   const next = url.searchParams.get(LOGIN_NEXT_PARAM);
   if (!next?.startsWith("/") || next.startsWith("//")) {
@@ -219,7 +226,8 @@ function requestedReturnPath(
   const returnUrl = new URL(next, url.origin);
   if (
     returnUrl.origin !== url.origin ||
-    !isDashboardPagePath(returnUrl.pathname, basePath, options)
+    (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
+      !isAuthPath(returnUrl.pathname, options.authenticatedRoutes ?? []))
   ) {
     return undefined;
   }
@@ -231,7 +239,7 @@ function dashboardLoginUrl(
   request: Request,
   basePath: string,
   canonicalBaseURL?: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string {
   const requestUrl = new URL(request.url);
   const url = canonicalBaseURL
@@ -246,7 +254,7 @@ function dashboardLoginUrl(
   return url.toString();
 }
 
-function canonicalLoginUrl(
+function canonicalRequestUrl(
   request: Request,
   canonicalBaseURL: string | undefined,
 ): string | undefined {
@@ -272,7 +280,7 @@ function dashboardLoginPath(basePath: string): string {
 function callbackUrl(
   request: Request,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string {
   const requestUrl = new URL(request.url);
   const returnPath = requestedReturnPath(requestUrl, basePath, options);
@@ -288,32 +296,11 @@ function callbackUrl(
   return url.toString();
 }
 
-function isAuthorized(
-  session: DashboardSession,
-  allowedDomains: string[],
-  allowedEmails: string[],
-): boolean {
-  const email = session.user.email.toLowerCase();
-  const emailSeparator = email.lastIndexOf("@");
-  const emailDomain =
-    emailSeparator > 0 ? email.slice(emailSeparator + 1) : undefined;
-
-  if (session.user.emailVerified && email && allowedEmails.includes(email)) {
-    return true;
-  }
-
-  return Boolean(
-    session.user.emailVerified &&
-    emailDomain &&
-    allowedDomains.includes(emailDomain),
-  );
-}
-
 function unauthorized(
   request: Request,
   basePath: string,
   canonicalBaseURL?: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): Response {
   if (isJsonRoute(new URL(request.url).pathname)) {
     return jsonResponse(
@@ -330,34 +317,7 @@ function unauthorized(
 
 function forbidden(request: Request, agentName: string): Response {
   if (!isJsonRoute(new URL(request.url).pathname)) {
-    return new Response(
-      `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(agentName)} access denied</title>
-  <style>
-    ${readDashboardTailwind()}
-  </style>
-</head>
-<body class="m-0 bg-black font-sans text-white [color-scheme:dark]">
-  <main class="grid min-h-screen place-items-center p-8">
-    <section class="max-w-lg border-l-4 border-rose-400 pl-4">
-      <h1 class="m-0 mb-3 text-3xl font-bold leading-tight">Access denied</h1>
-      <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this ${escapeHtml(agentName)} dashboard.</p>
-    </section>
-  </main>
-</body>
-</html>`,
-      {
-        headers: {
-          "cache-control": "no-store",
-          "content-type": "text/html; charset=utf-8",
-        },
-        status: 403,
-      },
-    );
+    return renderForbiddenPage(agentName);
   }
   return jsonResponse(apiErrorSchema, { error: "forbidden" }, { status: 403 });
 }
@@ -371,31 +331,9 @@ function localAuthBypassSession(email = LOCAL_VIEWER_EMAIL): DashboardSession {
   };
 }
 
-function personalBearerToken(request: Request): string | undefined {
-  const authorization = request.headers.get("authorization");
-  if (!authorization) return undefined;
-  const match = /^Bearer ([^\s]+)$/.exec(authorization);
-  return match?.[1];
-}
-
-function bearerSession(email: string): DashboardSession {
-  return {
-    user: {
-      email,
-      emailVerified: true,
-    },
-  };
-}
-
-function verifiedSessionEmail(session: DashboardSession): string | undefined {
-  if (session.user.emailVerified !== true) return undefined;
-  const email = session.user.email.trim().toLowerCase();
-  return email || undefined;
-}
-
 /** Build a local mock viewer without creating a durable Junior user. */
 function mockViewerFromSession(session: DashboardSession) {
-  const email = verifiedSessionEmail(session);
+  const email = verifiedDashboardSessionEmail(session);
   if (!email) return undefined;
   const displayName =
     mockDisplayNamesByEmail.get(email) ??
@@ -405,204 +343,13 @@ function mockViewerFromSession(session: DashboardSession) {
     email,
     id: `mock-user:${email}`,
     identities: [],
-    ...(displayName ? { displayName } : {}),
+    ...(displayName ? { displayName } : undefined),
   };
 }
 
-function readAssetUrl(url: URL): string {
-  if (!existsSync(url)) {
-    return "";
-  }
-  return readFileSync(url, "utf8");
-}
-
-function readWorkspaceAsset(fileName: string): string {
-  const assetPath = path.join(
-    process.cwd(),
-    "node_modules",
-    "@sentry",
-    "junior-dashboard",
-    "dist",
-    fileName,
-  );
-  if (!existsSync(assetPath)) {
-    return "";
-  }
-  return readFileSync(assetPath, "utf8");
-}
-
-function readDashboardClient(): string {
-  const client =
-    dashboardClientAsset ||
-    readAssetUrl(new URL("./client.js", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/client.js", import.meta.url)) ||
-    readWorkspaceAsset("client.js");
-  if (!client) {
-    throw new Error("Junior dashboard client bundle was not found");
-  }
-  return client;
-}
-
-function dashboardTimeZone(): string {
-  return process.env.JUNIOR_TIMEZONE || "America/Los_Angeles";
-}
-
-function readDashboardTailwind(): string {
-  return (
-    dashboardTailwindAsset ||
-    readAssetUrl(new URL("./tailwind.css", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/tailwind.css", import.meta.url)) ||
-    readWorkspaceAsset("tailwind.css")
-  );
-}
-
-function readDashboardAvatarHeader(): ArrayBuffer {
-  if (dashboardAvatarHeaderAsset) {
-    return Uint8Array.from(Buffer.from(dashboardAvatarHeaderAsset, "base64"))
-      .buffer;
-  }
-
-  const assetUrl = new URL("./assets/junior-avatar-line.png", import.meta.url);
-  if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard avatar asset was not found");
-  }
-  return Uint8Array.from(readFileSync(assetUrl)).buffer;
-}
-
-function dashboardPagePaths(
-  basePath: string,
-  options: { componentGallery?: boolean } = {},
-): Array<{ nested?: boolean; path: string }> {
-  const paths: Array<{ nested?: boolean; path: string }> = [
-    { path: basePath },
-    {
-      nested: true,
-      path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/people" : `${basePath}/people`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/locations" : `${basePath}/locations`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/system" : `${basePath}/system`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/tasks" : `${basePath}/tasks`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/memories" : `${basePath}/memories`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/settings" : `${basePath}/settings`,
-    },
-    {
-      nested: true,
-      path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
-    },
-  ];
-  if (options.componentGallery) {
-    paths.push({
-      nested: true,
-      path: basePath === "/" ? "/dev" : `${basePath}/dev`,
-    });
-  }
-  return paths;
-}
-
-function renderDashboard(basePath: string, agentName: string): Response {
-  const encodedAgentName = JSON.stringify(agentName).replace(/</g, "\\u003c");
-  return new Response(
-    `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(agentName)}</title>
-  <style>
-    ${readDashboardTailwind()}
-  </style>
-</head>
-<body class="m-0 bg-black text-white [color-scheme:dark]">
-  <div id="dashboard-root">
-    <main class="grid min-h-screen place-items-center bg-black px-4 py-8 font-sans text-white md:px-8" aria-busy="true">
-      <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
-        <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-sm font-black leading-none text-white">Jr</div>
-        <div class="min-w-0">
-          <div class="font-bold">Loading ${escapeHtml(agentName)}</div>
-          <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading ${escapeHtml(agentName)}"></div>
-        </div>
-      </section>
-    </main>
-  </div>
-  <script>
-    window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
-    window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
-    (function () {
-      function escapeHtml(value) {
-        return String(value)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-      function errorText(error) {
-        if (!error) return "Unknown dashboard error";
-        if (typeof error === "string") return error;
-        if (error.stack) return error.stack;
-        if (error.message) return error.message;
-        try {
-          return JSON.stringify(error, null, 2);
-        } catch (_error) {
-          return String(error);
-        }
-      }
-      window.__JUNIOR_DASHBOARD_SHOW_ERROR__ = function (error) {
-        var root = document.getElementById("dashboard-root");
-        if (!root) return;
-        root.innerHTML =
-          '<main class="grid min-h-screen place-items-center bg-black p-8 text-white">' +
-          '<section class="w-full max-w-5xl border border-rose-400/50 bg-[#0b0b0b] p-5 font-sans">' +
-          '<div class="font-mono text-xs uppercase leading-none text-[#888]">Dashboard Error</div>' +
-          '<h1 class="mt-2 text-3xl font-bold leading-tight tracking-normal">' + escapeHtml(window.__JUNIOR_DASHBOARD_AGENT_NAME__) + ' failed to render</h1>' +
-          '<p class="my-4 max-w-3xl text-[#b8b8b8]">The dashboard hit a client-side exception. The stack trace is shown here so the page does not fail blank.</p>' +
-          '<pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-white/10 bg-black p-4 font-mono text-sm leading-relaxed text-white">' +
-          escapeHtml(errorText(error)) +
-          "</pre></section></main>";
-      };
-      window.addEventListener("error", function (event) {
-        window.__JUNIOR_DASHBOARD_SHOW_ERROR__(event.error || event.message);
-      });
-      window.addEventListener("unhandledrejection", function (event) {
-        window.__JUNIOR_DASHBOARD_SHOW_ERROR__(event.reason);
-      });
-    })();
-  </script>
-  <script type="module" src="${DASHBOARD_CLIENT_PATH}?v=${DASHBOARD_CLIENT_VERSION}"></script>
-</body>
-</html>`,
-    {
-      headers: {
-        "cache-control": "no-store",
-        "content-type": "text/html; charset=utf-8",
-      },
-    },
-  );
-}
-
-function renderFavicon(): Response {
-  return new Response(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#000000"/><text x="16" y="20.5" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
-    { headers: { "content-type": "image/svg+xml" } },
-  );
+/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
+function dashboardTimeZone(): string | undefined {
+  return process.env.JUNIOR_TIMEZONE || undefined;
 }
 
 function pluginRoutePrefix(pluginName: string): string {
@@ -647,11 +394,11 @@ export function createDashboardApp(
     initSentry();
   }
 
-  const basePath = normalizePath(
+  const basePath = normalizeDashboardPath(
     options.basePath ?? DEFAULT_BASE_PATH,
     DEFAULT_BASE_PATH,
   );
-  const authPath = normalizePath(
+  const authPath = normalizeDashboardPath(
     options.authPath ?? DEFAULT_AUTH_PATH,
     DEFAULT_AUTH_PATH,
   );
@@ -688,20 +435,27 @@ export function createDashboardApp(
       }))
     : undefined;
   const app = new Hono<{ Variables: Variables }>();
+  const authenticatedRoutes = options.authenticatedRoutes ?? [];
+  app.use("*", async (c, next) => {
+    await next();
+    c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
+  });
 
   app.get(dashboardLoginPath(basePath), async (c) => {
-    const canonicalUrl = canonicalLoginUrl(c.req.raw, canonicalBaseURL);
-    if (canonicalUrl) {
-      return Response.redirect(canonicalUrl, 302);
-    }
+    const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
+    if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
     const returnUrl = callbackUrl(c.req.raw, basePath, {
+      authenticatedRoutes,
       componentGallery: options.componentGallery,
     });
     if (!auth) {
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);
-    if (session && isAuthorized(session, allowedDomains, allowedEmails)) {
+    if (
+      session &&
+      dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)
+    ) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(c.req.raw, returnUrl);
@@ -712,20 +466,28 @@ export function createDashboardApp(
   }
 
   app.get("/favicon.ico", () => renderFavicon());
+  app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
+  app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
 
   /**
    * Require dashboard auth for every later route; login, Better Auth callbacks,
-   * and favicon are the only registration-order bypasses.
+   * favicon, install manifest, and install icon are the only registration-order
+   * bypasses.
    */
   const requireAuth = async (
     c: Context<{ Variables: Variables }>,
     next: Next,
   ) => {
     const pathname = new URL(c.req.url).pathname;
+    const appRoute = isAuthPath(pathname, authenticatedRoutes);
+    if (appRoute) {
+      const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
+      if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
+    }
     if (!authRequired) {
       const session = localAuthBypassSession();
       c.set("authSession", session);
-      if (pathname.startsWith("/api/")) {
+      if (pathname.startsWith("/api/") || appRoute) {
         const viewer = options.mockConversations
           ? mockViewerFromSession(session)
           : await resolveViewerUser(LOCAL_VIEWER_EMAIL);
@@ -740,12 +502,14 @@ export function createDashboardApp(
 
     if (!auth) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
+        authenticatedRoutes,
         componentGallery: options.componentGallery,
       });
     }
     const browserSession = await auth.getSession(c.req.raw);
-    const token = personalBearerToken(c.req.raw);
+    const token = dashboardPersonalBearerToken(c.req.raw);
     const tokenEmail =
+      !appRoute &&
       !browserSession &&
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
@@ -754,20 +518,22 @@ export function createDashboardApp(
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
-      browserSession ?? (tokenEmail ? bearerSession(tokenEmail) : null);
+      browserSession ??
+      (tokenEmail ? dashboardBearerSession(tokenEmail) : null);
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
+        authenticatedRoutes,
         componentGallery: options.componentGallery,
       });
     }
-    if (!isAuthorized(session, allowedDomains, allowedEmails)) {
+    if (!dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
     // Resolve the canonical user only for authenticated API requests.
-    if (pathname.startsWith("/api/")) {
-      const email = verifiedSessionEmail(sanitizedSession);
+    if (pathname.startsWith("/api/") || appRoute) {
+      const email = verifiedDashboardSessionEmail(sanitizedSession);
       if (!email) {
         throw new Error(
           "Authenticated dashboard session has no verified email",
@@ -786,6 +552,26 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
+
+  for (const route of authenticatedRoutes) {
+    const handler = (c: Context<{ Variables: Variables }>) => {
+      const viewer = c.get("viewer");
+      if (!viewer) {
+        throw new Error("Authenticated app route has no resolved user");
+      }
+      return route.handler(c.req.raw, viewer);
+    };
+    const methods =
+      typeof route.method === "string"
+        ? [route.method]
+        : (route.method ?? ["ALL"]);
+    const explicitMethods = methods.filter((method) => method !== "ALL");
+    if (methods.includes("ALL")) {
+      app.all(route.path, handler);
+    } else if (explicitMethods.length > 0) {
+      app.on(explicitMethods, route.path, handler);
+    }
+  }
 
   for (const { nested, path } of dashboardPagePaths(basePath, {
     componentGallery: options.componentGallery,
@@ -821,6 +607,7 @@ export function createDashboardApp(
       componentGallery: options.componentGallery === true,
       sentryConversationLinks: hasSentryConversationLinks(),
       timeZone: dashboardTimeZone(),
+      version: JUNIOR_VERSION,
     });
   });
   app.get("/api/me", (c) => {

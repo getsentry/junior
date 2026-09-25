@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
@@ -17,10 +16,10 @@ import {
 
 type ContextOverrides = Omit<
   Partial<SlackToolContext>,
-  "destinationChannelId" | "sourceChannelId" | "teamId"
+  "destinationChannelId" | "locationChannelId" | "teamId"
 > & {
   destinationChannelId?: string;
-  sourceChannelId?: string;
+  locationChannelId?: string;
   teamId?: string;
 };
 
@@ -41,36 +40,23 @@ function requireSlackTeamId(value: string) {
 }
 
 function createContext(overrides: ContextOverrides = {}): SlackToolContext {
-  const sourceChannelId = requireSlackChannelId(
-    overrides.sourceChannelId ?? "C0CURRENT",
+  const locationChannelId = requireSlackChannelId(
+    overrides.locationChannelId ?? "C0CURRENT",
   );
   const destinationChannelId =
     overrides.destinationChannelId !== undefined
       ? requireSlackChannelId(overrides.destinationChannelId)
-      : sourceChannelId;
+      : locationChannelId;
   const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
   const {
-    sourceChannelId: _sourceChannelId,
+    locationChannelId: _locationChannelId,
     destinationChannelId: _destinationChannelId,
     teamId: _teamId,
     ...rest
   } = overrides;
   return {
-    destination: overrides.destination ?? {
-      platform: "slack",
-      teamId,
-      channelId: destinationChannelId,
-    },
-    source:
-      overrides.source ??
-      createSlackSource({
-        teamId,
-        channelId: sourceChannelId,
-
-        visibility: "private",
-      }),
     destinationChannelId,
-    sourceChannelId,
+    locationChannelId,
     teamId,
     ...rest,
   };
@@ -185,6 +171,14 @@ describe("slackThreadRead", () => {
             thread_ts: "1700000000.500000",
             user: "U1",
             text: "standalone message",
+            subtype: "bot_message",
+            reactions: [
+              {
+                name: "raised_hands",
+                count: 2,
+                users: ["U2", "U3"],
+              },
+            ],
           },
         ],
       }),
@@ -194,13 +188,28 @@ describe("slackThreadRead", () => {
     const result = await executeTool(tool, {
       channel_id: "C0MANUAL",
       ts: "1700000000.500000",
+      url: null,
+      limit: null,
+      max_pages: null,
     });
 
     expect(result).toMatchObject({
       channel_id: "C0MANUAL",
       count: 1,
+      messages: [
+        {
+          text: "standalone message",
+          subtype: "bot_message",
+          reactions: [
+            {
+              name: "raised_hands",
+              count: 2,
+              users: ["U2", "U3"],
+            },
+          ],
+        },
+      ],
     });
-    expect(result.messages[0].text).toBe("standalone message");
   });
 
   it("allows reading a private channel when it matches the current channel", async () => {
@@ -218,7 +227,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({ sourceChannelId: "G0PRIVATE" });
+    const tool = createTool({ locationChannelId: "G0PRIVATE" });
     const result = await executeTool(tool, {
       channel_id: "G0PRIVATE",
       ts: "1700000000.100000",
@@ -250,7 +259,7 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createTool({
-      sourceChannelId: "D0DM",
+      locationChannelId: "D0DM",
       destinationChannelId: "G0PRIVATE",
     });
     const result = await executeTool(tool, {
@@ -273,7 +282,7 @@ describe("slackThreadRead", () => {
         isGroup: true,
       }),
     });
-    const tool = createTool({ sourceChannelId: "D0DM" });
+    const tool = createTool({ locationChannelId: "D0DM" });
     await expect(
       executeTool(tool, {
         channel_id: "G0PRIVATE",
@@ -292,7 +301,7 @@ describe("slackThreadRead", () => {
         isGroup: true,
       }),
     });
-    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    const tool = createTool({ locationChannelId: "C0CURRENT" });
     await expect(
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
@@ -342,7 +351,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    const tool = createTool({ locationChannelId: "C0CURRENT" });
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
     });
@@ -363,7 +372,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    const tool = createTool({ locationChannelId: "C0CURRENT" });
     await expect(
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
@@ -390,7 +399,7 @@ describe("slackThreadRead", () => {
       error: "channel_not_found",
     });
 
-    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    const tool = createTool({ locationChannelId: "C0CURRENT" });
     await expect(
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/C0STALE/p1700000000100000",
@@ -573,6 +582,67 @@ describe("slackThreadRead", () => {
     });
     expect(file).not.toHaveProperty("url_private");
     expect(file).not.toHaveProperty("url_private_download");
+  });
+
+  it("surfaces files nested inside a forwarded/shared message's attachments", async () => {
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.300000",
+        messages: [
+          {
+            ts: "1700000000.300000",
+            thread_ts: "1700000000.300000",
+            user: "U1",
+            text: "Billing issue. can you diagnose",
+            attachments: [
+              {
+                is_share: true,
+                author_name: "David Cramer",
+                text: "Billing issue.",
+                files: [
+                  {
+                    id: "F_SHARED_1",
+                    name: "billing.png",
+                    mimetype: "image/png",
+                    size: 111,
+                    url_private: "https://files.slack.com/shared-1",
+                    url_private_download: "https://files.slack.com/shared-1-dl",
+                  },
+                  {
+                    id: "F_SHARED_2",
+                    name: "payment-form.png",
+                    mimetype: "image/png",
+                    size: 222,
+                  },
+                ],
+              },
+            ],
+          } as any,
+        ],
+      }),
+    });
+
+    const tool = createTool({});
+    const result = await executeTool(tool, {
+      channel_id: "C0SHARE",
+      ts: "1700000000.300000",
+    });
+
+    expect(result.messages[0].files).toEqual([
+      {
+        id: "F_SHARED_1",
+        name: "billing.png",
+        mimetype: "image/png",
+        size: 111,
+      },
+      {
+        id: "F_SHARED_2",
+        name: "payment-form.png",
+        mimetype: "image/png",
+        size: 222,
+      },
+    ]);
+    expect(result.messages[0].files[0]).not.toHaveProperty("url_private");
   });
 
   it("does not call conversations.history — only conversations.replies", async () => {

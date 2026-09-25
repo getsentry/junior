@@ -1,5 +1,5 @@
 import { describeEval } from "vitest-evals";
-import { rubric, scheduledTaskDue, slackEvals } from "../../src/helpers";
+import { rubric, scheduledAutomationDue, slackEvals } from "../../src/helpers";
 
 describeEval("Scheduled Delivery", slackEvals, (it) => {
   it("when a one-off reminder becomes due, deliver the reminder outcome", async ({
@@ -7,10 +7,13 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
   }) => {
     await run({
       initialEvents: [
-        scheduledTaskDue("Post this reminder: Standup moved to 10:30 today.", {
-          schedule: "Once at noon UTC",
-          schedule_kind: "one_off",
-        }),
+        scheduledAutomationDue(
+          "Post this reminder: Standup moved to 10:30 today.",
+          {
+            schedule: "Once at noon UTC",
+            schedule_kind: "one_off",
+          },
+        ),
       ],
       criteria: rubric({
         pass: [
@@ -32,14 +35,14 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
   }) => {
     await run({
       initialEvents: [
-        scheduledTaskDue("Remind me to do healthchecks.", {
+        scheduledAutomationDue("Remind me to do healthchecks.", {
           schedule: "Once at noon UTC",
           schedule_kind: "one_off",
         }),
       ],
       criteria: rubric({
         pass: [
-          "Junior reminds the scheduled task creator to do healthchecks.",
+          "Junior reminds the scheduled automation creator to do healthchecks.",
           "The reminder addresses the creator with the known Slack mention for user U0TEST.",
         ],
         fail: [
@@ -51,12 +54,12 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
     });
   });
 
-  it("when a recurring scheduled task becomes due, deliver that occurrence", async ({
+  it("when a recurring scheduled automation becomes due, deliver that occurrence", async ({
     run,
   }) => {
     await run({
       initialEvents: [
-        scheduledTaskDue(
+        scheduledAutomationDue(
           "Post this reminder: Submit timesheets by 5pm today.",
           {
             recurrence: "weekly",

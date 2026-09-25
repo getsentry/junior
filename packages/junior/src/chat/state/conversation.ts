@@ -1,8 +1,11 @@
+import type { MessageAttachment } from "@/chat/attachments/input";
+import type { MessageCard } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 
 type ConversationRole = "assistant" | "system" | "user";
 
 export interface ConversationAuthor {
+  email?: string;
   fullName?: string;
   isBot?: boolean;
   userId?: string;
@@ -10,10 +13,16 @@ export interface ConversationAuthor {
 }
 
 export interface ConversationMessageMeta {
+  cards?: MessageCard[];
+  attachments?: MessageAttachment[];
+  slackFileIds?: string[];
   attachmentCount?: number;
-  source?: "web";
+  /** Known message provenance. Omit when unknown; never invent a default. */
+  source?: "slack" | "web";
   eventType?: string;
   explicitMention?: boolean;
+  /** Short summary supplied by the Event publisher. */
+  trustedSummary?: string;
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
@@ -119,7 +128,7 @@ function coercePendingAuthState(
   const base = {
     provider,
     actorId,
-    ...(scope ? { scope } : {}),
+    ...(scope ? { scope } : undefined),
     sessionId,
     linkSentAtMs,
   };

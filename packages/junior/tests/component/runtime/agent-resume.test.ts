@@ -30,7 +30,6 @@ async function resumeState(conversationId: string, turnId: string) {
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => undefined,
-      publishExternally: true,
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,
@@ -65,7 +64,6 @@ describe("agent resume", () => {
       recordActiveMcpProviders: async () => {
         throw new Error("provider metadata unavailable");
       },
-      publishExternally: true,
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,
@@ -82,6 +80,40 @@ describe("agent resume", () => {
     await expect(
       getTurnRecord(conversationId, turnId),
     ).resolves.toBeUndefined();
+  });
+
+  it("restores and checkpoints the durable tool-call total", async () => {
+    const conversationId = "local:test:tool-call-total";
+    const turnId = "turn-tool-call-total";
+    const first: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "keep going" }],
+      timestamp: 1,
+    };
+    const second: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "after tools" }],
+      timestamp: 2,
+    };
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "yield",
+      conversationId,
+      turnId,
+      sliceId: 1,
+      messages: [first],
+      cumulativeToolCallCount: 17,
+      surface: "internal",
+    });
+    const { resume } = await resumeState(conversationId, turnId);
+    resume.admitToolCall();
+    await expect(resume.persistSafeBoundary([first, second])).resolves.toBe(
+      true,
+    );
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      cumulativeToolCallCount: 18,
+      state: "running",
+    });
   });
 
   it("preserves the execution-limit error while parking for auth", async () => {

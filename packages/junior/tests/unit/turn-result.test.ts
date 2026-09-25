@@ -270,17 +270,24 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats a no-reply marker mixed with text as silent completion", () => {
+  it("does not treat a tool-call terminal tail as intentional no-reply", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "assistant",
-          content: [{ type: "text", text: `Done. ${NO_REPLY_MARKER}` }],
-          stopReason: "stop",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "bash",
+              arguments: {},
+            },
+          ],
+          stopReason: "toolUse",
         },
       ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
+      userInput: "run a command",
+      toolCalls: ["bash"],
       generatedFileCount: 0,
       shouldTrace: false,
       modelId: "test-model",
@@ -288,7 +295,7 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
   it("keeps no-reply marker silent when side-effect tools also ran", () => {
@@ -327,10 +334,7 @@ describe("buildTurnResult", () => {
           isError: false,
           content: [{ type: "text", text: "uploaded file" }],
           details: {
-            channel_id: "C123",
-            thread_ts: "1700000000.321",
-            file_count: 1,
-            file_ids: ["F123"],
+            attachment_refs: [{ id: "att-1", filename: "chart.png" }],
           },
         },
         {

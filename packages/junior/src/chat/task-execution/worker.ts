@@ -15,6 +15,7 @@ import {
   beginConversationResume,
   checkInConversationWork,
   clearConsumedConversationWake,
+  completeConversationStop,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_MAX_RETRIES,
@@ -23,6 +24,7 @@ import {
   drainConversationMailbox,
   ensureConversationWake,
   getConversationWorkState,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
@@ -36,15 +38,17 @@ import {
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
+const CONVERSATION_STOP_CHECK_INTERVAL_MS = 500;
 
 export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
-  publishExternally: boolean;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
+  /** Return an AbortSignal backed by the durable Conversation stop request. */
+  stopSignal?(): AbortSignal;
 }
 
 export interface InboxAttempt {
@@ -59,7 +63,10 @@ export interface InboxAttempt {
 }
 
 export interface ConversationWorkerResult {
-  status: "completed" | "deferred" | "lost_lease" | "yielded";
+  /** `paused` waits for an external wake but must resume if a stop raced it. */
+  status: "completed" | "deferred" | "lost_lease" | "paused" | "yielded";
+  /** Wait before the next wake attempt. Only meaningful when `status` is `deferred`. */
+  delayMs?: number;
 }
 
 export interface ConversationWorkProcessResult {
@@ -97,7 +104,7 @@ function selectContiguousTurnBatch(
   const nextTurnIndex = messages.findIndex(
     (message) =>
       message.input.authorId !== first.input.authorId ||
-      message.publishExternally !== first.publishExternally,
+      message.source !== first.source,
   );
   return messages.slice(
     0,
@@ -105,7 +112,7 @@ function selectContiguousTurnBatch(
   );
 }
 
-/** Prioritize interrupts while keeping each attempt scoped to one actor. */
+/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
   const interrupts = messages.filter(
@@ -114,9 +121,13 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   if (interrupts.length > 0) {
     return selectContiguousTurnBatch(interrupts);
   }
-  return work.execution.status === "paused"
-    ? []
-    : selectContiguousTurnBatch(messages);
+  if (work.execution.status === "paused") return [];
+  const nonEventMessages = messages.filter(
+    (message) => message.source !== "event",
+  );
+  return selectContiguousTurnBatch(
+    nonEventMessages.length > 0 ? nonEventMessages : messages,
+  );
 }
 
 function nudgeIdempotencyKey(
@@ -281,6 +292,70 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
+/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
+function createConversationStopSignal(args: {
+  conversationId: string;
+  initiallyStopped: boolean;
+  options: ProcessConversationWorkOptions;
+  runId: string;
+}) {
+  const controller = new AbortController();
+  let checking = false;
+  let failureCaptured = false;
+  let listening = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const requestStop = (): void => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error("Conversation work stopped"));
+    }
+  };
+  if (args.initiallyStopped) requestStop();
+
+  const check = async (): Promise<void> => {
+    if (checking || controller.signal.aborted) return;
+    checking = true;
+    try {
+      const stopped = await hasConversationStop({
+        conversationId: args.conversationId,
+        runId: args.runId,
+        state: args.options.state,
+      });
+      if (stopped) requestStop();
+    } catch (error) {
+      if (!failureCaptured) {
+        failureCaptured = true;
+        logException(error, "conversation.work.stop_check.failed");
+      }
+    } finally {
+      checking = false;
+    }
+  };
+
+  return {
+    close(): void {
+      if (timer) clearInterval(timer);
+    },
+    isEnabled(): boolean {
+      return listening;
+    },
+    wasObserved(): boolean {
+      return listening && controller.signal.aborted;
+    },
+    signal(): AbortSignal {
+      listening = true;
+      if (!timer && !controller.signal.aborted) {
+        timer = setInterval(
+          () => void check(),
+          CONVERSATION_STOP_CHECK_INTERVAL_MS,
+        );
+        timer.unref?.();
+      }
+      return controller.signal;
+    },
+  };
+}
+
 /** Process one queue wake-up for a conversation. */
 export async function processConversationWork(
   message: ConversationQueueMessage,
@@ -330,7 +405,16 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  const destination = initial.destination;
+  // Mailbox wakes may omit Destination. Read it from this root Conversation
+  // only. Conversations with a parent keep no Destination, so invocation and
+  // dispatch workers stay free of provider Destinations.
+  let destination = initial.destination;
+  if (!destination && options.conversationStore) {
+    const stored = await options.conversationStore.get({ conversationId });
+    if (stored && !stored.parentConversationId) {
+      destination = stored.destination;
+    }
+  }
 
   const lease = await startConversationWork({
     conversationId,
@@ -470,6 +554,7 @@ async function processConversationWorkInContext(
 
   try {
     let hasRun = false;
+    let resumeIfStopped = false;
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -494,6 +579,10 @@ async function processConversationWorkInContext(
 
       const resumePending = leasedWork.execution.status === "paused";
       const attemptMessages = selectAttemptMessages(leasedWork);
+      const runId = leasedWork.execution.runId;
+      if (!runId) {
+        throw new Error(`Conversation run is missing for ${conversationId}`);
+      }
       attemptStartMessageIds = new Set(
         leasedWork.messages.map((message) => message.inboundMessageId),
       );
@@ -529,9 +618,6 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
-      // Empty batches are resume-only. Adapters read the checkpoint flag; do
-      // not invent publish from destination presence.
-      const publishExternally = attemptMessages[0]?.publishExternally ?? false;
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -549,6 +635,16 @@ async function processConversationWorkInContext(
           );
         }
       };
+      const stop = createConversationStopSignal({
+        conversationId,
+        initiallyStopped: await hasConversationStop({
+          conversationId,
+          runId,
+          state: options.state,
+        }),
+        options,
+        runId,
+      });
       const workerContext: ConversationWorkerContext = {
         attempt: {
           ack,
@@ -562,12 +658,18 @@ async function processConversationWorkInContext(
         },
         conversationId,
         destination,
-        publishExternally,
         shouldYield,
+        stopSignal: stop.signal,
         checkIn,
       };
 
-      const result = await options.run(workerContext);
+      let result: ConversationWorkerResult;
+      try {
+        result = await options.run(workerContext);
+      } finally {
+        stop.close();
+      }
+      resumeIfStopped ||= stop.isEnabled();
       hasRun = true;
       if (result.status === "lost_lease") {
         await requestLostLeaseRecovery({
@@ -588,6 +690,27 @@ async function processConversationWorkInContext(
           options,
         });
         return { status: "lost_lease" };
+      }
+      if (result.status === "completed" && stop.wasObserved()) {
+        const stopped = await completeConversationStop({
+          conversationId,
+          conversationStore: options.conversationStore,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          runId,
+          state: options.state,
+        });
+        if (stopped.status === "lost_lease") {
+          markLeaseLost();
+          await requestLostLeaseRecovery({
+            conversationId,
+            destination,
+            leaseToken: lease.leaseToken,
+            nowMs: now(options),
+            options,
+          });
+          return { status: "lost_lease" };
+        }
       }
       if (result.status === "yielded") {
         const sliceRequested = await requestAnotherSlice({
@@ -619,6 +742,7 @@ async function processConversationWorkInContext(
         const wake = await ensureConversationWake({
           conversationId,
           conversationStore: options.conversationStore,
+          delayMs: result.delayMs,
           idempotencyKey: nudgeIdempotencyKey(
             "deferred",
             conversationId,
@@ -671,6 +795,10 @@ async function processConversationWorkInContext(
         }
       }
 
+      if (result.status === "paused") {
+        break;
+      }
+
       const next = await getConversationWorkState({
         conversationId,
         state: options.state,
@@ -690,6 +818,8 @@ async function processConversationWorkInContext(
       conversationId,
       leaseToken: lease.leaseToken,
       madeProgress: !failedWithoutProgress,
+      // A stop that raced an external pause must reach the paused Turn.
+      resumeIfStopped,
       conversationStore: options.conversationStore,
       nowMs: now(options),
       state: options.state,

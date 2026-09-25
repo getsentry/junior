@@ -69,7 +69,7 @@ export function getOAuthProviderErrorAttributes(
     "server.address": error.resourceHost,
     ...(error.status !== undefined
       ? { "http.response.status_code": error.status }
-      : {}),
+      : undefined),
   };
 }
 

@@ -23,6 +23,7 @@ const canonicalPullRequestOutcomeSchema = z
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
         number: z.number().int().positive(),
+        title: z.string().min(1).optional(),
         updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).strict(),
       })
@@ -48,6 +49,7 @@ const pullRequestOutcomeSchema = z
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
         number: z.number().int().positive(),
+        title: z.string().min(1).optional(),
         updated_at: z.string(),
         user: z.object({ login: z.string().min(1) }).passthrough(),
       })
@@ -71,6 +73,7 @@ const pullRequestOutcomeSchema = z
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
         number: provider.pull_request.number,
+        title: provider.pull_request.title,
         updated_at: provider.pull_request.updated_at,
         user: { login: provider.pull_request.user.login },
       },
@@ -190,6 +193,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
     repositoryFullName: parsed.repository.full_name,
     repositoryId: String(parsed.repository.id),
     state,
+    title: pullRequest.title,
     updatedAt,
   };
 }

@@ -17,6 +17,7 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  hasConversationStop,
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
@@ -25,6 +26,7 @@ import {
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
+  stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import {
@@ -56,7 +58,7 @@ import {
   inboundMessage,
   observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
-
+import { readProxyProperty } from "../../fixtures/proxy-property";
 const OTHER_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -71,6 +73,7 @@ function failingMetadataStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       throw new Error("metadata unavailable");
@@ -86,6 +89,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       events.push("metadata");
@@ -209,7 +213,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const legacyMessage = {
-      ...(inboundMessage("legacy") as unknown as Record<string, unknown>),
+      ...(inboundMessage("legacy") as Record<string, unknown>),
     };
     delete legacyMessage.destination;
     const legacyWork = {
@@ -573,7 +577,7 @@ describe("conversation work execution", () => {
       execution: {
         inboundMessageIds: [pendingMessage.inboundMessageId],
         pendingCount: 1,
-        pendingMessages: [pendingMessage],
+        pendingMessages: [{ ...pendingMessage, publishExternally: true }],
         status: "idle",
         updatedAtMs: 1_000,
       },
@@ -636,6 +640,7 @@ describe("conversation work execution", () => {
   it("rejects pending messages with a different conversation destination", async () => {
     const state = getStateAdapter();
     await state.connect();
+    const pendingMessage = inboundMessage("m1");
     await state.set(CONVERSATION_WORK_STATE_KEY, {
       schemaVersion: 2,
       conversationId: CONVERSATION_ID,
@@ -646,8 +651,9 @@ describe("conversation work execution", () => {
         pendingCount: 1,
         pendingMessages: [
           {
-            ...inboundMessage("m1"),
+            ...pendingMessage,
             destination: OTHER_SLACK_DESTINATION,
+            publishExternally: true,
           },
         ],
         status: "pending",
@@ -662,7 +668,7 @@ describe("conversation work execution", () => {
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
-  it("rejects appending destinationless work to a provider conversation", async () => {
+  it("appends destinationless work onto a provider conversation", async () => {
     await appendInboundMessage({
       message: inboundMessage("m1"),
       nowMs: 1_000,
@@ -677,7 +683,20 @@ describe("conversation work execution", () => {
         },
         nowMs: 2_000,
       }),
-    ).rejects.toThrow("Conversation destination changed");
+    ).resolves.toMatchObject({ status: "appended" });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      destination: SLACK_DESTINATION,
+      messages: [
+        expect.objectContaining({ inboundMessageId: "m1" }),
+        expect.objectContaining({
+          inboundMessageId: "m2",
+          source: "internal",
+        }),
+      ],
+    });
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -844,9 +863,9 @@ describe("conversation work execution", () => {
         conversationId: CONVERSATION_ID,
         destination: undefined,
         leaseToken: lease.leaseToken,
-        nowMs: 3_000,
+        nowMs: 3_500,
       }),
-    ).rejects.toThrow("Conversation destination changed");
+    ).resolves.toBe(true);
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
@@ -1016,9 +1035,9 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([]);
   });
 
-  it("keeps different publishExternally values in separate attempts", async () => {
+  it("keeps publishExternally out of worker input", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const attempts: Array<{ ids: string[]; publishExternally: boolean }> = [];
+    const attempts: string[][] = [];
     await appendInboundMessage({
       message: inboundMessage("m1", { delivery: "defer" }),
       nowMs: 1_000,
@@ -1026,33 +1045,50 @@ describe("conversation work execution", () => {
     await appendInboundMessage({
       message: inboundMessage("m2", {
         createdAtMs: 2_000,
+        destination: undefined,
         delivery: "defer",
         receivedAtMs: 2_000,
-        publishExternally: false,
+        source: "web",
       }),
       nowMs: 2_000,
     });
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        createdAtMs: 3_000,
+        delivery: "defer",
+        receivedAtMs: 3_000,
+        source: "plugin",
+      }),
+      nowMs: 3_000,
+    });
+
+    const state = getStateAdapter();
+    const stored = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { pendingMessages: Array<Record<string, unknown>> };
+    };
+    expect(stored.execution.pendingMessages).toEqual([
+      expect.objectContaining({ publishExternally: true }),
+      expect.objectContaining({ publishExternally: false }),
+      expect.objectContaining({ publishExternally: true }),
+    ]);
 
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          attempts.push({
-            ids: context.attempt.messages.map(
-              (message) => message.inboundMessageId,
-            ),
-            publishExternally: context.publishExternally,
-          });
+          attempts.push(
+            context.attempt.messages.map((message) => message.inboundMessageId),
+          );
+          expect(context.attempt.messages[0]).not.toHaveProperty(
+            "publishExternally",
+          );
           await context.attempt.ack();
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(attempts).toEqual([
-      { ids: ["m1"], publishExternally: true },
-      { ids: ["m2"], publishExternally: false },
-    ]);
+    expect(attempts).toEqual([["m1"], ["m2"], ["m3"]]);
   });
 
   it("resumes a paused turn before defer delivery after requeue", async () => {
@@ -1081,18 +1117,20 @@ describe("conversation work execution", () => {
             },
             { queue, nowMs: currentNowMs },
           );
-          await appendInboundMessage({
-            message: inboundMessage("m2", {
-              createdAtMs: 2_000,
-              delivery: "defer",
-              receivedAtMs: 2_000,
-            }),
-            nowMs: currentNowMs,
-          });
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "yielded" });
+
+    currentNowMs = 2_100;
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: currentNowMs,
+        delivery: "defer",
+        receivedAtMs: currentNowMs,
+      }),
+      nowMs: currentNowMs,
+    });
 
     currentNowMs = 3_000;
     await expect(
@@ -1654,6 +1692,300 @@ describe("conversation work execution", () => {
     await expect(running).resolves.toEqual({ status: "completed" });
   });
 
+  it("observes a remote stop and removes older human mailbox work", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    let currentNowMs = 1_000;
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    const workerGetKeys: string[] = [];
+    const workerState = new Proxy(state, {
+      get(target, prop) {
+        if (prop === "get") {
+          return async (key: string) => {
+            workerGetKeys.push(key);
+            return target.get(key);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    const entered = deferred<void>();
+    const stopObserved = deferred<void>();
+    const finishRun = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      nowMs: () => currentNowMs,
+      queue,
+      softYieldAfterMs: 1_000,
+      state: workerState,
+      run: async (context) => {
+        await context.attempt.ack();
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        if (signal.aborted) {
+          stopObserved.resolve();
+        } else {
+          signal.addEventListener("abort", () => stopObserved.resolve(), {
+            once: true,
+          });
+        }
+        entered.resolve();
+        await stopObserved.promise;
+        await finishRun.promise;
+        return { status: "completed" };
+      },
+    });
+
+    await entered.promise;
+    const conversationReadsBeforeStop = workerGetKeys.filter(
+      (key) => key === CONVERSATION_WORK_STATE_KEY,
+    ).length;
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 1_500,
+        receivedAtMs: 1_500,
+      }),
+      nowMs: 1_500,
+      state,
+    });
+
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    await vi.advanceTimersByTimeAsync(500);
+    await stopObserved.promise;
+    expect(
+      workerGetKeys.filter((key) => key === CONVERSATION_WORK_STATE_KEY),
+    ).toHaveLength(conversationReadsBeforeStop);
+    expect(
+      workerGetKeys.includes(`junior:conversation:v2:stop:${CONVERSATION_ID}`),
+    ).toBe(true);
+
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        // The append happens after the stop. Equal timestamps must not make
+        // this later message part of the stop request.
+        createdAtMs: 2_000,
+        receivedAtMs: 2_000,
+      }),
+      nowMs: 2_000,
+      state,
+    });
+    currentNowMs = 2_000;
+    finishRun.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      messages: [expect.objectContaining({ inboundMessageId: "m3" })],
+    });
+  });
+
+  it("does not apply a stale stop marker to a new run", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    const first = processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        await context.attempt.ack();
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+    });
+    await entered.promise;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    finish.resolve();
+    await expect(first).resolves.toEqual({ status: "completed" });
+
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 3_000,
+        receivedAtMs: 3_000,
+      }),
+      nowMs: 3_000,
+    });
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(false);
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+  });
+
+  it("resumes a paused Turn when its stop missed the live poll", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    let currentNowMs = 1_000;
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      nowMs: () => currentNowMs,
+      queue,
+      run: async (context) => {
+        await context.attempt.ack();
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        expect(signal.aborted).toBe(false);
+        entered.resolve();
+        await finish.promise;
+        return { status: "paused" };
+      },
+    });
+
+    await entered.promise;
+    currentNowMs = 2_000;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: currentNowMs,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    finish.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      processConversationWork(queue.takeMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(true);
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: { status: "idle" },
+    });
+  });
+
+  it("resumes a stop written after the adapter returns", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    const completionBlocked = deferred<void>();
+    const releaseCompletion = deferred<void>();
+    const mutationLockKey = `junior:conversation:v2:mutation:${CONVERSATION_ID}`;
+    let holdCompletion = false;
+    const workerState = new Proxy(state, {
+      get(target, prop) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (holdCompletion && key === mutationLockKey) {
+              holdCompletion = false;
+              completionBlocked.resolve();
+              await releaseCompletion.promise;
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+    const running = processConversationWork(conversationQueueMessage(), {
+      queue,
+      state: workerState,
+      run: async (context) => {
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        expect(signal.aborted).toBe(false);
+        holdCompletion = true;
+        return { status: "completed" };
+      },
+    });
+
+    await completionBlocked.promise;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    releaseCompletion.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+        state,
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      processConversationWork(queue.takeMessage(), {
+        queue,
+        state: workerState,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(true);
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      execution: { status: "idle" },
+    });
+  });
+
   it("reports lost lease after periodic check-in loses ownership", async () => {
     vi.useFakeTimers({ now: 1_000 });
     const queue = createConversationWorkQueueTestAdapter();
@@ -1892,7 +2224,7 @@ describe("conversation work execution", () => {
 
     let stealLockOnNextRead = false;
     const proxied = new Proxy(state, {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop === "get") {
           return async (key: string) => {
             const value = await target.get(key);
@@ -1905,7 +2237,7 @@ describe("conversation work execution", () => {
             return value;
           };
         }
-        const value = Reflect.get(target, prop, receiver);
+        const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;

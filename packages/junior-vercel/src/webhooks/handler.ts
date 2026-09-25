@@ -5,11 +5,8 @@
  * publish failures propagate so Vercel can retry the delivery.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type {
-  PluginRoute,
-  ResourceEventPublisher,
-} from "@sentry/junior-plugin-api";
-import { normalizeVercelResourceEvents } from "./resource-events.js";
+import type { PluginRoute, EventPublisher } from "@sentry/junior-plugin-api";
+import { normalizeVercelEvents } from "./events.js";
 
 /** Verify Vercel's SHA-1 signature against the untouched request body. */
 function verifyVercelSignature(
@@ -37,7 +34,7 @@ function parseJson(body: string): unknown {
 
 /** Create the public, signed Vercel deployment webhook route. */
 export function createVercelWebhookRoute(args: {
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -53,11 +50,11 @@ export function createVercelWebhookRoute(args: {
       if (body === undefined) {
         return new Response("Malformed Vercel webhook", { status: 400 });
       }
-      const resourceEvents = normalizeVercelResourceEvents({ body });
-      for (const event of resourceEvents) {
-        await args.resourceEvents.publish(event);
+      const events = normalizeVercelEvents({ body });
+      for (const event of events) {
+        await args.events.publish(event);
       }
-      return new Response(resourceEvents.length ? "Accepted" : "Ignored", {
+      return new Response(events.length ? "Accepted" : "Ignored", {
         status: 202,
       });
     },

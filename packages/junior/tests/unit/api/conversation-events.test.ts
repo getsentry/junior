@@ -230,6 +230,51 @@ describe("conversation report event projection", () => {
     ]);
   });
 
+  it("projects delivered attachments only when payload is visible", () => {
+    const delivered = event(1, {
+      type: "attachments_delivered",
+      attachments: [
+        {
+          id: "att-1",
+          filename: "chart.png",
+          contentType: "image/png",
+          bytes: 18211,
+        },
+      ],
+      toolCallId: "call-send-1",
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [delivered],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "attachments_delivered",
+          attachments: [
+            {
+              id: "att-1",
+              filename: "chart.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events: [delivered],
+      }),
+    ).toEqual([]);
+  });
+
   it("projects turn input message ids across report pages", () => {
     const events = [
       event(1, {
@@ -647,6 +692,7 @@ describe("conversation report event projection", () => {
           text: "event details",
           meta: {
             eventType: "pull_request.merged",
+            trustedSummary: "David merged PR #42.",
             provider: "private-provider",
             source: "web",
           },
@@ -660,7 +706,33 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      trustedSummary: "David merged PR #42.",
       text: "event details",
+    });
+  });
+
+  it("projects known Slack source with visible message metadata", () => {
+    const [projected] = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: [
+        event(1, {
+          type: "message",
+          messageId: "event-1",
+          role: "user",
+          text: "from slack",
+          meta: {
+            source: "slack",
+          },
+        }),
+      ],
+    });
+
+    expect(projected?.data).toEqual({
+      type: "message",
+      messageId: "event-1",
+      role: "user",
+      source: "slack",
+      text: "from slack",
     });
   });
 
@@ -743,6 +815,7 @@ describe("conversation report event projection", () => {
           meta: {
             arbitraryMeta: "private arbitrary metadata",
             authorizationId: "private-authorization-id",
+            trustedSummary: "private resource summary",
           },
         }),
         event(2, {
@@ -763,6 +836,7 @@ describe("conversation report event projection", () => {
           type: "turn_failed",
           turnId: "turn-1",
           failureCode: "model_execution_failed",
+          failureReason: "network",
           eventId,
         }),
         event(5, {
@@ -820,13 +894,15 @@ describe("conversation report event projection", () => {
       type: "turn_lifecycle",
       turnId: "turn-1",
       state: "failed",
-      failureKind: "agent",
+      failureCode: "model_execution_failed",
+      failureReason: "network",
+      eventId,
     });
     expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
       turnId: "turn-delivery-1",
       state: "failed",
-      failureKind: "delivery",
+      failureCode: "delivery_failed",
     });
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
@@ -836,16 +912,13 @@ describe("conversation report event projection", () => {
       "private visible text",
       "private-actor-id",
       "private arbitrary metadata",
+      "private resource summary",
       "private-authorization-id",
       "private tool result",
       "private provider error",
-      "model_execution_failed",
-      eventId,
       "private-provider",
       "actorId",
       "authorizationId",
-      "eventId",
-      "failureCode",
       "args",
       "content",
       "meta",
@@ -1082,7 +1155,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "delivery",
+        failureCode: "delivery_failed",
       },
       {
         type: "tool_calls",
@@ -1146,7 +1219,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "agent",
+        failureCode: "model_execution_failed",
       },
     };
 
@@ -1164,7 +1237,7 @@ describe("conversation report event projection", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "succeeded",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
         },
       }).success,
     ).toBe(false);
@@ -1183,7 +1256,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,
-        data: { ...valid.data, failureCode: "private-failure-code" },
+        data: { ...valid.data, failureCode: "not_a_real_code" },
       }).success,
     ).toBe(false);
     expect(

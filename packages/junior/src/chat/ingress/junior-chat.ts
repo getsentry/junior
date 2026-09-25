@@ -11,10 +11,12 @@ import {
   type SlashCommandEvent,
   type WebhookOptions,
 } from "chat";
-import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
-import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
+import {
+  normalizeIncomingSlackThreadId,
+  withNormalizedThreadId,
+} from "@/chat/ingress/message-router";
+import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-
 type ChatInternals = {
   logger?: {
     error?: (message: string, data?: Record<string, unknown>) => void;
@@ -87,7 +89,8 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): Promise<void> {
     if (typeof messageOrFactory === "function") {
-      const runtime = this as unknown as ChatInternals;
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const runtime = this as ChatInternals;
       return enqueueBackgroundTask(
         options,
         runWithTurnRequestDeadline(async (): Promise<void> => {
@@ -101,30 +104,33 @@ export class JuniorChat<
             });
             return;
           }
-          if (isExternalSlackUser(message.raw as Record<string, unknown>)) {
+          if (!isSlackWorkspaceMember(message.raw)) {
             return;
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
-          if (normalized !== threadId && "threadId" in message) {
-            (message as unknown as Record<string, unknown>).threadId =
-              normalized;
-          }
-          await super.processMessage(adapter, normalized, message, options);
+          await super.processMessage(
+            adapter,
+            normalized,
+            withNormalizedThreadId(message, normalized),
+            options,
+          );
         }),
       );
     }
 
     const message = messageOrFactory;
-    if (isExternalSlackUser(message.raw as Record<string, unknown>)) {
+    if (!isSlackWorkspaceMember(message.raw)) {
       return Promise.resolve();
     }
 
     const normalized = normalizeIncomingSlackThreadId(threadId, message);
-    if (normalized !== threadId && "threadId" in message) {
-      (message as unknown as Record<string, unknown>).threadId = normalized;
-    }
     return runWithTurnRequestDeadline(() =>
-      super.processMessage(adapter, normalized, message, options),
+      super.processMessage(
+        adapter,
+        normalized,
+        withNormalizedThreadId(message, normalized),
+        options,
+      ),
     );
   }
 
@@ -134,7 +140,8 @@ export class JuniorChat<
     },
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -158,7 +165,8 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): Promise<void> {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     const task = (async (): Promise<void> => {
       try {
@@ -183,7 +191,8 @@ export class JuniorChat<
     contextId?: string,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -225,7 +234,8 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -247,7 +257,8 @@ export class JuniorChat<
     event: AssistantThreadStartedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -270,7 +281,8 @@ export class JuniorChat<
     event: AssistantContextChangedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -293,7 +305,8 @@ export class JuniorChat<
     event: AppHomeOpenedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,

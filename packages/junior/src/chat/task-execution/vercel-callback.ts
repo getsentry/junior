@@ -1,15 +1,9 @@
-import {
-  handleCallback,
-  registerDevConsumer,
-  type MessageMetadata,
-  type RetryDirective,
-} from "@vercel/queue";
+import type { MessageMetadata } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext } from "@/chat/logging";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import { queueCallback } from "@/chat/queue/callback";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   conversationQueueMessageSchema,
   ConversationQueueMessageRejectedError,
@@ -86,52 +80,15 @@ export async function processConversationQueueMessage(
   });
 }
 
-/** Consume queue messages, acking permanent rejects while preserving transient retries. */
-async function handleConversationQueueMessage(
-  message: unknown,
-  metadata: MessageMetadata,
-  options: VercelConversationWorkCallbackOptions,
-): Promise<void> {
-  if (!getChatConfig().conversationWorkEnabled) {
-    logWarn("conversation.work.processing.disabled", {
-      "app.queue.consumer_group": metadata.consumerGroup,
-      "app.queue.delivery_count": metadata.deliveryCount,
-      "app.queue.message_id": metadata.messageId,
-      "app.queue.topic_name": metadata.topicName,
-    });
-    return;
-  }
-  const verification = verifyConversationQueueMessage(message);
-  if (verification.status === "rejected") {
-    logConversationQueueMessageRejected(verification.reason, metadata);
-    return;
-  }
-  if (verification.status === "unavailable") {
-    throw new Error(
-      `Conversation queue message verification unavailable: ${verification.reason}`,
-    );
-  }
-  try {
-    await runWithTurnRequestDeadline(() =>
-      processConversationQueueMessage(verification.message, options),
-    );
-  } catch (error) {
-    if (isConversationQueueMessageRejectedError(error)) {
-      logConversationQueueMessageRejected(error.reason, metadata, {
-        conversationId: error.conversationId,
-      });
-      return;
-    }
-    throw error;
-  }
-}
-
 function logConversationQueueMessageRejected(
-  reason: ConversationQueueMessageRejectedError["reason"],
+  reason: ConversationQueueMessageRejectedError["reason"] | string,
   metadata: MessageMetadata,
-  context: { conversationId?: string } = {},
+  error?: unknown,
 ): void {
-  withLogContext({ conversationId: context.conversationId }, () => {
+  const conversationId = isConversationQueueMessageRejectedError(error)
+    ? error.conversationId
+    : undefined;
+  withLogContext({ conversationId }, () => {
     logWarn("conversation.queue.message.rejected", {
       "app.queue.consumer_group": metadata.consumerGroup,
       "app.queue.delivery_count": metadata.deliveryCount,
@@ -142,53 +99,50 @@ function logConversationQueueMessageRejected(
   });
 }
 
-/** Acknowledge permanently rejected queue messages while preserving normal retries. */
-function handleConversationQueueRetry(
-  error: unknown,
-  metadata: MessageMetadata,
-): RetryDirective | undefined {
-  if (!isConversationQueueMessageRejectedError(error)) {
-    return undefined;
-  }
-  logConversationQueueMessageRejected(error.reason, metadata, {
-    conversationId: error.conversationId,
+function conversationWorkCallback(
+  options: VercelConversationWorkCallbackOptions,
+) {
+  return queueCallback<ConversationQueueMessage>({
+    consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
+    // Conversation work stores and limits failed attempts in durable state.
+    maxDeliveries: null,
+    onRejected: logConversationQueueMessageRejected,
+    permanentError: (error) =>
+      isConversationQueueMessageRejectedError(error) ? error.reason : undefined,
+    // Kill switch must ack before sign checks so a missing secret cannot retry.
+    skip: (metadata) => {
+      if (getChatConfig().conversationWorkEnabled) {
+        return false;
+      }
+      logWarn("conversation.work.processing.disabled", {
+        "app.queue.consumer_group": metadata.consumerGroup,
+        "app.queue.delivery_count": metadata.deliveryCount,
+        "app.queue.message_id": metadata.messageId,
+        "app.queue.topic_name": metadata.topicName,
+      });
+      return true;
+    },
+    run: async (message) => {
+      await processConversationQueueMessage(message, options);
+    },
+    topic: resolveConversationWorkQueueTopic(options),
+    verify: verifyConversationQueueMessage,
+    visibilityTimeoutSeconds:
+      options.visibilityTimeoutSeconds ??
+      resolveConversationWorkVisibilityTimeoutSeconds(),
   });
-  return { acknowledge: true };
 }
 
 /** Create the Vercel Queue push callback for conversation work nudges. */
 export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
-  return handleCallback(
-    (message: unknown, metadata: MessageMetadata) =>
-      handleConversationQueueMessage(message, metadata, options),
-    {
-      retry: handleConversationQueueRetry,
-      visibilityTimeoutSeconds:
-        options.visibilityTimeoutSeconds ??
-        resolveConversationWorkVisibilityTimeoutSeconds(),
-    },
-  );
+  return conversationWorkCallback(options).create();
 }
 
 /** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */
 export function registerVercelConversationWorkDevConsumer(
   options: VercelConversationWorkCallbackOptions,
 ): (() => void) | undefined {
-  if (process.env.NODE_ENV !== "development") {
-    return undefined;
-  }
-
-  return registerDevConsumer({
-    client: createVercelQueueClient(),
-    consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-    handler: (message: unknown, metadata: MessageMetadata) =>
-      handleConversationQueueMessage(message, metadata, options),
-    retry: handleConversationQueueRetry,
-    topic: resolveConversationWorkQueueTopic(options),
-    visibilityTimeoutSeconds:
-      options.visibilityTimeoutSeconds ??
-      resolveConversationWorkVisibilityTimeoutSeconds(),
-  });
+  return conversationWorkCallback(options).registerDev();
 }

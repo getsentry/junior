@@ -11,19 +11,31 @@ name, through dashboard settings.
   configuration through `JuniorDashboardOptions`.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
+- The installable shell is static only: a public web app manifest, theme color,
+  and install icon. There is no service worker and no offline app shell cache.
 - API schemas under `src/api/` define the client/server boundary.
 - Plugin user pages use the core `/api/user-pages` contract and render under
   `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the
   signed-in user menu. Core-rendered lists own metrics, search query state,
   cursor pagination, record inspection, destructive confirmation, and
   authenticated plugin REST actions.
-- Conversation detail is a bounded TanStack Query resource that polls while
-  active. Earlier event pages use a separate infinite query loaded on demand.
-  The client derives one ordered transcript from those immutable responses;
-  paginated reads never write into another resource's cache.
-- The server adapts canonical runtime events into normalized reporting events.
-  The dashboard reduces tool and subagent observations by stable identity into
-  one row without interpreting Pi messages or host-only lifecycle shapes.
+- Conversation detail and mailbox use one TanStack Query snapshot. Read the
+  mailbox first, then history: workers commit input before they acknowledge it.
+  Publish both in one render so input moves from queue to transcript without a
+  gap. Poll every 2 seconds while active or waiting for input, and every 10
+  seconds while idle so other Sources can wake the open Conversation.
+- Local sends stay visible until a server snapshot contains their Message id.
+  Web ingress and the browser share one Message id function. The browser derives
+  the id before the first local render and before POST starts. This also
+  removes duplicates when a poll arrives before the accept response. Only Turn
+  lifecycle events enable the thinking indicator; queued work is not thinking.
+- Earlier event pages use a separate infinite query loaded on demand. The client
+  derives one ordered transcript from those immutable responses; paginated reads
+  never write into another resource's cache.
+- The server adapts canonical runtime events into privacy-safe reporting events.
+  The transcript combines tool and subagent updates. The event log keeps each
+  event in sequence order, with readable details and optional raw JSON.
+  Search covers loaded pages; earlier events load on demand.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure
@@ -34,12 +46,33 @@ Mock reporting data exists for local UI development only and must not be
 reachable as a production fallback.
 
 Browser journeys live in `e2e/`, with one Playwright spec per user-facing page.
-Shared server and API setup belongs in `e2e/harness.ts`; page behavior does not
-belong in a cross-page aggregate spec. Tests under `tests/` cover modules and
-component integration without standing in for browser E2E.
+Keep these journeys small. Use them for behavior that needs a real browser:
+navigation, interaction, accessibility state, request contracts, and realistic
+failure recovery. Use visual QA for layout, responsive rendering, styling, and
+copy-only changes. Do not add pixel geometry, element size, computed style,
+fixed-delay checks, or broad console and page error assertions to browser E2E.
+Assert the user-visible outcome or external contract named by the journey.
+
+Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
+`test` from `./test` so every page gets the fixed current time and common API
+stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
+length limit requires it. After the page has loaded,
+call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
+desktop and mobile image. Page behavior does not belong in a cross-page aggregate
+spec. Tests under `tests/` cover modules and component integration without
+standing in for browser E2E.
+
+Mock reports and browser tests use one fixed current time: `NOW`
+(`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so
+labels like "5 minutes ago" stay stable.
 
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
+
+Dashboard E2E writes screenshots to
+`.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
+on the default branch. On a pull request, it compares the new set with the
+saved set and links the report from the pull request.
 
 ## Type scale
 

@@ -53,7 +53,7 @@ describe("non-interactive shell commands", () => {
     });
   });
 
-  it("passes cancellation to the sandbox command", async () => {
+  it("passes cancellation and a timeout to the sandbox command", async () => {
     const runCommand = vi.fn(async () => ({
       exitCode: 0,
       stdout: "ok",
@@ -63,11 +63,11 @@ describe("non-interactive shell commands", () => {
 
     await runNonInteractiveCommand(
       { runCommand },
-      { cmd: "echo", args: ["ok"], signal },
+      { cmd: "echo", args: ["ok"], signal, timeoutMs: 12_345 },
     );
 
     expect(runCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ signal }),
+      expect.objectContaining({ signal, timeoutMs: 12_345 }),
     );
   });
 });

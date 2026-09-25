@@ -3,6 +3,7 @@ import {
   destinationVisibilitySchema,
   dispatchOptionsSchema,
   replyAttributionSchema,
+  taskOutcomeSchema,
 } from "./schemas";
 
 export type DestinationVisibility = z.output<
@@ -11,6 +12,7 @@ export type DestinationVisibility = z.output<
 export type DispatchOptions = z.output<typeof dispatchOptionsSchema>;
 /** Compact destination-visible context explaining what produced a reply. */
 export type ReplyAttribution = z.output<typeof replyAttributionSchema>;
+export type TaskOutcome = z.output<typeof taskOutcomeSchema>;
 
 export interface DispatchResult {
   id: string;

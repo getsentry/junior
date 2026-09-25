@@ -52,6 +52,7 @@ export default defineConfig({
   },
   test: {
     exclude: [...configDefaults.exclude, "e2e/**"],
+    include: ["tests/**/*.{test,spec}.{ts,tsx}", "visual/**/*.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["json", "lcov"],

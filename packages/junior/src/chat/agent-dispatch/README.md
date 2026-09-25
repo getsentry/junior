@@ -16,9 +16,10 @@ adapter owns destination delivery.
 - A dispatch uses one isolated conversation and one stable turn across all runs
   and execution slices.
 
-The mailbox carries no credential authority. Every run rebuilds actor,
-credential subject, source, destination, and plugin metadata from the dispatch
-record.
+The mailbox carries no credential authority. The first Run reads Actor,
+credential subject, Source, Destination, and plugin metadata from the dispatch
+record. The Turn saves Actor for later Runs. The dispatch record remains the
+authority for the other facts until their owning contract changes.
 
 ## Lifecycle
 
@@ -50,9 +51,6 @@ holding that lock.
   heartbeat hooks.
 - `slack/dispatch-turn.ts` owns Slack message/thread adaptation and receives
   only dispatch-owned contracts.
-
-The legacy signed callback route only appends conversation work. It cannot
-execute a turn or reclaim lifecycle ownership.
 
 Representative behavior coverage lives in
 `tests/integration/agent-dispatch-work.test.ts`; local transition and authority

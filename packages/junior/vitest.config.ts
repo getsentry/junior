@@ -7,6 +7,7 @@ const packageRoot = process.cwd();
 
 loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
+process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
@@ -37,6 +38,7 @@ export default defineConfig({
       "tests/msw/setup.ts",
       "tests/fixtures/postgres/setup.ts",
       "tests/fixtures/experimental-setup.ts",
+      "tests/fixtures/setup.ts",
     ],
     coverage: {
       provider: "v8",

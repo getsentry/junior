@@ -6,7 +6,8 @@
   "exports": {
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
-    "./postgres": "./src/postgres/index.ts"
+    "./postgres": "./src/postgres/index.ts",
+    "./structured-output": "./src/structured-output.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ToolState } from "@/chat/tools/types";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
@@ -15,7 +13,6 @@ import {
   conversationsHistoryPage,
   conversationsInfoOk,
   conversationsJoinOk,
-  conversationsListPage,
   reactionsAddOk,
 } from "../fixtures/slack/factories/api";
 import {
@@ -39,14 +36,16 @@ function createToolState(): ToolState {
 type ContextOverrides = Omit<
   Partial<SlackToolContext>,
   | "destinationChannelId"
+  | "messageChannelId"
   | "messageTs"
-  | "sourceChannelId"
+  | "locationChannelId"
   | "teamId"
   | "threadTs"
 > & {
   destinationChannelId?: string;
+  messageChannelId?: string;
   messageTs?: string;
-  sourceChannelId?: string;
+  locationChannelId?: string;
   teamId?: string;
   threadTs?: string;
 };
@@ -79,17 +78,18 @@ function createContext(
   _userText: string,
   overrides: ContextOverrides = {},
 ): SlackToolContext {
-  const sourceChannelId = requireSlackChannelId(
-    overrides.sourceChannelId ?? "C123",
+  const locationChannelId = requireSlackChannelId(
+    overrides.locationChannelId ?? "C123",
   );
   const destinationChannelId =
     overrides.destinationChannelId !== undefined
       ? requireSlackChannelId(overrides.destinationChannelId)
-      : sourceChannelId;
+      : locationChannelId;
   const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
   const {
-    sourceChannelId: _sourceChannelId,
+    locationChannelId: _locationChannelId,
     destinationChannelId: _destinationChannelId,
+    messageChannelId: overrideMessageChannelId,
     messageTs: overrideMessageTs,
     teamId: _teamId,
     threadTs: overrideThreadTs,
@@ -102,23 +102,14 @@ function createContext(
     ? requireSlackMessageTs(overrideThreadTs)
     : undefined;
   return {
-    destination: {
-      platform: "slack",
-      teamId,
-      channelId: destinationChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: sourceChannelId,
-      messageTs,
-
-      visibility: "private",
-    }),
     destinationChannelId,
+    locationChannelId,
+    messageChannelId: requireSlackChannelId(
+      overrideMessageChannelId ?? locationChannelId,
+    ),
     messageTs,
-    sourceChannelId,
     teamId,
-    ...(threadTs ? { threadTs } : {}),
+    ...(threadTs ? { threadTs } : undefined),
     ...rest,
   };
 }
@@ -141,17 +132,21 @@ function createMaterializeFile(files: Record<string, Buffer> = {}) {
     readSandboxFileUpload(sandbox, input);
 }
 
-async function executeTool<TInput>(tool: any, input: TInput) {
+async function executeTool<TInput>(
+  tool: any,
+  input: TInput,
+  options: { toolCallId?: string } = {},
+) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
-  return await tool.execute(input, {} as any);
+  return await tool.execute(input, options as any);
 }
 
 describe("slack channel tools", () => {
-  it("uses source coordinates for sendFiles and destination context for channel reads", async () => {
+  it("uses Location for sendFiles and Destination for channel reads", async () => {
     const context = createContext("share this in the current channel", {
-      sourceChannelId: "D123",
+      locationChannelId: "D123",
       destinationChannelId: "C0SHARED",
     });
     queueSlackApiResponse("conversations.history", {
@@ -198,9 +193,12 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
+      channel_id: null,
       limit: 150,
+      cursor: null,
       oldest: "1690000000.000",
       latest: "1710000000",
+      inclusive: null,
       max_pages: 3,
     });
 
@@ -314,231 +312,6 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
-  it("sends file-only messages without posting empty text", async () => {
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      file_count: 1,
-    });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-    });
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).not.toHaveProperty("initial_comment");
-  });
-
-  it("accepts a generated artifact reference without translating its path", async () => {
-    const imageBytes = Buffer.from("image bytes");
-    const generatedArtifact = {
-      bytes: imageBytes.byteLength,
-      filename: "generated.png",
-      mimeType: "image/png",
-      path: "/tmp/junior/artifacts/generated.png",
-    };
-    const tool = createSendFilesTool(
-      createContext("share the generated image"),
-      createToolState(),
-      createMaterializeFile({ [generatedArtifact.path]: imageBytes }),
-    );
-
-    const result = await executeTool(tool, { files: [generatedArtifact] });
-
-    expect(
-      getCapturedSlackApiCalls("files.getUploadURLExternal")[0]?.params,
-    ).toMatchObject({
-      filename: generatedArtifact.filename,
-      length: String(imageBytes.byteLength),
-    });
-    expect(result).toMatchObject({
-      file_count: 1,
-    });
-  });
-
-  it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
-    const context = createContext("attach this here", {
-      sourceChannelId: "D123",
-      destinationChannelId: "CSHARED",
-      threadTs: "1700000000.321",
-    });
-    const tool = createSendFilesTool(
-      context,
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(result).toMatchObject({
-      channel_id: "D123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
-    });
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "D123",
-      thread_ts: "1700000000.321",
-    });
-  });
-
-  it("uploads files into the current Slack thread", async () => {
-    const tool = createSendFilesTool(
-      createContext("attach the report", {
-        threadTs: "1700000000.321",
-      }),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
-    });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-    });
-  });
-
-  it("treats nullable optional file metadata as omitted", async () => {
-    const tool = createSendFilesTool(
-      createContext("attach the report", {
-        threadTs: "1700000000.321",
-      }),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    const result = await executeTool(tool, {
-      files: [
-        {
-          path: "/tmp/report.txt",
-          filename: null,
-          mimeType: null,
-          bytes: null,
-        },
-      ],
-    });
-
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
-    });
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
-    ).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-    });
-  });
-
-  it("does not deduplicate changed file contents at the same path", async () => {
-    const files = {
-      "/tmp/report.txt": Buffer.from("first report"),
-    };
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile(files),
-    );
-
-    await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-    files["/tmp/report.txt"] = Buffer.from("updated report");
-    await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal"),
-    ).toHaveLength(2);
-  });
-
-  it("deduplicates repeated uploads of the same file contents", async () => {
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile({
-        "/tmp/report.txt": Buffer.from("report body"),
-      }),
-    );
-
-    await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-    const second = await executeTool(tool, {
-      files: [{ path: "/tmp/report.txt" }],
-    });
-
-    expect(second).toMatchObject({
-      deduplicated: true,
-    });
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal"),
-    ).toHaveLength(1);
-  });
-
-  it("reports a missing sendFiles path as repairable tool input", async () => {
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile(),
-    );
-
-    await expect(
-      executeTool(tool, {
-        files: [{ path: "/tmp/missing.txt" }],
-      }),
-    ).rejects.toBeInstanceOf(ToolInputError);
-    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual(
-      [],
-    );
-  });
-
-  it("requires at least one file", async () => {
-    const tool = createSendFilesTool(
-      createContext("share this file"),
-      createToolState(),
-      createMaterializeFile(),
-    );
-
-    expect(() => tool.prepareArguments?.({})).toThrow(/files/);
-  });
-
   it("traverses conversation history pagination up to the requested limit", async () => {
     queueSlackApiResponse("conversations.history", {
       body: conversationsHistoryPage({
@@ -614,7 +387,7 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackChannelListMessagesTool(
       createContext("list other channel", {
-        sourceChannelId: "C123",
+        locationChannelId: "C123",
       }),
     );
 
@@ -643,7 +416,8 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list private channel"));
+      createContext("list private channel"),
+    );
 
     await expect(
       executeTool(tool, { channel_id: "C0PRIVATE" }),
@@ -748,14 +522,7 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
   });
 
-  it("lists history when channel_id is a public channel name", async () => {
-    queueSlackApiResponse("conversations.list", {
-      body: conversationsListPage({
-        channels: [
-          { id: "C0PROJ", name: "proj-foo", is_member: true, is_private: false },
-        ],
-      }),
-    });
+  it("lists history when channel_id is a Slack mention", async () => {
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({
         channelId: "C0PROJ",
@@ -770,9 +537,10 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list by name in channel_id"));
+      createContext("list by mention in channel_id"),
+    );
     const result = await executeTool(tool, {
-      channel_id: "#proj-foo",
+      channel_id: "<#C0PROJ|proj-foo>",
       limit: 5,
     });
     expect(result).toMatchObject({
@@ -780,6 +548,61 @@ describe("slack channel tools", () => {
       channel_name: "proj-foo",
       count: 1,
     });
+    expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
+  });
+
+  it("lists history when channel_id is a known destination name", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C0KNOWN:1700000000.100",
+      channelName: "proj-foo",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C0KNOWN",
+      },
+      nowMs: Date.parse("2026-08-16T00:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0KNOWN",
+        name: "proj-foo",
+        isPrivate: false,
+        isMember: true,
+      }),
+    });
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.720", text: "known-name", user: "U3" }],
+      }),
+    });
+
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list by known destination name"),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "#proj-foo",
+      limit: 5,
+    });
+    expect(result).toMatchObject({
+      channel_id: "C0KNOWN",
+      channel_name: "proj-foo",
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
+  });
+
+  it("rejects unknown plain channel names without scanning Slack", async () => {
+    const tool = createSlackChannelListMessagesTool(
+      createContext("reject unknown plain channel name"),
+    );
+    await expect(
+      executeTool(tool, { channel_id: "#never-seen-channel", limit: 5 }),
+    ).rejects.toThrow(/Unknown `channel_id`/i);
+    expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
   it("joins a public channel on demand", async () => {
@@ -805,14 +628,7 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
   });
 
-  it("joins a public channel when channel_id is a channel name", async () => {
-    queueSlackApiResponse("conversations.list", {
-      body: conversationsListPage({
-        channels: [
-          { id: "C0JOINNAME", name: "join-me", is_member: false, is_private: false },
-        ],
-      }),
-    });
+  it("joins a public channel when channel_id is a Slack mention", async () => {
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({
         channelId: "C0JOINNAME",
@@ -824,13 +640,16 @@ describe("slack channel tools", () => {
     queueSlackApiResponse("conversations.join", {
       body: conversationsJoinOk({ channelId: "C0JOINNAME", name: "join-me" }),
     });
-    const tool = createSlackChannelJoinTool(createContext("join by name"));
-    const result = await executeTool(tool, { channel_id: "#join-me" });
+    const tool = createSlackChannelJoinTool(createContext("join by mention"));
+    const result = await executeTool(tool, {
+      channel_id: "<#C0JOINNAME|join-me>",
+    });
     expect(result).toMatchObject({
       channel_id: "C0JOINNAME",
       channel_name: "join-me",
       joined: true,
     });
+    expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
   });
 
   it("joins then retries channel history when not in channel", async () => {
@@ -852,8 +671,12 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("history after join"));
-    const result = await executeTool(tool, { channel_id: "C0JOINME", limit: 5 });
+      createContext("history after join"),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "C0JOINME",
+      limit: 5,
+    });
     expect(result).toMatchObject({
       channel_id: "C0JOINME",
       joined_channel: true,
@@ -862,5 +685,4 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(2);
   });
-
 });

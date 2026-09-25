@@ -375,7 +375,7 @@ function toolMetadata(
     exposure: effectiveToolExposure(definition),
     ...(includeSource && definition.source
       ? { source: definition.source.id }
-      : {}),
+      : undefined),
     input_schema: definition.inputSchema,
     call_notes: callNotes(definition),
     annotations: definition.annotations ?? {},

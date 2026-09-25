@@ -15,6 +15,16 @@ const HARDCODED_FONT_SIZE_PATTERN =
 const MIN_PRODUCT_FONT_SIZE_PX = 12;
 const UTILITY_ASSERTION_PATTERN =
   /\bexpect\(.+\)\.(?:not\.)?(?:toBe|toContain|toEqual|toMatch)\([^)]*["'`](?:[a-z-]+:)*(?:bg|col-span|flex|grid|overflow|row-span|text)-/;
+// Classic 100vh follows the large layout viewport on mobile WebKit and can
+// leave fixed shells under the browser chrome. Prefer dvh or the dashboard
+// viewport CSS variables.
+const CLASSIC_VIEWPORT_HEIGHT_PATTERN = /(?<!\w)100vh\b/;
+// Stacking padding + safe-area recreates the composer gap. Prefer max().
+const ADDITIVE_SAFE_AREA_PATTERN =
+  /calc\((?:(?!\)[\s"'`]).)*?(?:\+\s*env\(safe-area-inset-(?:top|right|bottom|left)\)|env\(safe-area-inset-(?:top|right|bottom|left)\)\s*\+)/;
+// ComposerDock owns bottom pad through --dashboard-composer-dock-padding.
+// Inline env(safe-area-inset-bottom) on dock/footer surfaces reintroduces the gap.
+const COMPOSER_SAFE_AREA_BOTTOM_PATTERN = /safe-area-inset-bottom/g;
 
 function hasArbitraryNeutralTextColor(line) {
   return [...line.matchAll(ARBITRARY_TEXT_COLOR_PATTERN)].some((match) => {
@@ -80,6 +90,60 @@ export function findDashboardUtilityAssertions(files) {
   );
 }
 
+function isCommentOnlyLine(line) {
+  const trimmed = line.trimStart();
+  return (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("/*") ||
+    trimmed.startsWith("*") ||
+    trimmed.startsWith("{/*")
+  );
+}
+
+/** Report classic 100vh usage that should prefer dvh on mobile. */
+export function findClassicViewportHeights(files) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return CLASSIC_VIEWPORT_HEIGHT_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    }),
+  );
+}
+
+/** Report safe-area padding stacked with + instead of max(). */
+export function findAdditiveSafeAreaPadding(files) {
+  return files.flatMap((file) =>
+    file.contents.split("\n").flatMap((line, index) => {
+      ADDITIVE_SAFE_AREA_PATTERN.lastIndex = 0;
+      return ADDITIVE_SAFE_AREA_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    }),
+  );
+}
+
+/** Report composer footers that reintroduce bottom safe-area math. */
+export function findComposerSafeAreaBottomPadding(files) {
+  return files.flatMap((file) => {
+    if (
+      !/(?:Conversation(?:Page|Workspace|Composer)|ComposerDock|ChatLayout)\.tsx$/.test(
+        file.path,
+      )
+    ) {
+      return [];
+    }
+    return file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      COMPOSER_SAFE_AREA_BOTTOM_PATTERN.lastIndex = 0;
+      return COMPOSER_SAFE_AREA_BOTTOM_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    });
+  });
+}
+
 function collectSourceFiles(root, directory, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
@@ -110,11 +174,14 @@ function main() {
     ...findNonstandardNeutralTextColors(files),
     ...findArbitraryTextSizes(files),
     ...findUndersizedHardcodedFontSizes(files),
+    ...findClassicViewportHeights(files),
+    ...findAdditiveSafeAreaPadding(files),
+    ...findComposerSafeAreaBottomPadding(files),
     ...findDashboardUtilityAssertions(testFiles),
   ];
   if (errors.length === 0) {
     console.log(
-      "Dashboard source uses shared neutral text colors and type scale sizes.",
+      "Dashboard source uses shared text tokens, type scale, and mobile-safe viewport padding.",
     );
     return;
   }

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-memory",
-  "version": "0.150.1",
+  "version": "0.227.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -13,17 +13,16 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
     "dist",
-    "migrations",
-    "src"
+    "migrations"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "tsup",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "prepare": "pnpm run build",
@@ -39,10 +38,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "drizzle-kit": "catalog:",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

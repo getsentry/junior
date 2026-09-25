@@ -7,12 +7,13 @@ import {
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import {
+  createEventSource,
   createWebSource,
   createLocalSource,
   createSlackSource,
   pluginApiRouteRequestContextSchema,
-  pluginUserPageContentSchema,
   PluginToolInputError,
   type PluginConversationEventValue,
   type PluginLogger,
@@ -27,6 +28,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
+  conversationMemoryListResponseSchema,
   createMemoryApi,
   memoryApiSchema,
   memoryDashboardResponseSchema,
@@ -37,19 +39,18 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
-import { createViewerMemories } from "../src/personal";
+import { listMemories } from "../src/viewer";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
-
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -200,6 +201,26 @@ async function createMemoryFixture(): Promise<MemoryFixture> {
   return fixture;
 }
 
+async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
+  await fixture.execute(`
+CREATE TABLE junior_destinations (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_tenant_id TEXT NOT NULL,
+  provider_destination_id TEXT NOT NULL
+);
+CREATE TABLE junior_conversations (
+  conversation_id TEXT PRIMARY KEY,
+  root_conversation_id TEXT,
+  destination_id TEXT
+);
+CREATE TABLE junior_conversation_participants (
+  user_id TEXT NOT NULL,
+  root_conversation_id TEXT NOT NULL
+)
+`);
+}
+
 function unitEmbedding(index: number): number[] {
   const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
   embedding[index] = 1;
@@ -230,7 +251,7 @@ function createTestEmbedder(
       return {
         ...(overrides.costUsd !== undefined
           ? { costUsd: overrides.costUsd }
-          : {}),
+          : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
         model: overrides.model ?? "test-embedding-model",
         provider: overrides.provider ?? "test-embedding-provider",
@@ -260,7 +281,7 @@ function recallModel(
         id: string;
       }>;
       return {
-        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
           relevantIds: select(candidates.map(({ content }) => content)).map(
             (content) =>
@@ -294,7 +315,7 @@ function extractionModel(
         evidenceMessageIndices: memory.evidenceMessageIndices ?? [0],
       });
       return {
-        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
           memories: memories.map(toResponseMemory),
         },
@@ -304,15 +325,16 @@ function extractionModel(
   return { calls, model };
 }
 
-const localInstructionActor: Actor = {
-  platform: "local",
-  userId: "local-user",
+const defaultInstructionActor: Actor = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
 };
 
 /** A run-actor instruction transcript message. */
 function instructionMessage(
   text: string,
-  actor: Actor = localInstructionActor,
+  actor: Actor = defaultInstructionActor,
 ): PluginRunTranscriptEntry {
   return {
     type: "message",
@@ -343,7 +365,7 @@ function contextMessage(text: string, actor?: Actor): PluginRunTranscriptEntry {
     type: "message",
     role: "user",
     text,
-    provenance: { authority: "context", ...(actor ? { actor } : {}) },
+    provenance: { authority: "context", ...(actor ? { actor } : undefined) },
     isRunActor: false,
   };
 }
@@ -356,6 +378,7 @@ const throwingExtractionModel: PluginModel = {
 
 function slackContext(
   overrides: {
+    ownerUserId?: string;
     channelId?: string;
     teamId?: string;
     threadTs?: string;
@@ -365,12 +388,14 @@ function slackContext(
   const teamId = overrides.teamId ?? "T123";
   const channelId = overrides.channelId ?? "C123";
   const threadTs = overrides.threadTs ?? "1718800000.000000";
+  const actorUserId = overrides.userId ?? "U123";
   return {
     conversationId: `slack:${channelId}:${threadTs}`,
+    locationId: `location:${teamId}:${channelId}`,
     actor: {
       platform: "slack" as const,
       teamId,
-      userId: overrides.userId ?? "U123",
+      userId: actorUserId,
     },
     source: createSlackSource({
       teamId,
@@ -381,6 +406,7 @@ function slackContext(
       messageTs: threadTs,
       threadTs,
     }),
+    userId: overrides.ownerUserId ?? `user:${teamId}:${actorUserId}`,
   };
 }
 
@@ -389,39 +415,6 @@ function slackDestination(context: ReturnType<typeof slackContext>) {
     platform: "slack" as const,
     teamId: context.source.teamId,
     channelId: context.source.channelId,
-  };
-}
-
-function viewerUser(actors: Actor[], email = "person@example.com") {
-  return {
-    email,
-    id: `user:${email}`,
-    identities: actors.flatMap((actor) => {
-      if (actor.platform === "system") {
-        return [];
-      }
-      // Dashboard actors persist as junior identities keyed by verified email.
-      if (actor.platform === "web") {
-        const subject = actor.email?.trim().toLowerCase() ?? email;
-        return [
-          {
-            id: `identity:junior:${subject}`,
-            provider: "junior",
-            providerSubjectId: subject,
-          },
-        ];
-      }
-      return [
-        {
-          id: `identity:${actor.platform}:${actor.platform === "slack" ? `${actor.teamId}:` : ""}${actor.userId}`,
-          provider: actor.platform,
-          providerSubjectId: actor.userId,
-          ...(actor.platform === "slack"
-            ? { providerTenantId: actor.teamId }
-            : {}),
-        },
-      ];
-    }),
   };
 }
 
@@ -444,6 +437,7 @@ function apiContext(
       email,
     },
     source: createWebSource(conversationId, overrides.visibility ?? "public"),
+    userId: `user:${email}`,
   };
 }
 
@@ -458,6 +452,27 @@ function localContext(
       userId: overrides.userId ?? "local-user",
     },
     source: createLocalSource(conversationId),
+    userId: `user:local:${overrides.userId ?? "local-user"}`,
+  };
+}
+
+function memoryUsers(userId: string) {
+  const identity = {
+    id: `identity:${userId}`,
+    provider: "test",
+    providerSubjectId: userId,
+  };
+  return {
+    async resolveActor() {
+      return {
+        identity,
+        user: {
+          email: `${userId.replaceAll(":", "-")}@example.com`,
+          id: userId,
+          identities: [identity],
+        },
+      };
+    },
   };
 }
 
@@ -468,14 +483,12 @@ function completedRun(
     Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>
   > = {},
 ): NonNullable<Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>> {
-  const runtime = localContext();
+  const runtime = slackContext({ channelId: "D123" });
   return {
+    actorUserId: runtime.userId,
     completedAtMs: TEST_NOW_MS,
     conversationId: runtime.conversationId,
-    destination: {
-      platform: "local",
-      conversationId: runtime.conversationId,
-    },
+    destination: slackDestination(runtime),
     transcript: [
       instructionMessage("I prefer terse PR summaries."),
       {
@@ -486,7 +499,7 @@ function completedRun(
     ],
     actor: runtime.actor,
     actors: [runtime.actor],
-    runId: "local-turn-1",
+    runId: "slack-turn-1",
     source: runtime.source,
     ...overrides,
   };
@@ -545,7 +558,7 @@ function allowMemory(
         content: testCanonicalContent(candidate.content),
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
-          : {}),
+          : undefined),
       };
     },
   };
@@ -572,6 +585,7 @@ describe("memory plugin storage", () => {
             kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
             expiresAtMs: null,
+            reason: null,
           },
         };
       },
@@ -588,7 +602,7 @@ describe("memory plugin storage", () => {
       kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
-    expect(calls[0]?.schema).toBeDefined();
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("normalizes recall selection to known unique candidate ids", async () => {
@@ -625,6 +639,7 @@ describe("memory plugin storage", () => {
       "Reject memories that merely share a company",
     );
     expect(calls[0]?.prompt).toContain("<candidate-memories>");
+    expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
   });
 
   it("registers explicit model id as memory plugin model configuration", () => {
@@ -839,6 +854,9 @@ describe("memory plugin storage", () => {
         return {
           object: {
             decision: "reject",
+            kind: null,
+            canonicalFact: null,
+            expiresAtMs: null,
             reason: "not_public_shareable",
           },
         };
@@ -914,15 +932,15 @@ describe("memory plugin storage", () => {
         expect.arrayContaining([
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
-            scope: "personal",
-            sourcePlatform: "local",
+            scope: "private",
+            sourcePlatform: "slack",
             subjectType: "user",
             kind: "preference",
           }),
           expect.objectContaining({
             content: "Deploy runbooks live in Notion.",
-            scope: "conversation",
-            sourcePlatform: "local",
+            scope: "private",
+            sourcePlatform: "slack",
             subjectType: "conversation",
             kind: "knowledge",
           }),
@@ -936,12 +954,12 @@ describe("memory plugin storage", () => {
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
             kind: "preference",
-            scope: "personal",
+            scope: "private",
           }),
           expect.objectContaining({
             content: "Deploy runbooks live in Notion.",
             kind: "knowledge",
-            scope: "conversation",
+            scope: "private",
           }),
         ]),
       });
@@ -995,27 +1013,59 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("does not extract Memory from Event Turns", async () => {
+    const actor = { platform: "system", name: "event" } as const;
+    await expect(
+      processMemorySession(
+        processSessionContext({
+          model: throwingExtractionModel,
+          run: {
+            async load() {
+              return completedRun({
+                actor,
+                actorUserId: undefined,
+                actors: [actor],
+                source: createEventSource({
+                  eventKey: "event-1",
+                  eventType: "issue.updated",
+                  identifier: "PROJ-123",
+                  namespace: "sentry",
+                }),
+              });
+            },
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("supersedes old preferences from passive completed-session extraction", async () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(memoryDb(fixture), localContext(), {
-        now: () => TEST_NOW_MS,
-      });
+      const store = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        { now: () => TEST_NOW_MS },
+      );
       const oldMemory = await store.createMemory({
         content: "Prefers Python for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
       });
+      const supersessionCalls: Parameters<PluginModel["completeObject"]>[0][] =
+        [];
       const model: PluginModel = {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
             input.prompt.includes("<memory-preference-adjudication-input>")
           ) {
+            supersessionCalls.push(input);
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [oldMemory.memory.id],
               },
             };
@@ -1058,6 +1108,11 @@ describe("memory plugin storage", () => {
         }),
       );
 
+      expect(supersessionCalls).toHaveLength(1);
+      expect(
+        strictProviderSchemaProblems(supersessionCalls[0]!.schema),
+      ).toEqual([]);
+
       const rows = await memoryDb(fixture)
         .select()
         .from(memorySqlSchema.juniorMemoryMemories)
@@ -1073,7 +1128,7 @@ describe("memory plugin storage", () => {
           }),
           expect.objectContaining({
             content: "Prefers TypeScript for automation scripts.",
-            scope: "personal",
+            scope: "private",
             supersededAtMs: null,
             supersededById: null,
           }),
@@ -1152,7 +1207,7 @@ describe("memory plugin storage", () => {
         expect.objectContaining({
           content:
             "Signup funnel analysis should use the modeled warehouse cohort table.",
-          scope: "conversation",
+          scope: "private",
           subjectType: "conversation",
           kind: "procedure",
         }),
@@ -1223,7 +1278,7 @@ describe("memory plugin storage", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Prefers retry-safe memory extraction.",
-          scope: "personal",
+          scope: "private",
           kind: "preference",
         }),
       ]);
@@ -1274,12 +1329,13 @@ describe("memory plugin storage", () => {
       );
 
       expect(calls).toHaveLength(1);
+      expect(strictProviderSchemaProblems(calls[0]!.schema)).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Fresh extraction content is stored.",
-          scope: "conversation",
+          scope: "private",
           kind: "knowledge",
         }),
       ]);
@@ -1426,9 +1482,11 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     try {
       const duplicateContent = "Deployment runbooks live in Notion.";
-      const store = createMemoryStore(memoryDb(fixture), localContext(), {
-        now: () => TEST_NOW_MS,
-      });
+      const store = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        { now: () => TEST_NOW_MS },
+      );
       await store.createConversationMemory({
         content: duplicateContent,
         idempotencyKey: "memory-test:existing-conversation-fact",
@@ -1511,11 +1569,18 @@ describe("memory plugin storage", () => {
               ? (JSON.parse(existingJson) as Array<{ id: string }>)
               : [];
             if (existing.length === 0) {
-              return { object: { decision: "distinct" } };
+              return {
+                object: {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
+              };
             }
             return {
               object: {
                 decision: "supersedes_old",
+                duplicateId: null,
                 supersededIds: [existing[0]!.id],
               },
             };
@@ -1621,28 +1686,36 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("skips passive extraction in private Slack contexts", async () => {
+  it("stores passive extraction from a private Slack Source for its User", async () => {
     const fixture = await createMemoryFixture();
     const privateContext = slackContext({ channelId: "D123" });
+    const { model } = extractionModel([
+      {
+        content: "Prefers private Slack memory.",
+        kind: "preference",
+      },
+    ]);
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model: throwingExtractionModel,
+          model,
           run: {
             async load() {
               return completedRun({
+                actorUserId: privateContext.userId,
                 conversationId: "slack:D123:1718800000.000000",
                 destination: slackDestination(privateContext),
+                locationId: privateContext.locationId,
                 transcript: [
-                  {
-                    type: "message",
-                    role: "user",
-                    text: "I prefer private Slack context skips.",
-                  },
+                  instructionMessage(
+                    "I prefer private Slack memory.",
+                    privateContext.actor,
+                  ),
                 ],
                 actor: privateContext.actor,
+                actors: [privateContext.actor],
                 source: privateContext.source,
               });
             },
@@ -1652,50 +1725,14 @@ describe("memory plugin storage", () => {
 
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("skips passive extraction for private dashboard web sources", async () => {
-    const fixture = await createMemoryFixture();
-    const runtime = apiContext({
-      conversationId: "local:web:memory-private-dashboard",
-      visibility: "private",
-    });
-
-    try {
-      await processMemorySession(
-        processSessionContext({
-          db: memoryDb(fixture),
-          model: throwingExtractionModel,
-          run: {
-            async load() {
-              return completedRun({
-                conversationId: runtime.conversationId,
-                destination: {
-                  platform: "local",
-                  conversationId: runtime.conversationId,
-                },
-                transcript: [
-                  {
-                    type: "message",
-                    role: "user",
-                    text: "I prefer private dashboard context skips.",
-                  },
-                ],
-                actor: runtime.actor,
-                source: runtime.source,
-              });
-            },
-          },
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Prefers private Slack memory.",
+          scope: "private",
+          scopeKey: privateContext.userId,
+          locationId: privateContext.locationId,
         }),
-      );
-
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([]);
+      ]);
     } finally {
       await fixture.close();
     }
@@ -1723,13 +1760,17 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
+                actorUserId: runtime.userId,
                 conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
                   conversationId: runtime.conversationId,
                 },
                 transcript: [
-                  instructionMessage("I prefer short dashboard answers."),
+                  instructionMessage(
+                    "I prefer short dashboard answers.",
+                    runtime.actor,
+                  ),
                 ],
                 actor: runtime.actor,
                 actors: [runtime.actor],
@@ -1745,11 +1786,11 @@ describe("memory plugin storage", () => {
       ).resolves.toMatchObject([
         {
           content: "Prefers short dashboard answers.",
-          scope: "personal",
-          scopeKey: "junior:dashboard@example.com",
+          scope: "public",
+          scopeKey: "public",
           sourceKey: runtime.conversationId,
           sourcePlatform: "web",
-          subjectKey: "junior:dashboard@example.com",
+          subjectKey: runtime.userId,
           kind: "preference",
         },
       ]);
@@ -1758,11 +1799,15 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores explicit web personal memory under the junior identity scope", async () => {
+  it("stores explicit private web memory for its User", async () => {
     const fixture = await createMemoryFixture();
-    const runtime = apiContext({ email: "dashboard@example.com" });
+    const runtime = apiContext({
+      email: "dashboard@example.com",
+      visibility: "private",
+    });
 
     try {
+      await installViewerCoreTables(fixture);
       const store = createMemoryStore(memoryDb(fixture), runtime, {
         now: () => TEST_NOW_MS,
       });
@@ -1773,7 +1818,7 @@ describe("memory plugin storage", () => {
       });
 
       expect(created.memory).toMatchObject({
-        scope: "personal",
+        scope: "private",
         subjectType: "user",
       });
       await expect(
@@ -1781,17 +1826,16 @@ describe("memory plugin storage", () => {
       ).resolves.toMatchObject([
         {
           id: created.memory.id,
-          scope: "personal",
-          scopeKey: "junior:dashboard@example.com",
+          scope: "private",
+          scopeKey: runtime.userId,
           sourceKey: runtime.conversationId,
           sourcePlatform: "web",
-          subjectKey: "junior:dashboard@example.com",
+          subjectKey: runtime.userId,
           subjectType: "user",
         },
       ]);
 
-      const viewer = viewerUser([runtime.actor], "dashboard@example.com");
-      const listed = await createViewerMemories(memoryDb(fixture), viewer).list({
+      const listed = await listMemories(memoryDb(fixture), runtime.userId, {
         limit: 10,
       });
       expect(listed.memories.map((memory) => memory.id)).toEqual([
@@ -1844,33 +1888,33 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores actor memories from local completed sessions", async () => {
+  it("skips passive extraction for local completed sessions", async () => {
     const fixture = await createMemoryFixture();
-    const { model } = extractionModel([
-      {
-        kind: "preference",
-        content: "Prefers local passive memory QA.",
-      },
-    ]);
     const runtime = localContext();
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
+                actorUserId: runtime.userId,
                 conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
                   conversationId: runtime.conversationId,
                 },
                 transcript: [
-                  instructionMessage("I prefer local passive memory QA."),
+                  instructionMessage(
+                    "I prefer local passive memory QA.",
+                    runtime.actor,
+                  ),
                 ],
                 actor: runtime.actor,
+                actors: [runtime.actor],
+                runId: "local-turn-1",
                 source: runtime.source,
               });
             },
@@ -1880,20 +1924,13 @@ describe("memory plugin storage", () => {
 
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toMatchObject([
-        {
-          content: "Prefers local passive memory QA.",
-          scope: "personal",
-          subjectKey: "local:local-user",
-          kind: "preference",
-        },
-      ]);
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
   });
 
-  it("stores conversation memories without actor context", async () => {
+  it("skips private passive extraction without a linked user", async () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
@@ -1905,7 +1942,7 @@ describe("memory plugin storage", () => {
         content: "Prefers actor-only memory.",
       },
     ]);
-    const runtime = localContext();
+    const runtime = slackContext({ channelId: "D123" });
 
     try {
       await processMemorySession(
@@ -1916,11 +1953,9 @@ describe("memory plugin storage", () => {
             async load() {
               return completedRun({
                 conversationId: runtime.conversationId,
-                destination: {
-                  platform: "local",
-                  conversationId: runtime.conversationId,
-                },
+                destination: slackDestination(runtime),
                 actor: undefined,
+                actorUserId: undefined,
                 transcript: [
                   contextMessage(
                     "For release triage, check deployment markers first.",
@@ -1940,14 +1975,7 @@ describe("memory plugin storage", () => {
 
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          content: "Release triage checks deployment markers first.",
-          scope: "conversation",
-          subjectType: "conversation",
-          kind: "procedure",
-        }),
-      ]);
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -1998,7 +2026,7 @@ describe("memory plugin storage", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Production deploys require a release marker.",
-          scope: "conversation",
+          scope: "public",
           sourcePlatform: "slack",
           subjectType: "conversation",
           kind: "knowledge",
@@ -2043,7 +2071,7 @@ describe("memory plugin storage", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Prefers concise standup notes.",
-          scope: "personal",
+          scope: "private",
           kind: "preference",
         }),
       ]);
@@ -2058,8 +2086,9 @@ describe("memory plugin storage", () => {
     try {
       const state = createMemoryState();
       const secondActor: Actor = {
-        platform: "local",
-        userId: "local-user-2",
+        platform: "slack",
+        teamId: "T123",
+        userId: "U456",
       };
       // Seed the extraction cache with a preference proposed before the
       // multi-actor gate existed. The routing gate must still drop it on replay.
@@ -2080,7 +2109,7 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
-                actors: [localInstructionActor, secondActor],
+                actors: [defaultInstructionActor, secondActor],
                 transcript: [
                   instructionMessage("I prefer concise standup notes."),
                 ],
@@ -2241,7 +2270,7 @@ describe("memory plugin storage", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Deploy runbooks live in Notion.",
-          scope: "conversation",
+          scope: "private",
           subjectType: "conversation",
           kind: "knowledge",
         }),
@@ -2298,7 +2327,7 @@ describe("memory plugin storage", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Deploy runbooks live in Notion.",
-          scope: "conversation",
+          scope: "public",
           subjectType: "conversation",
           kind: "knowledge",
         }),
@@ -2346,240 +2375,122 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const actorContext = slackContext();
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), actorContext, {
+      const publicStore = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
-
-      const personal = await store.createMemory({
-        content: "Prefers short PR summaries.",
-        kind: "preference",
-        idempotencyKey: "session:memory-test:personal",
-      });
-      nowMs = TEST_NOW_MS + 1;
-      const conversation = await store.createConversationMemory({
+      const publicMemory = await publicStore.createConversationMemory({
         content: "Deploy runbooks live in Notion.",
         kind: "knowledge",
-        idempotencyKey: "memory-test:conversation",
+        idempotencyKey: "memory-test:public",
+      });
+      nowMs += 1;
+      const privateContext = slackContext({ channelId: "D123" });
+      const privateStore = createMemoryStore(
+        memoryDb(fixture),
+        privateContext,
+        {
+          now: () => nowMs,
+        },
+      );
+      const privateMemory = await privateStore.createMemory({
+        content: "Prefers short PR summaries.",
+        kind: "preference",
+        idempotencyKey: "memory-test:private",
       });
 
-      expect(personal.created).toBe(true);
-      expect(personal.memory).toMatchObject({ subjectType: "user" });
-      expect(personal.memory).not.toHaveProperty("subjectKey");
-      expect(conversation.created).toBe(true);
-      expect(conversation.memory).toMatchObject({
+      expect(publicMemory.memory).toMatchObject({
+        conversationId: slackContext().conversationId,
+        scope: "public",
         subjectType: "conversation",
       });
-      expect(conversation.memory).not.toHaveProperty("subjectKey");
-      await expect(
-        fixture.query<{
-          id: string;
-          subject_key: string;
-          subject_type: string;
-        }>(
-          `
-SELECT id, subject_type, subject_key
-FROM junior_memory_memories
-ORDER BY created_at_ms ASC
-`,
-        ),
-      ).resolves.toEqual([
-        {
-          id: personal.memory.id,
-          subject_key: "slack:T123:U123",
-          subject_type: "user",
-        },
-        {
-          id: conversation.memory.id,
-          subject_key: "slack:T123",
-          subject_type: "conversation",
-        },
-      ]);
-
-      nowMs = TEST_NOW_MS + 3;
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-        expect.objectContaining({ id: personal.memory.id }),
-      ]);
-      await expect(store.listPersonalMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: personal.memory.id }),
-      ]);
-
-      const otherActorStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ userId: "U456" }),
-        { now: () => nowMs },
-      );
-      await expect(otherActorStore.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-      ]);
-      await expect(otherActorStore.listPersonalMemories({})).resolves.toEqual(
-        [],
-      );
-
-      const memoryPage = memoryPlugin().userPages?.[0];
-      if (!memoryPage || !actorContext.actor) {
-        throw new Error("Expected Memory dashboard page and actor context");
-      }
-      expect(memoryPage.navigation).toBe("primary");
-      const memoryContent = await memoryPage.read(
-        {
-          db: memoryDb(fixture),
-          log: noopLogger,
-          plugin: { name: "memory" },
-          viewer: viewerUser([actorContext.actor]),
-        },
-        { limit: 20 },
-      );
-      expect(pluginUserPageContentSchema.parse(memoryContent)).toEqual({
-        type: "list",
-        emptyText: "No memories yet.",
-        searchPlaceholder: "Search memories",
-        records: [
-          {
-            actions: [],
-            id: conversation.memory.id,
-            title: "Deploy runbooks live in Notion.",
-            metadata: [
-              { label: "Type", value: "Knowledge" },
-              { label: "Learned", value: "Other" },
-              { label: "Source", value: "Slack" },
-              { label: "Visibility", value: "Public" },
-              { label: "Remembered", value: "Jun 19, 2026, 12:00 PM" },
-              { label: "Observed", value: "Jun 19, 2026, 12:00 PM" },
-              { label: "Expires", value: "Never" },
-            ],
-          },
-          {
-            actions: [
-              {
-                confirmation: "Forget this memory?",
-                href: `/api/plugins/memory/memories/${personal.memory.id}`,
-                label: "Forget",
-                method: "DELETE",
-                tone: "danger",
-              },
-            ],
-            id: personal.memory.id,
-            title: "Prefers short PR summaries.",
-            metadata: [
-              { label: "Type", value: "Preference" },
-              { label: "Learned", value: "Automatic" },
-              { label: "Source", value: "Slack" },
-              { label: "Visibility", value: "Private" },
-              { label: "Remembered", value: "Jun 19, 2026, 12:00 PM" },
-              { label: "Observed", value: "Jun 19, 2026, 12:00 PM" },
-              { label: "Expires", value: "Never" },
-            ],
-          },
-        ],
+      expect(privateMemory.memory).toMatchObject({
+        conversationId: privateContext.conversationId,
+        scope: "private",
+        subjectType: "user",
       });
-      await expect(
-        memoryPage.read(
-          {
-            db: memoryDb(fixture),
-            log: noopLogger,
-            plugin: { name: "memory" },
-            viewer: viewerUser([actorContext.actor]),
-          },
-          { filter: "private", limit: 20 },
-        ),
-      ).resolves.toMatchObject({
-        records: [expect.objectContaining({ id: personal.memory.id })],
-      });
-      await expect(
-        memoryPage.read(
-          {
-            db: memoryDb(fixture),
-            log: noopLogger,
-            plugin: { name: "memory" },
-            viewer: viewerUser([actorContext.actor]),
-          },
-          { filter: "public", limit: 20 },
-        ),
-      ).resolves.toMatchObject({
-        records: [expect.objectContaining({ id: conversation.memory.id })],
-      });
-      await expect(
-        memoryPage.read(
-          {
-            db: memoryDb(fixture),
-            log: noopLogger,
-            plugin: { name: "memory" },
-            viewer: viewerUser([], "new@example.com"),
-          },
-          { limit: 20 },
-        ),
-      ).resolves.toEqual({
-        type: "list",
-        emptyText: "No memories yet.",
-        searchPlaceholder: "Search memories",
-        records: [],
-      });
-      const otherConversationStore = createMemoryStore(
+      await expect(privateStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
+        expect.objectContaining({ id: publicMemory.memory.id }),
+      ]);
+      const sameUserStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({
-          channelId: "C999",
+          ownerUserId: privateContext.userId,
+          channelId: "D999",
+          userId: "U456",
+        }),
+        { now: () => nowMs },
+      );
+      await expect(sameUserStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
+        expect.objectContaining({ id: publicMemory.memory.id }),
+      ]);
+
+      const otherUserStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({
+          channelId: "D123",
           threadTs: "1718800001.000000",
           userId: "U456",
         }),
         { now: () => nowMs },
       );
-      await expect(otherConversationStore.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
+      await expect(otherUserStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-
-      await expect(
-        store.searchMemories({ query: "where are runbooks" }),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-      ]);
-      await expect(
-        otherConversationStore.searchMemories({ query: "runbooks" }),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-      ]);
-      nowMs = TEST_NOW_MS + 4;
-      const otherTeamStore = createMemoryStore(
+      const linkedIdentityStore = createMemoryStore(
         memoryDb(fixture),
-        slackContext({ teamId: "T999", userId: "U456" }),
+        slackContext({
+          ownerUserId: privateContext.userId,
+          teamId: "T999",
+          userId: "U456",
+        }),
         { now: () => nowMs },
       );
-      await expect(otherTeamStore.listMemories({})).resolves.toEqual([]);
-      await expect(
-        otherTeamStore.archiveMemory({ id: conversation.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
-
-      const archived = await store.archiveMemory({
-        id: personal.memory.id.slice(0, 12),
-      });
-      expect(archived).toMatchObject({
-        id: personal.memory.id,
-        archivedAtMs: TEST_NOW_MS + 4,
-      });
-      nowMs = TEST_NOW_MS + 5;
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
+      await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
+        expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
       await expect(
-        store.searchMemories({ query: "summaries" }),
-      ).resolves.toEqual([]);
+        otherUserStore.archiveMemory({ id: privateMemory.memory.id }),
+      ).rejects.toThrow("Memory was not found in the current context.");
+      await expect(
+        otherUserStore.archiveMemory({ id: publicMemory.memory.id }),
+      ).resolves.toMatchObject({ id: publicMemory.memory.id });
+      await expect(publicStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
+      ]);
+
+      nowMs += 1;
+      const archived = await publicStore.archiveMemory({
+        id: privateMemory.memory.id.slice(0, 12),
+      });
+      expect(archived).toMatchObject({
+        id: privateMemory.memory.id,
+        archivedAtMs: nowMs,
+      });
     } finally {
       await fixture.close();
     }
   }, 15_000);
 
-  it("serves viewer-scoped personal memories through the REST resource", async () => {
+  it("serves public and owned private memory through REST", async () => {
     const fixture = await createMemoryFixture();
     const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
     try {
+      await installViewerCoreTables(fixture);
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
-      const hiddenContext = slackContext({ teamId: "T999", userId: "U999" });
+      const hiddenContext = slackContext({
+        channelId: "D999",
+        teamId: "T999",
+        userId: "U999",
+      });
       const privateContext = slackContext({
         channelId: "D777",
+        ownerUserId: "api-viewer",
         teamId: "T123",
         userId: "U123",
       });
@@ -2617,14 +2528,50 @@ ORDER BY created_at_ms ASC
         idempotencyKey: "session:api:public",
         kind: "knowledge",
       });
-      await privateStore.createConversationMemory({
+      const privateMemory = await privateStore.createConversationMemory({
         content: "Private conversation memory.",
         idempotencyKey: "session:api:private",
         kind: "knowledge",
       });
-      const viewer = viewerUser([firstContext.actor!, secondContext.actor!]);
-      const resolveUser = vi.fn(async () => viewer);
       const api = createMemoryApi({
+        conversationEvents: {
+          async list({ conversationId, eventName }) {
+            if (conversationId === "missing") return undefined;
+            expect(eventName).toBe("memories_captured");
+            return [
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:01:00.000Z",
+                version: 2,
+              },
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:00:00.000Z",
+                version: 2,
+              },
+            ];
+          },
+        },
         db: memoryDb(fixture),
         eventStats: {
           async costsByDay({ days, eventName }) {
@@ -2647,8 +2594,34 @@ ORDER BY created_at_ms ASC
                   : 0,
             }));
           },
+          async costsByHour({ eventName, hours = 24 }) {
+            const end = new Date();
+            end.setUTCMinutes(0, 0, 0);
+            const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
+            return Array.from({ length: hours }, (_, index) => ({
+              costUsd:
+                index === hours - 1
+                  ? eventName === "memories_recalled"
+                    ? 0.0003
+                    : 0.0012
+                  : 0,
+              date: new Date(startMs + index * 60 * 60 * 1_000)
+                .toISOString()
+                .slice(0, 13),
+              events:
+                index === hours - 1
+                  ? eventName === "memories_recalled"
+                    ? 1
+                    : 1
+                  : 0,
+            }));
+          },
         },
-        users: { resolve: resolveUser },
+        users: {
+          async resolve(email) {
+            return { email, id: "api-viewer", identities: [] };
+          },
+        },
       });
       const requestContext = pluginApiRouteRequestContextSchema.parse({
         auth: {
@@ -2665,13 +2638,36 @@ ORDER BY created_at_ms ASC
         requestContext,
       );
       expect(unknownRouteResponse.status).toBe(404);
+      const conversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/conversation-1/memories"),
+        requestContext,
+      );
+      expect(conversationResponse.status).toBe(200);
+      expect(
+        conversationMemoryListResponseSchema.parse(
+          await conversationResponse.json(),
+        ),
+      ).toEqual({
+        memories: [
+          {
+            capturedAt: "2026-07-28T12:01:00.000Z",
+            content: "Use pnpm.",
+            id: "captured-memory",
+            kind: "procedure",
+            visibility: "public",
+          },
+        ],
+      });
+      const missingConversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/missing/memories"),
+        requestContext,
+      );
+      expect(missingConversationResponse.status).toBe(404);
       const invalidMethodResponse = await api.fetch(
         new Request("http://localhost/memories", { method: "POST" }),
         requestContext,
       );
       expect(invalidMethodResponse.status).toBe(405);
-      expect(resolveUser).not.toHaveBeenCalled();
-
       const firstPageResponse = await api.fetch(
         new Request("http://localhost/memories?limit=2"),
         requestContext,
@@ -2682,14 +2678,12 @@ ORDER BY created_at_ms ASC
       );
       expect(firstPage.memories).toEqual([
         expect.objectContaining({
-          content: "Deploy runbooks live in Notion.",
-          id: second.memory.id,
-          visibility: "private",
+          content: "Private conversation memory.",
+          id: privateMemory.memory.id,
         }),
         expect.objectContaining({
-          id: expect.stringMatching(
-            new RegExp(`^(${first.memory.id}|${publicMemory.memory.id})$`),
-          ),
+          content: "Deploy runbooks live in Notion.",
+          id: second.memory.id,
         }),
       ]);
       expect(firstPage.nextCursor).toEqual(expect.any(String));
@@ -2705,6 +2699,11 @@ ORDER BY created_at_ms ASC
         memoryListResponseSchema.parse(await secondPageResponse.json()),
       ).toEqual({
         memories: [
+          expect.objectContaining({
+            id: expect.stringMatching(
+              new RegExp(`^(${first.memory.id}|${publicMemory.memory.id})$`),
+            ),
+          }),
           expect.objectContaining({
             id: expect.stringMatching(
               new RegExp(`^(${first.memory.id}|${publicMemory.memory.id})$`),
@@ -2738,7 +2737,6 @@ ORDER BY created_at_ms ASC
       expect(memoryApiSchema.parse(await detailResponse.json())).toMatchObject({
         content: "Prefers concise release notes.",
         id: first.memory.id,
-        visibility: "private",
       });
 
       const publicDetailResponse = await api.fetch(
@@ -2751,16 +2749,7 @@ ORDER BY created_at_ms ASC
       ).toMatchObject({
         content: "Public workspace memory.",
         id: publicMemory.memory.id,
-        visibility: "public",
       });
-
-      const publicDeleteResponse = await api.fetch(
-        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
-          method: "DELETE",
-        }),
-        requestContext,
-      );
-      expect(publicDeleteResponse.status).toBe(404);
 
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
@@ -2771,19 +2760,25 @@ ORDER BY created_at_ms ASC
         await dashboardResponse.json(),
       );
       expect(dashboard.stats).toMatchObject({
-        active: 3,
-        automatic: 2,
+        active: 4,
+        automatic: 3,
         explicit: 1,
-        knowledge: 2,
-        personal: 2,
+        knowledge: 3,
+        personal: 1,
         preference: 1,
         procedure: 0,
-        public: 1,
+        public: 3,
       });
       expect(dashboard.days).toHaveLength(90);
+      expect(dashboard.hours).toHaveLength(7 * 24);
       expect(dashboard.extractionDays.at(-1)).toEqual({
         costUsd: 0.0042,
         date: "2026-07-28",
+        events: 1,
+      });
+      expect(dashboard.extractionHours).toHaveLength(7 * 24);
+      expect(dashboard.extractionHours?.at(-1)).toMatchObject({
+        costUsd: 0.0012,
         events: 1,
       });
       expect(dashboard.recallDays.at(-1)).toEqual({
@@ -2791,12 +2786,35 @@ ORDER BY created_at_ms ASC
         date: "2026-07-28",
         events: 3,
       });
+      expect(dashboard.recallHours).toHaveLength(7 * 24);
+      expect(dashboard.recallHours?.at(-1)).toMatchObject({
+        costUsd: 0.0003,
+        events: 1,
+      });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        personal: 2,
-        public: 1,
+        personal: 1,
+        public: 3,
       });
 
+      const privateDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${privateMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(privateDeleteResponse.status).toBe(204);
+
+      const publicDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publicDeleteResponse.status).toBe(204);
+
+      // `second` is a public-channel memory (default "C123" test channel),
+      // so it is visible and archivable like any other public memory.
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
           method: "DELETE",
@@ -2804,7 +2822,6 @@ ORDER BY created_at_ms ASC
         requestContext,
       );
       expect(deleteResponse.status).toBe(204);
-      await expect(secondStore.listPersonalMemories({})).resolves.toEqual([]);
 
       const hiddenDeleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${hidden.memory.id}`, {
@@ -2813,9 +2830,6 @@ ORDER BY created_at_ms ASC
         requestContext,
       );
       expect(hiddenDeleteResponse.status).toBe(404);
-      await expect(hiddenStore.listPersonalMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: hidden.memory.id }),
-      ]);
     } finally {
       now.mockRestore();
       await fixture.close();
@@ -2868,9 +2882,9 @@ WHERE id = '${superseded.memory.id}'
         "search",
         "memory",
         "--scope",
-        "personal",
+        "private",
         "--scope-key",
-        "local:cli-user",
+        context.userId,
         "--limit",
         "many",
       ]);
@@ -2887,9 +2901,9 @@ WHERE id = '${superseded.memory.id}'
         "search",
         "scoped search",
         "--scope",
-        "personal",
+        "private",
         "--scope-key",
-        "local:cli-user",
+        context.userId,
       ]);
       expect(search.exitCode).toBe(0);
       expect(search.stderr).toBe("");
@@ -2903,9 +2917,9 @@ WHERE id = '${superseded.memory.id}'
         "search",
         "scoped search",
         "--scope",
-        "personal",
+        "private",
         "--scope-key",
-        "local:cli-user",
+        context.userId,
         "--show-content",
       ]);
       expect(searchWithContent.exitCode).toBe(0);
@@ -2918,9 +2932,9 @@ WHERE id = '${superseded.memory.id}'
       const scopedList = await runMemoryCli(fixture, [
         "search",
         "--scope",
-        "personal",
+        "private",
         "--scope-key",
-        "local:cli-user",
+        context.userId,
       ]);
       expect(scopedList.exitCode).toBe(0);
       expect(scopedList.stderr).toBe("");
@@ -3082,22 +3096,30 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("keeps an older personal preference when workspace lexical noise fills the shared window", async () => {
+  it("keeps an older private preference when public lexical noise fills the shared window", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       // Mirrors production: "what time is it" only overlaps common tokens, so a
-      // shared lexical recency window can fill with newer workspace knowledge
-      // before ranking sees the older actor preference.
+      // public lexical recency window can fill with newer shared knowledge
+      // before ranking sees the older private preference.
       const query = "what time is it";
       const preferenceContent =
         "Located in San Francisco and uses Pacific Time (PT).";
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const privateStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        {
+          // No embedder: force the pure lexical path that production noise hits.
+          now: () => nowMs,
+        },
+      );
+      const publicStore = createMemoryStore(memoryDb(fixture), slackContext(), {
         // No embedder: force the pure lexical path that production noise hits.
         now: () => nowMs,
       });
-      const preference = await store.createMemory({
+      const preference = await privateStore.createMemory({
         content: preferenceContent,
         kind: "preference",
         idempotencyKey: "memory-test:recall-personal-timezone",
@@ -3105,7 +3127,7 @@ WHERE id = '${superseded.memory.id}'
 
       for (let index = 0; index < 80; index += 1) {
         nowMs = TEST_NOW_MS + index + 1;
-        await store.createConversationMemory({
+        await publicStore.createConversationMemory({
           content: `Recent workspace time note ${index} about deploy time windows`,
           kind: "knowledge",
           idempotencyKey: `memory-test:recall-time-noise-${index}`,
@@ -3113,13 +3135,15 @@ WHERE id = '${superseded.memory.id}'
       }
 
       nowMs = TEST_NOW_MS + 200;
-      // Shared lexical recall alone would keep only the newest noise. The
-      // personal-scope probe must still surface the older actor preference.
-      await expect(store.recallMemories({ limit: 5, query })).resolves.toEqual(
+      // Public lexical recall alone would keep only the newest noise. The
+      // The separate private search must still find the older preference.
+      await expect(
+        privateStore.recallMemories({ limit: 5, query }),
+      ).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             id: preference.memory.id,
-            scope: "personal",
+            scope: "private",
           }),
         ]),
       );
@@ -3177,108 +3201,6 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         vectorStore.searchMemories({ limit: 1, query }),
       ).resolves.toEqual([expect.objectContaining({ id: lexical.memory.id })]);
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("prefers same-channel memories for otherwise close public conversation matches", async () => {
-    const fixture = await createMemoryFixture();
-
-    try {
-      let nowMs = TEST_NOW_MS - 1;
-      const sameChannelStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "C123" }),
-        {
-          now: () => nowMs,
-        },
-      );
-      const sameChannel = await sameChannelStore.createConversationMemory({
-        content: "Deploy checklist lives in the release runbook.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:source-boost-same",
-      });
-
-      nowMs = TEST_NOW_MS;
-      const otherChannelStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "C456" }),
-        {
-          now: () => nowMs,
-        },
-      );
-      const otherChannel = await otherChannelStore.createConversationMemory({
-        content: "Deploy checklist lives in the release notes.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:source-boost-other",
-      });
-
-      await expect(
-        sameChannelStore.searchMemories({
-          limit: 2,
-          query: "deploy checklist lives release",
-        }),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: sameChannel.memory.id }),
-        expect.objectContaining({ id: otherChannel.memory.id }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
-  it("keeps stronger vector relevance ahead of same-channel proximity", async () => {
-    const fixture = await createMemoryFixture();
-
-    try {
-      const query = "semantic channel relevance";
-      const sameChannelContent = "Same channel semantic memory.";
-      const otherChannelContent = "Other channel stronger semantic memory.";
-      const embedder = createTestEmbedder({
-        [query]: unitEmbedding(0),
-        [sameChannelContent]: cosineEmbedding(0.9),
-        [otherChannelContent]: cosineEmbedding(0.995),
-      });
-      let nowMs = TEST_NOW_MS;
-      const sameChannelStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "C123" }),
-        {
-          embedder,
-          now: () => nowMs,
-        },
-      );
-      const sameChannel = await sameChannelStore.createConversationMemory({
-        content: sameChannelContent,
-        kind: "knowledge",
-        idempotencyKey: "memory-test:source-boost-vector-same",
-      });
-
-      nowMs += 1;
-      const otherChannelStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "C456" }),
-        {
-          embedder,
-          now: () => nowMs,
-        },
-      );
-      const otherChannel = await otherChannelStore.createConversationMemory({
-        content: otherChannelContent,
-        kind: "knowledge",
-        idempotencyKey: "memory-test:source-boost-vector-other",
-      });
-
-      await expect(
-        sameChannelStore.searchMemories({
-          limit: 2,
-          query,
-        }),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: otherChannel.memory.id }),
-        expect.objectContaining({ id: sameChannel.memory.id }),
-      ]);
     } finally {
       await fixture.close();
     }
@@ -3756,11 +3678,12 @@ WHERE id = '${superseded.memory.id}'
           reviewedRequests.push(request);
         }),
         db: memoryDb(fixture),
-        ...slackContext(),
+        ...slackContext({ channelId: "D123" }),
+        users: memoryUsers(slackContext({ channelId: "D123" }).userId),
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
-        removeMemory: createMemoryRemoveTool(context),
+        archiveMemory: createMemoryArchiveTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
@@ -3791,24 +3714,24 @@ WHERE id = '${superseded.memory.id}'
           ),
       ).resolves.toEqual([
         expect.objectContaining({
-          scope: "personal",
+          scope: "private",
           kind: "preference",
         }),
       ]);
       expect(reviewedRequests[0]).toMatchObject({
         content: "I prefer terse status updates.",
         runtimeContext: {
-          conversationId: "slack:C123:1718800000.000000",
+          conversationId: "slack:D123:1718800000.000000",
           actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
           },
           source: {
-            platform: "slack",
-            visibility: "public",
+            kind: "slack",
+            visibility: "private",
             teamId: "T123",
-            channelId: "C123",
+            channelId: "D123",
             messageTs: "1718800000.000000",
             threadTs: "1718800000.000000",
           },
@@ -3844,7 +3767,7 @@ WHERE id = '${superseded.memory.id}'
           ),
       ).resolves.toEqual([
         expect.objectContaining({
-          scope: "conversation",
+          scope: "private",
           kind: "knowledge",
         }),
       ]);
@@ -3882,7 +3805,7 @@ WHERE id = '${superseded.memory.id}'
       );
       expect(personal).toBeDefined();
       await expect(
-        tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+        tools.archiveMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
         memory: {
           id: personal!.id,
@@ -3940,7 +3863,7 @@ WHERE id = '${superseded.memory.id}'
           {
             content: "I prefer hidden fields to fail.",
             expires_at: "never",
-            scope: "conversation",
+            scope: "public",
           } as never,
           { toolCallId: "tool-create-hidden-field" },
         ),
@@ -3959,6 +3882,7 @@ WHERE id = '${superseded.memory.id}'
           agent: rejectMemory,
           db: memoryDb(fixture),
           ...slackContext(),
+          users: memoryUsers(slackContext().userId),
         }).execute(
           {
             content: "I prefer rejected memories not to be stored.",
@@ -3972,6 +3896,11 @@ WHERE id = '${superseded.memory.id}'
           agent: allowMemory("actor"),
           db: memoryDb(fixture),
           source: slackContext().source,
+          users: {
+            async resolveActor() {
+              return undefined;
+            },
+          },
         }).execute(
           {
             content: "I prefer actor context failures to be visible.",
@@ -4006,12 +3935,12 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("retains personal and conversation memory recall as structured prompt context", async () => {
+  it("retains user and conversation subjects as structured recall context", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       let nowMs = TEST_NOW_MS;
-      const context = slackContext();
+      const context = slackContext({ channelId: "D123" });
       const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => nowMs,
       });
@@ -4036,7 +3965,7 @@ WHERE id = '${superseded.memory.id}'
       nowMs += 1;
       await createMemoryStore(
         memoryDb(fixture),
-        slackContext({ userId: "U456" }),
+        slackContext({ channelId: "D456", userId: "U456" }),
         { now: () => nowMs },
       ).createMemory({
         content: "Prefers PR summary unrelated owner.",
@@ -4049,6 +3978,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder({}, { costUsd: 0.0003 }),
         events: {
@@ -4074,18 +4004,18 @@ WHERE id = '${superseded.memory.id}'
         content: {
           memories: [
             {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
+              scope: "personal",
+            },
+            {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
               scope: "personal",
-            },
-            {
-              id: conversation.memory.id,
-              content: conversation.memory.content,
-              kind: conversation.memory.kind,
-              observedAtMs: conversation.memory.observedAtMs,
-              scope: "conversation",
             },
           ],
         },
@@ -4101,8 +4031,75 @@ WHERE id = '${superseded.memory.id}'
         expect.objectContaining({
           data: {
             costUsd: 0.0045,
-            memories: [personal.memory.id, conversation.memory.id],
+            memories: [conversation.memory.id, personal.memory.id],
           },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 1,
+          }),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("admits more than five relevant memories when they fit the prompt budget", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => nowMs,
+      });
+      const created = [];
+      for (let index = 0; index < 6; index += 1) {
+        created.push(
+          await store.createConversationMemory({
+            content: `Deploy step ${index + 1} uses checklist item ${index + 1}.`,
+            kind: "procedure",
+            idempotencyKey: `memory-test:recall-budget-${index}`,
+          }),
+        );
+        nowMs += 1;
+      }
+
+      const emitted: PluginConversationEventValue[] = [];
+      const plugin = memoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        users: memoryUsers(context.userId),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
+        log: noopLogger,
+        model: selectAllRecallModel,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "Walk through the deploy checklist steps.",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      const admittedIds = contribution.context.content.memories.map(
+        (memory) => memory.id,
+      );
+      expect(admittedIds).toHaveLength(6);
+      expect([...admittedIds].sort()).toEqual(
+        created.map(({ memory }) => memory.id).sort(),
+      );
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: { memories: admittedIds },
           definition: expect.objectContaining({
             eventName: "memories_recalled",
             version: 1,
@@ -4131,6 +4128,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
@@ -4202,6 +4200,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
@@ -4247,6 +4246,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
           events: {
@@ -4286,6 +4286,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
           events: {
@@ -4344,6 +4345,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log,
@@ -4379,6 +4381,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log: noopLogger,
@@ -4417,6 +4420,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder,
         log: noopLogger,
@@ -4444,11 +4448,15 @@ WHERE id = '${superseded.memory.id}'
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext(),
+        users: memoryUsers(slackContext().userId),
       });
       const secondTool = createMemoryCreateTool({
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
+        users: memoryUsers(
+          slackContext({ threadTs: "1718800001.000000" }).userId,
+        ),
       });
 
       await expect(
@@ -4485,7 +4493,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("stores and filters local conversation memories by local context", async () => {
+  it("keeps private local memory with its User", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4522,14 +4530,17 @@ WHERE id = '${superseded.memory.id}'
         { now: () => nowMs },
       );
       await expect(otherConversationStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: conversation.memory.id }),
         expect.objectContaining({ id: personal.memory.id }),
       ]);
       await expect(
         otherConversationStore.archiveMemory({ id: conversation.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
+      ).resolves.toMatchObject({ id: conversation.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const archived = await store.archiveMemory({ id: personal.memory.id });
+      const archived = await otherConversationStore.archiveMemory({
+        id: personal.memory.id,
+      });
       expect(archived).toMatchObject({
         archivedAtMs: TEST_NOW_MS + 2,
         id: personal.memory.id,
@@ -4544,7 +4555,8 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const context = slackContext({ channelId: "D123" });
+      const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => nowMs,
       });
 
@@ -4588,11 +4600,11 @@ INSERT INTO junior_memory_memories (
 `,
           [
             "mem_duplicate_idempotency",
-            "personal",
-            "slack:T123:U123",
+            "private",
+            context.userId,
             "knowledge",
             "user",
-            "slack:T123:U123",
+            context.userId,
             "Duplicate raw insert with same retry key.",
             "slack",
             "slack:T123:C123:1718800000.000000",
@@ -4619,8 +4631,12 @@ INSERT INTO junior_memory_memories (
           );
           return {
             object: duplicateId
-              ? { decision: "duplicate", duplicateId }
-              : { decision: "distinct" },
+              ? { decision: "duplicate", duplicateId, supersededIds: null }
+              : {
+                  decision: "distinct",
+                  duplicateId: null,
+                  supersededIds: null,
+                },
           };
         },
       };
@@ -5016,9 +5032,11 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
-        now: () => nowMs,
-      });
+      const store = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        { now: () => nowMs },
+      );
 
       const archived = await store.createMemory({
         content: "Prefers short deployment summaries.",
@@ -5201,15 +5219,15 @@ INSERT INTO junior_memory_memories (
           content: "Prefers short PR summaries.",
           kind: "preference",
           idempotencyKey: "memory-test:smuggle",
-          scope: "conversation",
+          scope: "public",
           subjectKey: "slack:T123:U999",
           subjectType: "general",
-        } as unknown as Parameters<typeof store.createMemory>[0]),
+        } as Parameters<typeof store.createMemory>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
         store.listMemories({
           actor: { platform: "local", userId: "local-user" },
-        } as unknown as Parameters<typeof store.listMemories>[0]),
+        } as Parameters<typeof store.listMemories>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 
       await expect(store.listMemories({})).resolves.toEqual([]);

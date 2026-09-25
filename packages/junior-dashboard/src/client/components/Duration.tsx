@@ -5,6 +5,7 @@ const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const MONTH_MS = 30 * DAY_MS;
+const MAX_DURATION_UNITS = 2;
 
 /** Format milliseconds as compact human-readable duration units. */
 export function formatDuration(value: number | undefined): string {
@@ -30,6 +31,7 @@ export function formatDuration(value: number | undefined): string {
     const count = Math.floor(remaining / size);
     if (count === 0) continue;
     parts.push(`${count}${label}`);
+    if (parts.length === MAX_DURATION_UNITS) break;
     remaining %= size;
   }
 

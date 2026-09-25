@@ -32,7 +32,7 @@ export function projectTimedOutToolResult(
       ? record.target
       : undefined;
   const envelope = makeStructuredToolOutput({
-    ...(target ? { target } : {}),
+    ...(target ? { target } : undefined),
     timed_out: true as const,
   });
   return {

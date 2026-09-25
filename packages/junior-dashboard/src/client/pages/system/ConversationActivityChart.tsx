@@ -1,3 +1,8 @@
+import { useChartLayout } from "../../components/charts/useChartLayout";
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import {
@@ -5,24 +10,21 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
-  createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
-import {
-  formatActivityChartAverage,
-  formatCompactNumber,
-} from "../../format";
+import { formatActivityChartAverage, formatCompactNumber } from "../../format";
 
-/** Plot root conversations with recorded activity each day. */
+/** Plot root conversations with recorded activity each day or hour. */
 export function ConversationActivityChart(props: {
+  bucketUnit?: TimeRangeBucketUnit;
   days: ConversationMetricDay[];
 }) {
-  const layout = createActivityChartLayout(280);
+  const bucketUnit = props.bucketUnit ?? "day";
+  const { ref, layout } = useChartLayout(150);
   const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
   const step = layout.plotWidth / Math.max(1, props.days.length);
   const barWidth = Math.max(2, Math.min(24, step * 0.68));
@@ -33,14 +35,13 @@ export function ConversationActivityChart(props: {
   return (
     <Card>
       <ChartHeader
-        description="Root conversations with recorded activity, bucketed by day."
+        description={`Root conversations with recorded activity, per ${bucketUnit === "6hour" ? "6 hours" : bucketUnit}.`}
         title="Conversation activity"
         total={formatCompactNumber(total)}
       />
-      <div className="px-2 py-3 sm:px-4 sm:py-4">
+      <div className="px-2 py-2" ref={ref}>
         <ChartSvg
-          aria-label="Conversations per day"
-          className="min-h-60 overflow-visible"
+          aria-label={`Conversations per ${bucketUnit === "6hour" ? "6 hours" : bucketUnit}`}
           layout={layout}
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
@@ -52,19 +53,17 @@ export function ConversationActivityChart(props: {
               barHeight,
             );
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[["conversations", day.conversations]]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.conversations} conversations`}
               >
-                <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations`}
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill="#22d3ee"
                     height={renderedHeight}
@@ -82,7 +81,7 @@ export function ConversationActivityChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
@@ -91,6 +90,7 @@ export function ConversationActivityChart(props: {
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

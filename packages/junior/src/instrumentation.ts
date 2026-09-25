@@ -52,12 +52,15 @@ export function initSentry(): void {
     beforeSendLog: scrubPrivateSentryLog,
     beforeSendSpan: Sentry.withStreamedSpan(scrubPrivateSentrySpan),
     beforeSendTransaction: scrubPrivateSentryTransaction,
-    integrations: [
-      Sentry.vercelAIIntegration({
-        recordInputs: true,
-        recordOutputs: true,
-      }),
-    ],
+    integrations(defaultIntegrations) {
+      return [
+        ...defaultIntegrations,
+        Sentry.vercelAIIntegration({
+          recordInputs: true,
+          recordOutputs: true,
+        }),
+      ];
+    },
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.

@@ -30,7 +30,11 @@ export function LocationDetailPageContent(props: {
   error: unknown;
 }) {
   if (!props.data && !props.error) {
-    return <LoadingView label="Loading location" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading location" />
+      </SystemPageLayout>
+    );
   }
   return (
     <SystemPageLayout>
@@ -84,6 +88,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
         />
       </div>
 
+      {/* TODO: add a range selector and plot activityHours on 24h. */}
       <LocationActivityChart days={detail.activityDays} />
 
       <Card>

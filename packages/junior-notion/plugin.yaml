@@ -1,9 +1,12 @@
 name: notion
 display-name: Notion
-description: Notion page search and summarization
+description: Notion page search, fetch, and limited write workflows
 
 mcp:
   url: https://mcp.notion.com/mcp
   allowed-tools:
     - notion-search
     - notion-fetch
+    - notion-create-pages
+    - notion-update-page
+    - notion-move-pages

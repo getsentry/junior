@@ -45,6 +45,7 @@ pnpm test
 pnpm evals                 # behavioral suite
 pnpm evals:integration       # hard pass/fail integration suite
 pnpm evals:guardian        # isolated Guardian snapshots
+pnpm evals:router          # isolated turn route snapshots
 pnpm typecheck
 pnpm skills:check
 pnpm docs:check
@@ -130,11 +131,13 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
 - `@sentry/junior-github`
+- `@sentry/junior-gocd`
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`
 - `@sentry/junior-memory`
 - `@sentry/junior-notion`
+- `@sentry/junior-octolens`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
 

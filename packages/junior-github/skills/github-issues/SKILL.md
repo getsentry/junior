@@ -5,7 +5,7 @@ description: Create, update, comment on, label, and inspect GitHub issues with c
 
 # GitHub Issue Operations
 
-Issue create via Junior's `github_createIssue` tool; update, comment, label, state, and inspection via `gh` CLI.
+Create issues with `github_createIssue`. Update issue title, body, or state with `github_updateIssue`. Use `gh` for comments, labels, and inspection.
 Use only for GitHub issues. For pull requests, branches, pushes, or PR creation order questions, load `github-code` instead.
 
 ## Reference loading
@@ -28,11 +28,11 @@ Use only for GitHub issues. For pull requests, branches, pushes, or PR creation 
 - Resolve the issue number for non-create operations.
 - Keep `--repo owner/repo` explicit on `gh` commands so the command itself targets the intended repository, not a stale default.
 - When the user explicitly asks for durable work in response to GitHub issue
-  activity, use an event task instead of polling:
+  activity, use an event automation instead of polling:
   - Use namespace `github`. One issue uses identifier `owner/repo#number` and
     resource type `issue`; repo-wide issue activity uses identifier
     `owner/repo` and resource type `repository`.
-  - Use the event names currently exposed by the resource-event catalog; search
+  - Use the event names currently exposed by the event catalog; search
     it when the requested event is unclear.
   - Put every requested issue state in the same task's `events` array. Create
     separate tasks only when the work to perform is different.
@@ -76,7 +76,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 - The runtime adds the verified `Requested by` block. Do not add or rewrite requester attribution in model-authored body text.
 - If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
-- Attach screenshots from the thread as image links when present.
+- Attach screenshots from the thread when present. For GitHub Markdown, first publish each local image with `publishImage` (the image becomes public to anyone with the URL), then embed the returned URL in the issue body or comment. Do not use private Slack file links or conversation attachment URLs.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
 ### 4. Verify draft
@@ -92,8 +92,9 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 ### 5. Execute
 
-- Use `github_createIssue` for new issues so Junior owns idempotency and session-link footers.
-- Use `gh issue` commands from [references/api-surface.md](references/api-surface.md) for non-create operations.
+- Use `github_createIssue` for new issues so the runtime owns idempotency and session-link footers.
+- Use `github_updateIssue` for issue title, body, or state changes so the runtime preserves requester attribution and the session footer.
+- Use `gh` commands from [references/api-surface.md](references/api-surface.md) for comments, labels, assignees, and read-only operations.
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
 - Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.
 

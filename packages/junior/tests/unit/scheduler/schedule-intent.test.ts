@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { type ScheduledTask } from "@/chat/scheduled-tasks";
-import { getNextRunAtMs } from "@/chat/scheduled-tasks/cadence";
-import { compileScheduleIntent } from "@/chat/scheduled-tasks/schedule-intent";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import { getNextRunAtMs } from "@/chat/scheduled-automations/cadence";
+import { compileScheduleIntent } from "@/chat/scheduled-automations/schedule-intent";
 
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
-function scheduledTask(
+function scheduledAutomation(
   compiled: ReturnType<typeof compileScheduleIntent>,
   nowMs: number,
-): ScheduledTask {
+): ScheduledAutomation {
   return {
     id: "sched_test",
     conversationAccess: { audience: "channel", visibility: "public" },
@@ -22,6 +22,7 @@ function scheduledTask(
       channelId: "C123",
     },
     nextRunAtMs: compiled.nextRunAtMs,
+    outcomes: [],
     schedule: compiled.schedule,
     status: "active",
     task: { text: "Post the reminder." },
@@ -86,7 +87,7 @@ describe("schedule intent compiler", () => {
         kind: "recurring",
         frequency: "daily",
         time: "02:30",
-        start_date: "2026-03-08",
+        startDate: "2026-03-08",
       },
       nowMs: Date.parse("2026-03-08T08:00:00.000Z"),
     });
@@ -101,7 +102,7 @@ describe("schedule intent compiler", () => {
         kind: "recurring",
         frequency: "daily",
         time: "01:30",
-        start_date: "2026-11-01",
+        startDate: "2026-11-01",
       },
       nowMs: Date.parse("2026-11-01T07:00:00.000Z"),
     });
@@ -115,7 +116,7 @@ describe("schedule intent compiler", () => {
       intent: {
         kind: "recurring",
         frequency: "monthly",
-        day_of_month: 31,
+        dayOfMonth: 31,
         time: "09:00",
       },
       nowMs: Date.parse("2026-04-30T12:00:00.000Z"),
@@ -126,7 +127,7 @@ describe("schedule intent compiler", () => {
         kind: "recurring",
         frequency: "yearly",
         month: 2,
-        day_of_month: 29,
+        dayOfMonth: 29,
         time: "09:00",
       },
       nowMs: Date.parse("2026-03-01T12:00:00.000Z"),
@@ -144,8 +145,8 @@ describe("schedule intent compiler", () => {
         frequency: "yearly",
         interval: 365,
         month: 1,
-        day_of_month: 1,
-        start_date: "2026-01-01",
+        dayOfMonth: 1,
+        startDate: "2026-01-01",
         time: "09:00",
       },
       nowMs: Date.parse("2026-03-01T12:00:00.000Z"),
@@ -161,11 +162,11 @@ describe("schedule intent compiler", () => {
         kind: "recurring",
         frequency: "daily",
         time: "02:30",
-        start_date: "2026-03-07",
+        startDate: "2026-03-07",
       },
       nowMs: Date.parse("2026-03-07T08:00:00.000Z"),
     });
-    const task: ScheduledTask = {
+    const task: ScheduledAutomation = {
       id: "sched_dst",
       conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: Date.parse("2026-03-07T08:00:00.000Z"),
@@ -178,6 +179,7 @@ describe("schedule intent compiler", () => {
         channelId: "C123",
       },
       nextRunAtMs: compiled.nextRunAtMs,
+      outcomes: [],
       schedule: compiled.schedule,
       status: "active",
       task: { text: "Post the daily reminder." },
@@ -197,7 +199,7 @@ describe("schedule intent compiler", () => {
         frequency: "yearly",
         interval: 4,
         month: 2,
-        day_of_month: 29,
+        dayOfMonth: 29,
         time: "09:00",
       },
       nowMs: Date.parse("2025-03-01T12:00:00.000Z"),
@@ -229,7 +231,10 @@ describe("schedule intent compiler", () => {
       startDate: "2026-05-25",
     });
     expect(
-      getNextRunAtMs(scheduledTask(compiled, nowMs), compiled.nextRunAtMs),
+      getNextRunAtMs(
+        scheduledAutomation(compiled, nowMs),
+        compiled.nextRunAtMs,
+      ),
     ).toBe(Date.parse("2026-05-27T16:00:00.000Z"));
   });
 
@@ -246,7 +251,7 @@ describe("schedule intent compiler", () => {
       },
       nowMs,
     });
-    const task = scheduledTask(compiled, nowMs);
+    const task = scheduledAutomation(compiled, nowMs);
     const secondRunAtMs = getNextRunAtMs(task, compiled.nextRunAtMs);
 
     expect(compiled.nextRunAtMs).toBe(Date.parse("2026-05-29T16:00:00.000Z"));
@@ -262,8 +267,8 @@ describe("schedule intent compiler", () => {
       intent: {
         kind: "recurring",
         frequency: "monthly",
-        day_of_month: 1,
-        start_date: "2027-06-15",
+        dayOfMonth: 1,
+        startDate: "2027-06-15",
         time: "09:00",
       },
       nowMs: Date.parse("2026-03-01T12:00:00.000Z"),
@@ -274,8 +279,8 @@ describe("schedule intent compiler", () => {
         kind: "recurring",
         frequency: "yearly",
         month: 1,
-        day_of_month: 1,
-        start_date: "2027-06-15",
+        dayOfMonth: 1,
+        startDate: "2027-06-15",
         time: "09:00",
       },
       nowMs: Date.parse("2026-03-01T12:00:00.000Z"),

@@ -20,10 +20,10 @@ They are not there to narrate obvious code.
 - When an owning edge intentionally omits behavior a maintainer would
   reasonably expect, document that absence when it affects correctness,
   security, privacy, delivery, or recovery.
-- Transitional compatibility branches and fallbacks require a removal TODO in
-  the form `TODO(vX.Y.Z): Remove ...` where `vX.Y.Z` is the next release after
-  the compatibility path is introduced. The comment must name the legacy state
-  or behavior being tolerated. Do not only say "cleanup later".
+- Every TODO must name an owner in the form `TODO(owner): ...`.
+- A removal TODO must name what will be removed and the condition that makes
+  removal safe. Use a version only when support for that version is the real
+  condition. Do not invent a release deadline.
 - Keep comments short, concrete, and current.
 
 ## Exceptions
@@ -31,5 +31,5 @@ They are not there to narrate obvious code.
 - Do not comment obvious transformations or control flow.
 - Do not add comments that simply restate the code in English.
 - Small obvious leaf helpers do not need comments.
-- If there is no concrete release or condition for removing a compatibility
-  path, prefer a hard cutover instead of adding the path.
+- If there is no concrete condition for removing a compatibility path, prefer
+  a hard cutover instead of adding the path.

@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 import { assistantMessages } from "vitest-evals";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
@@ -32,9 +33,20 @@ export async function seedMemory(args: {
   content: string;
   idempotencyKey: string;
   kind?: "knowledge" | "preference" | "procedure";
-  scope?: "conversation" | "personal";
+  subject?: "conversation" | "user";
   thread: MemoryThread;
 }) {
+  const identity = await upsertIdentity(getSqlExecutor(), {
+    email: "testuser@example.com",
+    emailVerified: true,
+    kind: "user",
+    provider: "slack",
+    providerSubjectId: actorUserId,
+    providerTenantId: memoryTeamId,
+  });
+  if (!identity.userId) {
+    throw new Error("Eval memory Actor did not resolve to a User");
+  }
   const store = createMemoryStore(
     memoryDb(),
     {
@@ -49,8 +61,10 @@ export async function seedMemory(args: {
         messageTs: args.thread.thread_ts,
         teamId: memoryTeamId,
         threadTs: args.thread.thread_ts,
-        visibility: args.thread.channel_type === "channel" ? "public" : "private",
+        visibility:
+          args.thread.channel_type === "channel" ? "public" : "private",
       }),
+      userId: identity.userId,
     },
     { embedder: evalMemoryEmbedder },
   );
@@ -59,7 +73,7 @@ export async function seedMemory(args: {
     idempotencyKey: args.idempotencyKey,
     kind: args.kind ?? "preference",
   };
-  if (args.scope === "conversation") {
+  if (args.subject === "conversation") {
     await store.createConversationMemory(input);
     return;
   }
@@ -178,7 +192,7 @@ export async function expectActorMemorySemantics(
           input.assistantText,
           "</assistant-text>",
           "<criteria>",
-          "Pass only if exactly one active personal/user memory is stored and its content is semantically equivalent to the expected meaning.",
+          "Pass only if exactly one active user memory is stored and its content is semantically equivalent to the expected meaning.",
           "The stored content must be canonical memory text: no actor display name, no 'the actor', no 'the user', no first-person wording, and no thread/channel/source wording.",
           "The assistant text must not claim the memory failed because the user's first-person request was rewritten in third person.",
           "Fail if no memory was stored, if the stored memory is about someone other than the actor, if the content is a vague paraphrase, or if the content preserves source/user labels.",
@@ -230,7 +244,7 @@ export async function expectConversationMemorySemantics(
           "<criteria>",
           "Pass only if exactly one active conversation memory is stored and its content is semantically equivalent to the expected meaning.",
           "The stored content must be canonical memory text: no actor display name, no 'the actor', no 'the user', no first-person wording, and no thread/channel/source wording.",
-          "Fail if the memory is stored as personal/user memory, if no memory was stored, if the content is a vague paraphrase, or if the content preserves source/user labels.",
+          "Fail if the memory is stored as a user memory, if no memory was stored, if the content is a vague paraphrase, or if the content preserves source/user labels.",
           "</criteria>",
           "</memory-eval>",
         ].join("\n"),

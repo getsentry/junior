@@ -47,7 +47,7 @@ describe("execution budget decision matrix", () => {
       const env = {
         ...BASE_ENV,
         ...(turnTimeout === undefined
-          ? {}
+          ? undefined
           : { AGENT_TURN_TIMEOUT_MS: turnTimeout }),
         // These legacy values must not affect the generated host budget.
         FUNCTION_MAX_DURATION_SECONDS: "900",

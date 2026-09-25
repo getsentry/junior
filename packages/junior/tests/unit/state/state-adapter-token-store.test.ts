@@ -5,7 +5,7 @@ import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
-    return {
+    const adapter = {
       get: async () => null,
       set: vi.fn(async () => {}),
       delete: async () => {},
@@ -18,9 +18,9 @@ describe("StateAdapterTokenStore", () => {
       releaseLock: async () => {},
       setWithTtl: async () => {},
       ...overrides,
-    } as unknown as StateAdapter & {
-      set: ReturnType<typeof vi.fn>;
     };
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    return adapter as StateAdapter & { set: ReturnType<typeof vi.fn> };
   }
 
   it("uses a long-lived ttl for tokens without expiresAt", async () => {

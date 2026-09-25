@@ -14,7 +14,7 @@ import type { ToolActionPriorRejection } from "@/chat/tool-support/action-review
 const LOCAL_CONVERSATION_ID = "local:guardian-eval";
 
 const LOCAL_SOURCE = {
-  platform: "local" as const,
+  kind: "local" as const,
   visibility: "private" as const,
   conversationId: LOCAL_CONVERSATION_ID,
 };
@@ -25,7 +25,7 @@ const LOCAL_DESTINATION = {
 };
 
 const SLACK_SOURCE = {
-  platform: "slack" as const,
+  kind: "slack" as const,
   teamId: "TGUARDIAN",
   channelId: "CGUARDIAN",
   visibility: "public" as const,
@@ -101,7 +101,10 @@ export function proposal(input: {
 
 /** Chronological visible-conversation evidence without author identity. */
 export function evidence(
-  entries: Array<{ role: ToolActionEvidence["entries"][number]["role"]; text: string }>,
+  entries: Array<{
+    role: ToolActionEvidence["entries"][number]["role"];
+    text: string;
+  }>,
   omittedEntries = 0,
 ): ToolActionEvidence {
   return { entries, omittedEntries };

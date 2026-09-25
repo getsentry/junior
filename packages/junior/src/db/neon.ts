@@ -10,6 +10,7 @@ import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
 
 type QueryClient = Pool | PoolClient | Client;
 
@@ -20,7 +21,10 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
 
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly connectionString: string,
+  ) {}
 
   db(): JuniorDatabase {
     return drizzle(this.queryClient(), {
@@ -135,7 +139,10 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, {
+      connectionString: this.connectionString,
+      driver: "neon",
+    });
   }
 }
 
@@ -150,5 +157,6 @@ export function createNeonJuniorSqlExecutor(args: {
       max: 3,
       statement_timeout: args.statementTimeoutMs,
     }),
+    args.connectionString,
   );
 }

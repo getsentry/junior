@@ -58,9 +58,6 @@ api-headers:
 
 mcp:
   url: https://mcp.${ACME_REGION}.acme.example/mcp
-  allowed-tools:
-    - search_customers
-    - fetch_customer
 ```
 
 ```markdown
@@ -140,9 +137,6 @@ runtime-dependencies:
 
 mcp:
   url: https://mcp.acme.example/mcp
-  allowed-tools:
-    - search_customers
-    - fetch_customer
 ```
 
 ```markdown

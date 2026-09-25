@@ -1,4 +1,7 @@
+export * from "./object-annotations";
+export * from "./object-facts";
 export * from "./annotations";
+export * from "./code";
 export * from "./conversation-events";
 export * from "./schemas";
 export * from "./context";
@@ -15,11 +18,12 @@ export {
   type UserPromptContext,
 } from "./prompt";
 export * from "./dispatch";
-export * from "./resource-events";
+export * from "./events";
 export * from "./tasks";
 export * from "./tools";
 export * from "./operations";
 export * from "./credentials";
+export * from "./egress-policy";
 export * from "./hooks";
 export * from "./cli";
 export * from "./manifest";

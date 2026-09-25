@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { githubPlugin } from "@sentry/junior-github";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 function githubManifest() {
   return {
     name: "github",
@@ -78,7 +78,7 @@ describe("plugin egress", () => {
     );
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: vi.fn() as unknown as typeof fetch,
+      fetch: vi.fn() as typeof fetch,
       pluginAuth,
     });
 
@@ -128,7 +128,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: fetchMock as unknown as typeof fetch,
+      fetch: fetchMock as typeof fetch,
       pluginAuth: authOrchestration(),
     });
 
@@ -186,5 +186,34 @@ describe("plugin egress", () => {
 
     expect(response.status).toBe(403);
     await expect(response.text()).resolves.toBe("forbidden");
+  });
+
+  it("denies pull request approvals on plugin egress even when operation is set", async () => {
+    setPlugins([githubPlugin()]);
+    const fetchMock = vi.fn();
+    const egress = createPluginEgress({
+      credentialContext: { actor: { type: "user", userId: "U123" } },
+      fetch: fetchMock as typeof fetch,
+      pluginAuth: authOrchestration(),
+    });
+
+    const response = await egress.fetch({
+      provider: "github",
+      operation: "github.pull.update",
+      request: new Request(
+        "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+        {
+          method: "POST",
+          body: JSON.stringify({ event: "APPROVE", body: "lgtm" }),
+        },
+      ),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Junior cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss Junior's own review instead.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

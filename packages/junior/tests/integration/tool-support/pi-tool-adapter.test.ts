@@ -31,6 +31,7 @@ const TEST_EGRESS = {
 
 function runtimeContext() {
   return {
+    conversationId: LOCAL_DESTINATION.conversationId,
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
@@ -137,14 +138,15 @@ describe("Pi tool adapter integration", () => {
 
       const searchResult = await agentTool(tools, "searchTools").execute(
         "tool-search",
-        { query: "customer identifier" },
+        { query: "lookupCustomer", source: "agent-demo" },
       );
       expect(searchResult.details).toMatchObject({
         returned_tools: 1,
+        source: "agent-demo",
         tools: [
           {
             tool_name: "agentDemo_lookupCustomer",
-            source: "agent-demo",
+            // source is omitted on tools when the search already selected one.
             input_schema: {
               properties: {
                 customerId: {

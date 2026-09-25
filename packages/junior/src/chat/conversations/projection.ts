@@ -22,12 +22,13 @@ import {
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
   bindProviderConversation,
-  type ProviderConversationBinding,
+  type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
@@ -36,8 +37,6 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
-import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -45,13 +44,17 @@ import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { appendConversationMessages } from "./messages";
 
-/** Distinct MCP providers durably connected in the given events, sorted. */
+/** Distinct MCP providers one credential subject connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
   events: ConversationEvent[],
+  credentialSubjectId: string,
 ): string[] {
   const providers = new Set<string>();
   for (const event of events) {
-    if (event.data.type === "mcp_provider_connected") {
+    if (
+      event.data.type === "mcp_provider_connected" &&
+      event.data.credentialSubjectId === credentialSubjectId
+    ) {
       providers.add(event.data.provider);
     }
   }
@@ -72,11 +75,9 @@ export class AgentHistoryBranchError extends Error {
   }
 }
 
-/** Match the exact JSONB shape used for prefix comparison and replay. */
+/** Snapshot Pi's JSON message without changing text or nested object order. */
 function normalizeDurableMessage(message: PiMessage): PiMessage {
-  return piMessageSchema.parse(
-    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
-  );
+  return piMessageSchema.parse(JSON.parse(JSON.stringify(message)));
 }
 
 /**
@@ -223,7 +224,9 @@ export async function loadProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events).messages;
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  }).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -233,7 +236,9 @@ export async function loadConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /** Load the active Pi projection before a conversation's next request. */
@@ -243,7 +248,9 @@ export async function openConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /**
@@ -268,6 +275,7 @@ export async function loadTurnProjection(args: {
   if (args.committedSeq < 0) {
     return projectConversationEvents(
       await eventStore.loadCurrentHistory(args.conversationId),
+      { defaultProfile: botConfig.defaultProfile },
     );
   }
   const historyEvents = await eventStore.loadHistoryContaining(
@@ -278,17 +286,20 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents);
+  return projectConversationEvents(historyEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
-/** Load MCP providers connected in the current agent-history version. */
-export async function loadConnectedMcpProviders(
-  args: ScopedConversation,
-): Promise<string[]> {
-  const events = await getConversationEventStore().loadCurrentHistory(
+/** Load MCP providers the credential subject connected in this conversation. */
+export async function loadConnectedMcpProviders(args: {
+  conversationId: string;
+  credentialSubjectId: string;
+}): Promise<string[]> {
+  const events = await getConversationEventStore().loadHistory(
     args.conversationId,
   );
-  return connectedMcpProvidersFromEvents(events);
+  return connectedMcpProvidersFromEvents(events, args.credentialSubjectId);
 }
 
 function messageTimestamp(message: PiMessage): number {
@@ -326,7 +337,7 @@ export async function commitMessages(args: {
   historyVersion: number;
   /** Event sequence for every projected agent history item. */
   messageSeqs: number[];
-  /** Normalized durable messages after volatile runtime context is removed. */
+  /** Normalized durable messages committed as exact model history. */
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
 }> {
@@ -353,9 +364,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: Array<
-    Omit<ProviderConversationBinding, "conversationId">
-  >;
+  providerConversationBindings?: ProviderConversationReference[];
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -380,7 +389,7 @@ export async function commitAcceptedReply(args: {
           conversation: args.conversation,
           conversationId: args.conversationId,
           ...(args.repliedAtMs === undefined
-            ? {}
+            ? undefined
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
@@ -402,13 +411,10 @@ async function commitMessagesLocked(
   const currentEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const current = projectConversationEvents(currentEvents);
-  // Runtime bootstrap is per-run input, not durable agent history. Session
-  // records may retain it while a turn is live, but event replay must not need
-  // a compensating history rewrite when that bootstrap changes.
-  const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
-    normalizeDurableMessage,
-  );
+  const current = projectConversationEvents(currentEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
+  const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
     nextLocalMessages,
@@ -417,13 +423,13 @@ async function commitMessagesLocked(
     existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
-    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+    ...(args.provenance ? { explicitProvenance: args.provenance } : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
+      : undefined),
     ...(args.newMessageProvenance
       ? { newMessageProvenance: args.newMessageProvenance }
-      : {}),
+      : undefined),
   });
   if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
@@ -443,7 +449,7 @@ async function commitMessagesLocked(
           content: context.content,
         },
       })) ?? [];
-    await eventStore.append(args.conversationId, [
+    const appendedEvents = await eventStore.append(args.conversationId, [
       ...newMessages.map((message, index) => ({
         data: historyItemFromPiMessage(
           message,
@@ -453,35 +459,45 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else {
-    throw new AgentHistoryBranchError(args.conversationId);
+    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    return {
+      committedSeq: cursor?.seq ?? -1,
+      historyVersion: cursor?.historyVersion ?? 0,
+      messageSeqs: [
+        ...current.seqs,
+        ...appendedEvents
+          .slice(0, newMessages.length)
+          .map((event) => event.seq),
+      ],
+      messages: nextLocalMessages,
+      provenance: nextLocalProvenance,
+    };
   }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents);
-  return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
-    messages: nextLocalMessages,
-    provenance: nextLocalProvenance,
-  };
+  throw new AgentHistoryBranchError(args.conversationId);
 }
 
-/** Record a successful MCP provider connection without duplicating the fact. */
+/** Record a successful MCP provider connection for one credential subject without duplicating it. */
 export async function recordMcpProviderConnected(args: {
   conversationId: string;
   provider: string;
+  credentialSubjectId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (connectedMcpProvidersFromEvents(events).includes(args.provider)) {
+  if (
+    connectedMcpProvidersFromEvents(events, args.credentialSubjectId).includes(
+      args.provider,
+    )
+  ) {
     return;
   }
   await eventStore.append(args.conversationId, [
     {
-      data: { type: "mcp_provider_connected", provider: args.provider },
+      data: {
+        type: "mcp_provider_connected",
+        provider: args.provider,
+        credentialSubjectId: args.credentialSubjectId,
+      },
       createdAtMs: Date.now(),
     },
   ]);
@@ -591,9 +607,11 @@ async function recordAuthenticationAccountChange(
   const content = definition.parse({
     actorId: args.actorId,
     provider: args.provider,
-    ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
-    ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
+    ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
+    ...(args.authorizationId
+      ? { authorizationId: args.authorizationId }
+      : undefined),
+    ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -609,7 +627,7 @@ async function recordAuthenticationAccountChange(
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
         name: definition.eventName,
         version: definition.version,
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
         content,
       },
     },
@@ -702,10 +720,10 @@ export async function recordAgentsInstructionsUpdated(
     action,
     fingerprint,
     sources: instructions?.sources ?? [],
-    ...(instructions ? { directory: instructions.directory } : {}),
+    ...(instructions ? { directory: instructions.directory } : undefined),
     ...(instructions
       ? { textBytes: Buffer.byteLength(instructions.text, "utf8") }
-      : {}),
+      : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -752,19 +770,22 @@ export async function recordSubscribedReplyRoute(args: {
           shouldReply: args.shouldReply,
           ...(args.shouldUnsubscribe !== undefined
             ? { shouldUnsubscribe: args.shouldUnsubscribe }
-            : {}),
+            : undefined),
         },
       },
     },
   ]);
 }
 
-/** Load a previously selected execution profile for a resumed turn. */
+/** Load a previously selected model profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
   turnId: string;
 }): Promise<
-  Extract<ConversationEvent["data"], { type: "turn_routed" }> | undefined
+  | (Extract<ConversationEvent["data"], { type: "turn_routed" }> & {
+      seq: number;
+    })
+  | undefined
 > {
   const event = await getConversationEventStore().loadByIdempotencyKey(
     args.conversationId,
@@ -776,10 +797,10 @@ export async function loadTurnRoute(args: {
   if (event.data.type !== "turn_routed" || event.data.turnId !== args.turnId) {
     throw new Error(`Turn route key for "${args.turnId}" has invalid data`);
   }
-  return event.data;
+  return { ...event.data, seq: event.seq };
 }
 
-/** Record the execution profile selected for one turn without changing agent history. */
+/** Record the model profile selected for one turn without changing agent history. */
 export async function recordTurnRoute(args: {
   conversationId: string;
   turnId: string;
@@ -799,11 +820,11 @@ export async function recordTurnRoute(args: {
         turnId: args.turnId,
         modelProfile: args.modelProfile,
         modelId: args.modelId,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         reasoningLevel: args.reasoningLevel,
         ...(args.confidence !== undefined
           ? { confidence: args.confidence }
-          : {}),
+          : undefined),
         source: args.source,
       },
     },
@@ -829,6 +850,73 @@ export async function recordToolExecutionStarted(args: {
   ]);
 }
 
+/** Stable write key so retries do not mint duplicate delivery rows. */
+function attachmentsDeliveredIdempotencyKey(args: {
+  attachments: Array<{ id: string }>;
+  conversationId: string;
+  toolCallId?: string;
+  turnId?: string;
+}): string {
+  if (args.toolCallId) {
+    return `attachments_delivered:tool:${args.toolCallId}`;
+  }
+  if (args.turnId) {
+    return (
+      `attachments_delivered:turn:${args.turnId}:` +
+      args.attachments
+        .map((attachment) => attachment.id)
+        .sort()
+        .join(",")
+    );
+  }
+  return (
+    `attachments_delivered:${args.conversationId}:` +
+    args.attachments
+      .map((attachment) => attachment.id)
+      .sort()
+      .join(",")
+  );
+}
+
+/** Record files delivered for humans without adding them to Pi replay. */
+export async function recordAttachmentsDelivered(args: {
+  attachments: Array<{
+    bytes: number;
+    contentType: string;
+    filename: string;
+    id: string;
+  }>;
+  conversationId: string;
+  createdAtMs?: number;
+  toolCallId?: string;
+  turnId?: string;
+}): Promise<void> {
+  if (args.attachments.length === 0) return;
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      // Retries after a successful Slack upload must not create duplicate rows.
+      idempotencyKey: attachmentsDeliveredIdempotencyKey({
+        attachments: args.attachments,
+        conversationId: args.conversationId,
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
+      }),
+      data: {
+        type: "attachments_delivered",
+        attachments: args.attachments.map((attachment) => ({
+          id: attachment.id,
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          bytes: attachment.bytes,
+        })),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
+      },
+      createdAtMs: args.createdAtMs ?? Date.now(),
+    },
+  ]);
+}
+
 /** Record one privacy-safe Guardian decision before the reviewed action continues. */
 export async function recordGuardianActionReviewed(args: {
   conversationId: string;
@@ -847,7 +935,7 @@ export async function recordGuardianActionReviewed(args: {
         turnId: args.turnId,
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
         riskLevel: args.riskLevel,
         userAuthorization: args.userAuthorization,

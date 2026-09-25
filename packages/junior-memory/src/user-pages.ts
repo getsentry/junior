@@ -1,7 +1,6 @@
-/** Project viewer-visible memories into Junior's core-rendered user page. */
+/** Render memory in Junior's User page format. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
-import { createViewerMemories } from "./personal";
-import type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
+import { listMemories, type MemoryVisibility, type MemoryView } from "./viewer";
 import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
@@ -16,7 +15,7 @@ function rememberedDate(createdAtMs: number): string {
   }).format(new Date(createdAtMs));
 }
 
-function originLabel(origin: PersonalMemoryRecord["origin"]): string {
+function originLabel(origin: MemoryView["origin"]): string {
   if (origin === "automatic") return "Automatic";
   if (origin === "explicit") return "Explicit";
   return "Other";
@@ -50,17 +49,16 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     description:
       "Personal and public memories Junior can use across conversations.",
     async read(ctx, input) {
-      const memories = createViewerMemories(ctx.db as MemoryDb, ctx.viewer);
-      const page = await memories.list({
+      const page = await listMemories(ctx.db as MemoryDb, ctx.viewer.id, {
         cursor: input.cursor,
         ...pageFilter(input.filter),
         limit: input.limit,
-        ...(input.query ? { query: input.query } : {}),
+        ...(input.query ? { query: input.query } : undefined),
       });
       return {
         type: "list",
         emptyText: pageEmptyText(input),
-        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
           actions:

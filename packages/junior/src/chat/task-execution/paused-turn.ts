@@ -12,15 +12,19 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  loadProjection,
+  recordAuthorizationCompleted,
+} from "@/chat/conversations/projection";
+import { getTurnAuthorization } from "./authorized-turn";
 import {
   completeTurnRecord,
+  abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
-  getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
   type TurnRecord,
@@ -52,12 +56,10 @@ import {
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { withActiveLock } from "@/chat/state/locks";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -67,20 +69,24 @@ import {
 } from "@/chat/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
-  isResourceEventConversationMessage,
-  RESOURCE_EVENT_SYSTEM_ACTOR,
-} from "@/chat/resource-events/actor";
+  isEventConversationMessage,
+  EVENT_SYSTEM_ACTOR,
+} from "@/chat/events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { clearPendingAuth } from "@/chat/services/pending-auth";
+import {
+  clearPendingAuth,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import { latestReportedProgress } from "@/chat/runtime/report-progress";
+import { latestProgressStatus } from "@/chat/runtime/report-progress";
 
 /** Runtime ports for paused turn scheduling. */
 export interface PausedTurnOptions {
@@ -89,13 +95,8 @@ export interface PausedTurnOptions {
   inputMessageIds?: readonly string[];
   routingContext?: Pick<
     AgentRun,
-    | "actor"
-    | "credentialContext"
-    | "destinationVisibility"
-    | "dispatch"
-    | "surface"
+    "actor" | "credentialContext" | "dispatch" | "surface"
   >;
-  resumeTurn?: typeof resumeSlackTurn;
   wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
@@ -255,17 +256,18 @@ async function resolveSlackResumeUserActor(args: {
 }
 
 /**
- * Resolve the run actor for a resumed turn, then derive credentialContext.
+ * Resolve the Actor and credentials for a resumed Turn.
  *
  * Sources, in order:
- * 1. Caller routingContext (dispatch / OAuth already set actor + credentials)
- * 2. Resource-event markers → system actor
- * 3. Slack author + destination team
+ * 1. Actor saved on the Turn.
+ * 2. Actor and credentials supplied by dispatch.
+ * 3. Legacy Event or Slack Message data.
  *
- * Never reads Redis turn-session actor. Prefer setting actor first; credentials
- * come from the caller when already bound, else credentialContextForActor.
+ * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
+ * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
+  actor?: Actor;
   conversationId: string;
   routingContext?: PausedTurnOptions["routingContext"];
   teamId: string;
@@ -278,9 +280,10 @@ async function resolveResumeExecutionIdentity(args: {
 > {
   const routing = args.routingContext;
 
-  // Dispatch / OAuth ports already own the full binding (including subject).
+  // Dispatch supplies its Actor, credentials, and any credential subject.
   if (routing?.credentialContext) {
     const actor =
+      args.actor ??
       routing.dispatch?.actor ??
       routing.actor ??
       (!("type" in routing.credentialContext.actor)
@@ -291,9 +294,9 @@ async function resolveResumeExecutionIdentity(args: {
       : undefined;
   }
 
-  let actor: Actor | undefined = routing?.actor;
-  if (!actor && isResourceEventConversationMessage(args.userMessage)) {
-    actor = RESOURCE_EVENT_SYSTEM_ACTOR;
+  let actor: Actor | undefined = args.actor ?? routing?.actor;
+  if (!actor && isEventConversationMessage(args.userMessage)) {
+    actor = EVENT_SYSTEM_ACTOR;
   }
   if (!actor && args.userMessage.author?.userId) {
     actor = await resolveSlackResumeUserActor({
@@ -316,7 +319,8 @@ function isPausedTurn(summary: TurnSummary): boolean {
     summary.state === "paused" &&
     (summary.resumeReason === "timeout" ||
       summary.resumeReason === "yield" ||
-      summary.resumeReason === "retry")
+      summary.resumeReason === "retry" ||
+      summary.resumeReason === "auth")
   );
 }
 
@@ -386,17 +390,14 @@ async function runPausedTurnInContext(
   );
   const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
 
-  const resumeTurn = options.resumeTurn ?? resumeSlackTurn;
-  return await resumeTurn({
+  return await resumeSlackTurn({
     messageText: "",
     conversationId: payload.conversationId,
     turnId: payload.turnId,
     channelId: thread?.channelId ?? destination.channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
-    lockKey: payload.conversationId,
-    // Queue continue runs under the conversation work lease already.
-    ownsConversationLease: true,
-    agentRunner: options.agentRunner,
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
@@ -412,12 +413,14 @@ async function runPausedTurnInContext(
           turn.state !== "paused" ||
           (turn.resumeReason !== "timeout" &&
             turn.resumeReason !== "yield" &&
-            turn.resumeReason !== "retry") ||
+            turn.resumeReason !== "retry" &&
+            turn.resumeReason !== "auth") ||
           turn.version !== payload.expectedVersion
         ) {
           return false;
         }
         const activeTurn = turn;
+        const { dispatch, surface } = options.routingContext ?? {};
 
         const currentState = await getPersistedThreadState(
           payload.conversationId,
@@ -427,8 +430,7 @@ async function runPausedTurnInContext(
           conversation,
           conversationId: payload.conversationId,
         });
-        const dispatchId =
-          activeTurn.dispatchId ?? options.routingContext?.dispatch?.id;
+        const dispatchId = activeTurn.dispatchId ?? dispatch?.id;
         const dispatchUserMessage = dispatchId
           ? conversation.messages.find(
               (message) =>
@@ -448,11 +450,47 @@ async function runPausedTurnInContext(
           });
           return false;
         }
-        if (conversation.processing.activeTurnId !== payload.turnId) {
+        const authorization =
+          turn.resumeReason === "auth"
+            ? await getTurnAuthorization(turn)
+            : undefined;
+        if (turn.resumeReason === "auth") {
+          if (!authorization) return false;
+          const pendingAuth = conversation.processing.pendingAuth;
+          if (
+            pendingAuth &&
+            (pendingAuth.sessionId !== turn.turnId ||
+              pendingAuth.actorId !== authorization.actorId ||
+              pendingAuth.provider !== authorization.provider ||
+              pendingAuth.kind !== authorization.kind ||
+              pendingAuth.scope !== authorization.scope ||
+              (pendingAuth.kind === "mcp" &&
+                pendingAuth.authSessionId !== authorization.authSessionId) ||
+              !isPendingAuthLatestRequest(conversation, pendingAuth))
+          ) {
+            await abandonTurnRecord({
+              conversationId: payload.conversationId,
+              turnId: turn.turnId,
+              errorMessage:
+                "Authorization no longer belongs to the latest request",
+            });
+            clearPendingAuth(conversation, turn.turnId);
+            await persistThreadStateById(payload.conversationId, {
+              conversation,
+            });
+            return false;
+          }
+          if (
+            !pendingAuth &&
+            conversation.processing.activeTurnId !== turn.turnId
+          )
+            return false;
+        } else if (conversation.processing.activeTurnId !== payload.turnId) {
           return false;
         }
 
         const identity = await resolveResumeExecutionIdentity({
+          actor: activeTurn.actor,
           conversationId: payload.conversationId,
           routingContext: options.routingContext,
           teamId: destination.teamId,
@@ -468,6 +506,22 @@ async function runPausedTurnInContext(
           return false;
         }
         const { actor, credentialContext } = identity;
+        if (
+          authorization &&
+          (!("userId" in actor) || actor.userId !== authorization.actorId)
+        ) {
+          throw new Error("Authorization actor does not match the paused Turn");
+        }
+        if (authorization) {
+          await recordAuthorizationCompleted({
+            conversationId: payload.conversationId,
+            ...authorization,
+          });
+          conversation.processing.activeTurnId = turn.turnId;
+          await persistThreadStateById(payload.conversationId, {
+            conversation,
+          });
+        }
 
         const locationConfiguration =
           getLocationConfigurationService(destination);
@@ -490,22 +544,19 @@ async function runPausedTurnInContext(
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "failed",
         ): Promise<void> => {
-          const dispatchId = options.routingContext?.dispatch?.id;
-          if (!dispatchId) {
+          if (!dispatch) {
             return;
           }
           await recordTurnSummary({
             conversationId: payload.conversationId,
             destination: routingDestination,
-            destinationVisibility:
-              options.routingContext?.destinationVisibility,
-            dispatchId,
+            dispatchId: dispatch.id,
             dispatchOutcome,
             turnId: payload.turnId,
             sliceId: activeTurn.sliceId,
             source,
             state: "failed",
-            surface: options.routingContext?.surface ?? "slack",
+            surface: surface ?? "slack",
           });
         };
 
@@ -514,33 +565,35 @@ async function runPausedTurnInContext(
           sliceId: activeTurn.sliceId,
           messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
-          initialStatus: latestReportedProgress(turnMessages),
-          replyContext: {
+          initialStatus: latestProgressStatus(turnMessages),
+          run: {
             instruction: {
-              ...(conversationContext ? { context: conversationContext } : {}),
+              ...(conversationContext
+                ? { context: conversationContext }
+                : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               text: userMessage.text,
             },
-            // Pi history is SQL-authoritative: the resumed run reads its
-            // exact dispatch session so unrelated conversation input cannot
-            // gain system authority. Interactive turns retain their merged
-            // projection so queued steering remains visible.
+            // A dispatch reads only history saved for this Turn. Other input
+            // must not become part of a system Turn. Other Turns read
+            // Conversation history. This keeps queued steering visible.
             history: dispatchId
               ? activeTurn.piMessages
               : await loadProjection({
                   conversationId: payload.conversationId,
                 }),
-            ...options.routingContext,
-            credentialContext,
             actor,
+            credentialContext,
             destination: routingDestination,
-            // Slack resume publishes unless the checkpoint opted out.
-            // Missing means legacy/in-flight Slack turns still post.
-            publishExternally: activeTurn.publishExternally !== false,
+            ...(dispatch ? { dispatch } : undefined),
+            ...(routing.location ? { location: routing.location } : undefined),
             source,
-            toolChannelId: destination.channelId,
+            ...(surface ? { surface } : undefined),
+            toolChannelId:
+              authorization?.toolChannelId ?? destination.channelId,
             environment: {
+              configuration: authorization?.configuration,
               locationConfiguration,
             },
             state: {
@@ -647,7 +700,7 @@ async function failStrandedTurnWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
   });
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,
@@ -679,7 +732,7 @@ async function failStrandedTurnWithFallback(args: {
       .channelId;
   await postSlackMessage({
     channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
     text: buildTurnFailureResponse(
       requireTurnFailureEventId(eventId, eventName),
     ),
@@ -739,19 +792,10 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    const state = getStateAdapter();
-    await state.connect();
-    await withActiveLock(state, conversationId, async () => {
-      const record = await getTurnRecordForResume(
-        conversationId,
-        running.turnId,
-      );
-      if (!record || record.state !== "running") return;
-      await failStrandedTurnWithFallback({
-        conversationId,
-        errorMessage: "Turn lost its worker before reaching a safe boundary",
-        turn: record,
-      });
+    await failStrandedTurnWithFallback({
+      conversationId,
+      errorMessage: "Turn lost its worker before reaching a safe boundary",
+      turn: running,
     });
     return false;
   }
@@ -766,6 +810,7 @@ async function runNextPausedTurnInContext(
       turnId: summary.turnId,
     });
     if (!request) {
+      if (summary.resumeReason === "auth") continue;
       await failPausedTurn({
         conversationId,
         summary,

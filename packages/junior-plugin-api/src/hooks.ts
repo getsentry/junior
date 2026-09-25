@@ -1,3 +1,8 @@
+import type { ObjectAnnotation } from "./object-annotations";
+import type {
+  ConversationSidebarHookContext,
+  ConversationSidebarResult,
+} from "./annotations";
 import type {
   EgressHookContext,
   EgressResponseHookContext,
@@ -11,6 +16,7 @@ import type {
   HeartbeatHookContext,
   HeartbeatResult,
   OperationalReportHookContext,
+  ProfileReportHookContext,
   ApiRouteRegistrationHookContext,
   PluginOperationalReportContent,
   PluginRoute,
@@ -18,6 +24,8 @@ import type {
   RouteRegistrationHookContext,
   SlackConversationLink,
   SlackConversationLinkHookContext,
+  UnfinishedWorkHookContext,
+  UnfinishedWorkResult,
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
@@ -25,6 +33,8 @@ import type {
   PluginToolDefinition,
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
+  WorkspacePrepareHookContext,
+  WorkspaceFinalize,
 } from "./tools";
 import type {
   PromptMessage,
@@ -33,7 +43,15 @@ import type {
   UserPromptContribution,
 } from "./prompt";
 
+/** Input for a pure Markdown rewrite before destination delivery formatting. */
+export interface FormatMarkdownHookContext {
+  text: string;
+}
+
 export interface PluginHooks {
+  conversationSidebar?(
+    ctx: ConversationSidebarHookContext,
+  ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];
@@ -50,19 +68,37 @@ export interface PluginHooks {
    * Prefer this for junior-owned side effects such as conversation annotations.
    * Do not use it to invent a parallel tool contract for the provider tool.
    */
-  afterMcpTool?(ctx: AfterMcpToolHookContext): Promise<void> | void;
+  afterMcpTool?(
+    ctx: AfterMcpToolHookContext,
+  ):
+    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
+    | { objectAnnotations: ObjectAnnotation[] }
+    | void;
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
+  unfinishedWork?(
+    ctx: UnfinishedWorkHookContext,
+  ): Promise<UnfinishedWorkResult> | UnfinishedWorkResult;
   issueCredential?(
     ctx: IssueCredentialHookContext,
   ): Promise<PluginCredentialResult> | PluginCredentialResult;
   onEgressResponse?(ctx: EgressResponseHookContext): Promise<void> | void;
   operationalReport?(
     ctx: OperationalReportHookContext,
+  ):
+    | Promise<PluginOperationalReportContent | undefined>
+    | PluginOperationalReportContent
+    | undefined;
+  /**
+   * Return one person-scoped operational report for a profile page.
+   * Omit or return undefined when the plugin has nothing to show for the subject.
+   */
+  profileReport?(
+    ctx: ProfileReportHookContext,
   ):
     | Promise<PluginOperationalReportContent | undefined>
     | PluginOperationalReportContent
@@ -77,9 +113,14 @@ export interface PluginHooks {
     | undefined;
   routes?(ctx: RouteRegistrationHookContext): PluginRoute[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
+  workspacePrepare?(
+    ctx: WorkspacePrepareHookContext,
+  ): Promise<WorkspaceFinalize | void> | WorkspaceFinalize | void;
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
+  /** Pure Markdown rewrite. Emit ordinary Markdown only. */
+  formatMarkdown?(ctx: FormatMarkdownHookContext): string;
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;

@@ -10,6 +10,8 @@ import {
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
+import { appendConversationBrief } from "@/chat/briefs/store";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -17,12 +19,24 @@ describe("conversation detail API", () => {
   });
 
   it("returns newly appended events when refreshed", async () => {
-    const conversationId = "internal:refreshed-detail";
+    const conversationId = "local:test:refreshed-detail";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: 1,
       source: "internal",
       title: "Refreshed conversation",
+      visibility: "public",
+    });
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "brief-turn",
+      throughSeq: 0,
+      content: conversationBriefFixture({
+        summary: "The public Brief is visible without transcript access.",
+      }),
+      searchText: "public Brief visible",
+      modelId: "test-model",
     });
 
     const app = createJuniorApi();
@@ -33,6 +47,12 @@ describe("conversation detail API", () => {
       await detailResponse.json(),
     );
     expect(detail.events).toEqual([]);
+    expect(detail.brief).toMatchObject({
+      content: {
+        summary: "The public Brief is visible without transcript access.",
+      },
+      version: 1,
+    });
 
     await getConversationEventStore().append(conversationId, [
       {
@@ -126,18 +146,32 @@ describe("conversation detail API", () => {
       status: "open",
       url: "https://github.com/getsentry/junior/pull/1081",
     });
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "private-brief-turn",
+      throughSeq: 0,
+      content: conversationBriefFixture({
+        summary: "The private Brief is participant-only.",
+      }),
+      searchText: "private Brief participant only",
+      modelId: "test-model",
+    });
 
-    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
-      {
-        annotations: [],
-        eventHistory: { status: "redacted" },
-      },
-    );
+    const hidden = await readConversationDetail(conversationId);
+    expect(hidden).toMatchObject({
+      annotations: [],
+      eventHistory: { status: "redacted" },
+    });
+    expect(hidden).not.toHaveProperty("brief");
     await expect(
       readConversationDetail(conversationId, {
         viewer: testViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
+      brief: {
+        content: { summary: "The private Brief is participant-only." },
+        version: 1,
+      },
       annotations: [
         {
           key: "getsentry/junior#1081",
@@ -159,10 +193,10 @@ describe("conversation detail API", () => {
       await import("@/chat/conversations/sql/migrations");
     const { createSqlStore } = await import("@/chat/conversations/sql/store");
     const { resolveViewerUserFromSql } = await import("@/chat/plugins/viewer");
-    const { createSchedulerSqlStore } =
-      await import("@/chat/scheduled-tasks/store");
-    const { recordTaskExecution } =
-      await import("@/chat/tasks/execution-stats");
+    const { saveScheduledAutomation } =
+      await import("@/chat/scheduled-automations/tasks");
+    const { recordAutomationExecution } =
+      await import("@/chat/automations/execution-stats");
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -199,7 +233,7 @@ describe("conversation detail API", () => {
       );
       expect(identity).toBeDefined();
       const nowMs = 2;
-      await createSchedulerSqlStore(fixture.sql.db()).saveTask({
+      await saveScheduledAutomation(fixture.sql.db(), {
         id: "sched_source_task",
         conversationAccess: { audience: "channel", visibility: "public" },
         createdAtMs: nowMs,
@@ -212,6 +246,7 @@ describe("conversation detail API", () => {
           teamId: "T123",
         },
         nextRunAtMs: nowMs + 60_000,
+        outcomes: [],
         schedule: {
           description: "Every Monday at 9:00 AM",
           kind: "recurring",
@@ -229,7 +264,7 @@ describe("conversation detail API", () => {
         title: "Weekly project summary",
         updatedAtMs: nowMs,
       });
-      await recordTaskExecution("scheduled", "sched_source_task", {
+      await recordAutomationExecution("scheduled", "sched_source_task", {
         conversationId,
         executionId: "run_source_task",
         nowMs: nowMs + 1,

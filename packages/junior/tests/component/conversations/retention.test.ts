@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   purgeConversation,
@@ -11,7 +11,9 @@ import {
   selectExpiredRoots,
 } from "@/chat/conversations/sql/purge";
 import {
+  juniorAttachments,
   juniorConversationEvents,
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -19,8 +21,14 @@ import {
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
-  createLocalJuniorSqlFixture,
+  collectAttachmentGarbage,
+  storeAttachment,
+} from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import {
+  createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../../fixtures/sql";
 
@@ -133,7 +141,7 @@ describe("retention purge job", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
-    fixture = await createLocalJuniorSqlFixture();
+    fixture = await createJuniorSqlFixture();
     await migrateSchema(fixture.sql);
   });
 
@@ -172,6 +180,364 @@ describe("retention purge job", () => {
     });
     expect(second.purged).toBe(1);
     expect(await eventCount(fixture.sql, "pub")).toBe(0);
+  });
+
+  it("deletes attachment blobs after conversation content expires", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "with-attachment",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "attachment-1",
+        conversationId: "with-attachment",
+        storageProvider: "test",
+        storageKey: "key-1",
+        filename: "report.txt",
+        contentType: "text/plain",
+        bytes: 6,
+        sha256: "digest",
+        createdAt: new Date(BASE_MS),
+      });
+    const deleted: string[][] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async (keys) => {
+        deleted.push(keys);
+      },
+    };
+
+    const result = await runRetentionPurge(fixture.sql, {
+      attachmentStorage: storage,
+      nowMs: BASE_MS + 15 * DAY_MS,
+    });
+
+    expect(result.attachments).toBe(1);
+    expect(deleted).toEqual([["key-1"]]);
+    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
+  });
+
+  it("deletes attachments 30 days after they are stored", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "active-with-attachments",
+      destinationId,
+      lastActivityAtMs: BASE_MS + 31 * DAY_MS,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values([
+        {
+          id: "expired-attachment",
+          conversationId: "active-with-attachments",
+          storageProvider: "test",
+          storageKey: "expired-key",
+          filename: "old.txt",
+          contentType: "text/plain",
+          bytes: 3,
+          sha256: "old",
+          createdAt: new Date(BASE_MS),
+        },
+        {
+          id: "current-attachment",
+          conversationId: "active-with-attachments",
+          storageProvider: "test",
+          storageKey: "current-key",
+          filename: "new.txt",
+          contentType: "text/plain",
+          bytes: 3,
+          sha256: "new",
+          createdAt: new Date(BASE_MS + 2 * DAY_MS),
+        },
+      ]);
+    const deleted: string[][] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async (keys) => {
+        deleted.push(keys);
+      },
+    };
+
+    const result = await runRetentionPurge(fixture.sql, {
+      attachmentStorage: storage,
+      nowMs: BASE_MS + 30 * DAY_MS,
+    });
+
+    expect(result.purged).toBe(0);
+    expect(result.attachments).toBe(1);
+    expect(deleted).toEqual([["expired-key"]]);
+    expect(
+      await fixture.sql.db().select().from(juniorAttachments),
+    ).toMatchObject([{ id: "current-attachment" }]);
+  });
+
+  it("keeps marked attachment rows when blob delete fails", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "with-attachment",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "attachment-1",
+        conversationId: "with-attachment",
+        storageProvider: "test",
+        storageKey: "key-1",
+        filename: "report.txt",
+        contentType: "text/plain",
+        bytes: 6,
+        sha256: "digest",
+        createdAt: new Date(BASE_MS),
+        deleteRequestedAt: new Date(BASE_MS + DAY_MS),
+      });
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async () => {
+        throw new Error("blob delete failed");
+      },
+    };
+
+    await expect(
+      collectAttachmentGarbage({
+        db: fixture.sql,
+        nowMs: BASE_MS + 15 * DAY_MS,
+        storage,
+      }),
+    ).rejects.toThrow("blob delete failed");
+
+    const rows = await fixture.sql.db().select().from(juniorAttachments);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: "attachment-1",
+      storageKey: "key-1",
+      deleteRequestedAt: expect.any(Date),
+    });
+  });
+
+  it("collects unmarked attachments owned by purged conversations", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "purged-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
+      .where(eq(juniorConversations.conversationId, "purged-owner"));
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "orphan-attachment",
+        conversationId: "purged-owner",
+        storageProvider: "test",
+        storageKey: "orphan-key",
+        filename: "late.txt",
+        contentType: "text/plain",
+        bytes: 4,
+        sha256: "orphan",
+        createdAt: new Date(BASE_MS + DAY_MS),
+      });
+    const deleted: string[][] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async (keys) => {
+        deleted.push(keys);
+      },
+    };
+
+    const result = await collectAttachmentGarbage({
+      db: fixture.sql,
+      nowMs: BASE_MS + 15 * DAY_MS,
+      storage,
+    });
+
+    expect(result.deleted).toBe(1);
+    expect(deleted).toEqual([["orphan-key"]]);
+    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
+  });
+
+  it("rejects attachment stores into purged conversations", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "purged-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
+      .where(eq(juniorConversations.conversationId, "purged-owner"));
+    const puts: string[] = [];
+    const deleted: string[] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async (input) => {
+        puts.push(input.key);
+      },
+      delete: async (keys) => {
+        deleted.push(...keys);
+      },
+    };
+
+    await expect(
+      storeAttachment({
+        conversationId: "purged-owner",
+        db: fixture.sql,
+        file: {
+          bytes: 4,
+          data: Buffer.from("late"),
+          filename: "late.txt",
+          mimeType: "text/plain",
+          path: "/tmp/late.txt",
+        },
+        storage,
+      }),
+    ).rejects.toThrow(/purged conversation/);
+
+    expect(puts).toEqual([]);
+    expect(deleted).toEqual([]);
+    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
+  });
+
+  it("marks and cleans a raced insert when purge wins after put", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "race-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    const puts: string[] = [];
+    const deleted: string[] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async (input) => {
+        puts.push(input.key);
+        await fixture.sql
+          .db()
+          .update(juniorConversations)
+          .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
+          .where(eq(juniorConversations.conversationId, "race-owner"));
+      },
+      delete: async (keys) => {
+        deleted.push(...keys);
+      },
+    };
+
+    await expect(
+      storeAttachment({
+        conversationId: "race-owner",
+        db: fixture.sql,
+        file: {
+          bytes: 4,
+          data: Buffer.from("late"),
+          filename: "late.txt",
+          mimeType: "text/plain",
+          path: "/tmp/late.txt",
+        },
+        storage,
+      }),
+    ).rejects.toThrow(/purged conversation/);
+
+    const rows = await fixture.sql.db().select().from(juniorAttachments);
+    expect(rows).toHaveLength(1);
+    expect(puts).toEqual([rows[0]?.storageKey]);
+    expect(deleted).toEqual(puts);
+    expect(rows[0]?.deleteRequestedAt).toEqual(expect.any(Date));
+  });
+
+  it("rejects live-row reuse when the conversation is already purged", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "purged-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    const liveKey = "live-key";
+    const file = {
+      bytes: 4,
+      data: Buffer.from("late"),
+      filename: "late.txt",
+      mimeType: "text/plain",
+      path: "/tmp/late.txt",
+    };
+    const firstStorage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async () => undefined,
+    };
+    const stored = await storeAttachment({
+      conversationId: "purged-owner",
+      db: fixture.sql,
+      file,
+      storage: firstStorage,
+    });
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
+      .where(eq(juniorConversations.conversationId, "purged-owner"));
+    // Leave the row unmarked so reuse hits the live-row path, not revive.
+    await fixture.sql
+      .db()
+      .update(juniorAttachments)
+      .set({ deleteRequestedAt: null, storageKey: liveKey })
+      .where(eq(juniorAttachments.id, stored.id));
+
+    const puts: string[] = [];
+    const deleted: string[] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async (input) => {
+        puts.push(input.key);
+      },
+      delete: async (keys) => {
+        deleted.push(...keys);
+      },
+    };
+
+    await expect(
+      storeAttachment({
+        conversationId: "purged-owner",
+        db: fixture.sql,
+        file,
+        storage,
+      }),
+    ).rejects.toThrow(/purged conversation/);
+
+    // Early live-row reuse rejects before writing another object.
+    expect(puts).toEqual([]);
+    expect(deleted).toEqual([]);
+    const rows = await fixture.sql.db().select().from(juniorAttachments);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: stored.id,
+      storageKey: liveKey,
+      deleteRequestedAt: null,
+    });
   });
 
   it("shortens the window when visibility flips public to private", async () => {
@@ -266,7 +632,7 @@ describe("retention purge job", () => {
         result: "private delegated result",
         source: {
           conversationId: "root",
-          platform: "local",
+          kind: "local",
           visibility: "private",
         },
         status: "completed",
@@ -351,7 +717,7 @@ describe("retention purge job", () => {
       withLock: async (name, callback) => {
         if (
           !childWriteCompleted &&
-          name === "junior_conversation:event:racing-child"
+          name === "junior_conversation:racing-child"
         ) {
           await fixture.sql
             .db()
@@ -455,6 +821,53 @@ describe("retention purge job", () => {
     ).resolves.toEqual([]);
   });
 
+  it("selects a private tree when its only remaining content is a Brief", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "brief-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "brief-child",
+      parentConversationId: "brief-root",
+      lastActivityAtMs: BASE_MS,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    const treeIds = ["brief-root", "brief-child"];
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ actor: null })
+      .where(inArray(juniorConversations.conversationId, treeIds));
+    await fixture.sql.db().insert(juniorConversationBriefs).values({
+      conversationId: "brief-child",
+      version: 1,
+      turnId: "brief-turn",
+      throughSeq: 0,
+      content: conversationBriefFixture(),
+      searchText: "Private retention Brief",
+      modelId: "test-model",
+    });
+    const nowMs = BASE_MS + 30 * DAY_MS;
+
+    await expect(
+      selectExpiredRoots(fixture.sql, {
+        nowMs,
+        publicWindowMs: 90 * DAY_MS,
+        privateWindowMs: 14 * DAY_MS,
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ conversationId: "brief-root" }),
+    ]);
+  });
+
   it("purges up to the batch limit and leaves the remainder for the next run", async () => {
     const dest = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {
@@ -505,6 +918,29 @@ describe("retention purge job", () => {
       lastActivityAtMs: BASE_MS,
       title: "Secret title",
     });
+    await fixture.sql
+      .db()
+      .insert(juniorConversationBriefs)
+      .values([
+        {
+          conversationId: "pub",
+          version: 1,
+          turnId: "pub-turn",
+          throughSeq: 0,
+          content: conversationBriefFixture(),
+          searchText: "Public retention Brief",
+          modelId: "test-model",
+        },
+        {
+          conversationId: "priv",
+          version: 1,
+          turnId: "priv-turn",
+          throughSeq: 0,
+          content: conversationBriefFixture(),
+          searchText: "Private retention Brief",
+          modelId: "test-model",
+        },
+      ]);
 
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 100 * DAY_MS });
 
@@ -519,6 +955,10 @@ describe("retention purge job", () => {
     expect(priv.title).toBe(null);
     expect(priv.channelName).toBe(null);
     expect(priv.actor).toBe(null);
+    // Public Briefs survive expiry. Private Briefs are scrubbed with metadata.
+    await expect(
+      fixture.sql.db().select().from(juniorConversationBriefs),
+    ).resolves.toMatchObject([{ conversationId: "pub", version: 1 }]);
     // The metadata row itself survives the purge.
     expect(priv.conversationId).toBe("priv");
   });

@@ -1,6 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -80,20 +80,22 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
-  const mixedNoReplyMarker =
-    !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  const noReplyRequested = exactNoReplyMarker || mixedNoReplyMarker;
-  const primaryText = noReplyRequested
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n");
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n");
+  // Intentional silence only for marker text. Tool-call suppress is not no-reply.
+  const terminalTexts = terminalAssistantMessages.map((message) =>
+    sanitizeAssistantText(extractAssistantText(message)),
+  );
+  const noReplyRequested =
+    !primaryText &&
+    terminalTexts.some((text) => isNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isNoReplyMarker(text));
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -115,7 +117,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : undefined;
   const isProviderError = stopReason === "error";
 
-  if (exactNoReplyMarker) {
+  if (noReplyRequested) {
     const markerCategory = reactionPerformed ? "reaction" : "none";
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
@@ -126,11 +128,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     if (!isProviderError) {
       logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
-  } else if (mixedNoReplyMarker) {
-    logWarn("ai.no_reply_marker.mixed_text", {
-      "app.ai.no_reply_marker": true,
-      "app.ai.no_reply_marker_mode": "mixed",
-    });
   }
 
   if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
@@ -142,34 +139,33 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   }
 
   const usedPrimaryText = Boolean(rawPrimaryText);
+  const suppressedPrimaryText = Boolean(
+    rawPrimaryText && !noReplyRequested && !primaryText,
+  );
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
+  } else if (suppressedPrimaryText) {
+    outcome = "execution_failure";
   } else if (primaryText || completedWithoutTerminalText) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
   }
-  const suppressedPrimaryText = Boolean(
-    rawPrimaryText && !noReplyRequested && !primaryText,
-  );
-  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = suppressedPrimaryText
-    ? "execution_failure"
-    : outcome;
 
   if (shouldTrace) {
     logInfo("agent.message.generated", {
       "app.message.kind": "assistant_outbound",
       "app.message.length": primaryText.length,
       "app.message.output": summarizeMessageText(primaryText),
-      "app.ai.outcome": resolvedOutcome,
+      "app.ai.outcome": outcome,
       "app.ai.assistant_messages": assistantMessages.length,
-      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : {}),
+      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : undefined),
     });
   }
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
-    outcome: resolvedOutcome,
+    outcome,
     modelId,
     assistantMessageCount: assistantMessages.length,
     reasoningLevel: executionProfile.reasoningLevel,
@@ -182,7 +178,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     stopReason,
     errorMessage,
     providerError:
-      resolvedOutcome === "provider_error" && errorMessage
+      outcome === "provider_error" && errorMessage
         ? createProviderError(errorMessage, {
             modelId,
             retryable:

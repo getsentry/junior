@@ -8,7 +8,7 @@ export function Card(props: {
   children: ReactNode;
   className?: string;
   padding?: "none" | "sm" | "md";
-  variant?: "default" | "section";
+  variant?: "default" | "raised" | "section";
 }) {
   const Component = props.as ?? "div";
   const padding = {
@@ -18,8 +18,10 @@ export function Card(props: {
   }[props.padding ?? "none"];
   const surface =
     props.variant === "section"
-      ? "mb-4 border-white/[0.06] bg-white/[0.025] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
-      : "border-white/[0.05] bg-white/[0.02]";
+      ? "mb-4 border-dashboard-border-subtle bg-dashboard-fill-faint shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
+      : props.variant === "raised"
+        ? "border-dashboard-border-emphasis bg-dashboard-surface-raised"
+        : "border-dashboard-border-subtle bg-dashboard-fill-faint";
   return (
     <Component
       className={cn(

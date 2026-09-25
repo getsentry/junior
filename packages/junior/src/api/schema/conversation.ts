@@ -1,9 +1,27 @@
+import {
+  inputImageSchema,
+  MAX_INPUT_IMAGES,
+  MAX_INPUT_IMAGE_BYTES,
+  messageAttachmentSchema,
+} from "@/chat/attachments/input";
+import { messageCardSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+} from "@/chat/conversations/history";
+import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
+  conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+
+export {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+};
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -24,6 +42,13 @@ export const conversationUsageSchema = usageSchema;
 
 export const conversationParamsSchema = z
   .object({ conversationId: z.string().min(1) })
+  .strict();
+
+export const conversationAttachmentParamsSchema = z
+  .object({
+    attachmentId: z.string().min(1),
+    conversationId: z.string().min(1),
+  })
   .strict();
 
 export const conversationDetailQuerySchema = z
@@ -47,6 +72,8 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    q: z.string().trim().max(200).optional(),
+    status: z.enum(["active", "archived"]).default("active"),
   })
   .strict();
 
@@ -55,24 +82,32 @@ export const archiveConversationBodySchema = z
   .strict();
 
 export const archiveConversationResponseSchema = z
-  .object({ archived: z.boolean() })
-  .strict();
-
-export const createConversationBodySchema = z
-  .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
-    /** New roots default public. Private roots stay participant-only. */
-    visibility: z.enum(["private", "public"]).optional(),
-  })
+  .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
 export const createConversationMessageBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
+    message: z.string().trim().max(32_000),
+    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (body) => Boolean(body.message || body.images?.length),
+    "Add a message or an image.",
+  )
+  .refine(
+    (body) =>
+      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
+      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
+    "Images must total 3 MB or less.",
+  );
+
+export const createConversationBodySchema =
+  createConversationMessageBodySchema.safeExtend({
+    /** New roots default public. Private roots stay participant-only. */
+    visibility: z.enum(["private", "public"]).optional(),
+  });
 
 export const acceptedConversationMessageSchema = z
   .object({
@@ -109,6 +144,7 @@ export const conversationPendingMessageSchema = z
     role: z.literal("user"),
     source: z.enum(["slack", "web"]),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -119,20 +155,48 @@ export const conversationPendingMessageSchema = z
         message: "pending message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && data.actorIdentity) {
+    if (data.redacted && (data.actorIdentity || data.attachments)) {
       context.addIssue({
         code: "custom",
-        message: "redacted pending messages must not expose actor identity",
+        message:
+          "redacted pending messages must not expose actor identity or attachments",
       });
     }
   });
 
+/** Participant-only authorization prompt for a parked web turn. */
+export const conversationPendingAuthorizationSchema = z
+  .object({
+    authorizationUrl: z.string().url(),
+    completionText: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+
 /** Bounded mailbox snapshot for one conversation transcript. */
 export const conversationPendingMessagesReportSchema = z
   .object({
+    authorization: conversationPendingAuthorizationSchema.optional(),
     conversationId: z.string().min(1),
     generatedAt: z.string().datetime(),
     messages: z.array(conversationPendingMessageSchema),
+  })
+  .strict();
+
+/** Optional filters for cancelling accepted mailbox rows. */
+export const cancelConversationPendingMessagesBodySchema = z
+  .object({
+    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
+    receivedBefore: z.string().datetime().optional(),
+  })
+  .strict();
+
+/** Result of cancelling accepted human-facing mailbox rows. */
+export const cancelConversationPendingMessagesResponseSchema = z
+  .object({
+    cancelledCount: z.number().int().nonnegative(),
+    cancelledInboundMessageIds: z.array(z.string().min(1)),
+    conversationId: z.string().min(1),
   })
   .strict();
 
@@ -172,9 +236,27 @@ export const conversationSourceTaskSchema = z
     }
   });
 
+const conversationAnnotationReportSchema =
+  conversationAnnotationInputSchema.and(
+    z.object({
+      plugin: z.string().min(1),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+  );
+
+export const conversationActivityPreviewSchema = z
+  .object({
+    createdAt: z.string().datetime(),
+    role: z.enum(["assistant", "user"]),
+    text: z.string().min(1),
+  })
+  .strict();
+
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
+    activityPreview: conversationActivityPreviewSchema.optional(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
@@ -187,14 +269,36 @@ export const conversationSummaryReportSchema = z
     lastProgressAt: z.string(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
-    archivedAt: z.string().optional(),
+    participants: z.array(actorIdentitySchema).optional(),
+    archivedAt: z.string().datetime().nullable().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
-    sourceUrl: z.string().url().optional(),
+    locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
+    /**
+     * Plugin-owned resource links for this conversation.
+     * Present on the conversation feed when the viewer can see private content.
+     * Clients must not fetch provider state while rendering these links.
+     */
+    annotations: z.array(conversationAnnotationReportSchema).optional(),
+    /** Plugin-selected annotations for the compact conversation row. */
+    sidebarAnnotations: z.array(conversationSidebarAnnotationSchema).optional(),
+    assignedWork: z.boolean().optional(),
+    finishedWorkAt: z.string().datetime().optional(),
+    /**
+     * Dashboard Priority membership for this conversation summary.
+     * Present on the conversation feed. Clients must not recompute it.
+     *
+     * True only when:
+     * - unfinished work was last seen within 48 hours
+     * - finished assigned work has conversation activity after the finish time
+     * - there is no known work and the conversation was last seen within 3 hours
+     */
+    isPriority: z.boolean().optional(),
+    unfinishedWork: z.boolean().optional(),
   })
   .strict();
 
@@ -203,11 +307,14 @@ const conversationReportMessageEventDataSchema = z
     type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
-    source: z.literal("web").optional(),
+    source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
+    trustedSummary: z.string().min(1).optional(),
+    cards: z.array(messageCardSchema).optional(),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -218,10 +325,14 @@ const conversationReportMessageEventDataSchema = z
         message: "message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && data.actorIdentity) {
+    if (
+      data.redacted &&
+      (data.actorIdentity || data.cards || data.attachments)
+    ) {
       context.addIssue({
         code: "custom",
-        message: "redacted messages must not expose actor identity",
+        message:
+          "redacted messages must not expose actor identity, cards, or attachments",
       });
     }
   });
@@ -357,7 +468,13 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
         state: z.literal("failed"),
-        failureKind: z.enum(["agent", "delivery"]),
+        failureCode: conversationTurnFailureCodeSchema,
+        failureReason: conversationTurnFailureReasonSchema.optional(),
+        eventId: z
+          .string()
+          .regex(/^[a-f0-9]{32}$/i)
+          .optional(),
+        sentryEventUrl: z.string().url().optional(),
       })
       .strict(),
   ],
@@ -407,6 +524,13 @@ const conversationReportStructuredEventDataSchema = z
     version: z.number().int().positive(),
     turnId: z.string().min(1).optional(),
     presentation: conversationEventPresentationSchema,
+  })
+  .strict();
+
+const conversationReportAttachmentsDeliveredEventDataSchema = z
+  .object({
+    type: z.literal("attachments_delivered"),
+    attachments: z.array(messageAttachmentSchema).min(1),
   })
   .strict();
 
@@ -464,6 +588,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
+  conversationReportAttachmentsDeliveredEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
@@ -606,18 +731,47 @@ function validateConversationEvents(
   }
 }
 
+export const forkConversationBodySchema = z
+  .object({
+    cutoff: z.discriminatedUnion("kind", [
+      z
+        .object({
+          kind: z.literal("message"),
+          messageId: z.string().min(1).max(500),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal("seq"),
+          throughSeq: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ]),
+    idempotencyKey: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const forkConversationResponseSchema = z
+  .object({
+    conversationId: z.string(),
+    sourceConversationId: z.string(),
+    throughSeq: z.number().int().nonnegative(),
+    sourceMessageId: z.string().optional(),
+    status: z.enum(["created", "duplicate"]),
+  })
+  .strict();
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
-    annotations: z
-      .array(
-        conversationAnnotationInputSchema.and(
-          z.object({
-            plugin: z.string().min(1),
-            createdAt: z.string().datetime(),
-            updatedAt: z.string().datetime(),
-          }),
-        ),
-      )
+    forkedFromConversationId: z.string().optional(),
+    forks: z.array(z.string()).optional(),
+    brief: z
+      .object({
+        content: conversationBriefSchema,
+        updatedAt: z.string().datetime(),
+        version: z.number().int().positive(),
+      })
+      .strict()
       .optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
@@ -660,12 +814,18 @@ export const conversationStatsItemSchema = z
   })
   .strict();
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const conversationMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const conversationMetricDaySchema = z
   .object({
     cachedInputTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
     conversations: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     durationMs: z.number(),
     inputTokens: z.number().optional(),
     tokens: z.number().optional(),
@@ -677,7 +837,7 @@ export const guardianMetricDaySchema = z
     allow: z.number(),
     ask: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     deny: z.number(),
     requests: z.number(),
   })
@@ -690,6 +850,8 @@ export const guardianStatsSchema = z
     costUsd: z.number().optional(),
     deny: z.number(),
     metricDays: z.array(guardianMetricDaySchema),
+    metricHours: z.array(guardianMetricDaySchema).optional(),
+    metricSixHours: z.array(guardianMetricDaySchema).optional(),
     requests: z.number(),
   })
   .strict();
@@ -698,12 +860,15 @@ export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
     cachedInputTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
     conversations: z.number(),
     durationMs: z.number(),
     failed: z.number(),
     generatedAt: z.string(),
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
+    metricHours: z.array(conversationMetricDaySchema).optional(),
+    metricSixHours: z.array(conversationMetricDaySchema).optional(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
@@ -718,6 +883,12 @@ export const conversationStatsReportSchema = z
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
 >;
+export type ConversationTurnFailureCode = z.infer<
+  typeof conversationTurnFailureCodeSchema
+>;
+export type ConversationTurnFailureReason = z.infer<
+  typeof conversationTurnFailureReasonSchema
+>;
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;
 export type ConversationUsage = z.infer<typeof conversationUsageSchema>;
@@ -725,6 +896,9 @@ export type ConversationAuxiliaryCosts = z.infer<
   typeof conversationAuxiliaryCostsSchema
 >;
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
+export type ConversationActivityPreview = z.infer<
+  typeof conversationActivityPreviewSchema
+>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema
 >;
@@ -779,4 +953,10 @@ export type ConversationPendingMessage = z.infer<
 >;
 export type ConversationPendingMessagesReport = z.infer<
   typeof conversationPendingMessagesReportSchema
+>;
+export type CancelConversationPendingMessagesBody = z.infer<
+  typeof cancelConversationPendingMessagesBodySchema
+>;
+export type CancelConversationPendingMessagesResponse = z.infer<
+  typeof cancelConversationPendingMessagesResponseSchema
 >;

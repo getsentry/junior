@@ -1047,7 +1047,7 @@ export async function runCheck(
     const result = source.errors
       ? {
           manifestPath: source.manifestPath,
-          ...(source.manifest ? { manifest: source.manifest } : {}),
+          ...(source.manifest ? { manifest: source.manifest } : undefined),
           errors: source.errors,
         }
       : source.manifest
@@ -1065,8 +1065,8 @@ export async function runCheck(
     pluginResults.push({
       pluginDir,
       manifestPath: result.manifestPath,
-      ...(packageName ? { packageName } : {}),
-      ...(result.manifest ? { manifest: result.manifest } : {}),
+      ...(packageName ? { packageName } : undefined),
+      ...(result.manifest ? { manifest: result.manifest } : undefined),
       errors: result.errors,
       skillResults: [],
     });

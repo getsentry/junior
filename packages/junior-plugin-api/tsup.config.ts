@@ -6,7 +6,12 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: false,
+  dts: {
+    compilerOptions: {
+      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
+      ignoreDeprecations: "6.0",
+    },
+  },
   outDir: "dist",
   clean: true,
 });

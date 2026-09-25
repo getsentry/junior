@@ -9,7 +9,6 @@ export interface MemoryMatch {
     rank: number;
   };
   memory: MemoryRecord;
-  sourceKey: string;
   vector?: {
     rank: number;
   };
@@ -31,13 +30,6 @@ function matchScore(
       ? reciprocalRank(match.lexical.rank, weights.lexicalWeight)
       : 0)
   );
-}
-
-function currentChannel(
-  match: Pick<MemoryMatch, "sourceKey">,
-  channelPrefix: string | undefined,
-): boolean {
-  return channelPrefix ? match.sourceKey.startsWith(channelPrefix) : false;
 }
 
 function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
@@ -64,7 +56,6 @@ function positiveWeight(value: number | undefined, fallback: number): number {
 export function rankMemoryMatches(
   matches: MemoryMatch[],
   options: {
-    channelPrefix?: string;
     /** Optional RRF weight for the lexical leg. Defaults to 1. */
     lexicalWeight?: number;
     nowMs: number;
@@ -83,15 +74,14 @@ export function rankMemoryMatches(
       byId.set(match.memory.id, match);
       continue;
     }
-    // Keep the first rank per modality. Shared legs are fused before personal
-    // probes, so a smaller personal top-k cannot overwrite a shared dense rank
-    // with an inflated top rank for the same memory.
+    // Keep the first rank from each search. The shared searches run first, so
+    // the smaller private searches cannot replace their ranks.
     byId.set(match.memory.id, {
       ...existing,
       ...(!existing.lexical && match.lexical
         ? { lexical: match.lexical }
-        : {}),
-      ...(!existing.vector && match.vector ? { vector: match.vector } : {}),
+        : undefined),
+      ...(!existing.vector && match.vector ? { vector: match.vector } : undefined),
     });
   }
   return [...byId.values()].sort((left, right) => {
@@ -99,20 +89,13 @@ export function rankMemoryMatches(
     if (scoreDelta !== 0) {
       return scoreDelta;
     }
-    // Prefer actor preferences over workspace knowledge when RRF ties. Shared
-    // lexical legs often assign the same top rank to recent conversation noise
-    // and a personal-scope probe hit for the same common token.
-    const personalDelta =
-      Number(right.memory.scope === "personal") -
-      Number(left.memory.scope === "personal");
-    if (personalDelta !== 0) {
-      return personalDelta;
-    }
-    const channelDelta =
-      Number(currentChannel(right, options.channelPrefix)) -
-      Number(currentChannel(left, options.channelPrefix));
-    if (channelDelta !== 0) {
-      return channelDelta;
+    // Prefer private memory when RRF ties. Public and private searches can give
+    // the same rank to common words.
+    const privateDelta =
+      Number(right.memory.scope === "private") -
+      Number(left.memory.scope === "private");
+    if (privateDelta !== 0) {
+      return privateDelta;
     }
     return (
       observedAgeRank(right.memory, options.nowMs) -

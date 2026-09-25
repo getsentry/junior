@@ -20,18 +20,25 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readLatestConversationBrief } from "@/chat/briefs/store";
+import { readConversationSourceTask } from "@/chat/automations/read";
+import { readConversationArchivedAt } from "./archive";
+import { readConversationParticipants } from "./participants";
+import { readConversationForks } from "./fork";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
+  archivedAtMs?: number;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
+  brief?: ConversationDetailReport["brief"];
   conversation: Conversation;
   durationMs: number;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
+  participants: NonNullable<ConversationDetailReport["participants"]>;
   previousSeq?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -47,17 +54,24 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
+      ...(args.archivedAtMs === undefined
+        ? undefined
+        : { archivedAtMs: args.archivedAtMs }),
       auxiliaryCosts: args.auxiliaryCosts,
       conversation,
       durationMs: args.durationMs,
-      ...(args.locationId ? { locationId: args.locationId } : {}),
+      ...(args.locationId ? { locationId: args.locationId } : undefined),
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
-        : {}),
+        : undefined),
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
+    ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
+    ...(canExposePayload && args.participants.length > 0
+      ? { participants: args.participants }
+      : undefined),
     ...(args.previousSeq !== undefined
       ? {
           previousCursor: encodeConversationCursor({
@@ -65,15 +79,17 @@ function projectConversationDetail(args: {
             seq: args.previousSeq,
           }),
         }
-      : {}),
-    ...(modelUsage.length > 0 ? { modelUsage } : {}),
+      : undefined),
+    ...(modelUsage.length > 0 ? { modelUsage } : undefined),
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? {} : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
     generatedAt: new Date().toISOString(),
-    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
-    ...(args.sourceTask ? { sourceTask: args.sourceTask } : {}),
+    ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
+    ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
   };
 }
 
@@ -86,6 +102,9 @@ async function readConversationDetailFromSql(
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
+  const archivedAtMs = options.viewer
+    ? await readConversationArchivedAt(options.viewer, conversationId)
+    : undefined;
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
@@ -93,8 +112,10 @@ async function readConversationDetailFromSql(
     accessByConversation,
     annotations,
     auxiliaryCostsByConversation,
+    briefVersion,
     modelUsage,
     metricsByRoot,
+    participantsByConversation,
     sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
@@ -103,6 +124,7 @@ async function readConversationDetailFromSql(
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
       includeDescendants: includeDescendantMetrics,
     }),
+    readLatestConversationBrief(getDb(), conversationId),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, {
           conversationId,
@@ -113,13 +135,14 @@ async function readConversationDetailFromSql(
       getDb(),
       includeDescendantMetrics ? [conversationId] : [],
     ),
+    readConversationParticipants(getDb(), [conversationId]),
     readConversationSourceTask({
       conversationId,
-      ...(options.viewer ? { viewer: options.viewer } : {}),
+      ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
     resolveSlackTeamDomains(
-      record.conversation.sessionSource?.platform === "slack"
-        ? [record.conversation.sessionSource.teamId]
+      record.conversation.location?.provider === "slack"
+        ? [record.conversation.location.teamId]
         : [],
     ),
   ]);
@@ -136,15 +159,26 @@ async function readConversationDetailFromSql(
   return projectConversationDetail({
     ...record,
     access,
+    ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
     annotations,
     auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
+    ...(briefVersion
+      ? {
+          brief: {
+            content: briefVersion.content,
+            updatedAt: briefVersion.createdAt.toISOString(),
+            version: briefVersion.version,
+          },
+        }
+      : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,
-    ...(sourceTask ? { sourceTask } : {}),
+    participants: participantsByConversation.get(conversationId) ?? [],
+    ...(sourceTask ? { sourceTask } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
-      ? {}
+      ? undefined
       : { previousSeq: page.previousSeq }),
     usage: metrics?.usage ?? record.usage ?? undefined,
   });
@@ -162,5 +196,7 @@ export async function readConversationDetail(
     ...options,
     limit: options.limit ?? 500,
   });
-  return report ? conversationDetailReportSchema.parse(report) : undefined;
+  if (!report) return undefined;
+  const forks = await readConversationForks(conversationId, options.viewer);
+  return conversationDetailReportSchema.parse({ ...report, ...forks });
 }

@@ -1,34 +1,32 @@
-# GitHub CLI Troubleshooting — code & pull requests
+# GitHub troubleshooting
 
-Use this table to recover quickly while keeping operations deterministic.
+| Problem                                                    | Action                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `gh` reports an unknown command                            | Report that the GitHub plugin is unavailable. Do not install it.                          |
+| Clone rejects `--depth`                                    | Put clone flags after `--`: `gh repo clone owner/repo -- --depth=1`.                      |
+| Repository is missing or wrong                             | Read `github.repo`, then pass `--repo owner/repo`.                                        |
+| GraphQL cannot find the repository                         | Check `owner/repo` and the GitHub App installation.                                       |
+| `junior-auth-required` with `user-write`                   | Follow the private OAuth prompt. Never ask for a pasted token.                            |
+| `git push` returns 401 or 403                              | Check the remote and repository. Retry once, then report the installation access failure. |
+| `permission_denied` has `source: "upstream"`               | GitHub rejected the request. Report the grant, account, or SSO details.                   |
+| Other 403 response                                         | Read the error and use the tool it names.                                                 |
+| `gh auth status` shows no token scopes                     | This is normal for GitHub App user tokens. Check App permissions instead.                 |
+| `github_createPullRequest` returns 401 or 403              | Report the installation access failure. Do not use user OAuth.                            |
+| PR creation returns 422 for `head`                         | Push the branch, then retry with explicit `head` and `base`.                              |
+| PR create or update returns 422 for `base`                 | Read the default branch, then retry.                                                      |
+| 403 names `github_updatePullRequest`                       | Use `github_updatePullRequest`.                                                           |
+| PR review reports blocked GraphQL mutations                | Use `github_submitPullRequestReview`.                                                     |
+| Review-thread resolution reports blocked GraphQL mutations | Use `github_resolvePullRequestReviewThread`. It works only on bot-authored PRs.           |
+| Blame or old history is missing                            | Deepen the needed refs. Unshallow only when required.                                     |
+| Rebase has missing ancestry                                | Fetch `BASE:refs/remotes/origin/BASE`, deepen it, and use `origin/BASE`.                  |
+| Dependencies are missing                                   | Run the frozen install. Do not change the lockfile.                                       |
+| Frozen install fails                                       | Report the exact failure.                                                                 |
+| Plugin setup fails                                         | Report the setup failure. Do not repair it from the skill.                                |
 
-| Symptom                                                                            | Likely cause                                                                        | Fix                                                                                                                                                                                                    |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `unknown command "..."` from `gh`                                                  | CLI version too old or wrong binary in the plugin runtime.                          | Verify `gh --version`; if it is unavailable or too old, report that the GitHub plugin runtime dependency is not available.                                                                             |
-| `unknown flag: --depth` from `gh repo clone`                                       | `git clone` flags were passed before `--`.                                          | Pass clone flags after `--`, for example `gh repo clone owner/repo -- --depth=1`.                                                                                                                      |
-| `Missing required option --repo`                                                   | Repo not passed and no default was resolved.                                        | Resolve with `jr-rpc config get github.repo`; pass `--repo owner/repo` explicitly when missing.                                                                                                        |
-| Command affects or authenticates against the wrong repo                            | Stale `github.repo` default or authenticated command missing explicit repo.         | Pass `--repo owner/repo` for the target repository, or update `github.repo` before retrying.                                                                                                           |
-| `GraphQL: Could not resolve to a Repository`                                       | Repo slug is wrong or inaccessible.                                                 | Validate `owner/repo` and confirm app installation on target repository.                                                                                                                               |
-| 401 Unauthorized                                                                   | Issued GitHub credentials were rejected upstream.                                   | Verify the target repo, then use the grant/auth signal to distinguish stale user OAuth from app installation or host env setup.                                                                        |
-| `junior-auth-required provider=github grant=user-write`                            | User-to-server OAuth is missing or stale for a human-identity operation.            | Follow the private OAuth prompt; do not ask the user to paste or manage tokens manually.                                                                                                               |
-| `git push` fails with 401/403 or auth/permission output                            | Write permission is missing, app installation is too narrow, or remote is wrong.    | Verify the remote and repo context, retry once, then confirm app permissions and installation scope if it still fails.                                                                                 |
-| Bash result includes `permission_denied` with `source: "upstream"`                 | GitHub returned 403 after Junior injected the named grant.                          | Do not call this a Junior runtime block. Use the message, connected account, upstream target, grant requirements, accepted-permissions, and SSO fields to explain the GitHub denial.                   |
-| 403 without `permission_denied` where `source: "upstream"`                         | Junior may have rejected an unsupported route before contacting GitHub.             | Read the response body. Follow any required-tool instruction; do not ask for GitHub permissions unless the failure is confirmed upstream.                                                              |
-| `gh auth status` shows `Token scopes: none`                                        | Expected for GitHub App user-to-server tokens.                                      | Do not treat this as read-only proof. Use the failed command, `permission_denied.acceptedPermissions`, and GitHub App permissions instead.                                                             |
-| `github_createPullRequest` returns upstream 401/403                                | The App installation or target repository does not permit the operation.            | Use the structured upstream denial to verify installation scope and accepted permissions; do not request user OAuth for this bot-owned operation.                                                      |
-| `github_createPullRequest` returns 422 for `head`                                  | The head branch was not pushed or the explicit head ref is wrong.                   | Push the branch, then retry with explicit `repo`, `head`, and `base` values.                                                                                                                           |
-| `github_createPullRequest` fails with 422 validation on `base`                     | The `base` branch does not exist in the target repo.                                | Resolve the default branch with `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`, then retry with that value as `base`.                                                   |
-| `git blame`, long log history, or old commits are missing after clone              | Repo was cloned shallow by design.                                                  | Fetch the required ref and deepen it incrementally; use `--unshallow` only when bounded deepening is insufficient.                                                                                     |
-| Rebase, merge-base, or `origin/BASE...HEAD` comparison fails or gives odd ancestry | Required ancestry or the remote-tracking base ref is absent from the shallow clone. | Fetch a bounded depth into `BASE:refs/remotes/origin/BASE`, deepen that base ref until the merge base exists, and compare or rebase against `origin/BASE`. Never force-push around incomplete history. |
-| Tests fail because dependencies or executables are missing                         | Repository dependencies were not installed.                                         | Detect the lockfile and run the repo-native frozen/immutable install. Do not rewrite the lockfile unless dependency changes are part of the task.                                                      |
-| Frozen/immutable dependency install fails                                          | Lockfile drift, unavailable registry, incompatible runtime, or environment issue.   | Report the exact install failure. Do not fall back to a lockfile-updating install unless the requested work intentionally changes dependencies.                                                        |
-| `sandbox setup failed (dnf install gh failed ...)`                                 | `gh` package not available from the plugin runtime dependency bootstrap.            | Report the plugin runtime bootstrap failure; do not try to repair package installation from the skill workflow.                                                                                        |
+## Retry rules
 
-## Retry guidance
-
-- Retry once for transient transport failures after verifying repo context.
-- Do not loop retries on repeated 401/403/404 validation errors.
-- Treat missing or stale `user-read`/`user-write` grants as private GitHub App OAuth work. Treat all `installation-*` failures as App permission, installation scope, or host environment setup; they do not fall back to user OAuth.
-- Do not describe `permission_denied` with `source: "upstream"` as Junior blocking the request. It means the egress proxy injected a credential, forwarded the request, and recorded GitHub's upstream 403. Prefer its `account` and `grant.requirements` fields over inference when explaining what to fix.
-- Do not infer permission level from OAuth scopes. GitHub App user tokens report no OAuth scopes; GitHub App permissions and accepted-permissions headers are the useful evidence.
-- For persistent permission problems, return explicit remediation and stop.
+- Retry a transport failure once after you check the repository.
+- Do not repeat 401, 403, 404, or validation failures.
+- A `user-read` or `user-write` failure needs private App OAuth.
+- An `installation-*` failure needs an App permission or installation fix.
+- Use structured `permission_denied` details when present.

@@ -4,14 +4,25 @@ This module owns Junior's durable conversation record, search, and retention.
 
 ## Location Read Model
 
-`Conversation.location` is the provider-location read model for new code. A
-location keeps Junior's id plus the provider's tenant and location identifiers.
-Conversation privacy remains in `Conversation.visibility`. Provider-specific
-event attribution, such as Slack `threadTs` and `messageTs`, remains in
-`sessionSource`.
+`Conversation.location` is the single Location field for new code. No Location
+means the Conversation stays in Junior's API and UI. A Location names the place
+outside Junior where a provider can deliver the Conversation. For Slack, a
+complete Location identifies the workspace, channel, and thread. Conversation
+privacy remains in `Conversation.visibility`.
 
-During the destination cutover, the linked destination row remains the durable
-location authority. Local conversations have no provider location.
+A Run carries the Conversation Location when the agent or tools need it.
+Source describes the input and does not contain Location. Delivery is created
+for the Location and does not repeat it.
+
+The Conversation row stores the complete Location in `location_json`. Local
+Conversations have no Location.
+
+TODO(dcramer): Remove `sessionSource` after resume reads the saved Turn Source
+and every Conversation place reader uses Location.
+
+TODO(dcramer): Remove the `destination_id` and `source_json` Location read
+fallback after no deployed writer can omit `location_json` and a backfill has
+populated rows that those writers created during deployment.
 
 ## Storage Model
 
@@ -32,6 +43,25 @@ facts:
 `user_message` provenance distinguishes user instructions from ambient context.
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
+
+Version-two agent history items store message fields as JSON strings in
+`payload.message`. User provenance stays outside the string. Handoff and
+compaction store each replacement `item` as a JSON string. Encoding happens
+before SQL sanitization to preserve nested key order and NUL characters.
+Replay decodes all message fields; it does not rebuild them from a field list.
+
+SQL reports still read `model`, `provider`, `usage`, and `toolCallId` from the
+payload. Replay ignores these copies. No second history store is added.
+
+Version-one rows remain readable, but cannot recover data already lost. Stop
+old workers before deploying version-two writers. Old releases cannot replay
+version-two events. Rollback requires a compatible reader. No database schema
+migration is required.
+
+The agent history integration test checks stored messages and Pi's serialized
+request prefix through real Postgres. Only model HTTP responses are faked.
+The comparison excludes cache markers, not message fields or key order.
+Stable request prefixes do not guarantee provider cache hits.
 
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
@@ -59,21 +89,9 @@ events append to it. The internal `history_version` column makes loading that
 active history efficient. There is no initial-history event. Database migrations
 normalize older history shapes before the runtime reads them.
 
-## Conversation Fork
-
-`fork.ts` owns the internal fork path. A fork creates a **new root** conversation
-(not a subagent child via `parent_conversation_id`) and seeds it with the source
-conversation's active agent history through a cutoff seq or platform message id.
-The fork row stores `forked_from_conversation_id` as an indexed self-reference,
-so callers can resolve fork → source and source → forks without scanning events.
-It also records a `junior/conversation_forked` structured event with the cutoff
-for transcript display. The fork inherits source destination visibility and
-never widens private or unknown sources to public. It does not clone execution
-state, mailbox, schedules, watches, approvals, or live tool side effects.
-
-Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
-session record. It is removed before SQL history is written and restored for an
-auth or timeout resume, so agent replay does not need an automatic rollback.
+`<runtime-turn-context>` is part of the exact model history. Normal execution
+stores and replays it unchanged. Reporting projections can omit it from the UI.
+Compaction and handoff can replace it with the current context.
 
 Message summarization is separate from agent-history compaction. A
 `messages_summarized` event stores the latest bounded summaries used to render
@@ -88,6 +106,12 @@ older source-thread context; it does not replace Pi history.
 - Replace agent history only through explicit compaction or handoff.
 - Restore transcripts and agent history directly from conversation events.
 - Keep imports and migrations idempotent and preserve conversation IDs.
+
+## SQL Write Lock
+
+All metadata and event writes for one conversation use the
+`junior_conversation:<conversationId>` advisory lock. They cannot lock shared SQL
+rows in opposite order because their transactions do not overlap.
 
 Reporting APIs project an authorized, redacted contract from the event stream.
 Raw event payloads are internal and must not become dashboard or external API
@@ -105,6 +129,39 @@ same Slack workspace. Oversized
 event data is represented by identifying fields and its original JSON byte
 size. The complete event array also has a fixed byte budget and reports omitted
 events through its pagination contract.
+
+## Conversation Forks
+
+`forkConversation` creates an independent web root through one completed
+assistant reply. A message cutoff uses the exact delivery-to-agent event key;
+unknown or fallback replies cannot select unrelated history. Sequence cutoffs
+must also end with a completed assistant reply and no unfinished tool calls.
+The history version at that cutoff wins, including when the source later
+compacts or hands off.
+
+The API checks source access under the source Conversation lock. Creation and
+history seeding share the source and fork locks in one SQL transaction. Retry
+identity includes the source, requester email, and client key. A retry returns
+the first completed fork. Forks retain source visibility; missing visibility
+stays private. The requester owns the new root. Historical authors do not become
+participants. Copied model messages keep their exact fields and attribution.
+The `fork:history:` event keys exclude those copies from model usage reports.
+
+The indexed `forked_from_conversation_id` relation is separate from delegation.
+Deleting a source clears this link but does not delete the fork. Detail reads
+filter both source and fork links through the usual access checks.
+
+The dashboard offers the action on assistant replies in the conversation and
+event log. It opens the new Conversation without starting a Turn. The user then
+sends a new instruction through the normal web composer. The copied history is
+model context, not a duplicate of the source's visible Messages; the source link
+opens that transcript. Compacted history cannot recover discarded context.
+
+Forks do not copy the Sandbox, files, Location, execution state, pending input,
+credentials, approvals, subagents, Watches, Automations, attachments, or mutable
+annotations. An appended context message explains this boundary to the agent.
+A Sandbox is created lazily through the normal runtime. Sandbox file transfer
+and historical snapshots are tracked in #1947.
 
 ## Stored Event Compatibility
 
@@ -166,3 +223,84 @@ Follow `../../../../../policies/data-redaction.md` and
 
 Representative coverage lives in the conversation storage component tests and
 `packages/junior/tests/integration/conversation-sql.test.ts`.
+
+## Object annotations and Message cards
+
+An object annotation holds the latest saved facts for an object in one
+Conversation. The provider owns its key, type, title, status, and optional fields.
+It is not the authoritative object store.
+
+Successful plugin tools return `objectAnnotations`. Core assigns the plugin
+owner, saves the annotations, and includes their snapshots in the tool result's
+`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+cannot set cards. Automation tools use the same saved object contract.
+
+`annotations.upsert` is storage-only. Webhook updates do not queue a card or
+start a Turn. A producer can use this path for a silent update. Returned
+`objectAnnotations` are a deliberate selection for the next visible reply.
+
+Pending cards come from committed successful tool results, not a scan of changed
+annotation rows. The latest selection per owner/key wins. Failed or timed-out
+results do not replace earlier cards. Removal results suppress earlier selections.
+A visible Message consumes its cards. A new Turn does not inherit cards from a
+silent Turn. Store each delivered snapshot in the Message so background updates
+do not rewrite stored history. The web transcript shows this snapshot. Slack can
+refresh its preview from newer detail responses; it does not change the stored
+Message. Existing Automation cards remain readable.
+
+Plugins must return only facts appropriate to disclose in the current
+Conversation. This contract does not expand provider permissions or make a
+private object public. Detail views of saved annotations use Conversation access,
+not the original actor's provider credentials. Live provider details and actions
+are not part of this contract.
+
+### Object facts
+
+Plugins select facts from the successful provider response, before core saves
+an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
+and field order. It contains no provider fields or Slack layout. Both Slack and
+the web card use these facts. The Slack detail panel reads the latest saved
+annotation, not a new provider response. The web transcript shows the Message
+snapshot and labels it as saved.
+
+- Code changes show review and check summaries when known, then author,
+  requested reviewers, conflicts, branches, and change size. GitHub REST PR
+  responses do not include review decisions or check totals. The producer must
+  not invent these from requested reviewers, mergeability, or lifecycle state.
+- Tasks show assignees and priority, then project, cycle, due date, and labels.
+  An empty assignee list means unassigned. An absent list means unknown.
+- Deployments use Item cards. Vercel selects project, target, revision, and
+  branch from its existing deployment response. It never copies environment
+  values. A missing target stays unknown.
+- Automations use the existing card and detail page. Cards show state, trigger,
+  and warning. The existing Automation record owns full details and actions.
+- Other Items remain useful with just a title and source link.
+
+The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have
+schema bounds. Producers select at most five entries per list and shorten
+optional display text. They do not shorten object keys or source URLs. This
+limit applies to new facts, not to the entire annotation, which also contains
+identity and existing bounded fields. No new table or cache is needed.
+
+Core replaces `objectAnnotations` with owned `objectCards` in successful tool
+results. This avoids two copies in the same tool result. Delivery still saves
+an independent Message snapshot. Background annotation updates stay silent and
+must not change that snapshot, start Watches, or send new Messages.
+
+`sourceUpdatedAt` is the provider's update time, not the database write time.
+A silent status-only update does not claim to refresh every other fact. New
+full responses replace the facts; missing values do not retain old values.
+
+All added facts must be safe for the Conversation audience, just like Message
+text. Slack detail access still checks the workspace and Conversation. This
+change adds no provider fetches or write actions. Source links let the provider
+check access to larger details.
+
+#### Release safety
+
+Old annotations remain valid because the new fields are optional. The previous
+strict reader does not accept enriched annotations or Message snapshots. Drain
+workers and deploy the API, plugins, and dashboard together before writing new
+facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
+these fields after enriched cards have been written. A rollback needs a reader
+that accepts the new fields, even if it does not display them.

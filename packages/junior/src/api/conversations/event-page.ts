@@ -1,3 +1,4 @@
+import { hydrateMessageAttachments } from "./message-attachments";
 import {
   and,
   asc,
@@ -96,7 +97,9 @@ function decodeConversationEventRow(
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+    ...(row.idempotencyKey
+      ? { idempotencyKey: row.idempotencyKey }
+      : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload: row.payload,
@@ -145,6 +148,10 @@ async function projectConversationEventRows(
           toolCallIds: toolResultIds,
           types: ["tool_execution_started"],
         });
+
+  if (args.canExposePayload) {
+    await hydrateMessageAttachments(executor, args.conversationId, events);
+  }
 
   return projectConversationReportEventPage({
     canExposePayload: args.canExposePayload,
@@ -202,6 +209,6 @@ export async function readConversationEventPage(
     events,
     ...(projected.length > events.length && events[0]
       ? { previousSeq: events[0].seq }
-      : {}),
+      : undefined),
   };
 }

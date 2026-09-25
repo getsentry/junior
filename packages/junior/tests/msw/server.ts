@@ -1,6 +1,7 @@
 import { EVAL_OAUTH_ORIGIN, evalOAuthHandlers } from "./handlers/eval-oauth";
 import {
   EVAL_MCP_AUTH_ORIGIN,
+  EVAL_MCP_NO_AUTH_ORIGIN,
   evalMcpAuthHandlers,
 } from "./handlers/eval-mcp-auth";
 import { allowsLiveTestHttpHost } from "../../../junior-testing/src/http";
@@ -10,12 +11,14 @@ import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
 
 const EVAL_MCP_AUTH_HOSTNAME = new URL(EVAL_MCP_AUTH_ORIGIN).hostname;
+const EVAL_MCP_NO_AUTH_HOSTNAME = new URL(EVAL_MCP_NO_AUTH_ORIGIN).hostname;
 const EVAL_OAUTH_HOSTNAME = new URL(EVAL_OAUTH_ORIGIN).hostname;
 
 const HOST_HTTP_FIXTURE_ALLOWLIST = new Set([
   "files.slack.com",
   "slack.com",
   EVAL_MCP_AUTH_HOSTNAME,
+  EVAL_MCP_NO_AUTH_HOSTNAME,
   EVAL_OAUTH_HOSTNAME,
 ]);
 

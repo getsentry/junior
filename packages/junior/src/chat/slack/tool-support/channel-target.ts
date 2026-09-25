@@ -1,59 +1,72 @@
-import { resolvePublicChannelByName } from "@/chat/slack/channel";
-import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
+import { getConversationStore } from "@/chat/db";
+import {
+  parseSlackChannelId,
+  parseSlackChannelReferenceId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
 import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface ResolvedSlackChannelTarget {
   channelId: SlackChannelId;
   channelName?: string;
-  resolvedFromName: boolean;
 }
 
-/** Model-facing Slack channel ID or public channel name parameter. */
+// Slack channel names max out at 80 chars. Mentions add `<#id|…>` markup around
+// that name, so the model-facing param must clear bare-name length.
+const SLACK_CHANNEL_REF_MAX_LENGTH = 160;
+
+/** Model-facing Slack channel id or known channel name parameter. */
 export const slackChannelRefParam = z
   .string()
   .trim()
   .min(1)
-  .max(80)
-  .describe("Slack channel ID or public channel name.");
+  .max(SLACK_CHANNEL_REF_MAX_LENGTH)
+  .describe(
+    "Slack channel id (`C123`), mention (`<#C123>` / `<#C123|name>`), Junior slack reference (`slack:C123`), or a channel name Junior already knows in this workspace.",
+  );
 
 /**
  * Resolve a channel reference from a tool param value.
  *
- * Exact channel ids are parsed directly. Anything else is treated as a public
- * channel name (with or without a leading `#`) and resolved via Slack.
+ * Prefer id-bearing forms. Plain names may match one known destination already
+ * stored for this workspace. Do not scan Slack's public channel list.
  */
 export async function resolveSlackChannelRef(input: {
   field: string;
   value: string;
+  teamId: SlackTeamId;
 }): Promise<ResolvedSlackChannelTarget> {
   const trimmed = input.value.trim();
   if (!trimmed) {
     throw new ToolInputError(
-      `Invalid \`${input.field}\`. Provide a Slack channel id like \`C123\` or a public channel name like \`#proj-foo\`.`,
+      `Invalid \`${input.field}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a Junior slack reference (\`slack:C123\`), or a channel name Junior already knows.`,
     );
   }
 
-  const channelId = parseSlackChannelId(trimmed);
+  const channelId = parseSlackChannelReferenceId(trimmed);
   if (channelId) {
+    return { channelId };
+  }
+
+  const known = await getConversationStore().findSlackDestinationByName({
+    teamId: input.teamId,
+    channelName: trimmed,
+  });
+  const knownChannelId = known
+    ? parseSlackChannelId(known.channelId)
+    : undefined;
+  if (known && knownChannelId) {
     return {
-      channelId,
-      resolvedFromName: false,
+      channelId: knownChannelId,
+      ...(known.channelName ? { channelName: known.channelName } : undefined),
     };
   }
 
-  const match = await resolvePublicChannelByName(trimmed);
-  if (!match) {
-    throw new ToolInputError(
-      `No public Slack channel named \`${trimmed}\` was found. Use an exact public channel name or a channel id.`,
-    );
-  }
-
-  return {
-    channelId: match.id,
-    ...(match.name ? { channelName: match.name } : {}),
-    resolvedFromName: true,
-  };
+  throw new ToolInputError(
+    `Unknown \`${input.field}\` \`${trimmed}\`. Use a channel id (\`C123\`), a Slack mention (\`<#C123>\`), a link, or a channel name Junior has already seen in this workspace. Public search can discover channels; plain names are not scanned from Slack.`,
+  );
 }
 
 /**
@@ -63,18 +76,19 @@ export async function resolveOptionalSlackChannelRef(input: {
   field?: string;
   value?: string;
   defaultChannelId?: SlackChannelId;
+  teamId: SlackTeamId;
 }): Promise<ResolvedSlackChannelTarget> {
   if (input.value !== undefined) {
     return resolveSlackChannelRef({
       field: input.field ?? "channel_id",
       value: input.value,
+      teamId: input.teamId,
     });
   }
 
   if (input.defaultChannelId) {
     return {
       channelId: input.defaultChannelId,
-      resolvedFromName: false,
     };
   }
 

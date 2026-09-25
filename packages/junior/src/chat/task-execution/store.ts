@@ -14,14 +14,17 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
+  type CompleteConversationStopResult,
   type Conversation,
   type ConversationExecution,
+  type ConversationStop,
   type ConversationWorkLease,
   type ConversationWorkState,
   type ExecutionStatus,
@@ -34,9 +37,12 @@ export {
   type StartConversationWorkActive,
   type StartConversationWorkNoWork,
   type StartConversationWorkResult,
+  type StopConversationWorkResult,
 } from "@/chat/task-execution/state";
 import type {
+  AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
+  AppendExclusiveInboundMessageResult,
   Conversation,
   InboundMessage,
 } from "@/chat/task-execution/state";
@@ -164,14 +170,16 @@ export function hasRunnableConversationWork(
 /**
  * Ensure runnable conversation work has one accepted queue wake-up nudge.
  *
- * Ordinary wakes coalesce on a recent accepted marker. Replacement is only for
- * consumed or known-stale deliveries where another queue nudge must exist.
+ * Ordinary wakes coalesce on a recent accepted marker. A caller can ignore the
+ * marker without replacing an active lease. Replacement is only for consumed
+ * or known-stale deliveries where another queue nudge must exist.
  */
 export async function ensureConversationWake(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   delayMs?: number;
   idempotencyKey: string;
+  ignoreEnqueueMarker?: true;
   nowMs?: number;
   queue: ConversationWorkQueue;
   replaceExistingWake?: true;
@@ -193,6 +201,7 @@ export async function ensureConversationWake(args: {
     return { status: "lease_active" };
   }
   if (
+    args.ignoreEnqueueMarker !== true &&
     args.replaceExistingWake !== true &&
     hasRecentEnqueueMarker(conversation, nowMs)
   ) {
@@ -234,20 +243,19 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
-/** Persist inbound work and ensure a worker wake-up. */
-export async function appendAndEnqueueInboundMessage(args: {
+async function enqueueAfterAppend(args: {
+  appendResult: AppendExclusiveInboundMessageResult;
   message: InboundMessage;
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
+  queueDelayMs?: number;
+  replaceExistingWake?: true;
   state?: StateAdapter;
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
-  const appendResult = await workState.appendInboundMessage({
-    message: args.message,
-    nowMs,
-    state: args.state,
-  });
+  const appendResult = args.appendResult;
+  if (appendResult.status === "active") return appendResult;
   let idempotencyKey = args.message.inboundMessageId;
   if (appendResult.status === "duplicate") {
     const conversation = await workState.getConversation({
@@ -281,9 +289,14 @@ export async function appendAndEnqueueInboundMessage(args: {
   const wake = await ensureConversationWake({
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
+    delayMs: args.queueDelayMs,
     idempotencyKey,
+    // Human input must not wait out an event's queue delay. An active worker
+    // still owns the mailbox, so do not replace its wake.
+    ignoreEnqueueMarker: args.message.source === "event" ? undefined : true,
     nowMs,
     queue: args.queue,
+    replaceExistingWake: args.replaceExistingWake,
     state: args.state,
   });
   if (wake.status !== "enqueued") {
@@ -297,8 +310,85 @@ export async function appendAndEnqueueInboundMessage(args: {
     ...appendResult,
     ...(wake.status === "enqueued"
       ? { queueMessageId: wake.queueMessageId }
-      : {}),
+      : undefined),
   };
+}
+
+/** Persist inbound work and ensure a worker wake-up. */
+export async function appendAndEnqueueInboundMessage(args: {
+  message: InboundMessage;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  queueDelayMs?: number;
+  replaceExistingWake?: true;
+  state?: StateAdapter;
+}): Promise<AppendAndEnqueueInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  const result = await enqueueAfterAppend({
+    ...args,
+    appendResult: await workState.appendInboundMessage({
+      message: args.message,
+      nowMs,
+      state: args.state,
+    }),
+    nowMs,
+  });
+  if (result.status === "active") {
+    throw new Error("Non-exclusive mailbox enqueue returned active");
+  }
+  return result;
+}
+
+/** Persist exclusive inbound work and wake its worker when admitted. */
+export async function appendAndEnqueueExclusiveInboundMessage(args: {
+  message: InboundMessage;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  replaceExistingWake?: true;
+  state?: StateAdapter;
+}): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  return await enqueueAfterAppend({
+    ...args,
+    appendResult: await workState.appendExclusiveInboundMessage({
+      message: args.message,
+      nowMs,
+      state: args.state,
+    }),
+    nowMs,
+  });
+}
+
+/** Persist a stop request for the current Conversation run. */
+export async function stopConversationWork(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.stopConversationWork(args);
+  if (result.status === "requested") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
+/** Finish an observed stop request under the current worker lease. */
+export async function completeConversationStop(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  leaseToken: string;
+  nowMs?: number;
+  runId: string;
+  state?: StateAdapter;
+}) {
+  const result = await workState.completeConversationStop(args);
+  if (result.status === "cleared") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
 }
 
 /** Clear an accepted wake marker after its delivery finds no runnable work. */
@@ -413,6 +503,22 @@ export async function ackMessages(args: {
   return result;
 }
 
+/** Cancel human-facing pending mailbox rows without requiring a worker lease. */
+export async function cancelHumanFacingPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.cancelHumanFacingPendingMessages(args);
+  if (result.cancelledInboundMessageIds.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
@@ -462,6 +568,8 @@ export async function completeConversationWork(args: {
   madeProgress?: boolean;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Keep a raced stop runnable after a stop-aware adapter returns. */
+  resumeIfStopped?: boolean;
   state?: StateAdapter;
 }) {
   const result = await workState.completeConversationWork(args);

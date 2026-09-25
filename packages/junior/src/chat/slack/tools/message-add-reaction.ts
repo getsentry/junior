@@ -21,8 +21,7 @@ export function createSlackMessageAddReactionTool(
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Add an emoji reaction to the current inbound Slack message.",
+    description: "Add an emoji reaction to the current inbound Slack message.",
     inputSchema: z.object({
       emoji: z
         .string()
@@ -34,11 +33,11 @@ export function createSlackMessageAddReactionTool(
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ emoji }) => {
-      const targetChannelId = context.sourceChannelId;
+      const targetChannelId = context.messageChannelId;
       const targetMessageTs = context.messageTs;
-      if (!targetMessageTs) {
+      if (!targetChannelId || !targetMessageTs) {
         throw new ToolInputError(
-          "No active message timestamp is available for reactions.",
+          "No active Slack message is available for reactions.",
         );
       }
       const normalizedEmoji = normalizeSlackEmojiName(emoji);

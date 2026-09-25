@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { modelProfileSchema } from "@/chat/model-profile";
+import {
+  formatModelProfile,
+  type ModelProfile,
+  modelProfileSchema,
+} from "@/chat/model-profile";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -7,17 +11,30 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export const HANDOFF_TOOL_NAME = "handoff";
 
-/** Create the runtime control for an in-place execution-profile switch. */
+function formatHandoffProfiles(
+  handoff: NonNullable<ToolRuntimeContext["handoff"]>,
+): string {
+  return handoff.profiles
+    .map(
+      (profile) => `- ${formatModelProfile(profile.name, profile.description)}`,
+    )
+    .join("\n");
+}
+
+/** Create the tool that switches the active model profile. */
 export function createHandoffTool(
   handoff: NonNullable<ToolRuntimeContext["handoff"]>,
 ) {
-  const profileSchema = z.enum(handoff.profiles);
+  const profileSchema = z.enum(
+    handoff.profiles.map((profile) => profile.name) as [
+      ModelProfile,
+      ...ModelProfile[],
+    ],
+  );
   const handoffResultSchema = juniorToolOutputSchema.extend({
     model_profile: modelProfileSchema,
   });
-  const profileNames = handoff.profiles
-    .map((profile) => `\`${profile}\``)
-    .join(", ");
+  const profileList = formatHandoffProfiles(handoff);
   return zodTool({
     annotations: {
       destructiveHint: false,
@@ -25,11 +42,22 @@ export function createHandoffTool(
       openWorldHint: false,
       readOnlyHint: false,
     },
-    description: `Switch to another execution profile and continue the same task. Profiles: ${profileNames}. Call this as the only tool.`,
+    description: [
+      "Switch this conversation to another configured model profile and continue the same task.",
+      "Call this as the only tool in the assistant message when a listed profile's description fits the task better than the current profile.",
+      "Select the profile before substantial analysis or implementation. If initial discovery reveals work that fits another profile, switch before doing that work.",
+      "Use each description's use and avoid cases. Do not select by the profile name or assume that a non-default profile is stronger.",
+      "Do not switch merely because the task mentions code, uses tools, or a tool fails. Do not switch just to summarize work already completed.",
+      "A successful handoff changes the active profile for this turn and its resumes. The turn router selects a profile again for each new request.",
+      `Active profile: ${formatModelProfile(handoff.activeProfile.name, handoff.activeProfile.description)}`,
+      `Available profiles:\n${profileList}`,
+    ].join(" "),
     executionMode: "sequential",
     inputSchema: z
       .object({
-        profile: profileSchema.describe("Target execution profile"),
+        profile: profileSchema.describe(
+          "Exact configured profile name. Choose the profile whose description best fits the remaining task. If none clearly fits better, do not call handoff.",
+        ),
       })
       .strict(),
     outputSchema: handoffResultSchema,
@@ -39,7 +67,7 @@ export function createHandoffTool(
         throw new ToolInputError("Handoff requires an active tool call ID");
       }
       await handoff.execute(profile, {
-        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.signal ? { signal: options.signal } : undefined),
         toolCallId: options.toolCallId,
       });
       return {

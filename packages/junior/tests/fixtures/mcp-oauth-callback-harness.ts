@@ -1,4 +1,6 @@
+import { createOAuthWork } from "./oauth-work";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   waitUntilCallbacks,
   testWaitUntil,
@@ -10,9 +12,11 @@ export async function runMcpOauthCallbackRoute(args: {
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  conversationWorkQueue?: ConversationWorkQueue;
   expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
+  const work = createOAuthWork(args.agentRunner ?? realAgentRunner);
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
   const response = await GET(
@@ -22,7 +26,12 @@ export async function runMcpOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
-    { agentRunner: args.agentRunner ?? realAgentRunner },
+    {
+      conversationWorkQueue: work.queue,
+      ...(args.conversationWorkQueue
+        ? { conversationWorkQueue: args.conversationWorkQueue }
+        : undefined),
+    },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   if (args.expectBackgroundWork === false && callbacks.length > 0) {
@@ -33,15 +42,7 @@ export async function runMcpOauthCallbackRoute(args: {
   for (const callback of callbacks) {
     await callback();
   }
-  if (
-    response.status === 200 &&
-    callbacks.length === 0 &&
-    args.expectBackgroundWork !== false
-  ) {
-    throw new Error(
-      `MCP OAuth callback route returned 200 without registering waitUntil() work for provider "${args.provider}"`,
-    );
-  }
+  if (!args.conversationWorkQueue) await work.drain();
   return response;
 }
 
@@ -50,6 +51,7 @@ export async function completeMcpOauthCallbackRoute(args: {
   provider: string;
   authSessionId: string;
   agentRunner?: AgentRunner;
+  conversationWorkQueue?: ConversationWorkQueue;
   expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
@@ -75,10 +77,13 @@ export async function completeMcpOauthCallbackRoute(args: {
     provider: args.provider,
     state,
     code,
-    ...(args.agentRunner ? { agentRunner: args.agentRunner } : {}),
+    ...(args.agentRunner ? { agentRunner: args.agentRunner } : undefined),
+    ...(args.conversationWorkQueue
+      ? { conversationWorkQueue: args.conversationWorkQueue }
+      : undefined),
     ...(args.expectBackgroundWork === false
       ? { expectBackgroundWork: false }
-      : {}),
-    ...(args.relayed ? { relayed: true } : {}),
+      : undefined),
+    ...(args.relayed ? { relayed: true } : undefined),
   });
 }

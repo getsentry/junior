@@ -3,7 +3,13 @@ changelog:
   filePath: CHANGELOG.md
   policy: auto
 preReleaseCommand: bash scripts/craft-pre-release.sh
+# Craft owns approval and tag creation. The tag workflow owns GitHub assets.
+# Keep this first so npm publication cannot block GitHub release verification.
+requireNames:
+  - /^junior-release\.json$/
 targets:
+  - name: github
+    tagOnly: true
   - name: npm
     id: "@sentry/junior"
     includeNames: /^sentry-junior-\d.*\.tgz$/
@@ -29,6 +35,9 @@ targets:
     id: "@sentry/junior-github"
     includeNames: /^sentry-junior-github-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-gocd"
+    includeNames: /^sentry-junior-gocd-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-hex"
     includeNames: /^sentry-junior-hex-\d.*\.tgz$/
   - name: npm
@@ -41,6 +50,9 @@ targets:
     id: "@sentry/junior-notion"
     includeNames: /^sentry-junior-notion-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-octolens"
+    includeNames: /^sentry-junior-octolens-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-sentry"
     includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
   - name: npm
@@ -49,4 +61,3 @@ targets:
   - name: npm
     id: "@sentry/junior-vercel"
     includeNames: /^sentry-junior-vercel-\d.*\.tgz$/
-  - name: github

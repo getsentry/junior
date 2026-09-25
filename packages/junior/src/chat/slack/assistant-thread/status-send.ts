@@ -108,7 +108,7 @@ export function createSlackWebApiStatusSender(args: {
         status: text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
         ...(nextLoadingMessages
           ? { loading_messages: nextLoadingMessages }
-          : {}),
+          : undefined),
       });
     } catch (error) {
       logAssistantStatusFailure({

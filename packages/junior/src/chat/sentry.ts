@@ -15,6 +15,7 @@ export {
   spanToJSON,
   startInactiveSpan,
   startSpan,
+  startSpanManual,
   vercelAIIntegration,
   withActiveSpan,
   withScope,

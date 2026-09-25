@@ -1,31 +1,11 @@
-import { expect, test } from "@playwright/test";
-import {
-  collectBrowserErrors,
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import { expect, test } from "./test";
+import { screenshot } from "./screenshot";
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
-test("explores location activity", async ({ page }) => {
+test("explores location activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/locations?q=proj`);
+  await page.goto(`${dashboard.baseURL}/locations?q=proj`);
 
-  await expect(page).toHaveURL(`${server.baseURL}/system/locations?q=proj`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/locations?q=proj`);
   await expect(
     page.getByRole("searchbox", { name: "Search locations" }),
   ).toHaveValue("proj");
@@ -54,6 +34,24 @@ test("explores location activity", async ({ page }) => {
       .getByLabel("System navigation")
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
+  await screenshot(page, "locations");
+});
 
-  expect(browserErrors).toEqual([]);
+test("opens one public location", async ({ page, dashboard }) => {
+  await page.goto(
+    `${dashboard.baseURL}/system/locations/${encodeURIComponent("mock:CQA123")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "#proj-checkout", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Persisted conversations", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByLabel("System navigation")
+      .getByRole("link", { name: "Locations" }),
+  ).toHaveAttribute("aria-current", "page");
+  await screenshot(page, "location-detail");
 });

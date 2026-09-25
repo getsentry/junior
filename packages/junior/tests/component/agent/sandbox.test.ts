@@ -88,6 +88,48 @@ describe("createAgentSandbox", () => {
     await expect(sandbox.captureRepositoryInstructions()).rejects.toBe(failure);
   });
 
+  it("returns the preparing message to plugin bash callers", async () => {
+    executeSandboxToolMock.mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            status: "building",
+            workspace: "sentry-docs",
+            message:
+              "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+          }),
+        },
+      ],
+      details: {
+        status: "building",
+        workspace: "sentry-docs",
+        message:
+          "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+      },
+    });
+    const handleAuthSignal = vi.fn();
+    const agentSandbox = createAgentSandbox(options());
+    const pluginSandbox = createPluginToolSandbox(agentSandbox, {
+      handleAuthSignal,
+    });
+
+    await expect(
+      pluginSandbox.run({
+        cmd: "pwd",
+        cwd: "/vercel/sandbox",
+      }),
+    ).resolves.toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+    });
+    expect(handleAuthSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "building" }),
+    );
+  });
+
   it("routes plugin commands through sandbox auth and cancellation", async () => {
     const controller = new AbortController();
     const authRequired = {

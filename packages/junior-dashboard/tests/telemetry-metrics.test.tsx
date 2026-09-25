@@ -63,11 +63,7 @@ describe("CostMetric", () => {
 
   it("shows provisional cost while conversation metrics are live", () => {
     const emptyHtml = renderToStaticMarkup(
-      <CostMetric
-        live
-        liveModelId="xai/grok-4-5"
-        summary={undefined}
-      />,
+      <CostMetric live liveModelId="xai/grok-4-5" summary={undefined} />,
     );
     expect(emptyHtml).toContain("$…");
     expect(emptyHtml).toContain("grok-4-5");
@@ -84,7 +80,7 @@ describe("CostMetric", () => {
             usage: { cost: { total: 0.041 } },
           },
         ]}
-        summary={{ total: 0.041 }}
+        summary={{ total: 0.02 }}
       />,
     );
     expect(partialHtml).toContain("$0.04+");
@@ -134,7 +130,7 @@ describe("CostMetric", () => {
     expect(durationHtml).not.toContain("junior-text-shimmer");
   });
 
-  it("includes auxiliary operations in the total and tooltip", () => {
+  it("uses model costs with auxiliary operations when saved cost is stale", () => {
     const html = renderToStaticMarkup(
       <CostMetric
         auxiliaryCosts={{
@@ -163,10 +159,14 @@ describe("CostMetric", () => {
         modelUsage={[
           {
             modelId: "openai/gpt-5",
-            usage: { cost: { total: 0.041 } },
+            usage: { cost: { total: 0.03 } },
+          },
+          {
+            modelId: "anthropic/claude-sonnet-4",
+            usage: { cost: { input: 0.001, output: 0.01 } },
           },
         ]}
-        summary={{ total: 0.041 }}
+        summary={{ total: 0.01 }}
       />,
     );
 
@@ -178,6 +178,10 @@ describe("CostMetric", () => {
     expect(html).toContain("Thinking routing (1): $0.0002");
     expect(html).toContain("Memory recall (2): $0.0004");
     expect(html).toContain("Guardian (1): $0.0014");
+    expect(html).toContain("gpt-5");
+    expect(html).toContain("• total: $0.03");
+    expect(html).toContain("claude-sonnet-4");
+    expect(html).toContain("• total: $0.011");
     expect(html).toContain('data-tooltip-placement="above"');
   });
 });

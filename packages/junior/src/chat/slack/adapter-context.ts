@@ -53,8 +53,9 @@ export async function ensureSlackAdapterInitialized(args: {
   const state = await getConnectedState(args.state);
   await args.adapter.initialize({
     getState: () => state,
-  } as unknown as ChatInstance);
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  } as ChatInstance);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   if (internals.defaultBotTokenProvider && !args.adapter.botUserId) {
     // A single-workspace adapter that failed `auth.test` has no bot identity,
     // which disables self-message filtering and mention detection. Caching it
@@ -71,7 +72,8 @@ export function verifySlackSignature(args: {
   body: string;
   request: Request;
 }): boolean {
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   const verifySignature = internals.verifySignature;
   if (!verifySignature) {
     throw new Error("Slack adapter does not expose signature verification");
@@ -96,7 +98,8 @@ export async function runWithSlackInstallation<T>(args: {
     state: args.state,
   });
 
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   if (internals.defaultBotTokenProvider) {
     return await args.task();
   }

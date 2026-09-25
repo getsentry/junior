@@ -212,7 +212,7 @@ export function isHostFileMissingError(error: unknown): boolean {
 
 /** Copy the current skill set and reference files into a sandbox. */
 export async function syncSkillsToSandbox(params: {
-  sandbox: SandboxSession;
+  sandbox: Pick<SandboxSession, "mkDir" | "writeFiles">;
   skills: SkillMetadata[];
   referenceFiles?: string[];
   withSpan: <T>(

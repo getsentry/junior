@@ -1,10 +1,13 @@
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { decodeInputImages } from "@/chat/attachments/images";
+import type { InputImage } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
   webActorFromEmail,
-  appendAndEnqueueApiConversationMessage,
-  createAndEnqueueApiConversation,
-} from "@/chat/api-turns/work";
+  appendAndEnqueueWebMessage,
+  createAndEnqueueConversation,
+} from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { throwApiError } from "../http";
@@ -15,10 +18,22 @@ import type {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
+/** Turn image validation failures into request errors before accepting work. */
+function parseImages(images: InputImage[] | undefined) {
+  try {
+    return decodeInputImages(images ?? []);
+  } catch (error) {
+    throwApiError(
+      400,
+      error instanceof Error ? error.message : "Unable to read images.",
+    );
+  }
+}
+
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
   return webActorFromEmail(normalized, {
-    ...(viewer.displayName ? { fullName: viewer.displayName } : {}),
+    ...(viewer.displayName ? { fullName: viewer.displayName } : undefined),
     userName: normalized.split("@")[0] || normalized,
   });
 }
@@ -27,17 +42,21 @@ function actorFromViewer(viewer: User): WebActor {
 export async function createConversationForViewer(
   viewer: User,
   body: CreateConversationBody,
+  attachmentStorage: AttachmentStorage,
 ): Promise<AcceptedConversationMessage> {
+  const images = parseImages(body.images);
   try {
-    return await createAndEnqueueApiConversation(
+    return await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
         message: body.message,
-        ...(body.visibility ? { visibility: body.visibility } : {}),
+        images,
+        ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
         conversationStore: getConversationStore(),
+        attachmentStorage,
         queue: getVercelConversationWorkQueue(),
       },
     );
@@ -51,6 +70,7 @@ export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
+  attachmentStorage: AttachmentStorage,
 ): Promise<AcceptedConversationMessage> {
   const conversation = await getConversationStore().get({
     conversationId,
@@ -59,12 +79,12 @@ export async function appendConversationMessageForViewer(
     throwApiError(404, "Conversation not found.");
   }
   const destinationPlatform = conversation.destination?.platform;
-  const acceptsApiMessages =
+  const acceptsWebMessages =
     (destinationPlatform === "local" &&
       conversationId.startsWith("local:web:")) ||
     destinationPlatform === "slack";
-  if (!acceptsApiMessages) {
-    throwApiError(409, "Conversation does not accept API messages.");
+  if (!acceptsWebMessages) {
+    throwApiError(409, "Conversation does not accept web messages.");
   }
 
   const access = await readConversationAccessFromSql(
@@ -76,16 +96,19 @@ export async function appendConversationMessageForViewer(
     throwApiError(403, "Only conversation participants can add messages.");
   }
 
+  const images = parseImages(body.images);
   try {
-    return await appendAndEnqueueApiConversationMessage(
+    return await appendAndEnqueueWebMessage(
       {
         actor: actorFromViewer(viewer),
         conversationId,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
+        images,
       },
       {
         conversationStore: getConversationStore(),
+        attachmentStorage,
         queue: getVercelConversationWorkQueue(),
       },
     );

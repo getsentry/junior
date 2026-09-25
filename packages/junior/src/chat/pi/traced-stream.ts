@@ -25,6 +25,10 @@ import {
   toGenAiMessagesTraceAttributes,
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import {
+  createProviderError,
+  getProviderErrorAttributes,
+} from "@/chat/services/provider-error";
 
 type GenAiAttributeMode = "content" | "metadata";
 type TraceAttributeValue = string | number | boolean | string[];
@@ -55,19 +59,19 @@ function buildChatStartAttributes(
     "server.port": GEN_AI_SERVER_PORT,
     ...(options?.temperature !== undefined
       ? { "gen_ai.request.temperature": options.temperature }
-      : {}),
+      : undefined),
     ...(options?.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": options.maxTokens }
-      : {}),
+      : undefined),
     ...(options?.reasoning
       ? { "gen_ai.request.reasoning.level": options.reasoning }
-      : {}),
+      : undefined),
     ...(hasCompactedConversationContext(context.messages)
       ? { "gen_ai.conversation.compacted": true }
-      : {}),
+      : undefined),
     ...(conversationPrivacy
       ? { "app.conversation.privacy": conversationPrivacy }
-      : {}),
+      : undefined),
     ...toGenAiMessagesTraceAttributes("gen_ai.input", context.messages),
   };
 
@@ -124,6 +128,12 @@ function buildChatEndAttributes(
 
   if (message.model) {
     attributes["gen_ai.response.model"] = message.model;
+  }
+
+  if (message.stopReason === "error") {
+    const providerError = createProviderError(message.errorMessage ?? "");
+    Object.assign(attributes, getProviderErrorAttributes(providerError));
+    attributes["error.type"] = providerError.kind;
   }
 
   return attributes;
@@ -184,14 +194,17 @@ export function createTracedStreamFn(
         .then(
           (finalMessage: AssistantMessage) => {
             try {
-              for (const [key, value] of Object.entries(
-                buildChatEndAttributes(finalMessage, mode),
-              )) {
+              const endAttributes = buildChatEndAttributes(finalMessage, mode);
+              for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);
               }
               if (finalMessage.stopReason === "error") {
-                span.setAttribute("error.type", "provider_error");
-                span.setStatus({ code: 2, message: "LLM stream failed" });
+                const summary = endAttributes["app.ai.provider_error.summary"];
+                span.setStatus({
+                  code: 2,
+                  message:
+                    typeof summary === "string" ? summary : "LLM stream failed",
+                });
               }
             } finally {
               span.end();

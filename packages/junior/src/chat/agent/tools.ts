@@ -2,12 +2,21 @@
  * Run tool wiring.
  *
  * Builds everything the agent can act through for one run slice: the sandbox
- * access, MCP and plugin auth orchestration, MCP
- * provider restoration from durable history, and the Pi-facing tool surfaces
- * (main-agent tools plus runtime control tools). Auth pauses raised while
- * restoring providers are thrown here so the run parks before prompting.
+ * access, MCP and plugin auth orchestration, credential-subject-owned MCP
+ * provider
+ * restoration, and the Pi-facing tool surfaces (main-agent tools plus runtime
+ * control tools). Auth pauses raised while restoring providers are thrown
+ * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type {
+  AgentInvocationSource,
+  Destination,
+  EventAutomationSource,
+  PluginDispatchSource,
+  EventSource,
+  ScheduledAutomationSource,
+} from "@sentry/junior-plugin-api";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
@@ -26,7 +35,6 @@ import {
   getMcpAwareTelemetryMessage,
   getMcpProviderErrorAttributes,
 } from "@/chat/mcp/errors";
-import { inferActiveMcpProvidersFromPiMessages } from "@/chat/pi/derived-state";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -38,6 +46,8 @@ import {
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { getWorkspace } from "@/chat/workspaces/store";
+import { getDb } from "@/chat/db";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
@@ -95,7 +105,6 @@ interface ToolWiringArgs {
   onFatalToolError(error: Error): void;
   onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   preAgentPromptMessages: () => PiMessage[];
-  priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
@@ -130,17 +139,27 @@ async function tryRecordSkillLoadStat(skill: Skill) {
 
 type ToolRuntimeRoute =
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "slack" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "slack" } }>,
       "actor" | "destination" | "source" | "slackActionToken"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "local" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "local" } }>,
       "actor" | "destination" | "source"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "web" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "web" } }>,
       "actor" | "destination" | "source"
-    >;
+    >
+  | {
+      actor?: Actor;
+      destination: Destination;
+      source:
+        | AgentInvocationSource
+        | EventAutomationSource
+        | PluginDispatchSource
+        | EventSource
+        | ScheduledAutomationSource;
+    };
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
@@ -151,7 +170,7 @@ function resolveToolRuntimeRoute(args: {
   >;
 }): ToolRuntimeRoute {
   const destination = toolInvocationDestination(args.run);
-  switch (args.run.source.platform) {
+  switch (args.run.source.kind) {
     case "slack": {
       if (destination.platform !== "slack") {
         throw new TypeError("Slack tool runtime requires a Slack destination");
@@ -177,6 +196,16 @@ function resolveToolRuntimeRoute(args: {
       return {
         destination,
         actor: args.actor?.platform === "web" ? args.actor : undefined,
+        source: args.run.source,
+      };
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return {
+        destination,
+        actor: args.actor,
         source: args.run.source,
       };
   }
@@ -222,8 +251,12 @@ export async function wireAgentTools(
     actor: args.currentActor,
     actors: args.currentActors,
   });
+  const workspace = args.state.sandboxRef?.workspaceId
+    ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
+    : undefined;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
+    workspace,
     skills: args.availableSkills,
     traceContext: args.spanContext,
     tracePropagation: args.run.environment?.sandboxTracePropagation,
@@ -234,6 +267,8 @@ export async function wireAgentTools(
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
+    prepareWorkspace: async (sandbox, recipe, signal) =>
+      await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
     persistSandboxRef: args.durability.onSandboxRefChanged,
   });
@@ -253,9 +288,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     toolChannelId: args.run.toolChannelId,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
@@ -277,9 +310,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,
@@ -297,7 +328,7 @@ export async function wireAgentTools(
       authProviderFactory: mcpAuth.authProviderFactory,
       onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
       onToolSuccess: async (input) => {
-        await pluginHooks.afterMcpTool({
+        return await pluginHooks.afterMcpTool({
           ...input,
           conversationId: args.run.conversationId,
         });
@@ -318,6 +349,13 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
+    ...(args.run.location
+      ? {
+          location: args.run.location,
+          locationId: args.run.location.id,
+        }
+      : undefined),
+    conversationPrivacy: args.conversationPrivacy,
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
@@ -328,7 +366,7 @@ export async function wireAgentTools(
             auth_required: {
               ...(signal.authorization
                 ? { authorization: signal.authorization }
-                : {}),
+                : undefined),
               createdAtMs: Date.now(),
               grant: signal.grant,
               kind: signal.kind,
@@ -348,11 +386,11 @@ export async function wireAgentTools(
           resolveActorIdentity: async () =>
             await readActorIdentity(args.currentActor!),
         }
-      : {}),
+      : undefined),
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
-      : {}),
-    ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
+      : undefined),
+    ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -361,7 +399,12 @@ export async function wireAgentTools(
   const toolRuntimeContext = {
     ...commonToolRuntimeContext,
     ...toolRoute,
-  } as ToolRuntimeContext;
+    attachmentStorage: args.run.environment?.attachmentStorage,
+    workspaces: {
+      activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
+      switch: agentSandbox.switchWorkspace,
+    },
+  } satisfies ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -405,32 +448,7 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
-        if (await mcpToolManager.activateForSkill(effective)) {
-          await args.recordConnectedMcpProvider(effective.pluginProvider!);
-        }
         await tryRecordSkillLoadStat(effective);
-        if (mcpAuth.getPendingPause()) {
-          // Auth pause requested — suppress loadSkill failure and let the
-          // aborted run park cleanly.
-          return undefined;
-        }
-        if (!effective.pluginProvider) {
-          return undefined;
-        }
-        if (
-          !mcpToolManager
-            .getActiveProviders()
-            .includes(effective.pluginProvider)
-        ) {
-          return undefined;
-        }
-        const availableToolCount = mcpToolManager.getActiveToolCatalog({
-          provider: effective.pluginProvider,
-        }).length;
-        return {
-          mcp_provider: effective.pluginProvider,
-          available_tool_count: availableToolCount,
-        };
       },
     },
     toolRuntimeContext,
@@ -460,7 +478,7 @@ export async function wireAgentTools(
   // abort before the agent sees the user's request.
   //
   // Skipping only suppresses the eager-restore path. The agent can still
-  // trigger the auth flow intentionally (via loadSkill + searchMcpTools)
+  // trigger the auth flow intentionally through searchMcpTools
   // when the user's request genuinely requires that provider.
   const pendingMcpProvider =
     args.state.pendingAuth?.kind === "mcp"
@@ -468,20 +486,12 @@ export async function wireAgentTools(
       : undefined;
 
   // Conversation history records prior capability use, not authority for the
-  // current turn. Credentialless system turns must not reconnect user-owned
-  // MCP providers merely because an earlier user turn activated them.
+  // current turn. Restore only providers this credential subject connected.
+  // Shared Pi history mixes people and must not grant provider authority.
+  // Intentional use still connects on demand through searchMcpTools under the
+  // current credential subject.
   if (credentialUserId) {
-    // Restore providers visible in durable Pi session history. In serverless
-    // runtimes, later slices and follow-up turns usually run in a fresh
-    // process, so in-memory MCP clients cannot be reused.
-    const providersToRestore = new Set([
-      ...args.connectedMcpProviders,
-      ...inferActiveMcpProvidersFromPiMessages(args.priorPiMessages),
-      ...args.activeSkills.flatMap((skill) =>
-        skill.pluginProvider ? [skill.pluginProvider] : [],
-      ),
-    ]);
-    for (const provider of providersToRestore) {
+    for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }

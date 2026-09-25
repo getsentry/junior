@@ -102,7 +102,7 @@ function oauthAuthorizationForProvider(
     ? {
         type: "oauth",
         provider,
-        ...(oauth.scope ? { scope: oauth.scope } : {}),
+        ...(oauth.scope ? { scope: oauth.scope } : undefined),
       }
     : undefined;
 }
@@ -146,8 +146,8 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
-    ...(input.operation ? { operation: input.operation } : {}),
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+    ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,
@@ -176,11 +176,12 @@ export function authorizationForSandboxEgressGrant(
 }
 
 /**
- * Return cached or newly issued credential header transforms for a selected grant.
+ * Return credential header transforms for a selected grant.
  *
- * Leases are cached per actor/context/grant, validated against provider-owned
- * domains, and reused only while both the provider lease and sandbox context are
- * still valid.
+ * Only shared installation grants are remembered on the host. User and other
+ * grants always issue from the live credential source so a saved login change
+ * cannot leave stale auth headers in place. The sandbox context only authorizes
+ * the request.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -218,7 +219,7 @@ export async function sandboxEgressCredentialLease(
       provider,
       grant,
       actor: context.credentials.actor,
-      ...(credentialSubject ? { credentialSubject } : {}),
+      ...(credentialSubject ? { credentialSubject } : undefined),
       userTokenStore: createUserTokenStore(),
     });
     if (pluginResult.type === "needed") {
@@ -281,17 +282,17 @@ export async function sandboxEgressCredentialLease(
     selection.source === "broker"
       ? oauthAuthorizationForProvider(provider)
       : lease.authorization;
-  const cachedLease: SandboxEgressCredentialLease = {
+  const issuedLease: SandboxEgressCredentialLease = {
     provider,
     grant,
-    ...(lease.account ? { account: lease.account } : {}),
-    ...(authorization ? { authorization } : {}),
+    ...(lease.account ? { account: lease.account } : undefined),
+    ...(authorization ? { authorization } : undefined),
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  assertLeaseTransformsOwnedByProvider(provider, cachedLease);
-  await setSandboxEgressCredentialLease(context, cachedLease);
-  return cachedLease;
+  assertLeaseTransformsOwnedByProvider(provider, issuedLease);
+  await setSandboxEgressCredentialLease(context, issuedLease);
+  return issuedLease;
 }
 
 /** Return whether a credential lease can modify requests to the target host. */

@@ -73,10 +73,10 @@ function actorFromRow(
   row: ReportingConversationRow,
 ): StoredSlackActor | undefined {
   const actor = {
-    ...(row.email ? { email: row.email } : {}),
-    ...(row.fullName ? { fullName: row.fullName } : {}),
-    ...(row.providerSubjectId ? { slackUserId: row.providerSubjectId } : {}),
-    ...(row.handle ? { slackUserName: row.handle } : {}),
+    ...(row.email ? { email: row.email } : undefined),
+    ...(row.fullName ? { fullName: row.fullName } : undefined),
+    ...(row.providerSubjectId ? { slackUserId: row.providerSubjectId } : undefined),
+    ...(row.handle ? { slackUserName: row.handle } : undefined),
   };
   return Object.keys(actor).length ? actor : undefined;
 }
@@ -102,12 +102,12 @@ export function summaryFromRow(
       status: row.executionStatus,
       ...(row.executionUpdatedAt
         ? { updatedAtMs: row.executionUpdatedAt.getTime() }
-        : {}),
+        : undefined),
     },
-    ...(actor ? { actor } : {}),
-    ...(row.channelName ? { channelName: row.channelName } : {}),
-    ...(row.source ? { source: row.source } : {}),
-    ...(row.title ? { title: row.title } : {}),
+    ...(actor ? { actor } : undefined),
+    ...(row.channelName ? { channelName: row.channelName } : undefined),
+    ...(row.source ? { source: row.source } : undefined),
+    ...(row.title ? { title: row.title } : undefined),
   };
   return conversationSummaryFromStoredConversation({
     access: options.access,
@@ -115,7 +115,7 @@ export function summaryFromRow(
     durationMs: options.metrics?.durationMs ?? row.durationMs,
     ...(options.access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
-      : {}),
+      : undefined),
     usage: options.metrics?.usage ?? row.usage ?? undefined,
   });
 }

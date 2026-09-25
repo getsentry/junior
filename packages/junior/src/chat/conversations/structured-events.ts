@@ -102,13 +102,13 @@ export const authenticationLinkedEvent = defineConversationEvent({
       title: `${provider} connected`,
       ...(event.accountLabel
         ? { preview: `Connected as \`${event.accountLabel}\`` }
-        : {}),
+        : undefined),
       details: [
         {
           title: `${provider} connected`,
           ...(event.accountLabel
             ? { description: `Connected as \`${event.accountLabel}\`` }
-            : {}),
+            : undefined),
           metadata: [event.provider],
         },
       ],
@@ -147,7 +147,7 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
     return {
       icon: "brain",
       title,
-      ...(preview ? { preview } : {}),
+      ...(preview ? { preview } : undefined),
       ...(event.sources.length > 0
         ? {
             details: event.sources.map((source) => ({
@@ -155,7 +155,7 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
               content: source.content,
             })),
           }
-        : {}),
+        : undefined),
     };
   },
 });

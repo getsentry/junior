@@ -13,8 +13,8 @@ import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-// TODO(v0.145.0): Migrate SQL agent invocation status from awaiting_resume to
-// paused, then remove awaiting_resume from this schema and its store queries.
+// TODO(dcramer): Remove awaiting_resume after every SQL row uses paused and no
+// supported worker writes the legacy status.
 export const AGENT_INVOCATION_STATUSES = [
   "pending",
   "running",
@@ -68,6 +68,8 @@ export const juniorAgentInvocations = pgTable(
     ).$type<CredentialContext>(),
     source: jsonb("source_json").$type<Source>().notNull(),
     destination: jsonb("destination_json").$type<Destination>().notNull(),
+    // TODO(dcramer): Remove destinationVisibility after all deployed Agent
+    // invocation readers ignore the destination_visibility SQL column.
     destinationVisibility: text(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),

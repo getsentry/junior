@@ -25,12 +25,13 @@ export default defineConfig({
     "/plugins/cloudflare": "/extend/cloudflare-plugin",
     "/plugins/datadog": "/extend/datadog-plugin",
     "/plugins/github": "/extend/github-plugin",
+    "/plugins/gocd": "/extend/gocd-plugin",
     "/plugins/hex": "/extend/hex-plugin",
     "/plugins/linear": "/extend/linear-plugin",
     "/plugins/maintenance": "/extend/maintenance-plugin",
     "/plugins/notion": "/extend/notion-plugin",
-    "/plugins/scheduler": "/concepts/tasks",
-    "/extend/scheduler-plugin": "/concepts/tasks",
+    "/plugins/scheduler": "/concepts/automations",
+    "/extend/scheduler-plugin": "/concepts/automations",
     "/plugins/sentry": "/extend/sentry-plugin",
     "/plugins/vercel": "/extend/vercel-plugin",
     "/extend/vercel": "/extend/vercel-plugin",
@@ -98,10 +99,10 @@ export default defineConfig({
               link: "/concepts/credentials-and-oauth/",
             },
             {
-              label: "Resource Subscriptions",
-              link: "/concepts/resource-subscriptions/",
+              label: "Watches",
+              link: "/concepts/watches/",
             },
-            { label: "Tasks", link: "/concepts/tasks/" },
+            { label: "Automations", link: "/concepts/automations/" },
             {
               label: "Data & Privacy",
               link: "/concepts/data-and-privacy/",
@@ -127,6 +128,7 @@ export default defineConfig({
             },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
+            { label: "GoCD Plugin", link: "/extend/gocd-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },
             { label: "Linear Plugin", link: "/extend/linear-plugin/" },
             {
@@ -163,6 +165,7 @@ export default defineConfig({
           items: [
             { label: "junior init", link: "/cli/init/" },
             { label: "junior chat", link: "/cli/chat/" },
+            { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",

@@ -5,6 +5,7 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
+import { transcriptFailureSearchText } from "./transcriptFailure";
 import { stringifyPartValue } from "../format";
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ export function entryMatchesSearch(
 
   if (entry.kind === "message") {
     return (
+      textContains(entry.message.trustedSummary, normalizedQuery) ||
       textContains(entry.message.eventType, normalizedQuery) ||
       textContains(messageRawText(entry.message), normalizedQuery)
     );
@@ -131,9 +133,11 @@ export function entryMatchesSearch(
 
   if (entry.kind === "failure") {
     return textContains(
-      entry.outcome === "delivery_failed"
-        ? "message delivery failed"
-        : "agent response failed error",
+      transcriptFailureSearchText(
+        entry.failureCode,
+        entry.failureReason,
+        entry.eventId,
+      ),
       normalizedQuery,
     );
   }
@@ -173,6 +177,14 @@ export function entryMatchesSearch(
         ...(detail.metadata ?? []),
       ]),
     ].some((value) => textContains(value, normalizedQuery));
+  }
+
+  if (entry.kind === "attachments_delivered") {
+    return entry.part.attachments.some(
+      (attachment) =>
+        textContains(attachment.filename, normalizedQuery) ||
+        textContains(attachment.contentType, normalizedQuery),
+    );
   }
 
   if (entry.kind === "context") {

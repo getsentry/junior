@@ -60,6 +60,119 @@ import {
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
+const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
+// Pi's bundled catalog can lag behind the gateway. Keep missing models and
+// metadata corrections here until the catalog includes them. Remove these
+// overrides when Pi supplies the same metadata or Junior uses a live catalog.
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "anthropic/claude-opus-5.5": {
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 4,
+      output: 20,
+      cacheRead: 0.2,
+      cacheWrite: 5,
+    },
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      forceAdaptiveThinking: true,
+      supportsTemperature: false,
+    },
+  },
+  "xai/grok-4.5": {
+    id: "xai/grok-4.5",
+    name: "Grok 4.5",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 2,
+      output: 6,
+      cacheRead: 0.3,
+      cacheWrite: 0,
+    },
+    contextWindow: 500_000,
+    maxTokens: 500_000,
+  },
+  // Metadata from https://ai-gateway.vercel.sh/v1/models.
+  "openai/gpt-6-luna": {
+    id: "openai/gpt-6-luna",
+    name: "GPT-6 Luna",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 0.1,
+      output: 0.5,
+      cacheRead: 0.01,
+      cacheWrite: 0.125,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 0.2,
+          output: 0.75,
+          cacheRead: 0.02,
+          cacheWrite: 0.25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+  },
+  "openai/gpt-6-astra": {
+    id: "openai/gpt-6-astra",
+    name: "GPT-6 Astra",
+    api: "anthropic-messages",
+    provider: GATEWAY_PROVIDER,
+    baseUrl: GATEWAY_BASE_URL,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 10,
+      output: 50,
+      cacheRead: 1,
+      cacheWrite: 12.5,
+      tiers: [
+        {
+          inputTokensAbove: 272_000,
+          input: 20,
+          output: 75,
+          cacheRead: 2,
+          cacheWrite: 25,
+        },
+      ],
+    },
+    contextWindow: 1_050_000,
+    maxTokens: 128_000,
+    thinkingLevelMap: {
+      xhigh: "xhigh",
+      max: "max",
+    },
+    compat: {
+      supportsTemperature: false,
+    },
+  },
+};
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
@@ -101,15 +214,13 @@ function extractText(message: {
     .trim();
 }
 
-/**
- * Look up a gateway model by id. Throws `Unknown AI Gateway model id: …` if
- * the id is not in pi-ai's registry — callers at the config boundary can use
- * this to fail fast at startup instead of mid-turn.
- */
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
 export function resolveGatewayModel(modelId: string): Model<any> {
-  const matched = getModels(GATEWAY_PROVIDER).find(
-    (model: Model<any>) => model.id === modelId,
-  );
+  const matched =
+    GATEWAY_MODEL_OVERRIDES[modelId] ??
+    getModels(GATEWAY_PROVIDER).find(
+      (model: Model<any>) => model.id === modelId,
+    );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
@@ -150,35 +261,37 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : {}),
+    ...(params.promptName
+      ? { "gen_ai.prompt.name": params.promptName }
+      : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
       ? { "gen_ai.conversation.compacted": true }
-      : {}),
+      : undefined),
     "app.conversation.privacy": effectivePrivacy,
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-      : {}),
+      : undefined),
     ...(params.temperature !== undefined
       ? { "gen_ai.request.temperature": params.temperature }
-      : {}),
+      : undefined),
     ...(params.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": params.maxTokens }
-      : {}),
+      : undefined),
   };
   const startAttributes = {
     ...baseAttributes,
     ...toGenAiMessagesTraceAttributes("gen_ai.input", params.messages),
     ...(params.system
       ? { "gen_ai.system_instructions.content_chars": params.system.length }
-      : {}),
+      : undefined),
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
-      : {}),
+      : undefined),
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
-      : {}),
+      : undefined),
     "gen_ai.provider.auth_mode": authMode,
   };
   return withSpan(
@@ -195,7 +308,7 @@ export async function completeText(params: {
             messages: params.messages,
           },
           {
-            ...(apiKey ? { apiKey } : {}),
+            ...(apiKey ? { apiKey } : undefined),
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
@@ -223,7 +336,7 @@ export async function completeText(params: {
         ]),
         ...(outputMessagesAttribute
           ? { "gen_ai.output.messages": outputMessagesAttribute }
-          : {}),
+          : undefined),
         ...usageAttributes,
         ...(message.stopReason
           ? {
@@ -231,8 +344,10 @@ export async function completeText(params: {
                 normalizeGenAiFinishReason(message.stopReason),
               ],
             }
-          : {}),
-        ...(message.model ? { "gen_ai.response.model": message.model } : {}),
+          : undefined),
+        ...(message.model
+          ? { "gen_ai.response.model": message.model }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -273,10 +388,10 @@ function logContextFromMetadata(
 
   return {
     modelId,
-    ...(conversationId ? { conversationId } : {}),
-    ...(messageConversationId ? { messageConversationId } : {}),
-    ...(destinationName ? { destinationName } : {}),
-    ...(runId ? { runId } : {}),
+    ...(conversationId ? { conversationId } : undefined),
+    ...(messageConversationId ? { messageConversationId } : undefined),
+    ...(destinationName ? { destinationName } : undefined),
+    ...(runId ? { runId } : undefined),
   };
 }
 
@@ -307,7 +422,7 @@ function objectCompletionCost(
     cacheWrite: cacheWrite ?? 0,
     ...(usage.outputTokenDetails.reasoningTokens !== undefined
       ? { reasoning: usage.outputTokenDetails.reasoningTokens }
-      : {}),
+      : undefined),
     totalTokens:
       usage.totalTokens ??
       (input ?? 0) +
@@ -368,13 +483,15 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined ? { system: params.system } : {}),
+          ...(params.system !== undefined
+            ? { system: params.system }
+            : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
-            : {}),
+            : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
-            : {}),
+            : undefined),
           ...(params.recordTelemetryPayloads === false
             ? {
                 experimental_telemetry: {
@@ -383,10 +500,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
                   recordOutputs: false,
                 },
               }
-            : {}),
+            : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
-            : {}),
+            : undefined),
         });
         setSpanAttributes({
           "gen_ai.response.finish_reasons": [result.finishReason],
@@ -401,26 +518,26 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.output.type": "json",
         ...(params.promptName
           ? { "gen_ai.prompt.name": params.promptName }
-          : {}),
+          : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-          : {}),
+          : undefined),
         ...(params.temperature !== undefined
           ? { "gen_ai.request.temperature": params.temperature }
-          : {}),
+          : undefined),
         ...(params.maxTokens !== undefined
           ? { "gen_ai.request.max_tokens": params.maxTokens }
-          : {}),
+          : undefined),
       },
     );
   } catch (error) {
     const providerError = createProviderError(error, {
       ...(NoObjectGeneratedError.isInstance(error)
         ? { kind: "invalid_response" }
-        : {}),
+        : undefined),
       modelId: params.modelId,
     });
     throw providerError;
@@ -428,7 +545,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
   return {
     object: result.object as z.infer<TSchema>,
-    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
   };
 }
 
@@ -464,7 +581,7 @@ export async function embedTexts(params: {
           values: texts,
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
-            : {}),
+            : undefined),
         });
         const dimensions = result.embeddings[0]?.length;
         if (
@@ -489,7 +606,7 @@ export async function embedTexts(params: {
             inputTokens: result.usage.tokens,
             ...(costUsd !== undefined
               ? { cost: { input: costUsd, total: costUsd } }
-              : {}),
+              : undefined),
           }),
         });
         return { costUsd, dimensions, result };
@@ -504,7 +621,9 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

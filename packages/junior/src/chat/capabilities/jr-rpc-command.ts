@@ -57,11 +57,11 @@ function parsePrefixFlag(
   }
   if (extras.length === 2 && extras[0] === "--prefix") {
     const prefix = extras[1]?.trim();
-    return { ok: true, ...(prefix ? { prefix } : {}) };
+    return { ok: true, ...(prefix ? { prefix } : undefined) };
   }
   if (extras.length === 1 && extras[0].startsWith("--prefix=")) {
     const prefix = extras[0].slice("--prefix=".length).trim();
-    return { ok: true, ...(prefix ? { prefix } : {}) };
+    return { ok: true, ...(prefix ? { prefix } : undefined) };
   }
   return {
     ok: false,
@@ -185,7 +185,7 @@ async function handleConfigCommand(
         "app.config.source": entry.source ?? "jr-rpc",
         ...(deps.activeSkill?.name
           ? { "app.skill.name": deps.activeSkill.name }
-          : {}),
+          : undefined),
       });
       deps.onConfigurationValueChanged?.(entry.key, entry.value);
       return commandResult({
@@ -223,7 +223,7 @@ async function handleConfigCommand(
         "app.config.key": key,
         ...(deps.activeSkill?.name
           ? { "app.skill.name": deps.activeSkill.name }
-          : {}),
+          : undefined),
       });
       deps.onConfigurationValueChanged?.(key, undefined);
     }

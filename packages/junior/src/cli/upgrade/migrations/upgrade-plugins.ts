@@ -62,9 +62,9 @@ function mergeCatalogConfig(
       ? { ...base.manifests, ...added.manifests }
       : undefined;
   return {
-    ...(inlineManifests ? { inlineManifests } : {}),
-    ...(packages.length > 0 ? { packages } : {}),
-    ...(manifests ? { manifests } : {}),
+    ...(inlineManifests ? { inlineManifests } : undefined),
+    ...(packages.length > 0 ? { packages } : undefined),
+    ...(manifests ? { manifests } : undefined),
   };
 }
 

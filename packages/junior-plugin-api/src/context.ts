@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
+  locationSchema,
   webActorSchema,
   localActorSchema,
   platformSchema,
@@ -10,6 +11,8 @@ import {
   slackActorSchema,
   systemActorSchema,
   sourceSchema,
+  sourceVisibilitySchema,
+  slackLocationSchema,
   userSchema,
 } from "./schemas";
 
@@ -23,10 +26,28 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
-export type SlackSource = Extract<Source, { platform: "slack" }>;
-export type LocalSource = Extract<Source, { platform: "local" }>;
-export type WebSource = Extract<Source, { platform: "web" }>;
-export type SourceVisibility = Source["visibility"];
+/** Validated Location associated with a Conversation. */
+export type Location = z.output<typeof locationSchema>;
+/** Complete Slack Location associated with a Conversation. */
+export type SlackLocation = z.output<typeof slackLocationSchema>;
+export type SlackSource = Extract<Source, { kind: "slack" }>;
+export type LocalSource = Extract<Source, { kind: "local" }>;
+export type WebSource = Extract<Source, { kind: "web" }>;
+export type EventSource = Extract<Source, { kind: "event" }>;
+export type ScheduledAutomationSource = Extract<
+  Source,
+  { kind: "scheduled_automation" }
+>;
+export type EventAutomationSource = Extract<
+  Source,
+  { kind: "event_automation" }
+>;
+export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
+export type AgentInvocationSource = Extract<
+  Source,
+  { kind: "agent_invocation" }
+>;
+export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
 
@@ -83,6 +104,8 @@ interface BaseInvocationContext {
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
    */
   conversationId?: string;
+  /** Location associated with this Conversation. */
+  locationId?: string;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {
@@ -109,10 +132,28 @@ export interface WebInvocationContext extends BaseInvocationContext {
   source: WebSource;
 }
 
+export interface EventInvocationContext extends BaseInvocationContext {
+  /** Existing conversation destination used for tool context. */
+  destination: Destination;
+  actor?: Actor;
+  /** Runtime-owned Event Source for this invocation. */
+  source: EventSource;
+}
+
 export type InvocationContext =
   | LocalInvocationContext
   | SlackInvocationContext
-  | WebInvocationContext;
+  | WebInvocationContext
+  | (BaseInvocationContext & {
+      destination: Destination;
+      actor?: Actor;
+      source:
+        | AgentInvocationSource
+        | EventAutomationSource
+        | PluginDispatchSource
+        | EventSource
+        | ScheduledAutomationSource;
+    });
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
@@ -124,19 +165,19 @@ export function createSlackSource(input: {
   visibility: SourceVisibility;
 }): SlackSource {
   return {
-    platform: "slack",
+    kind: "slack",
     visibility: input.visibility,
     teamId: input.teamId,
     channelId: input.channelId,
-    ...(input.messageTs ? { messageTs: input.messageTs } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+    ...(input.messageTs ? { messageTs: input.messageTs } : undefined),
+    ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
   };
 }
 
 /** Build a normalized local source from a local conversation id. */
 export function createLocalSource(conversationId: string): LocalSource {
   return {
-    platform: "local",
+    kind: "local",
     visibility: "private",
     conversationId,
   };
@@ -148,20 +189,36 @@ export function createWebSource(
   visibility: SourceVisibility = "public",
 ): WebSource {
   return {
-    platform: "web",
+    kind: "web",
     visibility,
     conversationId,
   };
 }
 
+/** Build a normalized Event Source from one matched event. */
+export function createEventSource(input: {
+  eventKey: string;
+  eventType: string;
+  identifier: string;
+  namespace: string;
+}): EventSource {
+  return {
+    kind: "event",
+    eventKey: input.eventKey,
+    eventType: input.eventType,
+    identifier: input.identifier,
+    namespace: input.namespace,
+  };
+}
+
 /** Return whether a source is private to a person or restricted group. */
 export function isPrivateSource(source: Source): boolean {
-  return source.visibility === "private";
+  return "visibility" in source && source.visibility === "private";
 }
 
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
-  switch (source.platform) {
+  switch (source.kind) {
     case "web":
     case "local":
       return source.conversationId;
@@ -172,6 +229,13 @@ export function getSourceKey(source: Source): string | undefined {
       }
       return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
     }
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return undefined;
   }
 }
 

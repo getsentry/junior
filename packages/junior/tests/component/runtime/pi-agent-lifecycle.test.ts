@@ -35,12 +35,13 @@ function assistantResponse(text = "done"): StreamResponse {
     timestamp: Date.now(),
   };
 
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
   return {
     async *[Symbol.asyncIterator]() {
       yield { type: "done" as const };
     },
     result: async () => message,
-  } as unknown as StreamResponse;
+  } as StreamResponse;
 }
 
 describe("Pi Agent lifecycle", () => {

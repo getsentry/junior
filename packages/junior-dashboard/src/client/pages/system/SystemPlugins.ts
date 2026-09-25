@@ -12,7 +12,7 @@ export type SystemPlugin = Plugin & {
 /** Canonical System route for the complete plugin inventory. */
 export const systemPluginsPath = "/system/plugins";
 
-/** Combine plugin inventory, skills, and operational reports for System UI. */
+/** Combine installed plugins and core operational reports for the System UI. */
 export function buildSystemPlugins(input: {
   plugins: Plugin[];
   reports: PluginOperationalReport[];
@@ -36,7 +36,19 @@ export function buildSystemPlugins(input: {
     if (plugin) plugin.skills.push(skill);
   }
   for (const report of input.reports) {
-    plugins.get(report.pluginName)?.reports.push(report);
+    let plugin = plugins.get(report.pluginName);
+    if (!plugin) {
+      plugin = {
+        configKeys: [],
+        description: "Core operational report.",
+        displayName: report.title?.trim() || report.pluginName,
+        name: report.pluginName,
+        reports: [],
+        skills: [],
+      };
+      plugins.set(report.pluginName, plugin);
+    }
+    plugin.reports.push(report);
   }
 
   return [...plugins.values()]

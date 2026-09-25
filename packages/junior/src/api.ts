@@ -1,12 +1,15 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { createVercelAttachmentStorage } from "./chat/attachments/vercel";
 import { createConversationRoutes } from "./api/conversations/routes";
+import { createCodeRoutes } from "./api/code/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
-import { createTaskRoutes } from "./api/tasks/routes";
+import { createAutomationRoutes } from "./api/automations/routes";
+import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
 import {
@@ -61,12 +64,19 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
 
-  app.route("/api/conversations", createConversationRoutes());
+  app.route(
+    "/api/conversations",
+    createConversationRoutes({
+      attachmentStorage: createVercelAttachmentStorage(),
+    }),
+  );
+  app.route("/api/code", createCodeRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
-  app.route("/api/tasks", createTaskRoutes());
+  app.route("/api/automations", createAutomationRoutes());
+  app.route("/api/workspaces", createWorkspaceRoutes());
   app.notFound(() =>
     jsonResponse(
       apiErrorSchema,

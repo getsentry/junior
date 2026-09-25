@@ -1,4 +1,7 @@
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
+import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createProviderError } from "@/chat/services/provider-error";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -15,12 +18,21 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 }));
 
 const profiles = {
-  standard: { modelId: "xai/grok-4.5" },
-  handoff: { modelId: "openai/gpt-5.6-sol" },
+  standard: {
+    modelId: "xai/grok-4.5",
+    description: "Default general assistant work.",
+  },
+  handoff: {
+    modelId: "openai/gpt-5.6-sol",
+    description: "Use for coding and difficult multi-step work.",
+  },
 };
 const routeTurn = (
-  args: Omit<Parameters<typeof selectTurnRoute>[0], "profiles">,
-) => selectTurnRoute({ ...args, profiles });
+  args: Omit<
+    Parameters<typeof selectTurnRoute>[0],
+    "defaultProfile" | "profiles"
+  >,
+) => selectTurnRoute({ ...args, defaultProfile: "standard", profiles });
 
 describe("selectTurnRoute", () => {
   beforeEach(() => {
@@ -37,7 +49,9 @@ describe("selectTurnRoute", () => {
   });
 
   it("classifies even simple acknowledgment turns with the fast model", async () => {
-    const completeObject = vi.fn(async () => ({
+    const completeObject = vi.fn<
+      Parameters<typeof selectTurnRoute>[0]["completeObject"]
+    >(async () => ({
       costUsd: 0.00012,
       object: {
         reasoning_level: "none",
@@ -59,13 +73,24 @@ describe("selectTurnRoute", () => {
       profile: "standard",
       reason: "acknowledgment only",
     });
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
+        system: expect.stringContaining(
+          '"handoff": Use for coding and difficult multi-step work.',
+        ),
       }),
     );
+    expect(
+      z.toJSONSchema(completeObject.mock.calls[0]![0].schema, { io: "input" }),
+    ).toMatchObject({
+      properties: { profile: { enum: ["standard", "handoff"] } },
+    });
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
@@ -160,6 +185,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "standard",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "research this architecture",
       profiles: {
@@ -202,27 +228,151 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
+  it("falls back to the configured default profile when confidence is low", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_level: "high",
+        profile: "coding",
+        confidence: 0.4,
+        reason: "not confident",
+      },
+    }));
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(profile).toMatchObject({
+      reasoningLevel: "medium",
+      profile: "expert",
+      reason: "low_confidence_medium_default:not confident",
+    });
+  });
+
   it("falls back to medium effort when the classifier fails", async () => {
     const completeObject = vi.fn(async () => {
       throw new Error("router failed");
     });
 
-    const profile = await routeTurn({
+    const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
     });
 
     expect(profile).toMatchObject({
+      profile: "expert",
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });
+    expect(completeObject).toHaveBeenCalledTimes(1);
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "turn.router.classifier.failed",
       {
         "exception.message": "router failed",
       },
     );
+  });
+
+  it("retries once and succeeds after a transient invalid_response failure", async () => {
+    const completeObject = vi
+      .fn()
+      .mockRejectedValueOnce(
+        createProviderError(new Error("malformed object"), {
+          kind: "invalid_response",
+        }),
+      )
+      .mockResolvedValueOnce({
+        object: {
+          reasoning_level: "high",
+          profile: "coding",
+          confidence: 0.95,
+          reason: "multi-step coding task",
+        },
+      });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(profile).toMatchObject({
+      profile: "coding",
+      reasoningLevel: "high",
+      reason: "multi-step coding task",
+    });
+    expect(mocks.logWarn).not.toHaveBeenCalled();
+  });
+
+  it("gives up after a second consecutive invalid_response failure", async () => {
+    const completeObject = vi.fn(async () => {
+      throw createProviderError(new Error("still malformed"), {
+        kind: "invalid_response",
+      });
+    });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(profile).toMatchObject({
+      profile: "expert",
+      reasoningLevel: "medium",
+      reason: "classifier_error_default",
+    });
+  });
+
+  it("does not retry non-retryable classifier errors", async () => {
+    const completeObject = vi.fn(async () => {
+      throw createProviderError(new Error("no credits"), {
+        kind: "quota",
+      });
+    });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(1);
+    expect(profile).toMatchObject({
+      profile: "expert",
+      reasoningLevel: "medium",
+      reason: "classifier_error_default",
+    });
   });
 
   it("preserves high-confidence low classifications for deterministic simple work", async () => {
@@ -346,6 +496,10 @@ describe("selectTurnRoute", () => {
     expect(capturedPrompt).toContain(headMarker);
     expect(capturedPrompt).toContain(tailMarker);
     expect(capturedPrompt).toContain("…[truncated]…");
+    expect(capturedPrompt).toContain(
+      '<thread-context authority="evidence-only">',
+    );
+    expect(capturedPrompt).toContain("</thread-context>");
   });
 
   it("does not floor xhigh classifications", async () => {

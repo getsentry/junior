@@ -1,7 +1,8 @@
 import { describeEval, toolCalls } from "vitest-evals";
-import { beforeAll, expect } from "vitest";
+import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
+  assistantTextContent,
   hasImageAttachment,
   mention,
   rubric,
@@ -9,21 +10,12 @@ import {
   visibleAssistantText,
   visibleThreadReplies,
 } from "../../../src/helpers";
-import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
-
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("Slack Message Delivery", slackEvals, (it) => {
-  beforeAll(async () => {
-    await warmSandboxSnapshot();
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
-
   it("when asked for no visible reply, complete silently", async ({ run }) => {
     const result = await run({
       initialEvents: [
-        mention(
-          "please just mark that this has been seen — no need to reply",
-        ),
+        mention("please just mark that this has been seen — no need to reply"),
       ],
     });
 
@@ -115,13 +107,21 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       expect.objectContaining({
         status: "ok",
         result: expect.objectContaining({
-          file_count: 1,
-          file_ids: expect.arrayContaining([expect.any(String)]),
+          attachment_refs: [
+            expect.objectContaining({
+              id: expect.any(String),
+              filename: expect.any(String),
+            }),
+          ],
         }),
       }),
     ]);
     expect(hasImageAttachment(result.session)).toBe(true);
     expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
-    expect(visibleThreadReplies(result.session).length).toBeLessThanOrEqual(1);
+    // The image is a separate Slack post; limit acknowledgements, not files.
+    const textReplies = visibleThreadReplies(result.session).filter(
+      (reply) => assistantTextContent(reply.content).trim().length > 0,
+    );
+    expect(textReplies.length).toBeLessThanOrEqual(1);
   });
 });

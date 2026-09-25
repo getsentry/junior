@@ -34,6 +34,8 @@ const app = await createApp({
 export default app;
 ```
 
+Named repository Workspace recipes are stored in the Junior SQL database.
+
 Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 
 Use `defineJuniorPlugins([...])` in a runtime-safe plugin module, then point

@@ -1,8 +1,13 @@
+import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
+  CodeChangeInput,
+  CodeChangePublisher,
+  PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
-  ResourceEventPublisher,
+  EventInput,
+  EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
@@ -11,6 +16,7 @@ import {
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
 import {
+  type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -25,9 +31,11 @@ import {
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import {
-  normalizeGitHubResourceEvents,
-  type GitHubFailingCheck,
-} from "./resource-events.js";
+  loadCheckSuiteFacts,
+  needsCheckSuitePullRequestFacts,
+  parseCheckSuitePublishTargets,
+} from "./check-suite.js";
+import { normalizeGitHubEvents } from "./events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -79,18 +87,77 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
+interface FeedbackTarget {
+  commentId: number;
+  commentKind: "conversation" | "review";
+  repo: string;
+}
+
+/** Return comment-level pull request feedback that the webhook can mark. */
+function pullRequestFeedbackTarget(
+  events: EventInput[],
+): FeedbackTarget | undefined {
+  const event = events.find(
+    (candidate) =>
+      candidate.eventType === "pull_request.comment.created" ||
+      candidate.eventType === "pull_request.review_comment.created",
+  );
+  const data = event?.data;
+  if (
+    !data ||
+    typeof data.repo !== "string" ||
+    typeof data.commentId !== "number" ||
+    (data.commentKind !== "conversation" && data.commentKind !== "review")
+  ) {
+    return undefined;
+  }
+  return {
+    commentId: data.commentId,
+    commentKind: data.commentKind,
+    repo: data.repo,
+  };
+}
+
+function githubCodeChange(
+  outcome: GitHubPullRequestOutcomeInput,
+  conversationIds: string[],
+): CodeChangeInput {
+  return {
+    closedAt: outcome.closedAt,
+    conversationIds,
+    mergedAt: outcome.mergedAt,
+    number: outcome.number,
+    openedAt: outcome.openedAt,
+    providerId: outcome.pullRequestId,
+    repository: {
+      name: outcome.repositoryFullName,
+      providerId: outcome.repositoryId,
+      url: `https://github.com/${outcome.repositoryFullName}`,
+    },
+    state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
+    title: outcome.title,
+    updatedAt: outcome.updatedAt,
+    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
+  };
+}
+
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
+  annotations: PluginConversationAnnotations;
+  appIdEnv: string;
   botEmail(): string | undefined;
   classifyPullRequestCommits?(input: {
     number: number;
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
+  codeChanges: CodeChangePublisher;
   db: GitHubDb;
   installationId(): string | undefined;
-  loadFailingChecks?(body: unknown): Promise<GitHubFailingCheck[] | undefined>;
+  installationIdEnv: string;
   log?: Pick<PluginLogger, "error">;
-  resourceEvents: ResourceEventPublisher;
+  markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
+  privateKeyEnv: string;
+  events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -144,6 +211,31 @@ export function createGitHubWebhookRoute(args: {
           args.db,
           pullRequestOutcome,
         );
+        if (recordedOutcome.applied) {
+          await args.codeChanges.record(
+            githubCodeChange(
+              pullRequestOutcome,
+              recordedOutcome.conversationIds,
+            ),
+          );
+        }
+        if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
+          const status =
+            pullRequestOutcome.state === "merged" ? "merged" : "closed";
+          await Promise.all(
+            recordedOutcome.conversationIds.map((conversationId) =>
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: pullRequestOutcome.repositoryFullName,
+                  number: pullRequestOutcome.number,
+                  objectType: "code_change",
+                  status,
+                },
+              ),
+            ),
+          );
+        }
         if (
           recordedOutcome.applied &&
           !recordedOutcome.commitComposition &&
@@ -173,7 +265,25 @@ export function createGitHubWebhookRoute(args: {
         }
       }
       if (issueOutcome) {
-        await recordGitHubIssueOutcome(args.db, issueOutcome);
+        const recordedOutcome = await recordGitHubIssueOutcome(
+          args.db,
+          issueOutcome,
+        );
+        if (recordedOutcome.applied && issueOutcome.state === "closed") {
+          await Promise.all(
+            recordedOutcome.conversationIds.map((conversationId) =>
+              updateGitHubAnnotation(
+                args.annotations.forConversation(conversationId),
+                {
+                  repo: issueOutcome.repositoryFullName,
+                  number: issueOutcome.number,
+                  objectType: "task",
+                  status: "closed",
+                },
+              ),
+            ),
+          );
+        }
       }
       const recordedIssueConversations = issueConversations
         ? await recordGitHubIssueConversations(args.db, issueConversations)
@@ -184,6 +294,12 @@ export function createGitHubWebhookRoute(args: {
             pullRequestConversations,
           )
         : false;
+      if (recordedPullRequestConversations && pullRequestConversations) {
+        await args.codeChanges.associateConversations({
+          conversationIds: pullRequestConversations.conversationIds,
+          providerId: pullRequestConversations.pullRequestId,
+        });
+      }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
             args.db,
@@ -191,18 +307,54 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
-      const failingChecks =
-        eventName === "check_suite" && args.loadFailingChecks
-          ? await args.loadFailingChecks(body)
+      const checkSuitePublishTargets =
+        eventName === "check_suite"
+          ? parseCheckSuitePublishTargets(body)
           : undefined;
-      const resourceEvents = normalizeGitHubResourceEvents({
+      const checkSuiteMatchKeys =
+        checkSuitePublishTargets && args.events.neededMatchKeys
+          ? await args.events.neededMatchKeys(checkSuitePublishTargets)
+          : [];
+      const checkSuiteFacts =
+        eventName === "check_suite"
+          ? await loadCheckSuiteFacts({
+              appIdEnv: args.appIdEnv,
+              body,
+              installationIdEnv: args.installationIdEnv,
+              loadPullRequestFacts:
+                needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
+              log: args.log,
+              privateKeyEnv: args.privateKeyEnv,
+            })
+          : undefined;
+      const events = normalizeGitHubEvents({
         body,
+        ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
         eventName,
-        failingChecks,
       });
-      for (const event of resourceEvents) {
-        await args.resourceEvents.publish(event);
+      const feedbackTarget = pullRequestFeedbackTarget(events);
+      const hasMatch = args.events.hasMatch;
+      const feedbackHasMatch =
+        feedbackTarget && hasMatch
+          ? (await Promise.all(events.map((event) => hasMatch(event)))).some(
+              Boolean,
+            )
+          : false;
+      if (feedbackTarget && feedbackHasMatch) {
+        try {
+          await args.markFeedbackReviewing(feedbackTarget);
+        } catch (error) {
+          args.log?.error("GitHub pull request feedback reaction failed", {
+            commentId: feedbackTarget.commentId,
+            deliveryId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            repository: feedbackTarget.repo,
+          });
+        }
+      }
+      for (const event of events) {
+        await args.events.publish(event);
       }
       if (
         !pullRequestOutcome &&
@@ -210,7 +362,7 @@ export function createGitHubWebhookRoute(args: {
         !recordedIssueConversations &&
         !recordedPullRequestConversations &&
         !recordedPullRequestLinkedIssues &&
-        resourceEvents.length === 0
+        events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });
       }

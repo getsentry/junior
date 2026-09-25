@@ -1,21 +1,41 @@
-import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
+  TURN_REASONING_LEVELS,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
-  type ExecutionProfileConfig,
+  DEFAULT_MODEL_PROFILES,
+  type ModelProfileConfig,
+  type ModelProfile,
+  type ModelProfileInput,
   modelProfileSchema,
-  STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
+/**
+ * Max tool calls for one turn, including later execution slices of that turn.
+ * Chosen from production dispatch traces: healthy runs cluster well under 50;
+ * runaway CI-watch loops land in the hundreds. Raised from 150 after that cap
+ * fired on legitimate long-form human turns, not just runaway automation.
+ */
+const MAX_TOOL_CALLS_PER_TURN = 250;
+/**
+ * Max consecutive automated turns before event wakes stop until a user message.
+ * Resource-event CI watches and event-automation loops are the common runaway paths.
+ * Sentry telemetry has no direct instrumentation for how long real automated
+ * chains run (only failure paths on the notice are logged, and those show zero
+ * hits in the last 30d), so this is sized qualitatively: it stays well under
+ * the runaway CI-watch-loop range noted for maxToolCallsPerTurn (hundreds of
+ * tool calls) while giving multi-phase event-automation/scheduled-automation work enough
+ * headroom to avoid pausing on legitimate longer-running automation.
+ */
+const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -44,18 +64,36 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Rattling the command line",
 ] as const;
 
+export interface BotModelConfig {
+  /** Model used for embeddings. */
+  embeddingModelId?: string;
+  /** Model used for low-cost structured and utility calls. */
+  fastModelId?: string;
+  /** Model used to review sensitive tool calls. */
+  guardianModelId?: string;
+  /** Model used to generate images. */
+  imageGenerationModelId?: string;
+  /** Model used to analyze images. */
+  visionModelId?: string;
+  /** Model used for web search. */
+  webSearchModelId?: string;
+}
+
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
+  defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
   maxSlicesPerTurn: number;
+  maxToolCallsPerTurn: number;
+  maxConsecutiveAutomatedTurns: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -199,27 +237,18 @@ function parseCrossActorMidRunMode(
   throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
 }
 
-// Compile-time assertion: `getModel`'s second generic is constrained to
-// `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
-const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
-const DEFAULT_FAST_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "anthropic/claude-haiku-4.5",
+const DEFAULT_MODEL_ID = resolveGatewayModel(
+  DEFAULT_MODEL_PROFILES.standard.modelId,
 ).id;
-const DEFAULT_GUARDIAN_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-luna",
+const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
+const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
+  DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
-const DEFAULT_HANDOFF_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.6-sol",
-).id;
-const DEFAULT_WEB_SEARCH_MODEL_ID = getModel(
-  "vercel-ai-gateway",
-  "openai/gpt-5.4",
-).id;
+const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
@@ -232,16 +261,149 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
+function requireModelId(
+  configName: keyof BotModelConfig,
+  raw: string,
+  validate: (value: string | undefined) => string | undefined,
+): string {
+  const modelId = validate(raw);
+  if (!modelId) {
+    throw new Error(`${configName} must not be empty`);
+  }
+  return modelId;
+}
+
+function parseOptionalProfileDescription(
+  rawDescription: unknown,
+  configName: string,
+  profile: string,
+): string | undefined {
+  if (rawDescription === undefined) {
+    return undefined;
+  }
+  if (typeof rawDescription !== "string") {
+    throw new Error(
+      `${configName}.${profile}.description must be a string when set`,
+    );
+  }
+  const description = toOptionalTrimmed(rawDescription);
+  if (!description) {
+    throw new Error(
+      `${configName}.${profile}.description must not be empty when set`,
+    );
+  }
+  return description;
+}
+
+function parseOptionalProfileReasoningLevel(
+  rawReasoningLevel: unknown,
+  configName: string,
+  profile: string,
+): TurnReasoningLevel | undefined {
+  if (rawReasoningLevel === undefined) {
+    return undefined;
+  }
+  try {
+    return parseTurnReasoningLevel(rawReasoningLevel);
+  } catch {
+    throw new Error(
+      `${configName}.${profile}.reasoningLevel must be one of ${TURN_REASONING_LEVELS.join(", ")}`,
+    );
+  }
+}
+
+function parseProfileConfig(
+  rawProfile: unknown,
+  configName: string,
+  profile: string,
+): ModelProfileConfig {
+  if (typeof rawProfile === "string") {
+    const modelId = validateGatewayModelId(rawProfile);
+    if (!modelId) {
+      throw new Error(`${configName}.${profile} must not be empty`);
+    }
+    return { modelId };
+  }
+
+  if (
+    !rawProfile ||
+    typeof rawProfile !== "object" ||
+    Array.isArray(rawProfile)
+  ) {
+    throw new Error(
+      `${configName}.${profile} must be a model id string or an object with modelId`,
+    );
+  }
+
+  const rawModelId = (rawProfile as { modelId?: unknown }).modelId;
+  if (typeof rawModelId !== "string") {
+    throw new Error(
+      `${configName}.${profile}.modelId must be a model id string`,
+    );
+  }
+  const modelId = validateGatewayModelId(rawModelId);
+  if (!modelId) {
+    throw new Error(`${configName}.${profile}.modelId must not be empty`);
+  }
+
+  const description = parseOptionalProfileDescription(
+    (rawProfile as { description?: unknown }).description,
+    configName,
+    profile,
+  );
+  const reasoningLevel = parseOptionalProfileReasoningLevel(
+    (rawProfile as { reasoningLevel?: unknown }).reasoningLevel,
+    configName,
+    profile,
+  );
+
+  return {
+    modelId,
+    ...(description ? { description } : undefined),
+    ...(reasoningLevel ? { reasoningLevel } : undefined),
+  };
+}
+
+function parseProfileMap(
+  rawProfiles: unknown,
+  configName: string,
+): Readonly<Record<string, ModelProfileConfig>> {
+  if (
+    !rawProfiles ||
+    typeof rawProfiles !== "object" ||
+    Array.isArray(rawProfiles)
+  ) {
+    const objectType =
+      configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
+    throw new Error(`${configName} must be ${objectType}`);
+  }
+  const profiles: Record<string, ModelProfileConfig> = {};
+  for (const [profile, rawProfile] of Object.entries(rawProfiles)) {
+    if (!modelProfileSchema.safeParse(profile).success) {
+      throw new Error(
+        `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
+      );
+    }
+    profiles[profile] = parseProfileConfig(rawProfile, configName, profile);
+  }
+  return profiles;
+}
+
+// TODO(dcramer): Remove env profile settings after supported deployments no
+// longer use AI_MODEL, AI_HANDOFF_MODEL, or AI_MODEL_PROFILES.
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,
   handoffModelId: string,
-): Readonly<Record<string, ExecutionProfileConfig>> {
-  const profiles: Record<string, ExecutionProfileConfig> = {
-    [STANDARD_MODEL_PROFILE]: { modelId: standardModelId },
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
+): Readonly<Record<string, ModelProfileConfig>> {
+  const profiles: Record<string, ModelProfileConfig> = {
+    standard: {
+      ...DEFAULT_MODEL_PROFILES.standard,
+      modelId: standardModelId,
+    },
+    handoff: {
+      ...DEFAULT_MODEL_PROFILES.handoff,
       modelId: handoffModelId,
-      reasoningLevel: "high",
     },
   };
   const trimmed = toOptionalTrimmed(rawValue);
@@ -255,31 +417,10 @@ function parseProfiles(
   } catch {
     throw new Error("AI_MODEL_PROFILES must be a JSON object");
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("AI_MODEL_PROFILES must be a JSON object");
-  }
-  for (const [profile, rawModelId] of Object.entries(parsed)) {
-    if (!modelProfileSchema.safeParse(profile).success) {
-      throw new Error(
-        `AI_MODEL_PROFILES profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
-      );
-    }
-    if (
-      profile === STANDARD_MODEL_PROFILE ||
-      profile === DEFAULT_HANDOFF_MODEL_PROFILE
-    ) {
-      throw new Error(`AI_MODEL_PROFILES profile "${profile}" is reserved`);
-    }
-    if (typeof rawModelId !== "string") {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must be a model id string`);
-    }
-    const modelId = validateGatewayModelId(rawModelId);
-    if (!modelId) {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must not be empty`);
-    }
-    profiles[profile] = { modelId };
-  }
-  return profiles;
+  return {
+    ...profiles,
+    ...parseProfileMap(parsed, "AI_MODEL_PROFILES"),
+  };
 }
 
 function parseReactionEmoji(
@@ -300,10 +441,26 @@ function parseReactionEmoji(
   return normalized;
 }
 
+function warnDeprecatedProfileEnv(env: NodeJS.ProcessEnv): void {
+  for (const envName of [
+    "AI_MODEL",
+    "AI_HANDOFF_MODEL",
+    "AI_MODEL_PROFILES",
+  ] as const) {
+    if (toOptionalTrimmed(env[envName]) !== undefined) {
+      logWarn("config.profile_env.deprecated", {
+        "app.config.env_name": envName,
+        "app.config.replacement": "createApp({ defaultProfile, profiles })",
+      });
+    }
+  }
+}
+
 function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
 ): BotConfig {
+  warnDeprecatedProfileEnv(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
@@ -317,6 +474,7 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    defaultProfile: "standard",
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
     ),
@@ -339,8 +497,13 @@ function readBotConfig(
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
+    visionModelId:
+      env.AI_VISION_MODEL === undefined
+        ? DEFAULT_VISION_MODEL_ID
+        : validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
+    maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
+    maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
@@ -510,6 +673,74 @@ export function getRuntimeMetadata(): RuntimeMetadata {
 export interface SlackReactionConfig {
   completedReactionEmoji: string;
   processingReactionEmoji: string;
+}
+
+/** Apply model overrides from createApp(). */
+export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.embeddingModelId !== undefined) {
+    botConfig.embeddingModelId = requireModelId(
+      "embeddingModelId",
+      config.embeddingModelId,
+      validateEmbeddingModelId,
+    );
+  }
+  if (config.fastModelId !== undefined) {
+    botConfig.fastModelId = requireModelId(
+      "fastModelId",
+      config.fastModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.guardianModelId !== undefined) {
+    botConfig.guardianModelId = requireModelId(
+      "guardianModelId",
+      config.guardianModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.imageGenerationModelId !== undefined) {
+    botConfig.imageGenerationModelId = requireModelId(
+      "imageGenerationModelId",
+      config.imageGenerationModelId,
+      validateEmbeddingModelId,
+    );
+  }
+  if (config.visionModelId !== undefined) {
+    botConfig.visionModelId = requireModelId(
+      "visionModelId",
+      config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.webSearchModelId !== undefined) {
+    botConfig.webSearchModelId = requireModelId(
+      "webSearchModelId",
+      config.webSearchModelId,
+      validateGatewayModelId,
+    );
+  }
+}
+
+/** Apply profiles from createApp(). */
+export function setProfiles(
+  profiles: Readonly<Record<string, ModelProfileInput>> | undefined,
+  defaultProfile: string | undefined,
+): void {
+  if (!profiles || !defaultProfile) {
+    throw new Error("profiles and defaultProfile must be configured together");
+  }
+  const configuredProfiles = parseProfileMap(profiles, "profiles");
+  const selectedDefault = defaultProfile;
+  if (!modelProfileSchema.safeParse(selectedDefault).success) {
+    throw new Error(
+      `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,
+    );
+  }
+  if (!Object.hasOwn(configuredProfiles, selectedDefault)) {
+    throw new Error(`defaultProfile "${selectedDefault}" is not configured`);
+  }
+  botConfig.profiles = configuredProfiles;
+  botConfig.defaultProfile = selectedDefault;
 }
 
 /** Return the current Slack reaction emoji config. */

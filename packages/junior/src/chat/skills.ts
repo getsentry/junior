@@ -201,15 +201,15 @@ export function parseSkillFile(
       name: result.data.name,
       description: result.data.description,
       body: stripFrontmatter(raw),
-      ...(result.data.metadata ? { metadata: result.data.metadata } : {}),
+      ...(result.data.metadata ? { metadata: result.data.metadata } : undefined),
       ...(result.data.compatibility !== undefined
         ? { compatibility: result.data.compatibility }
-        : {}),
+        : undefined),
       ...(result.data.license !== undefined
         ? { license: result.data.license }
-        : {}),
-      ...(allowedTools ? { allowedTools } : {}),
-      ...(disableModelInvocation ? { disableModelInvocation } : {}),
+        : undefined),
+      ...(allowedTools ? { allowedTools } : undefined),
+      ...(disableModelInvocation ? { disableModelInvocation } : undefined),
     },
   };
 }
@@ -346,9 +346,9 @@ async function readSkillDirectory(
       name,
       description,
       skillPath: skillDir,
-      ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
-      ...(allowedTools ? { allowedTools } : {}),
-      ...(disableModelInvocation ? { disableModelInvocation } : {}),
+      ...(plugin ? { pluginProvider: plugin.manifest.name } : undefined),
+      ...(allowedTools ? { allowedTools } : undefined),
+      ...(disableModelInvocation ? { disableModelInvocation } : undefined),
     };
   } catch (error) {
     logWarn("skill.directory.read.failed", {
@@ -513,13 +513,13 @@ export async function loadSkillsByName(
       name: parsed.skill.name,
       description: parsed.skill.description,
       skillPath: meta.skillPath,
-      ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
+      ...(plugin ? { pluginProvider: plugin.manifest.name } : undefined),
       ...(parsed.skill.allowedTools
         ? { allowedTools: parsed.skill.allowedTools }
-        : {}),
+        : undefined),
       ...(parsed.skill.disableModelInvocation
         ? { disableModelInvocation: parsed.skill.disableModelInvocation }
-        : {}),
+        : undefined),
     };
 
     skills.push({

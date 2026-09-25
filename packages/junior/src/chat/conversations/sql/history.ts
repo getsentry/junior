@@ -6,7 +6,6 @@ import {
   gt,
   gte,
   inArray,
-  isNotNull,
   lt,
   lte,
   sql,
@@ -28,9 +27,15 @@ import {
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  resolveEventActorIdentityId,
+  stripPayloadAuthorIdentityId,
+} from "./event-actor";
+import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { encodeHistoryPayload } from "../history-payload";
 import { withConversationEventLock } from "./event-lock";
+import { recordConversationParticipant } from "./participants";
 
 type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
@@ -46,36 +51,89 @@ const messageHistoryEventTypes = [
   "message_handled",
 ] as const;
 
+const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
+
+/**
+ * Whether one event should restore an archived conversation to the feed.
+ *
+ * Archive hides finished noise until a human comes back. Events,
+ * turn lifecycle, compaction, and other system writes may still refresh
+ * activity clocks, but they must not unarchive on their own.
+ */
+function eventUnarchivesConversation(data: ConversationEventData): boolean {
+  if (data.type === "user_message") {
+    const provenance = data.provenance;
+    if (provenance.authority !== "instruction") return false;
+    const platform = provenance.actor?.platform;
+    return platform === undefined || HUMAN_INSTRUCTION_PLATFORMS.has(platform);
+  }
+  // message_updated is hydration/delivery on an existing row, not a new human.
+  if (data.type !== "message") {
+    return false;
+  }
+  if (data.role !== "user") return false;
+  const meta = data.meta;
+  if (!meta) return true;
+  if (typeof meta.eventType === "string" && meta.eventType.length > 0) {
+    return false;
+  }
+  const author = meta.author;
+  if (
+    author &&
+    typeof author === "object" &&
+    !Array.isArray(author) &&
+    (author as { isBot?: unknown }).isBot === true
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Split validated event data into column-lifted and JSON payload fields. */
 function insertFromEvent(
   conversationId: string,
   seq: number,
   historyVersion: number,
   event: PersistedConversationEvent,
+  actorIdentityId?: string,
 ): ConversationEventInsert {
-  const { type, ...payload } = conversationEventDataSchema.parse(event.data);
+  const stripped = stripPayloadAuthorIdentityId(event.data);
+  const data = conversationEventDataSchema.parse(stripped);
+  const encoded = encodeHistoryPayload(data);
   return {
     conversationId,
     seq,
     historyVersion,
-    schemaVersion: 1,
+    schemaVersion: encoded.schemaVersion,
     idempotencyKey: event.idempotencyKey ?? null,
-    type,
-    payload: sanitizePostgresJson(payload),
+    type: data.type,
+    payload: sanitizePostgresJson(encoded.payload),
+    actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
 function eventFromRow(row: ConversationEventRow): ConversationEvent {
+  const payload =
+    row.actorIdentityId &&
+    typeof row.payload === "object" &&
+    row.payload !== null &&
+    !Array.isArray(row.payload) &&
+    (row.type === "message" || row.type === "message_updated") &&
+    !("authorIdentityId" in row.payload)
+      ? { ...row.payload, authorIdentityId: row.actorIdentityId }
+      : row.payload;
   return decodeStoredConversationEvent({
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+    ...(row.idempotencyKey
+      ? { idempotencyKey: row.idempotencyKey }
+      : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
-    payload: row.payload,
+    payload,
   });
 }
 
@@ -99,79 +157,100 @@ class SqlConversationEventStore implements ConversationEventStore {
     conversationId: string,
     events: NewConversationEvent[],
     options: { activity?: "preserve" } = {},
-  ): Promise<void> {
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
     );
     if (parsed.length === 0) {
-      return;
+      return [];
     }
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      const existingKeys = parsed
-        .map((event) => event.idempotencyKey)
-        .filter((key): key is string => key !== undefined);
-      const persistedKeys =
-        existingKeys.length === 0
-          ? new Set<string>()
-          : new Set(
-              (
-                await this.executor
-                  .db()
-                  .select({ key: juniorConversationEvents.idempotencyKey })
-                  .from(juniorConversationEvents)
-                  .where(
-                    and(
-                      eq(
-                        juniorConversationEvents.conversationId,
-                        conversationId,
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const existingKeys = parsed
+          .map((event) => event.idempotencyKey)
+          .filter((key): key is string => key !== undefined);
+        const persistedKeys =
+          existingKeys.length === 0
+            ? new Set<string>()
+            : new Set(
+                (
+                  await this.executor
+                    .db()
+                    .select({ key: juniorConversationEvents.idempotencyKey })
+                    .from(juniorConversationEvents)
+                    .where(
+                      and(
+                        eq(
+                          juniorConversationEvents.conversationId,
+                          conversationId,
+                        ),
+                        inArray(
+                          juniorConversationEvents.idempotencyKey,
+                          existingKeys,
+                        ),
                       ),
-                      inArray(
-                        juniorConversationEvents.idempotencyKey,
-                        existingKeys,
-                      ),
-                    ),
-                  )
-              ).flatMap((row) => (row.key ? [row.key] : [])),
-            );
-      const acceptedKeys = new Set(persistedKeys);
-      const pending = parsed.filter((event) => {
-        if (event.idempotencyKey === undefined) return true;
-        if (acceptedKeys.has(event.idempotencyKey)) return false;
-        acceptedKeys.add(event.idempotencyKey);
-        return true;
-      });
-      if (pending.length === 0) {
-        return;
-      }
-      const newestCreatedAtMs = Math.max(
-        ...pending.map((event) => event.createdAtMs),
-      );
-      await ensureConversationRow(
-        this.executor,
-        conversationId,
-        newestCreatedAtMs,
-        options,
-      );
-      if (options.activity !== "preserve") {
-        await this.executor
-          .db()
-          .update(juniorConversations)
-          .set({ archivedAt: null })
-          .where(
-            and(
-              eq(juniorConversations.conversationId, conversationId),
-              isNotNull(juniorConversations.archivedAt),
+                    )
+                ).flatMap((row) => (row.key ? [row.key] : [])),
+              );
+        const acceptedKeys = new Set(persistedKeys);
+        const pending = parsed.filter((event) => {
+          if (event.idempotencyKey === undefined) return true;
+          if (acceptedKeys.has(event.idempotencyKey)) return false;
+          acceptedKeys.add(event.idempotencyKey);
+          return true;
+        });
+        if (pending.length === 0) {
+          return [];
+        }
+        const newestCreatedAtMs = Math.max(
+          ...pending.map((event) => event.createdAtMs),
+        );
+        await ensureConversationRow(
+          this.executor,
+          conversationId,
+          newestCreatedAtMs,
+          options,
+        );
+        const cursor = await this.readCursor(conversationId);
+        const historyVersion = cursor.maxHistoryVersion ?? 0;
+        let seq = cursor.nextSeq;
+        const rows: ConversationEventInsert[] = [];
+        for (const event of pending) {
+          const actorIdentityId = await resolveEventActorIdentityId(
+            this.executor,
+            {
+              conversationId,
+              data: event.data,
+              nowMs: event.createdAtMs,
+            },
+          );
+          rows.push(
+            insertFromEvent(
+              conversationId,
+              seq++,
+              historyVersion,
+              event,
+              actorIdentityId,
             ),
           );
-      }
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = cursor.maxHistoryVersion ?? 0;
-      let seq = cursor.nextSeq;
-      const rows = pending.map((event) =>
-        insertFromEvent(conversationId, seq++, historyVersion, event),
-      );
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
-    });
+          if (actorIdentityId) {
+            await recordConversationParticipant(this.executor, {
+              actorIdentityId,
+              conversationId,
+              atMs: event.createdAtMs,
+              restoreArchive: eventUnarchivesConversation(event.data),
+            });
+          }
+        }
+        await this.executor.db().insert(juniorConversationEvents).values(rows);
+        return rows.map((row) => ({
+          seq: row.seq,
+          historyVersion: row.historyVersion,
+        }));
+      },
+    );
   }
 
   async replaceHistory(
@@ -181,16 +260,6 @@ class SqlConversationEventStore implements ConversationEventStore {
     const parsed = historyReplacementSchema.parse(replacement);
     await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: null })
-        .where(
-          and(
-            eq(juniorConversations.conversationId, conversationId),
-            isNotNull(juniorConversations.archivedAt),
-          ),
-        );
       const cursor = await this.readCursor(conversationId);
       const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
       await this.executor
@@ -205,6 +274,10 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         );
     });
+  }
+
+  async loadCurrentHistoryVersion(conversationId: string): Promise<number> {
+    return (await this.readCursor(conversationId)).maxHistoryVersion ?? 0;
   }
 
   async loadCurrentHistory(

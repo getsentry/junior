@@ -9,17 +9,22 @@ import {
   juniorConversationEvents,
   juniorSqlSchema as schema,
 } from "@/db/schema";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
-  createLocalJuniorSqlFixture,
-} from "../fixtures/sql";
-import {
+  createEmptyJuniorPostgresFixture,
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
-} from "../fixtures/postgres/fixture";
+} from "../fixtures/sql";
+import {
+  applyCoreMigrations as applyCoreMigrationSlice,
+  insertLegacyConversation,
+  insertLegacyConversationEvent,
+} from "../fixtures/conversation-sql-migrations";
 
 const coreMigrations = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
@@ -38,9 +43,22 @@ SELECT EXISTS (
   expect(state?.schemaExists).toBe(false);
 }
 
+async function applyCoreMigrations(
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
+  fromIndex: number,
+  toIndexExclusive?: number,
+): Promise<void> {
+  await applyCoreMigrationSlice(
+    fixture,
+    coreMigrations,
+    fromIndex,
+    toIndexExclusive,
+  );
+}
+
 describe("conversation SQL local mode", () => {
   it("backfills session sources from matching conversation destinations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const sourceMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes('ADD COLUMN "source_json" jsonb'),
@@ -60,11 +78,7 @@ describe("conversation SQL local mode", () => {
     }
 
     try {
-      for (const migration of coreMigrations.slice(0, sourceMigrationIndex)) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, 0, sourceMigrationIndex);
       await fixture.sql.execute(`
 INSERT INTO junior_destinations (
   id,
@@ -146,8 +160,59 @@ ORDER BY conversation_id
     }
   });
 
+  it("migrates unowned MCP connection events into replayable facts", async () => {
+    const fixture = await createEmptyJuniorSqlFixture();
+    const ownershipMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes("mcp_provider_connected_unowned"),
+      ),
+    );
+    const ownershipMigration = coreMigrations[ownershipMigrationIndex];
+    if (!ownershipMigration) {
+      throw new Error("MCP credential subject migration not found");
+    }
+
+    try {
+      await applyCoreMigrations(fixture, 0, ownershipMigrationIndex);
+
+      const conversationId = "internal:legacy-mcp-connection";
+      const conversation = buildJuniorSqlConversation({ conversationId });
+      await insertLegacyConversation(fixture, conversation);
+      await insertLegacyConversationEvent(fixture, {
+        conversationId,
+        createdAt: new Date(1_000),
+        historyVersion: 0,
+        payload: { provider: "github" },
+        seq: 0,
+        type: "mcp_provider_connected",
+      });
+
+      for (const statement of ownershipMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+      // Bring the fixture to the current schema before using typed Drizzle APIs.
+      await applyCoreMigrations(fixture, ownershipMigrationIndex + 1);
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadCurrentHistory(conversationId);
+      expect(history.map(({ data }) => data)).toEqual([
+        {
+          type: "mcp_provider_connected_unowned",
+          provider: "github",
+        },
+      ]);
+      expect(
+        projectConversationEvents(history, { defaultProfile: "default" })
+          .messages,
+      ).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("migrates legacy agent history to native event types", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes(
@@ -161,131 +226,88 @@ ORDER BY conversation_id
     }
 
     try {
-      for (const migration of coreMigrations.slice(
-        0,
-        nativeHistoryMigrationIndex,
-      )) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, 0, nativeHistoryMigrationIndex);
 
       const conversationId = "internal:native-history-migration";
-      // Insert with the pre-source_json column set so this fixture stays valid
-      // against the partial migration history applied above.
+      // Keep the partial pre-source_json fixture valid against earlier migrations.
       const conversation = buildJuniorSqlConversation({ conversationId });
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversations (
-           conversation_id,
-           source,
-           destination_json,
-           actor_json,
-           channel_name,
-           title,
-           created_at,
-           last_activity_at,
-           updated_at,
-           execution_status,
-           root_conversation_id
-         ) VALUES (
-           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
-         )`,
-        [
-          conversation.conversationId,
-          conversation.source ?? null,
-          JSON.stringify(conversation.destination ?? null),
-          JSON.stringify(conversation.actor ?? null),
-          conversation.channelName ?? null,
-          conversation.title ?? null,
-          conversation.createdAt,
-          conversation.lastActivityAt,
-          conversation.updatedAt,
-          conversation.executionStatus,
-          conversation.rootConversationId ?? conversation.conversationId,
-        ],
-      );
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values([
-          {
-            conversationId,
-            seq: 0,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "user",
-                content: "Investigate the failure",
-                timestamp: 1_000,
-              },
+      await insertLegacyConversation(fixture, conversation);
+      for (const event of [
+        {
+          seq: 0,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "user",
+              content: "Investigate the failure",
+              timestamp: 1_000,
             },
-            createdAt: new Date(1_000),
           },
-          {
-            conversationId,
-            seq: 1,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "assistant",
-                content: [],
-                api: "responses",
-                provider: "openai",
-                model: "gpt-5.4",
-                usage: {},
-                stopReason: "toolUse",
-                timestamp: 1_001,
-              },
+          createdAt: new Date(1_000),
+        },
+        {
+          seq: 1,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "assistant",
+              content: [],
+              api: "responses",
+              provider: "openai",
+              model: "gpt-5.4",
+              usage: {},
+              stopReason: "toolUse",
+              timestamp: 1_001,
             },
-            createdAt: new Date(1_001),
           },
-          {
-            conversationId,
-            seq: 2,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "toolResult",
-                toolCallId: "call-1",
-                toolName: "search",
-                content: [],
-                isError: false,
-                timestamp: 1_002,
-              },
+          createdAt: new Date(1_001),
+        },
+        {
+          seq: 2,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "toolResult",
+              toolCallId: "call-1",
+              toolName: "search",
+              content: [],
+              isError: false,
+              timestamp: 1_002,
             },
-            createdAt: new Date(1_002),
           },
-          {
-            conversationId,
-            seq: 3,
-            historyVersion: 1,
-            schemaVersion: 1,
-            type: "rollback",
-            payload: {
-              modelProfile: "coding",
-              modelId: "openai/gpt-5.4",
-              replacementHistory: [
-                {
-                  message: {
-                    role: "user",
-                    type: "tool_result",
-                    content: "Retained instruction",
-                    timestamp: 1_000,
-                  },
-                  provenance: { authority: "instruction" },
-                  sourceEventSeq: 0,
+          createdAt: new Date(1_002),
+        },
+        {
+          seq: 3,
+          historyVersion: 1,
+          type: "rollback",
+          payload: {
+            modelProfile: "coding",
+            modelId: "openai/gpt-5.4",
+            replacementHistory: [
+              {
+                message: {
+                  role: "user",
+                  type: "tool_result",
+                  content: "Retained instruction",
+                  timestamp: 1_000,
                 },
-              ],
-            },
-            createdAt: new Date(1_003),
+                provenance: { authority: "instruction" },
+                sourceEventSeq: 0,
+              },
+            ],
           },
-        ]);
+          createdAt: new Date(1_003),
+        },
+      ] as const) {
+        await insertLegacyConversationEvent(fixture, {
+          conversationId,
+          ...event,
+        });
+      }
 
       for (const statement of nativeHistoryMigration.sql) {
         await fixture.sql.execute(statement);
@@ -294,6 +316,9 @@ ORDER BY conversation_id
       for (const statement of nativeHistoryMigration.sql) {
         await fixture.sql.execute(statement);
       }
+
+      // Bring the fixture to the current schema before using typed Drizzle APIs.
+      await applyCoreMigrations(fixture, nativeHistoryMigrationIndex + 1);
 
       const rows = await fixture.sql
         .db()
@@ -355,18 +380,14 @@ ORDER BY conversation_id
         },
       ]);
 
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values({
-          conversationId,
-          seq: 4,
-          historyVersion: 1,
-          schemaVersion: 1,
-          type: "agent_step",
-          payload: { message: { role: "system" } },
-          createdAt: new Date(1_004),
-        });
+      await insertLegacyConversationEvent(fixture, {
+        conversationId,
+        createdAt: new Date(1_004),
+        historyVersion: 1,
+        payload: { message: { role: "system" } },
+        seq: 4,
+        type: "agent_step",
+      });
       await expect(
         (async () => {
           for (const statement of nativeHistoryMigration.sql) {
@@ -436,7 +457,7 @@ ORDER BY conversation_id
   });
 
   it("creates migrated tables matching the Drizzle schema", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -539,7 +560,7 @@ ORDER BY table_name ASC, constraint_name ASC
   });
 
   it("backfills the owning root for existing conversation trees", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await fixture.sql.execute(`
@@ -604,7 +625,7 @@ ORDER BY conversation_id
   });
 
   it("keeps core migrations separate from another Drizzle journal", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await fixture.sql.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
@@ -638,7 +659,7 @@ VALUES ('host-migration', 9999999999999)
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "cancels runtime queries after the configured statement timeout",
     async () => {
-      const fixture = await createEmptyJuniorSqlFixture();
+      const fixture = await createEmptyJuniorPostgresFixture();
       const executor = createPostgresJuniorSqlExecutor({
         connectionString: fixture.connectionString,
         statementTimeoutMs: 10,
@@ -658,7 +679,7 @@ VALUES ('host-migration', 9999999999999)
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "serializes concurrent core migrations",
     async () => {
-      const fixture = await createEmptyJuniorSqlFixture();
+      const fixture = await createEmptyJuniorPostgresFixture();
       const second = createPostgresJuniorSqlExecutor({
         connectionString: fixture.connectionString,
       });
@@ -682,7 +703,7 @@ VALUES ('host-migration', 9999999999999)
   );
 
   it("runs migrations and stores metadata through the Drizzle schema", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       const migrationLock = vi.spyOn(fixture.sql, "withMigrationLock");
@@ -801,7 +822,7 @@ CREATE TABLE junior_conversations (
   );
 
   it("mirrors completed scheduler turns into SQL conversation record", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);

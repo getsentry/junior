@@ -1,6 +1,9 @@
+import { readMessageAttachments } from "@/chat/attachments/input";
+import { readMessageCards } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
   conversationReportEventSchema,
@@ -19,6 +22,7 @@ export const conversationReportSourceEventTypes = [
   "turn_started",
   "turn_context",
   "structured_event",
+  "attachments_delivered",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -111,7 +115,7 @@ function sanitizeModelContentPart(
   if (!media.success) return undefined;
   return {
     type: media.data.type,
-    ...(media.data.mimeType ? { mimeType: media.data.mimeType } : {}),
+    ...(media.data.mimeType ? { mimeType: media.data.mimeType } : undefined),
   };
 }
 
@@ -134,9 +138,11 @@ function reportMessageActorIdentity(
   const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
   if (!author.success) return undefined;
   const actorIdentity = {
-    ...(author.data.fullName ? { fullName: author.data.fullName } : {}),
-    ...(author.data.userId ? { slackUserId: author.data.userId } : {}),
-    ...(author.data.userName ? { slackUserName: author.data.userName } : {}),
+    ...(author.data.fullName ? { fullName: author.data.fullName } : undefined),
+    ...(author.data.userId ? { slackUserId: author.data.userId } : undefined),
+    ...(author.data.userName
+      ? { slackUserName: author.data.userName }
+      : undefined),
   };
   return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
 }
@@ -163,7 +169,7 @@ function reportToolCalls(args: {
         startedSeq: args.seq,
         ...(args.canExposePayload && call.data.arguments !== undefined
           ? { input: call.data.arguments }
-          : {}),
+          : undefined),
       },
     ];
   });
@@ -266,8 +272,10 @@ function reportToolResult(args: {
               startedAt: new Date(args.start.createdAtMs).toISOString(),
               startedSeq: args.start.seq,
             }
-          : {}),
-        ...(args.canExposePayload && output !== undefined ? { output } : {}),
+          : undefined),
+        ...(args.canExposePayload && output !== undefined
+          ? { output }
+          : undefined),
       },
     ],
   };
@@ -304,7 +312,7 @@ function reportEventData(args: {
       namespace: data.namespace,
       name: data.name,
       version: data.version,
-      ...(data.turnId ? { turnId: data.turnId } : {}),
+      ...(data.turnId ? { turnId: data.turnId } : undefined),
       presentation,
     };
   }
@@ -317,16 +325,31 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
-        ...(data.meta?.source === "web" ? { source: "web" as const } : {}),
-        ...(actorIdentity ? { actorIdentity } : {}),
+        ...(data.meta?.source === "web" || data.meta?.source === "slack"
+          ? { source: data.meta.source }
+          : undefined),
+        ...(actorIdentity ? { actorIdentity } : undefined),
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
-          : {}),
+          : undefined),
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
-          : {}),
+          : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.trustedSummary === "string"
+          ? { trustedSummary: data.meta.trustedSummary }
+          : undefined),
+        ...(args.canExposePayload &&
+        (data.meta?.cards || data.meta?.objectCards)
+          ? { cards: readMessageCards(data.meta) }
+          : undefined),
         ...(args.canExposePayload
-          ? { text: data.text }
+          ? {
+              text: data.text,
+              ...(data.meta?.attachments
+                ? { attachments: readMessageAttachments(data.meta.attachments) }
+                : undefined),
+            }
           : { redacted: true as const }),
       };
     }
@@ -342,7 +365,7 @@ function reportEventData(args: {
         state: "started",
         ...(data.inputMessageIds.length > 0
           ? { inputMessageIds: data.inputMessageIds }
-          : {}),
+          : undefined),
       };
     case "turn_context":
       if (!args.canExposePayload) {
@@ -356,17 +379,25 @@ function reportEventData(args: {
         version: data.version,
         content: data.content,
       };
+    case "attachments_delivered":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
+      return {
+        type: "attachments_delivered",
+        attachments: data.attachments,
+      };
     case "turn_routed":
       return {
         type: "turn_routed",
         turnId: data.turnId,
         modelProfile: data.modelProfile,
         modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : {}),
+        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
         reasoningLevel: data.reasoningLevel,
         ...(data.confidence !== undefined
           ? { confidence: data.confidence }
-          : {}),
+          : undefined),
         source: data.source,
       };
     case "guardian_action_reviewed":
@@ -385,14 +416,23 @@ function reportEventData(args: {
         turnId: data.turnId,
         state: data.outcome === "success" ? "succeeded" : "no_reply",
       };
-    case "turn_failed":
+    case "turn_failed": {
+      const eventId = data.eventId;
+      const sentryEventUrl = eventId ? buildSentryEventUrl(eventId) : undefined;
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "failed",
-        failureKind:
-          data.failureCode === "delivery_failed" ? "delivery" : "agent",
+        failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
+        // Slack failure replies already show event ids, so keep them on the
+        // conversation report too.
+        ...(eventId ? { eventId } : undefined),
+        ...(sentryEventUrl ? { sentryEventUrl } : undefined),
       };
+    }
     case "compaction":
       return {
         type: "compaction",
@@ -400,8 +440,8 @@ function reportEventData(args: {
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
-          : {}),
-        ...(data.details ? { details: data.details } : {}),
+          : undefined),
+        ...(data.details ? { details: data.details } : undefined),
       };
     default:
       // Unsupported and host-only facts do not affect this observational view.
@@ -474,7 +514,7 @@ export function projectConversationReportEventPage(args: {
         reportToolResult({
           canExposePayload: args.canExposePayload,
           message: event.data,
-          ...(start && start.seq < event.seq ? { start } : {}),
+          ...(start && start.seq < event.seq ? { start } : undefined),
         });
     } else if (event.data.type === "tool_execution_started") {
       toolStarts.set(event.data.toolCallId, {
@@ -509,7 +549,7 @@ export function projectConversationReportEventPage(args: {
         status: "running",
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
-          : {}),
+          : undefined),
       };
     } else if (event.data.type === "subagent_ended") {
       const started = subagentStarts.get(event.data.subagentInvocationId);
@@ -522,7 +562,7 @@ export function projectConversationReportEventPage(args: {
           subagentKind: started.data.subagentKind,
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
-            : {}),
+            : undefined),
           status:
             event.data.outcome === "success" ? "completed" : event.data.outcome,
         };
@@ -535,13 +575,13 @@ export function projectConversationReportEventPage(args: {
         modelId: event.data.modelId,
         ...(event.data.reasoningLevel
           ? { reasoningLevel: event.data.reasoningLevel }
-          : {}),
+          : undefined),
         ...(event.data.triggeringToolCallId
           ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : {}),
+          : undefined),
         ...(args.canExposePayload && event.data.summary
           ? { summary: event.data.summary }
-          : {}),
+          : undefined),
       };
     } else {
       data = reportEventData({

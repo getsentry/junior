@@ -194,17 +194,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
 
       await putMcpStoredOAuthCredentials(session.userId, session.provider, {
         ...(scope === "tokens" || scope === "all"
-          ? {}
+          ? undefined
           : credentials.tokens
             ? { tokens: credentials.tokens }
             : {}),
         ...(scope === "client" || scope === "all"
-          ? {}
+          ? undefined
           : credentials.clientInformation
             ? { clientInformation: credentials.clientInformation }
             : {}),
         ...(scope === "discovery" || scope === "all"
-          ? {}
+          ? undefined
           : credentials.discoveryState
             ? { discoveryState: credentials.discoveryState }
             : {}),

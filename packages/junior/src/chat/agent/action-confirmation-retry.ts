@@ -33,10 +33,7 @@ export function actionConfirmationRetryMessages(
       if (message.role === "user") {
         return true;
       }
-      return (
-        isAssistantMessage(message) &&
-        getAssistantReplyText(message)
-      );
+      return isAssistantMessage(message) && getAssistantReplyText(message);
     })
   ) {
     return undefined;

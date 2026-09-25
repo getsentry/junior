@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("Slack footer Sentry links", () => {
-  it("links the ID to the conversations page using org slug subdomain for SaaS", async () => {
+  it("links to the conversations page using org slug subdomain for SaaS", async () => {
     process.env.SENTRY_ORG_SLUG = "my-org";
     mockSentryClient({
       dsn: {

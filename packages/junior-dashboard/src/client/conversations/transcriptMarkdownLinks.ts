@@ -181,7 +181,9 @@ function findNextBareLink(
   start: number,
   ignoredRanges: TextRange[],
 ): TranscriptMarkdownLink | undefined {
-  const bareUrlPattern = /(https?:\/\/[^\s<>"']+|mailto:[^\s<>"']+)/gi;
+  // Stop at * so emphasis markers stay outside the URL, matching Slack outbound
+  // bare-URL wrapping (`readBareUrl` in packages/junior/src/chat/slack/mrkdwn.ts).
+  const bareUrlPattern = /(https?:\/\/[^\s<>"'*]+|mailto:[^\s<>"'*]+)/gi;
   bareUrlPattern.lastIndex = start;
 
   let match: RegExpExecArray | null;

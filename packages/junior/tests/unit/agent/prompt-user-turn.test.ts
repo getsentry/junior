@@ -74,8 +74,13 @@ describe("buildUserTurnText", () => {
     const input = buildPromptInput({
       instruction: {
         text: "what now?",
-        context:
-          "<recent-thread-messages>\n  <message>add customer impact</message>\n</recent-thread-messages>",
+        context: [
+          '<thread-context authority="evidence-only">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          "[user] David: add customer impact",
+          "  </message>",
+          "</thread-context>",
+        ].join("\n"),
         includeConversationContextWithHistory: true,
       },
       history: [{ role: "user" } as never],
@@ -85,9 +90,11 @@ describe("buildUserTurnText", () => {
       {
         type: "text",
         text: [
-          "<recent-thread-messages>",
-          "  <message>add customer impact</message>",
-          "</recent-thread-messages>",
+          '<thread-context authority="evidence-only">',
+          '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="David" actor_id="U_DAVID" slack_ts="1712345.000200">',
+          "[user] David: add customer impact",
+          "  </message>",
+          "</thread-context>",
         ].join("\n"),
       },
     ]);
@@ -99,5 +106,27 @@ describe("buildUserTurnText", () => {
         "</current-instruction>",
       ].join("\n"),
     });
+  });
+
+  it("marks unstructured thread background as evidence only", () => {
+    const input = buildPromptInput({
+      instruction: {
+        text: "summarize",
+        context: "earlier humans discussed filing a ticket",
+        includeConversationContextWithHistory: true,
+      },
+      history: [{ role: "user" } as never],
+    });
+
+    expect(input.contextContentParts).toEqual([
+      {
+        type: "text",
+        text: [
+          '<thread-context authority="evidence-only">',
+          "earlier humans discussed filing a ticket",
+          "</thread-context>",
+        ].join("\n"),
+      },
+    ]);
   });
 });

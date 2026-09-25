@@ -52,9 +52,22 @@ export interface PluginRuntimePostinstallCommand {
   sudo?: boolean;
 }
 
+/** Bot credentials for the ID-JAG profile of the RFC 7523 `jwt-bearer` grant. */
+export interface PluginMcpAuthConfig {
+  /** Issuer string the MCP server trusts for this bot. */
+  issuer: string;
+  /** JWKS key id of the published public key that pairs with the private key. */
+  keyId: string;
+  /** Env var holding the PEM (PKCS#8) private signing key. */
+  privateKeyEnv: string;
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
+  /** Bot auth: sign short-lived JWT assertions instead of per-actor OAuth. */
+  auth?: PluginMcpAuthConfig;
+  /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */
   headers?: Record<string, string>;
   transport: "http";
   url: string;

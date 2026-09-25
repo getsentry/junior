@@ -1,5 +1,9 @@
 # Conversation REST resources
 
+This directory owns the HTTP access checks, request parsing, and response
+format. It does not own a Conversation or Turn. Web input and shared Turn state
+live in `chat/conversations`. The worker lives in `chat/task-execution`.
+
 Conversation reporting is split across authenticated detail and event
 resources:
 
@@ -14,7 +18,7 @@ event sequence. Callers must not derive or modify cursor positions.
 
 Canonical storage contains runtime and Pi-shaped events that are not a suitable
 REST contract. The reporting adapter projects those facts into normalized
-resource events:
+events:
 
 - `tool_calls` carries one or more tool observations. Each observation has a
   stable tool call id, name, and current status; input and model-visible output
@@ -26,7 +30,10 @@ resource events:
   include the generated continuation summary, but never the full replacement
   history.
 
-The projection is append-only: later canonical facts produce new observations
+Message attachments can appear after the source file finishes storing. Clients
+must compare attachment metadata as well as event sequence on refresh.
+
+Other projections are append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by
 stable identity. A terminal tool or subagent observation includes its start
 context even when the canonical start is outside the requested page. Resolving

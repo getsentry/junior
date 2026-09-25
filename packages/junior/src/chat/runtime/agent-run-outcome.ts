@@ -9,10 +9,15 @@ import type { AgentTurnUsage } from "@/chat/usage";
  * the session record's optimistic-concurrency version. `awaiting_auth` means
  * the run parked for user authorization.
  */
+/** Why a run parked at a safe boundary and may continue. */
+export type AgentSuspensionReason = "timeout" | "yield" | "retry";
+
 export type AgentRunOutcome =
   | { status: "completed"; result: AgentRunResult }
   | {
       status: "suspended";
+      /** Why this slice stopped. Callers use this to choose wake vs yield. */
+      reason: AgentSuspensionReason;
       resumeVersion: number;
       usage?: AgentTurnUsage;
     }

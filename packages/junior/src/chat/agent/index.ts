@@ -55,6 +55,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -69,7 +70,6 @@ import {
   extractAssistantText,
   getUserMessageInstructionText,
   isAssistantMessage,
-  retainRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -102,7 +102,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -110,7 +110,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
+import { getConversationStore } from "@/chat/db";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -121,7 +121,7 @@ import {
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
+import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -131,23 +131,38 @@ import { wireAgentTools } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
   modelIdForProfile,
   ModelProfileNotConfiguredError,
-  STANDARD_MODEL_PROFILE,
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
+import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
 import {
-  compactActiveContextIfNeeded,
-  compactContextForHandoff,
-} from "@/chat/services/context-compaction";
-import {
-  createHandoffTool,
-  HANDOFF_TOOL_NAME,
-} from "@/chat/tools/handoff/tool";
+  applyHandoff,
+  commitHandoff,
+  exclusiveToolName,
+  handoffControl,
+  toolsForHandoffProfile,
+  type PendingHandoff,
+} from "@/chat/agent/handoff";
+import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+
+async function readRunConversationVisibility(
+  conversationId: string,
+): Promise<ConversationPrivacy | undefined> {
+  const conversationStore = getConversationStore();
+  const conversation = await conversationStore.get({ conversationId });
+  if (conversation?.visibility || !conversation?.parentConversationId) {
+    return conversation?.visibility;
+  }
+  return (
+    await conversationStore.get({
+      conversationId: conversation.parentConversationId,
+    })
+  )?.visibility;
+}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -204,33 +219,34 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const destinationVisibility = await resolveDestinationVisibility({
-    destination: run.destination,
-    visibility: run.destinationVisibility,
-  });
+  const visibility = await readRunConversationVisibility(run.conversationId);
   const conversationPrivacy = resolveConversationPrivacy({
-    visibility: destinationVisibility,
+    visibility,
   });
-  const resolvedRun = destinationVisibility
-    ? {
-        ...run,
-        destinationVisibility,
-      }
-    : run;
   const credentialActor = run.credentialContext?.actor;
   const actor = actorFromRun(run);
   const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
-    platform: run.source.platform,
+    platform:
+      run.source.kind === "slack" ||
+      run.source.kind === "web" ||
+      run.source.kind === "local"
+        ? run.source.kind
+        : undefined,
     messageConversationId:
-      run.source.platform === "slack"
+      run.source.kind === "slack"
         ? run.conversationId
-        : run.source.conversationId,
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId,
     destinationName:
-      run.destination.platform === "slack"
-        ? run.destination.channelId
-        : run.destination.conversationId,
+      run.location?.channelId ??
+      (run.source.kind === "slack"
+        ? run.source.channelId
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId),
     userId: userActor?.userId,
     userName: userActor?.userName,
     userEmail: userActor?.email,
@@ -250,7 +266,7 @@ export async function executeAgentRun(
   return withLogContext(runLogContext, () =>
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
-        resolvedRun,
+        run,
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -289,8 +305,6 @@ async function executeAgentRunInPrivacyContext(
     slackConversation: run.slackConversation,
     slackActionToken: run.slackActionToken,
     destination: run.destination,
-    publishExternally: run.publishExternally,
-    destinationVisibility: run.destinationVisibility,
     surface: run.surface,
     dispatch: run.dispatch,
     toolChannelId: run.toolChannelId,
@@ -330,7 +344,9 @@ async function executeAgentRunInPrivacyContext(
         }
       : undefined,
     onToolResult: run.onEvent
-      ? async (report: import("@/chat/tool-support/tool-execution-report").ToolExecutionReport) => {
+      ? async (
+          report: import("@/chat/tool-support/tool-execution-report").ToolExecutionReport,
+        ) => {
           await run.onEvent?.({ type: "tool_finished", report });
         }
       : undefined,
@@ -374,29 +390,36 @@ async function executeAgentRunInPrivacyContext(
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
     ? configuredTurnRoute(
-        STANDARD_MODEL_PROFILE,
+        botConfig.defaultProfile,
         configuredReasoningLevel,
         policy.reasoningLevel ? "agent_config" : "default",
       )
     : undefined;
-  let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
+  let activeModelProfile: ModelProfile = botConfig.defaultProfile;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
-  const slackSource = runSource.platform === "slack" ? runSource : undefined;
-  const slackDestination =
-    routing.destination.platform === "slack" ? routing.destination : undefined;
+  const slackSource = runSource.kind === "slack" ? runSource : undefined;
+  const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
+  const credentialUserId = run.credentialContext
+    ? credentialUserSubjectId(run.credentialContext)
+    : undefined;
   const recordConnectedMcpProvider = async (provider: string) => {
     if (connectedMcpProviders.has(provider)) {
       return;
     }
-    await recordMcpProviderConnected({
-      conversationId,
-      provider,
-    });
+    // Only durable when we know who owns the connection. Restore filters by
+    // this credential subject on later turns.
+    if (credentialUserId) {
+      await recordMcpProviderConnected({
+        conversationId,
+        provider,
+        credentialSubjectId: credentialUserId,
+      });
+    }
     connectedMcpProviders.add(provider);
   };
   const recordActiveMcpProviders = async () => {
@@ -411,7 +434,6 @@ async function executeAgentRunInPrivacyContext(
     const projection = await openConversationProjection({ conversationId });
     activeModelProfile = projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
-    let durableModelProfile = projection.modelProfile;
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
@@ -481,22 +503,20 @@ async function executeAgentRunInPrivacyContext(
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
-      guardianIntentParts.push(userInput);
+      // Bare @mentions are normal Slack "continue this thread" nudges. After
+      // bot-mention strip the instruction is empty; keep a non-blank marker so
+      // action review can still run against thread evidence.
+      guardianIntentParts.push(userInput.trim() || "[empty]");
     }
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       destination: routing.destination,
-      ...(routing.destinationVisibility
-        ? { destinationVisibility: routing.destinationVisibility }
-        : {}),
-      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
+      ...(routing.dispatch?.id
+        ? { dispatchId: routing.dispatch.id }
+        : undefined),
       durability,
       recordActiveMcpProviders,
-      publishExternally:
-        checkpoint.record?.publishExternally ??
-        routing.publishExternally ??
-        false,
       actor,
       runSource,
       conversationId,
@@ -539,20 +559,26 @@ async function executeAgentRunInPrivacyContext(
     const priorPiMessages = resumedFromSessionRecord
       ? existingSessionRecord?.piMessages
       : input.piMessages;
+    // Load only providers this credential subject connected. Shared thread
+    // history is not authority and must not warm another person's MCP servers.
     connectedMcpProviders = new Set(
-      await loadConnectedMcpProviders({ conversationId }),
+      credentialUserId
+        ? await loadConnectedMcpProviders({
+            conversationId,
+            credentialSubjectId: credentialUserId,
+          })
+        : [],
     );
 
-    // ── Restore skill runtime handles from durable Pi history ────────
-    await restoreSkillRuntime({
+    // A new turn starts with no active skill. A resumed turn recovers only its
+    // last successful loadSkill result, never skill state from older turns.
+    const explicitSkill = await loadRunSkill({
       activeSkills,
+      currentTurnMessages,
       invokedSkill,
-      priorPiMessages,
+      resumed: resumedFromSessionRecord,
       skillSandbox,
     });
-    const explicitSkill = invokedSkill
-      ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
-      : null;
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, routerBlocks, userContentParts } =
       buildPromptInput({
@@ -562,20 +588,23 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    const handoffEnabled = !isAgentRunFeatureDisabled(policy.disabledFeatures, "handoff");
+    const handoffEnabled = !isAgentRunFeatureDisabled(
+      policy.disabledFeatures,
+      "handoff",
+    );
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
-      const resumedAfterHandoff =
-        handoffEnabled &&
-        activeModelProfile !== STANDARD_MODEL_PROFILE &&
+      const replacementOverridesRoute =
+        projection.replacementSeq !== undefined &&
+        projection.replacementSeq > storedTurnRoute.seq &&
         activeModelProfile !== storedTurnRoute.modelProfile;
-      if (resumedAfterHandoff) {
+      if (replacementOverridesRoute) {
         const activeProfileConfig = profileConfig(
           botConfig,
           activeModelProfile,
         );
-        // After handoff, profile config (else inherited old route) is authority.
-        // Handoff does not write a new turn_routed event.
+        // A replacement committed after routing is authority. This includes
+        // compaction after handoff because handoff does not rewrite the route.
         turnRoute = {
           profile: activeModelProfile,
           reasoningLevel:
@@ -589,25 +618,25 @@ async function executeAgentRunInPrivacyContext(
           reasoningLevel: storedTurnRoute.reasoningLevel,
           ...(storedTurnRoute.confidence !== undefined
             ? { confidence: storedTurnRoute.confidence }
-            : {}),
+            : undefined),
           reason: `persisted:${storedTurnRoute.source}`,
           source: storedTurnRoute.source,
         };
       }
-    } else if (
-      activeModelProfile === STANDARD_MODEL_PROFILE &&
-      handoffEnabled
-    ) {
+    } else if (handoffEnabled) {
+      // Route each new turn. A handoff changes the active profile within its
+      // turn, but must not pin later requests to that profile indefinitely.
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
         context: {
           threadId: conversationId,
-          channelId: slackDestination?.channelId,
+          channelId: slackChannelId,
           actorId: slackActor?.userId,
           runId,
         },
         currentTurnBlocks: routerBlocks,
+        defaultProfile: botConfig.defaultProfile,
         fastModelId: botConfig.fastModelId,
         messageText: userInput,
         profiles: botConfig.profiles,
@@ -623,7 +652,7 @@ async function executeAgentRunInPrivacyContext(
           reason: `configured:${policy.reasoningLevel ? "agent_config" : "default"}:${turnRoute.reason}`,
         };
       }
-    } else if (!handoffEnabled) {
+    } else {
       const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
       const reasoningSource = policy.reasoningLevel
         ? "agent_config"
@@ -640,23 +669,6 @@ async function executeAgentRunInPrivacyContext(
         reason: `fixed:${reasoningSource}`,
         source: "configured",
       };
-    } else {
-      const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
-      const reasoningSource = activeProfileConfig.reasoningLevel
-        ? "profile"
-        : policy.reasoningLevel
-          ? "agent_config"
-          : "default";
-      turnRoute = {
-        profile: activeModelProfile,
-        reasoningLevel:
-          activeProfileConfig.reasoningLevel ??
-          policy.reasoningLevel ??
-          botConfig.reasoningLevel ??
-          "medium",
-        reason: `inherited:${reasoningSource}`,
-        source: "inherited",
-      };
     }
 
     const routedModelProfile = turnRoute.profile;
@@ -669,11 +681,11 @@ async function executeAgentRunInPrivacyContext(
         modelId: routedModelId,
         ...(turnRoute.costUsd !== undefined
           ? { costUsd: turnRoute.costUsd }
-          : {}),
+          : undefined),
         reasoningLevel: turnRoute.reasoningLevel,
         ...(turnRoute.confidence !== undefined
           ? { confidence: turnRoute.confidence }
-          : {}),
+          : undefined),
         source: turnRoute.source ?? "configured",
       });
     }
@@ -682,27 +694,8 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
-    // Handoff becomes live only after its replacement epoch commits. This
-    // pending value then drives the one-way model/context swap at Pi's boundary.
-    let pendingHandoff:
-      | {
-          messages: PiMessage[];
-          model: ReturnType<typeof resolveGatewayModel>;
-          thinkingLevel: NonNullable<AgentLoopTurnUpdate["thinkingLevel"]>;
-        }
-      | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
-    const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
-      DEFAULT_HANDOFF_MODEL_PROFILE,
-      ...Object.keys(botConfig.profiles)
-        .filter(
-          (profile) =>
-            profile !== STANDARD_MODEL_PROFILE &&
-            profile !== DEFAULT_HANDOFF_MODEL_PROFILE,
-        )
-        .sort(),
-    ];
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],
     ): AgentTurnUsage | undefined => {
@@ -713,7 +706,15 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    /** Commit the durable handoff epoch before staging its in-memory model swap. */
+    // baseInstructions is filled after prompt assembly; applyHandoff closes over it.
+    let baseInstructions = "";
+    let pendingHandoff: PendingHandoff | undefined;
+    const handoffMetadata = {
+      threadId: conversationId,
+      channelId: slackChannelId,
+      actorId: slackActor?.userId,
+      runId,
+    };
     const scheduleHandoff = async (args: {
       profile: ModelProfile;
       runtimeContextSourceMessages?: PiMessage[];
@@ -721,91 +722,44 @@ async function executeAgentRunInPrivacyContext(
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
     }) => {
-      if (args.profile === durableModelProfile) {
+      const pending = await commitHandoff({
+        activeModelProfile,
+        beforeMessageCount: runResume.beforeMessageCount,
+        conversationContext: input.conversationContext,
+        conversationId,
+        metadata: handoffMetadata,
+        onStatus: observers.onStatus,
+        profile: args.profile,
+        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
+        signal: args.signal,
+        sourceMessages: args.sourceMessages,
+        triggeringToolCallId: args.triggeringToolCallId,
+        turnRoute: turnRoute!,
+      });
+      if (!pending) {
         return;
       }
-      const runtimeContext = retainRuntimeTurnContext(
-        args.runtimeContextSourceMessages ?? args.sourceMessages,
-      );
-      const phaseUsage = usageSinceCurrentBoundary(args.sourceMessages);
-      const selectedProfile = profileConfig(botConfig, args.profile);
-      const handoffReasoningLevel =
-        selectedProfile.reasoningLevel ?? turnRoute!.reasoningLevel;
-      const target = {
-        modelId: selectedProfile.modelId,
-        modelProfile: args.profile,
-        reasoningLevel: handoffReasoningLevel,
-      };
-      const handoffModel = resolveGatewayModel(target.modelId);
-      const handoffThinkingLevel = toPiReasoningLevel(handoffReasoningLevel);
-      void (async () => {
-        await observers.onStatus?.({ text: "Switching models" });
-      })().catch((error) => {
-        logWarn("assistant.status.observer.failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
+      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, pending.phaseUsage);
+      pendingHandoff = pending;
+      activeModelProfile = pending.modelProfile;
+      activeModelId = pending.modelId;
+      turnRoute = pending.turnRoute;
+    };
+    const handoffExecute = async (
+      profile: ModelProfile,
+      options: { signal?: AbortSignal; toolCallId: string },
+    ) =>
+      await scheduleHandoff({
+        profile,
+        signal: options.signal,
+        sourceMessages: [...agent!.state.messages],
+        triggeringToolCallId: options.toolCallId,
       });
-      const handoffMessages = await compactContextForHandoff(
-        {
-          conversationContext: input.conversationContext,
-          conversationId,
-          piMessages: args.sourceMessages,
-          runtimeContext,
-          signal: args.signal,
-          triggeringToolCallId: args.triggeringToolCallId,
-          target,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackDestination?.channelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
-        },
-        {
-          completeText: (args) => completeText(args),
-        },
-      );
-      durableModelProfile = args.profile;
-      if (handoffReasoningLevel !== turnRoute!.reasoningLevel) {
-        turnRoute = {
-          ...turnRoute!,
-          reasoningLevel: handoffReasoningLevel,
-          reason: `profile_reasoning_override:${args.profile}:${turnRoute!.reason}`,
-        };
-      }
-      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, phaseUsage);
-      pendingHandoff = {
-        messages: handoffMessages,
-        model: handoffModel,
-        thinkingLevel: handoffThinkingLevel,
-      };
-      activeModelProfile = args.profile;
-      activeModelId = target.modelId;
-    };
-    const handoffControlFor = (activeProfile: ModelProfile) => {
-      const profiles = handoffProfiles.filter(
-        (profile) => profile !== activeProfile,
-      );
-      return profiles.length > 0
-        ? {
-            profiles: profiles as [ModelProfile, ...ModelProfile[]],
-            execute: async (
-              profile: ModelProfile,
-              options: { signal?: AbortSignal; toolCallId: string },
-            ) =>
-              await scheduleHandoff({
-                profile,
-                signal: options.signal,
-                sourceMessages: [...agent!.state.messages],
-                triggeringToolCallId: options.toolCallId,
-              }),
-          }
-        : undefined;
-    };
-    const requestHandoff = handoffEnabled
-      ? handoffControlFor(activeModelProfile)
-      : undefined;
+    const requestHandoff = handoffControl({
+      activeProfile: activeModelProfile,
+      enabled: handoffEnabled,
+      execute: handoffExecute,
+    });
 
     setTags({
       ...runLogContext,
@@ -838,7 +792,6 @@ async function executeAgentRunInPrivacyContext(
         lastKnownSandboxRef = sandboxRef;
       },
       preAgentPromptMessages,
-      priorPiMessages,
       recordConnectedMcpProvider,
       requestHandoff,
       resume: runResume,
@@ -877,38 +830,28 @@ async function executeAgentRunInPrivacyContext(
       await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    const toolsWithoutHandoff = wiring.agentTools.filter(
-      (tool) => tool.name !== HANDOFF_TOOL_NAME,
-    );
-    const handoffAgentTool = wiring.agentTools.find(
-      (tool) => tool.name === HANDOFF_TOOL_NAME,
-    );
-    const toolsForActiveProfile = () => {
-      const handoff = handoffEnabled
-        ? handoffControlFor(activeModelProfile)
-        : undefined;
-      if (!handoff) {
-        return toolsWithoutHandoff;
+    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
+      if (!pendingHandoff) {
+        return undefined;
       }
-      if (!handoffAgentTool) {
-        throw new Error("Handoff control is missing its Pi tool");
-      }
-      const definition = createHandoffTool(handoff);
-      return wiring.agentTools.map((tool) =>
-        tool.name === HANDOFF_TOOL_NAME
-          ? {
-              ...handoffAgentTool,
-              description: definition.description,
-              parameters: definition.inputSchema,
-              prepareArguments: definition.prepareArguments,
-            }
-          : tool,
-      );
+      const pending = pendingHandoff;
+      pendingHandoff = undefined;
+      return applyHandoff({
+        agent: agent!,
+        baseInstructions,
+        pending,
+        resume: runResume,
+        tools: toolsForHandoffProfile({
+          activeProfile: pending.modelProfile,
+          agentTools: wiring.agentTools,
+          enabled: handoffEnabled,
+          execute: handoffExecute,
+        }),
+      });
     };
-
     // ── Prompt context ───────────────────────────────────────────────
     const {
-      baseInstructions,
+      baseInstructions: assembledBaseInstructions,
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
@@ -947,6 +890,7 @@ async function executeAgentRunInPrivacyContext(
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
     });
+    baseInstructions = assembledBaseInstructions;
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
@@ -961,37 +905,6 @@ async function executeAgentRunInPrivacyContext(
       shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
-    /** Apply a committed handoff to Pi and reset its durable resume baseline. */
-    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
-      if (!pendingHandoff) {
-        return undefined;
-      }
-      const { messages, model, thinkingLevel } = pendingHandoff;
-      const replacement = [...messages];
-      pendingHandoff = undefined;
-      agent!.state.messages = replacement;
-      agent!.state.model = model;
-      agent!.state.thinkingLevel = thinkingLevel;
-      const tools = toolsForActiveProfile();
-      agent!.state.tools = tools;
-      runResume.setBeforeMessageCount(replacement.length);
-      runResume.setTurnStartMessageIndex(0);
-      runResume.adoptCommittedBoundary(replacement);
-      setSpanAttributes({
-        "gen_ai.agent.model": activeModelId,
-        "gen_ai.agent.model_profile": activeModelProfile,
-        "gen_ai.agent.reasoning.level": turnRoute!.reasoningLevel,
-      });
-      return {
-        context: {
-          systemPrompt: baseInstructions,
-          messages: replacement,
-          tools,
-        },
-        model,
-        thinkingLevel,
-      };
-    };
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -1009,7 +922,7 @@ async function executeAgentRunInPrivacyContext(
           conversationId,
           metadata: {
             threadId: conversationId,
-            channelId: slackDestination?.channelId,
+            channelId: slackChannelId,
             actorId: slackActor?.userId,
             runId,
           },
@@ -1026,7 +939,7 @@ async function executeAgentRunInPrivacyContext(
                   ...pendingMessages.map((entry) => entry.message),
                 ],
               }
-            : {}),
+            : undefined),
           signal: hookSignal,
         },
         {
@@ -1153,21 +1066,32 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : {}),
+        ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
-        const containsHandoff = toolCalls.some(
-          (call) => call.name === HANDOFF_TOOL_NAME,
-        );
-        if (containsHandoff && toolCalls.length !== 1) {
+        const exclusiveTool = exclusiveToolName(toolCalls);
+        if (exclusiveTool && toolCalls.length !== 1) {
           return {
             block: true,
-            reason:
-              "handoff must be the only tool call in its assistant message; reissue it alone",
+            reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
+          };
+        }
+        // Charge the durable turn total here. Exceptions become tool errors,
+        // so block + terminate and rethrow after the step settles.
+        try {
+          runResume.admitToolCall();
+        } catch (error) {
+          const limitError =
+            error instanceof Error ? error : new Error(String(error));
+          pendingPiHookError ??= limitError;
+          return {
+            block: true,
+            reason: limitError.message,
+            terminate: true,
           };
         }
         return undefined;
@@ -1202,10 +1126,9 @@ async function executeAgentRunInPrivacyContext(
             pendingMessages,
             true,
           );
-          const combinedUpdate =
-            capacityUpdate && handoffUpdate
-              ? { ...handoffUpdate, ...capacityUpdate }
-              : (capacityUpdate ?? handoffUpdate);
+          const combinedUpdate = capacityUpdate
+            ? { ...handoffUpdate, ...capacityUpdate }
+            : handoffUpdate;
           const repositoryInstructionsUpdate =
             await repositoryInstructionsContext.applyUpdate(
               combinedUpdate,
@@ -1251,10 +1174,12 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return;
         }
-        const containsHandoff = event.message.content.some(
-          (part) => part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
-        );
-        if (containsHandoff) {
+        if (
+          event.message.content.some(
+            (part) =>
+              part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
+          )
+        ) {
           return;
         }
         return deliverAssistantMessage(event.message);
@@ -1383,7 +1308,7 @@ async function executeAgentRunInPrivacyContext(
                         "gen_ai.request.reasoning.level":
                           turnRoute.reasoningLevel,
                       }
-                    : {}),
+                    : undefined),
                   "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
                   "app.ai.turn_deadline_remaining_ms": Math.max(
                     0,
@@ -1410,6 +1335,11 @@ async function executeAgentRunInPrivacyContext(
                 );
                 throw pendingAuthPause;
               }
+              if (pendingPiHookError) {
+                const hookError = pendingPiHookError;
+                pendingPiHookError = undefined;
+                throw hookError;
+              }
               throw error;
             } finally {
               if (timeoutId) {
@@ -1425,13 +1355,16 @@ async function executeAgentRunInPrivacyContext(
             return result;
           };
 
-          const requestedProfile =
-            activeModelProfile === STANDARD_MODEL_PROFILE
-              ? turnRoute!.profile
-              : undefined;
           let run: Promise<unknown>;
           let handoffApplied = false;
-          if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
+          const requestedProfile =
+            activeModelProfile === botConfig.defaultProfile
+              ? turnRoute!.profile
+              : undefined;
+          if (
+            requestedProfile &&
+            requestedProfile !== botConfig.defaultProfile
+          ) {
             const handoffAbortController = new AbortController();
             await runAgentStep(
               scheduleHandoff({
@@ -1520,7 +1453,7 @@ async function executeAgentRunInPrivacyContext(
               setSpanAttributes({
                 ...(outputMessagesAttribute
                   ? { "gen_ai.output.messages": outputMessagesAttribute }
-                  : {}),
+                  : undefined),
                 ...toGenAiMessagesTraceAttributes(
                   "gen_ai.output",
                   outputMessages,
@@ -1531,7 +1464,7 @@ async function executeAgentRunInPrivacyContext(
                         normalizeGenAiFinishReason(lastAssistant.stopReason),
                       ],
                     }
-                  : {}),
+                  : undefined),
                 ...extractGenAiUsageAttributes(currentPhaseUsage),
               });
               const pendingAuthPause = getPendingAuthPause();
@@ -1583,7 +1516,10 @@ async function executeAgentRunInPrivacyContext(
 
               providerRetryAttempt += 1;
               await prepareRetry(providerRetry.messages);
-              logWarn("agent.turn.provider.retrying");
+              logWarn("agent.turn.provider.retrying", {
+                ...getProviderErrorAttributes(providerRetry.providerError),
+                "app.ai.provider_error.retry_attempt": providerRetryAttempt,
+              });
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
@@ -1606,18 +1542,20 @@ async function executeAgentRunInPrivacyContext(
             ? {
                 "gen_ai.agent.reasoning.level_confidence": turnRoute.confidence,
               }
-            : {}),
+            : undefined),
           "gen_ai.output.type": "text",
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
-            : {}),
+            : undefined),
           "app.ai.session.conversation_id": conversationId,
           "app.ai.turn.session_id": turnId,
-          ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
+          ...(currentSliceId
+            ? { "app.ai.turn.slice_id": currentSliceId }
+            : undefined),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
-            : {}),
+            : undefined),
         },
       );
       if (authPauseOutcome) {
@@ -1665,7 +1603,7 @@ async function executeAgentRunInPrivacyContext(
         : error;
     if (
       runError instanceof AuthPausePersistenceError ||
-      runError instanceof TurnSliceLimitExceededError
+      isTurnExecutionLimitExceededError(runError)
     ) {
       throw runError;
     }
@@ -1754,7 +1692,7 @@ async function executeAgentRunInPrivacyContext(
             ? {
                 reasoningLevel: turnRoute.reasoningLevel,
               }
-            : {}),
+            : undefined),
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,

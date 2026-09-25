@@ -1,3 +1,4 @@
+import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
@@ -7,7 +8,6 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
-  activateProvider(provider: string): Promise<boolean>;
   getResolvedActiveTools(): ManagedMcpTool[];
 }
 
@@ -53,6 +53,8 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
+// TODO(dcramer): Fold MCP execution into executeTool once searchTools can
+// disclose MCP tool schemas and the execution catalog keeps them active.
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",
@@ -88,7 +90,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       return {
         ...(activeTool.annotations
           ? { annotations: activeTool.annotations }
-          : {}),
+          : undefined),
         description: activeTool.description,
         name: tool_name,
         source: {
@@ -97,12 +99,12 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         },
       };
     },
+    outputSchema: z.object({
+      objectCards: z.array(ownedObjectAnnotationSchema),
+    }),
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
-      if (provider) {
-        await mcpToolManager.activateProvider(provider);
-      }
       const activeTools = mcpToolManager.getResolvedActiveTools();
       const mcpTool = activeTools.find(
         (candidate) => candidate.name === tool_name,
@@ -113,7 +115,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           : [];
         setSpanAttributes({
           "app.mcp.requested_tool_name": tool_name,
-          ...(provider ? { "app.mcp.requested_provider": provider } : {}),
+          ...(provider
+            ? { "app.mcp.requested_provider": provider }
+            : undefined),
           "app.mcp.active_provider_names": activeProviderNames(activeTools),
           "app.mcp.active_tool_count": activeTools.length,
           ...(provider
@@ -123,7 +127,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
                   .map((candidate) => candidate.name)
                   .sort((a, b) => a.localeCompare(b)),
               }
-            : {}),
+            : undefined),
         });
         throw new McpToolError(missingToolMessage(tool_name, provider));
       }
@@ -131,10 +135,15 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         resolveMcpArguments(input as Record<string, unknown>),
         {
           conversationPrivacy: options?.conversationPrivacy ?? "private",
-          ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+          ...(options?.toolCallId
+            ? { toolCallId: options.toolCallId }
+            : undefined),
         },
       );
-      return { content: result.content };
+      return {
+        content: result.content,
+        details: { objectCards: result.cards ?? [] },
+      };
     },
   });
 }

@@ -20,14 +20,15 @@ function stripAnsi(value: string): string {
 async function loadLoggingModule() {
   vi.resetModules();
   vi.doMock("@/chat/sentry", () => ({
-    captureException: undefined,
-    captureMessage: undefined,
+    captureException: () => undefined,
+    captureMessage: () => undefined,
     getActiveSpan: () => undefined,
     logger: {},
-    setTag: undefined,
-    setUser: undefined,
+    setTag: () => undefined,
+    setUser: () => undefined,
     spanToJSON: () => ({}),
-    withScope: undefined,
+    withScope: (callback: (scope: { setExtra: () => void }) => void) =>
+      callback({ setExtra() {} }),
   }));
   return await import("@/chat/logging");
 }

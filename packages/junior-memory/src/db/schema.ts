@@ -48,6 +48,10 @@ export const juniorMemoryMemories = pgTable(
       enum: MEMORY_SOURCE_PLATFORMS,
     }).notNull(),
     sourceKey: text("source_key").notNull(),
+    /** Location where Junior learned the memory, when known. */
+    locationId: text("location_id"),
+    /** Conversation where Junior learned the memory, when known. */
+    conversationId: text("conversation_id"),
     idempotencyKey: text("idempotency_key"),
     observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
@@ -80,7 +84,7 @@ export const juniorMemoryMemories = pgTable(
       ),
     check(
       "junior_memory_memories_scope_check",
-      sql`${table.scope} IN ('personal', 'conversation')`,
+      sql`${table.scope} IN ('private', 'public')`,
     ),
     check(
       "junior_memory_memories_kind_check",

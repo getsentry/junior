@@ -11,7 +11,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
@@ -748,7 +748,7 @@ describe("createApp plugin config", () => {
     ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
   });
 
-  it("rejects invalid plugin resource event registrations", () => {
+  it("rejects invalid plugin event registrations", () => {
     expect(() =>
       defineJuniorPlugin({
         manifest: {
@@ -756,11 +756,11 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Invalid event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -769,7 +769,7 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Duplicate event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [
             {
               type: "issue",
@@ -778,7 +778,7 @@ describe("createApp plugin config", () => {
           ],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {
@@ -868,6 +868,18 @@ describe("createApp plugin config", () => {
     expect(dashboardAvatar.status).toBe(200);
     await expect(dashboardAvatar.text()).resolves.toBe("dashboard");
 
+    const installManifest = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/manifest.webmanifest"),
+    );
+    expect(installManifest.status).toBe(200);
+    await expect(installManifest.text()).resolves.toBe("dashboard");
+
+    const installIcon = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/icon-512.png"),
+    );
+    expect(installIcon.status).toBe(200);
+    await expect(installIcon.text()).resolves.toBe("dashboard");
+
     const pluginsPage = await app.fetch(
       new Request("http://localhost/plugins"),
     );
@@ -928,6 +940,8 @@ describe("createApp plugin config", () => {
       ).rejects.toThrow(
         `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
       );
+      expect(getPlugins()).toEqual([]);
+      expect(pluginCatalogRuntime.getProviders()).toEqual([]);
     }
   });
 

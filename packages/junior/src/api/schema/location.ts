@@ -27,9 +27,14 @@ export const locationActorSummaryReportSchema = conversationStatsItemSchema
   .extend({ actor: actorIdentitySchema })
   .strict();
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const locationMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const locationActivityDayReportSchema = z
   .object({
-    date: z.string(),
+    date: locationMetricBucketSchema,
     privateConversations: z.number(),
     publicConversations: z.number(),
   })
@@ -38,6 +43,8 @@ export const locationActivityDayReportSchema = z
 export const locationDirectoryReportSchema = z
   .object({
     activityDays: z.array(locationActivityDayReportSchema),
+    activityHours: z.array(locationActivityDayReportSchema).optional(),
+    activitySixHours: z.array(locationActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     locations: z.array(locationSummaryReportSchema),
     privateActivity: conversationStatsItemSchema,
@@ -50,6 +57,8 @@ export const locationDirectoryReportSchema = z
 export const locationDetailReportSchema = locationSummaryReportSchema
   .extend({
     activityDays: z.array(dailyConversationActivitySchema),
+    activityHours: z.array(dailyConversationActivitySchema).optional(),
+    activitySixHours: z.array(dailyConversationActivitySchema).optional(),
     actors: z.array(locationActorSummaryReportSchema),
     generatedAt: z.string(),
     recentConversations: z.array(conversationSummaryReportSchema),

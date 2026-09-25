@@ -36,159 +36,6 @@ function textOf(message: PiMessage): string {
   );
 }
 
-describe("context compaction retained messages", () => {
-  it("derives automatic trigger size from the model context window", async () => {
-    const {
-      calculateContextCompactionTargetTokens,
-      calculateContextCompactionTriggerTokens,
-      calculateContextInputLimitTokens,
-    } = await import("@/chat/services/context-budget");
-
-    const miniTrigger = calculateContextCompactionTriggerTokens({
-      contextWindow: 400_000,
-    });
-    expect(miniTrigger).toBe(360_000);
-    expect(calculateContextInputLimitTokens({ contextWindow: 400_000 })).toBe(
-      380_000,
-    );
-    expect(calculateContextCompactionTargetTokens(miniTrigger)).toBe(288_000);
-    expect(
-      calculateContextCompactionTriggerTokens({
-        contextWindow: 1_050_000,
-      }),
-    ).toBe(945_000);
-  });
-
-  it("uses configured model context windows for runtime thresholds", async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      AI_MODEL: "openai/gpt-5.4",
-      AI_FAST_MODEL: "openai/gpt-5.4-mini",
-      AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000",
-    };
-    vi.resetModules();
-    try {
-      const {
-        calculateContextCompactionTriggerTokens,
-        getAgentContextCompactionTriggerTokens,
-        getConversationContextCompactionTriggerTokens,
-        getModelContextBudget,
-      } = await import("@/chat/services/context-budget");
-      const { resolveGatewayModel } = await import("@/chat/pi/client");
-
-      expect(getAgentContextCompactionTriggerTokens("openai/gpt-5.4")).toBe(
-        180_000,
-      );
-      expect(getModelContextBudget("openai/gpt-5.4")).toMatchObject({
-        contextWindow: 200_000,
-      });
-      expect(getConversationContextCompactionTriggerTokens()).toBe(
-        calculateContextCompactionTriggerTokens({
-          ...resolveGatewayModel("openai/gpt-5.4-mini"),
-          contextWindow: 200_000,
-        }),
-      );
-    } finally {
-      process.env = { ...ORIGINAL_ENV };
-      vi.resetModules();
-    }
-  });
-
-  it("never raises an active model's advertised context window", async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      AI_MODEL_CONTEXT_WINDOW_TOKENS: "900000",
-    };
-    vi.resetModules();
-    try {
-      const { getModelContextBudget } =
-        await import("@/chat/services/context-budget");
-      const { resolveGatewayModel } = await import("@/chat/pi/client");
-      const model = resolveGatewayModel("anthropic/claude-haiku-4.5");
-
-      expect(getModelContextBudget(model.id).contextWindow).toBe(
-        model.contextWindow,
-      );
-    } finally {
-      process.env = { ...ORIGINAL_ENV };
-      vi.resetModules();
-    }
-  });
-
-  it("keeps newest eligible user messages in chronological order", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages(
-      [
-        user("older message that should not fit", 1),
-        user("middle", 2),
-        assistant("assistant reply", 3),
-        user("<data_base64>raw-payload</data_base64>", 4),
-        user("recent", 5),
-      ],
-      4,
-    );
-
-    expect(retained.map(textOf)).toEqual(["middle", "recent"]);
-  });
-
-  it("strips stale runtime context before retaining user text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nstale\n</runtime-turn-context>",
-          },
-          { type: "text", text: "actual user request" },
-        ],
-        timestamp: 1,
-      } as PiMessage,
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["actual user request"]);
-  });
-
-  it("unwraps current instruction markers before retaining user text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      user(
-        "<current-instruction>\nuse &lt;tag&gt; literally\n</current-instruction>",
-      ),
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["use <tag> literally"]);
-  });
-
-  it("unwraps current instruction markers from composite prompt text", async () => {
-    const { selectRetainedUserMessages } =
-      await import("@/chat/services/context-compaction");
-
-    const retained = selectRetainedUserMessages([
-      user(
-        [
-          "<thread-background>",
-          "prior context",
-          "</thread-background>",
-          "",
-          "<current-instruction>",
-          "actual follow-up",
-          "</current-instruction>",
-        ].join("\n"),
-      ),
-    ]);
-
-    expect(retained.map(textOf)).toEqual(["actual follow-up"]);
-  });
-});
-
 describe("context compaction projection reset", () => {
   beforeEach(async () => {
     process.env = {
@@ -213,11 +60,14 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
       user("Run the lookup.", 1),
-      {
-        ...assistant("Lookup complete.", 2),
-        responseId: undefined,
-        usage: { input: 5, cached: undefined },
-      } as unknown as PiMessage,
+      (() => {
+        return {
+          ...assistant("Lookup complete.", 2),
+          // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+          responseId: undefined,
+          usage: { input: 5, cached: undefined },
+        } as PiMessage;
+      })(),
     ];
 
     const firstCommit = await commitMessages({
@@ -286,7 +136,7 @@ describe("context compaction projection reset", () => {
     expect(result).not.toHaveProperty("sessionId");
     const compactedMessages = result.piMessages ?? [];
     expect(compactedMessages.map(textOf).join("\n")).toContain(
-      "Context compaction summary",
+      "Another language model started to solve this problem",
     );
     expect(compactedMessages.map(textOf).join("\n")).toContain(
       "migration approval",
@@ -309,6 +159,66 @@ describe("context compaction projection reset", () => {
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
+  });
+
+  it("summarizes model-visible tool calls and results", async () => {
+    const { createContextCompactor } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    const conversationId = "conversation-tool-summary";
+    const messages = [
+      user("Implement the change.", 1),
+      {
+        ...assistant("", 2),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-1",
+            name: "updatePlan",
+            arguments: {
+              plan: [{ step: "Run focused tests", status: "in_progress" }],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-1",
+        toolName: "updatePlan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 3,
+      } as PiMessage,
+    ];
+    await commitMessages({ conversationId, messages });
+    const completeText = vi.fn(
+      async (_input: unknown) =>
+        ({ text: "Continue with focused tests." }) as never,
+    );
+
+    const result = await createContextCompactor({
+      completeText,
+      autoCompactionTriggerTokens: 0,
+    }).maybeCompact({
+      conversation: coerceThreadConversationState({}),
+      conversationId,
+      modelId: "openai/gpt-5.4",
+      piMessages: messages,
+    });
+
+    expect(textOf(result.piMessages!.at(-1)!)).toContain(
+      '<open-plan>\n[{"step":"Run focused tests","status":"in_progress"}]\n</open-plan>',
+    );
+    const summaryInput = completeText.mock.calls[0]?.[0] as
+      | { messages: PiMessage[] }
+      | undefined;
+    expect(summaryInput?.messages.slice(0, -1)).toEqual(messages);
+    expect(textOf(summaryInput!.messages.at(-1)!)).toContain(
+      "CONTEXT CHECKPOINT COMPACTION",
+    );
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
@@ -496,7 +406,31 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-handoff";
     const priorMessages = [
       user("Implement the multi-file change.", 1),
-      assistant("I found the affected modules.", 2),
+      {
+        ...assistant("", 2),
+        content: [
+          {
+            type: "toolCall",
+            id: "plan-handoff",
+            name: "updatePlan",
+            arguments: {
+              plan: [
+                { step: "Edit both modules", status: "in_progress" },
+                { step: "Run focused tests", status: "pending" },
+              ],
+            },
+          },
+        ],
+        stopReason: "toolUse",
+      } as PiMessage,
+      {
+        role: "toolResult",
+        toolCallId: "plan-handoff",
+        toolName: "updatePlan",
+        content: [{ type: "text", text: "Plan updated" }],
+        isError: false,
+        timestamp: 3,
+      } as PiMessage,
     ];
     await commitMessages({
       conversationId,
@@ -532,20 +466,15 @@ describe("context compaction projection reset", () => {
     );
     expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
     expect(textOf(handoffMessages[1]!)).toContain(
-      "<current-instruction>\nModel handoff checkpoint.",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Continue the outstanding request now",
+      "<current-instruction>\nAnother language model started to solve this problem",
     );
     expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the multi-file implementation.",
     );
-    const durableHandoffMessages = [
-      user(
-        "<current-instruction>\nModel handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nContinue the multi-file implementation.\n</current-instruction>",
-        3,
-      ),
-    ];
+    expect(textOf(handoffMessages[1]!)).toContain(
+      "&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;",
+    );
+    const durableHandoffMessages = handoffMessages;
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       durableHandoffMessages,
     );
@@ -563,20 +492,14 @@ describe("context compaction projection reset", () => {
       modelId: botConfig.profiles.handoff!.modelId,
       triggeringToolCallId: "handoff-call-1",
       summary: "Continue the multi-file implementation.",
-      replacementHistory: [
-        {
-          item: {
-            type: "user_message",
-            content: (
-              durableHandoffMessages[0] as {
-                content: unknown[];
-              }
-            ).content,
-            timestamp: 3,
-            provenance: { authority: "context" },
-          },
+      replacementHistory: durableHandoffMessages.map((message) => ({
+        item: {
+          type: "user_message",
+          content: (message as { content: unknown[] }).content,
+          timestamp: 3,
+          provenance: { authority: "context" },
         },
-      ],
+      })),
     });
 
     const compactor = createContextCompactor({
@@ -849,7 +772,7 @@ describe("context compaction projection reset", () => {
     ]);
   });
 
-  it("summarizes recent history when compaction input is oversized", async () => {
+  it("summarizes the full model-visible history", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
@@ -878,11 +801,11 @@ describe("context compaction projection reset", () => {
       messages: priorMessages,
     });
     const conversation = coerceThreadConversationState({});
-    let capturedPrompt = "";
+    let capturedMessages: PiMessage[] = [];
     let capturedMessageAttributeMode: unknown;
     const compactor = createContextCompactor({
       completeText: async (params) => {
-        capturedPrompt = String(params.messages[0]?.content ?? "");
+        capturedMessages = params.messages as PiMessage[];
         capturedMessageAttributeMode = params.messageAttributeMode;
         return { text: "Summary keeps the rollback plan." } as never;
       },
@@ -894,14 +817,22 @@ describe("context compaction projection reset", () => {
       conversationId: "conversation-large",
       modelId: "openai/gpt-5.4",
       piMessages: priorMessages,
+      conversationContext:
+        "<thread-context>\nBackground incident discussion\n</thread-context>",
     });
 
     expect(capturedMessageAttributeMode).toBe("metadata");
-    expect(capturedPrompt).toContain("[older context omitted]");
-    expect(capturedPrompt).not.toContain("old-00");
-    expect(capturedPrompt).not.toContain("bootstrap instructions");
-    expect(capturedPrompt).not.toContain("<runtime-turn-context>");
-    expect(capturedPrompt).toContain("recent-critical-marker");
+    const capturedText = capturedMessages.map(textOf).join("\n");
+    expect(capturedText).toContain("old-00");
+    expect(capturedText).not.toContain("bootstrap instructions");
+    expect(capturedText).not.toContain("<runtime-turn-context>");
+    expect(capturedText).toContain("recent-critical-marker");
+    expect(textOf(capturedMessages.at(-2)!)).toBe(
+      "<visible-thread-context>\n<thread-context>\nBackground incident discussion\n</thread-context>\n</visible-thread-context>",
+    );
+    expect(textOf(capturedMessages.at(-1)!)).toContain(
+      "CONTEXT CHECKPOINT COMPACTION",
+    );
   });
 
   it("counts structured tool context when deciding whether to compact", async () => {

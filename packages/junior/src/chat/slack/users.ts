@@ -1,4 +1,10 @@
-import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
+import type { UsersInfoResponse } from "@slack/web-api";
+import { z } from "zod";
+import {
+  getSlackClient,
+  SlackActionError,
+  withSlackRetries,
+} from "@/chat/slack/client";
 import type { SlackUserId } from "@/chat/slack/ids";
 
 /** Normalized Slack user profile with custom fields from the Slack workspace. */
@@ -23,36 +29,30 @@ export interface SlackUserProfile {
   }>;
 }
 
-interface SlackProfileFieldRaw {
-  value?: string;
-  alt?: string;
-  label?: string;
-}
+type SlackUserRaw = NonNullable<UsersInfoResponse["user"]>;
 
-interface SlackUserRaw {
-  id?: string;
-  team_id?: string;
-  name?: string;
-  real_name?: string;
-  deleted?: boolean;
-  is_bot?: boolean;
-  tz?: string;
-  profile?: {
-    display_name?: string;
-    real_name?: string;
-    title?: string;
-    email?: string;
-    status_text?: string;
-    status_emoji?: string;
-    fields?: Record<string, SlackProfileFieldRaw> | null;
-  };
-}
+// Web API user types omit custom profile fields or type them as {}.
+// Validate this extension without replacing the SDK's user contract.
+const profileFieldsSchema = z.object({
+  fields: z
+    .record(
+      z.string(),
+      z
+        .object({
+          value: z.string().optional(),
+          alt: z.string().optional(),
+          label: z.string().optional(),
+        })
+        .nullable(),
+    )
+    .nullish(),
+});
 
 function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
-  const rawFields = raw.profile?.fields;
+  const rawFields = profileFieldsSchema.parse(raw.profile ?? {}).fields;
   const profileFields: SlackUserProfile["profile_fields"] = [];
 
-  if (rawFields && typeof rawFields === "object") {
+  if (rawFields) {
     for (const [id, field] of Object.entries(rawFields)) {
       if (!field) continue;
       profileFields.push({
@@ -77,7 +77,9 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
-    ...(profileFields.length > 0 ? { profile_fields: profileFields } : {}),
+    ...(profileFields.length > 0
+      ? { profile_fields: profileFields }
+      : undefined),
   };
 }
 
@@ -110,7 +112,7 @@ export async function lookupSlackUserProfile(
     { action: "users.info" },
   );
 
-  const user = result.user as SlackUserRaw | undefined;
+  const user = result.user;
   if (!user) {
     throw new Error(`Slack users.info returned no user for ${userId}`);
   }
@@ -132,14 +134,16 @@ export async function lookupSlackUserByEmail(
       { action: "users.lookupByEmail" },
     );
   } catch (error: unknown) {
-    const apiError = (error as { apiError?: string }).apiError;
-    if (apiError === "users_not_found") {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "users_not_found"
+    ) {
       return null;
     }
     throw error;
   }
 
-  const user = result.user as SlackUserRaw | undefined;
+  const user = result.user;
   if (!user) {
     return null;
   }
@@ -237,13 +241,13 @@ async function listWorkspaceUsers(options: {
       () =>
         client.users.list({
           limit: 200,
-          ...(cursor ? { cursor } : {}),
+          ...(cursor ? { cursor } : undefined),
         }),
       3,
       { action: "users.list" },
     );
 
-    const members = (result.members ?? []) as SlackUserRaw[];
+    const members = result.members ?? [];
     totalScanned += members.length;
 
     for (const member of members) {

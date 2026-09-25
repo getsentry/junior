@@ -1,28 +1,32 @@
 import path from "node:path";
 import { readdirSync } from "node:fs";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   memoryPlugin,
   createMemoryStore,
   type MemoryDb,
 } from "@sentry/junior-memory";
-import {
-  createSlackSource,
-  defineJuniorPlugin,
-  PluginToolInputError,
-} from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
+import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
-    | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
+    | Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>["sql"]
     | undefined,
   originalDatabaseUrl: process.env.DATABASE_URL,
 }));
@@ -56,6 +60,7 @@ vi.mock("@/chat/pi/client", () => ({
       decision: "store",
       expiresAtMs: null,
       kind: "preference",
+      reason: null,
     },
   })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
@@ -66,6 +71,12 @@ vi.mock("@/chat/pi/client", () => ({
   })),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
+
+afterEach(async () => {
+  setPlugins([]);
+  await closeDb();
+  NEON.sql = undefined;
+});
 
 afterAll(() => {
   if (NEON.originalDatabaseUrl === undefined) {
@@ -86,7 +97,7 @@ function memoryMigrationFiles(): string[] {
 }
 
 async function migrateMemorySchema(
-  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
 ) {
   await migratePluginSchemas(fixture.sql, [
     {
@@ -96,9 +107,84 @@ async function migrateMemorySchema(
   ]);
 }
 
+async function recordPrivateConversation(
+  fixture: Awaited<ReturnType<typeof createEmptyJuniorSqlFixture>>,
+  args: {
+    channelId: string;
+    conversationId: string;
+    email: string;
+    nowMs: number;
+    userId: string;
+  },
+) {
+  const conversations = createSqlStore(fixture.sql);
+  await conversations.recordActivity({
+    actor: {
+      email: args.email,
+      platform: "slack",
+      slackUserId: args.userId,
+      teamId: "T123",
+    },
+    conversationId: args.conversationId,
+    destination: {
+      channelId: args.channelId,
+      platform: "slack",
+      teamId: "T123",
+    },
+    nowMs: args.nowMs,
+    source: "slack",
+    visibility: "private",
+  });
+  const [user, conversation] = await Promise.all([
+    resolveViewerUser(args.email),
+    conversations.get({ conversationId: args.conversationId }),
+  ]);
+  if (!user || !conversation?.location) {
+    throw new Error("Test Conversation did not resolve its User and Location");
+  }
+  return { locationId: conversation.location.id, user };
+}
+
+function memoryToolsFor(args: {
+  channelId: string;
+  conversationId: string;
+  locationId: string;
+  userId: string;
+}) {
+  const actor = {
+    platform: "slack" as const,
+    teamId: "T123",
+    userId: args.userId,
+  };
+  return getPluginTools({
+    actor,
+    conversationId: args.conversationId,
+    destination: {
+      channelId: args.channelId,
+      platform: "slack",
+      teamId: "T123",
+    },
+    egress: {
+      async fetch() {
+        return new Response("ok");
+      },
+    },
+    locationId: args.locationId,
+    resolveActorIdentity: () => readActorIdentity(actor),
+    source: createSlackSource({
+      channelId: args.channelId,
+      messageTs: "1718800099.000000",
+      teamId: "T123",
+      visibility: "private",
+    }),
+    userText: "what should I remember?",
+    workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+  });
+}
+
 describe("memory plugin host wiring", () => {
   it("adopts exact legacy migration hashes without replaying them", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const migrations = readMigrationFiles({
       migrationsFolder: memoryMigrationsDir(),
     });
@@ -149,7 +235,7 @@ CREATE TABLE junior_schema_migrations (
   });
 
   it("does not adopt an unknown memory legacy checksum", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     const migrationCount = readMigrationFiles({
       migrationsFolder: memoryMigrationsDir(),
     }).length;
@@ -187,7 +273,7 @@ CREATE TABLE junior_schema_migrations (
   });
 
   it("applies packaged migrations through plugin discovery", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
@@ -241,13 +327,12 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         "USING gin (scope, scope_key, search_vector)",
       );
     } finally {
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);
 
   it("reports core and nonempty plugin migration journals", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createEmptyJuniorSqlFixture();
     NEON.sql = fixture.sql;
 
     try {
@@ -287,17 +372,124 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
     } finally {
-      NEON.sql = undefined;
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("reads public memory everywhere and private memory only for its User", async () => {
+    const fixture = await createEmptyJuniorSqlFixture();
+    const plugin = memoryPlugin();
+    setPlugins([plugin]);
+    NEON.sql = fixture.sql;
+
+    try {
+      await migrateSchema(fixture.sql);
+      await migrateMemorySchema(fixture);
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const db = fixture.sql.db() as MemoryDb;
+      const viewerConversationId = "slack:D123:1718800001.000000";
+      const viewer = await recordPrivateConversation(fixture, {
+        channelId: "D123",
+        conversationId: viewerConversationId,
+        email: "memory-viewer@example.com",
+        nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+        userId: "U123",
+      });
+      const publicMemory = await createMemoryStore(db, {
+        conversationId: "slack:C123:1718800000.000000",
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "C123",
+          messageTs: "1718800000.000000",
+          visibility: "public",
+        }),
+      }).createConversationMemory({
+        content: "Public runbooks live in Notion.",
+        idempotencyKey: "component-public-memory",
+        kind: "knowledge",
+      });
+      const privateMemory = await createMemoryStore(db, {
+        conversationId: viewerConversationId,
+        locationId: viewer.locationId,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D123",
+          messageTs: "1718800001.000000",
+          visibility: "private",
+        }),
+        userId: viewer.user.id,
+      }).createMemory({
+        content: "Prefers terse status updates in this DM.",
+        idempotencyKey: "component-private-memory",
+        kind: "preference",
+      });
+      const otherPrivateMemory = await createMemoryStore(db, {
+        conversationId: viewerConversationId,
+        locationId: viewer.locationId,
+        actor: { platform: "slack", teamId: "T123", userId: "U999" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D123",
+          messageTs: "1718800002.000000",
+          visibility: "private",
+        }),
+        userId: "other-user",
+      }).createMemory({
+        content: "Only the other User can read this.",
+        idempotencyKey: "component-other-private-memory",
+        kind: "knowledge",
+      });
+      await expect(
+        fixture.sql.query<{ location_id: string | null }>(
+          "SELECT location_id FROM junior_memory_memories WHERE id = $1",
+          [privateMemory.memory.id],
+        ),
+      ).resolves.toEqual([{ location_id: viewer.locationId }]);
+
+      const viewerPage = await readPluginUserPage({
+        email: "memory-viewer@example.com",
+        pageId: "memories",
+        pluginName: "memory",
+        query: { limit: 25 },
+      });
+      expect(viewerPage?.records.map((record) => record.id)).toEqual(
+        expect.arrayContaining([
+          publicMemory.memory.id,
+          privateMemory.memory.id,
+        ]),
+      );
+      expect(viewerPage?.records.map((record) => record.id)).not.toContain(
+        otherPrivateMemory.memory.id,
+      );
+
+      await expect(
+        memoryToolsFor({
+          channelId: "D999",
+          conversationId: "slack:D999:1718800099.000000",
+          locationId: "other-location",
+          userId: "U123",
+        }).memory_listMemories.execute!({}, {}),
+      ).resolves.toEqual({
+        memories: [
+          expect.objectContaining({ id: privateMemory.memory.id }),
+          expect.objectContaining({ id: publicMemory.memory.id }),
+        ],
+        target: "listMemories",
+      });
+    } finally {
       await fixture.close();
     }
   }, 15_000);
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([memoryPlugin()]);
+    const fixture = await createEmptyJuniorSqlFixture();
+    setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
     try {
+      await migrateSchema(fixture.sql);
       await migrateMemorySchema(fixture);
       const conversationId = "slack:C123:1718800000.000000";
       const actor = {
@@ -313,11 +505,24 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
         visibility: "private",
       });
-      const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
+      const userContext = await recordPrivateConversation(fixture, {
+        channelId: "C123",
         conversationId,
-        actor,
-        source,
+        email: "tool-viewer@example.com",
+        nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+        userId: actor.userId,
       });
+      const store = createMemoryStore(
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        fixture.sql.db() as MemoryDb,
+        {
+          conversationId,
+          locationId: userContext.locationId,
+          actor,
+          source,
+          userId: userContext.user.id,
+        },
+      );
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",
@@ -331,6 +536,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       const tools = getPluginTools({
         conversationId,
+        locationId: userContext.locationId,
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -342,6 +548,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           },
         },
         actor,
+        resolveActorIdentity: () => readActorIdentity(actor),
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
         source,
         userText: "remember memory plugin facts",
@@ -373,15 +580,12 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         tools.memory_createMemory.execute!(
           {
             content: "I prefer terse status updates.",
-            scope: "conversation",
+            scope: "public",
           } as never,
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);
     } finally {
-      setPlugins(previousPlugins);
-      await closeDb();
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);

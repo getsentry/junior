@@ -13,7 +13,7 @@ function toolFixture(
     fetch,
     tool: createVercelDeploymentTool({
       egress: { fetch },
-      resourceEvents: { canSubscribe },
+      events: { canSubscribe },
     } as never),
   };
 }
@@ -62,6 +62,30 @@ describe("Vercel deployment", () => {
       request: expect.objectContaining({
         url: "https://api.vercel.com/v9/projects/junior?slug=sentry",
       }),
+    });
+  });
+
+  it("rejects whitespace-only project IDs from Vercel", async () => {
+    const { tool } = toolFixture(Response.json({ id: " " }));
+
+    await expect(
+      tool.execute?.(
+        { project: "sentry-docs" },
+        { toolCallId: "deployment-blank-project" },
+      ),
+    ).rejects.toThrow("Too small");
+  });
+
+  it("accepts an opaque project ID returned by Vercel", async () => {
+    const { tool } = toolFixture(Response.json({ id: "QmLegacyProject123" }));
+
+    await expect(
+      tool.execute?.(
+        { project: "sentry-docs" },
+        { toolCallId: "deployment-legacy-project" },
+      ),
+    ).resolves.toMatchObject({
+      projectId: "QmLegacyProject123",
     });
   });
 
@@ -173,7 +197,7 @@ describe("Vercel deployment", () => {
     expect(result).not.toHaveProperty("data.subscribable");
   });
 
-  it("reports project lookup failures", async () => {
+  it("reports a missing project as a repairable tool error", async () => {
     const { tool } = toolFixture(new Response("missing", { status: 404 }));
 
     await expect(
@@ -181,7 +205,24 @@ describe("Vercel deployment", () => {
         { project: "missing", target: "production" },
         { toolCallId: "deployment-missing-project" },
       ),
-    ).rejects.toThrow("Vercel project lookup failed with HTTP 404");
+    ).rejects.toMatchObject({
+      message: "Vercel project lookup failed with HTTP 404",
+      name: "PluginToolInputError",
+    });
+  });
+
+  it("reports non-404 project lookup failures as runtime errors", async () => {
+    const { tool } = toolFixture(new Response("boom", { status: 500 }));
+
+    await expect(
+      tool.execute?.(
+        { project: "junior", target: "production" },
+        { toolCallId: "deployment-project-500" },
+      ),
+    ).rejects.toMatchObject({
+      message: "Vercel project lookup failed with HTTP 500",
+      name: "Error",
+    });
   });
 
   it("registers runtime hooks and the canonical inline manifest", () => {
@@ -198,7 +239,7 @@ describe("Vercel deployment", () => {
         VERCEL_WEBHOOK_SECRET: {},
       },
     });
-    expect(plugin.resourceEvents?.resourceTypes).toEqual([
+    expect(plugin.events?.resourceTypes).toEqual([
       expect.objectContaining({ type: "deployment" }),
     ]);
     expect(
@@ -208,7 +249,7 @@ describe("Vercel deployment", () => {
     ).toHaveProperty("deployment");
     expect(
       plugin.hooks?.routes?.({
-        resourceEvents: { async publish() {} },
+        events: { async publish() {} },
       } as never),
     ).toEqual([
       expect.objectContaining({

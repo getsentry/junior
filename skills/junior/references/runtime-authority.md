@@ -15,7 +15,7 @@ Skills describe behavior. Plugins declare authority.
 | System packages in the sandbox           | `runtime-dependencies`                           |
 | Postinstall/bootstrap command            | `runtime-postinstall`                            |
 | Hosted MCP endpoint                      | `mcp.url`                                        |
-| MCP tool allowlist                       | `mcp.allowed-tools`                              |
+| MCP tool allowlist (optional)            | `mcp.allowed-tools`                              |
 | Provider target flag defaults            | `target`                                         |
 
 ## Put this in `SKILL.md`
@@ -43,7 +43,10 @@ Skills describe behavior. Plugins declare authority.
 ## MCP
 
 - Declare hosted HTTP MCP servers in `plugin.yaml`.
-- Use `allowed-tools` for least surface.
+- Omit `allowed-tools` by default. Expose the provider's full discovered tool
+  surface and rely on MCP tool annotations plus Guardian action review.
+- Use `allowed-tools` only when you must permanently hide part of a provider
+  surface from the model.
 - Skills describe provider tasks in domain terms.
 - If MCP auth is required, Junior handles the pause and resume flow.
 

@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import {
   decideSubscribedThreadReply,
   getSubscribedReplyPreflightDecision,
@@ -27,39 +29,173 @@ function classify(
     reason: string;
   },
   input = makeInput(),
+  completeObject: Parameters<
+    typeof decideSubscribedThreadReply
+  >[0]["completeObject"] = vi.fn(async () => ({ costUsd: 0.00023, object })),
 ) {
   return decideSubscribedThreadReply({
     botUserName: "junior",
     modelId: "router-model",
     input,
-    completeObject: vi.fn(async () => ({ costUsd: 0.00023, object })),
+    completeObject,
     logClassifierFailure: vi.fn(),
   });
 }
 
 describe("subscribed reply decision", () => {
-  it.each(["!stop", "!STOP", "!stop don't continue with this task"])(
-    "forces unsubscribe for %s without calling the classifier",
-    async (text) => {
-      const completeObject = vi.fn();
+  afterEach(() => {
+    setExperimentalFeatures({
+      "passive-routing": true,
+      subagents: true,
+    });
+  });
 
-      await expect(
-        decideSubscribedThreadReply({
-          botUserName: "junior",
-          modelId: "router-model",
-          input: makeInput({ rawText: text, text }),
-          completeObject,
-          logClassifierFailure: vi.fn(),
+  it("skips non-mention replies when passive-routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "what did you just say?",
+          text: "what did you just say?",
+          isExplicitMention: false,
         }),
-      ).resolves.toEqual({
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "forced !stop command",
-      });
-      expect(completeObject).not.toHaveBeenCalled();
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.PassiveDisabled,
+      reasonDetail: "passive-routing",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it("still replies to explicit mentions when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "please continue",
+          text: "please continue",
+          isExplicitMention: true,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "!stop",
+    "!STOP",
+    "!stop don't continue with this task",
+    "please leave this alone !stop",
+    "ok enough for now !stop thanks",
+    "<@U0APP> keep going unless I say !stop later",
+  ])("unsubscribes for %s without the classifier", async (text) => {
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: text,
+          text,
+          isExplicitMention: text.startsWith("<@U0APP>"),
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "!stop",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "stop after mention strip",
+      rawText: "<@U0APP> stop",
+      text: "stop",
     },
-  );
+    {
+      name: "stop with trailing punctuation",
+      rawText: "@jr stop.",
+      text: "stop.",
+    },
+    {
+      name: "stop without a mention",
+      rawText: "stop",
+      text: "stop",
+      isExplicitMention: false,
+    },
+  ])("unsubscribes when the whole message is $name", async (fixture) => {
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: fixture.rawText,
+          text: fixture.text,
+          isExplicitMention: fixture.isExplicitMention ?? true,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "stop the worker and restart it",
+    "please stop",
+    "stop — I meant staging, not prod",
+    "stop spamming",
+    "please continue with the PR checks",
+  ])("does not treat %s as stop", async (text) => {
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: text,
+          text,
+          isExplicitMention: true,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
@@ -166,7 +302,16 @@ describe("subscribed reply decision", () => {
       },
     },
   ])("maps $name onto the runtime decision contract", async (fixture) => {
-    await expect(classify(fixture.object)).resolves.toEqual(fixture.expected);
+    const completeObject = vi.fn<
+      Parameters<typeof decideSubscribedThreadReply>[0]["completeObject"]
+    >(async () => ({ costUsd: 0.00023, object: fixture.object }));
+
+    await expect(
+      classify(fixture.object, makeInput(), completeObject),
+    ).resolves.toEqual(fixture.expected);
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
   });
 
   it("projects guardian-style user/assistant evidence without tool lines", async () => {
@@ -189,7 +334,7 @@ describe("subscribed reply decision", () => {
           rawText: "can you check on this?",
           text: "can you check on this?",
           conversationContext: [
-            "<thread-transcript>",
+            '<thread-context authority="evidence-only">',
             '  <message role="user" author="David">',
             "[user] David: investigate the passive router",
             "  </message>",
@@ -197,7 +342,7 @@ describe("subscribed reply decision", () => {
             "[assistant] junior: the confidence gate looks too strict",
             "  </message>",
             "[tool] grep result: must-not-reach-router",
-            "</thread-transcript>",
+            "</thread-context>",
           ].join("\n"),
         }),
         completeObject,

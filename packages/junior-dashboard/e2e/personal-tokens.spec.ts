@@ -1,29 +1,10 @@
-import { expect, test } from "@playwright/test";
-import {
-  collectBrowserErrors,
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
-
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
+import { expect, test } from "./test";
+import { screenshot } from "./screenshot";
 
 test("lists and creates personal API tokens from settings", async ({
   page,
+  dashboard,
 }) => {
-  const browserErrors = collectBrowserErrors(page);
   let createRequests = 0;
   await page.route("**/api/personal-tokens", async (route) => {
     if (route.request().method() === "POST") {
@@ -58,22 +39,23 @@ test("lists and creates personal API tokens from settings", async ({
     });
   });
 
-  await page.goto(`${server.baseURL}/settings/api-tokens`);
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens`);
   await expect(
     page.getByRole("heading", { name: "Personal API Tokens" }),
   ).toBeVisible();
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
+  await screenshot(page, "settings-api-tokens", { view: "desktop" });
 
   await page.getByLabel("Token name").fill("Review token");
   await page.getByRole("button", { name: "Create token" }).click();
   await expect(page.getByText("jr_pat_one-time-secret")).toBeVisible();
   await expect(page.getByText("Review token", { exact: true })).toBeVisible();
   expect(createRequests).toBe(1);
-  expect(browserErrors).toEqual([]);
 });
 
 test("surfaces token create errors without losing the list", async ({
   page,
+  dashboard,
 }) => {
   await page.route("**/api/personal-tokens", async (route) => {
     if (route.request().method() === "POST") {
@@ -97,7 +79,7 @@ test("surfaces token create errors without losing the list", async ({
     });
   });
 
-  await page.goto(`${server.baseURL}/settings/api-tokens`);
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens`);
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
   await page.getByLabel("Token name").fill("Review token");
   await page.getByRole("button", { name: "Create token" }).click();

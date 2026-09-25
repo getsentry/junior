@@ -1,33 +1,25 @@
-/**
- * Internal conversation fork.
- *
- * Creates a new root conversation and seeds it with the source conversation's
- * active agent history through a cutoff. Does not clone execution state,
- * mailbox, schedules, watches, approvals, or live tool side effects.
- *
- * Fork roots inherit source destination visibility and never widen it.
- * They are not subagent children (`parentConversationId` stays for delegation).
- */
 import { createHash } from "node:crypto";
-import {
-  createWebSource,
-  localDestinationSchema,
-} from "@sentry/junior-plugin-api";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type { ConversationEvent } from "@/chat/conversations/history";
-import {
-  commitMessages,
-  loadTurnProjection,
-} from "@/chat/conversations/projection";
-import type { Conversation } from "@/chat/conversations/store";
+import { eq } from "drizzle-orm";
+import type { WebActor } from "@/chat/actor";
+import type { ConversationEvent } from "./history";
+import { loadTurnProjection } from "./projection";
+import { contextProvenance } from "./provenance";
 import {
   conversationForkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
-} from "@/chat/conversations/structured-events";
+} from "./structured-events";
+import { withConversationEventLock } from "./sql/event-lock";
+import { recordWebConversationActivity } from "./web-input";
 import {
   getConversationEventStore,
   getConversationStore,
+  getSqlExecutor,
 } from "@/chat/db";
+import {
+  historyItemFromPiMessage,
+  piMessageFromHistoryItem,
+} from "@/chat/pi/conversation-events";
+import { juniorConversations } from "@/db/schema";
 
 export type ForkConversationCutoff =
   | { kind: "seq"; throughSeq: number }
@@ -36,7 +28,7 @@ export type ForkConversationCutoff =
 export interface ForkConversationInput {
   sourceConversationId: string;
   cutoff: ForkConversationCutoff;
-  /** Client-supplied key; retries with the same key return the same fork. */
+  actor: WebActor;
   idempotencyKey: string;
 }
 
@@ -48,273 +40,220 @@ export interface ForkConversationResult {
   status: "created" | "duplicate";
 }
 
-function stableHex(...parts: string[]): string {
-  return createHash("sha256")
-    .update(parts.join("\u0000"))
+/** An unavailable history boundary is an expected fork request failure. */
+export class ConversationForkError extends Error {}
+
+/** Scope retry identity to the source and the requesting actor. */
+function createForkConversationId(args: {
+  sourceConversationId: string;
+  actorEmail: string;
+  idempotencyKey: string;
+}): string {
+  const hash = createHash("sha256")
+    .update(
+      JSON.stringify([
+        args.sourceConversationId,
+        args.actorEmail.trim().toLowerCase(),
+        args.idempotencyKey,
+      ]),
+    )
     .digest("hex")
     .slice(0, 24);
+  return `local:web:${hash}`;
 }
 
-/** Deterministic fork conversation id for one source + idempotency key. */
-export function createForkConversationId(args: {
-  sourceConversationId: string;
-  idempotencyKey: string;
-}): string {
-  return `local:fork:${stableHex(args.sourceConversationId, args.idempotencyKey)}`;
-}
-
-function forkIdempotencyKey(args: {
-  sourceConversationId: string;
-  idempotencyKey: string;
-}): string {
-  return `fork:${stableHex(args.sourceConversationId, args.idempotencyKey)}`;
-}
-
-function requireLocalDestination(conversationId: string) {
-  const parsed = localDestinationSchema.safeParse({
-    platform: "local",
-    conversationId,
-  });
-  if (!parsed.success) {
-    throw new Error(`Invalid local conversation id: ${conversationId}`);
-  }
-  return parsed.data;
-}
-
-/**
- * Inherit source visibility. Missing or unknown visibility stays private so a
- * fork never widens access.
- */
-function forkVisibility(source: Conversation): ConversationPrivacy {
-  return source.visibility === "public" ? "public" : "private";
-}
-
-type ForkCutoffResolution = {
+/** Resolve only a completed assistant reply, never an unfinished tool batch. */
+async function resolveForkCutoff(input: ForkConversationInput): Promise<{
   throughSeq: number;
   sourceMessageId?: string;
-};
-
-/** Resolve a cutoff to the agent-history seq included in the fork. */
-async function resolveForkCutoff(args: {
-  sourceConversationId: string;
-  cutoff: ForkConversationCutoff;
-}): Promise<ForkCutoffResolution> {
-  const eventStore = getConversationEventStore();
-  if (args.cutoff.kind === "seq") {
-    if (args.cutoff.throughSeq < 0) {
-      throw new Error("Fork cutoff seq must be non-negative");
-    }
-    const history = await eventStore.loadHistoryContaining(
-      args.sourceConversationId,
-      args.cutoff.throughSeq,
-      args.cutoff.throughSeq,
+}> {
+  const events = getConversationEventStore();
+  let boundary: ConversationEvent | undefined;
+  let sourceMessageId: string | undefined;
+  if (input.cutoff.kind === "message") {
+    sourceMessageId = input.cutoff.messageId;
+    // Delivery commits this key before its visible Message in one transaction.
+    // Do not guess from timestamps: fallback replies may have no agent history.
+    boundary = await events.loadByIdempotencyKey(
+      input.sourceConversationId,
+      `message:${sourceMessageId}:agent`,
     );
-    if (!history || history.length === 0) {
-      throw new Error(
-        `Fork cutoff seq ${args.cutoff.throughSeq} was not found in ${args.sourceConversationId}`,
+  } else {
+    const throughSeq = input.cutoff.throughSeq;
+    const history = await events.loadHistoryContaining(
+      input.sourceConversationId,
+      throughSeq,
+      throughSeq,
+    );
+    boundary = history?.find((event) => event.seq === throughSeq);
+    if (
+      boundary?.data.type === "message" &&
+      boundary.data.role === "assistant"
+    ) {
+      sourceMessageId = boundary.data.messageId;
+      boundary = await events.loadByIdempotencyKey(
+        input.sourceConversationId,
+        `message:${sourceMessageId}:agent`,
       );
     }
-    return { throughSeq: args.cutoff.throughSeq };
   }
-
-  const messageId = args.cutoff.messageId.trim();
-  if (!messageId) {
-    throw new Error("Fork cutoff message id must not be empty");
-  }
-
-  // Platform messages are not agent-history items. Cut agent history at the
-  // latest history-bearing seq at or before the selected message.
-  const events = await eventStore.loadHistory(args.sourceConversationId);
-  let messageSeq: number | undefined;
-  for (const event of events) {
-    if (
-      (event.data.type === "message" ||
-        event.data.type === "message_updated") &&
-      event.data.messageId === messageId
-    ) {
-      messageSeq = event.seq;
-      break;
-    }
-  }
-  if (messageSeq === undefined) {
-    throw new Error(
-      `Fork cutoff message ${messageId} was not found in ${args.sourceConversationId}`,
+  const message =
+    boundary?.data.type === "assistant_message"
+      ? piMessageFromHistoryItem(boundary.data)
+      : undefined;
+  if (
+    !boundary ||
+    message?.role !== "assistant" ||
+    message.stopReason !== "stop" ||
+    message.content.some((part) => part.type === "toolCall") ||
+    !message.content.some((part) => part.type === "text" && part.text.trim())
+  ) {
+    throw new ConversationForkError(
+      "Choose a completed assistant reply with saved agent history.",
     );
   }
-
-  const throughSeq = latestAgentHistorySeqAtOrBefore(events, messageSeq);
-  if (throughSeq === undefined) {
-    throw new Error(
-      `Fork cutoff message ${messageId} has no agent history at or before it in ${args.sourceConversationId}`,
-    );
-  }
-  return { throughSeq, sourceMessageId: messageId };
+  return {
+    throughSeq: boundary.seq,
+    ...(sourceMessageId ? { sourceMessageId } : undefined),
+  };
 }
 
-function latestAgentHistorySeqAtOrBefore(
-  events: ConversationEvent[],
-  messageSeq: number,
-): number | undefined {
-  let throughSeq: number | undefined;
-  for (const event of events) {
-    if (event.seq > messageSeq) break;
-    if (
-      event.data.type === "user_message" ||
-      event.data.type === "assistant_message" ||
-      event.data.type === "tool_result" ||
-      event.data.type === "compaction" ||
-      event.data.type === "handoff" ||
-      event.data.type === "authorization_completed"
-    ) {
-      throughSeq = event.seq;
-    }
-  }
-  return throughSeq;
-}
-
-type ForkEventContent = {
-  sourceConversationId: string;
-  throughSeq: number;
-  sourceMessageId?: string;
-};
-
-function parseForkEventContent(content: unknown): ForkEventContent {
-  return conversationForkedEvent.parse(content) as ForkEventContent;
-}
-
-/**
- * Fork a conversation into a new root at an agent-history cutoff.
- *
- * The fork is a new independent root (not a subagent child). Agent history
- * through the cutoff is copied; runtime and task state are not.
- */
+/** Create an independent root from retained history, without copying live work. */
 export async function forkConversation(
   input: ForkConversationInput,
 ): Promise<ForkConversationResult> {
-  const sourceConversationId = input.sourceConversationId.trim();
-  const idempotencyKey = input.idempotencyKey.trim();
-  if (!sourceConversationId) {
-    throw new Error("Fork source conversation id must not be empty");
-  }
-  if (!idempotencyKey) {
-    throw new Error("Fork idempotency key must not be empty");
-  }
-
-  const conversationStore = getConversationStore();
-  const eventStore = getConversationEventStore();
-  const nowMs = Date.now();
-
-  const source = await conversationStore.get({
-    conversationId: sourceConversationId,
-  });
-  if (!source) {
-    throw new Error(`Fork source conversation ${sourceConversationId} not found`);
-  }
-  if (source.lineage) {
-    throw new Error("Forking child conversations is not supported");
-  }
-  if (source.transcriptPurgedAtMs !== undefined) {
-    throw new Error(
-      `Fork source conversation ${sourceConversationId} has a purged transcript`,
+  if (!input.actor.email || !input.idempotencyKey.trim()) {
+    throw new ConversationForkError(
+      "A verified actor and an idempotency key are required.",
     );
   }
-
   const conversationId = createForkConversationId({
-    sourceConversationId,
-    idempotencyKey,
+    ...input,
+    actorEmail: input.actor.email,
   });
-  const cutoff = await resolveForkCutoff({
-    sourceConversationId,
-    cutoff: input.cutoff,
-  });
-
-  const prior = await eventStore.loadLatestStructuredEvent(
-    conversationId,
-    JUNIOR_NATIVE_EVENT_NAMESPACE,
-    conversationForkedEvent.eventName,
-  );
-  if (prior?.data.type === "structured_event") {
-    const content = parseForkEventContent(prior.data.content);
-    return {
-      conversationId,
-      sourceConversationId,
-      throughSeq: content.throughSeq,
-      ...(content.sourceMessageId
-        ? { sourceMessageId: content.sourceMessageId }
-        : {}),
-      status: "duplicate",
-    };
-  }
-
-  const projection = await loadTurnProjection({
-    conversationId: sourceConversationId,
-    committedSeq: cutoff.throughSeq,
-    includeTail: false,
-  });
-  if (!projection) {
-    throw new Error(
-      `Fork cutoff seq ${cutoff.throughSeq} is not loadable in ${sourceConversationId}`,
-    );
-  }
-
-  const visibility = forkVisibility(source);
-  const destination = requireLocalDestination(conversationId);
-  await conversationStore.recordActivity({
-    conversationId,
-    destination,
-    forkedFromConversationId: sourceConversationId,
-    nowMs,
-    source: "internal",
-    sessionSource: createWebSource(conversationId, visibility),
-    visibility,
-    ...(source.title ? { title: source.title } : {}),
-  });
-
-  // Seed agent history before the fork marker. On retry after a partial write,
-  // skip reseeding when history is already present. The fork marker is the
-  // durable completion fact.
-  if (projection.messages.length > 0) {
-    const existingHistory = await eventStore.loadCurrentHistory(conversationId);
-    if (existingHistory.length === 0) {
-      await commitMessages({
-        conversationId,
-        messages: projection.messages,
-        provenance: projection.provenance,
-      });
-    }
-  }
-
-  const forkContent = parseForkEventContent({
-    sourceConversationId,
-    throughSeq: cutoff.throughSeq,
-    ...(cutoff.sourceMessageId
-      ? { sourceMessageId: cutoff.sourceMessageId }
-      : {}),
-  });
-  await eventStore.append(conversationId, [
-    {
-      createdAtMs: nowMs,
-      idempotencyKey: forkIdempotencyKey({
-        sourceConversationId,
-        idempotencyKey,
+  const executor = getSqlExecutor();
+  const events = getConversationEventStore();
+  const store = getConversationStore();
+  // The source lock fixes the cutoff against compaction, appends, and retention.
+  // The new-root lock makes all fork writes one retry-safe transaction.
+  return withConversationEventLock(
+    executor,
+    input.sourceConversationId,
+    async () =>
+      withConversationEventLock(executor, conversationId, async () => {
+        const prior = await events.loadByIdempotencyKey(
+          conversationId,
+          "fork:complete",
+        );
+        if (prior?.data.type === "structured_event") {
+          const content = conversationForkedEvent.parse(
+            prior.data.content,
+          ) as Omit<ForkConversationResult, "conversationId" | "status">;
+          return { conversationId, ...content, status: "duplicate" as const };
+        }
+        const source = await store.get({
+          conversationId: input.sourceConversationId,
+        });
+        if (!source || source.transcriptPurgedAtMs !== undefined) {
+          throw new ConversationForkError(
+            "The source history is no longer available.",
+          );
+        }
+        if (source.parentConversationId) {
+          throw new ConversationForkError(
+            "Forking child conversations is not supported.",
+          );
+        }
+        const cutoff = await resolveForkCutoff(input);
+        const projection = await loadTurnProjection({
+          conversationId: input.sourceConversationId,
+          committedSeq: cutoff.throughSeq,
+          includeTail: false,
+        });
+        if (!projection?.messages.length)
+          throw new ConversationForkError(
+            "The selected history is no longer available.",
+          );
+        const pendingCalls = new Set<string>();
+        for (const message of projection.messages) {
+          if (message.role === "assistant") {
+            for (const part of message.content)
+              if (part.type === "toolCall") pendingCalls.add(part.id);
+          } else if (message.role === "toolResult") {
+            pendingCalls.delete(message.toolCallId);
+          }
+        }
+        if (pendingCalls.size)
+          throw new ConversationForkError(
+            "This history contains unfinished tool calls. Choose another reply.",
+          );
+        const nowMs = Date.now();
+        await recordWebConversationActivity({
+          actor: input.actor,
+          conversationId,
+          nowMs,
+          rootVisibility: source.visibility === "public" ? "public" : "private",
+        });
+        await executor
+          .db()
+          .update(juniorConversations)
+          .set({
+            forkedFromConversationId: source.conversationId,
+            title: source.title
+              ? `Fork: ${source.title}`
+              : "Forked conversation",
+          })
+          .where(eq(juniorConversations.conversationId, conversationId));
+        // Preserve exact model messages and attribution. Do not copy source
+        // Message authors into membership, execution, credentials, or usage.
+        await events.append(
+          conversationId,
+          projection.messages.map((message, index) => ({
+            idempotencyKey: `fork:history:${index}`,
+            createdAtMs: nowMs,
+            data: historyItemFromPiMessage(
+              message,
+              projection.provenance[index] ?? contextProvenance,
+            ),
+          })),
+        );
+        await events.append(conversationId, [
+          {
+            createdAtMs: nowMs,
+            idempotencyKey: "fork:context",
+            data: {
+              type: "user_message",
+              provenance: contextProvenance,
+              content: [
+                {
+                  type: "text",
+                  text: "This is a new, independent conversation fork. Earlier messages are historical context. No Sandbox files, active work, watches, automations, approvals, credentials, or delivery location were copied. Earlier file paths and runtime context describe the source conversation, not this one. Use the current runtime context and the next user instruction. Verify files in the fresh Sandbox before relying on them.",
+                },
+              ],
+              timestamp: nowMs,
+            },
+          },
+          {
+            createdAtMs: nowMs,
+            idempotencyKey: "fork:complete",
+            data: {
+              type: "structured_event",
+              namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+              name: conversationForkedEvent.eventName,
+              version: conversationForkedEvent.version,
+              content: {
+                sourceConversationId: input.sourceConversationId,
+                ...cutoff,
+              },
+            },
+          },
+        ]);
+        return {
+          conversationId,
+          sourceConversationId: input.sourceConversationId,
+          ...cutoff,
+          status: "created" as const,
+        };
       }),
-      data: {
-        type: "structured_event",
-        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-        name: conversationForkedEvent.eventName,
-        version: conversationForkedEvent.version,
-        content: forkContent,
-      },
-    },
-  ]);
-
-  return {
-    conversationId,
-    sourceConversationId,
-    throughSeq: cutoff.throughSeq,
-    ...(cutoff.sourceMessageId
-      ? { sourceMessageId: cutoff.sourceMessageId }
-      : {}),
-    status: "created",
-  };
+  );
 }

@@ -228,7 +228,7 @@ export function zodTool<
   return {
     ...toolDef,
     inputSchema: modelInputSchema,
-    ...(modelOutputSchema ? { outputSchema: modelOutputSchema } : {}),
+    ...(modelOutputSchema ? { outputSchema: modelOutputSchema } : undefined),
     prepareArguments(args) {
       return parseToolInput(
         inputSchema,
@@ -259,6 +259,6 @@ export function zodTool<
             return outputSchema.parse(result);
           },
         }
-      : {}),
+      : undefined),
   };
 }

@@ -1,4 +1,11 @@
+import { messageCardText } from "@sentry/junior/api/schema";
 import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
+
+import type {
+  TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
   TranscriptViewStructuredEventPart,
@@ -11,7 +18,17 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
-  outcome: "error" | "delivery_failed";
+  eventId?: string;
+  failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
+  timestamp?: number;
+};
+
+export type RenderedAttachmentsDeliveredEntry = {
+  key: string;
+  kind: "attachments_delivered";
+  part: TranscriptViewAttachmentsDeliveredPart;
   timestamp?: number;
 };
 
@@ -59,6 +76,7 @@ export type RenderedMessageEntry = {
 };
 
 export type RenderedTranscriptEntry =
+  | RenderedAttachmentsDeliveredEntry
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
@@ -80,10 +98,16 @@ export function groupTranscriptMessages(
     let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
+      // Keep the original message object when the whole body is one text group so
+      // memoized message rows can skip work on unchanged history.
+      const nextMessage =
+        textGroup === 0 && textParts.length === message.parts.length
+          ? message
+          : { ...message, parts: textParts };
       entries.push({
         key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
-        message: { ...message, parts: textParts },
+        message: nextMessage as RenderedMessageEntry["message"],
       });
       textParts = [];
       textGroup += 1;
@@ -124,6 +148,13 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
+      } else if (part.type === "attachments_delivered") {
+        entries.push({
+          key: `${message.sourceSeq}:attachments-delivered`,
+          kind: "attachments_delivered",
+          part,
+          timestamp: message.timestamp,
+        });
       } else {
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
@@ -135,11 +166,18 @@ export function groupTranscriptMessages(
     }
 
     flushMessage();
-    if (message.outcome) {
+    if (message.failureCode) {
       entries.push({
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
-        outcome: message.outcome,
+        failureCode: message.failureCode,
+        ...(message.failureReason
+          ? { failureReason: message.failureReason }
+          : undefined),
+        ...(message.eventId ? { eventId: message.eventId } : undefined),
+        ...(message.sentryEventUrl
+          ? { sentryEventUrl: message.sentryEventUrl }
+          : undefined),
         timestamp: message.timestamp,
       });
     }
@@ -150,7 +188,7 @@ export function groupTranscriptMessages(
 
 /** Build the plain-text clipboard/raw view for one canonical message. */
 export function messageRawText(message: TranscriptViewMessage): string {
-  return message.parts
+  const body = message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
       if (part.type === "reasoning") return part.text ?? "reasoning redacted";
@@ -172,6 +210,11 @@ export function messageRawText(message: TranscriptViewMessage): string {
           .filter((line): line is string => line !== undefined)
           .join("\n");
       }
+      if (part.type === "attachments_delivered") {
+        return part.attachments
+          .map((attachment) => attachment.filename)
+          .join("\n");
+      }
       if (part.event.type !== "handoff") {
         return ["context compacted", part.event.summary]
           .filter((line): line is string => line !== undefined)
@@ -179,8 +222,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
       }
       return [
         "model handoff",
-        `profile ${part.event.modelProfile}`,
         `model ${part.event.modelId}`,
+        `profile ${part.event.modelProfile}`,
         part.event.summary,
         part.event.reasoningLevel
           ? `reasoning ${part.event.reasoningLevel}`
@@ -190,5 +233,15 @@ export function messageRawText(message: TranscriptViewMessage): string {
         .join("\n");
     })
     .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+  return [
+    body,
+    ...(message.attachments ?? []).map(
+      (attachment) =>
+        `[attachment] ${attachment.filename} (${attachment.contentType}, ${attachment.bytes} bytes)`,
+    ),
+    ...(message.cards ?? []).map(messageCardText),
+  ]
+    .filter(Boolean)
     .join("\n\n");
 }

@@ -9,19 +9,21 @@ import type {
 } from "@earendil-works/pi-ai";
 import { logWarn } from "@/chat/logging";
 
+// TODO(dcramer): Rename ConversationPrivacy to ConversationVisibility after
+// all readers use Conversation visibility instead of legacy Destination rows.
 export type ConversationPrivacy = "public" | "private";
 type TraceAttributeValue = string | number | boolean | string[];
 const SAFE_METADATA_KEY_LIMIT = 20;
 const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
 
 /**
- * Resolve whether a conversation may expose raw payloads.
+ * Resolve whether a Conversation may expose full transcript and tool data.
  *
- * Explicit destination visibility is authoritative. Missing visibility is
- * observable and fails closed without inferring from identifiers.
+ * Read visibility from the stored Conversation. If it is missing, warn and
+ * treat the Conversation as private. Do not infer visibility from identifiers.
  */
 export function resolveConversationPrivacy(input: {
-  /** Live or persisted destination visibility, when the caller has one. */
+  /** Stored Conversation visibility, when known. */
   visibility?: ConversationPrivacy | "direct" | "unknown";
 }): ConversationPrivacy {
   if (input.visibility === undefined) {
@@ -30,15 +32,15 @@ export function resolveConversationPrivacy(input: {
   return input.visibility === "public" ? "public" : "private";
 }
 
-/** Gate raw transcript/tool payload exposure to public conversations. */
+/** Return whether a public Conversation may expose transcript and tool data. */
 export function canExposeConversationPayload(input: {
-  /** Live or persisted destination visibility, when the caller has one. */
+  /** Conversation visibility, when known. */
   visibility?: ConversationPrivacy | "direct" | "unknown";
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
 }
 
-/** Return the privacy mode bound to the current agent turn. */
+/** Return privacy for the current agent Turn. */
 export function getCurrentConversationPrivacy():
   | ConversationPrivacy
   | undefined {
@@ -88,7 +90,7 @@ export function toGenAiPayloadMetadata(
   const keys = payloadKeys(payload);
   return {
     ...base,
-    ...(keys ? { keys } : {}),
+    ...(keys ? { keys } : undefined),
   };
 }
 
@@ -267,7 +269,9 @@ export function toGenAiMessagesTraceAttributes(
     [`${prefix}.message_count`]: messages.length,
     [`${prefix}.content_chars`]: contentChars,
     [`${prefix}.messages.size`]: contentChars,
-    ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : {}),
-    ...(partTypes.size > 0 ? { [`${prefix}.part_types`]: [...partTypes] } : {}),
+    ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : undefined),
+    ...(partTypes.size > 0
+      ? { [`${prefix}.part_types`]: [...partTypes] }
+      : undefined),
   };
 }

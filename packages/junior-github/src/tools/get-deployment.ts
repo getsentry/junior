@@ -1,14 +1,14 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { gitHubDeploymentSourceSubscribable } from "../resource-events/deployment.js";
+import { gitHubDeploymentSourceSubscribable } from "../events/deployment.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -66,12 +66,11 @@ interface Result extends PluginToolOutput, DeploymentSource {
   subscribable?: SubscribableResource;
   target: "getDeployment";
 }
-const outputSchema = pluginToolOutputSchema
-  .extend({
+const outputSchema = pluginToolOutputSchema.merge(
+  deploymentSourceSchema.extend({
     target: z.literal("getDeployment"),
-    ...deploymentSourceSchema.shape,
-  })
-  .strict();
+  }),
+);
 
 const providerCreatorSchema = z
   .object({ login: z.string() })
@@ -147,9 +146,10 @@ function repositoryUrl(repo: { name: string; owner: string }, path: string) {
 }
 
 /** Read deployment metadata and expose its stable subscription identity. */
-export function createGitHubGetDeploymentTool(
-  ctx: ToolRegistrationHookContext,
-) {
+export function createGitHubGetDeploymentTool(ctx: {
+  egress: PluginEgress;
+  events: { canSubscribe: boolean };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -242,7 +242,7 @@ export function createGitHubGetDeploymentTool(
         };
       }
 
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubDeploymentSourceSubscribable({
             commitSha,
             environment: input.environment,
@@ -254,7 +254,7 @@ export function createGitHubGetDeploymentTool(
         deployment,
         environment: input.environment ?? null,
         repo: repo.ref,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "getDeployment",

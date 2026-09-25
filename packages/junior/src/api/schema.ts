@@ -1,9 +1,39 @@
+export { INPUT_IMAGE_TYPES } from "../chat/attachments/media";
+export {
+  MAX_INPUT_IMAGES,
+  MAX_INPUT_IMAGE_BYTES,
+} from "../chat/attachments/input";
+export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export { webMessageId } from "../chat/conversations/web-message-id";
+export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
+export type { AutomationCard } from "../chat/automations/card";
+export { messageCardText } from "../chat/conversations/cards";
+export type { MessageCard } from "../chat/conversations/cards";
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  codeActivityDaySchema,
+  codeChangeSummaryReportSchema,
+  codeChangeSummarySchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+  codeRepositorySummarySchema,
+} from "./schema/code";
+export type {
+  CodeActivityDay,
+  CodeChangeSummaryReport,
+  CodeOverviewReport,
+  CodePersonReport,
+  CodeRepositorySummary,
+} from "./schema/code";
+export {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -13,11 +43,15 @@ export {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationPendingAuthorizationSchema,
   conversationPendingMessageDeliverySchema,
   conversationPendingMessageSchema,
   conversationPendingMessagesReportSchema,
+  conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
   createConversationBodySchema,
@@ -27,7 +61,10 @@ export type {
   AcceptedConversationMessage,
   ArchiveConversationBody,
   ArchiveConversationResponse,
+  CancelConversationPendingMessagesBody,
+  CancelConversationPendingMessagesResponse,
   ActorIdentity,
+  ConversationActivityPreview,
   ConversationAuxiliaryCosts,
   ConversationCost,
   ConversationDetailReport,
@@ -40,6 +77,8 @@ export type {
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportStatus,
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
@@ -77,9 +116,11 @@ export type {
 export type {
   ActorActivityDayReport,
   ActorDirectoryReport,
+  ActorDirectoryWindows,
   ActorProfileReport,
   ActorSummaryReport,
   ActorTotalsReport,
+  ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
   PersonParams,
@@ -96,28 +137,44 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
-  eventTaskSummarySchema,
-  scheduledTaskSummarySchema,
-  taskExecutionListSchema,
-  taskExecutionSchema,
-  taskExecutionStatusDaySchema,
-  taskExecutionStatusSchema,
-  taskListSchema,
-  taskParamsSchema,
-  taskRunListSchema,
-  taskRunSchema,
-  taskSummarySchema,
-} from "./schema/task";
+  baselineSnapshotSchema,
+  deleteWorkspaceResponseSchema,
+  workspaceBodySchema,
+  workspaceListSchema,
+  workspaceParamsSchema,
+  workspaceRepoSchema,
+  workspaceSchema,
+} from "./schema/workspace";
 export type {
-  TaskExecution,
-  TaskExecutionDay,
-  TaskExecutionList,
-  TaskExecutionStatusDay,
-  TaskList,
-  TaskRun,
-  TaskRunList,
-  TaskSummary,
-} from "./schema/task";
+  BaselineSnapshotReport,
+  WorkspaceReport,
+} from "./schema/workspace";
+export {
+  eventAutomationSummarySchema,
+  scheduledAutomationSummarySchema,
+  automationExecutionListSchema,
+  automationExecutionSchema,
+  automationExecutionStatusDaySchema,
+  automationExecutionStatusSchema,
+  automationListQuerySchema,
+  automationListSchema,
+  automationParamsSchema,
+  automationRunListSchema,
+  automationRunSchema,
+  automationRunWindowsSchema,
+  automationSummarySchema,
+} from "./schema/automation";
+export type {
+  AutomationExecution,
+  AutomationExecutionDay,
+  AutomationExecutionList,
+  AutomationExecutionStatusDay,
+  AutomationList,
+  AutomationRun,
+  AutomationRunList,
+  AutomationRunWindows,
+  AutomationSummary,
+} from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

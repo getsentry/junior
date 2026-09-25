@@ -4,10 +4,6 @@
  * Every entry needs a reason. Remove the entry when the file is split.
  */
 export const fileLengthExceptions = {
-  "packages/junior-evals/src/behavior-harness.ts":
-    "Existing eval harness; split by harness concern.",
-  "packages/junior-evals/src/helpers.ts":
-    "Existing shared eval helpers; split by helper concern.",
   "packages/junior-dashboard/src/mock-reporting/fixtures.ts":
     "Large static reporting fixture set.",
   "packages/junior-dashboard/tests/telemetry-components.test.tsx":
@@ -20,8 +16,6 @@ export const fileLengthExceptions = {
     "Existing memory store; split by storage concern.",
   "packages/junior-memory/tests/storage.test.ts":
     "Existing broad memory storage suite; split by storage concern.",
-  "packages/junior/src/chat/scheduled-tasks/store.ts":
-    "Existing scheduled-task store; split by storage concern.",
   "packages/junior/src/chat/agent/index.ts":
     "Existing agent run lifecycle; split only at a clear lifecycle boundary.",
   "packages/junior/src/chat/logging.ts":
@@ -30,10 +24,10 @@ export const fileLengthExceptions = {
     "Existing plugin hook runtime; split by hook phase.",
   "packages/junior/src/chat/plugins/manifest.ts":
     "Existing manifest parser; split parsing from validation.",
-  "packages/junior/src/chat/runtime/reply-executor.ts":
-    "Existing reply lifecycle; split only at a clear lifecycle boundary.",
-  "packages/junior/src/chat/runtime/slack-runtime.ts":
-    "Existing Slack runtime; split by runtime phase.",
+  "packages/junior/src/chat/providers/slack/turn.ts":
+    "Existing mixed Slack Turn behavior; shrink as native execution moves to the runtime.",
+  "packages/junior/src/chat/providers/slack/runtime.ts":
+    "Existing Slack provider routing; split only at a clear provider behavior boundary.",
   "packages/junior/src/chat/task-execution/turn-cursor.ts":
     "Turn cursor storage behind checkpoint; split by persistence concern.",
   "packages/junior/src/chat/task-execution/state.ts":
@@ -56,10 +50,6 @@ export const fileLengthExceptions = {
     "Existing broad conversation work suite; split by behavior.",
   "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts":
     "Existing broad Slack conversation work suite; split by behavior.",
-  "packages/junior/tests/integration/agent-continue-slack.test.ts":
-    "Existing broad Slack continuation suite; split by behavior.",
-  "packages/junior/tests/integration/local-agent-runner.test.ts":
-    "Existing broad local runner suite; split by behavior.",
   "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":
     "Existing broad MCP auth suite; split by behavior.",
   "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts":
@@ -70,8 +60,8 @@ export const fileLengthExceptions = {
     "Existing broad Slack handler suite; split by handler.",
   "packages/junior/tests/integration/slack-schedule-tools.test.ts":
     "Existing broad Slack scheduler suite; split by tool.",
-  "packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts":
-    "Existing broad subscribed-message suite; split by behavior.",
+  "packages/junior/tests/integration/slack/watched-message-behavior.test.ts":
+    "Existing broad watched-message suite; split by behavior.",
   "packages/junior/tests/unit/api/conversation-events.test.ts":
     "Existing broad conversation events suite; split by behavior.",
   "packages/junior/tests/unit/plugins/agent-hooks.test.ts":

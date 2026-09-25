@@ -6,11 +6,11 @@ import {
   updateViewerDisplayNameFromSql,
 } from "@/chat/plugins/viewer";
 import { juniorUsers } from "@/db/schema";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createJuniorSqlFixture } from "../fixtures/sql";
 
 describe("viewer display name", () => {
   it("persists a display name for the canonical user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
       const db = fixture.sql.db();

@@ -263,9 +263,9 @@ export function createOAuthBearerBroker(
                   const refreshedTokens = {
                     ...(latest.refreshTokenExpiresAt
                       ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
-                      : {}),
+                      : undefined),
                     ...refreshed,
-                    ...(latest.account ? { account: latest.account } : {}),
+                    ...(latest.account ? { account: latest.account } : undefined),
                   };
                   await deps.userTokenStore.set(
                     userSubjectId,

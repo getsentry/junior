@@ -74,13 +74,16 @@ export function pendingTranscriptMessage(
     parts: message.redacted
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
+    ...(message.attachments ? { attachments: message.attachments } : undefined),
     pending: true,
     role: "user",
     source: message.source,
     // Keep pending rows after history without colliding with real event seqs.
     sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
     timestamp: Date.parse(message.createdAt),
-    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : {}),
+    ...(message.actorIdentity
+      ? { actorIdentity: message.actorIdentity }
+      : undefined),
   };
 }
 
@@ -121,7 +124,15 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
-  const replacedToolIds = specialToolIds(conversation.events);
+  return transcriptMessagesFromEvents(conversation.events, pendingMessages);
+}
+
+/** Reduce ordered reporting events without subscribing to detail metadata. */
+export function transcriptMessagesFromEvents(
+  events: ConversationReportEvent[],
+  pendingMessages?: readonly ConversationPendingMessage[],
+): TranscriptViewMessage[] {
+  const replacedToolIds = specialToolIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
@@ -159,10 +170,10 @@ export function conversationTranscriptMessages(
       id: call.toolCallId,
       name: call.name,
       status: call.status,
-      ...(call.input === undefined ? {} : { input: call.input }),
-      ...(output === undefined ? {} : { output }),
+      ...(call.input === undefined ? undefined : { input: call.input }),
+      ...(output === undefined ? undefined : { output }),
       ...(call.status === "running"
-        ? {}
+        ? undefined
         : { resultTimestamp: eventTimestamp(event) }),
     };
     const message = {
@@ -179,7 +190,7 @@ export function conversationTranscriptMessages(
 
   // API sequence is the only ordering authority. Do not sort by timestamps:
   // producers may preserve ingestion order while clocks are skewed.
-  for (const event of conversation.events) {
+  for (const event of events) {
     const data = event.data;
     if (data.type === "message") {
       const message = {
@@ -189,12 +200,19 @@ export function conversationTranscriptMessages(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
-        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
-        ...(data.eventType ? { eventType: data.eventType } : {}),
+        ...(data.attachments ? { attachments: data.attachments } : undefined),
+        ...(data.cards ? { cards: data.cards } : undefined),
+        ...(data.actorIdentity
+          ? { actorIdentity: data.actorIdentity }
+          : undefined),
+        ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.trustedSummary
+          ? { trustedSummary: data.trustedSummary }
+          : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
-          : {}),
-        ...(data.source ? { source: data.source } : {}),
+          : undefined),
+        ...(data.source ? { source: data.source } : undefined),
       };
       messages.push(message);
       messagesById.set(message.messageId, message);
@@ -263,7 +281,7 @@ export function conversationTranscriptMessages(
           reasoningLevel: data.reasoningLevel,
           ...(data.confidence !== undefined
             ? { confidence: data.confidence }
-            : {}),
+            : undefined),
           source: data.source,
         };
       }
@@ -358,6 +376,18 @@ export function conversationTranscriptMessages(
       continue;
     }
 
+    if (data.type === "attachments_delivered") {
+      messages.push(
+        eventMessage(event, "system", [
+          {
+            type: "attachments_delivered",
+            attachments: data.attachments,
+          },
+        ]),
+      );
+      continue;
+    }
+
     if (data.type === "compaction" || data.type === "handoff") {
       messages.push(
         eventMessage(event, "system", [
@@ -370,20 +400,20 @@ export function conversationTranscriptMessages(
                     createdAt: event.createdAt,
                     modelId: data.modelId,
                     modelProfile: data.modelProfile,
-                    ...(data.summary ? { summary: data.summary } : {}),
+                    ...(data.summary ? { summary: data.summary } : undefined),
                     ...(data.reasoningLevel
                       ? { reasoningLevel: data.reasoningLevel }
-                      : {}),
+                      : undefined),
                   }
                 : {
                     type: data.type,
                     createdAt: event.createdAt,
-                    ...(data.modelId ? { modelId: data.modelId } : {}),
+                    ...(data.modelId ? { modelId: data.modelId } : undefined),
                     ...(data.modelProfile
                       ? { modelProfile: data.modelProfile }
-                      : {}),
-                    ...(data.summary ? { summary: data.summary } : {}),
-                    ...(data.details ? { details: data.details } : {}),
+                      : undefined),
+                    ...(data.summary ? { summary: data.summary } : undefined),
+                    ...(data.details ? { details: data.details } : undefined),
                   },
           },
         ]),
@@ -393,8 +423,15 @@ export function conversationTranscriptMessages(
 
     if (data.type === "turn_lifecycle" && data.state === "failed") {
       messages.push({
-        role: data.failureKind === "delivery" ? "system" : "assistant",
-        outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
+        role: data.failureCode === "delivery_failed" ? "system" : "assistant",
+        failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
+        ...(data.eventId ? { eventId: data.eventId } : undefined),
+        ...(data.sentryEventUrl
+          ? { sentryEventUrl: data.sentryEventUrl }
+          : undefined),
         parts: [],
         sourceSeq: event.seq,
         timestamp: eventTimestamp(event),

@@ -55,13 +55,13 @@ export function createSpawnAgentTool(
         result = await spawnAgent(
           {
             task: input.task,
-            ...(input.name ? { name: input.name } : {}),
+            ...(input.name ? { name: input.name } : undefined),
             ...(input.reasoning_level
               ? { reasoningLevel: input.reasoning_level }
-              : {}),
+              : undefined),
           },
           {
-            ...(options.signal ? { signal: options.signal } : {}),
+            ...(options.signal ? { signal: options.signal } : undefined),
             toolCallId: options.toolCallId,
           },
         );

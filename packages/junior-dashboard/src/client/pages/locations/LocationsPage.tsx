@@ -8,8 +8,11 @@ import type {
 
 import { useLocationDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { LoadingView } from "../../components/LoadingView";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
@@ -19,7 +22,10 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { SystemPageLayout } from "../system/SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+} from "../system/SystemPageLayout";
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
@@ -51,7 +57,14 @@ export function LocationsPageContent(props: {
   const deferredSort = useDeferredValue(sort);
   const [searchText, setSearchText, search] = useDebouncedSearchParam();
   if (!props.data && !props.error) {
-    return <LoadingView label="Loading locations" />;
+    return (
+      <SystemRouteLoading
+        description="Public destinations and their conversation activity."
+        label="Loading locations"
+        title="Locations"
+        variant="stats"
+      />
+    );
   }
 
   const locations = filterLocations(
@@ -59,7 +72,20 @@ export function LocationsPageContent(props: {
     search,
     deferredSort,
   );
-  const visibleActivity = props.data?.activityDays.slice(-range) ?? [];
+  const visibleActivity = props.data
+    ? selectTimeSeries({
+        days: props.data.activityDays,
+        hours: props.data.activityHours,
+        sixHours: props.data.activitySixHours,
+        range,
+        emptySixHour: (date) => ({
+          date,
+          privateConversations: 0,
+          publicConversations: 0,
+        }),
+      })
+    : [];
+  const bucketUnit = timeRangeBucketUnit(range);
   const publicConversations =
     props.data?.locations.reduce(
       (total, location) => total + location.conversations,
@@ -122,7 +148,10 @@ export function LocationsPageContent(props: {
               )}
             />
           </div>
-          <LocationDirectoryActivityChart days={visibleActivity} />
+          <LocationDirectoryActivityChart
+            bucketUnit={bucketUnit}
+            days={visibleActivity}
+          />
           <LocationDirectory
             loading={sort !== deferredSort}
             locations={locations}

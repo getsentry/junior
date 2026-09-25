@@ -4,7 +4,7 @@ import {
   type SlackConversationVisibility,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { buildSlackSourceUrl } from "@/chat/slack/source-link";
+import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
 import type {
   Conversation as StoredConversation,
@@ -25,14 +25,13 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 type ConversationProjectionSource = Pick<
   StoredConversation,
   | "actor"
-  | "archivedAtMs"
   | "channelName"
   | "conversationId"
   | "createdAtMs"
   | "execution"
   | "lastActivityAtMs"
+  | "location"
   | "source"
-  | "sessionSource"
   | "title"
   | "updatedAtMs"
 >;
@@ -76,7 +75,7 @@ function surfaceFromSource(
   return surfaceFromConversationId(conversationId);
 }
 
-function sourceUrlFromConversation(args: {
+function locationUrlFromConversation(args: {
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -84,17 +83,15 @@ function sourceUrlFromConversation(args: {
   const { conversation } = args;
   if (
     !args.canViewPrivateContent ||
-    conversation.sessionSource?.platform !== "slack"
+    conversation.location?.provider !== "slack"
   ) {
     return undefined;
   }
-  const teamDomain = args.teamDomainByTeamId?.get(
-    conversation.sessionSource.teamId,
-  );
-  const threadTs = conversation.sessionSource.threadTs;
+  const teamDomain = args.teamDomainByTeamId?.get(conversation.location.teamId);
+  const threadTs = conversation.location.threadTs;
   if (!teamDomain || !threadTs) return undefined;
-  return buildSlackSourceUrl({
-    channelId: conversation.sessionSource.channelId,
+  return buildSlackLocationUrl({
+    channelId: conversation.location.channelId,
     teamDomain,
     threadTs,
   });
@@ -105,14 +102,16 @@ function actorIdentityReport(
 ): ActorIdentity | undefined {
   if (!actor) return undefined;
   const identity: ActorIdentity = {
-    ...(actor.email !== undefined ? { email: actor.email } : {}),
-    ...(actor.fullName !== undefined ? { fullName: actor.fullName } : {}),
+    ...(actor.email !== undefined ? { email: actor.email } : undefined),
+    ...(actor.fullName !== undefined
+      ? { fullName: actor.fullName }
+      : undefined),
     ...(actor.slackUserId !== undefined
       ? { slackUserId: actor.slackUserId }
-      : {}),
+      : undefined),
     ...(actor.slackUserName !== undefined
       ? { slackUserName: actor.slackUserName }
-      : {}),
+      : undefined),
   };
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
@@ -140,7 +139,7 @@ function titleFromConversation(args: {
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: args.conversation.conversationId,
     channelName: effectiveChannelName,
-    ...(args.visibility ? { visibility: args.visibility } : {}),
+    ...(args.visibility ? { visibility: args.visibility } : undefined),
   });
   const privateLabel = args.canViewPrivateContent
     ? undefined
@@ -169,7 +168,7 @@ function channelNameFromConversation(
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: conversation.conversationId,
     channelName: effectiveChannelName,
-    ...(visibility ? { visibility } : {}),
+    ...(visibility ? { visibility } : undefined),
   });
   if (!canViewPrivateContent) {
     return privateConversationLabel(slackConversation);
@@ -208,6 +207,7 @@ export function conversationEventHistory(args: {
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
+  archivedAtMs?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   conversation: ConversationProjectionSource;
   durationMs: number;
@@ -227,12 +227,12 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
-  const sourceUrl = sourceUrlFromConversation({
+  const locationUrl = locationUrlFromConversation({
     canViewPrivateContent,
     conversation,
     ...(args.teamDomainByTeamId
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
-      : {}),
+      : undefined),
   });
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
@@ -254,7 +254,7 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     isParticipant: args.access?.isParticipant ?? false,
-    ...(visibility ? { visibility } : {}),
+    ...(visibility ? { visibility } : undefined),
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),
@@ -262,18 +262,21 @@ export function conversationSummaryFromStoredConversation(args: {
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation),
     surface,
-    ...(args.auxiliaryCosts ? { auxiliaryCosts: args.auxiliaryCosts } : {}),
-    ...(usage ? { cumulativeUsage: usage } : {}),
-    ...(actorIdentity ? { actorIdentity } : {}),
-    ...(sourceUrl ? { sourceUrl } : {}),
-    ...(conversation.archivedAtMs
-      ? { archivedAt: new Date(conversation.archivedAtMs).toISOString() }
-      : {}),
-    ...(slackThread ? { channel: slackThread.channelId } : {}),
-    ...(channelName ? { channelName } : {}),
-    ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
+    ...(args.auxiliaryCosts
+      ? { auxiliaryCosts: args.auxiliaryCosts }
+      : undefined),
+    ...(usage ? { cumulativeUsage: usage } : undefined),
+    ...(actorIdentity ? { actorIdentity } : undefined),
+    ...(locationUrl ? { locationUrl } : undefined),
+    archivedAt:
+      args.archivedAtMs === undefined
+        ? null
+        : new Date(args.archivedAtMs).toISOString(),
+    ...(slackThread ? { channel: slackThread.channelId } : undefined),
+    ...(channelName ? { channelName } : undefined),
+    ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),
     ...(args.locationId && !channelNameRedacted
       ? { locationId: args.locationId }
-      : {}),
+      : undefined),
   };
 }

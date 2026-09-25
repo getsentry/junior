@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Message, ThreadImpl, type StateAdapter, type Thread } from "chat";
-import type { SlackAdapter } from "@chat-adapter/slack";
+import { ThreadImpl, type Message, type StateAdapter, type Thread } from "chat";
 import {
   CooperativeTurnYieldError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { getSlackClient } from "@/chat/slack/client";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
@@ -20,10 +20,10 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
-  createSlackResourceEventInboundMessage,
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -38,6 +38,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { createTestMessage } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -158,17 +159,18 @@ describe("Slack conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    const message = new Message({
+    const message = createTestMessage({
       id: "1712345.0002",
       threadId: CONVERSATION_ID,
       text: "",
+      dateSent: new Date(1_000),
+      isMention: true,
       attachments: [
         {
           type: "image",
           url: "https://example.com/attachment-only.png",
         },
       ],
-      metadata: { dateSent: new Date(1_000), edited: false },
       formatted: {
         type: "root",
         children: [
@@ -212,7 +214,6 @@ describe("Slack conversation work execution", () => {
         isMe: false,
       },
     });
-    message.isMention = true;
     const thread = new ThreadImpl({
       adapter: slackAdapter,
       stateAdapter: state,
@@ -223,7 +224,6 @@ describe("Slack conversation work execution", () => {
       isDM: false,
     });
     const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
-      expect(hooks.publishExternally).toBe(true);
       expect(restored.text).toBe("");
       expect(restored.attachments).toHaveLength(1);
       expect(restored.formatted.children).toHaveLength(2);
@@ -274,49 +274,49 @@ describe("Slack conversation work execution", () => {
         text: "hello",
         authorId: "U123",
         metadata: {
-                  platform: "slack",
-                  route: "mention",
-                  message: {
-                    _type: "chat:Message",
-                    attachments: [],
-                    author: {
-                      userId: "U123",
-                      userName: "dcramer",
-                      fullName: "David Cramer",
-                      isBot: false,
-                      isMe: false,
+          platform: "slack",
+          route: "mention",
+          message: {
+            _type: "chat:Message",
+            attachments: [],
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+              fullName: "David Cramer",
+              isBot: false,
+              isMe: false,
+            },
+            formatted: {
+              type: "root",
+              children: [
+                {
+                  type: "paragraph",
+                  children: [
+                    {
+                      type: "table",
+                      children: [],
                     },
-                    formatted: {
-                      type: "root",
-                      children: [
-                        {
-                          type: "paragraph",
-                          children: [
-                            {
-                              type: "table",
-                              children: [],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    id: "1712345.0002",
-                    metadata: {
-                      dateSent: "2026-07-22T12:00:00.000Z",
-                      edited: false,
-                    },
-                    raw: {},
-                    text: "hello",
-                    threadId: CONVERSATION_ID,
-                  },
-                  thread: {
-                    _type: "chat:Thread",
-                    adapterName: "slack",
-                    channelId: "C123",
-                    id: CONVERSATION_ID,
-                    isDM: false,
-                  },
+                  ],
                 },
+              ],
+            },
+            id: "1712345.0002",
+            metadata: {
+              dateSent: "2026-07-22T12:00:00.000Z",
+              edited: false,
+            },
+            raw: {},
+            text: "hello",
+            threadId: CONVERSATION_ID,
+          },
+          thread: {
+            _type: "chat:Thread",
+            adapterName: "slack",
+            channelId: "C123",
+            id: CONVERSATION_ID,
+            isDM: false,
+          },
+        },
       },
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
@@ -325,10 +325,6 @@ describe("Slack conversation work execution", () => {
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
-    };
-    const malformedWithDelivery = {
-      ...malformed,
-      publishExternally: true as const,
     };
     const worker = createSlackConversationWorker({
       getSlackAdapter: () => slackAdapter,
@@ -352,76 +348,16 @@ describe("Slack conversation work execution", () => {
           destination: SLACK_DESTINATION,
           drain: async () => [],
           isFinalAttempt: false,
-          messages: [malformedWithDelivery],
+          messages: [malformed],
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
-        publishExternally: true,
         shouldYield: () => false,
       }),
     ).rejects.toThrow(
       "Latest conversation mailbox record is not Slack metadata",
     );
-  });
-
-  it("routes resource-event mailbox records without Slack actor lookup", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
-    const lookupSlackUser = vi.fn(async () => {
-      throw new Error("resource event notifications do not have Slack users");
-    });
-    const calls: Message[] = [];
-
-    await appendInboundMessage({
-      message: createSlackResourceEventInboundMessage({
-        event: {
-          eventKey: "check-suite-1",
-          eventType: "pull_request.checks.failed",
-          occurredAtMs: 1_700_000_000_000,
-          namespace: "github",
-          identifier: "getsentry/junior#691",
-        },
-        subscription: {
-          conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
-          id: "resub_1",
-        },
-        text: "[event notification]\n\nA subscribed resource changed.",
-      }),
-      state,
-    });
-    await queue.send(conversationQueueMessage(), {
-      idempotencyKey: "resource-event-test",
-    });
-
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        lookupSlackUser,
-        queue,
-        runtime: {
-          handleNewMention: async () => {
-            throw new Error("unexpected mention route");
-          },
-          handleSubscribedMessage: async (_thread, message, hooks) => {
-            await hooks.ack?.();
-            calls.push(message);
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(lookupSlackUser).not.toHaveBeenCalled();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
-    expect(calls[0]?.raw).not.toHaveProperty("ts");
-    expect(getMessageActorIdentity(calls[0]!)).toEqual({
-      userId: "UJRNEVENT",
-    });
   });
 
   it("does not persist Slack mailbox messages without actor ids", async () => {
@@ -458,42 +394,38 @@ describe("Slack conversation work execution", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("routes edited Slack mentions through the durable mailbox", async () => {
+  it("does not route edited Slack messages", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
-    const editedTs = "1712345.0003";
-    const editedText = `<@${SLACK_BOT_USER_ID}> edited ask`;
 
     const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest({
         ...slackEnvelope({
           eventType: "message",
           text: "edited ask",
-          ts: editedTs,
+          ts: "1712345.0003",
         }),
         event: {
           type: "message",
           subtype: "message_changed",
           channel: "C123",
-          hidden: true,
           message: {
             type: "message",
             user: "U123",
-            text: editedText,
-            ts: editedTs,
+            text: `<@${SLACK_BOT_USER_ID}> edited ask`,
+            ts: "1712345.0003",
           },
           previous_message: {
             type: "message",
             user: "U123",
             text: "edited ask",
-            ts: editedTs,
+            ts: "1712345.0003",
           },
         },
       }),
       services: {
-        getSlackAdapter: () => slackAdapter,
+        getSlackAdapter: createSlackAdapterFixture,
         queue,
         runtime: createNoopSlackWebhookRuntime(),
         state,
@@ -501,36 +433,7 @@ describe("Slack conversation work execution", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId: `slack:C123:${editedTs}`,
-        idempotencyKey: `slack:T123:slack:C123:${editedTs}:${editedTs}:message_changed_mention`,
-      }),
-    ]);
-
-    const calls: Array<{ message: Message; thread: Thread }> = [];
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        queue,
-        runtime: {
-          handleNewMention: async (thread, message, hooks) => {
-            await hooks.ack?.();
-            calls.push({ thread, message });
-          },
-          handleSubscribedMessage: async () => {
-            throw new Error("unexpected subscribed route");
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.thread.id).toBe(`slack:C123:${editedTs}`);
-    expect(calls[0]?.message.id).toBe(`${editedTs}:message_changed_mention`);
-    expect(calls[0]?.message.text).toBe(editedText);
-    expect(calls[0]?.message.isMention).toBe(true);
+    expect(queue.sentRecords()).toEqual([]);
   });
 
   it("runs queued Slack mailbox work through the Slack runtime", async () => {
@@ -976,7 +879,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("leaves resource events deferred during an active turn", async () => {
+  it("leaves events deferred during an active turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     const state = getStateAdapter();
@@ -1003,17 +906,17 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createSlackResourceEventInboundMessage({
+          message: createEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
               occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
+              trustedSummary: "CI failed.",
             },
             subscription: {
               conversationId: CONVERSATION_ID,
-              destination: SLACK_DESTINATION,
               id: "sub-1",
             },
             text: "CI failed.",
@@ -1027,7 +930,7 @@ describe("Slack conversation work execution", () => {
         currentNowMs = 2_001;
       },
       handleSubscribedMessage: async () => {
-        throw new Error("resource event should remain queued for follow-up");
+        throw new Error("event should remain queued for follow-up");
       },
     };
 
@@ -1050,7 +953,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.execution.pendingMessages).toEqual([
       expect.objectContaining({
         delivery: "defer",
-        source: "resource_event",
+        source: "event",
       }),
     ]);
   });
@@ -1087,12 +990,12 @@ describe("Slack conversation work execution", () => {
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
-        const followUp = new Message({
+        const followUp = createTestMessage({
           id: "1712345.1002",
           threadId: conversationId,
           text: "steer this assistant thread",
           attachments: [],
-          metadata: { dateSent: new Date(1_000), edited: false },
+          dateSent: new Date(1_000),
           formatted: { type: "root", children: [] },
           raw: {
             channel: dmChannelId,
@@ -1303,23 +1206,17 @@ describe("Slack conversation work execution", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
-    const resolveTokenForTeam = vi.fn(
-      async (teamId: string, isEnterpriseInstall?: boolean) => ({
+    const getInstallation = vi.fn(
+      async (teamId: string, isEnterpriseInstall: boolean) => ({
         botUserId: SLACK_BOT_USER_ID,
-        token: `xoxb-${isEnterpriseInstall ? "enterprise" : teamId}`,
+        botToken: `xoxb-${isEnterpriseInstall ? "enterprise" : teamId}`,
       }),
     );
-    const requestContextRun = vi.fn(
-      async (_context: unknown, fn: () => Promise<void>) => await fn(),
-    );
-    const slackAdapter = {
-      botUserId: SLACK_BOT_USER_ID,
-      initialize: vi.fn(async () => {}),
-      requestContext: {
-        run: requestContextRun,
+    const slackAdapter = createJuniorSlackAdapter({
+      installationProvider: {
+        getInstallation,
       },
-      resolveTokenForTeam,
-    } as unknown as SlackAdapter;
+    });
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -1352,11 +1249,7 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resolveTokenForTeam).toHaveBeenCalledWith("T123", undefined);
-    expect(requestContextRun).toHaveBeenCalledWith(
-      expect.objectContaining({ token: "xoxb-T123" }),
-      expect.any(Function),
-    );
+    expect(getInstallation).toHaveBeenCalledWith("T123", false);
     expect(observedToken).toBe("xoxb-T123");
   });
 
@@ -1622,11 +1515,9 @@ describe("Slack conversation work execution", () => {
     const slackAdapter = createSlackAdapterFixture();
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("persistent queued failure");
-            },
+        agentRunner: {
+          run: async () => {
+            throw new Error("persistent queued failure");
           },
         },
       },
@@ -1921,17 +1812,15 @@ describe("Slack conversation work execution", () => {
     let yieldedSessionId: string | undefined;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _text = request.instruction.text;
-              const context = request;
+        agentRunner: {
+          run: async (request) => {
+            const _text = request.instruction.text;
+            const context = request;
 
-              await context?.durability?.onInputCommitted?.();
-              currentNowMs = 242_000;
-              yieldedSessionId = context?.turnId;
-              return { status: "suspended", resumeVersion: 1 };
-            },
+            await context?.durability?.onInputCommitted?.();
+            currentNowMs = 242_000;
+            yieldedSessionId = context?.turnId;
+            return { status: "suspended", reason: "timeout", resumeVersion: 1 };
           },
         },
       },

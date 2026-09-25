@@ -76,8 +76,8 @@ function buildPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.example.com",
-        ...(options.allowedTools ? { allowedTools: options.allowedTools } : {}),
-        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : {}),
+        ...(options.allowedTools ? { allowedTools: options.allowedTools } : undefined),
+        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : undefined),
       },
     },
   };
@@ -122,18 +122,7 @@ describe("McpToolManager", () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
 
-    expect(
-      await manager.activateForSkill({
-        name: "demo-skill",
-        pluginProvider: undefined,
-      }),
-    ).toBe(false);
-    expect(
-      await manager.activateForSkill({
-        name: "demo-skill",
-        pluginProvider: "demo",
-      }),
-    ).toBe(true);
+    expect(await manager.activateProvider("demo")).toBe(true);
     expect(await manager.activateProvider("demo")).toBe(false);
     expect(manager.getActiveProviders()).toEqual(["demo"]);
 

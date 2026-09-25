@@ -447,7 +447,80 @@ describe("plugin manifest API headers", () => {
         "/tmp/example",
       ),
     ).toThrow(
-      "Plugin example api-headers.Authorization references env var EXAMPLE_AUTH_HEADER, but API header env vars must not declare defaults",
+      "Plugin example api-headers.Authorization references env var EXAMPLE_AUTH_HEADER, but header env vars must not declare defaults",
+    );
+  });
+
+  it("rejects undeclared MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example mcp.headers.X-Api-Key references env var EXAMPLE_MCP_KEY which is not declared in env-vars",
+    );
+  });
+
+  it.each([
+    [
+      "without a declaration",
+      [],
+      "Plugin example mcp.auth.private-key-env uses env var EXAMPLE_MCP_PRIVATE_KEY which is not declared in env-vars",
+    ],
+    [
+      "with a default",
+      ["env-vars:", "  EXAMPLE_MCP_PRIVATE_KEY:", "    default: unsafe"],
+      "Plugin example mcp.auth.private-key-env uses env var EXAMPLE_MCP_PRIVATE_KEY, but host secret env vars must not declare defaults",
+    ],
+  ])("rejects MCP auth private key env vars %s", (_name, envLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          ...envLines,
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  auth:",
+          "    issuer: https://junior.example.com",
+          "    key-id: junior-1",
+          "    private-key-env: EXAMPLE_MCP_PRIVATE_KEY",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
+  it("rejects command env references that reuse MCP header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_MCP_KEY:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  headers:",
+          '    X-Api-Key: "${EXAMPLE_MCP_KEY}"',
+          "command-env:",
+          '  EXAMPLE_TOKEN: "${EXAMPLE_MCP_KEY}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_MCP_KEY, but credential/API header env vars must stay host-only",
     );
   });
 });

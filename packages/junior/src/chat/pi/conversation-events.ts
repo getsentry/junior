@@ -12,7 +12,6 @@ import type {
 } from "@/chat/conversations/history";
 import { agentHistoryItemSchema } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
-import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { contextProvenance } from "@/chat/conversations/provenance";
 type AuthorizationCompletedEventData = Extract<
@@ -25,7 +24,7 @@ export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
   modelProfile: ModelProfile;
-  modelId: string | undefined;
+  replacementSeq: number | undefined;
 }
 
 /** Pi context with the source event sequence for every projected message. */
@@ -48,10 +47,6 @@ function authorizationObservationMessage(
     ],
     timestamp: createdAtMs,
   });
-}
-
-function durableMessages(message: PiMessage): PiMessage[] {
-  return stripRuntimeTurnContext([message]);
 }
 
 /** Translate one Pi message into Junior's native durable history item. */
@@ -116,16 +111,16 @@ function historyItemProvenance(
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options?: { maxSeq?: number },
+  options: { defaultProfile: ModelProfile; maxSeq?: number },
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = "standard";
-  let modelId: string | undefined;
+  let modelProfile: ModelProfile = options.defaultProfile;
+  let replacementSeq: number | undefined;
 
   for (const event of events) {
-    if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
+    if (options.maxSeq !== undefined && event.seq > options.maxSeq) break;
     // Skipping an unknown active-history fact could silently change model
     // context; an upgrade migration must normalize it before replay.
     if (event.data.type === "unknown") {
@@ -135,15 +130,12 @@ export function projectConversationEvents(
     }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
       modelProfile = event.data.modelProfile;
-      modelId = event.data.modelId;
+      replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
-        for (const message of durableMessages(
-          piMessageFromHistoryItem(replacement.item),
-        )) {
-          messages.push(message);
-          provenance.push(historyItemProvenance(replacement.item));
-          seqs.push(replacement.sourceEventSeq ?? event.seq);
-        }
+        const message = piMessageFromHistoryItem(replacement.item);
+        messages.push(message);
+        provenance.push(historyItemProvenance(replacement.item));
+        seqs.push(replacement.sourceEventSeq ?? event.seq);
       }
       continue;
     }
@@ -152,13 +144,10 @@ export function projectConversationEvents(
       event.data.type === "assistant_message" ||
       event.data.type === "tool_result"
     ) {
-      for (const message of durableMessages(
-        piMessageFromHistoryItem(event.data),
-      )) {
-        messages.push(message);
-        provenance.push(historyItemProvenance(event.data));
-        seqs.push(event.seq);
-      }
+      const message = piMessageFromHistoryItem(event.data);
+      messages.push(message);
+      provenance.push(historyItemProvenance(event.data));
+      seqs.push(event.seq);
       continue;
     }
     if (event.data.type === "authorization_completed") {
@@ -170,5 +159,11 @@ export function projectConversationEvents(
     }
   }
 
-  return { messages, provenance, seqs, modelProfile, modelId };
+  return {
+    messages,
+    provenance,
+    seqs,
+    modelProfile,
+    replacementSeq,
+  };
 }

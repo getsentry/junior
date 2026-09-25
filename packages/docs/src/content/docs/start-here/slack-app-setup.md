@@ -34,21 +34,21 @@ Use `SLACK_BOT_TOKEN` for normal bot replies. Use `SLACK_BOT_USER_TOKEN` only wh
 
 Grant the smallest scopes that cover the Slack features you enable. A typical Junior installation needs scopes for mentions, posting replies, reading thread context, reactions, user lookup, file workflows, and slash command handling.
 
-| Capability                                         | Slack scopes to verify                                                                                         |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Mentions                                           | `app_mentions:read`                                                                                            |
-| Thread replies and private auth prompts            | `chat:write`                                                                                                   |
-| Processing reactions                               | `reactions:write`                                                                                              |
-| User lookup and App Home ownership                 | `users:read`                                                                                                   |
-| Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                                                     |
+| Capability                                         | Slack scopes to verify                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Mentions                                           | `app_mentions:read`                                                                                          |
+| Thread replies and private auth prompts            | `chat:write`                                                                                                 |
+| Processing reactions                               | `reactions:write`                                                                                            |
+| User lookup and App Home ownership                 | `users:read`                                                                                                 |
+| Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                                                   |
 | Thread and channel history in channels and DMs     | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
-| On-demand join of public channels                  | `channels:join` **required** to join a public channel when reading linked threads or history               |
-| Public workspace search (messages)                 | `search:read.public` **required** for interactive public Slack search                                          |
-| Public workspace search (files)                    | `search:read.files` **required** when searching public files                                                   |
-| Public workspace search (users)                    | `search:read.users` **required** when searching people via public search                                       |
-| File/image context and generated files             | `files:read`, `files:write` when file workflows are enabled                                                    |
-| Direct links back to Slack conversations           | `team:read`                                                                                                    |
-| Slack assistant status/title surfaces              | `assistant:write` and other assistant scopes required by your Slack app configuration                          |
+| On-demand join of public channels                  | `channels:join` **required** to join a public channel when reading linked threads or history                 |
+| Public workspace search (messages)                 | `search:read.public` **required** for interactive public Slack search                                        |
+| Public workspace search (files)                    | `search:read.files` **required** when searching public files                                                 |
+| Public workspace search (users)                    | `search:read.users` **required** when searching people via public search                                     |
+| File/image context and generated files             | `files:read`, `files:write` when file workflows are enabled                                                  |
+| Direct links back to Slack conversations           | `team:read`                                                                                                  |
+| Slack assistant status/title surfaces              | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 
@@ -71,9 +71,12 @@ Subscribe to the events that match your usage:
 | `app_mention`                 | Channel and thread mentions.                         |
 | `message.im`                  | Direct messages.                                     |
 | `app_home_opened`             | Connected-account App Home view.                     |
+| `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
+
+For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 
 ## Configure interactivity
 

@@ -5,6 +5,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   createProviderError,
   findProviderError,
+  getProviderErrorAttributes,
   getProviderErrorUserMessage,
   isProviderRetryError,
   ProviderError,
@@ -14,7 +15,7 @@ import { nextProviderRetry } from "@/chat/services/provider-retry";
 function assistantError(errorMessage: string | undefined): AssistantMessage {
   return fauxAssistantMessage([], {
     stopReason: "error",
-    ...(errorMessage ? { errorMessage } : {}),
+    ...(errorMessage ? { errorMessage } : undefined),
   });
 }
 
@@ -34,6 +35,11 @@ describe("provider retry helpers", () => {
       kind: "network",
       retryable: true,
     });
+    expect(getProviderErrorAttributes(error)).toMatchObject({
+      "app.ai.provider_error.kind": "network",
+      "app.ai.provider_error.summary":
+        "Anthropic stream ended before message_stop",
+    });
     expect(isProviderRetryError(error)).toBe(true);
     expect(isProviderRetryError(createProviderError("invalid_api_key"))).toBe(
       false,
@@ -42,10 +48,25 @@ describe("provider retry helpers", () => {
     expect(isProviderRetryError(new Error(error.message))).toBe(false);
   });
 
+  it("keeps a bounded provider summary without gateway JSON payloads", () => {
+    expect(
+      getProviderErrorAttributes(
+        createProviderError(XAI_SERVICE_UNAVAILABLE, {
+          modelId: "xai/grok-4.5",
+        }),
+      ),
+    ).toMatchObject({
+      "app.ai.provider_error.kind": "server",
+      "app.ai.provider_error.status": 503,
+      "app.ai.provider_error.summary": "503",
+      "gen_ai.request.model": "xai/grok-4.5",
+    });
+  });
+
   it("finds provider errors preserved by domain wrappers", () => {
     const providerError = createProviderError("No object generated", {
       kind: "invalid_response",
-      modelId: "openai/gpt-5.6-luna",
+      modelId: "openai/gpt-6-luna",
     });
     const wrapped = new Error("Action review unavailable", {
       cause: providerError,
@@ -114,13 +135,21 @@ describe("provider retry helpers", () => {
       "Anthropic stream ended before message_stop",
     );
 
-    expect(
-      nextProviderRetry({
-        attempt: 0,
-        failure: failedAssistant,
-        messages: [user, failedAssistant],
-      }),
-    ).toEqual({ delayMs: 2_000, messages: [user] });
+    const retry = nextProviderRetry({
+      attempt: 0,
+      failure: failedAssistant,
+      messages: [user, failedAssistant],
+    });
+    expect(retry).toMatchObject({
+      delayMs: 2_000,
+      messages: [user],
+      providerError: { kind: "network", retryable: true },
+    });
+    expect(getProviderErrorAttributes(retry!.providerError)).toMatchObject({
+      "app.ai.provider_error.kind": "network",
+      "app.ai.provider_error.summary":
+        "Anthropic stream ended before message_stop",
+    });
   });
 
   it("retries a structured xAI 503 despite gateway credential metadata", () => {
@@ -147,7 +176,31 @@ describe("provider retry helpers", () => {
         failure: failedAssistant,
         messages: [user, failedAssistant],
       }),
-    ).toEqual({ delayMs: 2_000, messages: [user] });
+    ).toMatchObject({ delayMs: 2_000, messages: [user] });
+  });
+
+  it("retries capacity errors within the existing budget", () => {
+    const user = { role: "user", content: "help" } as PiMessage;
+    const failure = assistantError(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "api_error",
+          message:
+            "The model is currently at capacity due to high demand. Please try again in a few minutes.",
+        },
+      }),
+    );
+    expect(
+      nextProviderRetry({ attempt: 0, failure, messages: [user, failure] }),
+    ).toMatchObject({
+      delayMs: 2000,
+      messages: [user],
+      providerError: { kind: "capacity", retryable: true },
+    });
+    expect(
+      nextProviderRetry({ attempt: 3, failure, messages: [user, failure] }),
+    ).toBeUndefined();
   });
 
   it("honors bounded rate-limit hints", () => {
@@ -175,7 +228,7 @@ describe("provider retry helpers", () => {
         failure: failedAssistant,
         messages: [user, failedAssistant],
       }),
-    ).toEqual({ delayMs: 60_000, messages: [user] });
+    ).toMatchObject({ delayMs: 60_000, messages: [user] });
   });
 
   it("classifies HTTP request timeouts without overriding permanent signals", () => {
@@ -232,7 +285,7 @@ describe("provider retry helpers", () => {
         failure,
         messages: [user, failure],
       }),
-    ).toEqual({ delayMs: 2_000, messages: [user] });
+    ).toMatchObject({ delayMs: 2_000, messages: [user] });
   });
 
   it("keeps explicit permanent request failures terminal", () => {
@@ -245,6 +298,16 @@ describe("provider retry helpers", () => {
         retryable: false,
       });
     }
+  });
+
+  it("uses safe provider copy when classification fails", () => {
+    const message = getProviderErrorUserMessage(
+      createProviderError("unrecognized raw-error-sentinel token=secret"),
+    );
+
+    expect(message).toContain("model provider returned an error");
+    expect(message).not.toContain("raw-error-sentinel");
+    expect(message).not.toContain("token=secret");
   });
 
   it("does not claim a retry happened in terminal capacity copy", () => {

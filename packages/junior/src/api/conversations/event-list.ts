@@ -51,10 +51,10 @@ export async function readConversationEvents(
     events: page.events,
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? {} : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined ? undefined : { transcriptPurgedAtMs }),
     }),
     ...(page.previousSeq === undefined
-      ? {}
+      ? undefined
       : {
           previousCursor: encodeConversationCursor({
             conversationId,

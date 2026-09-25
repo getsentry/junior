@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
@@ -13,6 +14,7 @@ export enum SubscribedReplyReason {
   SideConversation = "side_conversation",
   LowConfidence = "low_confidence",
   ClassifierError = "classifier_error",
+  PassiveDisabled = "passive_disabled",
 }
 
 export interface SubscribedDecisionInput {
@@ -85,14 +87,12 @@ const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
-const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
-const THREAD_OPTOUT_PATTERNS = [
-  /\bstop (?:watching|replying|participating)\b/i,
-  /\bstay out\b/i,
-  /\bdon['’]t (?:reply|participate|watch)\b/i,
-  /\bunsubscribe\b/i,
-  /\bleave (?:this )?thread\b/i,
-];
+/** `!stop` may appear anywhere in the message. */
+const BANG_STOP_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
+/** Drop a leading `@jr` / mention before matching bare `stop`. */
+const LEADING_ADDRESS_RE = /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
+/** Whole message is only `stop` after any leading address. */
+const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
   /^(?:thanks(?: you)?|thank you|thx|ty|got it|sounds good|sgtm|lgtm|ok(?:ay)?|cool|nice|perfect|awesome|great|makes sense|understood|roger|yep|yup|kk|on it|will do)(?:[.!]+)?$/i;
 const DIRECTED_FOLLOW_UP_CUE_RE =
@@ -152,17 +152,49 @@ function detectLeadingOtherPartyAddress(
   return `named_mention:${directedName}`;
 }
 
-function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
-  return (
-    FORCED_THREAD_OPTOUT_RE.test(rawText.trim()) ||
-    FORCED_THREAD_OPTOUT_RE.test(text.trim())
-  );
+function hasBangStop(rawText: string, text: string): boolean {
+  return BANG_STOP_RE.test(rawText.trim()) || BANG_STOP_RE.test(text.trim());
 }
 
-function isThreadOptOutInstruction(rawText: string, text: string): boolean {
-  return THREAD_OPTOUT_PATTERNS.some(
-    (pattern) => pattern.test(rawText) || pattern.test(text),
-  );
+function isBareStop(rawText: string, text: string): boolean {
+  return [rawText, text].some((value) => {
+    const candidate = value.trim().replace(LEADING_ADDRESS_RE, "").trim();
+    return candidate.length > 0 && BARE_STOP_RE.test(candidate);
+  });
+}
+
+/**
+ * Return a stop decision only when the message is not addressed to another party.
+ * Deferred batches must call this on each body, not on joined text.
+ */
+export function getThreadStopDecision(args: {
+  botUserName: string;
+  rawText: string;
+  text: string;
+  isExplicitMention?: boolean;
+}): SubscribedDecisionResult | undefined {
+  if (getSubscribedReplyPreflightDecision(args)) {
+    return undefined;
+  }
+  const text = args.text.trim();
+  const rawText = args.rawText.trim();
+  if (hasBangStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "!stop",
+    };
+  }
+  if (isBareStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop",
+    };
+  }
+  return undefined;
 }
 
 function isAcknowledgmentOnly(text: string): boolean {
@@ -423,13 +455,14 @@ export async function decideSubscribedThreadReply(args: {
 }): Promise<SubscribedDecisionResult> {
   const text = args.input.text.trim();
   const rawText = args.input.rawText.trim();
-  if (isForcedThreadOptOutCommand(rawText, text)) {
-    return {
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: SubscribedReplyReason.ThreadOptOut,
-      reasonDetail: "forced !stop command",
-    };
+  const stopDecision = getThreadStopDecision({
+    botUserName: args.botUserName,
+    rawText,
+    text,
+    isExplicitMention: args.input.isExplicitMention,
+  });
+  if (stopDecision) {
+    return stopDecision;
   }
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
@@ -440,15 +473,27 @@ export async function decideSubscribedThreadReply(args: {
   if (preflightDecision) {
     return preflightDecision;
   }
-  const evidence = buildRouterEvidence(args.input);
   if (!text && !args.input.hasAttachments) {
     return { shouldReply: false, reason: SubscribedReplyReason.EmptyMessage };
   }
-  if (
-    !args.input.isExplicitMention &&
-    !args.input.hasAttachments &&
-    isAcknowledgmentOnly(text)
-  ) {
+
+  if (args.input.isExplicitMention) {
+    return {
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    };
+  }
+
+  // Non-mention replies stay off unless passive-routing is enabled.
+  if (!isExperimentalFeatureEnabled("passive-routing")) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.PassiveDisabled,
+      reasonDetail: "passive-routing",
+    };
+  }
+
+  if (!args.input.hasAttachments && isAcknowledgmentOnly(text)) {
     return {
       shouldReply: false,
       reason: SubscribedReplyReason.SideConversation,
@@ -456,21 +501,7 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
-  if (args.input.isExplicitMention) {
-    if (isThreadOptOutInstruction(rawText, text)) {
-      return {
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "explicit stop instruction",
-      };
-    }
-    return {
-      shouldReply: true,
-      reason: SubscribedReplyReason.ExplicitMention,
-    };
-  }
-
+  const evidence = buildRouterEvidence(args.input);
   if (
     evidence.assistantWasLastSpeaker &&
     evidence.humanMessagesSinceLastAssistant === 0 &&
@@ -510,7 +541,9 @@ export async function decideSubscribedThreadReply(args: {
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+          ...(result.costUsd !== undefined
+            ? { costUsd: result.costUsd }
+            : undefined),
           shouldReply: false,
           reason: SubscribedReplyReason.LowConfidence,
           reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -518,7 +551,9 @@ export async function decideSubscribedThreadReply(args: {
       }
 
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -528,7 +563,9 @@ export async function decideSubscribedThreadReply(args: {
 
     if (!parsed.should_reply) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: reason,
@@ -537,7 +574,9 @@ export async function decideSubscribedThreadReply(args: {
 
     if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -545,7 +584,9 @@ export async function decideSubscribedThreadReply(args: {
     }
 
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
       reasonDetail: reason,

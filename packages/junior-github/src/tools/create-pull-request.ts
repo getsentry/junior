@@ -1,19 +1,28 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
+  type WatchResult,
   type SubscribableResource,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
+  watchResultSchema,
+  subscribableResourceSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import {
+  gitHubPullRequestSubscribable,
+  type GitHubPullRequestSubscriptionConfig,
+} from "../events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -45,7 +54,7 @@ const createPullRequestInputSchema = Type.Object(
     body: Type.Optional(
       Type.String({
         description:
-          "Pull request body. Junior appends the conversation footer.",
+          "Pull request body. The runtime appends the conversation footer.",
       }),
     ),
     draft: Type.Optional(
@@ -66,7 +75,9 @@ const createPullRequestToolInputSchema = z
     base: z.string().describe("Base branch."),
     body: z
       .string()
-      .describe("Pull request body. Junior appends the conversation footer.")
+      .describe(
+        "Pull request body. The runtime appends the conversation footer.",
+      )
       .optional(),
     draft: z
       .boolean()
@@ -81,6 +92,8 @@ const createPullRequestStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createPullRequestInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -103,12 +116,15 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
+  facts?: ObjectAnnotation["facts"];
+  sourceUpdatedAt?: string;
   number: number;
   url: string;
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   subscribable?: SubscribableResource;
+  subscription?: WatchResult;
 }
 
 interface GitHubPullRequestStructuredResult
@@ -120,12 +136,14 @@ const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: watchResultSchema.optional(),
 });
 
-const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createPullRequest"),
-  ...gitHubPullRequestDataSchema.shape,
-});
+const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
+  gitHubPullRequestDataSchema.extend({
+    target: z.literal("createPullRequest"),
+  }),
+);
 
 function parseCreatePullRequestInput(
   input: unknown,
@@ -172,9 +190,10 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 
 function githubApiErrorMessage(payload: unknown): string {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
+    const record = payload as Record<string, unknown>;
+    const message = record.message;
     if (typeof message === "string") {
-      const details = githubApiErrorDetails(payload);
+      const details = githubApiErrorDetails(record);
       return details ? `${message}: ${details}` : message;
     }
   }
@@ -184,8 +203,10 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-function githubApiErrorDetails(payload: object): string | undefined {
-  const errors = (payload as { errors?: unknown }).errors;
+function githubApiErrorDetails(
+  payload: Record<string, unknown>,
+): string | undefined {
+  const errors = payload.errors;
   if (!Array.isArray(errors)) {
     return undefined;
   }
@@ -239,24 +260,24 @@ function isDefinitiveGitHubPullRequestCreateRejection(
   return [400, 401, 404, 410, 422].includes(error.status);
 }
 
-/** Build the GitHub REST create-PR request after Junior owns body/footer shaping. */
-function createGitHubPullRequestRequest(
+/** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
+async function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
-  actor: ToolRegistrationHookContext["actor"],
+  ctx: ToolRegistrationHookContext,
   dashboardUrl?: string,
-): Request {
+): Promise<Request> {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", actor),
+      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
       conversationId,
       dashboardUrl,
     ),
-    ...(input.draft !== undefined ? { draft: input.draft } : {}),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(
@@ -307,6 +328,7 @@ async function createGitHubPullRequest(
     );
   }
   return {
+    ...githubObjectFacts("code_change", parsed),
     number: pullRequest.number,
     url: pullRequest.html_url,
   };
@@ -316,46 +338,92 @@ function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
   canSubscribe: boolean,
+  omitSuggestedEvents?: readonly string[],
 ): GitHubPullRequestToolResult {
   const repo = parseRepo(input.repo);
   const subscribable = canSubscribe
     ? gitHubPullRequestSubscribable({
         number: result.number,
         repo: `${repo.owner}/${repo.name}`,
+        ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
       })
     : undefined;
-  return { ...result, ...(subscribable ? { subscribable } : {}) };
-}
-
-async function annotatePullRequest(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubPullRequestInput,
-  result: GitHubPullRequestResult,
-): Promise<void> {
-  const repo = parseRepo(input.repo);
-  await ctx.annotations?.upsert({
-    kind: "resource_link",
-    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label: `${repo.owner}/${repo.name}#${result.number}`,
-    url: result.url,
-    status: input.draft ? "draft" : "open",
-  });
-}
-
-function gitHubPullRequestStructuredResult(
-  input: CreateGitHubPullRequestInput,
-  result: GitHubPullRequestResult,
-  canSubscribe: boolean,
-): GitHubPullRequestStructuredResult {
-  const data = gitHubPullRequestToolResult(input, result, canSubscribe);
   return {
-    target: "createPullRequest",
-    ...data,
+    number: result.number,
+    url: result.url,
+    ...(subscribable ? { subscribable } : undefined),
   };
 }
 
+async function gitHubPullRequestStructuredResult(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+  subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+): Promise<GitHubPullRequestStructuredResult> {
+  // Subscribe first. Only prune suggested events after a successful forced
+  // subscription so a failed side effect still leaves the created PR usable.
+  const base = gitHubPullRequestToolResult(
+    input,
+    result,
+    ctx.events.canSubscribe,
+  );
+  const objectAnnotations = [
+    githubObjectAnnotation({
+      facts: result.facts,
+      sourceUpdatedAt: result.sourceUpdatedAt,
+      repo: input.repo,
+      number: result.number,
+      title: input.title,
+      url: result.url,
+      objectType: "code_change",
+      status: input.draft ? "draft" : "open",
+    }),
+  ];
+  if (!subscriptionConfig || !base.subscribable) {
+    return {
+      objectAnnotations,
+      target: "createPullRequest",
+      ...base,
+    };
+  }
+  try {
+    const subscription = await ctx.events.subscribe({
+      events: subscriptionConfig.events,
+      intent: subscriptionConfig.intent,
+      resource: base.subscribable,
+    });
+    const data = gitHubPullRequestToolResult(
+      input,
+      result,
+      ctx.events.canSubscribe,
+      subscriptionConfig.events,
+    );
+    return {
+      objectAnnotations,
+      target: "createPullRequest",
+      ...data,
+      subscription,
+    };
+  } catch (error) {
+    ctx.log.warn("github.pull_request.subscribe_after_create.failed", {
+      error: error instanceof Error ? error.message : String(error),
+      number: result.number,
+      repo: input.repo,
+    });
+    return {
+      objectAnnotations,
+      target: "createPullRequest",
+      ...base,
+    };
+  }
+}
+
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
+export function createGitHubPullRequestTool(
+  ctx: ToolRegistrationHookContext,
+  subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -364,7 +432,8 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+    exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
@@ -386,14 +455,19 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
               number: state.number,
               url: state.url,
             };
-            await annotatePullRequest(ctx, completedInput, completedResult);
-            return gitHubPullRequestStructuredResult(
+            return await gitHubPullRequestStructuredResult(
+              ctx,
               completedInput,
               completedResult,
-              ctx.resourceEvents.canSubscribe,
+              subscriptionConfig,
             );
           }
           if (state?.status === "pending") {
@@ -401,10 +475,10 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          const request = createGitHubPullRequestRequest(
+          const request = await createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
-            ctx.actor,
+            ctx,
             ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreatePullRequestState = {
@@ -428,15 +502,15 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               );
             } catch (error) {
               throw new Error(
-                "GitHub pull request was created, but Junior could not persist the completed pull request state.",
+                "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
                 { cause: error },
               );
             }
-            await annotatePullRequest(ctx, parsedInput, result);
-            return gitHubPullRequestStructuredResult(
+            return await gitHubPullRequestStructuredResult(
+              ctx,
               parsedInput,
               result,
-              ctx.resourceEvents.canSubscribe,
+              subscriptionConfig,
             );
           } catch (error) {
             if (

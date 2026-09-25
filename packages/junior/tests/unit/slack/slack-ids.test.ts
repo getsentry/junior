@@ -6,6 +6,7 @@ import {
   parseSlackTeamId,
   parseSlackUserId,
 } from "@/chat/slack/ids";
+import { slackChannelRefParam } from "@/chat/slack/tool-support/channel-target";
 
 describe("slack ids", () => {
   it("parses exact Slack channel ids", () => {
@@ -17,12 +18,24 @@ describe("slack ids", () => {
     expect(parseSlackChannelId("slack:")).toBeUndefined();
   });
 
-  it("parses channel ids from Junior slack references", () => {
+  it("parses channel ids from Junior slack references and Slack mentions", () => {
     expect(parseSlackChannelReferenceId("slack:C123")).toBe("C123");
     expect(parseSlackChannelReferenceId(" slack:C123:1700000000.100 ")).toBe(
       "C123",
     );
+    expect(parseSlackChannelReferenceId("<#C123>")).toBe("C123");
+    expect(parseSlackChannelReferenceId("<#C123|proj-foo>")).toBe("C123");
+    expect(parseSlackChannelReferenceId("#proj-foo")).toBeUndefined();
+    expect(parseSlackChannelReferenceId("proj-foo")).toBeUndefined();
     expect(parseSlackChannelReferenceId("slack:C123:not-a-ts")).toBeUndefined();
+  });
+
+  it("accepts labeled Slack mentions longer than bare channel names", () => {
+    const longName = "a".repeat(80);
+    const mention = `<#C0123456789|${longName}>`;
+    expect(mention.length).toBeGreaterThan(80);
+    expect(slackChannelRefParam.safeParse(mention).success).toBe(true);
+    expect(parseSlackChannelReferenceId(mention)).toBe("C0123456789");
   });
 
   it("parses Slack team and user ids", () => {

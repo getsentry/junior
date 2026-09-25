@@ -1,10 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
-import {
-  extractMessageChangedMention,
-  isMessageChangedEnvelope,
-} from "@/chat/ingress/message-changed";
-import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import {
   createRequestContext,
@@ -17,20 +12,6 @@ import {
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
-interface SlackWebhookAuthAdapter {
-  botUserId?: string;
-  defaultBotTokenProvider?: () => string | Promise<string>;
-  requestContext?: {
-    run<T>(context: unknown, fn: () => T): T;
-  };
-  resolveTokenForTeam?: (teamId: string) => Promise<unknown>;
-  verifySignature: (
-    body: string,
-    timestamp: string | null,
-    signature: string | null,
-  ) => boolean;
-}
-
 type ChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
 
 type WebhookRunner = () => Promise<Response>;
@@ -42,74 +23,6 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
 
   const teamId = (body as Record<string, unknown>).team_id;
   return typeof teamId === "string" && teamId.length > 0 ? teamId : undefined;
-}
-
-async function handleAuthenticatedSlackMessageChangedMention(args: {
-  body: unknown;
-  bot: ChatSdkBot;
-  rawBody: string;
-  request: Request;
-  waitUntil: WaitUntilFn;
-}): Promise<void> {
-  const slackAdapter = args.bot.getAdapter("slack");
-  const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
-  const timestamp = args.request.headers.get("x-slack-request-timestamp");
-  const signature = args.request.headers.get("x-slack-signature");
-
-  if (!authAdapter.verifySignature(args.rawBody, timestamp, signature)) {
-    return;
-  }
-
-  await args.bot.initialize();
-
-  const webhookOptions = {
-    waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
-  };
-  const dispatch = () => {
-    const botUserId = authAdapter.botUserId;
-    if (!botUserId) {
-      return false;
-    }
-
-    const result = extractMessageChangedMention(
-      args.body,
-      botUserId,
-      slackAdapter,
-    );
-    if (!result) {
-      return false;
-    }
-
-    rehydrateAttachmentFetchers(result.message);
-    args.bot.processMessage(
-      slackAdapter,
-      result.threadId,
-      result.message,
-      webhookOptions,
-    );
-    return true;
-  };
-
-  if (authAdapter.defaultBotTokenProvider) {
-    dispatch();
-    return;
-  }
-
-  const teamId = getSlackPayloadTeamId(args.body);
-  if (
-    !teamId ||
-    !authAdapter.resolveTokenForTeam ||
-    !authAdapter.requestContext
-  ) {
-    return;
-  }
-
-  const context = await authAdapter.resolveTokenForTeam(teamId);
-  if (!context) {
-    return;
-  }
-
-  authAdapter.requestContext.run(context, dispatch);
 }
 
 async function handleChatSdkWebhook(args: {
@@ -127,21 +40,11 @@ async function handleChatSdkWebhook(args: {
   let request = args.request;
   let slackWorkspaceTeamId: string | undefined;
   if (args.platform === "slack") {
+    // Do not intercept message_changed events. Slack edits cannot create or
+    // change a Conversation Message or Turn after the original event.
     const rawBody = await args.request.text();
     const parsedBody = parseJson(rawBody);
     slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
-
-    if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
-      await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
-        handleAuthenticatedSlackMessageChangedMention({
-          body: parsedBody,
-          bot: args.bot,
-          rawBody,
-          request: args.request,
-          waitUntil: args.waitUntil,
-        }),
-      );
-    }
 
     request = new Request(args.request.url, {
       method: args.request.method,
@@ -202,7 +105,7 @@ export async function handleWebhookRequest(
                   request.headers.get("x-slack-request-timestamp") ?? undefined,
                 ...(responseBodySnippet
                   ? { "app.webhook.response_body": responseBodySnippet }
-                  : {}),
+                  : undefined),
               });
             }
 

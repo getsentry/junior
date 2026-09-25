@@ -27,7 +27,7 @@ description: Internal provider workflows
 | `target`               | target/config metadata      | `config-key` must be in `config-keys`                                               |
 | `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                   |
 | `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                             |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools` and `wrapped-tools`                           |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools` and `auth`   |
 
 ## OAuth bearer
 
@@ -75,10 +75,10 @@ api-headers:
 
 mcp:
   url: https://mcp.${EXAMPLE_SITE}/mcp
-  allowed-tools:
-    - search
-    - fetch
 ```
+
+Omit `allowed-tools` unless the plugin must hide part of the provider surface.
+When set, only listed tools are exposed and discovery fails if any are missing.
 
 ### MCP wrapper tools
 
@@ -113,14 +113,38 @@ mcp: {
   effect such as conversation annotations. Keep `wrappedTools` for cases that
   need a different product verb, idempotency, or a non-provider contract.
 
+## MCP bot auth
+
+Use `mcp.auth` when the MCP server trusts Junior as a bot, not each user.
+
+```yaml
+mcp:
+  url: https://mcp.example.com/mcp
+  auth:
+    issuer: https://junior.example.com
+    key-id: junior-1
+    private-key-env: EXAMPLE_MCP_PRIVATE_KEY
+```
+
+- Junior signs a short-lived RS256 assertion, with the plugin `name` as subject
+  and the server issuer as audience, then exchanges it with the ID-JAG profile
+  of the RFC 7523 `jwt-bearer` grant. Users get no OAuth link.
+- `private-key-env` holds a PKCS#8 PEM key with real newlines. The server must
+  trust `issuer` and must get the public key for `key-id` from a JWKS URL that
+  you publish.
+
 ## Parser traps
 
 - `api-headers` requires `domains`.
 - `domains` requires `api-headers` in `plugin.yaml`.
 - `oauth` requires `credentials.type: oauth-bearer` in `plugin.yaml`.
 - `mcp.url` env refs must be declared in `env-vars`.
+- `mcp.headers` env refs must be declared in `env-vars` and must not declare
+  defaults. Junior resolves them when it connects, so build output keeps only
+  the placeholder.
 - API-header env refs must not declare defaults.
-- `command-env` env refs must not reuse API-header, credential, or OAuth env vars.
+- `command-env` env refs must not reuse API-header, MCP header, credential,
+  OAuth, or `mcp.auth.private-key-env` env vars.
 - `Authorization` is reserved inside `oauth-bearer` `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

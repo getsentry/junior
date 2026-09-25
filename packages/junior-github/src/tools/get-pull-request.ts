@@ -1,14 +1,16 @@
+import { githubObjectAnnotation } from "../annotations.js";
+import { githubObjectFacts } from "../object-facts.js";
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -34,10 +36,11 @@ interface Result extends PluginToolOutput, PullRequest {
   target: "getPullRequest";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getPullRequest"),
-  ...pullRequestSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  pullRequestSchema.extend({
+    target: z.literal("getPullRequest"),
+  }),
+);
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
@@ -56,9 +59,10 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
-export function createGitHubGetPullRequestTool(
-  ctx: ToolRegistrationHookContext,
-) {
+export function createGitHubGetPullRequestTool(ctx: {
+  egress: PluginEgress;
+  events: { canSubscribe: boolean };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -67,7 +71,7 @@ export function createGitHubGetPullRequestTool(
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request. Use this when an existing PR may need resource-event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -86,10 +90,14 @@ export function createGitHubGetPullRequestTool(
         ),
       });
       const parsed = await readJson(response);
-      if (!response.ok)
-        throw new Error(
-          `GitHub pull request lookup failed with HTTP ${response.status}`,
-        );
+      if (!response.ok) {
+        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+        if (response.status === 404) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
+      }
       const providerResult = z
         .object({
           base: z.object({ ref: z.string() }),
@@ -102,7 +110,7 @@ export function createGitHubGetPullRequestTool(
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubPullRequestSubscribable({
             number: providerResult.number,
             repo: repo.ref,
@@ -116,11 +124,26 @@ export function createGitHubGetPullRequestTool(
         merged: providerResult.merged,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            repo: repo.ref,
+            number: data.number,
+            title: data.title,
+            url: data.url,
+            objectType: "code_change",
+            status: data.merged
+              ? "merged"
+              : data.state === "open" && data.draft
+                ? "draft"
+                : data.state,
+            ...githubObjectFacts("code_change", parsed),
+          }),
+        ],
         target: "getPullRequest",
         ...data,
       };

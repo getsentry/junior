@@ -95,7 +95,7 @@ function mixedCatalog() {
   return {
     github_cloneRepository: tool({
       description:
-        "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+        "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist this is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout.",
       source: githubSource,
       exposure: "deferred",
       inputSchema: Type.Object({
@@ -140,6 +140,16 @@ function mixedCatalog() {
       source: githubSource,
       exposure: "deferred",
       inputSchema: Type.Object({ repo: Type.String() }),
+    }),
+    github_updateIssue: tool({
+      description:
+        "Update an existing GitHub issue's title, body, or state.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Issue number." }),
+      }),
     }),
     github_updatePullRequest: tool({
       description:
@@ -378,6 +388,7 @@ describe("searchTools", () => {
       ["search code repository", "github_getRepository", "github"],
       ["create issue", "github_createIssue", "github"],
       ["create issue", "mcp__linear__create_issue", "linear"],
+      ["update GitHub issue", "github_updateIssue", "github"],
       ["create pull request", "github_createPullRequest", "github"],
       ["GitHub create pull request", "github_createPullRequest", "github"],
       ["update pull request", "github_updatePullRequest", "github"],

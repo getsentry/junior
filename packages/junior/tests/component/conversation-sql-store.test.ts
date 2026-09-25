@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -30,12 +27,12 @@ import {
 } from "../fixtures/conversation-work";
 import {
   createConfiguredJuniorSqlFixture,
-  createLocalJuniorSqlFixture,
+  createJuniorSqlFixture,
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -92,7 +89,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects provider conversation rebinding to another conversation", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -130,7 +127,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects updates to a child whose parent has no persisted root", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -163,24 +160,55 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({
         conversationId: "child:missing-parent",
         lastActivityAtMs: 1,
-        lineage: { parentConversationId: "parent-without-root" },
+        parentConversationId: "parent-without-root",
       });
     } finally {
       await fixture.close();
     }
   });
 
-  it("persists queryable conversation records and linked identities", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+  it("requires a destination on first root upsert", async () => {
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
 
+      await expect(
+        store.recordActivity({
+          conversationId: "root-without-destination",
+          nowMs: 1_000,
+        }),
+      ).rejects.toThrow(
+        "Conversation root-without-destination requires a destination at create",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("persists queryable conversation records and linked identities", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const destination = inboundMessage("activity").destination;
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 2_000,
+        destination,
+        execution: { status: "idle", updatedAtMs: 2_000 },
+        lastActivityAtMs: 2_000,
+        metrics: null,
+        updatedAtMs: 2_000,
+      });
+
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
-        destination: inboundMessage("activity").destination,
+        destination,
         actor: {
           email: "user@example.com",
           fullName: "Runtime User",
@@ -191,7 +219,7 @@ describe("conversation SQL store", () => {
         },
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -217,8 +245,9 @@ describe("conversation SQL store", () => {
           location: {
             id: expect.any(String),
             provider: "slack",
-            tenantId: "T123",
-            providerId: "C123",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
           },
           actor: {
             platform: "slack",
@@ -239,6 +268,7 @@ describe("conversation SQL store", () => {
         .select({
           actorIdentityId: juniorConversations.actorIdentityId,
           actorJson: juniorConversations.actor,
+          location: juniorConversations.location,
           destinationId: juniorConversations.destinationId,
           destinationJson: juniorConversations.destination,
           destinationKind: juniorDestinations.kind,
@@ -266,6 +296,13 @@ describe("conversation SQL store", () => {
         {
           actorIdentityId: linkedRows[0]?.actorIdentityId,
           actorJson: null,
+          location: {
+            id: linkedRows[0]?.destinationId,
+            provider: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
+          },
           destinationId: linkedRows[0]?.destinationId,
           destinationJson: null,
           destinationKind: "channel",
@@ -309,8 +346,9 @@ describe("conversation SQL store", () => {
         location: {
           id: expect.any(String),
           provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
         },
         actor: {
           platform: "slack",
@@ -328,7 +366,7 @@ describe("conversation SQL store", () => {
         },
         nowMs: 4_000,
         sessionSource: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId: localConversationId,
         },
@@ -346,7 +384,7 @@ describe("conversation SQL store", () => {
   });
 
   it("links actor identities to users by case-insensitive verified email", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -455,7 +493,7 @@ describe("conversation SQL store", () => {
   });
 
   it("rejects a provider account already linked to another user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -499,7 +537,7 @@ describe("conversation SQL store", () => {
   });
 
   it("falls back to the provider name when an actor has no linked user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -507,6 +545,7 @@ describe("conversation SQL store", () => {
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("unlinked").destination,
         actor: {
           fullName: "Unlinked User",
           platform: "slack",
@@ -536,7 +575,7 @@ describe("conversation SQL store", () => {
   });
 
   it("preserves an existing verified identity email when linking its user", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
@@ -608,7 +647,7 @@ describe("conversation SQL store", () => {
   }, 15_000);
 
   it("fills missing actor identity from later trusted profile observations", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -655,7 +694,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists session source set-once and ignores later turn anchors", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -667,7 +706,7 @@ describe("conversation SQL store", () => {
         destination,
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -680,7 +719,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -693,7 +732,7 @@ describe("conversation SQL store", () => {
         conversationId: CONVERSATION_ID,
         destination,
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "private",
           teamId: "T123",
           channelId: "C123",
@@ -705,7 +744,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -718,7 +757,7 @@ describe("conversation SQL store", () => {
   });
 
   it("persists visibility from source signals and converges on newer signals", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -784,15 +823,15 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("fails closed for unsigned Slack destinations without confirming visibility", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+  it("leaves Slack visibility missing without a live signal", async () => {
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
 
       // A write without a live source signal remains unknown even though the
-      // channel id is C-prefixed. Conversation reads still fail closed.
+      // channel id is C-prefixed. The Run treats the missing value as private.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -801,7 +840,7 @@ describe("conversation SQL store", () => {
       const conversation = await store.get({
         conversationId: CONVERSATION_ID,
       });
-      expect(conversation?.visibility).toBe("private");
+      expect(conversation).not.toHaveProperty("visibility");
       await expect(
         store.getDestinationVisibility({
           provider: "slack",
@@ -814,8 +853,94 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("resolves a known Slack destination by exact display name", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await store.recordActivity({
+        conversationId: "slack:C0KNOWN:1700000000.100",
+        channelName: "proj-foo",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0KNOWN",
+        },
+        nowMs: 1_000,
+        visibility: "public",
+      });
+
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "#proj-foo",
+        }),
+      ).resolves.toEqual({
+        channelId: "C0KNOWN",
+        channelName: "proj-foo",
+      });
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "never-seen",
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "TOTHER",
+          channelName: "proj-foo",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("fails closed when a destination display name is ambiguous", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await store.recordActivity({
+        conversationId: "slack:C0ONE:1700000000.100",
+        channelName: "dupes",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0ONE",
+        },
+        nowMs: 1_000,
+        visibility: "public",
+      });
+      await store.recordActivity({
+        conversationId: "slack:C0TWO:1700000000.200",
+        channelName: "#dupes",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0TWO",
+        },
+        nowMs: 2_000,
+        visibility: "public",
+      });
+
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "dupes",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects legacy JSON metadata that was not migrated to foreign keys", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -875,7 +1000,7 @@ INSERT INTO junior_conversations (
   });
 
   it("keeps newer SQL execution when a stale mirror arrives later", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -884,6 +1009,7 @@ INSERT INTO junior_conversations (
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-fresh").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -928,11 +1054,27 @@ INSERT INTO junior_conversations (
   });
 
   it("replaces the matching run metrics after execution cursor changes", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 500,
+        destination: inboundMessage("exec-metrics").destination,
+        execution: {
+          runId: "run-opaque",
+          status: "running",
+          updatedAtMs: 1_000,
+        },
+        metrics: {
+          durationMs: 100,
+          usage: { totalTokens: 100, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 1_000,
+        updatedAtMs: 1_000,
+      });
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -943,7 +1085,14 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: { totalTokens: 10, cost: { total: 0.01 } },
+          usage: {
+            inputTokens: 4,
+            outputTokens: 2,
+            cachedInputTokens: 3,
+            cacheCreationTokens: 1,
+            reasoningTokens: 1,
+            cost: { total: 0.01 },
+          },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -970,10 +1119,29 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: { totalTokens: 15, cost: { total: 0.015 } },
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cachedInputTokens: 5,
+            cacheCreationTokens: 2,
+            reasoningTokens: 2,
+            cost: { total: 0.015 },
+          },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "running",
+          updatedAtMs: 3_500,
+        },
+        metrics: { durationMs: 1, usage: { totalTokens: 1 } },
+        lastActivityAtMs: 3_500,
+        updatedAtMs: 3_500,
       });
 
       const [metrics] = await fixture.sql.query<{
@@ -994,18 +1162,42 @@ WHERE conversation_id = $1
         [CONVERSATION_ID],
       );
       expect(metrics).toMatchObject({
-        durationMs: 1_500,
+        durationMs: 1_600,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+        usage: {
+          cost: { total: 0.025 },
+          reasoningTokens: 2,
+          totalTokens: 115,
+        },
       });
+      expect(
+        await fixture.sql.query<{ metric: string; value: number }>(
+          `
+SELECT metric, value
+FROM junior_conversation_metrics
+WHERE conversation_id = $1 AND run_id = 'run-1'
+ORDER BY metric
+`,
+          [CONVERSATION_ID],
+        ),
+      ).toEqual([
+        { metric: "cache_creation_tokens", value: 2 },
+        { metric: "cached_input_tokens", value: 5 },
+        { metric: "cost_usd", value: 0.015 },
+        { metric: "duration_ms", value: 1_500 },
+        { metric: "input_tokens", value: 5 },
+        { metric: "output_tokens", value: 3 },
+        { metric: "reasoning_tokens", value: 2 },
+        { metric: "total_tokens", value: 15 },
+      ]);
     } finally {
       await fixture.close();
     }
   });
 
   it("keeps SQL execution timestamps when a fresh summary omits them", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1014,6 +1206,7 @@ WHERE conversation_id = $1
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-timestamps").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -1055,7 +1248,7 @@ WHERE conversation_id = $1
   });
 
   it("keeps the earliest creation time across SQL metadata updates", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
@@ -1063,6 +1256,7 @@ WHERE conversation_id = $1
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("created-at").destination,
         nowMs: 5_000,
       });
       await store.recordExecution({
@@ -1248,7 +1442,7 @@ WHERE conversation_id = $1
   });
 
   it("mirrors worker check-ins into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       vi.useFakeTimers({ now: 1_000 });
@@ -1302,7 +1496,7 @@ WHERE conversation_id = $1
   });
 
   it("mirrors mailbox drains into SQL execution progress", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = await createJuniorSqlFixture();
 
     try {
       await disconnectStateAdapter();

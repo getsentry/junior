@@ -4,20 +4,20 @@ const { dependenciesMock, globalPostinstall, postinstallMock } = vi.hoisted(
   () => ({
     dependenciesMock: vi.fn(),
     globalPostinstall: [] as Array<{ cmd: string; args?: string[] }>,
-    postinstallMock: vi.fn(),
+    postinstallMock: vi.fn()
   }),
 );
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getRuntimeDependencies: dependenciesMock,
-    getRuntimePostinstall: postinstallMock,
-  },
+    getRuntimePostinstall: postinstallMock
+  }
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
-  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall,
+  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall
 }));
 
 import { create, isStale } from "@/chat/sandbox/snapshot/profile";
@@ -77,6 +77,119 @@ describe("snapshot dependency profile", () => {
     expect(profile?.floating).toBe(true);
   });
 
+  it("includes Workspace contents in the profile hash", () => {
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      snapshot: null,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry"
+        },
+      ]
+    };
+
+    const first = create("node22", workspace);
+    const changedSetup = create("node22", {
+      ...workspace,
+      setupScript: "pnpm install --frozen-lockfile",
+      snapshot: null,
+    });
+    const changedRepo = create("node22", {
+      ...workspace,
+      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }]
+    });
+
+    expect(first?.hash).not.toBe(changedSetup?.hash);
+    expect(first?.hash).not.toBe(changedRepo?.hash);
+    expect(first?.floating).toBe(true);
+  });
+
+  it("normalizes repository order when hashing workspace profiles", () => {
+    const repos = [
+      {
+        provider: "github",
+        repo: "getsentry/sentry",
+      },
+      {
+        provider: "github",
+        repo: "getsentry/relay",
+      },
+    ];
+    const first = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "",
+      snapshot: null,
+      repos,
+    });
+    const reordered = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "",
+      snapshot: null,
+      repos: [...repos].reverse(),
+    });
+
+    expect(first?.hash).toBe(reordered?.hash);
+  });
+
+  it("keeps workspace profile hashes stable without localeCompare", () => {
+    // Code-point order differs from some locales for mixed case / symbols.
+    const reposA = [
+      {
+        provider: "github",
+        repo: "getsentry/Zulu"
+      },
+      {
+        provider: "github",
+        repo: "getsentry/alpha"
+      },
+    ];
+    const reposB = [...reposA].reverse();
+    const first = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      snapshot: null,
+      repos: reposA
+    });
+    const second = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      snapshot: null,
+      repos: reposB
+    });
+    expect(first?.hash).toBe(second?.hash);
+  });
+
+  it("installs dependencies in the complete Workspace profile", () => {
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "",
+      snapshot: null,
+      repos: []
+    };
+    const first = create("node22", workspace);
+
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "2.0.0" },
+    ]);
+    const changed = create("node22", workspace);
+
+    expect(first?.dependencies).toEqual([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+    expect(first?.hash).not.toBe(changed?.hash);
+  });
+
   it("changes the hash when the rebuild epoch changes", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },
@@ -87,6 +200,44 @@ describe("snapshot dependency profile", () => {
     const second = create("node22");
 
     expect(first?.hash).not.toBe(second?.hash);
+  });
+
+  it("omits workspace from base profile hashes when unset", async () => {
+    const { createHash } = await import("node:crypto");
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+
+    const profile = create("node22");
+    const expected = createHash("sha256")
+      .update(
+        JSON.stringify({
+          version: 1,
+          runtime: "node22",
+          rebuildEpoch: "",
+          dependencies: [{ type: "npm", package: "example", version: "1.2.3" }],
+          postinstall: []
+        }),
+      )
+      .digest("hex");
+
+    expect(profile?.hash).toBe(expected);
+    expect(profile?.hash).not.toBe(
+      createHash("sha256")
+        .update(
+          JSON.stringify({
+            version: 1,
+            runtime: "node22",
+            rebuildEpoch: "",
+            dependencies: [
+              { type: "npm", package: "example", version: "1.2.3" },
+            ],
+            postinstall: [],
+            workspace: null
+          }),
+        )
+        .digest("hex"),
+    );
   });
 
   it("rejects conflicting npm versions", () => {

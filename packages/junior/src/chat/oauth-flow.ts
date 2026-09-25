@@ -22,7 +22,8 @@ import type {
   OAuthAuthorization,
   OAuthAuthorizationRequest,
 } from "@/chat/oauth-authorization";
-import { formatOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
+import { buildSlackOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
+import type { KnownBlock } from "@slack/types";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -90,24 +91,24 @@ export function parseOAuthStatePayload(
   return {
     userId: value.userId,
     provider: value.provider,
-    ...(actor?.success ? { actor: actor.data } : {}),
+    ...(actor?.success ? { actor: actor.data } : undefined),
     ...(optionalString(value.channelId)
       ? { channelId: optionalString(value.channelId) }
-      : {}),
-    ...(destination ? { destination } : {}),
-    ...(source?.success ? { source: source.data } : {}),
+      : undefined),
+    ...(destination ? { destination } : undefined),
+    ...(source?.success ? { source: source.data } : undefined),
     ...(optionalString(value.threadTs)
       ? { threadTs: optionalString(value.threadTs) }
-      : {}),
+      : undefined),
     ...(optionalString(value.resumeConversationId)
       ? { resumeConversationId: optionalString(value.resumeConversationId) }
-      : {}),
+      : undefined),
     ...(optionalString(value.resumeSessionId)
       ? { resumeSessionId: optionalString(value.resumeSessionId) }
-      : {}),
+      : undefined),
     ...(optionalString(value.scope)
       ? { scope: optionalString(value.scope) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -140,6 +141,7 @@ export async function deliverPrivateMessage(input: {
   threadTs?: string;
   userId: string;
   text: string;
+  blocks?: KnownBlock[];
 }): Promise<PrivateDeliveryResult> {
   let client: ReturnType<typeof getSlackClient>;
   try {
@@ -157,6 +159,7 @@ export async function deliverPrivateMessage(input: {
         await postSlackMessage({
           channelId: input.channelId,
           text: input.text,
+          blocks: input.blocks,
           threadTs: input.threadTs,
         });
       } else {
@@ -164,6 +167,7 @@ export async function deliverPrivateMessage(input: {
           channelId: input.channelId,
           userId: input.userId,
           text: input.text,
+          blocks: input.blocks,
           threadTs: input.threadTs,
         });
       }
@@ -193,7 +197,11 @@ export async function deliverPrivateMessage(input: {
       return false;
     }
 
-    await postSlackMessage({ channelId: dmChannelId, text: input.text });
+    await postSlackMessage({
+      channelId: dmChannelId,
+      text: input.text,
+      blocks: input.blocks,
+    });
     return "fallback_dm";
   } catch (error) {
     logWarn("oauth.dm.fallback.failed", {
@@ -221,7 +229,7 @@ export async function deliverOAuthAuthorization(
     channelId: input.channelId,
     threadTs: input.threadTs,
     userId: input.userId,
-    text: formatOAuthAuthorizationMessage(request),
+    ...buildSlackOAuthAuthorizationMessage(request),
   });
 }
 
@@ -267,18 +275,18 @@ export async function startOAuthFlow(
     {
       userId: input.actorId,
       provider,
-      ...(input.actor ? { actor: input.actor } : {}),
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.destination ? { destination: input.destination } : {}),
-      ...(input.source ? { source: input.source } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+      ...(input.actor ? { actor: input.actor } : undefined),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.destination ? { destination: input.destination } : undefined),
+      ...(input.source ? { source: input.source } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
       ...(input.resumeConversationId
         ? { resumeConversationId: input.resumeConversationId }
-        : {}),
+        : undefined),
       ...(input.resumeSessionId
         ? { resumeSessionId: input.resumeSessionId }
-        : {}),
-      ...(requestedScope ? { scope: requestedScope } : {}),
+        : undefined),
+      ...(requestedScope ? { scope: requestedScope } : undefined),
     } satisfies OAuthStatePayload,
     OAUTH_STATE_TTL_MS,
   );
@@ -302,13 +310,13 @@ export async function startOAuthFlow(
     "app.credential.provider": provider,
     ...(input.activeSkillName
       ? { "app.skill.name": input.activeSkillName }
-      : {}),
+      : undefined),
   });
 
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   const authorizationRequest = {
     authorizationUrl,
-    label: `Click here to link your ${formatProviderLabel(provider)} account`,
+    label: `Connect to ${formatProviderLabel(provider)}`,
     completionText: input.resumeSessionId
       ? "Once you've authorized, Junior will continue automatically."
       : "Once you've authorized, you'll see a confirmation in Slack.",

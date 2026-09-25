@@ -24,10 +24,10 @@ function buildSentryWebBaseUrl(dsn: {
   return `${dsn.protocol}://${dsn.host}${port}${path}`;
 }
 
-/** Build a Sentry conversation URL only when the runtime has enough Sentry config. */
-export function buildSentryConversationUrl(
-  conversationId: string,
-): string | undefined {
+function buildSentryOrgPath(args: {
+  path: string;
+  query?: Record<string, string>;
+}): string | undefined {
   const client = Sentry.getClient();
   const dsn = client?.getDsn();
   if (!dsn?.host || !dsn.projectId) {
@@ -39,11 +39,14 @@ export function buildSentryConversationUrl(
     return undefined;
   }
 
-  const encodedId = encodeURIComponent(conversationId);
   const params = new URLSearchParams();
   params.set("project", dsn.projectId);
-
-  const path = `explore/conversations/${encodedId}/?${params.toString()}`;
+  if (args.query) {
+    for (const [key, value] of Object.entries(args.query)) {
+      params.set(key, value);
+    }
+  }
+  const path = `${args.path}?${params.toString()}`;
 
   if (isSentrySaasDsnHost(dsn.host)) {
     return `https://${orgSlug}.sentry.io/${path}`;
@@ -52,28 +55,27 @@ export function buildSentryConversationUrl(
   return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${path}`;
 }
 
+/** Build a Sentry conversation URL only when the runtime has enough Sentry config. */
+export function buildSentryConversationUrl(
+  conversationId: string,
+): string | undefined {
+  return buildSentryOrgPath({
+    path: `explore/conversations/${encodeURIComponent(conversationId)}/`,
+  });
+}
+
+/** Build a Sentry event URL only when the runtime has enough Sentry config. */
+export function buildSentryEventUrl(eventId: string): string | undefined {
+  // Direct /events/{id}/ is not a stable product route; issues search by id is.
+  return buildSentryOrgPath({
+    path: "issues/",
+    query: { query: eventId },
+  });
+}
+
 /** Build a Sentry trace URL only when the runtime has enough Sentry config. */
 export function buildSentryTraceUrl(traceId: string): string | undefined {
-  const client = Sentry.getClient();
-  const dsn = client?.getDsn();
-  if (!dsn?.host || !dsn.projectId) {
-    return undefined;
-  }
-
-  const orgSlug = getSentryOrgSlug();
-  if (!orgSlug) {
-    return undefined;
-  }
-
-  const encodedTraceId = encodeURIComponent(traceId);
-  const params = new URLSearchParams();
-  params.set("project", dsn.projectId);
-
-  const path = `performance/trace/${encodedTraceId}/?${params.toString()}`;
-
-  if (isSentrySaasDsnHost(dsn.host)) {
-    return `https://${orgSlug}.sentry.io/${path}`;
-  }
-
-  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${path}`;
+  return buildSentryOrgPath({
+    path: `performance/trace/${encodeURIComponent(traceId)}/`,
+  });
 }

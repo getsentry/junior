@@ -1,14 +1,14 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { gitHubRepositorySubscribable } from "../resource-events/repository.js";
+import { gitHubRepositorySubscribable } from "../events/repository.js";
 
 const inputSchema = z
   .object({
@@ -28,10 +28,11 @@ interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getRepository"),
-  ...repositorySchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  repositorySchema.extend({
+    target: z.literal("getRepository"),
+  }),
+);
 
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
@@ -52,9 +53,10 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 /** Read one repository and expose its stable subscription identity. */
-export function createGitHubGetRepositoryTool(
-  ctx: ToolRegistrationHookContext,
-) {
+export function createGitHubGetRepositoryTool(ctx: {
+  egress: PluginEgress;
+  events: { canSubscribe: boolean };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -63,7 +65,7 @@ export function createGitHubGetRepositoryTool(
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub repository. Use this when repository-wide issue activity may need resource-event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub repository. Use this when repository-wide issue activity may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -96,7 +98,7 @@ export function createGitHubGetRepositoryTool(
           private: z.boolean(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubRepositorySubscribable({
             repo: providerResult.full_name,
           })
@@ -106,7 +108,7 @@ export function createGitHubGetRepositoryTool(
         description: providerResult.description,
         fullName: providerResult.full_name,
         private: providerResult.private,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         url: providerResult.html_url,
       };
       return {

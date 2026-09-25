@@ -1,7 +1,14 @@
+import { getSlackFileId } from "@/chat/slack/attachments";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
-import type { ConversationMessage } from "@/chat/state/conversation";
-import { normalizeConversationText } from "@/chat/services/conversation-memory";
+import type {
+  ConversationMessage,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
+import {
+  normalizeConversationText,
+  upsertConversationMessage,
+} from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import {
   countPotentialImageAttachments,
@@ -14,15 +21,6 @@ interface ConversationMessageInput {
   entry: Message;
   explicitMention?: boolean;
   text: string;
-}
-
-function resourceEventType(entry: Message): string | undefined {
-  if (!entry.raw || typeof entry.raw !== "object") return undefined;
-  const raw = entry.raw as Record<string, unknown>;
-  return raw.event_type === "resource_event" &&
-    typeof raw.resource_event_type === "string"
-    ? raw.resource_event_type
-    : undefined;
 }
 
 function resolveMessageText(args: ConversationMessageInput): string {
@@ -49,9 +47,9 @@ export function toConversationMessage(
     text: resolveMessageText(args),
     createdAtMs: args.entry.metadata.dateSent.getTime(),
     author: {
-      ...(actor?.userId ? { userId: actor.userId } : {}),
-      ...(actor?.userName ? { userName: actor.userName } : {}),
-      ...(actor?.fullName ? { fullName: actor.fullName } : {}),
+      ...(actor?.userId ? { userId: actor.userId } : undefined),
+      ...(actor?.userName ? { userName: actor.userName } : undefined),
+      ...(actor?.fullName ? { fullName: actor.fullName } : undefined),
       isBot:
         typeof args.entry.author.isBot === "boolean"
           ? args.entry.author.isBot
@@ -59,12 +57,38 @@ export function toConversationMessage(
     },
     meta: {
       attachmentCount: args.entry.attachments.length,
-      eventType: resourceEventType(args.entry),
+      slackFileIds: args.entry.attachments.flatMap((attachment) => {
+        const id = getSlackFileId(attachment);
+        return id ? [id] : [];
+      }),
       explicitMention: args.explicitMention,
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
-      ...(slackTs ? { slackTs } : {}),
+      source: "slack",
+      ...(slackTs ? { slackTs } : undefined),
     },
   };
+}
+
+/** Store a Slack message that Junior did not answer, for later turns. */
+export function recordSkippedConversationMessage(args: {
+  conversation: ThreadConversationState;
+  message: Message;
+  skippedReason: string;
+  text: string;
+}): void {
+  const conversationMessage = toConversationMessage({
+    entry: args.message,
+    explicitMention: Boolean(args.message.isMention),
+    text: args.text,
+  });
+  upsertConversationMessage(args.conversation, {
+    ...conversationMessage,
+    meta: {
+      ...conversationMessage.meta,
+      replied: false,
+      skippedReason: args.skippedReason,
+    },
+  });
 }

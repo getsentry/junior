@@ -61,20 +61,20 @@ function usageFromAggregate(
     componentTotal += value;
   }
   const cost: AgentTurnCost = {
-    ...(row.costInput === null ? {} : { input: row.costInput }),
-    ...(row.costOutput === null ? {} : { output: row.costOutput }),
-    ...(row.costCacheRead === null ? {} : { cacheRead: row.costCacheRead }),
-    ...(row.costCacheWrite === null ? {} : { cacheWrite: row.costCacheWrite }),
-    ...(row.costTotal === null ? {} : { total: row.costTotal }),
+    ...(row.costInput === null ? undefined : { input: row.costInput }),
+    ...(row.costOutput === null ? undefined : { output: row.costOutput }),
+    ...(row.costCacheRead === null ? undefined : { cacheRead: row.costCacheRead }),
+    ...(row.costCacheWrite === null ? undefined : { cacheWrite: row.costCacheWrite }),
+    ...(row.costTotal === null ? undefined : { total: row.costTotal }),
   };
   const result: AgentTurnUsage = {
     ...(row.totalOnlyTokens === null
       ? components
       : { totalTokens: row.totalOnlyTokens + componentTotal }),
     ...(row.reasoningTokens === null
-      ? {}
+      ? undefined
       : { reasoningTokens: row.reasoningTokens }),
-    ...(Object.keys(cost).length === 0 ? {} : { cost }),
+    ...(Object.keys(cost).length === 0 ? undefined : { cost }),
   };
   return hasAgentTurnUsage(result) ? result : undefined;
 }
@@ -145,7 +145,7 @@ export async function readRootConversationMetricsFromSql(
       return [
         [
           row.rootConversationId,
-          { durationMs: row.durationMs, ...(usage ? { usage } : {}) },
+          { durationMs: row.durationMs, ...(usage ? { usage } : undefined) },
         ],
       ];
     }),

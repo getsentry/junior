@@ -7,9 +7,10 @@ import {
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 
 const directoryStat = { isDirectory: () => true };
+// @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
 const fs = {
   stat: async () => directoryStat,
-} as unknown as SandboxFileSystem;
+} as SandboxFileSystem;
 
 describe("sandbox search telemetry", () => {
   it("reports bounded grep measurements", async () => {

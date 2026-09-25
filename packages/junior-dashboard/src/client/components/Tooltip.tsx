@@ -16,6 +16,7 @@ type TooltipProps = {
   children: ReactElement;
   className?: string;
   content: ReactNode;
+  focusable?: boolean;
   label?: ReactNode;
   placement?: "above" | "below";
   triggerClassName?: string;
@@ -24,6 +25,8 @@ type TooltipProps = {
 const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 10;
 const CLOSE_DELAY_MS = 150;
+const TOOLTIP_MEDIA_QUERY =
+  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 /** SVG hosts cannot wrap triggers in an HTML span without collapsing geometry. */
 const SVG_TRIGGER_TAGS = new Set([
@@ -40,9 +43,7 @@ const SVG_TRIGGER_TAGS = new Set([
 ]);
 
 function isSvgTrigger(element: ReactElement): boolean {
-  return (
-    typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type)
-  );
+  return typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type);
 }
 
 /** Show selectable dashboard details beside an element. */
@@ -51,6 +52,7 @@ export function Tooltip({
   children,
   className,
   content,
+  focusable = false,
   label,
   placement = "above",
   triggerClassName,
@@ -60,7 +62,23 @@ export function Tooltip({
   const touchStartedOpenRef = useRef<boolean | null>(null);
   const suppressOpenUntilRef = useRef(0);
   const [open, setOpen] = useState(false);
+  const [available, setAvailable] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia(TOOLTIP_MEDIA_QUERY).matches,
+  );
   const svgTrigger = isSvgTrigger(children);
+
+  useEffect(() => {
+    const media = window.matchMedia(TOOLTIP_MEDIA_QUERY);
+    const syncAvailable = () => {
+      setAvailable(media.matches);
+      if (!media.matches) setOpen(false);
+    };
+    syncAvailable();
+    media.addEventListener("change", syncAvailable);
+    return () => media.removeEventListener("change", syncAvailable);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -81,6 +99,14 @@ export function Tooltip({
     };
   }, [open, tooltipId]);
 
+  // Keep chart/layout wrappers even when tooltips are off.
+  if (!available) {
+    if (svgTrigger) return children;
+    return (
+      <span className={cn("inline-flex", triggerClassName)}>{children}</span>
+    );
+  }
+
   const card = (
     <HoverCard.Root
       closeDelay={CLOSE_DELAY_MS}
@@ -97,6 +123,8 @@ export function Tooltip({
       <HoverCard.Trigger
         aria-describedby={open ? tooltipId : undefined}
         asChild
+        onBlur={focusable ? () => setOpen(false) : undefined}
+        onFocus={focusable ? () => setOpen(true) : undefined}
         onPointerCancel={() => {
           touchStartedOpenRef.current = null;
         }}
@@ -138,7 +166,7 @@ export function Tooltip({
           className={cn(
             "z-50 select-text outline-none",
             className ??
-              "min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
           )}
           collisionPadding={VIEWPORT_GAP}
           hideWhenDetached
@@ -167,5 +195,22 @@ export function Tooltip({
     >
       {card}
     </span>
+  );
+}
+
+/** Compact label tooltip for icon-only controls such as header actions. */
+export function IconButtonTooltip(props: {
+  children: ReactElement;
+  label: string;
+  placement?: "above" | "below";
+}) {
+  return (
+    <Tooltip
+      className="min-w-0 rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-2.5 py-1.5 font-sans text-xs leading-none text-dashboard-text shadow-2xl shadow-black/70"
+      content={props.label}
+      placement={props.placement ?? "above"}
+    >
+      <span className="inline-flex">{props.children}</span>
+    </Tooltip>
   );
 }

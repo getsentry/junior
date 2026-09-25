@@ -16,6 +16,7 @@ import {
   type McpProviderErrorPhase,
   toMcpProviderError,
 } from "./errors";
+import { resolvePluginHeaderEnvRefs } from "@/chat/plugins/auth/api-headers-broker";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -40,13 +41,13 @@ function getMcpNetworkAttributes(url: URL): Record<string, string | number> {
   const port = url.port ? Number(url.port) : getDefaultPort(url);
   return {
     "server.address": url.hostname,
-    ...(port !== undefined ? { "server.port": port } : {}),
+    ...(port !== undefined ? { "server.port": port } : undefined),
     ...(url.protocol === "http:" || url.protocol === "https:"
       ? {
           "network.protocol.name": "http",
           "network.transport": "tcp",
         }
-      : {}),
+      : undefined),
   };
 }
 
@@ -144,10 +145,10 @@ export class PluginMcpClient {
           "gen_ai.operation.name": "execute_tool",
           ...(this.transport?.sessionId
             ? { "mcp.session.id": this.transport.sessionId }
-            : {}),
+            : undefined),
           ...(this.transport?.protocolVersion
             ? { "mcp.protocol.version": this.transport.protocolVersion }
-            : {}),
+            : undefined),
           ...getMcpNetworkAttributes(url),
         });
       }
@@ -212,15 +213,18 @@ export class PluginMcpClient {
       );
     }
 
-    const requestInit: RequestInit = {};
-    if (mcp.headers && Object.keys(mcp.headers).length > 0) {
-      requestInit.headers = new Headers(mcp.headers);
-    }
+    const headers = mcp.headers
+      ? resolvePluginHeaderEnvRefs(
+          this.plugin.manifest.name,
+          mcp.headers,
+          "MCP header",
+        )
+      : undefined;
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
     const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
-      ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
+      ...(headers ? { requestInit: { headers } } : undefined),
       fetch: fetchWithBoundedOAuthErrorBodies(this.options.fetch, (status) => {
         const store = this.providerStatusStore.getStore();
         if (store) {
@@ -229,8 +233,8 @@ export class PluginMcpClient {
       }),
       ...(this.options.authProvider
         ? { authProvider: this.options.authProvider }
-        : {}),
-      ...(sessionId ? { sessionId } : {}),
+        : undefined),
+      ...(sessionId ? { sessionId } : undefined),
     });
     const client = new Client(MCP_CLIENT_INFO, {
       capabilities: {},
