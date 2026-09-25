@@ -2,14 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   conversationOutboxMessageForSubmit,
+  conversationOutboxMessageId,
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
-  removeConversationOutboxMessage,
   upsertConversationOutboxMessage,
 } from "../src/client/conversations/conversationOutbox";
 
 describe("conversation outbox", () => {
+  it("uses the same Message identity as web ingress before the accept response", async () => {
+    const { webMessageId } =
+      await import("../../junior/src/chat/conversations/web-input");
+    const conversationId = "slack:C1:123";
+    const idempotencyKey = "attempt-1";
+    expect(
+      await conversationOutboxMessageId(conversationId, idempotencyKey),
+    ).toBe(webMessageId({ conversationId, idempotencyKey }));
+  });
+
   it("builds a sending row for one submit", () => {
     expect(
       conversationOutboxMessageForSubmit({
@@ -41,16 +51,6 @@ describe("conversation outbox", () => {
         status: "failed",
       }),
     ]);
-  });
-
-  it("drops an outbox row once the accept request succeeds", () => {
-    const outbox = [
-      conversationOutboxMessageForSubmit({
-        idempotencyKey: "attempt-1",
-        message: "Continue in Junior",
-      }),
-    ];
-    expect(removeConversationOutboxMessage(outbox, "attempt-1")).toEqual([]);
   });
 
   it("reuses the same outbox slot when retrying a failed send", () => {

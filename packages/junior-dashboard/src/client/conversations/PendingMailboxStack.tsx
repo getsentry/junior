@@ -122,7 +122,7 @@ function PendingRow(props: {
 }) {
   const text = props.message.text ?? "";
   const redacted = Boolean(props.message.redacted);
-  // Pending rows are always the local user message. Avoid rebuilding a full
+  // Pending rows can come from web or Slack. Avoid rebuilding a full
   // transcript projection just to label the stack above the composer.
   const roleLabel = actorLabel(props.message.actorIdentity) ?? "User";
   const showSlack = props.message.source === "slack";
@@ -272,7 +272,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
       {showCollapsed ? (
         // Desktop keeps a two-row preview; mobile collapses to the control only.
         <div className="hidden md:block">
-          {previewRows.map((message, index) => (
+          {previewRows.map((message) => (
             <PendingRow
               cancelDisabled={Boolean(props.cancelPending)}
               cancelError={Boolean(
@@ -283,7 +283,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
                 props.cancelPending &&
                 props.cancelTargetInboundMessageId === message.inboundMessageId,
               )}
-              key={message.messageId ?? `${message.inboundMessageId}:${index}`}
+              key={message.clientKey ?? message.messageId}
               message={message}
               onCancel={
                 message.clientStatus === undefined
@@ -295,7 +295,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
           ))}
         </div>
       ) : (
-        visibleRows.map((message, index) => (
+        visibleRows.map((message) => (
           <PendingRow
             cancelDisabled={Boolean(props.cancelPending)}
             cancelError={Boolean(
@@ -306,7 +306,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
               props.cancelPending &&
               props.cancelTargetInboundMessageId === message.inboundMessageId,
             )}
-            key={message.messageId ?? `${message.inboundMessageId}:${index}`}
+            key={message.clientKey ?? message.messageId}
             message={message}
             onCancel={
               message.clientStatus === undefined

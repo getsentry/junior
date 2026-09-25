@@ -1,16 +1,17 @@
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
-/** Client-owned mailbox row waiting on accept or retry. */
+/** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
   createdAt: string;
   idempotencyKey: string;
   message: string;
   messageId: string;
-  status: "failed" | "sending";
+  status: "accepted" | "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
+  clientKey?: string;
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -36,11 +37,29 @@ export function conversationOutboxMessageForSubmit(input: {
   };
 }
 
+/** Match the web input Message id before POST can become visible to polling. */
+export async function conversationOutboxMessageId(
+  conversationId: string,
+  idempotencyKey: string,
+): Promise<string> {
+  // Keep this wire identity aligned with core's webMessageId. The contract test
+  // compares both implementations; browsers use Web Crypto, not node:crypto.
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${conversationId}\u0000${idempotencyKey}`),
+  );
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `api-msg:${hex.slice(0, 24)}`;
+}
+
 /** Project one outbox row into the composer-attached mailbox stack. */
 export function mailboxMessageFromOutbox(
   message: ConversationOutboxMessage,
 ): ConversationMailboxMessage {
   return {
+    clientKey: message.idempotencyKey,
     clientStatus: message.status,
     createdAt: message.createdAt,
     delivery: "defer",
@@ -57,7 +76,7 @@ export function mailboxMessageFromOutbox(
 /**
  * Merge accepted mailbox rows with local outbox rows.
  *
- * Server rows win once present. Outbox rows stay visible while sending or failed
+ * Server rows win once present. Local rows stay visible until the server sees them
  * so a submit never depends on restoring text into the composer.
  *
  * Preserve list identity when the visible rows did not change so live polls do
@@ -70,13 +89,25 @@ export function mergeConversationMailboxMessages(
 ): ConversationMailboxMessage[] {
   const serverMessages = server ?? [];
   const outboxMessages = outbox ?? [];
-  let next: readonly ConversationMailboxMessage[] = serverMessages;
+  const localKeys = new Map(
+    previous?.map((message) => [message.messageId, message.clientKey]),
+  );
+  for (const message of outboxMessages) {
+    localKeys.set(message.messageId, message.idempotencyKey);
+  }
+  const accepted = serverMessages.map((message) => {
+    const clientKey = localKeys.get(message.messageId);
+    return clientKey ? { ...message, clientKey } : message;
+  });
+  let next: readonly ConversationMailboxMessage[] = accepted;
   if (outboxMessages.length > 0) {
-    const serverIds = new Set(serverMessages.map((message) => message.messageId));
+    const serverIds = new Set(
+      serverMessages.map((message) => message.messageId),
+    );
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);
-    if (extras.length > 0) next = [...serverMessages, ...extras];
+    if (extras.length > 0) next = [...accepted, ...extras];
   }
   return reuseConversationMailboxMessages(previous, next);
 }
@@ -106,6 +137,7 @@ function sameMailboxMessage(
   return (
     left.inboundMessageId === right.inboundMessageId &&
     left.messageId === right.messageId &&
+    left.clientKey === right.clientKey &&
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&
@@ -150,13 +182,16 @@ export function upsertConversationOutboxMessage(
   return next;
 }
 
-/** Drop one outbox row after the server accepts it. */
-export function removeConversationOutboxMessage(
+/** Keep the local row until a server snapshot contains the accepted Message. */
+export function acceptConversationOutboxMessage(
   current: readonly ConversationOutboxMessage[] | undefined,
   idempotencyKey: string,
+  messageId: string,
 ): ConversationOutboxMessage[] {
-  return (current ?? []).filter(
-    (message) => message.idempotencyKey !== idempotencyKey,
+  return (current ?? []).map((message) =>
+    message.idempotencyKey === idempotencyKey
+      ? { ...message, messageId, status: "accepted" }
+      : message,
   );
 }
 
