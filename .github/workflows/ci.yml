@@ -99,6 +99,8 @@ jobs:
               - README.md
               - scripts/bump-release-versions.mjs
               - scripts/check-release-config.mjs
+              - scripts/release-artifacts*.mjs
+              - scripts/publish-github-release*.mjs
               - packages/*/package.json
               - packages/docs/**
 
@@ -499,15 +501,18 @@ jobs:
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
+          node scripts/release-artifacts.mjs create artifacts
           ls -la artifacts
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.sha }}
-          path: artifacts/*.tgz
+          path: |
+            artifacts/*.tgz
+            artifacts/junior-release.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   required:
     name: ci / required

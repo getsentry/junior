@@ -3,7 +3,13 @@ changelog:
   filePath: CHANGELOG.md
   policy: auto
 preReleaseCommand: bash scripts/craft-pre-release.sh
+# Craft owns approval and tag creation. The tag workflow owns GitHub assets.
+# Keep this first so npm publication cannot block GitHub release verification.
+requireNames:
+  - /^junior-release\.json$/
 targets:
+  - name: github
+    tagOnly: true
   - name: npm
     id: "@sentry/junior"
     includeNames: /^sentry-junior-\d.*\.tgz$/
@@ -55,4 +61,3 @@ targets:
   - name: npm
     id: "@sentry/junior-vercel"
     includeNames: /^sentry-junior-vercel-\d.*\.tgz$/
-  - name: github
