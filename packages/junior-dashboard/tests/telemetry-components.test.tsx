@@ -523,7 +523,16 @@ describe("dashboard canonical-event components", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(
       conversationDetailQueryKey("conversation-1"),
-      conversation([], { status: "active" }),
+      conversation(
+        [
+          event(0, {
+            type: "turn_lifecycle",
+            turnId: "turn-1",
+            state: "started",
+          }),
+        ],
+        { status: "active" },
+      ),
     );
     const failedClient = conversationQueryClient();
     failedClient.setQueryData(

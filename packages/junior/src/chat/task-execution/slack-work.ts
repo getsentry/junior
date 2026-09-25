@@ -8,6 +8,7 @@ import {
   type StateAdapter,
 } from "chat";
 import { z } from "zod";
+import { logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -25,6 +26,9 @@ import {
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
+import { removeReactionFromMessage } from "@/chat/slack/outbound";
+import { getMessageTs } from "@/chat/runtime/thread-context";
+import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -42,7 +46,11 @@ import {
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
+import {
+  botConfig,
+  getChatConfig,
+  type CrossActorMidRunMode,
+} from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -467,6 +475,41 @@ function parseSlackMetadata(
 ): SlackConversationMessageMetadata | undefined {
   const parsed = slackConversationMessageMetadataSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+/** Clear cancelled Slack receipts without failing the stop or cancellation. */
+export async function clearSlackPendingReactions(args: {
+  getSlackAdapter: () => SlackAdapter;
+  messages: readonly InboundMessage[];
+  state?: StateAdapter;
+}): Promise<void> {
+  for (const record of args.messages) {
+    if (record.source !== "slack") continue;
+    try {
+      const metadata = parseSlackMetadata(record.input.metadata);
+      if (!metadata || metadata.route !== "mention") continue;
+      const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+      const target = parseSlackThreadId(metadata.thread.id);
+      if (!timestamp || !target) continue;
+      await runWithSlackInstallation({
+        adapter: args.getSlackAdapter(),
+        installation: metadata.installation ?? {},
+        state: args.state,
+        task: () =>
+          removeReactionFromMessage({
+            channelId: target.channelId,
+            timestamp,
+            emoji: getChatConfig().slack.processingReactionEmoji,
+          }),
+      });
+    } catch (error) {
+      // Receipts are optional UI. Adapter and installation failures must not
+      // undo cancellation or prevent cleanup of the other queued messages.
+      logException(error, "slack.processing.pending_reaction_cleanup.failed", {
+        "messaging.message.id": record.inboundMessageId,
+      });
+    }
+  }
 }
 
 function compareInboundMessages(

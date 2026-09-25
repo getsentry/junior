@@ -374,13 +374,11 @@ New object cards use `objectCards` in Message metadata and tool results. The
 legacy `cards` field stays Automation-only. The reader combines both formats;
 the transcript API and renderers still use one `cards` list.
 
-The previous release ignores `objectCards` and unknown annotation kinds. A
-rollback hides new cards and annotations without deleting them or breaking
-transcript reads. Restore this release to show those saved facts again. Existing
-Automation cards remain readable in both releases. No migration is required.
+Enriched cards add optional facts to the existing object shape. Old saved cards
+remain valid, but old strict readers reject enriched cards. No database
+migration is required. See `conversations/README.md` for the release boundary.
 
-Drain active workers before changing releases. Old workers cannot deliver new
-object cards from a resumed Turn. Deploy or roll back the API and dashboard
-together. Existing dashboard tabs must reload because their old response schema
-does not accept the new card or annotation kind. Rollback does not undo provider
-changes or remove Slack messages already posted.
+Drain active workers and deploy the API, plugins, and dashboard together.
+Reload old dashboard tabs. After enriched cards have been saved, rollback needs
+a reader that accepts the new fields. Rollback does not undo provider changes
+or remove Slack messages already posted.

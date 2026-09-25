@@ -1,5 +1,8 @@
+import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -73,6 +76,8 @@ const createIssueStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -95,6 +100,8 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
+  facts?: ObjectAnnotation["facts"];
+  sourceUpdatedAt?: string;
   number: number;
   url: string;
 }
@@ -131,10 +138,16 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
+  const data = {
+    number: result.number,
+    url: result.url,
+    ...(subscribable ? { subscribable } : undefined),
+  };
   return {
     objectAnnotations: [
       githubObjectAnnotation({
+        facts: result.facts,
+        sourceUpdatedAt: result.sourceUpdatedAt,
         repo: input.repo,
         number: result.number,
         title: input.title,
@@ -292,6 +305,7 @@ async function createGitHubIssue(
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
+    ...githubObjectFacts("task", parsed),
     number: issue.number,
     url: issue.html_url,
   };
@@ -329,6 +343,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
               number: state.number,
               url: state.url,
             };

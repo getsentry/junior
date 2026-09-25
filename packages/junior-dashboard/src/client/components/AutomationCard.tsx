@@ -1,3 +1,4 @@
+import { StatusChip } from "./StatusChip";
 import { ArrowUpRight, CircleAlert, Clock3, Workflow } from "lucide-react";
 import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
@@ -10,7 +11,7 @@ export function AutomationCard({
   card: Pick<
     AutomationCardValue,
     "id" | "title" | "instruction" | "trigger" | "warning"
-  >;
+  > & { status?: string };
 }) {
   return (
     <section
@@ -26,6 +27,7 @@ export function AutomationCard({
         </span>
       </div>
       <div className="grid min-w-0 gap-3 px-4 pb-4 md:px-5">
+        {card.status && <StatusChip size="compact">{card.status}</StatusChip>}
         <p className="m-0 line-clamp-3 break-words text-sm leading-relaxed text-dashboard-text-muted">
           {card.instruction}
         </p>

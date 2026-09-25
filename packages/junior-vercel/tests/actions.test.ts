@@ -61,10 +61,24 @@ describe("Vercel actions", () => {
       });
       expect(Object.hasOwn(body, "target")).toBe(target === "production");
       expect(result).toMatchObject({
+        objectAnnotations: [
+          {
+            kind: "object",
+            objectType: "item",
+            displayType: "Deployment",
+            facts: {
+              type: "deployment",
+              project: "prj_example",
+              revision: sha,
+              branch: "feature/test",
+            },
+          },
+        ],
         deploymentId: deployment.id,
         commitSha: sha,
         url: "https://example.vercel.app",
       });
+      expect(JSON.stringify(result)).not.toContain("secret");
       expect(result).not.toHaveProperty("env");
     }
   });

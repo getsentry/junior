@@ -16,6 +16,13 @@ function toolContext(
         number: 691,
         state: "open",
         title: "Add events",
+        user: { login: "alex" },
+        requested_reviewers: [{ login: "sam" }],
+        mergeable: null,
+        changed_files: 8,
+        additions: 120,
+        deletions: 30,
+        updated_at: "2026-09-25T13:00:00Z",
       },
     },
   ],
@@ -43,6 +50,22 @@ describe("getPullRequest", () => {
         { toolCallId: "get-pr" },
       ),
     ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          displayType: "Pull request",
+          sourceUpdatedAt: "2026-09-25T13:00:00Z",
+          facts: {
+            type: "code_change",
+            author: "alex",
+            reviewers: ["sam"],
+            sourceBranch: "feat/events",
+            targetBranch: "main",
+            changedFiles: 8,
+            additions: 120,
+            deletions: 30,
+          },
+        },
+      ],
       headSha: HEAD_SHA,
       number: 691,
       subscribable: {

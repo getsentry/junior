@@ -742,7 +742,22 @@ function TranscriptsGalleryPage() {
             key: "getsentry/junior#1200",
             label: "getsentry/junior#1200",
             title: "Use object annotations for reply cards",
-            status: "draft",
+            status: "open",
+            displayType: "Pull request",
+            sourceUpdatedAt: "2026-09-25T13:45:00Z",
+            facts: {
+              type: "code_change",
+              author: "alex",
+              review: "changes_requested",
+              checks: { passed: 12, failed: 1, pending: 0 },
+              reviewers: ["sam"],
+              mergeable: false,
+              sourceBranch: "feature/object-cards",
+              targetBranch: "main",
+              changedFiles: 8,
+              additions: 120,
+              deletions: 30,
+            },
             url: "https://github.com/getsentry/junior/pull/1200",
           }}
         />
@@ -755,7 +770,47 @@ function TranscriptsGalleryPage() {
             label: "ENG-123",
             title: "Keep background annotation updates out of the next reply",
             status: "In Progress",
+            facts: {
+              type: "task",
+              assignees: ["Sam"],
+              priority: "High",
+              project: "Conversation quality",
+              cycle: "September",
+              dueDate: "2026-09-30",
+              labels: ["UX", "Reliability"],
+            },
             url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            displayType: "Deployment",
+            plugin: "vercel",
+            key: "dpl_example",
+            label: "dpl_example",
+            title: "junior-docs.vercel.app",
+            status: "READY",
+            url: "https://junior-docs.vercel.app",
+            facts: {
+              type: "deployment",
+              environment: "production",
+              project: "junior-docs",
+              revision: "ca37e26a9",
+              branch: "main",
+            },
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            plugin: "example",
+            key: "note",
+            label: "note",
+            title: "A saved item without a source link",
+            url: null,
           }}
         />
       </Fixture>
@@ -787,6 +842,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
+            status: "active",
             instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
@@ -808,6 +864,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "scheduled-1",
             title: "Weekly release digest",
+            status: "blocked",
             instruction:
               "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",

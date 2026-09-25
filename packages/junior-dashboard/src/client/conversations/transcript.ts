@@ -227,7 +227,21 @@ function sameConversationEventVersion(
   for (let index = 0; index < previous.length; index += 1) {
     const left = previous[index]!;
     const right = next[index]!;
-    if (left.seq !== right.seq || left.createdAt !== right.createdAt) return false;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt)
+      return false;
   }
   return true;
+}
+
+/** Show thinking only after a Turn starts, not when input merely enters the queue. */
+export function conversationIsResponding(
+  detail: ConversationDetailReport | undefined,
+): boolean {
+  if (detail?.status !== "active") return false;
+  for (let index = detail.events.length - 1; index >= 0; index -= 1) {
+    const data = detail.events[index]!.data;
+    if (data.type === "turn_lifecycle") return data.state === "started";
+  }
+  // An active Turn can start before the bounded history window.
+  return Boolean(detail.previousCursor);
 }
