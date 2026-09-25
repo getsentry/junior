@@ -34,7 +34,6 @@ import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import {
   groupTranscriptMessages,
   type RenderedTranscriptEntry,
-  type TranscriptViewMode,
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
@@ -71,7 +70,6 @@ export const ConversationTranscriptView = memo(
     }) => void;
     conversation: ConversationTranscript;
     responding?: boolean;
-    view: TranscriptViewMode;
   }) {
     // Event arrays stay stable across metadata-only polls. Project the transcript
     // only when event content changes, not when timing metadata refreshes.
@@ -89,7 +87,6 @@ export const ConversationTranscriptView = memo(
             conversation={props.conversation}
             messages={messages}
             responding={props.responding}
-            view={props.view}
           />
         </section>
       </TranscriptTimestampProvider>
@@ -105,7 +102,6 @@ function SegmentEvents(props: {
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
   responding?: boolean;
-  view: TranscriptViewMode;
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 md:gap-7">
@@ -116,7 +112,6 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
-          view={props.view}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
         props.messages.length > 0 ? (
@@ -130,7 +125,6 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
-          view={props.view}
         />
       ) : (
         <div className={transcriptEmptyClass()}>
@@ -169,7 +163,6 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
   }) => void;
   transcript: TranscriptViewMessage[];
   conversation: ConversationTranscript;
-  view: TranscriptViewMode;
 }) {
   const entries = useMemo(
     () => groupTranscriptMessages(props.transcript),
@@ -214,7 +207,6 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
           <TranscriptMessageView
             message={entry.message}
             conversation={props.conversation}
-            view={props.view}
           />
         )
       }
@@ -252,11 +244,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       )}
       renderReasoning={renderReasoningEntry}
       renderTool={(entry) => (
-        <TranscriptToolView
-          part={entry.part}
-          timestamp={entry.timestamp}
-          view={props.view}
-        />
+        <TranscriptToolView part={entry.part} timestamp={entry.timestamp} />
       )}
     />
   );

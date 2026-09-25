@@ -22,7 +22,6 @@ export function TranscriptSubagentView(props: {
     <ToolFrame
       meta={meta}
       mobileSummaryMeta={status}
-      raw
       signature={
         <>
           <strong className="min-w-0 break-words font-bold text-cyan-100">

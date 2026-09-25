@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
 import type {
   ConversationMetricDay,
@@ -335,6 +336,7 @@ function FoundationsGalleryPage() {
   const [pressed, setPressed] = useState(true);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
   const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
 
   return (
@@ -401,6 +403,34 @@ function FoundationsGalleryPage() {
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
               Linked work, the Brief, participants, and usage.
             </p>
+            <Button onClick={() => setNestedDrawerOpen(true)}>
+              Open nested details
+            </Button>
+            {nestedDrawerOpen
+              ? createPortal(
+                  <Drawer
+                    closeLabel="Close nested details"
+                    dismissLabel="Dismiss nested details"
+                    header={
+                      <h2
+                        id="gallery-nested-title"
+                        className="m-0 text-lg font-semibold"
+                      >
+                        Event details
+                      </h2>
+                    }
+                    onClose={() => setNestedDrawerOpen(false)}
+                    openKey="gallery-nested"
+                    titleId="gallery-nested-title"
+                  >
+                    <p className="m-0 text-sm text-dashboard-text-muted">
+                      Escape closes this drawer and returns focus to the parent
+                      drawer.
+                    </p>
+                  </Drawer>,
+                  document.body,
+                )
+              : null}
           </Drawer>
         ) : null}
       </Fixture>

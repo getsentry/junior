@@ -197,27 +197,32 @@ describe("transcript bottom pinning", () => {
     expect(after).not.toBe(before);
   });
 
-  it("keeps the tail version stable for metadata-only events", () => {
-    const current = activeTurn();
-    const before = transcriptBottomVersion(current);
-    const after = transcriptBottomVersion(
-      activeTurn({
-        events: [
-          ...current.events,
-          {
-            seq: 1,
-            createdAt: "2026-01-01T00:00:02.000Z",
-            data: {
-              type: "message_handled",
-              messageId: "assistant-1",
+  it.each(["rich", "raw"] as const)(
+    "tracks metadata-only events only in the event log (%s)",
+    (view) => {
+      const current = activeTurn();
+      const before = transcriptBottomVersion(current, view);
+      const after = transcriptBottomVersion(
+        activeTurn({
+          events: [
+            ...current.events,
+            {
+              seq: 1,
+              createdAt: "2026-01-01T00:00:02.000Z",
+              data: {
+                type: "message_handled",
+                messageId: "assistant-1",
+              },
             },
-          },
-        ],
-      }),
-    );
+          ],
+        }),
+        view,
+      );
 
-    expect(after).toBe(before);
-  });
+      if (view === "raw") expect(after).not.toBe(before);
+      else expect(after).toBe(before);
+    },
+  );
 
   it("keeps the tail version stable when only polling timestamps change", () => {
     const before = transcriptBottomVersion(activeTurn());
@@ -231,42 +236,46 @@ describe("transcript bottom pinning", () => {
     expect(after).toBe(before);
   });
 
-  it("keeps the tail version stable when earlier events are prepended", () => {
-    const current = activeTurn({
-      events: [
-        {
-          seq: 10,
-          createdAt: "2026-01-01T00:00:01.000Z",
-          data: {
-            type: "message",
-            messageId: "assistant-10",
-            role: "assistant",
-            text: "checking",
-          },
-        },
-      ],
-    });
-    const before = transcriptBottomVersion(current);
-    const after = transcriptBottomVersion(
-      activeTurn({
+  it.each(["rich", "raw"] as const)(
+    "keeps the tail version stable when earlier events are prepended (%s)",
+    (view) => {
+      const current = activeTurn({
         events: [
           {
-            seq: 5,
-            createdAt: "2026-01-01T00:00:00.000Z",
+            seq: 10,
+            createdAt: "2026-01-01T00:00:01.000Z",
             data: {
               type: "message",
-              messageId: "user-1",
-              role: "user",
-              text: "earlier context",
+              messageId: "assistant-10",
+              role: "assistant",
+              text: "checking",
             },
           },
-          ...current.events,
         ],
-      }),
-    );
+      });
+      const before = transcriptBottomVersion(current, view);
+      const after = transcriptBottomVersion(
+        activeTurn({
+          events: [
+            {
+              seq: 5,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              data: {
+                type: "message",
+                messageId: "user-1",
+                role: "user",
+                text: "earlier context",
+              },
+            },
+            ...current.events,
+          ],
+        }),
+        view,
+      );
 
-    expect(after).toBe(before);
-  });
+      expect(after).toBe(before);
+    },
+  );
 
   it("offsets the viewport by the height added above it", () => {
     expect(

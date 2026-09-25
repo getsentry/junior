@@ -12,6 +12,7 @@ import {
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import type { ConversationTranscript } from "../types";
+import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
@@ -89,15 +90,16 @@ export function transcriptJuniorMessageVersion(
 /** Build a compact visible-tail key so metadata-only polls do not look new. */
 export function transcriptBottomVersion(
   conversation: ConversationTranscript | undefined,
+  view: TranscriptViewMode = "rich",
 ): string {
   if (!conversation) return "empty";
 
-  // Scan only for the last event that adds or changes a rendered transcript row.
-  // This avoids rebuilding the transcript while ignoring routing metadata.
+  // Only the visible tail matters. Earlier pages must not count as new activity.
+  // The event log shows all events; the transcript omits some metadata events.
   let last: ConversationReportEvent | undefined;
   for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
     const event = conversation.events[index]!;
-    if (!changesVisibleTranscript(event)) continue;
+    if (view === "rich" && !changesVisibleTranscript(event)) continue;
     last = event;
     break;
   }
@@ -319,7 +321,8 @@ export function usePinnedTranscriptBottom(input: {
   juniorMessageVersion: string;
   loadingPreviousPage: boolean;
   pinRequestVersion?: number;
-  version: string;
+  view: TranscriptViewMode;
+  versions: Record<TranscriptViewMode, string>;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const contentElementRef = useRef<HTMLDivElement | null>(null);
@@ -333,7 +336,7 @@ export function usePinnedTranscriptBottom(input: {
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
   const terminalPinPendingRef = useRef(false);
-  const versionRef = useRef(input.version);
+  const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
@@ -500,25 +503,15 @@ export function usePinnedTranscriptBottom(input: {
     measurePosition("measure");
   }, [measurePosition, scrollToBottom]);
 
-  // Mobile product contract: while live, new tail content always follows.
-  // Still require live mode so a completed/status-only version flip does not jump.
   useBrowserLayoutEffect(() => {
-    if (versionRef.current === input.version) return;
-    versionRef.current = input.version;
-    if (
-      !input.enabled ||
-      typeof window === "undefined" ||
-      !window.matchMedia(MOBILE_MEDIA_QUERY).matches
-    ) {
-      return;
-    }
-    setFollowingIntent(true);
-    setHasPendingUpdate(false);
-    scrollToBottom("auto");
-  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
-
-  useBrowserLayoutEffect(() => {
+    // Compare the same view across snapshots, not one view's tail to another.
+    const tailChanged =
+      versionsRef.current[input.view] !== input.versions[input.view];
+    versionsRef.current = input.versions;
     const wasEnabled = enabledRef.current;
+    if (initializedRef.current && !tailChanged && wasEnabled === input.enabled)
+      return;
+
     const shouldTrack = input.enabled || wasEnabled;
     enabledRef.current = input.enabled;
     if (!shouldTrack) return;
@@ -535,6 +528,16 @@ export function usePinnedTranscriptBottom(input: {
       }
     }
 
+    // Mobile follows new tail content, but switching views is not new activity.
+    if (
+      tailChanged &&
+      input.enabled &&
+      typeof window !== "undefined" &&
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches
+    ) {
+      setFollowingIntent(true);
+    }
+
     if (
       shouldAutoPinTranscriptBottom({
         enabled: input.enabled,
@@ -549,7 +552,14 @@ export function usePinnedTranscriptBottom(input: {
     if (input.enabled && wasInitialized) {
       setHasPendingUpdate(true);
     }
-  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
+  }, [
+    input.enabled,
+    input.view,
+    input.versions.rich,
+    input.versions.raw,
+    scrollToBottom,
+    setFollowingIntent,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
