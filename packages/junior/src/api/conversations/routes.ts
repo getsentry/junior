@@ -1,3 +1,4 @@
+import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { jsonResponse, throwApiError } from "../http";
@@ -74,6 +75,12 @@ export function createConversationRoutes(options: {
   app.post(
     "/",
     requireViewer,
+    bodyLimit({
+      maxSize: 4_450_000,
+      onError: () => {
+        throwApiError(413, "Images must total 3 MB or less.");
+      },
+    }),
     validateRequest(
       "json",
       createConversationBodySchema,
@@ -84,7 +91,11 @@ export function createConversationRoutes(options: {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await createConversationForViewer(viewer, body),
+        await createConversationForViewer(
+          viewer,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
   );
@@ -92,6 +103,12 @@ export function createConversationRoutes(options: {
   app.post(
     "/:conversationId/messages",
     requireViewer,
+    bodyLimit({
+      maxSize: 4_450_000,
+      onError: () => {
+        throwApiError(413, "Images must total 3 MB or less.");
+      },
+    }),
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -108,7 +125,12 @@ export function createConversationRoutes(options: {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await appendConversationMessageForViewer(viewer, conversationId, body),
+        await appendConversationMessageForViewer(
+          viewer,
+          conversationId,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
   );

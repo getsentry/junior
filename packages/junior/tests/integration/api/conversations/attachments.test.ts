@@ -1,3 +1,4 @@
+import { memoryAttachmentStorage } from "../../../fixtures/attachment-storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -5,38 +6,14 @@ import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { storeAttachment } from "@/chat/attachments/store";
-import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
+import {
+  closeDb,
+  getConversationStore,
+  getSqlExecutor,
+  getConversationEventStore,
+} from "@/chat/db";
 import { juniorAttachments } from "@/db/schema";
 import { testViewer } from "../../../fixtures/user";
-
-function memoryAttachmentStorage(): AttachmentStorage & {
-  objects: Map<string, { body: Buffer; contentType: string }>;
-} {
-  const objects = new Map<string, { body: Buffer; contentType: string }>();
-  return {
-    objects,
-    provider: "test",
-    async put(input) {
-      objects.set(input.key, {
-        body: Buffer.from(input.body),
-        contentType: input.contentType,
-      });
-    },
-    async get(key) {
-      const object = objects.get(key);
-      if (!object) return null;
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(object.body);
-          controller.close();
-        },
-      });
-    },
-    async delete(keys) {
-      for (const key of keys) objects.delete(key);
-    },
-  };
-}
 
 function apiWithViewer(
   email: string | undefined,
@@ -134,6 +111,63 @@ describe("conversation attachment API", () => {
       },
       storage,
     });
+    await getSqlExecutor()
+      .db()
+      .update(juniorAttachments)
+      .set({ provider: "slack", providerId: "FPRIVATE" })
+      .where(eq(juniorAttachments.id, stored.id));
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 2,
+        data: {
+          type: "message",
+          messageId: "slack-image",
+          role: "user",
+          text: "Attached notes",
+          meta: { source: "slack", slackFileIds: ["FPRIVATE"] },
+        },
+      },
+    ]);
+    const detailPath = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`;
+    const visible = await (
+      await apiWithViewer("participant@example.com", storage).request(
+        detailPath,
+      )
+    ).json();
+    expect(visible.events[0].data.attachments).toEqual([
+      {
+        id: stored.id,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        bytes: 6,
+      },
+    ]);
+    const hidden = await (
+      await apiWithViewer("outsider@example.com", storage).request(detailPath)
+    ).json();
+    expect(hidden.events[0].data.attachments).toBeUndefined();
+    expect(hidden.events[0].data.redacted).toBe(true);
+    const rejectedWrite = await apiWithViewer(
+      "outsider@example.com",
+      storage,
+    ).request(`${detailPath}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: "Upload",
+        idempotencyKey: "outsider-upload",
+        images: [
+          {
+            filename: "image.png",
+            contentType: "image/png",
+            data: "iVBORw0KGgo=",
+          },
+        ],
+      }),
+    });
+    expect(rejectedWrite.status).toBe(403);
+    expect(storage.objects.size).toBe(1);
+
     const path = `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`;
 
     const anonymous = await apiWithViewer(undefined, storage).request(path);
@@ -155,6 +189,60 @@ describe("conversation attachment API", () => {
       "attachment",
     );
     expect(await participant.text()).toBe("secret");
+  });
+
+  it("rejects unauthenticated, unsupported, and oversized image input before storage", async () => {
+    const storage = memoryAttachmentStorage();
+    const body = {
+      message: "",
+      idempotencyKey: "upload",
+      images: [
+        {
+          filename: "image.png",
+          contentType: "image/png",
+          data: Buffer.from("not an image").toString("base64"),
+        },
+      ],
+    };
+    const request = (value: unknown) => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(value),
+    });
+    expect(
+      (
+        await apiWithViewer(undefined, storage).request(
+          "/api/conversations",
+          request(body),
+        )
+      ).status,
+    ).toBe(401);
+    const app = apiWithViewer("participant@example.com", storage);
+    const invalid = await app.request("/api/conversations", request(body));
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({
+      error: "Use PNG, JPEG, GIF, or WebP image files.",
+    });
+    expect(
+      (
+        await app.request(
+          "/api/conversations",
+          request({
+            ...body,
+            images: [{ ...body.images[0], data: "a".repeat(4_450_001) }],
+          }),
+        )
+      ).status,
+    ).toBe(413);
+    expect(
+      (
+        await app.request(
+          "/api/conversations",
+          request({ ...body, images: [] }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(storage.objects.size).toBe(0);
   });
 
   it("hides purge-marked attachments", async () => {

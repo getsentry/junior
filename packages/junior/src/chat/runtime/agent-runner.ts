@@ -1,3 +1,4 @@
+import { loadInputImages } from "@/chat/attachments/web";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   isAgentRunFeatureDisabled,
@@ -58,6 +59,18 @@ export function createAgentRunner(
             }
           : undefined),
       };
+      if (run.instruction.storedAttachments?.length) {
+        const storage = nextRun.environment?.attachmentStorage;
+        if (!storage) throw new Error("Attachment storage is unavailable.");
+        nextRun.instruction = {
+          ...run.instruction,
+          attachments: await loadInputImages({
+            attachments: run.instruction.storedAttachments,
+            conversationId: run.conversationId,
+            storage,
+          }),
+        };
+      }
       return await execute(nextRun, streamFn);
     },
   };

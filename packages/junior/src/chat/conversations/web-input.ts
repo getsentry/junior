@@ -1,4 +1,8 @@
 /** Store web input in a Conversation mailbox. */
+import type { MessageAttachment } from "@/chat/attachments/input";
+import { storeWebImages } from "@/chat/attachments/web";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { createWebSource, type Destination } from "@sentry/junior-plugin-api";
@@ -17,6 +21,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 
 type EnqueueOptions = {
+  attachmentStorage?: AttachmentStorage;
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -27,6 +32,7 @@ type EnqueueOptions = {
 export interface CreateConversationInput {
   actor: WebActor;
   message: string;
+  images?: SandboxFileUpload[];
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
   /** New roots default public. Continues never rewrite visibility. */
@@ -38,6 +44,7 @@ export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
   message: string;
+  images?: SandboxFileUpload[];
   idempotencyKey: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
@@ -136,11 +143,12 @@ export function buildWebInboundMessage(args: {
   /** Existing Conversation Destination, when the root already exists. */
   destination?: Destination;
   message: string;
+  attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
 }): InboundMessage {
   const text = args.message.trim();
-  if (!text) {
+  if (!text && !args.attachments?.length) {
     throw new Error("Web Message must not be empty");
   }
   if (!args.actor.email) {
@@ -162,6 +170,9 @@ export function buildWebInboundMessage(args: {
     input: {
       authorId: args.actor.userId,
       text,
+      ...(args.attachments?.length
+        ? { attachments: args.attachments }
+        : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
         ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
@@ -235,6 +246,7 @@ export async function createAndEnqueueConversation(
       conversationId,
       idempotencyKey: input.idempotencyKey,
       message: input.message,
+      images: input.images,
       rootVisibility: input.visibility === "private" ? "private" : "public",
     },
     options,
@@ -255,7 +267,7 @@ export async function appendAndEnqueueWebMessage(
   options: EnqueueOptions & { exclusive?: boolean },
 ): Promise<WebMessageResult> {
   const text = input.message.trim();
-  if (!text) {
+  if (!text && !input.images?.length) {
     throw new Error("Web Message must not be empty");
   }
   if (!input.actor.email) {
@@ -273,6 +285,16 @@ export async function appendAndEnqueueWebMessage(
     nowMs,
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
   });
+  let attachments: MessageAttachment[] = [];
+  if (input.images?.length) {
+    if (!options.attachmentStorage)
+      throw new Error("Attachment storage is unavailable.");
+    attachments = await storeWebImages({
+      conversationId: input.conversationId,
+      files: input.images,
+      storage: options.attachmentStorage,
+    });
+  }
   const enqueue = options.exclusive
     ? appendAndEnqueueExclusiveInboundMessage
     : appendAndEnqueueInboundMessage;
@@ -282,6 +304,7 @@ export async function appendAndEnqueueWebMessage(
       conversationId: input.conversationId,
       destination,
       message: text,
+      attachments,
       messageId,
       nowMs,
     }),

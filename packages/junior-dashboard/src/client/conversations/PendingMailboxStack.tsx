@@ -160,6 +160,15 @@ function PendingRow(props: {
       ) : (
         <p className="m-0 line-clamp-3 font-mono text-sm leading-snug text-dashboard-text/90">
           {text}
+          {props.message.images?.length || props.message.attachments?.length
+            ? " · "
+            : ""}
+          {[
+            ...(props.message.images ?? []),
+            ...(props.message.attachments ?? []),
+          ]
+            .map((image) => image.filename)
+            .join(", ")}
         </p>
       )}
       {canRetry ? (

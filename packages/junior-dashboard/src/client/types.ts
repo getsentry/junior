@@ -138,6 +138,7 @@ export type TranscriptViewMessage = {
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
+  attachments?: TranscriptViewDeliveredAttachment[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

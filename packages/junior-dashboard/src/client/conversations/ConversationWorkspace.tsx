@@ -1,3 +1,4 @@
+import type { InputImage } from "@sentry/junior/api/schema";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
@@ -75,10 +76,11 @@ export function ConversationWorkspace() {
           ? "Could not create the conversation. Try again."
           : undefined
       }
-      onSubmit={async (message, idempotencyKey, visibility) => {
+      onSubmit={async (message, idempotencyKey, visibility, images) => {
         const accepted = await createConversation.mutateAsync({
           idempotencyKey,
           message,
+          images,
           visibility,
         });
         navigate(conversationPath(accepted.conversationId));
@@ -170,6 +172,7 @@ function NewConversationView(props: {
     message: string,
     idempotencyKey: string,
     visibility: "private" | "public",
+    images?: InputImage[],
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
@@ -215,8 +218,8 @@ function NewConversationView(props: {
         label="Start a conversation"
         restoreDraftOnError
         submitLabel="Send"
-        onSubmit={(message, idempotencyKey) =>
-          props.onSubmit(message, idempotencyKey, visibility)
+        onSubmit={(message, idempotencyKey, images) =>
+          props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
     </section>

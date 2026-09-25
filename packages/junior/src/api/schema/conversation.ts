@@ -1,3 +1,9 @@
+import {
+  inputImageSchema,
+  MAX_INPUT_IMAGES,
+  MAX_INPUT_IMAGE_BYTES,
+  messageAttachmentSchema,
+} from "@/chat/attachments/input";
 import { messageCardSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
 import {
@@ -79,21 +85,36 @@ export const archiveConversationResponseSchema = z
   .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
+function hasMessageContent(body: {
+  message: string;
+  images?: Array<{ data: string }>;
+}): boolean {
+  return (
+    Boolean(body.message || body.images?.length) &&
+    (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
+      (MAX_INPUT_IMAGE_BYTES * 4) / 3
+  );
+}
+
 export const createConversationBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
+    message: z.string().trim().max(32_000),
+    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
     /** New roots default public. Private roots stay participant-only. */
     visibility: z.enum(["private", "public"]).optional(),
   })
-  .strict();
+  .strict()
+  .refine(hasMessageContent, "Add a message or up to 3 MB of images.");
 
 export const createConversationMessageBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
+    message: z.string().trim().max(32_000),
+    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
   })
-  .strict();
+  .strict()
+  .refine(hasMessageContent, "Add a message or up to 3 MB of images.");
 
 export const acceptedConversationMessageSchema = z
   .object({
@@ -130,6 +151,7 @@ export const conversationPendingMessageSchema = z
     role: z.literal("user"),
     source: z.enum(["slack", "web"]),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -140,10 +162,11 @@ export const conversationPendingMessageSchema = z
         message: "pending message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && data.actorIdentity) {
+    if (data.redacted && (data.actorIdentity || data.attachments)) {
       context.addIssue({
         code: "custom",
-        message: "redacted pending messages must not expose actor identity",
+        message:
+          "redacted pending messages must not expose actor identity or attachments",
       });
     }
   });
@@ -298,6 +321,7 @@ const conversationReportMessageEventDataSchema = z
     trustedSummary: z.string().min(1).optional(),
     cards: z.array(messageCardSchema).optional(),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -308,10 +332,14 @@ const conversationReportMessageEventDataSchema = z
         message: "message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && (data.actorIdentity || data.cards)) {
+    if (
+      data.redacted &&
+      (data.actorIdentity || data.cards || data.attachments)
+    ) {
       context.addIssue({
         code: "custom",
-        message: "redacted messages must not expose actor identity or cards",
+        message:
+          "redacted messages must not expose actor identity, cards, or attachments",
       });
     }
   });
@@ -506,20 +534,10 @@ const conversationReportStructuredEventDataSchema = z
   })
   .strict();
 
-/** Public attachment metadata on conversation reports and transcript media. */
-const conversationReportDeliveredAttachmentSchema = z
-  .object({
-    id: z.string().min(1),
-    filename: z.string().min(1),
-    contentType: z.string().min(1),
-    bytes: z.number().int().nonnegative(),
-  })
-  .strict();
-
 const conversationReportAttachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),
-    attachments: z.array(conversationReportDeliveredAttachmentSchema).min(1),
+    attachments: z.array(messageAttachmentSchema).min(1),
   })
   .strict();
 

@@ -1,3 +1,4 @@
+import type { InputImage } from "@sentry/junior/api/schema";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 /** Client-owned mailbox row waiting on accept or retry. */
@@ -5,12 +6,14 @@ export type ConversationOutboxMessage = {
   createdAt: string;
   idempotencyKey: string;
   message: string;
+  images?: InputImage[];
   messageId: string;
   status: "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
+  images?: InputImage[];
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -24,6 +27,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 export function conversationOutboxMessageForSubmit(input: {
   idempotencyKey: string;
   message: string;
+  images?: InputImage[];
   now?: string;
 }): ConversationOutboxMessage {
   const createdAt = input.now ?? new Date().toISOString();
@@ -31,6 +35,7 @@ export function conversationOutboxMessageForSubmit(input: {
     createdAt,
     idempotencyKey: input.idempotencyKey,
     message: input.message,
+    ...(input.images?.length ? { images: input.images } : undefined),
     messageId: `client:${input.idempotencyKey}`,
     status: "sending",
   };
@@ -51,6 +56,7 @@ export function mailboxMessageFromOutbox(
     role: "user",
     source: "web",
     text: message.message,
+    ...(message.images?.length ? { images: message.images } : undefined),
   };
 }
 
@@ -72,7 +78,9 @@ export function mergeConversationMailboxMessages(
   const outboxMessages = outbox ?? [];
   let next: readonly ConversationMailboxMessage[] = serverMessages;
   if (outboxMessages.length > 0) {
-    const serverIds = new Set(serverMessages.map((message) => message.messageId));
+    const serverIds = new Set(
+      serverMessages.map((message) => message.messageId),
+    );
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);
@@ -109,6 +117,8 @@ function sameMailboxMessage(
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&
+    left.images === right.images &&
+    JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
     left.redacted === right.redacted &&
     left.source === right.source &&
     left.role === right.role &&

@@ -1,3 +1,4 @@
+import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
@@ -180,6 +181,7 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
+      images?: InputImage[];
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
     onSuccess: (accepted) => {
@@ -199,7 +201,11 @@ export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
   const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
-    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+    mutationFn: (args: {
+      idempotencyKey: string;
+      message: string;
+      images?: InputImage[];
+    }) =>
       post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,

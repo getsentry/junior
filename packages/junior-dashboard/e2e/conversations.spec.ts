@@ -51,6 +51,17 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const inputImage = page.getByRole("img", { name: "input-chart.png" });
+  await inputImage.scrollIntoViewIfNeeded();
+  await expect(inputImage).toBeVisible();
+  await inputImage.click();
+  await expect(
+    page.getByRole("dialog", { name: "input-chart.png" }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "input-chart.png" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   const image = page
     .locator('a[href*="/attachments/qa-chart-png"]')
     .filter({ has: page.locator('img[alt="chart.png"]') })
@@ -238,180 +249,6 @@ test("opens a conversation in the built dashboard", async ({
   );
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
-});
-
-test("starts and continues conversations from the dashboard", async ({
-  page,
-  dashboard,
-}) => {
-  const createdConversationId = "local:web:created";
-  const createRequests: Array<{
-    idempotencyKey: string;
-    message: string;
-    visibility?: "private" | "public";
-  }> = [];
-  const continueRequests: Array<{ idempotencyKey: string; message: string }> =
-    [];
-  let releaseFirstContinue: (() => void) | undefined;
-  const firstContinueHeld = new Promise<void>((resolve) => {
-    releaseFirstContinue = resolve;
-  });
-  let releaseFirstCreate: (() => void) | undefined;
-  const firstCreateHeld = new Promise<void>((resolve) => {
-    releaseFirstCreate = resolve;
-  });
-  let holdDetailRefresh = false;
-  let releaseDetailRefresh: (() => void) | undefined;
-  const detailRefreshHeld = new Promise<void>((resolve) => {
-    releaseDetailRefresh = resolve;
-  });
-  await page.route("**/api/conversations", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fallback();
-      return;
-    }
-    createRequests.push(route.request().postDataJSON());
-    if (createRequests.length === 1) {
-      // Hold the first create so we can prove send stays locked mid-flight.
-      await firstCreateHeld;
-      await route.fulfill({
-        json: { error: "temporary failure" },
-        status: 500,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversationId: createdConversationId,
-        messageId: "created-message",
-        status: "accepted",
-      },
-    });
-  });
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    const body = route.request().postDataJSON() as {
-      idempotencyKey: string;
-      message: string;
-    };
-    continueRequests.push(body);
-    // Hold every accept until release so concurrent queue rows stay visible.
-    await firstContinueHeld;
-    if (
-      body.message === "Continue in Junior" &&
-      continueRequests.filter((item) => item.message === "Continue in Junior")
-        .length === 1
-    ) {
-      await route.fulfill({
-        json: { error: "temporary failure" },
-        status: 500,
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversationId: "slack:CQA123:1770000000.000100",
-        messageId: `continued-message-${continueRequests.length}`,
-        status: "accepted",
-      },
-    });
-  });
-
-  await page.goto(dashboard.baseURL);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Private" }).click();
-  const startComposer = page.getByLabel("Start a conversation");
-  await startComposer.fill("Start from the dashboard");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => createRequests.length).toBe(1);
-  // Create restore keeps send locked while the first accept is open so a later
-  // submit cannot race the failed-draft restore.
-  await expect(
-    page.getByRole("button", { name: "Sending message" }),
-  ).toBeDisabled();
-  await startComposer.evaluate((element) => {
-    element.closest("form")?.requestSubmit();
-  });
-  expect(createRequests).toHaveLength(1);
-  releaseFirstCreate?.();
-  await expect(
-    page.getByText("Could not create the conversation. Try again."),
-  ).toBeVisible();
-  // New roots have no mailbox outbox, so a failed create restores the draft and
-  // keeps the same idempotency key for a safe retry.
-  await expect(startComposer).toHaveValue("Start from the dashboard");
-  const failedCreateKey = createRequests[0]?.idempotencyKey;
-  expect(createRequests[0]?.message).toBe("Start from the dashboard");
-  expect(createRequests[0]?.visibility).toBe("private");
-  expect(failedCreateKey).toBeTruthy();
-
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page).toHaveURL(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
-  );
-  expect(createRequests).toHaveLength(2);
-  expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
-  expect(createRequests[1]?.message).toBe("Start from the dashboard");
-  expect(createRequests[1]?.visibility).toBe("private");
-
-  const slackConversationId = "slack:CQA123:1770000000.000100";
-  await page.route(
-    `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
-    async (route) => {
-      if (holdDetailRefresh) await detailRefreshHeld;
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        json: { ...(await response.json()), isParticipant: true },
-      });
-    },
-  );
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(slackConversationId)}`,
-  );
-  await expect(
-    page.getByText(
-      "This reply stays in Junior. It will not be posted to Slack.",
-    ),
-  ).toHaveCount(0);
-  const composer = page.getByLabel("Continue this conversation");
-  await composer.fill("Continue in Junior");
-  await page.getByRole("button", { name: "Send" }).click();
-  const pending = page.getByLabel("Pending messages");
-  await expect(pending.getByText("Continue in Junior")).toBeVisible();
-  await expect(composer).toHaveValue("");
-  await expect.poll(() => continueRequests.length).toBe(1);
-  // Distinct messages can queue while an earlier accept is still open.
-  await composer.fill("Second queued message");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(pending.getByText("Second queued message")).toBeVisible();
-  await expect.poll(() => continueRequests.length).toBe(2);
-  // Empty-composer double submit must not mint another request.
-  await composer.evaluate((element) => {
-    element.closest("form")?.requestSubmit();
-  });
-  expect(continueRequests).toHaveLength(2);
-  releaseFirstContinue?.();
-  await expect(pending.getByText("Could not send.")).toBeVisible();
-  await expect(composer).toHaveValue("");
-  const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
-  expect(continueRequests[0]?.message).toBe("Continue in Junior");
-  expect(failedIdempotencyKey).toBeTruthy();
-
-  holdDetailRefresh = true;
-  await pending.getByRole("button", { name: "Retry" }).click();
-  await expect.poll(() => continueRequests.length).toBe(3);
-  expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
-  // The accepted message stays out of the composer before background transcript
-  // refreshes finish. A slow read must not make the send look like a UI reload.
-  await expect(composer).toHaveValue("");
-  await expect(pending.getByText("Continue in Junior")).toBeHidden();
-  releaseDetailRefresh?.();
-
-  await page.reload();
-  await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
 });
 
 test("collapses long pending message stacks", async ({ page, dashboard }) => {

@@ -1,3 +1,6 @@
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { decodeInputImages } from "@/chat/attachments/web";
+import type { InputImage } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
@@ -15,6 +18,17 @@ import type {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
+function parseImages(images: InputImage[] | undefined) {
+  try {
+    return decodeInputImages(images ?? []);
+  } catch (error) {
+    throwApiError(
+      400,
+      error instanceof Error ? error.message : "Unable to read images.",
+    );
+  }
+}
+
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
   return webActorFromEmail(normalized, {
@@ -27,17 +41,21 @@ function actorFromViewer(viewer: User): WebActor {
 export async function createConversationForViewer(
   viewer: User,
   body: CreateConversationBody,
+  attachmentStorage: AttachmentStorage,
 ): Promise<AcceptedConversationMessage> {
+  const images = parseImages(body.images);
   try {
     return await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
         message: body.message,
+        images,
         ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
         conversationStore: getConversationStore(),
+        attachmentStorage,
         queue: getVercelConversationWorkQueue(),
       },
     );
@@ -51,6 +69,7 @@ export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
+  attachmentStorage: AttachmentStorage,
 ): Promise<AcceptedConversationMessage> {
   const conversation = await getConversationStore().get({
     conversationId,
@@ -76,6 +95,7 @@ export async function appendConversationMessageForViewer(
     throwApiError(403, "Only conversation participants can add messages.");
   }
 
+  const images = parseImages(body.images);
   try {
     return await appendAndEnqueueWebMessage(
       {
@@ -83,9 +103,11 @@ export async function appendConversationMessageForViewer(
         conversationId,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
+        images,
       },
       {
         conversationStore: getConversationStore(),
+        attachmentStorage,
         queue: getVercelConversationWorkQueue(),
       },
     );

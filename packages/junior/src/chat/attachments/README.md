@@ -27,3 +27,22 @@ This module owns durable files linked to a conversation.
 - The retention job deletes object keys for purge-marked rows and for rows owned
   by purged conversations, then removes those SQL rows. A failed blob delete
   leaves the eligible row for the next run.
+
+## Web image input
+
+The web composer accepts PNG, JPEG, GIF, and WebP images by paste, drop, or
+file selection. It sends image bytes with the message request. The request
+accepts up to three images with a total of 3 MB. This leaves space for base64
+and message text below the host request limit. Draft images stay in browser
+memory, not localStorage. A failed send retains them for retry.
+
+Web input creates the Conversation root, stores the files, then enqueues the
+Message. The mailbox and visible Message keep attachment metadata, not bytes.
+The host loads stored images into native model image parts. The existing
+attachment store owns access, idempotent writes, purge, and 30-day retention.
+A failed send can leave stored files without a Message; retention removes them.
+
+Reporting resolves Slack file ids to the same private attachment read route.
+New Slack Messages keep file ids at ingestion. Older Messages can render images
+when their saved metadata includes file ids and the bytes are still stored.
+Files that Junior never stored cannot be recovered by reporting.

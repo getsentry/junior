@@ -1,3 +1,4 @@
+import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 
@@ -13,6 +14,8 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   cards?: MessageCard[];
+  attachments?: MessageAttachment[];
+  slackFileIds?: string[];
   attachmentCount?: number;
   /** Known message provenance. Omit when unknown; never invent a default. */
   source?: "slack" | "web";

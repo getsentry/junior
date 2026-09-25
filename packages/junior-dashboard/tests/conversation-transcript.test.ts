@@ -277,6 +277,41 @@ describe("conversation transcript", () => {
     expect(result.generatedAt).toBe("2026-07-23T00:00:02.000Z");
   });
 
+  it("shows attachments that finish storing after the first message poll", () => {
+    const message: ConversationReportEvent = {
+      ...event(1),
+      data: {
+        type: "message",
+        messageId: "image",
+        role: "user",
+        text: "Look at this",
+      },
+    };
+    const previous = { ...detail(), events: [message] };
+    const next = {
+      ...previous,
+      events: [
+        {
+          ...message,
+          data: {
+            ...message.data,
+            attachments: [
+              {
+                id: "image-id",
+                filename: "image.png",
+                contentType: "image/png",
+                bytes: 50,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    expect(reuseConversationEventReferences(previous, next).events).toBe(
+      next.events,
+    );
+  });
+
   it("keeps the next events when their version changes", () => {
     const previous = detail();
     const next = {

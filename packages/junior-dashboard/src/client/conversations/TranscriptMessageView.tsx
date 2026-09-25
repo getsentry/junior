@@ -1,3 +1,4 @@
+import { TranscriptAttachment } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
@@ -88,6 +89,14 @@ export const TranscriptMessageView = memo(
           </div>
         )}
         {props.view === "rich" &&
+          props.message.attachments?.map((attachment, index) => (
+            <TranscriptAttachment
+              key={`${attachment.id}:${index}`}
+              attachment={attachment}
+              conversationId={props.conversation.conversationId}
+            />
+          ))}
+        {props.view === "rich" &&
           props.message.cards?.map((card) => {
             switch (card.kind) {
               case "object":
@@ -111,6 +120,7 @@ export const TranscriptMessageView = memo(
   (previous, next) =>
     previous.view === next.view &&
     previous.message === next.message &&
+    previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,
 );

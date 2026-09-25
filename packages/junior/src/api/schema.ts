@@ -1,3 +1,9 @@
+export {
+  INPUT_IMAGE_TYPES,
+  MAX_INPUT_IMAGES,
+  MAX_INPUT_IMAGE_BYTES,
+} from "../chat/attachments/input";
+export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export { messageCardText } from "../chat/conversations/cards";
