@@ -39,6 +39,17 @@ test("inspects all reporting events and searches full event data", async ({
   await entry.focus();
   await page.keyboard.press("Enter");
   const panel = page.getByRole("dialog", { name: "turn_routed", exact: true });
+  await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
+  await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
+  await expect(panel.locator("pre")).toHaveCount(0);
+  const close = panel.getByRole("button", { name: "Close event details" });
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(panel.locator("summary")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await screenshot(page, "conversation-event-details");
+  await panel.getByText("Raw JSON", { exact: true }).click();
   await expect(panel.locator("pre")).toHaveText(
     JSON.stringify(
       report.events.find((event: { seq: number }) => event.seq === 3),
@@ -46,13 +57,6 @@ test("inspects all reporting events and searches full event data", async ({
       2,
     ),
   );
-  const close = panel.getByRole("button", { name: "Close event details" });
-  await expect(close).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(panel.locator("pre")).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(close).toBeFocused();
-  await screenshot(page, "conversation-event-details");
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();

@@ -6,10 +6,11 @@ import { Drawer } from "../components/Drawer";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import { eventLogSummary, eventLogTone } from "./eventLog";
+import { EventDetails } from "./EventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
-  "grid grid-cols-[4ch_12ch_minmax(0,1fr)_1rem] items-center gap-x-3 px-3 @min-[48rem]:grid-cols-[5ch_12ch_25ch_minmax(0,1fr)_1rem]";
+  "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-center gap-x-3 px-3 @min-[48rem]:grid-cols-[12ch_19ch_minmax(0,1fr)_1rem]";
 
 /** Show every reporting event in sequence order, outside the transcript reducer. */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
@@ -59,7 +60,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             ? `${visibleRows.length} of ${events.length} loaded events`
             : `${events.length} loaded events`}
         </span>
-        <span>Sequence order · Times in UTC · Select a row for details</span>
+        <span>Times in UTC · Select a row for details</span>
       </div>
       <div className="overflow-hidden rounded-md border border-dashboard-border bg-dashboard-surface-panel font-mono text-xs">
         <div
@@ -69,7 +70,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
             "border-b border-dashboard-border bg-dashboard-surface-raised py-2 text-dashboard-text-muted",
           )}
         >
-          <span className="text-right">Seq</span>
           <span>Time (UTC)</span>
           <span>Event</span>
           <span className="hidden @min-[48rem]:block">Summary</span>
@@ -92,9 +92,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 onClick={() => setSelectedSeq(event.seq)}
                 type="button"
               >
-                <span className="text-right tabular-nums text-dashboard-text-muted">
-                  {event.seq}
-                </span>
                 <time
                   className="tabular-nums text-dashboard-text-muted"
                   dateTime={event.createdAt}
@@ -109,14 +106,14 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                   <HighlightText text={event.data.type} />
                 </span>
                 <span
-                  className="col-span-3 row-start-2 truncate text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto"
+                  className="col-span-2 row-start-2 truncate text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto"
                   title={summary}
                 >
                   <HighlightText text={summary} />
                 </span>
                 <ChevronRight
                   aria-hidden="true"
-                  className="col-start-4 row-start-1 text-dashboard-text-muted @min-[48rem]:col-start-5"
+                  className="col-start-3 row-start-1 text-dashboard-text-muted @min-[48rem]:col-start-4"
                   size={14}
                 />
               </button>
@@ -145,7 +142,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                     {selected.data.type}
                   </h2>
                   <p className="mb-0 mt-1 font-mono text-xs text-dashboard-text-muted">
-                    Event {selected.seq} · {selected.createdAt}
+                    {selected.createdAt}
                   </p>
                 </>
               }
@@ -154,18 +151,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               titleId={titleId}
               width="wide"
             >
-              <p className="mt-0 break-words text-sm leading-relaxed text-dashboard-text-subtle">
-                {rows.find(({ event }) => event.seq === selectedSeq)?.summary}
-              </p>
-              <h3 className="mb-2 text-sm font-medium text-dashboard-text">
-                Event data
-              </h3>
-              <pre
-                className="m-0 whitespace-pre-wrap break-words rounded-md border border-dashboard-border bg-dashboard-surface-panel p-3 font-mono text-xs leading-relaxed text-dashboard-text"
-                tabIndex={0}
-              >
-                {JSON.stringify(selected, null, 2)}
-              </pre>
+              <EventDetails key={selected.seq} event={selected} />
             </Drawer>,
             document.body,
           )

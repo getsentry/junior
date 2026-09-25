@@ -665,9 +665,9 @@ test("inspects and copies an advisor transcript", async ({
     name: "message",
     exact: true,
   });
-  await expect(eventDetails.locator("pre")).toContainText(
-    "Review the dashboard plan before editing.",
-  );
+  await expect(
+    eventDetails.getByRole("region", { name: "Message", exact: true }),
+  ).toContainText("Review the dashboard plan before editing.");
   await page.keyboard.press("Escape");
   await expect(eventDetails).toBeHidden();
   await expect(drawer).toBeVisible();
