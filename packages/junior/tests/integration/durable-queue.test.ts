@@ -78,61 +78,6 @@ function almostSpentStartedAtMs(remainingMs: number): number {
 }
 
 /**
- * First model step calls a real no-side-effect tool so the agent reaches a
- * safe mid-work boundary. The next model step waits on `holdAfterTool` so the
- * host deadline can expire at that boundary (yield or timeout park). Later
- * steps return plain assistant text for resume and follow-up turns.
- */
-function streamMidWorkThenReplies(
-  holdAfterTool: Promise<void>,
-  ...finalTexts: string[]
-): StreamFn {
-  const [firstFinal, ...restFinals] = finalTexts;
-  if (!firstFinal) {
-    throw new Error(
-      "streamMidWorkThenReplies requires at least one final text",
-    );
-  }
-  return createModelStream([
-    { type: "toolCall", name: "systemTime", arguments: {} },
-    // Held long enough for the host deadline to force park at the tool boundary.
-    { type: "text", text: firstFinal, waitFor: holdAfterTool },
-    // Resume after park (and any aborted in-flight call) still has a final reply.
-    { type: "text", text: firstFinal },
-    ...restFinals.map((text) => ({ type: "text" as const, text })),
-  ]);
-}
-
-/**
- * Same first-slice park as `streamMidWorkThenReplies`, then the resume model
- * step waits on `holdOnResume`. Use this when the second host request should
- * time out before any new work is saved.
- */
-function streamMidWorkThenHoldOnResume(
-  holdAfterTool: Promise<void>,
-  holdOnResume: Promise<void>,
-  ...finalTexts: string[]
-): StreamFn {
-  const [firstFinal, ...restFinals] = finalTexts;
-  if (!firstFinal) {
-    throw new Error(
-      "streamMidWorkThenHoldOnResume requires at least one final text",
-    );
-  }
-  return createModelStream([
-    { type: "toolCall", name: "systemTime", arguments: {} },
-    { type: "text", text: firstFinal, waitFor: holdAfterTool },
-    // Aborted first-slice model call may still consume a slot.
-    { type: "text", text: firstFinal, waitFor: holdOnResume },
-    // Fresh resume model call: hold until the second host deadline is spent.
-    { type: "text", text: firstFinal, waitFor: holdOnResume },
-    // Leftover replies if the turn somehow continues, plus later mentions.
-    { type: "text", text: firstFinal },
-    ...restFinals.map((text) => ({ type: "text" as const, text })),
-  ]);
-}
-
-/**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
  * in production. These tests must not replace Junior-owned runtime behavior.
  * They may fake only model generation at the agent stream boundary and Slack
@@ -494,26 +439,20 @@ describe("durable queue contract", () => {
       // Live multi-slice shape: mention → tool work → host deadline at the
       // post-tool model step → park → fresh queue wake → final reply.
       // Only model stream + Slack HTTP are faked.
-      const releaseAfterTool = deferred<void>();
-      const remainingMs = 2_500;
-      const startedAtMs = almostSpentStartedAtMs(remainingMs);
-      const deadlineAtMs = startedAtMs + requestBudgetMs();
       const q = await slack({
-        modelStream: streamMidWorkThenReplies(
-          releaseAfterTool.promise,
-          "Deploy checked.",
-          "Deploy checked.",
-        ),
+        modelStream: createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
+          { type: "text", text: "Deploy checked." },
+          { type: "text", text: "Deploy checked." },
+        ]),
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
-      const firstSlice = q.next(startedAtMs);
-      // Let the tool boundary land, then hold the next model step past the
-      // host deadline so the worker parks instead of finishing this request.
-      const waitForDeadlineMs = Math.max(0, deadlineAtMs - Date.now() + 50);
-      await new Promise((resolve) => setTimeout(resolve, waitForDeadlineMs));
-      releaseAfterTool.resolve(undefined);
-      await expect(firstSlice).resolves.toEqual({ status: "yielded" });
+      // Hold the model response until the runtime aborts it, not a wall-clock sleep.
+      await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
+        status: "yielded",
+      });
 
       const turnId = "turn_1712345_0001";
       // Holding the next model step past the host deadline marks the agent
@@ -552,31 +491,20 @@ describe("durable queue contract", () => {
       // JUNIOR-7G: first attempt parks after real tool work. The next wake
       // spends the whole host budget on the model call and saves nothing new.
       // That attempt must re-park (not fail), then a full-budget wake finishes.
-      const releaseAfterTool = deferred<void>();
-      const releaseOnResume = deferred<void>();
-      const remainingMs = 2_500;
-      const firstStartedAtMs = almostSpentStartedAtMs(remainingMs);
-      const firstDeadlineAtMs = firstStartedAtMs + requestBudgetMs();
       const q = await slack({
-        modelStream: streamMidWorkThenHoldOnResume(
-          releaseAfterTool.promise,
-          releaseOnResume.promise,
-          "Deploy checked.",
-          "Deploy checked.",
-        ),
+        modelStream: createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
+          { type: "text", text: "Deploy checked." },
+          { type: "text", text: "Deploy checked." },
+        ]),
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
-      const firstSlice = q.next(firstStartedAtMs);
-      const waitForFirstDeadlineMs = Math.max(
-        0,
-        firstDeadlineAtMs - Date.now() + 50,
-      );
-      await new Promise((resolve) =>
-        setTimeout(resolve, waitForFirstDeadlineMs),
-      );
-      releaseAfterTool.resolve(undefined);
-      await expect(firstSlice).resolves.toEqual({ status: "yielded" });
+      await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
+        status: "yielded",
+      });
 
       const turnId = "turn_1712345_0001";
       await expect(
@@ -589,20 +517,10 @@ describe("durable queue contract", () => {
       expect(q.replies()).toHaveLength(0);
       expect(q.wakes.hasQueuedMessages()).toBe(true);
 
-      const secondStartedAtMs = almostSpentStartedAtMs(remainingMs);
-      const secondDeadlineAtMs = secondStartedAtMs + requestBudgetMs();
-      const secondSlice = q.next(secondStartedAtMs);
-      const waitForSecondDeadlineMs = Math.max(
-        0,
-        secondDeadlineAtMs - Date.now() + 50,
-      );
-      await new Promise((resolve) =>
-        setTimeout(resolve, waitForSecondDeadlineMs),
-      );
-      releaseOnResume.resolve(undefined);
-
-      // Short leftover budget still parks cleanly instead of failing the turn.
-      await expect(secondSlice).resolves.toEqual({ status: "yielded" });
+      // The second model response also waits for the runtime to abort it.
+      await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
+        status: "yielded",
+      });
       await expect(
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({
