@@ -1,14 +1,11 @@
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import { renderCurrentInstruction } from "@/chat/current-instruction";
-import type { PiMessage } from "@/chat/pi/messages";
+import { mention, reply } from "../../../src/helpers";
+import type {
+  EvalEventThreadFixture,
+  HistoryEvent,
+} from "../../../src/harness/types";
 
-/** Reduced production sequence with a self-contained PR-copy cleanup task. */
-export function handoffHistory(): PiMessage[] {
-  const user = (text: string, timestamp: number): PiMessage => ({
-    role: "user",
-    content: [{ type: "text", text: renderCurrentInstruction(text) }],
-    timestamp,
-  });
+/** Recreate prior PR discussion with synthetic names and a copy-only task. */
+export function handoffHistory(thread: EvalEventThreadFixture): HistoryEvent[] {
   const maintenance = [
     "[task]",
     "This is a task, not a message from a person.",
@@ -17,30 +14,32 @@ export function handoffHistory(): PiMessage[] {
     "Report completed work or blockers in the originating thread. Report when the pull request merges or closes unmerged. Otherwise stay silent.",
   ].join("\n");
   return [
-    user(
+    mention(
       "Draft the title and description here for PR #42. Don't edit GitHub. The patch makes Work Object IDs stable across threads and adds delivery logs. Old references stop working. Tests pass, but live Slack rendering is unverified. When I say deslop, rewrite the draft in plain language without changing those facts.",
-      1,
+      { thread },
     ),
-    fauxAssistantMessage(
+    reply(
       "Title: Operationalize cross-conversation Work Object identity stabilization and delivery observability\n\nDescription: This change leverages canonical identity semantics to facilitate consistent cross-thread object reference resolution. It adds delivery observability instrumentation. Legacy references cease resolution after cutover. Automated verification passes; live Slack rendering is unverified.",
-      { timestamp: 2 },
+      { thread },
     ),
-    user(`${maintenance}\nA deployment bot posted a preview URL.`, 3),
-    fauxAssistantMessage("[[NO_REPLY]]", { timestamp: 4 }),
-    user(
+    mention(`${maintenance}\nA deployment bot posted a preview URL.`, {
+      thread,
+    }),
+    reply("[[NO_REPLY]]", { thread }),
+    mention(
       `${maintenance}\nA CI bot posted a screenshot report. No code change requested.`,
-      5,
+      { thread },
     ),
-    fauxAssistantMessage("[[NO_REPLY]]", { timestamp: 6 }),
-    user("What does that caveat mean?", 7),
-    fauxAssistantMessage(
+    reply("[[NO_REPLY]]", { thread }),
+    mention("What does that caveat mean?", { thread }),
+    reply(
       "Old cards return not_found. New cards use the new lookup. Live rendering is not verified.",
-      { timestamp: 8 },
+      { thread },
     ),
-    user("That's fine. I just need it to work going forward.", 9),
-    fauxAssistantMessage(
+    mention("That's fine. I just need it to work going forward.", { thread }),
+    reply(
       "Keeping the clean cutover, no compatibility layer. New cards use stable IDs and delivery logs.",
-      { timestamp: 10 },
+      { thread },
     ),
   ];
 }

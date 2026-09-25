@@ -2,7 +2,6 @@
  * Eval-local runtime service overrides: the agent runner wrapper and vision context.
  */
 import { readFile } from "node:fs/promises";
-import { startHandoffReplay } from "../handoff-replay";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { actorFromRun } from "@/chat/agent/types";
@@ -139,7 +138,6 @@ export function buildRuntimeServices(
       `Eval turn timeout must be an integer below the ${replyTimeoutMs}ms reply budget, got ${turnTimeoutMs}`,
     );
   }
-  let handoffStarted = false;
   let activeTurnCompactionInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
   const attachmentStorage = createMemoryAttachmentStorage();
@@ -148,7 +146,7 @@ export function buildRuntimeServices(
     agentRunner: {
       run: async (request) => {
         const pendingSteeringDelivery = steeringDelivery.deliver;
-        let runRequest = pendingSteeringDelivery
+        const runRequest = pendingSteeringDelivery
           ? {
               ...request,
               durability: {
@@ -164,15 +162,6 @@ export function buildRuntimeServices(
               },
             }
           : request;
-        let handoffStream: ReturnType<typeof startHandoffReplay> | undefined;
-        if (scenario.overrides?.handoff && !handoffStarted) {
-          handoffStarted = true;
-          runRequest = {
-            ...runRequest,
-            history: scenario.overrides.handoff.history,
-          };
-          handoffStream = startHandoffReplay();
-        }
         const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
         if (activeTurnCompaction && !activeTurnCompactionInjected) {
           activeTurnCompactionInjected = true;
@@ -269,64 +258,61 @@ export function buildRuntimeServices(
             AbortSignal.timeout(replyTimeoutMs),
           ]);
           const outcome = await raceWithAbort(replySignal, () =>
-            executeAgentRun(
-              {
-                ...runRequest,
-                signal: replySignal,
-                // The runtime owns what happens at the deadline: it aborts
-                // in-flight tools, records the boundary, and resumes the turn.
-                deadlineAtMs: Math.min(
-                  runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                  Date.now() + (turnTimeoutMs ?? replyTimeoutMs),
-                ),
-                environment: {
-                  ...runRequest.environment,
-                  attachmentStorage:
-                    runRequest.environment?.attachmentStorage ??
-                    attachmentStorage,
-                  ...(env.configuredSkillDirs.length > 0
-                    ? { skillDirs: env.configuredSkillDirs }
-                    : {}),
-                  toolOverrides,
-                },
-                onEvent: async (event) => {
-                  await runRequest.onEvent?.(event);
-                  if (event.type === "tool_started") {
-                    const evalInvocation = toEvalToolInvocation({
-                      params: event.params,
-                      toolCallId: event.toolCallId,
-                      toolName: event.toolName,
-                    });
-                    observations.toolInvocations.push(evalInvocation);
-                    pendingToolInvocations.push(evalInvocation);
-                    return;
-                  }
-                  if (event.type !== "tool_finished") {
-                    return;
-                  }
-                  const result = event.report;
-                  const pendingIndex = pendingToolInvocations.findIndex(
-                    (candidate) => candidate.toolCallId === result.toolCallId,
-                  );
-                  if (pendingIndex === -1) {
-                    return;
-                  }
-                  const [invocation] = pendingToolInvocations.splice(
-                    pendingIndex,
-                    1,
-                  );
-                  invocation.completed = true;
-                  invocation.ok = result.ok;
-                  if (result.error) {
-                    invocation.error = result.error;
-                  }
-                  if (result.result !== undefined) {
-                    invocation.result = result.result;
-                  }
-                },
+            executeAgentRun({
+              ...runRequest,
+              signal: replySignal,
+              // The runtime owns what happens at the deadline: it aborts
+              // in-flight tools, records the boundary, and resumes the turn.
+              deadlineAtMs: Math.min(
+                runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                Date.now() + (turnTimeoutMs ?? replyTimeoutMs),
+              ),
+              environment: {
+                ...runRequest.environment,
+                attachmentStorage:
+                  runRequest.environment?.attachmentStorage ??
+                  attachmentStorage,
+                ...(env.configuredSkillDirs.length > 0
+                  ? { skillDirs: env.configuredSkillDirs }
+                  : {}),
+                toolOverrides,
               },
-              handoffStream,
-            ),
+              onEvent: async (event) => {
+                await runRequest.onEvent?.(event);
+                if (event.type === "tool_started") {
+                  const evalInvocation = toEvalToolInvocation({
+                    params: event.params,
+                    toolCallId: event.toolCallId,
+                    toolName: event.toolName,
+                  });
+                  observations.toolInvocations.push(evalInvocation);
+                  pendingToolInvocations.push(evalInvocation);
+                  return;
+                }
+                if (event.type !== "tool_finished") {
+                  return;
+                }
+                const result = event.report;
+                const pendingIndex = pendingToolInvocations.findIndex(
+                  (candidate) => candidate.toolCallId === result.toolCallId,
+                );
+                if (pendingIndex === -1) {
+                  return;
+                }
+                const [invocation] = pendingToolInvocations.splice(
+                  pendingIndex,
+                  1,
+                );
+                invocation.completed = true;
+                invocation.ok = result.ok;
+                if (result.error) {
+                  invocation.error = result.error;
+                }
+                if (result.result !== undefined) {
+                  invocation.result = result.result;
+                }
+              },
+            }),
           );
           const usage =
             outcome.status === "completed"

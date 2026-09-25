@@ -4,7 +4,6 @@
 import { type Message } from "chat";
 import { type JsonValue } from "vitest-evals/harness";
 import type { EmittedLogRecord } from "@/chat/logging";
-import type { PiMessage } from "@/chat/pi/messages";
 import { type ThreadMessageKind } from "@/chat/ingress/message-router";
 import { type AgentTurnUsage } from "@/chat/usage";
 import {
@@ -175,9 +174,6 @@ interface EvalViewImageFixture {
 export interface EvalOverrides {
   active_turn_compaction?: {
     summary: string;
-  };
-  handoff?: {
-    history: PiMessage[];
   };
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];

@@ -4,6 +4,7 @@ import { getConversationStore } from "@/chat/db";
 import { handoffHistory } from "./handoff-history";
 import {
   conversationIds,
+  lastTurnReplies,
   mention,
   rubric,
   slackEvals,
@@ -108,9 +109,10 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   it("when handoff follows old PR events, finish the new cleanup request", async ({
     run,
   }) => {
+    const request = mention("Switch models, then deslop.");
     const result = await run({
-      initialEvents: [mention("Deslop")],
-      overrides: { handoff: { history: handoffHistory() } },
+      history: handoffHistory(request.thread),
+      initialEvents: [request],
       requireSandboxReady: false,
       criteria: rubric({
         pass: [
@@ -128,7 +130,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     expect(toolCalls(result.session)).toContainEqual(
       expect.objectContaining({ name: "handoff", status: "ok" }),
     );
-    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
+    expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
   });
 
   it("when active history is compacted, continue the unfinished task", async ({
