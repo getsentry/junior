@@ -248,6 +248,7 @@ const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
@@ -496,7 +497,10 @@ function readBotConfig(
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
+    visionModelId:
+      env.AI_VISION_MODEL === undefined
+        ? DEFAULT_VISION_MODEL_ID
+        : validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,

@@ -406,9 +406,16 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("leaves visionModelId unset when AI_VISION_MODEL is absent", async () => {
+  it("uses the shared vision default when AI_VISION_MODEL is absent", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     delete process.env.AI_VISION_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.visionModelId).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("disables vision when AI_VISION_MODEL is explicitly empty", async () => {
+    process.env.AI_VISION_MODEL = "";
 
     const { botConfig } = await loadConfig();
     expect(botConfig.visionModelId).toBeUndefined();
