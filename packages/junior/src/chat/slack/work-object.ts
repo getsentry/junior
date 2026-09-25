@@ -37,6 +37,7 @@ const payload = z.strictObject({
     product_name: z.string().optional(),
   }),
   custom_fields: z.array(customField).optional(),
+  display_order: z.array(z.string()).optional(),
 });
 /** Limit IDs to Junior's safe subset; Slack silently rejects JSON punctuation. */
 export const slackExternalRefIdSchema = z

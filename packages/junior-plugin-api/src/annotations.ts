@@ -11,6 +11,12 @@ function usesHttpProtocol(value: string): boolean {
   }
 }
 
+/**
+ * Link an object to a Conversation when the owner has no typed object preview.
+ * Keep a stable key, compact label, source URL, and optional short context or
+ * status. Do not fetch a full object merely to save a link. Rich preview intent
+ * belongs to objectAnnotationSchema, not a second set of resource-link fields.
+ */
 export const resourceLinkAnnotationSchema = z
   .object({
     kind: z.literal("resource_link"),

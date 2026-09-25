@@ -1,3 +1,4 @@
+import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Identity,
@@ -209,6 +210,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       return {
         objectAnnotations: [
           githubObjectAnnotation({
+            ...githubObjectFacts("code_change", parsed),
             repo: repo.ref,
             number: providerResult.number,
             title: providerResult.title,

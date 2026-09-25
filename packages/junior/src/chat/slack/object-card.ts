@@ -1,4 +1,7 @@
-import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
+import {
+  objectFactFields,
+  type OwnedObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import type { SlackCard } from "./cards";
 import type { SlackEntity } from "./work-object";
 import { renderSlackAutomationCard } from "./automation-card";
@@ -16,13 +19,18 @@ export function renderSlackObjectCard(
       url: card.url,
       trigger: card.trigger ?? "",
       warning: card.warning ?? null,
+      status: card.status,
     });
   }
   const title = card.title.slice(0, 160);
+  const facts = objectFactFields(card.facts);
   const text = [
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     escapeSlackMrkdwnText(card.label),
     card.status ? escapeSlackMrkdwnText(card.status) : null,
+    ...facts.map((field) =>
+      escapeSlackMrkdwnText(`${field.label}: ${field.value}`),
+    ),
   ]
     .filter(Boolean)
     .join("\n");
@@ -32,39 +40,62 @@ export function renderSlackObjectCard(
     title: { text: title },
     display_id: card.label,
     display_type:
-      card.objectType === "code_change"
+      card.displayType ??
+      (card.objectType === "code_change"
         ? "Pull request"
         : task
           ? "Issue"
-          : "Item",
+          : "Item"),
     product_name: card.plugin,
   };
+  const customFields = facts.map((field) => ({
+    ...field,
+    type: "string" as const,
+  }));
+  if (card.sourceUpdatedAt)
+    customFields.push({
+      key: "sourceUpdatedAt",
+      label: "Source updated",
+      type: "string" as const,
+      value: card.sourceUpdatedAt,
+    });
   const entity: SlackEntity = {
     ...(task
       ? {
           entity_type: "slack#/entities/task",
           entity_payload: {
             attributes,
+            display_order: [
+              ...(card.status ? ["status"] : []),
+              ...customFields.map((field) => field.key),
+            ],
             fields: card.status
               ? { status: { value: card.status } }
               : undefined,
-            custom_fields: [],
+            custom_fields: customFields,
           },
         }
       : {
           entity_type: "slack#/entities/item",
           entity_payload: {
             attributes,
-            custom_fields: card.status
-              ? [
-                  {
-                    key: "status",
-                    label: "Status",
-                    type: "string",
-                    value: card.status,
-                  },
-                ]
-              : [],
+            display_order: [
+              ...(card.status ? ["status"] : []),
+              ...customFields.map((field) => field.key),
+            ],
+            custom_fields: [
+              ...(card.status
+                ? [
+                    {
+                      key: "status",
+                      label: "Status",
+                      type: "string" as const,
+                      value: card.status,
+                    },
+                  ]
+                : []),
+              ...customFields,
+            ],
           },
         }),
     external_ref: {

@@ -1,4 +1,5 @@
 import {
+  objectFactFields,
   ownedObjectAnnotationSchema,
   type ConversationAnnotation,
   type OwnedObjectAnnotation,
@@ -46,6 +47,12 @@ export function messageCardText(card: MessageCard): string {
         card.label !== card.title ? card.label : undefined,
         card.description,
         card.status,
+        ...objectFactFields(card.facts).map(
+          (field) => `${field.label}: ${field.value}`,
+        ),
+        card.sourceUpdatedAt
+          ? `Source updated: ${card.sourceUpdatedAt}`
+          : undefined,
         card.trigger,
         card.warning,
         card.url,

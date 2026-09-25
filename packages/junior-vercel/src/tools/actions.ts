@@ -3,6 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
   type ToolRegistrationHookContext,
+  type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -66,6 +67,25 @@ function deploymentResult(data: unknown) {
     projectId: value.projectId ?? null,
     commitSha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
+    objectAnnotations: [
+      {
+        kind: "object",
+        objectType: "item",
+        displayType: "Deployment",
+        key: value.id,
+        label: value.id,
+        title: value.url.slice(0, 512),
+        url: `https://${value.url}`,
+        status: value.readyState,
+        facts: {
+          type: "deployment",
+          project: value.projectId?.slice(0, 64),
+          environment: value.target?.slice(0, 64) ?? undefined,
+          revision: value.gitSource?.sha?.slice(0, 64),
+          branch: value.gitSource?.ref?.slice(0, 64),
+        },
+      } satisfies ObjectAnnotation,
+    ],
   };
 }
 

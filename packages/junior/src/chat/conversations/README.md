@@ -220,3 +220,54 @@ Conversation. This contract does not expand provider permissions or make a
 private object public. Detail views of saved annotations use Conversation access,
 not the original actor's provider credentials. Live provider details and actions
 are not part of this contract.
+
+### Object facts
+
+Plugins select facts from the successful provider response, before core saves
+an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
+and field order. It contains no provider fields or Slack layout. Both Slack and
+the web card use these facts. The Slack detail panel reads the latest saved
+annotation, not a new provider response. The web transcript shows the Message
+snapshot and labels it as saved.
+
+- Code changes show review and check summaries when known, then author,
+  requested reviewers, conflicts, branches, and change size. GitHub REST PR
+  responses do not include review decisions or check totals. The producer must
+  not invent these from requested reviewers, mergeability, or lifecycle state.
+- Tasks show assignees and priority, then project, cycle, due date, and labels.
+  An empty assignee list means unassigned. An absent list means unknown.
+- Deployments use Item cards. Vercel selects project, target, revision, and
+  branch from its existing deployment response. It never copies environment
+  values. A missing target stays unknown.
+- Automations use the existing card and detail page. Cards show state, trigger,
+  and warning. The existing Automation record owns full details and actions.
+- Other Items remain useful with just a title and source link.
+
+The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have
+schema bounds. Producers select at most five entries per list and shorten
+optional display text. They do not shorten object keys or source URLs. This
+limit applies to new facts, not to the entire annotation, which also contains
+identity and existing bounded fields. No new table or cache is needed.
+
+Core replaces `objectAnnotations` with owned `objectCards` in successful tool
+results. This avoids two copies in the same tool result. Delivery still saves
+an independent Message snapshot. Background annotation updates stay silent and
+must not change that snapshot, start Watches, or send new Messages.
+
+`sourceUpdatedAt` is the provider's update time, not the database write time.
+A silent status-only update does not claim to refresh every other fact. New
+full responses replace the facts; missing values do not retain old values.
+
+All added facts must be safe for the Conversation audience, just like Message
+text. Slack detail access still checks the workspace and Conversation. This
+change adds no provider fetches or write actions. Source links let the provider
+check access to larger details.
+
+#### Release safety
+
+Old annotations remain valid because the new fields are optional. The previous
+strict reader does not accept enriched annotations or Message snapshots. Drain
+workers and deploy the API, plugins, and dashboard together before writing new
+facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
+these fields after enriched cards have been written. A rollback needs a reader
+that accepts the new fields, even if it does not display them.
