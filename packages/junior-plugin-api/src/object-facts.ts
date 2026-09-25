@@ -31,7 +31,7 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     dueDate: z.iso.date().optional(),
     labels: z.array(text).max(5).optional(),
   }),
-  // Deployments remain Items. Never copy environment values or logs.
+  // Deployments: never copy environment values or logs.
   z.strictObject({
     type: z.literal("deployment"),
     project: text.optional(),

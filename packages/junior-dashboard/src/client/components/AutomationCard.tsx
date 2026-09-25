@@ -1,5 +1,7 @@
+import { ObjectIcon } from "./ObjectIcon";
+import { objectPresentation } from "@sentry/junior-plugin-api";
 import { StatusChip } from "./StatusChip";
-import { ArrowUpRight, CircleAlert, Clock3, Workflow } from "lucide-react";
+import { ArrowUpRight, CircleAlert, Clock3 } from "lucide-react";
 import { Link } from "react-router";
 import type { AutomationCard as AutomationCardValue } from "@sentry/junior/api/schema";
 import { automationPath } from "../format";
@@ -20,14 +22,26 @@ export function AutomationCard({
     >
       <div className="flex items-center gap-3 px-4 pb-3 pt-4 md:px-5">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-cyan-100">
-          <Workflow aria-hidden="true" size={18} />
+          <ObjectIcon objectType="automation" status={card.status} size={18} />
         </span>
         <span className="min-w-0 flex-1 break-words text-base font-semibold text-dashboard-text">
           {card.title}
         </span>
       </div>
       <div className="grid min-w-0 gap-3 px-4 pb-4 md:px-5">
-        {card.status && <StatusChip size="compact">{card.status}</StatusChip>}
+        {card.status && (
+          <StatusChip
+            size="compact"
+            tone={
+              objectPresentation({
+                objectType: "automation",
+                status: card.status,
+              }).tone
+            }
+          >
+            {card.status}
+          </StatusChip>
+        )}
         <p className="m-0 line-clamp-3 break-words text-sm leading-relaxed text-dashboard-text-muted">
           {card.instruction}
         </p>

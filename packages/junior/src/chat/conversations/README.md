@@ -236,7 +236,7 @@ snapshot and labels it as saved.
   not invent these from requested reviewers, mergeability, or lifecycle state.
 - Tasks show assignees and priority, then project, cycle, due date, and labels.
   An empty assignee list means unassigned. An absent list means unknown.
-- Deployments use Item cards. Vercel selects project, target, revision, and
+- Deployments use the `deployment` object type. Vercel selects project, target, revision, and
   branch from its existing deployment response. It never copies environment
   values. A missing target stays unknown.
 - Automations use the existing card and detail page. Cards show state, trigger,
@@ -271,3 +271,29 @@ workers and deploy the API, plugins, and dashboard together before writing new
 facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
 these fields after enriched cards have been written. A rollback needs a reader
 that accepts the new fields, even if it does not display them.
+
+### Object visual language
+
+`object-presentation.ts` in the plugin API owns native type labels, lifecycle
+icons, and semantic tones. Tickets keep the stored type `task`. Code changes,
+Automations, Deployments, and Items each have a distinct icon. Warnings change
+the tone, not the object identity. Provider plugins supply types; core and the
+web do not parse provider URLs to guess a type. The GitHub sidebar hook handles
+old untyped links. Stored deployment Items remain readable as Deployments.
+
+`ObjectIcon` renders the shared Octicons paths in the web. Cards, conversation
+links, sidebar badges, and typed event rows use this component. A plugin's
+sidebar hook can choose compact labels. Other typed annotations use the default
+projection, including core Automations. Unknown event types keep the event icon.
+
+Slack uses the same paths as fixed PNG assets through `product_icon`. The
+versioned dashboard route is public and serves only this fixed icon set. It
+contains no object facts. Local or headless installs omit image URLs. Type
+labels remain in Work Objects and fallback text. Slack owns the card layout;
+a successful post does not prove that its client rendered a Work Object.
+
+Run `node scripts/generate-object-icons.mjs` to rebuild SVG paths and PNGs from
+the pinned Octicons package. It needs the Playwright Chromium browser. Format
+the generated TypeScript files after generation. Keep the Octicons license with
+the paths. Change the asset path version if an existing image changes. Review
+`/dev/transcripts` at desktop and mobile widths after icon changes.

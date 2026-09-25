@@ -1,3 +1,4 @@
+import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   MessageAttachment,
@@ -111,6 +112,7 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Whether the source message addressed Junior directly. */

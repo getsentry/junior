@@ -1,12 +1,10 @@
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
-import { objectFactFields } from "@sentry/junior-plugin-api";
 import {
-  ArrowUpRight,
-  Box,
-  CircleDot,
-  GitPullRequest,
-  Rocket,
-} from "lucide-react";
+  objectFactFields,
+  objectPresentation,
+} from "@sentry/junior-plugin-api";
+import { ArrowUpRight } from "lucide-react";
+import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
 
@@ -27,21 +25,8 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
     );
   }
   const fields = objectFactFields(card.facts);
-  const Icon =
-    card.objectType === "code_change"
-      ? GitPullRequest
-      : card.objectType === "task"
-        ? CircleDot
-        : card.facts?.type === "deployment"
-          ? Rocket
-          : Box;
-  const type =
-    card.displayType ??
-    (card.objectType === "code_change"
-      ? "Code change"
-      : card.objectType === "task"
-        ? "Issue"
-        : "Item");
+  const presentation = objectPresentation(card);
+  const type = card.displayType ?? presentation.label;
   function facts(items: typeof fields) {
     return (
       <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
@@ -63,11 +48,11 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
     >
       <div className="flex items-start gap-3 px-4 pb-3 pt-4 md:px-5">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
-          <Icon aria-hidden="true" size={18} />
+          <ObjectIcon {...card} size={18} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="m-0 mb-1 break-words text-xs text-dashboard-text-muted">
-            {card.plugin} · {card.label}
+            {type} · {card.plugin} · {card.label}
           </p>
           {card.url ? (
             <a
@@ -86,7 +71,11 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         </div>
       </div>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
-        {card.status && <StatusChip size="compact">{card.status}</StatusChip>}
+        {card.status && (
+          <StatusChip size="compact" tone={presentation.tone}>
+            {card.status}
+          </StatusChip>
+        )}
         {fields.length > 0 && facts(fields)}
         {card.description && (
           <details className="min-w-0 border-t border-dashboard-border pt-3">

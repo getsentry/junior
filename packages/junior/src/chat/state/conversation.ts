@@ -1,3 +1,4 @@
+import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
@@ -20,6 +21,7 @@ export interface ConversationMessageMeta {
   /** Known message provenance. Omit when unknown; never invent a default. */
   source?: "slack" | "web";
   eventType?: string;
+  eventObjectType?: ObjectType;
   explicitMention?: boolean;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;

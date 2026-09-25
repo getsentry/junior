@@ -187,6 +187,29 @@ describe("dashboard shell routes", () => {
     expect(avatarBytes).toEqual(installBytes);
   });
 
+  it("serves fixed object images without auth and rejects unknown assets", async () => {
+    const app = dashboard(null);
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
+      ),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect([
+      ...new Uint8Array(await response.arrayBuffer()).slice(0, 8),
+    ]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    const missing = await app.fetch(
+      new Request(
+        "http://localhost/_junior/dashboard/object-icons/v1/not-an-icon.png",
+      ),
+    );
+    expect(missing.status).toBe(404);
+  });
+
   it("serves the dashboard favicon without auth noise", async () => {
     const app = dashboard(null);
 

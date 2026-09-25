@@ -5,30 +5,20 @@ import type {
   PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 
-const STATUS_ICON = {
-  warning: "triangle-alert",
-  open: "circle-dot",
-  draft: "circle-dashed",
-  merged: "git-merge",
-  closed: "circle-x",
-} as const;
-
-type GitHubAnnotationStatus = keyof typeof STATUS_ICON;
-
-function isPullRequestUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
-  } catch {
-    return false;
+function githubObjectType(
+  annotation: ConversationAnnotation,
+): "task" | "code_change" {
+  if (
+    annotation.objectType === "task" ||
+    annotation.objectType === "code_change"
+  ) {
+    return annotation.objectType;
   }
-}
-
-function sidebarIconForStatus(
-  status: GitHubAnnotationStatus,
-  url: string,
-): ConversationSidebarAnnotation["icon"] {
-  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
-  return STATUS_ICON[status];
+  // Older resource links have no type. Only the provider interprets its URLs.
+  return annotation.url &&
+    /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(annotation.url).pathname)
+    ? "code_change"
+    : "task";
 }
 
 function repositoryName(
@@ -48,13 +38,14 @@ export function githubSidebarAnnotations(
 ): ConversationSidebarAnnotation[] {
   return annotations
     .flatMap((annotation) => {
-      const status = annotation.status as GitHubAnnotationStatus | undefined;
+      const status = annotation.status;
       const label = repositoryName(annotation);
-      return status && status in STATUS_ICON && label
+      return label
         ? [
             {
               annotation: {
-                icon: sidebarIconForStatus(status, annotation.url ?? ""),
+                objectType: githubObjectType(annotation),
+                status,
                 key: annotation.key,
                 label,
               },
@@ -113,11 +104,16 @@ export async function updateGitHubAnnotation(
       updatedAt: _updatedAt,
       ...annotation
     } = current;
-    await store.upsert({ ...annotation, status: input.status });
+    await store.upsert({
+      ...annotation,
+      objectType: input.objectType,
+      status: input.status,
+    });
     return;
   }
   await store.upsert({
     kind: "resource_link",
+    objectType: input.objectType,
     key,
     label: `${input.repo}#${input.number}`,
     url: `https://github.com/${input.repo}/${input.objectType === "code_change" ? "pull" : "issues"}/${input.number}`,

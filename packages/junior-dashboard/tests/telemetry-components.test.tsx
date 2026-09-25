@@ -548,55 +548,56 @@ describe("dashboard canonical-event components", () => {
     expect(failedHtml).not.toContain(">error</span>");
   });
 
-  it("renders conversation resource links without pull request assumptions", () => {
+  it("labels linked object types for assistive technology without guessing from URLs", () => {
     const html = renderToStaticMarkup(
       <ConversationAnnotations
         detail={conversation([], {
           annotations: [
             {
               kind: "resource_link",
-              key: "getsentry/junior#1081",
-              label: "getsentry/junior#1081",
+              objectType: "task",
+              key: "issue",
+              label: "Issue",
               plugin: "github",
-              status: "open",
-              url: "https://github.com/getsentry/junior/issues/1081",
+              status: "closed",
+              url: "https://example.com/issue",
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:01.000Z",
             },
-          ],
-        })}
-      />,
-    );
-
-    expect(html).toContain("getsentry/junior#1081");
-    expect(html).toContain('title="Open"');
-    expect(html).not.toContain("Linked resources");
-    expect(html).not.toContain("Pull requests");
-    expect(html).not.toContain("Open pull request");
-  });
-
-  it("renders open pull request resource links with the pull request icon", () => {
-    const html = renderToStaticMarkup(
-      <ConversationAnnotations
-        detail={conversation([], {
-          annotations: [
             {
               kind: "resource_link",
-              key: "getsentry/junior#1081",
-              label: "getsentry/junior#1081",
+              key: "pr",
+              label: "PR",
               plugin: "github",
-              status: "open",
-              url: "https://github.com/getsentry/junior/pull/1081",
+              status: "closed",
+              url: "https://example.com/change",
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+            {
+              kind: "resource_link",
+              key: "other",
+              label: "Other",
+              plugin: "example",
+              url: "https://github.com/example/repo/pull/1",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+          sidebarAnnotations: [
+            {
+              key: "pr",
+              label: "repo",
+              objectType: "code_change",
+              status: "closed",
             },
           ],
         })}
       />,
     );
-
-    expect(html).toContain("getsentry/junior#1081");
-    expect(html).toContain('title="Open pull request"');
+    expect(html).toContain('aria-label="Ticket: closed"');
+    expect(html).toContain('aria-label="Code change: closed"');
+    expect(html).toContain('aria-label="Item"');
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

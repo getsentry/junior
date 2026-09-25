@@ -35,6 +35,9 @@ const payload = z.strictObject({
     display_id: z.string().optional(),
     display_type: z.string().optional(),
     product_name: z.string().optional(),
+    product_icon: z
+      .strictObject({ url, alt_text: z.string().min(1) })
+      .optional(),
   }),
   custom_fields: z.array(customField).optional(),
   display_order: z.array(z.string()).optional(),

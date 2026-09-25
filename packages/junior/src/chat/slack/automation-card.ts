@@ -1,3 +1,4 @@
+import { getDashboardObjectIconLink } from "@/chat/dashboard-link";
 import type { AutomationCard } from "@/chat/automations/card";
 import type { SlackCard } from "./cards";
 import { escapeSlackMrkdwnText, formatSlackLink } from "./mrkdwn";
@@ -14,10 +15,12 @@ export function renderSlackAutomationCard(
   },
 ): SlackCard {
   const title = preview(card.title, 160);
+  const iconUrl = getDashboardObjectIconLink("workflow");
 
   const trigger = preview(card.trigger, 500);
   const warning = card.warning ? preview(card.warning, 500) : null;
   const text = [
+    "Automation",
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     card.status ? escapeSlackMrkdwnText(card.status) : null,
     escapeSlackMrkdwnText(trigger),
@@ -39,6 +42,9 @@ export function renderSlackAutomationCard(
         attributes: {
           title: { text: title },
           display_type: "Automation",
+          product_icon: iconUrl
+            ? { url: iconUrl, alt_text: "Automation" }
+            : undefined,
         },
         custom_fields: [
           ...(card.status

@@ -6,6 +6,7 @@ import {
 } from "@/chat/attachments/input";
 import { messageCardSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
@@ -310,6 +311,7 @@ const conversationReportMessageEventDataSchema = z
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
+    eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
     cards: z.array(messageCardSchema).optional(),

@@ -206,6 +206,7 @@ export function transcriptMessagesFromEvents(
           ? { actorIdentity: data.actorIdentity }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),

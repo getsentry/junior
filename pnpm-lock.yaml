@@ -64,6 +64,9 @@ importers:
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
+      '@primer/octicons':
+        specifier: 19.21.1
+        version: 19.21.1
       agent-browser:
         specifier: ^0.27.0
         version: 0.27.0
@@ -3076,6 +3079,9 @@ packages:
   '@playwright/test@1.60.0':
     resolution: {integrity: sha512-O71yZIbAh/PxDMNGns37GHBIfrVkEVyn+AXyIa5dOTfb4/xNvRWV+Vv/NMbNCtODB/pO7vLlF2OTmMVLhmr7Ag==}
     engines: {node: '>=18'}
+
+  '@primer/octicons@19.21.1':
+    resolution: {integrity: sha512-7tgtBkCNcg75YJnckinzvES+uxysYQCe+CHSEnzr3VYgxttzKRvfmrnVogl3aEuHCQP4xhiE9k2lFDhYwGtTzQ==}
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -11157,6 +11163,10 @@ snapshots:
     dependencies:
       playwright: 1.60.0
 
+  '@primer/octicons@19.21.1':
+    dependencies:
+      object-assign: 4.1.1
+
   '@protobufjs/aspromise@1.1.2': {}
 
   '@protobufjs/base64@1.1.2': {}
@@ -12176,6 +12186,7 @@ snapshots:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
+      '@slack/types': 2.21.1
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0

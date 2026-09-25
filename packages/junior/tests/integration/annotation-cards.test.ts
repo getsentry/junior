@@ -1,3 +1,4 @@
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   defineJuniorPlugin,
   definePluginTool,
@@ -85,6 +86,10 @@ it("saves plugin object results once per reply, leaves background updates silent
       },
     }),
   ]);
+  const previousDashboard = setDashboardConversationLinkOptions({
+    baseURL: "https://junior.example.com",
+    basePath: "/ops",
+  });
   try {
     const harness = await createConversationWebHarness(
       createModelStream([
@@ -177,7 +182,11 @@ it("saves plugin object results once per reply, leaves background updates silent
             attributes: {
               title: { text: "Fix the parser" },
               display_id: "repo#1",
-              display_type: "Pull request",
+              display_type: "Code change",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-draft.png",
+                alt_text: "Code change: draft",
+              },
               product_name: "objects",
             },
             display_order: [
@@ -217,6 +226,121 @@ it("saves plugin object results once per reply, leaves background updates silent
           },
         },
       ],
+    });
+
+    const mixedCards = [
+      { ...annotation, plugin: "objects", status: "closed", facts: undefined },
+      {
+        ...annotation,
+        plugin: "objects",
+        key: "issue-1",
+        objectType: "task" as const,
+        status: "closed",
+        facts: undefined,
+      },
+      {
+        ...annotation,
+        plugin: "objects",
+        key: "deploy-1",
+        objectType: "deployment" as const,
+        status: "ERROR",
+        facts: { type: "deployment" as const, environment: "production" },
+      },
+      {
+        ...annotation,
+        plugin: "junior",
+        key: "daily",
+        objectType: "automation" as const,
+        trigger: "Every day",
+        status: "blocked",
+        warning: "Reconnect provider",
+        facts: undefined,
+      },
+    ];
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId,
+      text: "Linked work",
+      cards: mixedCards,
+    });
+    const mixedPost =
+      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+    expect(mixedPost?.metadata).toMatchObject({
+      entities: [
+        {
+          entity_type: "slack#/entities/item",
+          entity_payload: {
+            attributes: {
+              display_type: "Code change",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
+              },
+            },
+          },
+        },
+        {
+          entity_type: "slack#/entities/task",
+          entity_payload: {
+            attributes: {
+              display_type: "Ticket",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/issue-closed.png",
+              },
+            },
+            fields: { status: { value: "closed" } },
+          },
+        },
+        {
+          entity_type: "slack#/entities/item",
+          entity_payload: {
+            attributes: {
+              display_type: "Deployment",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/rocket.png",
+              },
+            },
+          },
+        },
+        {
+          entity_type: "slack#/entities/item",
+          entity_payload: {
+            attributes: {
+              display_type: "Automation",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
+              },
+            },
+            custom_fields: expect.arrayContaining([
+              expect.objectContaining({
+                key: "warning",
+                value: "Reconnect provider",
+              }),
+            ]),
+          },
+        },
+      ],
+    });
+    for (const type of ["Code change", "Ticket", "Deployment", "Automation"])
+      expect(mixedPost?.text).toContain(type);
+    setDashboardConversationLinkOptions(undefined);
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId,
+      text: "Linked work",
+      cards: [mixedCards[0]!, { ...mixedCards[1]!, url: null }],
+    });
+    const headless =
+      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+    expect(headless?.metadata).toMatchObject({
+      entities: [
+        { entity_payload: { attributes: { display_type: "Code change" } } },
+      ],
+    });
+    expect(JSON.stringify(headless?.metadata)).not.toContain("product_icon");
+    expect(headless?.text).toContain("Ticket");
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+      basePath: "/ops",
     });
 
     await createPluginAnnotations({
@@ -283,5 +407,6 @@ it("saves plugin object results once per reply, leaves background updates silent
     expect(last?.data).not.toHaveProperty("meta.objectCards");
   } finally {
     setPlugins(previous);
+    setDashboardConversationLinkOptions(previousDashboard);
   }
 });

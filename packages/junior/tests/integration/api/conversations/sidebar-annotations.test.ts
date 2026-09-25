@@ -1,3 +1,4 @@
+import { readConversationDetail } from "@/api/conversations/detail";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect, test } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -78,15 +79,38 @@ describe("conversation list sidebar annotations", () => {
         });
       }
 
+      await createPluginAnnotations({
+        conversationId: publicId,
+        plugin: "junior",
+        db: fixture.sql.db(),
+      }).upsert({
+        kind: "object",
+        objectType: "automation",
+        key: "daily",
+        label: "Daily check",
+        title: "Daily check",
+        status: "blocked",
+        url: null,
+      });
       const feed = await readConversationFeedFromSql();
       expect(feed).toMatchObject({
         conversations: [
           expect.objectContaining({
             conversationId: publicId,
             sidebarAnnotations: [
+              {
+                objectType: "automation",
+                key: "daily",
+                label: "Daily check",
+                status: "blocked",
+              },
               { icon: "circle-dot", key: "github", label: "junior" },
             ],
             annotations: [
+              expect.objectContaining({
+                objectType: "automation",
+                key: "daily",
+              }),
               expect.objectContaining({
                 key: "getsentry/junior#1081",
                 kind: "resource_link",
@@ -100,6 +124,15 @@ describe("conversation list sidebar annotations", () => {
           expect.objectContaining({ conversationId: privateId }),
         ],
       });
+      expect(
+        (await readConversationDetail(publicId))?.sidebarAnnotations,
+      ).toEqual(
+        feed.conversations.find((item) => item.conversationId === publicId)
+          ?.sidebarAnnotations,
+      );
+      expect(
+        (await readConversationDetail(privateId))?.sidebarAnnotations,
+      ).toBeUndefined();
       expect(
         feed.conversations.find((item) => item.conversationId === privateId),
       ).not.toHaveProperty("annotations");

@@ -1,3 +1,4 @@
+import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
@@ -17,6 +18,7 @@ import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 export const EVENT_WAIT_MS = 30_000;
 
 export interface EventNotification {
+  objectType?: ObjectType;
   eventKey: string;
   eventType: string;
   occurredAtMs: number;
@@ -66,6 +68,7 @@ export type EventMailboxMetadata = {
     namespace: string;
     identifier: string;
     subscriptionId: string;
+    objectType?: ObjectType;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
@@ -93,6 +96,8 @@ export function isEventMailboxMetadata(
     typeof fields.namespace === "string" &&
     typeof fields.identifier === "string" &&
     typeof fields.subscriptionId === "string" &&
+    (fields.objectType === undefined ||
+      objectTypeSchema.safeParse(fields.objectType).success) &&
     (fields.trustedSummary === undefined ||
       typeof fields.trustedSummary === "string")
   );
@@ -114,6 +119,7 @@ export function createEventInboundMessage(input: {
       identifier: input.event.identifier,
       subscriptionId: input.subscription.id,
       trustedSummary: input.event.trustedSummary,
+      objectType: input.event.objectType,
     },
   };
   return {
