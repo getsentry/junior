@@ -1,11 +1,20 @@
 import { describeEval } from "vitest-evals";
+import { DEFAULT_MODEL_PROFILES } from "@/chat/model-profile";
 import { routerEvals } from "../../src/router-harness";
+
+// Exercise reasoning selection without the default profiles' fixed levels.
+const profiles = Object.fromEntries(
+  Object.entries(DEFAULT_MODEL_PROFILES).map(
+    ([name, { modelId, description }]) => [name, { modelId, description }],
+  ),
+);
 
 describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
   it("when the user only acknowledges the assistant, use no reasoning", async ({
     run,
   }) => {
     await run({
+      profiles,
       expectedProfile: "standard",
       expectedReasoningLevel: "none",
       messageText: "thanks!",
@@ -16,6 +25,7 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     run,
   }) => {
     await run({
+      profiles,
       expectedProfile: "standard",
       expectedReasoningLevel: "low",
       messageText: "alphabetize these words: pear, apple, banana",
@@ -26,6 +36,7 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     run,
   }) => {
     await run({
+      profiles,
       expectedProfile: "standard",
       expectedReasoningLevel: "medium",
       messageText:
@@ -37,6 +48,7 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     run,
   }) => {
     await run({
+      profiles,
       expectedProfile: "standard",
       expectedReasoningLevel: "high",
       messageText:
@@ -48,6 +60,7 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     run,
   }) => {
     await run({
+      profiles,
       expectedProfile: "handoff",
       expectedReasoningLevel: "xhigh",
       messageText:
@@ -55,10 +68,33 @@ describeEval("Turn Router Reasoning Snapshots", routerEvals, (it) => {
     });
   });
 
+  it("uses task descriptions even when profile names suggest the opposite", async ({
+    run,
+  }) => {
+    await run({
+      profiles: {
+        standard: {
+          modelId: "anthropic/claude-opus-5.5",
+          description:
+            "Use for implementation, code review, and architecture decisions. Avoid for routine lookups.",
+        },
+        handoff: {
+          modelId: "openai/gpt-6-luna",
+          description:
+            "Use for routine lookups, short explanations, and status checks. Avoid for implementation and code review.",
+        },
+      },
+      expectedProfile: "handoff",
+      expectedReasoningLevel: "medium",
+      messageText: "Check whether the latest deployment is ready.",
+    });
+  });
+
   it("when a short approval continues pending implementation, route the pending task", async ({
     run,
   }) => {
     await run({
+      profiles,
       conversationContext: [
         "David: Can you implement the new provider flow across the runtime, add integration tests, and open a pull request?",
         "Junior: I can do that. Should I proceed?",
