@@ -1,9 +1,9 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
   ConversationPendingMessagesReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 
 import {

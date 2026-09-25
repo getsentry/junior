@@ -1,7 +1,7 @@
-import type { MessageAttachment } from "@sentry/junior/api/schema";
-import type { MessageCard } from "@sentry/junior/api/schema";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  MessageAttachment,
+  MessageCard,
   PluginOperationalReportFeed,
   Plugin,
   SkillReport,

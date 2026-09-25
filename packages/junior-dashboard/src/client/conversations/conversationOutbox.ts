@@ -1,5 +1,7 @@
-import type { InputImage } from "@sentry/junior/api/schema";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import type {
+  ConversationPendingMessage,
+  InputImage,
+} from "@sentry/junior/api/schema";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {

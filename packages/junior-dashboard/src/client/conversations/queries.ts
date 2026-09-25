@@ -1,4 +1,3 @@
-import type { InputImage } from "@sentry/junior/api/schema";
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
@@ -14,6 +13,7 @@ import type {
   ConversationFeed,
   ConversationPendingMessagesReport,
   ConversationSummaryReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,

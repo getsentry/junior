@@ -110,12 +110,8 @@ describe("conversation attachment API", () => {
         path: "/tmp/notes.txt",
       },
       storage,
+      source: { provider: "slack", id: "FPRIVATE" },
     });
-    await getSqlExecutor()
-      .db()
-      .update(juniorAttachments)
-      .set({ provider: "slack", providerId: "FPRIVATE" })
-      .where(eq(juniorAttachments.id, stored.id));
     await getConversationEventStore().append(conversationId, [
       {
         createdAtMs: 2,

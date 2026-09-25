@@ -1,8 +1,7 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { matchSlackAttachments } from "@/chat/slack/attachments";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorAttachments } from "@/db/schema";
 
 /** Resolve saved Slack file references without exposing private storage details. */
 export async function hydrateMessageAttachments(
@@ -17,24 +16,11 @@ export async function hydrateMessageAttachments(
     ...new Set(messages.flatMap((message) => slackFileIds(message.meta))),
   ];
   if (!ids.length) return;
-  const attachments = await db
-    .db()
-    .select({
-      id: juniorAttachments.id,
-      providerId: juniorAttachments.providerId,
-      bytes: juniorAttachments.bytes,
-      contentType: juniorAttachments.contentType,
-      filename: juniorAttachments.filename,
-    })
-    .from(juniorAttachments)
-    .where(
-      and(
-        eq(juniorAttachments.conversationId, conversationId),
-        eq(juniorAttachments.provider, "slack"),
-        inArray(juniorAttachments.providerId, ids),
-        isNull(juniorAttachments.deleteRequestedAt),
-      ),
-    );
+  const attachments = await matchSlackAttachments({
+    db,
+    conversationId,
+    providerIds: ids,
+  });
   const byFileId = new Map(
     attachments.map(({ providerId, ...attachment }) => [
       providerId,

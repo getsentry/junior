@@ -1,4 +1,5 @@
 import type { Attachment } from "chat";
+import type { MessageAttachment } from "@/chat/attachments/input";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
@@ -48,13 +49,16 @@ export async function matchSlackAttachments(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
   providerIds: string[];
-}): Promise<Array<{ id: string; providerId: string | null }>> {
+}): Promise<Array<MessageAttachment & { providerId: string | null }>> {
   if (args.providerIds.length === 0) return [];
   return await args.db
     .db()
     .select({
       id: juniorAttachments.id,
       providerId: juniorAttachments.providerId,
+      bytes: juniorAttachments.bytes,
+      contentType: juniorAttachments.contentType,
+      filename: juniorAttachments.filename,
     })
     .from(juniorAttachments)
     .where(

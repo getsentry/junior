@@ -120,7 +120,13 @@ function PendingRow(props: {
   onCancel?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
-  const text = props.message.text ?? "";
+  const filenames = [
+    ...(props.message.images ?? []),
+    ...(props.message.attachments ?? []),
+  ]
+    .map((attachment) => attachment.filename)
+    .join(", ");
+  const text = [props.message.text, filenames].filter(Boolean).join(" · ");
   const redacted = Boolean(props.message.redacted);
   // Pending rows can come from web or Slack. Avoid rebuilding a full
   // transcript projection just to label the stack above the composer.
@@ -160,15 +166,6 @@ function PendingRow(props: {
       ) : (
         <p className="m-0 line-clamp-3 font-mono text-sm leading-snug text-dashboard-text/90">
           {text}
-          {props.message.images?.length || props.message.attachments?.length
-            ? " · "
-            : ""}
-          {[
-            ...(props.message.images ?? []),
-            ...(props.message.attachments ?? []),
-          ]
-            .map((image) => image.filename)
-            .join(", ")}
         </p>
       )}
       {canRetry ? (

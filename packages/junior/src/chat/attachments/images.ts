@@ -9,24 +9,37 @@ import {
 import { readLiveAttachment, storeAttachment } from "./store";
 import type { AttachmentStorage } from "./storage";
 
+function matchesImageType(
+  data: Buffer,
+  contentType: InputImage["contentType"],
+): boolean {
+  switch (contentType) {
+    case "image/png":
+      return data
+        .subarray(0, 8)
+        .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    case "image/jpeg":
+      return data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+    case "image/gif":
+      return ["GIF87a", "GIF89a"].includes(data.toString("ascii", 0, 6));
+    case "image/webp":
+      return (
+        data.toString("ascii", 0, 4) === "RIFF" &&
+        data.toString("ascii", 8, 12) === "WEBP"
+      );
+  }
+}
+
 /** Check declared image types against file signatures before storing uploads. */
 export function decodeInputImages(
   images: readonly InputImage[],
 ): SandboxFileUpload[] {
   const files = images.map((image) => {
     const data = Buffer.from(image.data, "base64");
-    const matches =
-      image.contentType === "image/png"
-        ? data
-            .subarray(0, 8)
-            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-        : image.contentType === "image/jpeg"
-          ? data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
-          : image.contentType === "image/gif"
-            ? ["GIF87a", "GIF89a"].includes(data.toString("ascii", 0, 6))
-            : data.toString("ascii", 0, 4) === "RIFF" &&
-              data.toString("ascii", 8, 12) === "WEBP";
-    if (!matches || data.toString("base64") !== image.data) {
+    if (
+      !matchesImageType(data, image.contentType) ||
+      data.toString("base64") !== image.data
+    ) {
       throw new Error("Use PNG, JPEG, GIF, or WebP image files.");
     }
     return {

@@ -85,28 +85,6 @@ export const archiveConversationResponseSchema = z
   .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
-function hasMessageContent(body: {
-  message: string;
-  images?: Array<{ data: string }>;
-}): boolean {
-  return (
-    Boolean(body.message || body.images?.length) &&
-    (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
-      (MAX_INPUT_IMAGE_BYTES * 4) / 3
-  );
-}
-
-export const createConversationBodySchema = z
-  .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().max(32_000),
-    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
-    /** New roots default public. Private roots stay participant-only. */
-    visibility: z.enum(["private", "public"]).optional(),
-  })
-  .strict()
-  .refine(hasMessageContent, "Add a message or up to 3 MB of images.");
-
 export const createConversationMessageBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
@@ -114,7 +92,22 @@ export const createConversationMessageBodySchema = z
     images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
   })
   .strict()
-  .refine(hasMessageContent, "Add a message or up to 3 MB of images.");
+  .refine(
+    (body) => Boolean(body.message || body.images?.length),
+    "Add a message or an image.",
+  )
+  .refine(
+    (body) =>
+      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
+      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
+    "Images must total 3 MB or less.",
+  );
+
+export const createConversationBodySchema =
+  createConversationMessageBodySchema.safeExtend({
+    /** New roots default public. Private roots stay participant-only. */
+    visibility: z.enum(["private", "public"]).optional(),
+  });
 
 export const acceptedConversationMessageSchema = z
   .object({

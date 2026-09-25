@@ -1,7 +1,9 @@
-import { INPUT_IMAGE_TYPES } from "@sentry/junior/api/schema";
+import {
+  INPUT_IMAGE_TYPES,
+  type MessageAttachment,
+} from "@sentry/junior/api/schema";
 import { FileText } from "lucide-react";
 import { ImageAttachment } from "../components/ImageAttachment";
-import type { MessageAttachment } from "@sentry/junior/api/schema";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function attachmentUrl(conversationId: string, attachmentId: string): string {
