@@ -4,6 +4,32 @@ import { screenshot } from "./screenshot";
 
 test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route("**/api/conversations/stats", async (route) => {
+    const response = await route.fetch();
+    const report = await response.json();
+    const metricDays = Array.from({ length: 30 }, (_, index) => ({
+      date: new Date(NOW_MS - (29 - index) * 86_400_000)
+        .toISOString()
+        .slice(0, 10),
+      conversations: 8,
+      durationMs: 120_000,
+      inputTokens: 2_000,
+      cachedInputTokens: index === 25 ? 8_000 : 180_000,
+      cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
+      tokens: 205_000,
+      costUsd: 1.5,
+    }));
+    const metricHours = Array.from({ length: 24 }, (_, index) => ({
+      ...metricDays[index],
+      date: new Date(NOW_MS - (23 - index) * 3_600_000)
+        .toISOString()
+        .slice(0, 13),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+    }));
+    await route.fulfill({
+      json: { ...report, metricDays, metricHours, metricSixHours: undefined },
+    });
+  });
   await page.goto(`${dashboard.baseURL}/system`);
 
   await expect(
@@ -11,13 +37,45 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
-  await expect(page.getByText("Cached input share")).toBeVisible();
-  await expect(page.getByText("Input token cache")).toBeVisible();
+  await expect(page.getByText("Input cache")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
-  await screenshot(page, "system", { view: "desktop" });
+  await expect(
+    page.getByRole("button", { name: "Percent", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("group", { name: "Reporting period" }),
+  ).toHaveCount(1);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-share");
+  await page.getByRole("button", { name: "Tokens", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per day")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tokens", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-tokens", { view: "desktop" });
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
+  await page.getByText("Largest cache writes", { exact: true }).click();
+  const largestWrites = page.getByRole("table", {
+    name: "Largest cache writes",
+  });
+  await expect(largestWrites).not.toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toBeVisible();
+  await page.getByText("How to read this", { exact: true }).click();
+  await expect(
+    page.getByText(/They do not show individual calls/),
+  ).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "system-cache-missing", { view: "desktop" });
+  await page.getByRole("button", { name: "30d", exact: true }).click();
+  await expect(largestWrites).toContainText("190k");
+  await expect(page.getByText(/Missing data in 1 of 24/)).toHaveCount(0);
+  await expect(page.getByRole("combobox")).toHaveCount(0);
 
   const systemNavigation = page.getByLabel("System navigation");
   await expect(systemNavigation.getByRole("link")).toHaveText([
