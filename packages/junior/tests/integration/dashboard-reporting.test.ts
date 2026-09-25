@@ -79,6 +79,10 @@ describe("dashboard canonical event reporting", () => {
         text: "Visible answer",
       },
       {
+        type: "assistant_message",
+        parts: [],
+      },
+      {
         type: "tool_calls",
         calls: [
           {
@@ -407,7 +411,19 @@ describe("dashboard canonical event reporting", () => {
       role: "assistant",
       redacted: true,
     });
-    expect(detail.events[1]?.data).toEqual({
+    // Text-only calls retain diagnostics without exposing model-only text.
+    expect(detail.events[1]).toMatchObject({
+      seq: 1,
+      data: { type: "assistant_message", parts: [] },
+      model: { modelId: "openai/gpt-5" },
+      modelCall: {
+        provider: "openai",
+        api: "responses",
+        stopReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 2, cachedInputTokens: 3 },
+      },
+    });
+    expect(detail.events[2]?.data).toEqual({
       type: "tool_calls",
       calls: [
         {
@@ -421,6 +437,8 @@ describe("dashboard canonical event reporting", () => {
     });
     const serialized = JSON.stringify(detail);
     expect(serialized).not.toContain("Visible answer");
+    expect(serialized).not.toContain("private model-only duplicate");
+    expect(serialized).not.toContain("Inspect the tool request.");
     expect(serialized).not.toContain("visible tool query");
     expect(serialized).not.toContain("model-visible result");
     expect(serialized).not.toContain('"matches":2');

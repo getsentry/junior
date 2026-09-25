@@ -42,7 +42,9 @@ function assistantMessage(createdAtMs: number, inputTokens = 0) {
   return {
     data: {
       type: "assistant_message" as const,
-      content: [{ type: "text", text: "not a reporting event" }],
+      content: [
+        { type: "text", text: "answer text stays on the visible message" },
+      ],
       api: "responses",
       provider: "openai",
       model: "gpt-5",
@@ -133,14 +135,160 @@ describe("conversation event list API", () => {
       before = page.previousCursor;
     }
     const events = pages.flat();
-    expect(events.map((event) => event.seq)).toEqual([0, 2, 3, 4, 5]);
+    expect(events.map((event) => event.seq)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(events.map((event) => event.data.type)).toEqual([
       "message",
+      "assistant_message",
       "message",
       "message",
       "subagent",
       "subagent",
     ]);
+  });
+
+  it("keeps recorded model settings and call usage across handoffs and page boundaries", async () => {
+    const conversationId = "local:test:event-model";
+    await recordConversation(conversationId);
+    const store = getConversationEventStore();
+    const initialModel = {
+      modelId: "openai/gpt-5",
+      modelProfile: "standard",
+      reasoningLevel: "low",
+    };
+    const targetModel = {
+      modelId: "openai/gpt-5.6-sol",
+      modelProfile: "handoff",
+      reasoningLevel: "high",
+    };
+    const call = assistantMessage(3, 120);
+    call.data.usage.output = 40;
+    call.data.usage.cacheRead = 500;
+    call.data.usage.cacheWrite = 60;
+    call.data.usage.totalTokens = 720;
+    await store.append(conversationId, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "turn_started",
+          turnId: "turn-1",
+          inputMessageIds: ["input-1"],
+          surface: "internal",
+        },
+      },
+      {
+        createdAtMs: 2,
+        data: {
+          type: "turn_routed",
+          turnId: "turn-1",
+          ...initialModel,
+          reasoningLevel: "low",
+          source: "router",
+          costUsd: 0.001,
+        },
+      },
+      {
+        ...call,
+        data: {
+          ...call.data,
+          usage: { ...call.data.usage, reasoning: 20 },
+          providerMetadata: { secret: "must-not-leak" },
+        },
+      },
+    ]);
+    await store.replaceHistory(conversationId, {
+      createdAtMs: 4,
+      data: { type: "handoff", ...targetModel, replacementHistory: [] },
+    });
+    await store.append(conversationId, [
+      {
+        ...assistantMessage(5),
+        data: {
+          ...assistantMessage(5).data,
+          provider: "vercel-ai-gateway",
+          model: targetModel.modelId,
+        },
+      },
+      // More than one scan batch: the latest page must resolve context from SQL.
+      ...Array.from({ length: 70 }, (_, index) => ({
+        createdAtMs: 6 + index,
+        data: {
+          type: "tool_execution_started" as const,
+          toolCallId: `call-${index}`,
+          toolName: "bash",
+        },
+      })),
+    ]);
+    const app = createJuniorApi();
+    const read = async (limit: number) =>
+      conversationDetailReportSchema.parse(
+        await (
+          await app.request(
+            `http://localhost/api/conversations/${conversationId}?limit=${limit}`,
+          )
+        ).json(),
+      );
+    const latest = await read(1);
+    expect(latest.events[0]?.model).toEqual(targetModel);
+    expect(latest.events[0]?.modelCall).toBeUndefined();
+    const full = await read(100);
+    expect(full.events[2]).toMatchObject({
+      model: initialModel,
+      modelCall: {
+        provider: "openai",
+        api: "responses",
+        stopReason: "stop",
+        usage: {
+          inputTokens: 120,
+          outputTokens: 40,
+          cachedInputTokens: 500,
+          cacheCreationTokens: 60,
+          reasoningTokens: 20,
+          totalTokens: 720,
+          cost: call.data.usage.cost,
+        },
+      },
+    });
+    expect(full.events[3]?.model).toEqual(targetModel);
+    expect(full.events[4]?.model).toEqual(targetModel);
+    expect(full.events.at(-1)).toEqual(latest.events[0]);
+    expect(JSON.stringify(full.events)).not.toContain("must-not-leak");
+    if (!latest.previousCursor) throw new Error("Expected a previous cursor");
+    const earlier = conversationEventPageSchema.parse(
+      await (
+        await app.request(
+          `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(latest.previousCursor)}&limit=1`,
+        )
+      ).json(),
+    );
+    expect(earlier.events[0]).toEqual(full.events.at(-2));
+
+    await store.append(conversationId, [
+      {
+        createdAtMs: 80,
+        data: { type: "turn_completed", turnId: "turn-1", outcome: "success" },
+      },
+      message("between-turns", 81),
+      {
+        createdAtMs: 82,
+        data: {
+          type: "turn_started",
+          turnId: "turn-2",
+          inputMessageIds: ["input-2"],
+          surface: "internal",
+        },
+      },
+      ...Array.from({ length: 70 }, (_, index) =>
+        message(`pending-route-${index}`, 83 + index),
+      ),
+    ]);
+    expect((await read(1)).events[0]?.model).toBeUndefined();
+    const finished = await read(100);
+    expect(finished.events.find((event) => event.seq === 75)?.model).toEqual(
+      targetModel,
+    );
+    expect(
+      finished.events.find((event) => event.seq === 76)?.model,
+    ).toBeUndefined();
   });
 
   it("reports privacy-safe Guardian decisions", async () => {

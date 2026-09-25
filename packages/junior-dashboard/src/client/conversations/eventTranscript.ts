@@ -233,6 +233,8 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "assistant_message") {
+      // Calls with no reasoning still carry usage in the event log, not a chat bubble.
+      if (data.parts.length === 0) continue;
       messages.push(
         eventMessage(
           event,

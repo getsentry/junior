@@ -5,7 +5,12 @@ import { createPortal } from "react-dom";
 import { Drawer } from "../components/Drawer";
 import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
-import { eventLogSummary, eventLogTone } from "./eventLog";
+import {
+  eventLogModel,
+  eventLogSummary,
+  eventLogTone,
+  eventLogUsage,
+} from "./eventLog";
 import { EventDetails } from "./EventDetails";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
@@ -25,6 +30,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
     () =>
       events.map((event) => ({
         event,
+        model: eventLogModel(event),
+        usage: eventLogUsage(event),
         summary: eventLogSummary(event.data).replace(/\s+/g, " ").slice(0, 300),
       })),
     [events],
@@ -33,8 +40,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   const visibleRows = useMemo(
     () =>
       search.active
-        ? rows.filter(({ event, summary }) =>
-            `${summary} ${JSON.stringify(event)}`
+        ? rows.filter(({ event, summary, usage }) =>
+            `${summary} ${usage} ${JSON.stringify(event)}`
               .toLowerCase()
               .includes(search.normalizedQuery),
           )
@@ -79,7 +86,7 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
           aria-label="Events"
           className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
         >
-          {visibleRows.map(({ event, summary }) => (
+          {visibleRows.map(({ event, summary, model, usage }) => (
             <li key={event.seq}>
               <button
                 aria-haspopup="dialog"
@@ -105,11 +112,44 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                 >
                   <HighlightText text={event.data.type} />
                 </span>
-                <span
-                  className="col-span-2 row-start-2 truncate text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto"
-                  title={summary}
-                >
-                  <HighlightText text={summary} />
+                <span className="col-span-2 row-start-2 grid min-w-0 gap-1 text-dashboard-text @min-[48rem]:col-span-1 @min-[48rem]:row-auto">
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span
+                      className={cn(
+                        "break-all",
+                        model
+                          ? "font-semibold text-violet-300"
+                          : "text-dashboard-text-muted",
+                      )}
+                    >
+                      <HighlightText
+                        text={model?.modelId ?? "Model not recorded"}
+                      />
+                    </span>
+                    {model?.modelProfile ? (
+                      <span className="text-dashboard-text-muted">
+                        <HighlightText text={model.modelProfile} />
+                      </span>
+                    ) : null}
+                    {model?.reasoningLevel ? (
+                      <span className="text-dashboard-text-muted">
+                        <HighlightText
+                          text={`${model.reasoningLevel} reasoning`}
+                        />
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="truncate" title={summary}>
+                    <HighlightText text={summary} />
+                  </span>
+                  {usage ? (
+                    <span
+                      className="text-dashboard-text-muted"
+                      title="Usage for this event only; costs are estimated USD"
+                    >
+                      <HighlightText text={usage} />
+                    </span>
+                  ) : null}
                 </span>
                 <ChevronRight
                   aria-hidden="true"
