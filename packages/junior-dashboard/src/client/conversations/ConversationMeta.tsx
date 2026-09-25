@@ -21,10 +21,6 @@ import {
   automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../components/ParticipantAvatarStack";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
@@ -457,23 +453,6 @@ function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
       size={15}
     />
   );
-}
-
-/** True when the conversation has participants to show. */
-export function hasConversationIdentity(props: {
-  conversation: Conversation | undefined;
-}): boolean {
-  return conversationParticipants(props.conversation).length > 0;
-}
-
-/** Render the conversation participants without runtime identifiers. */
-export function ConversationIdentity(props: {
-  conversation: Conversation | undefined;
-}) {
-  const participants = conversationParticipants(props.conversation);
-  return participants.length > 0 ? (
-    <ParticipantAvatarStack participants={participants} size="detail" />
-  ) : null;
 }
 
 function LocationLink(props: { label: string; locationUrl?: string }) {

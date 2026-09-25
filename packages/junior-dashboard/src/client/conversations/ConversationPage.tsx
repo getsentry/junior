@@ -29,11 +29,9 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
-  ConversationIdentity,
   ConversationPrivacyChip,
   ConversationStats,
   hasConversationAnnotations,
-  hasConversationIdentity,
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
@@ -45,6 +43,10 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Card } from "../components/layout/Card";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { Transcript } from "./TranscriptView";
@@ -87,6 +89,11 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const participants = conversationParticipants(conversation);
+  const identity =
+    participants.length > 0 ? (
+      <ParticipantAvatarStack participants={participants} size="detail" />
+    ) : null;
   const conversationDetail = detail.data;
   useEffect(() => {
     if (!conversation) return;
@@ -189,19 +196,11 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              identity={
-                hasConversationIdentity({ conversation }) ? (
-                  <ConversationIdentity conversation={conversation} />
-                ) : null
-              }
+              identity={identity}
               live={live}
               meta={
                 <ConversationHeaderMeta
-                  identity={
-                    hasConversationIdentity({ conversation }) ? (
-                      <ConversationIdentity conversation={conversation} />
-                    ) : null
-                  }
+                  identity={identity}
                   stats={
                     hasConversationStats({
                       conversation,
