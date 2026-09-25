@@ -1,10 +1,15 @@
 import { ExternalLink } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { formatRelativeTime, formatTime } from "../format";
 import { Drawer } from "../components/Drawer";
-import { FilterTabList } from "../components/FilterBar";
+import { cn } from "../styles";
 import { ConversationMemories } from "./ConversationMemories";
+
+const tabs = [
+  { label: "Details", value: "details" },
+  { label: "Memories", value: "memories" },
+] as const;
 
 /** Put conversation context before usage and diagnostic links. */
 export function ConversationDetailsDrawer(props: {
@@ -20,6 +25,7 @@ export function ConversationDetailsDrawer(props: {
   title: string;
 }) {
   const [tab, setTab] = useState<"details" | "memories">("details");
+  const tabId = useId();
   const titleId = "conversation-details-drawer-title";
   const sections = [
     { content: props.brief, title: "Summary" },
@@ -51,18 +57,56 @@ export function ConversationDetailsDrawer(props: {
       width="narrow"
     >
       <div className="grid min-w-0 gap-4">
-        <FilterTabList
-          ariaLabel="Conversation details"
-          items={[
-            { label: "Details", value: "details" },
-            { label: "Memories", value: "memories" },
-          ]}
-          onChange={(value) =>
-            setTab(value === "memories" ? "memories" : "details")
-          }
-          value={tab}
-        />
-        <div aria-label={`${tab} panel`} role="tabpanel">
+        <div
+          aria-label="Conversation details"
+          className="grid grid-cols-2 gap-1 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-1"
+          role="tablist"
+        >
+          {tabs.map((item, index) => (
+            <button
+              aria-controls={`${tabId}-panel`}
+              aria-selected={tab === item.value}
+              className={cn(
+                "min-h-9 cursor-pointer rounded-md border-0 px-3 py-2 font-sans text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+                tab === item.value
+                  ? "bg-dashboard-fill-strong text-dashboard-text"
+                  : "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-faint hover:text-dashboard-text",
+              )}
+              id={`${tabId}-${item.value}`}
+              key={item.value}
+              onClick={() => setTab(item.value)}
+              onKeyDown={(event) => {
+                let nextIndex: number;
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                  nextIndex = 1 - index;
+                } else if (event.key === "Home") {
+                  nextIndex = 0;
+                } else if (event.key === "End") {
+                  nextIndex = 1;
+                } else {
+                  return;
+                }
+                event.preventDefault();
+                setTab(tabs[nextIndex]!.value);
+                event.currentTarget.parentElement
+                  ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                  [nextIndex]?.focus();
+              }}
+              role="tab"
+              tabIndex={tab === item.value ? 0 : -1}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div
+          aria-labelledby={`${tabId}-${tab}`}
+          className="min-w-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          id={`${tabId}-panel`}
+          role="tabpanel"
+          tabIndex={0}
+        >
           {tab === "memories" ? (
             <ConversationMemories conversationId={props.conversationId} />
           ) : sections.length > 0 ? (

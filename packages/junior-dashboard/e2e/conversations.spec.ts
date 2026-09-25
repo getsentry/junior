@@ -226,11 +226,18 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     details.getByRole("link", { name: /getsentry\/payments#77/ }),
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
-  await details.getByRole("tab", { name: "Memories" }).click();
+  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
+  const memoriesTab = details.getByRole("tab", { name: "Memories" });
+  await detailsTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(memoriesTab).toBeFocused();
+  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
   await expect(
-    details.getByText("Use pnpm for repository commands."),
-  ).toBeVisible();
-  await details.getByRole("tab", { name: "Details", exact: true }).click();
+    details.getByRole("tabpanel", { name: "Memories" }),
+  ).toContainText("Use pnpm for repository commands.");
+  await page.keyboard.press("Home");
+  await expect(detailsTab).toBeFocused();
+  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
