@@ -69,8 +69,10 @@ New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
 Object annotation previews use Task for tasks and Item for code changes and
 other objects. Their `external_ref` identifies the Conversation, plugin, and
-object key, not a Message snapshot. Details show the latest saved annotation, not
-a live provider lookup. Opening or refreshing details can update an earlier
+object key, not a Message snapshot. The ID is a UTF-8 JSON tuple encoded as
+base64url without padding; the detail handler decodes it. Slack rejects raw JSON
+IDs. Encoding does not grant access or hide the reference. Details show the
+latest saved annotation, not a live provider lookup. Opening or refreshing details can update an earlier
 Slack preview. The saved Message and web transcript remain unchanged. Annotations
 contain last saved facts; not every provider change updates them.
 The viewer must have a linked User, belong to the same Slack workspace, and have
@@ -80,6 +82,13 @@ viewer-only provider fields because Slack can refresh shared previews from them.
 Automation details retain their current authoritative lookup and access checks.
 Link unfurls and actions are not implemented.
 See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
+
+`work-object.ts` owns the Item/Task schema and its TypeScript types. Message posts
+and both detail handlers validate metadata before sending it. Reference IDs use
+Junior's conservative `[A-Za-z0-9_-]+` subset. Items cannot contain Task fields;
+custom fields require values of the matching type. Unknown fields fail validation.
+
+`post-warning.ts` reports accepted Slack warnings without retrying the message.
 
 Before rollout, check a GitHub issue, pull request, and Linear issue in a test
 Slack Conversation with Item and Task previews enabled. Check initial rendering,

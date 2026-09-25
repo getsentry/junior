@@ -50,7 +50,7 @@ export function renderSlackAutomationCard(
                 {
                   key: "warning",
                   label: "Needs attention",
-                  type: "string",
+                  type: "string" as const,
                   value: warning,
                   long: true,
                 },

@@ -6,14 +6,18 @@ import {
   getDashboardTaskLink,
 } from "@/chat/dashboard-link";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { SlackEntity } from "./cards";
+import {
+  slackEntitySchema,
+  type SlackEntity,
+  type SlackTextField,
+} from "./work-object";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
   SlackEntity["entity_payload"]["custom_fields"]
 >[number];
 
-function textField(key: string, label: string, value: string): DetailField {
+function textField(key: string, label: string, value: string): SlackTextField {
   return { key, label, type: "string", value };
 }
 
@@ -178,6 +182,6 @@ export async function presentSlackAutomationDetails(
 
   await client.entity.presentDetails({
     trigger_id: triggerId,
-    metadata: entity,
+    metadata: slackEntitySchema.parse(entity),
   });
 }

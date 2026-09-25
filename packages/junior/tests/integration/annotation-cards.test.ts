@@ -45,6 +45,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         tools: () => ({
           save: definePluginTool({
             approvalMode: "approve",
+            exposure: "direct",
             annotations: {
               destructiveHint: false,
               idempotentHint: true,
@@ -82,11 +83,9 @@ it("saves plugin object results once per reply, leaves background updates silent
         },
         {
           type: "toolCall",
-          name: "executeTool",
-          arguments: {
-            tool_name: "objects_save",
-            arguments: { status: "draft" },
-          },
+          // PR creation is a direct plugin tool, not a catalog call.
+          name: "objects_save",
+          arguments: { status: "draft" },
         },
         {
           type: "toolCall",
@@ -140,17 +139,32 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
     expect(
       getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
-    ).toMatchObject({
+    ).toEqual({
       entities: [
         {
           entity_type: "slack#/entities/item",
           external_ref: {
-            id: JSON.stringify([conversationId, "objects", "repo#1"]),
+            id: Buffer.from(
+              JSON.stringify([conversationId, "objects", "repo#1"]),
+            ).toString("base64url"),
             type: "annotation",
           },
+          url: annotation.url,
           entity_payload: {
-            attributes: { title: { text: "Fix the parser" } },
-            custom_fields: [{ key: "status", value: "draft" }],
+            attributes: {
+              title: { text: "Fix the parser" },
+              display_id: "repo#1",
+              display_type: "Pull request",
+              product_name: "objects",
+            },
+            custom_fields: [
+              {
+                key: "status",
+                label: "Status",
+                type: "string",
+                value: "draft",
+              },
+            ],
           },
         },
       ],

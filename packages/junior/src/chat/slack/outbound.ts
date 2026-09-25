@@ -1,6 +1,8 @@
 import { SlackActionError } from "@/chat/slack/client";
+import { setSpanAttributes } from "@/chat/logging";
+import { captureSlackPostWarning } from "./post-warning";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
-import type { SlackEntity } from "@/chat/slack/cards";
+import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
   getSlackClient,
@@ -100,6 +102,9 @@ export async function postSlackMessage(input: {
     "Slack message posting",
   );
   const text = requireSlackMessageText(input.text, "Slack message posting");
+  const entities = input.entities?.length
+    ? slackEntitySchema.array().parse(input.entities)
+    : undefined;
   const threadTs = input.threadTs
     ? requireSlackThreadTimestamp(
         input.threadTs,
@@ -107,9 +112,14 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
+  const attributes = {
+    "app.slack.channel_id": channelId,
+    ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
+    "app.slack.work_object.count": entities?.length ?? 0,
+  };
   const response = await withSlackRetries(
-    () =>
-      getSlackClient().chat.postMessage({
+    async () => {
+      const response = await getSlackClient().chat.postMessage({
         channel: channelId,
         text,
         unfurl_links: false,
@@ -119,18 +129,21 @@ export async function postSlackMessage(input: {
               blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),
-        ...(input.entities?.length
-          ? { metadata: { entities: input.entities } }
-          : undefined),
+        ...(entities ? { metadata: { entities } } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
-      }),
+      });
+      const messageId = parseSlackMessageTs(response.ts);
+      setSpanAttributes({ "messaging.message.id": messageId });
+      captureSlackPostWarning(response, {
+        ...attributes,
+        "messaging.message.id": messageId,
+      });
+      return response;
+    },
     3,
     {
       action: "chat.postMessage",
-      spanAttributes: {
-        "app.slack.channel_id": channelId,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
-      },
+      attributes,
     },
   );
 
