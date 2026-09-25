@@ -1,3 +1,4 @@
+import type { SlackEvent } from "@slack/types";
 import { annotationCard } from "@/chat/conversations/cards";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -17,7 +18,12 @@ const eventSchema = z.object({
     type: z.literal("annotation"),
     id: slackExternalRefIdSchema.max(4096),
   }),
-});
+}) satisfies z.ZodType<
+  Pick<
+    Extract<SlackEvent, { type: "entity_details_requested" }>,
+    "trigger_id" | "user" | "external_ref"
+  >
+>;
 const refSchema = z.tuple([
   z.string().min(1),
   z.string().min(1),

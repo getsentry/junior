@@ -15,7 +15,7 @@ import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
+import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 type ChatInternals = {
   logger?: {
@@ -104,7 +104,7 @@ export class JuniorChat<
             });
             return;
           }
-          if (isExternalSlackUser(message.raw as Record<string, unknown>)) {
+          if (!isSlackWorkspaceMember(message.raw)) {
             return;
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
@@ -119,7 +119,7 @@ export class JuniorChat<
     }
 
     const message = messageOrFactory;
-    if (isExternalSlackUser(message.raw as Record<string, unknown>)) {
+    if (!isSlackWorkspaceMember(message.raw)) {
       return Promise.resolve();
     }
 

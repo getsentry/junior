@@ -1,28 +1,23 @@
+import type { AppMentionEvent } from "@slack/types";
+import { z } from "zod";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 export { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
-/**
- * Return true when a Slack event's author is from an external workspace.
- *
- * In Slack Connect shared channels the inner event carries `user_team`
- * (the author's home workspace). When it differs from the outer payload's
- * `team_id` the author is a Slack Connect participant, not a local member.
- */
-export function isExternalSlackUser(
-  raw: Record<string, unknown> | undefined,
-): boolean {
-  if (!raw) return false;
+// Slack defines these on AppMentionEvent, but not GenericMessageEvent.
+// Chat SDK's SlackEvent omits both. Validate them before checking membership.
+const authorTeamSchema = z.object({
+  user_team: z.string().optional(),
+  source_team: z.string().optional(),
+}) satisfies z.ZodType<Pick<AppMentionEvent, "user_team" | "source_team">>;
 
+/** Accept only Slack authors whose home workspace matches the installation. */
+export function isSlackWorkspaceMember(raw: unknown): boolean {
   const workspaceTeamId = getWorkspaceTeamId();
   if (!workspaceTeamId) return false;
+  const parsed = authorTeamSchema.safeParse(raw);
+  if (!parsed.success) return false;
 
-  const userTeam =
-    typeof raw.user_team === "string" ? raw.user_team : undefined;
-  if (userTeam) return userTeam !== workspaceTeamId;
-
-  const sourceTeam =
-    typeof raw.source_team === "string" ? raw.source_team : undefined;
-  if (sourceTeam) return sourceTeam !== workspaceTeamId;
-
-  return false;
+  // Use source_team only when user_team is absent, not when it is invalid.
+  const authorTeam = parsed.data.user_team ?? parsed.data.source_team;
+  return authorTeam === workspaceTeamId;
 }

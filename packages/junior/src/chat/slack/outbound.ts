@@ -1,7 +1,7 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
 import { captureSlackPostWarning } from "./post-warning";
-import type { SlackMessageBlock } from "@/chat/slack/footer";
+import type { KnownBlock } from "@slack/types";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
@@ -91,7 +91,7 @@ export async function getSlackMessagePermalink(args: {
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
   entities?: SlackEntity[];
-  blocks?: SlackMessageBlock[];
+  blocks?: KnownBlock[];
   channelId: string;
   text: string;
   threadTs?: string;
@@ -126,7 +126,7 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: input.blocks as Array<Record<string, unknown>>,
+              blocks: input.blocks,
             }
           : undefined),
         ...(entities ? { metadata: { entities } } : undefined),
@@ -202,7 +202,7 @@ export async function deleteSlackMessage(input: {
  * request validation and Web API behavior are centralized here.
  */
 export async function postSlackEphemeralMessage(input: {
-  blocks?: SlackMessageBlock[];
+  blocks?: KnownBlock[];
   channelId: string;
   userId: string;
   text: string;
@@ -233,9 +233,7 @@ export async function postSlackEphemeralMessage(input: {
         channel: channelId,
         user: userId,
         text,
-        ...(input.blocks?.length
-          ? { blocks: input.blocks as Array<Record<string, unknown>> }
-          : undefined),
+        ...(input.blocks?.length ? { blocks: input.blocks } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),
     3,
