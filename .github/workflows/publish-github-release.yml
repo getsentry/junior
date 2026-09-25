@@ -52,18 +52,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha=$(git rev-parse HEAD)
-          run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" --event push --status success --json databaseId --jq '.[0].databaseId // empty')
-          if [[ -z "$run" ]]; then
-            echo "No successful push CI run for $sha. Do not rebuild release packages here." >&2
+          # Craft selects artifacts by commit name, not by successful run. Refuse
+          # ambiguity instead of picking different bytes after a CI rerun.
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$sha&per_page=100")
+          if ! jq -e --arg sha "$sha" '.total_count == 1 and (.artifacts | length == 1) and .artifacts[0].name == $sha and .artifacts[0].expired == false and .artifacts[0].workflow_run.head_sha == $sha' <<< "$artifacts" > /dev/null; then
+            echo "Expected one unexpired CI artifact for $sha. Stop for manual review; do not rebuild or select different bytes." >&2
             exit 1
           fi
+          run=$(jq -r '.artifacts[0].workflow_run.id' <<< "$artifacts")
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+            jq -e --arg sha "$sha" '.head_sha == $sha and .event == "push" and .path == ".github/workflows/ci.yml" and .status == "completed" and .conclusion == "success"' > /dev/null
           gh run download "$run" --repo "$GITHUB_REPOSITORY" --name "$sha" --dir artifacts
           node scripts/release-artifacts.mjs verify artifacts
 
       # Use the app token so release.published can trigger downstream workflows.
       - name: Get release token
         id: token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}

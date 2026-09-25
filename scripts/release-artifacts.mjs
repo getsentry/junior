@@ -159,19 +159,11 @@ export function verifyReleaseInstall(directory, manifest) {
     );
     const lockfile = readFileSync(join(consumer, "pnpm-lock.yaml"), "utf8");
     assert.ok(
-      !/@sentry\/junior(?:-[a-z-]+)?@\d/.test(lockfile),
+      !/@sentry\/junior(?:-[a-z0-9._-]+)?@\d/.test(lockfile),
       "Junior package resolved through the registry",
     );
-    for (const pkg of manifest.packages) {
-      const installed = JSON.parse(
-        readFileSync(
-          join(consumer, "node_modules", pkg.name, "package.json"),
-          "utf8",
-        ),
-      );
-      assert.equal(installed.name, pkg.name);
-      assert.equal(installed.version, manifest.version);
-    }
+    // Prove a frozen install reconstructs node_modules, not merely accepts an existing install.
+    rmSync(join(consumer, "node_modules"), { recursive: true, force: true });
     execFileSync(
       "pnpm",
       [
@@ -184,6 +176,16 @@ export function verifyReleaseInstall(directory, manifest) {
       ],
       { cwd: consumer, stdio: "inherit" },
     );
+    for (const pkg of manifest.packages) {
+      const installed = JSON.parse(
+        readFileSync(
+          join(consumer, "node_modules", pkg.name, "package.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(installed.name, pkg.name);
+      assert.equal(installed.version, manifest.version);
+    }
   } finally {
     rmSync(consumer, { recursive: true, force: true });
   }

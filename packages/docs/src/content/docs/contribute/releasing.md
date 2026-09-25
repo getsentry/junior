@@ -77,14 +77,19 @@ packages. `dependencies` contains Junior dependencies from the packed runtime,
 optional, and peer dependency sections. Junior packages use exact release
 versions. External packages still come from npm.
 
-The tag workflow downloads the artifact from a successful push CI run for the
-exact tagged commit. It does not rebuild packages or read npm availability.
+The tag workflow requires exactly one unexpired artifact named for the tagged
+commit. Its owning run must be a successful push run of `ci.yml`. Craft selects
+artifacts by that same commit name. If a rerun leaves more than one artifact,
+publication stops for manual review instead of selecting different bytes.
+Do not rerun packaging for a commit while its release is in progress.
+The tag workflow does not rebuild packages or read npm availability.
 It creates a draft GitHub Release with the release notes from the tagged
 `CHANGELOG.md`. It uploads the tarballs and manifest, downloads them again,
 and compares them with CI. It then installs the full package set in a temporary
 consumer with a fresh pnpm store and overrides for all Junior packages. Package
-scripts are disabled for this install check. A frozen offline install checks
-the generated lockfile. This is a package install check, not an app smoke test.
+scripts are disabled for this install check. It removes `node_modules` and runs
+a frozen offline install from the generated lockfile. It then checks the installed
+package names and versions. This is a package install check, not an app smoke test.
 
 Only after these checks pass does the workflow publish the GitHub Release.
 Thus `release.published` means the complete package set passed verification.

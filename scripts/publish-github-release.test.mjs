@@ -144,6 +144,16 @@ process.stdout.write(JSON.stringify(result ?? {}));
   state.corrupt = false;
   // Model an interrupted upload. Resume must upload only the missing file.
   state.assets.pop();
+  state.commit = "b".repeat(40);
+  save(state);
+  const movedTag = run();
+  assert.notEqual(movedTag.status, 0);
+  assert.match(movedTag.stderr, /Release tag moved during verification/);
+  state = read();
+  assert.equal(state.release.draft, true);
+  assert.deepEqual(state.mutations, ["draft", "upload", "upload"]);
+
+  state.commit = commit;
   save(state);
   const resumed = run();
   assert.equal(resumed.status, 0, resumed.stderr + resumed.stdout);
