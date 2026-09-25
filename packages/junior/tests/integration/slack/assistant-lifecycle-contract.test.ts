@@ -69,7 +69,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
     ]);
   });
 
-  it("routes validated assistant callbacks without resetting the title on context changes", async () => {
+  it("validates assistant callbacks and preserves the title on context changes", async () => {
     const slack = createSlackAdapterFixture();
     const state = createMemoryState();
     const queue = createConversationWorkQueueTestAdapter();

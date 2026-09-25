@@ -2,11 +2,12 @@ import { Message } from "chat";
 
 export type ThreadMessageKind = "new_mention" | "subscribed_message";
 
+/** Derive canonical Slack thread IDs from the raw event payload. */
 /** Rebuild a Message onto a normalized Slack thread id. */
-export function withNormalizedThreadId<TRawMessage>(
-  message: Message<TRawMessage>,
+export function withNormalizedThreadId(
+  message: Message,
   threadId: string,
-): Message<TRawMessage> {
+): Message {
   if (message.threadId === threadId) {
     return message;
   }

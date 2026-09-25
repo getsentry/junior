@@ -182,8 +182,8 @@ function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
-function normalizeMessageThreadId(message: Message<unknown>): {
-  message: Message<unknown>;
+function normalizeMessageThreadId(message: Message): {
+  message: Message;
   threadId: string;
 } {
   const threadId = normalizeIncomingSlackThreadId(message.threadId, message);
@@ -195,7 +195,7 @@ function normalizeMessageThreadId(message: Message<unknown>): {
 
 async function buildThread(args: {
   adapter: SlackAdapter;
-  message: Message<unknown>;
+  message: Message;
   route: SlackConversationRoute;
   state: StateAdapter;
 }): Promise<ThreadImpl> {
@@ -213,7 +213,7 @@ async function buildThread(args: {
   });
 }
 
-function shouldIgnoreMessage(message: Message<unknown>): boolean {
+function shouldIgnoreMessage(message: Message): boolean {
   return (
     message.author.isMe === true || !parseActorUserId(message.author.userId)
   );
@@ -246,7 +246,7 @@ async function resolveSlackConversationId(args: {
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   installation: SlackInstallationContext;
-  message: Message<unknown>;
+  message: Message;
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
@@ -330,7 +330,7 @@ async function handleSlackThreadStop(args: {
   canonicalThreadId: string;
   conversationStore?: ConversationStore;
   installation: SlackInstallationContext;
-  message: Message<unknown>;
+  message: Message;
   queue: ConversationWorkQueue;
   route: SlackConversationRoute;
   state: StateAdapter;
@@ -390,7 +390,7 @@ async function routeParsedMessage(args: {
   adapter: SlackAdapter;
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
-  message: Message<unknown>;
+  message: Message;
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
@@ -530,42 +530,30 @@ async function handleSlackEvent(args: {
       installation,
       state,
       task: async () => {
-        if (event.type === "assistant_thread_started") {
+        if (
+          event.type === "assistant_thread_started" ||
+          event.type === "assistant_thread_context_changed"
+        ) {
           const parsed = slackAssistantThreadSchema.safeParse(
             event.assistant_thread,
           );
-          if (parsed.success) {
-            const assistantThread = parsed.data;
-            await args.services.runtime.handleAssistantThreadStarted({
-              channelId: assistantThread.channel_id,
-              context: { channelId: assistantThread.context?.channel_id },
-              threadId: adapter.encodeThreadId({
-                channel: assistantThread.channel_id,
-                threadTs: assistantThread.thread_ts,
-              }),
-              threadTs: assistantThread.thread_ts,
-              userId: assistantThread.user_id,
-            });
-          }
-          return;
-        }
+          if (!parsed.success) return;
 
-        if (event.type === "assistant_thread_context_changed") {
-          const parsed = slackAssistantThreadSchema.safeParse(
-            event.assistant_thread,
-          );
-          if (parsed.success) {
-            const assistantThread = parsed.data;
-            await args.services.runtime.handleAssistantContextChanged({
-              channelId: assistantThread.channel_id,
-              context: { channelId: assistantThread.context?.channel_id },
-              threadId: adapter.encodeThreadId({
-                channel: assistantThread.channel_id,
-                threadTs: assistantThread.thread_ts,
-              }),
-              threadTs: assistantThread.thread_ts,
-              userId: assistantThread.user_id,
-            });
+          const thread = parsed.data;
+          const callback = {
+            channelId: thread.channel_id,
+            context: { channelId: thread.context.channel_id },
+            threadId: adapter.encodeThreadId({
+              channel: thread.channel_id,
+              threadTs: thread.thread_ts,
+            }),
+            threadTs: thread.thread_ts,
+            userId: thread.user_id,
+          };
+          if (event.type === "assistant_thread_started") {
+            await args.services.runtime.handleAssistantThreadStarted(callback);
+          } else {
+            await args.services.runtime.handleAssistantContextChanged(callback);
           }
           return;
         }

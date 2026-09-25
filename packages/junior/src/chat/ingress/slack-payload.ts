@@ -5,13 +5,6 @@ import type {
 } from "@slack/types";
 import { z } from "zod";
 
-// Slack defines these on AppMentionEvent, but not GenericMessageEvent.
-// Chat SDK's SlackEvent omits both. Validate them before checking membership.
-export const slackAuthorTeamSchema = z.object({
-  user_team: z.string().optional(),
-  source_team: z.string().optional(),
-}) satisfies z.ZodType<Pick<AppMentionEvent, "user_team" | "source_team">>;
-
 export const slackAssistantThreadSchema = z.object({
   channel_id: z.string().min(1),
   thread_ts: z.string().min(1),

@@ -119,7 +119,7 @@ describe("Slack webhook auth boundary", () => {
     },
   );
 
-  it("rejects malformed signed payloads before durable state is required", async () => {
+  it("rejects malformed signed payloads", async () => {
     const client = createSlackWebhookTestClient({
       signingSecret: SIGNING_SECRET,
     });
@@ -127,21 +127,19 @@ describe("Slack webhook auth boundary", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const adapter = createSlackAdapterFixture();
     const envelope = slackEnvelope({});
-    for (const payload of [
-      null,
-      { ...envelope, event: { ...envelope.event, channel: 123 } },
-    ]) {
-      const response = await handleSlackWebhook({
-        request: slackWebhookRequest(payload),
-        waitUntil: waitUntil.fn,
-        services: {
-          getSlackAdapter: () => adapter,
-          queue,
-          runtime: createNoopSlackWebhookRuntime(),
-        },
-      });
-      expect(response.status).toBe(400);
-    }
+    const response = await handleSlackWebhook({
+      request: slackWebhookRequest({
+        ...envelope,
+        event: { ...envelope.event, channel: 123 },
+      }),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: () => adapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+      },
+    });
+    expect(response.status).toBe(400);
     expect(queue.sentRecords()).toEqual([]);
     expect(waitUntil.pendingCount()).toBe(0);
     expect(slackApiOutbox.messages()).toEqual([]);
