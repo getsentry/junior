@@ -6,7 +6,7 @@ Junior maintenance plugin — skills for keeping Junior apps up to date and heal
 
 ### `self-update`
 
-Updates `@sentry/junior` and `@sentry/junior-*` dependencies in a Junior consumer app to the latest published release. Handles version resolution, lockfile sync, safety checks, and opens a draft PR.
+Updates junior-prod to a verified GitHub Release using the app's `junior:update` and `deps:install` commands. Reviews release notes and app config, runs checks, and opens a draft PR. The app must have the GitHub release install scripts and a pinned `junior-release.json`; the skill does not fall back to npm.
 
 ## Usage
 
