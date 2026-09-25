@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { webMessageId } from "@sentry/junior/api/schema";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 import { expect, test } from "./test";
 
@@ -285,7 +285,10 @@ test("hands web and external messages from queue to history without gaps", async
   });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
-    web.messageId = `api-msg:${createHash("sha256").update(`${conversationId}\u0000${body.idempotencyKey}`).digest("hex").slice(0, 24)}`;
+    web.messageId = await webMessageId({
+      conversationId,
+      idempotencyKey: body.idempotencyKey,
+    });
     web.inboundMessageId = web.messageId;
     await accept;
     await route.fulfill({
@@ -387,7 +390,10 @@ test("hands web and external messages from queue to history without gaps", async
   });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
-    second.messageId = `api-msg:${createHash("sha256").update(`${conversationId}\u0000${body.idempotencyKey}`).digest("hex").slice(0, 24)}`;
+    second.messageId = await webMessageId({
+      conversationId,
+      idempotencyKey: body.idempotencyKey,
+    });
     second.inboundMessageId = second.messageId;
     queued = [second];
     await secondAccept;

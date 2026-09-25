@@ -25,7 +25,8 @@ name, through dashboard settings.
   gap. Poll every 2 seconds while active or waiting for input, and every 10
   seconds while idle so other Sources can wake the open Conversation.
 - Local sends stay visible until a server snapshot contains their Message id.
-  Web Crypto derives the same id as web ingress before POST starts. This also
+  Web ingress and the browser share one Message id function. The browser derives
+  the id before the first local render and before POST starts. This also
   removes duplicates when a poll arrives before the accept response. Only Turn
   lifecycle events enable the thinking indicator; queued work is not thinking.
 - Earlier event pages use a separate infinite query loaded on demand. The client

@@ -283,7 +283,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
                 props.cancelPending &&
                 props.cancelTargetInboundMessageId === message.inboundMessageId,
               )}
-              key={message.clientKey ?? message.messageId}
+              key={message.messageId}
               message={message}
               onCancel={
                 message.clientStatus === undefined
@@ -306,7 +306,7 @@ export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
               props.cancelPending &&
               props.cancelTargetInboundMessageId === message.inboundMessageId,
             )}
-            key={message.clientKey ?? message.messageId}
+            key={message.messageId}
             message={message}
             onCancel={
               message.clientStatus === undefined

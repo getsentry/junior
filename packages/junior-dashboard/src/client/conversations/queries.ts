@@ -16,6 +16,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
+  webMessageId,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
@@ -32,7 +33,6 @@ import {
 } from "../http";
 import {
   conversationOutboxMessageForSubmit,
-  conversationOutboxMessageId,
   conversationOutboxQueryKey,
   failConversationOutboxMessage,
   mergeConversationMailboxMessages,
@@ -179,8 +179,10 @@ export function useCreateConversation() {
         conversationOutboxQueryKey(accepted.conversationId),
         (current) =>
           upsertConversationOutboxMessage(current, {
-            ...conversationOutboxMessageForSubmit(args),
-            messageId: accepted.messageId,
+            ...conversationOutboxMessageForSubmit({
+              ...args,
+              messageId: accepted.messageId,
+            }),
             status: "accepted",
           }),
       );
@@ -207,24 +209,19 @@ export function useAppendConversationMessage(conversationId: string) {
         args,
       ),
     onMutate: async (args) => {
-      const optimistic = conversationOutboxMessageForSubmit(args);
+      // Use the durable id from the first render. No server read is needed,
+      // and a poll that beats POST cannot create a second copy.
+      const messageId = await webMessageId({
+        conversationId,
+        idempotencyKey: args.idempotencyKey,
+      });
+      const optimistic = conversationOutboxMessageForSubmit({
+        ...args,
+        messageId,
+      });
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         outboxQueryKey,
         (current) => upsertConversationOutboxMessage(current, optimistic),
-      );
-      // The row is immediate. Resolve its durable id before POST starts so a
-      // poll that beats the accept response cannot render a second copy.
-      const messageId = await conversationOutboxMessageId(
-        conversationId,
-        args.idempotencyKey,
-      );
-      queryClient.setQueryData<ConversationOutboxMessage[]>(
-        outboxQueryKey,
-        (current) =>
-          upsertConversationOutboxMessage(current, {
-            ...optimistic,
-            messageId,
-          }),
       );
     },
     onError: (_error, args) => {

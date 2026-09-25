@@ -11,7 +11,6 @@ export type ConversationOutboxMessage = {
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
-  clientKey?: string;
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -25,6 +24,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 export function conversationOutboxMessageForSubmit(input: {
   idempotencyKey: string;
   message: string;
+  messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
   const createdAt = input.now ?? new Date().toISOString();
@@ -32,26 +32,9 @@ export function conversationOutboxMessageForSubmit(input: {
     createdAt,
     idempotencyKey: input.idempotencyKey,
     message: input.message,
-    messageId: `client:${input.idempotencyKey}`,
+    messageId: input.messageId,
     status: "sending",
   };
-}
-
-/** Match the web input Message id before POST can become visible to polling. */
-export async function conversationOutboxMessageId(
-  conversationId: string,
-  idempotencyKey: string,
-): Promise<string> {
-  // Keep this wire identity aligned with core's webMessageId. The contract test
-  // compares both implementations; browsers use Web Crypto, not node:crypto.
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(`${conversationId}\u0000${idempotencyKey}`),
-  );
-  const hex = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `api-msg:${hex.slice(0, 24)}`;
 }
 
 /** Project one outbox row into the composer-attached mailbox stack. */
@@ -59,7 +42,6 @@ export function mailboxMessageFromOutbox(
   message: ConversationOutboxMessage,
 ): ConversationMailboxMessage {
   return {
-    clientKey: message.idempotencyKey,
     clientStatus: message.status,
     createdAt: message.createdAt,
     delivery: "defer",
@@ -89,17 +71,7 @@ export function mergeConversationMailboxMessages(
 ): ConversationMailboxMessage[] {
   const serverMessages = server ?? [];
   const outboxMessages = outbox ?? [];
-  const localKeys = new Map(
-    previous?.map((message) => [message.messageId, message.clientKey]),
-  );
-  for (const message of outboxMessages) {
-    localKeys.set(message.messageId, message.idempotencyKey);
-  }
-  const accepted = serverMessages.map((message) => {
-    const clientKey = localKeys.get(message.messageId);
-    return clientKey ? { ...message, clientKey } : message;
-  });
-  let next: readonly ConversationMailboxMessage[] = accepted;
+  let next: readonly ConversationMailboxMessage[] = serverMessages;
   if (outboxMessages.length > 0) {
     const serverIds = new Set(
       serverMessages.map((message) => message.messageId),
@@ -107,7 +79,7 @@ export function mergeConversationMailboxMessages(
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);
-    if (extras.length > 0) next = [...accepted, ...extras];
+    if (extras.length > 0) next = [...serverMessages, ...extras];
   }
   return reuseConversationMailboxMessages(previous, next);
 }
@@ -137,7 +109,6 @@ function sameMailboxMessage(
   return (
     left.inboundMessageId === right.inboundMessageId &&
     left.messageId === right.messageId &&
-    left.clientKey === right.clientKey &&
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&

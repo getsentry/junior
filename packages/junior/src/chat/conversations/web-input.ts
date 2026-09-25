@@ -15,6 +15,7 @@ import {
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
+import { webMessageId } from "./web-message-id";
 
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
@@ -80,19 +81,6 @@ export function createConversationId(args: {
     normalizeEmail(args.actorEmail),
     args.idempotencyKey,
   )}`;
-}
-
-/**
- * Build the retry-stable id for one web Message.
- *
- * TODO(dcramer): Replace the `api-msg` prefix after deployed request retries
- * no longer need to derive ids written by the old web input code.
- */
-export function webMessageId(args: {
-  conversationId: string;
-  idempotencyKey: string;
-}): string {
-  return `api-msg:${stableHex(args.conversationId, args.idempotencyKey)}`;
 }
 
 /** Return the stable Turn id for one mailbox Message. */
@@ -262,7 +250,7 @@ export async function appendAndEnqueueWebMessage(
     throw new Error("Web Actor requires a verified email");
   }
   const nowMs = options.nowMs ?? Date.now();
-  const messageId = webMessageId({
+  const messageId = await webMessageId({
     conversationId: input.conversationId,
     idempotencyKey: input.idempotencyKey,
   });
