@@ -43,7 +43,9 @@ describeEval("Handoff task continuity", slackEvals, (it) => {
       const result = await run({
         history: handoffHistory(thread),
         initialEvents: [
-          mention(`Switch models first. ${instruction}`, { thread }),
+          mention(`Switch to the standard profile first. ${instruction}`, {
+            thread,
+          }),
         ],
         overrides: {
           ...memoryPluginOverrides,

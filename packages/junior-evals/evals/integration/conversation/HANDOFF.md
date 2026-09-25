@@ -16,8 +16,8 @@ summarizer saw. This experiment tests task selection, not that narrower claim.
 the same history, memory, source file, and configured model defaults. The
 meaning of `Deslop` is seeded through the real memory store. It is not explained
 in prior messages. Recall, routing, handoff, summary, and continuation are live.
-Both requests start with `Switch models first.`. This is a requested handoff,
-not the spontaneous handoff from the production failure.
+Both requests start with `Switch to the standard profile first.`. This is a
+requested handoff, not the spontaneous handoff from the production failure.
 
 The fixture source has a class and factory that only wrap stable ID generation.
 The request must remove those wrappers through a successful source edit after
@@ -60,6 +60,23 @@ that ordinary routing avoids the boundary we need to test. The prefix asks the
 live agent to enter that boundary without injecting a tool call or summary.
 The hypothesis remains that the terse task loses priority during summarization.
 Do not interpret routing failure or a tool timeout as task substitution.
+
+Commit: `311c4b9bc`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36172657682).
+Both routed to the handoff profile. The terse case recalled the definition,
+skipped handoff, and edited the source. The explicit control did not recall
+memory. It called handoff to standard and then back to handoff. Both live
+summaries retained the cleanup task. It completed the source edit and passed.
+This is not a reproduction or a controlled summary comparison.
+
+### Pair 3: name the destination profile
+
+Replace the shared prefix with `Switch to the standard profile first.`. Keep
+all other inputs fixed. Pair 2 showed that the vague request did not reliably
+reach handoff, while a successful standard-profile switch was available to the
+other case. Naming the destination removes that ambiguity. This checks the
+setup needed to test task loss. Do not infer task loss if it still skips handoff.
+Do not repeat this case merely to obtain a failing summary.
 
 ## Limits
 
