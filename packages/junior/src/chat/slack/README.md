@@ -12,6 +12,11 @@ formatting, and Slack API error mapping. The Slack provider layer in
 - Acknowledge Slack within its request deadline after durable work is accepted.
 - Duplicate Slack deliveries must converge on the same durable work rather than
   create duplicate turns.
+- Add the processing reaction for new mentions and DMs before publishing them
+  to the mailbox. Serialize ingress per thread so retries cannot restore a
+  completed reaction. This optional UI gets one one-second attempt; failure
+  must not reject the input. The worker retries and owns completion. Passive
+  messages wait for the reply decision. Thread stops clear queued reactions.
 
 ## Messages
 

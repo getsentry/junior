@@ -329,6 +329,8 @@ export async function addReactionToMessage(input: {
   channelId: string;
   timestamp: SlackMessageTs;
   emoji: string;
+  /** Bound optional ingress UI to one short attempt before durable admission. */
+  timeoutMs?: number;
 }): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
     input.channelId,
@@ -346,12 +348,16 @@ export async function addReactionToMessage(input: {
   try {
     await withSlackRetries(
       () =>
-        getSlackClient().reactions.add({
+        getSlackClient(
+          input.timeoutMs === undefined
+            ? undefined
+            : { timeoutMs: input.timeoutMs },
+        ).reactions.add({
           channel: channelId,
           timestamp,
           name: emoji,
         }),
-      3,
+      input.timeoutMs === undefined ? 3 : 1,
       {
         action: "reactions.add",
         idempotent: true,
