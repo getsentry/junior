@@ -601,7 +601,11 @@ export async function compactContextForHandoff(
     { message: contextMessage, provenance: contextProvenance },
     ...(retainedInstruction ? [retainedInstruction] : []),
     {
-      message: userMessage(`${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}`),
+      // Summarization runs inside the handoff tool, before its result exists.
+      // This fact becomes visible only after the replacement commits.
+      message: userMessage(
+        `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}\n\nModel handoff completed: ${JSON.stringify(args.target)}.`,
+      ),
       provenance: contextProvenance,
     },
   ];

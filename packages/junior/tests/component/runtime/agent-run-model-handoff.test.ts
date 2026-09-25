@@ -173,7 +173,7 @@ describe("model handoff execution", () => {
     expect(observations.afterHandoffMessages[2]?.content).toEqual([
       {
         type: "text",
-        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\nImplement the requested change and verify it.`,
+        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\nImplement the requested change and verify it.\n\nModel handoff completed: {"modelId":"openai/gpt-5.6-sol","modelProfile":"handoff","reasoningLevel":"high"}.`,
       },
     ]);
 
@@ -283,7 +283,7 @@ describe("model handoff execution", () => {
     expect(observations.afterHandoffMessages[2]?.content).toEqual([
       {
         type: "text",
-        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${maintenanceHandoffSummary}`,
+        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${maintenanceHandoffSummary}\n\nModel handoff completed: {"modelId":"openai/gpt-5.6-sol","modelProfile":"handoff","reasoningLevel":"high"}.`,
       },
     ]);
   });

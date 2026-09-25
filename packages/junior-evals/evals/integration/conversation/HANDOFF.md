@@ -199,6 +199,29 @@ Local live setup is blocked: `pnpm dev:env` exits 1 because the checkout is not
 linked to a Vercel project. Use the existing PR CI to run the unchanged pair once.
 Review that result before any further live run. Do not rerun just to obtain a pass.
 
+### Control result: instruction retention
+
+Commit: `dd99e13e5`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36185083201).
+Both cases timed out at 60 seconds. The terse case handed off twice and made a
+successful source edit despite summaries that again omitted cleanup. It did not
+finish the Turn. The explicit control switched six times, read the source, and
+timed out without an edit. Neither case passed. All 726 component tests and the
+normal CI checks passed.
+
+The summaries repeatedly said the switch was unconfirmed because its result was
+“No result provided.” The handoff tool generates the summary before its own
+result exists. History replacement then removes the call and result. Retaining
+the request does not retain evidence that its profile switch already completed.
+
+### Next control: retain the completed handoff fact
+
+Hypothesis: the missing completion fact makes the continuation repeat a completed
+profile switch. Append the committed target profile, model, and reasoning to the
+continuation as runtime-owned context. This fact becomes visible only after the
+handoff commits. It does not change the summarizer prompt or grant instruction
+authority to the summary. Keep the live pair unchanged and run it once.
+
 ## Limits
 
 This is a reduced coding task, not an exact replay. Prior maintenance text uses
