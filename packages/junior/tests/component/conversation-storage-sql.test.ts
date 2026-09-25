@@ -724,34 +724,6 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("preserves NUL characters in stored model messages", async () => {
-    const fixture = await createEmptyJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlConversationEventStore(fixture.sql);
-
-      await store.append(CONVERSATION_ID, [
-        {
-          data: userMessageEvent("before\u0000after and literal \\u0000"),
-          createdAtMs: 1_000,
-        },
-      ]);
-
-      expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
-        {
-          type: "user_message",
-          content: [
-            { text: "before\u0000after and literal \\u0000", type: "text" },
-          ],
-        },
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("returns only the active history version", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
 

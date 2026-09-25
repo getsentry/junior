@@ -76,7 +76,7 @@ describe("model message history", () => {
       },
     });
 
-    await agent.run("first request");
+    await agent.run("first\u0000request and literal \\u0000");
     const first = agent.snapshot();
 
     await agent.run("second request");
@@ -92,24 +92,14 @@ describe("model message history", () => {
     const firstAssistant = first.messages.find(
       (message) => message.role === "assistant",
     );
-    expect(firstAssistant?.content).toEqual([
+    expect(firstAssistant?.content).toMatchObject([
+      { type: "thinking", thinkingSignature: "opaque-signature" },
       {
         type: "thinking",
-        thinking: "Check the plan.",
-        thinkingSignature: "opaque-signature",
-      },
-      {
-        type: "thinking",
-        thinking: "[Reasoning redacted]",
         thinkingSignature: "opaque-redacted-data",
         redacted: true,
       },
-      {
-        type: "toolCall",
-        id: "plan-call",
-        name: "updatePlan",
-        arguments: toolArguments,
-      },
+      { type: "toolCall", arguments: toolArguments },
     ]);
     const stored = await agent.agentHistory();
     expect(

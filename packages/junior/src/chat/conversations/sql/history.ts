@@ -98,15 +98,15 @@ function insertFromEvent(
   actorIdentityId?: string,
 ): ConversationEventInsert {
   const stripped = stripPayloadAuthorIdentityId(event.data);
-  const { type, ...payload } = conversationEventDataSchema.parse(stripped);
-  const encoded = encodeHistoryPayload(type, payload);
+  const data = conversationEventDataSchema.parse(stripped);
+  const encoded = encodeHistoryPayload(data);
   return {
     conversationId,
     seq,
     historyVersion,
     schemaVersion: encoded.schemaVersion,
     idempotencyKey: event.idempotencyKey ?? null,
-    type,
+    type: data.type,
     payload: sanitizePostgresJson(encoded.payload),
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
