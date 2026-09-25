@@ -11,12 +11,14 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
     });
 
     expect(isSlackEventsApiEnvelope(payload)).toBe(true);
-    expect(payload.event).toMatchObject({
+    // Slack's app_mention example has no author-team fields.
+    expect(payload.event).toStrictEqual({
       type: "app_mention",
+      user: "U0TEST",
+      text: "<@U0APP> hello",
       channel: "C12345",
       ts: "1700000000.500",
       event_ts: "1700000000.500",
-      channel_type: "channel",
     });
   });
 
@@ -29,10 +31,16 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
     });
 
     expect(isSlackEventsApiEnvelope(payload)).toBe(true);
-    expect(payload.event).toMatchObject({
+    // Slack's message example has no author-team fields.
+    expect(payload.event).toStrictEqual({
       type: "message",
+      subtype: undefined,
+      user: "U0TEST",
+      text: "<@U0APP> hello",
+      channel: "D12345",
       channel_type: "im",
       ts: "1700000000.700",
+      event_ts: "1700000000.700",
       thread_ts: "1700000000.100",
     });
   });

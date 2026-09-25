@@ -1,25 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import {
   isSlackWorkspaceMember,
   runWithWorkspaceTeamId,
 } from "@/chat/ingress/workspace-membership";
 
 const LOCAL_TEAM = "T0LOCAL";
-const EXTERNAL_TEAM = "T0EXTERNAL";
 
 describe("isSlackWorkspaceMember", () => {
-  it("rejects an author when the workspace context is missing", () => {
-    expect(isSlackWorkspaceMember({ user_team: LOCAL_TEAM })).toBe(false);
+  let state: ReturnType<typeof createMemoryState>;
+  beforeEach(async () => {
+    state = createMemoryState();
+    await state.connect();
   });
-
-  it.each([
-    { user_team: LOCAL_TEAM },
-    { source_team: LOCAL_TEAM },
-    { user_team: LOCAL_TEAM, source_team: EXTERNAL_TEAM },
-  ])("accepts a local author: %j", (raw) => {
-    runWithWorkspaceTeamId(LOCAL_TEAM, () => {
-      expect(isSlackWorkspaceMember(raw)).toBe(true);
-    });
+  afterEach(async () => {
+    await state.disconnect();
+  });
+  it("rejects an author when the workspace context is missing", async () => {
+    await expect(
+      isSlackWorkspaceMember({ user_team: LOCAL_TEAM }, state),
+    ).resolves.toBe(false);
   });
 
   it.each([
@@ -29,16 +29,14 @@ describe("isSlackWorkspaceMember", () => {
     [],
     {},
     { team: LOCAL_TEAM, team_id: LOCAL_TEAM },
-    { user_team: EXTERNAL_TEAM },
-    { source_team: EXTERNAL_TEAM },
-    { user_team: EXTERNAL_TEAM, source_team: LOCAL_TEAM },
-    { user_team: "", source_team: LOCAL_TEAM },
-    { user_team: 123, source_team: LOCAL_TEAM },
-    { user_team: null, source_team: LOCAL_TEAM },
-    { source_team: 123 },
-  ])("rejects an external or unknown author: %j", (raw) => {
-    runWithWorkspaceTeamId(LOCAL_TEAM, () => {
-      expect(isSlackWorkspaceMember(raw)).toBe(false);
+    { user_team: LOCAL_TEAM },
+    { user: "U123", user_team: "", source_team: LOCAL_TEAM },
+    { user: "U123", user_team: 123, source_team: LOCAL_TEAM },
+    { user: "U123", user_team: null, source_team: LOCAL_TEAM },
+    { user: "U123", source_team: 123 },
+  ])("rejects missing or malformed author fields: %j", async (raw) => {
+    await runWithWorkspaceTeamId(LOCAL_TEAM, async () => {
+      await expect(isSlackWorkspaceMember(raw, state)).resolves.toBe(false);
     });
   });
 });

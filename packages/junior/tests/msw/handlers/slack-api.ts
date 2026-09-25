@@ -204,6 +204,7 @@ async function parseSlackApiRequestBody(
 
 function defaultSlackApiResponse(
   method: SlackApiMethod,
+  params: Record<string, unknown>,
 ): SlackMockHttpResponse {
   switch (method) {
     case "assistant.search.context":
@@ -266,7 +267,11 @@ function defaultSlackApiResponse(
     case "files.completeUploadExternal":
       return { body: filesCompleteUploadOk() };
     case "users.info":
-      return { body: usersInfoOk() };
+      return {
+        body: usersInfoOk({
+          userId: typeof params.user === "string" ? params.user : undefined,
+        }),
+      };
     case "users.list":
       return { body: usersListPage() };
     case "users.lookupByEmail":
@@ -448,7 +453,8 @@ export const slackApiHandlers = [
     }
 
     const response =
-      dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);
+      dequeueResponse(rawMethod) ??
+      defaultSlackApiResponse(rawMethod, requestBody);
     response.onRequest?.();
     if (response.waitFor) {
       await response.waitFor;

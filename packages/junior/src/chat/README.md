@@ -160,11 +160,16 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Slack messages require an author team that matches the installation workspace.
-  Use `user_team`, or `source_team` when `user_team` is absent. Missing workspace
-  or author team data blocks the message before routing, storage, or reactions.
-  The event's `team` and envelope's `team_id` do not prove author membership.
-  Do not query Slack for missing membership data.
+- Verify Slack authors before storage, routing, or reactions. Require a user ID
+  and a matching workspace-valued `user_team`, or verify membership through
+  `users.info`. Event delivery and message origin do not prove membership.
+  Cache lookups by workspace and user for five minutes (members) or 30 seconds
+  (non-members). Reads do not extend expiry. An explicit external `user_team`
+  overrides cached membership. Lookup and state errors reach the retryable
+  webhook boundary. See `ingress/workspace-membership.ts` for field rules and
+  Slack references.
+- Keep documented minimal Slack message fixtures unchanged. Add optional fields
+  only in targeted cases with an upstream payload or fixture reference.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
