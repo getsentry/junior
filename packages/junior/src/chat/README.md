@@ -165,10 +165,10 @@ delegation without becoming the execution actor or a general task owner.
   or author team data blocks the message before routing, storage, or reactions.
   The event's `team` and envelope's `team_id` do not prove author membership.
   Do not query Slack for missing membership data.
-- Use `@slack/types` for event fields and Block Kit output. Local schemas validate
-  the fields ingress reads and preserve other event fields for Chat SDK.
-  Slack does not provide envelope or interactive payload types. Chat SDK returns
-  `Message<unknown>`; check raw input rather than casting it.
+- Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
+  Local schemas cover upstream omissions and validate fields read by ingress
+  and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
+  Slash-command handlers receive validated workspace, channel, and user ids.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the

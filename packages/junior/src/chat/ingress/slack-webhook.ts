@@ -4,17 +4,13 @@ import {
   slackAssistantThreadSchema,
   slackEventEnvelopeSchema,
   slackInteractivePayloadSchema,
+  slackSlashCommandSchema,
+  type SlackSlashCommandForm,
   type SlackEventEnvelope,
   type SlackInboundEvent,
   type SlackInteractivePayload,
 } from "./slack-payload";
-import {
-  ChannelImpl,
-  ThreadImpl,
-  type Message,
-  type SlashCommandEvent,
-  type StateAdapter,
-} from "chat";
+import { ChannelImpl, ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
 import {
@@ -68,7 +64,7 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { createActor, parseActorUserId } from "@/chat/actor";
+import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -624,55 +620,27 @@ function requireSlackPayloadUserId(
 
 async function handleSlashCommandForm(args: {
   adapter: SlackAdapter;
-  params: URLSearchParams;
+  form: SlackSlashCommandForm;
   state: StateAdapter;
 }): Promise<void> {
-  const raw = Object.fromEntries(args.params);
-  const channelId = args.params.get("channel_id") ?? "";
+  const { channel_id: channelId, team_id: teamId, user_id: userId } = args.form;
   const channel = new ChannelImpl({
-    id: channelId ? `slack:${channelId}` : "",
+    id: `slack:${channelId}`,
     adapter: args.adapter,
     stateAdapter: args.state,
   });
-  const userId = requireSlackPayloadUserId(
-    args.params.get("user_id"),
-    "Slack slash command payload",
-  );
-  const teamId = args.params.get("team_id") ?? undefined;
-  const userIdentity = createActor(
-    {
-      platform: "slack",
-      teamId,
-      userId,
-      userName: args.params.get("user_name") ?? undefined,
-      fullName: args.params.get("user_name") ?? undefined,
-    },
-    { teamId, userId },
-  );
-  if (!userIdentity?.userId) {
-    throw new Error("Slack slash command payload actor identity is invalid");
-  }
   await withSpan(
     "chat.slash_command",
     "chat.slash_command",
     { userId: userId },
     async () => {
       await handleSlashCommand({
-        adapter: args.adapter,
         channel,
-        command: args.params.get("command") || "",
-        text: args.params.get("text") || "",
-        triggerId: args.params.get("trigger_id") || undefined,
-        raw,
-        user: {
-          userId,
-          userName: userIdentity.userName ?? "",
-          fullName: userIdentity.fullName ?? "",
-          isBot: false,
-          isMe: false,
-        },
-        openModal: async () => undefined,
-      } satisfies SlashCommandEvent);
+        channelId,
+        teamId,
+        text: args.form.text,
+        userId,
+      });
     },
   );
 }
@@ -725,17 +693,6 @@ async function handleInteractivePayload(args: {
   );
 }
 
-function installationFromForm(
-  params: URLSearchParams,
-): SlackInstallationContext {
-  const isEnterpriseInstall = params.get("is_enterprise_install") === "true";
-  return {
-    teamId: params.get("team_id") ?? undefined,
-    enterpriseId: params.get("enterprise_id") ?? undefined,
-    isEnterpriseInstall,
-  };
-}
-
 function installationFromInteractive(
   payload: SlackInteractivePayload,
 ): SlackInstallationContext {
@@ -755,13 +712,24 @@ async function handleSlackForm(args: {
   await state.connect();
 
   if (params.has("command") && !params.has("payload")) {
-    const installation = installationFromForm(params);
+    const result = slackSlashCommandSchema.safeParse(
+      Object.fromEntries(params),
+    );
+    if (!result.success) {
+      return new Response("Invalid slash command payload", { status: 400 });
+    }
+    const form = result.data;
+    const installation: SlackInstallationContext = {
+      teamId: form.team_id,
+      enterpriseId: form.enterprise_id,
+      isEnterpriseInstall: form.is_enterprise_install === "true",
+    };
     enqueue(
       args.waitUntil,
       withLogContext(
         {
           platform: "slack",
-          userId: params.get("user_id")?.trim() || undefined,
+          userId: form.user_id,
         },
         () =>
           runWithWorkspaceTeamId(installation.teamId, () =>
@@ -772,7 +740,7 @@ async function handleSlackForm(args: {
               task: () =>
                 handleSlashCommandForm({
                   adapter,
-                  params,
+                  form,
                   state,
                 }),
             }),
