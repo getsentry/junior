@@ -115,7 +115,7 @@ test("loads earlier events without merging tool starts and results", async ({
 });
 
 for (const width of [1440, 390]) {
-  test(`switching views does not announce new activity (${width}px)`, async ({
+  test(`distinguishes view switches from resumed live activity (${width}px)`, async ({
     page,
     dashboard,
   }) => {
@@ -165,6 +165,51 @@ for (const width of [1440, 390]) {
           exact: true,
         }),
       ).toBeHidden();
+    }
+    // A later poll can wake an idle conversation while the reader is above the tail.
+    report.status = "completed";
+    report.events.push({
+      seq: 41,
+      createdAt: report.lastSeenAt,
+      data: {
+        type: "message",
+        messageId: "idle-message",
+        role: "user",
+        text: "Idle update",
+      },
+    });
+    await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
+      timeout: 15_000,
+    });
+    await scroll.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
+    report.status = "active";
+    report.events.push({
+      seq: 42,
+      createdAt: report.lastSeenAt,
+      data: {
+        type: "message",
+        messageId: "live-message",
+        role: "user",
+        text: "First live update",
+      },
+    });
+    const liveUpdate = page.getByText("First live update", { exact: true });
+    await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
+    if (width < 768) {
+      await expect(liveUpdate).toBeInViewport();
+    } else {
+      await expect(
+        page.getByText("Message 0", { exact: true }),
+      ).toBeInViewport();
+      await expect(
+        page.getByRole("button", {
+          name: "Jump to latest update",
+          exact: true,
+        }),
+      ).toBeVisible();
     }
   });
 }

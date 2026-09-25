@@ -512,15 +512,6 @@ export function usePinnedTranscriptBottom(input: {
     if (initializedRef.current && !tailChanged && wasEnabled === input.enabled)
       return;
 
-    // Mobile follows new tail content, but switching views is not new activity.
-    if (
-      tailChanged &&
-      input.enabled &&
-      typeof window !== "undefined" &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches
-    ) {
-      setFollowingIntent(true);
-    }
     const shouldTrack = input.enabled || wasEnabled;
     enabledRef.current = input.enabled;
     if (!shouldTrack) return;
@@ -535,6 +526,16 @@ export function usePinnedTranscriptBottom(input: {
       if (root) {
         setFollowingIntent(isNearScrollBottom(scrollSnapshot(root)));
       }
+    }
+
+    // Mobile follows new tail content, but switching views is not new activity.
+    if (
+      tailChanged &&
+      input.enabled &&
+      typeof window !== "undefined" &&
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches
+    ) {
+      setFollowingIntent(true);
     }
 
     if (
