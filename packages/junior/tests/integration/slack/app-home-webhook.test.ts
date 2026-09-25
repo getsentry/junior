@@ -143,6 +143,7 @@ describe("Slack webhook: App Home events", () => {
         event: {
           type: "app_mention",
           user: "U123",
+          user_team: "T123",
           text: `<@${BOT_USER_ID}> hello`,
           channel: "C123",
           ts: "1712345.0001",
@@ -193,6 +194,7 @@ describe("Slack webhook: App Home events", () => {
           type: "message",
           subtype: "bot_message",
           bot_id: "B_DEPLOY",
+          user_team: "T123",
           username: "Deploy Bot",
           text: "Daily summary: 9 unregistered options",
           blocks: [

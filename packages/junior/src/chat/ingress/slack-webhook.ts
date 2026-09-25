@@ -52,7 +52,7 @@ import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
+import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import {
   getWorkspaceTeamId,
   runWithWorkspaceTeamId,
@@ -242,7 +242,7 @@ function shouldIgnoreMessage(message: Message): boolean {
   return (
     message.author.isMe === true ||
     !parseActorUserId(message.author.userId) ||
-    isExternalSlackUser(message.raw as Record<string, unknown> | undefined)
+    !isSlackWorkspaceMember(message.raw as Record<string, unknown> | undefined)
   );
 }
 

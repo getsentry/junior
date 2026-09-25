@@ -331,6 +331,7 @@ export function slackEnvelope(input: {
     event: {
       type: input.eventType ?? "app_mention",
       user: input.user ?? "U123",
+      user_team: "T123",
       text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
       channel,
       ts,

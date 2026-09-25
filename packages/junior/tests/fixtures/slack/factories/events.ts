@@ -171,6 +171,7 @@ export interface SlackEventsApiEnvelope {
   event: {
     type: "app_mention" | "message";
     user: string;
+    user_team?: string;
     text: string;
     channel: string;
     ts: string;
@@ -222,6 +223,7 @@ export function slackEventsApiEnvelope(
     event: {
       type: input.eventType ?? "app_mention",
       user: input.user ?? TEST_USER_ID,
+      user_team: "T0TEST",
       text: input.text ?? "<@U0APP> hello",
       channel,
       ts,
