@@ -7,10 +7,10 @@ cleanup request. The summary input appends historical thread context after the
 current request. That context contains a rule to stay silent. Handoff then
 replaces the authored request with the generated summary.
 
-Runtime context is stripped from history before summarization. This may remove
-useful memory, but we have not proved that it removed the definition in the
-production failure. Memory in the continuation does not establish what the
-summarizer saw. This experiment tests task selection, not that narrower claim.
+Runtime context is stripped from history before summarization. The production
+summarizer input included recalled memory that defined `Deslop`. Missing meaning
+is not an established cause of that failure. This experiment tests task selection,
+not whether memory was absent.
 
 `handoff.eval.ts` compares `Deslop` with an explicit cleanup request. Both use
 the same history, memory, source file, and configured model defaults. The
@@ -77,6 +77,74 @@ reach handoff, while a successful standard-profile switch was available to the
 other case. Naming the destination removes that ambiguity. This checks the
 setup needed to test task loss. Do not infer task loss if it still skips handoff.
 Do not repeat this case merely to obtain a failing summary.
+
+Commit: `bb99f7808`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36174341591).
+The run logs and `integration-evals-1` result artifact show:
+
+- Both cases routed to `anthropic/claude-opus-5.5` with high reasoning. Both
+  called handoff to standard and then back to handoff. The live summarizer was
+  `openai/gpt-6-luna`.
+- The terse case recalled the definition. Both summaries omitted the cleanup
+  request. They selected the earlier stable-ID implementation task, not the
+  PR-maintenance task or its silence rule. This differs from production.
+- Despite that task loss, the terse continuation used `editFile` to remove the
+  class and factory. It then reached the 60-second deadline. Slack received an
+  internal-error reply, not `[[NO_REPLY]]`. The case failed after 60.7 seconds.
+- The explicit control did not recall memory. Both summaries kept the cleanup
+  request. It removed the wrappers, replied, and passed after 57.4 seconds.
+
+This proves live summary task loss in the reduced case. It does not reproduce
+silent abandonment. The source edit disproves the narrower claim that this
+continuation abandoned the cleanup. The timeout does not establish that summary
+loss caused the incomplete turn. Recall also differed between cases, so this is
+not a controlled test of summary wording alone.
+
+The component regression on this commit also failed:
+[`agent-run-model-handoff.test.ts`](https://github.com/getsentry/junior/actions/runs/36174341284/job/108201350562).
+Its resumed input contains the scripted old maintenance summary instead of the
+expected authored `Deslop` instruction. This proves the runtime replacement
+behavior, not a live model's decision to remain silent.
+
+### Pair 4: include the completed implementation in agent history
+
+Keep the requests, memory seed, source file, visible Slack history, model defaults,
+and assertions from pair 3. Add only the earlier source-write call and its success
+result to preloaded agent history. The written content comes from the same fixture
+file that the continuation will inspect. It does not say that cleanup happened.
+
+Hypothesis: missing tool history made the earlier coding task appear unfinished.
+Both terse summaries in pair 3 explicitly called the prior implementation
+unverified and asked the continuation to inspect it. That inspection led to a
+cleanup edit despite the missing request. The production summary instead recorded
+implemented changes and completed checks, then selected PR maintenance.
+
+This pair tests whether evidence of completed work removes that recovery path.
+The new cleanup must still happen after a live handoff. A summary that retains the
+cleanup, a continuation that completes it anyway, a skipped handoff, or a timeout
+does not reproduce silent abandonment. No summary or continuation is scripted.
+The explicit-request case remains the control. This is still a reduced fixture,
+not a replay of the full production tool history.
+
+## Result and next experiment boundary
+
+The product rule is that handoff must preserve the active authored instruction.
+A generated summary can supply context, but must not replace that instruction.
+`compactContextForHandoff` in `context-compaction.ts` currently wraps the summary
+as the new current instruction and replaces history with it plus runtime context.
+The component regression exposes this rule without another live model call.
+
+Do not rerun this pair just to obtain silence. A further live experiment needs
+an input that tests why the summary selects the old maintenance task rather than
+the old coding task. A candidate hypothesis is that the original task provenance
+and intervening history affect that selection. Test it with a sanitized replay
+of the production input and the production model configuration before reducing
+that input. Do not add arbitrary history to match its token count. Do not script
+the summary or continuation in that live experiment.
+
+No runtime fix is part of these experiments. The production failure remains
+established by its trace; through pair 3, the reduced live reproduction remains
+incomplete.
 
 ## Limits
 

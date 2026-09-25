@@ -102,7 +102,7 @@ For each `it()` case inside a `describeEval()` suite:
 A scenario controls three things, and nothing else:
 
 1. **Agent config.** The runtime the scenario instantiates: plugin packages and fixture dirs, skill dirs, credentials, env, and runtime service overrides. Production sets the same things at startup, so a scenario that needs different behavior configures a different runtime instead of reaching into a running one.
-2. **Preloaded history.** Prior turns written through the runtime's own stores before the first event, with `history: [mention(...), reply(...)]`. No agent runs for them. The visible thread transcript, durable agent history, and conversation messages all exist as a completed turn would have left them, and a thread Junior replied in stays subscribed.
+2. **Preloaded history.** Prior turns written through the runtime's own stores before the first event, with `history: [mention(...), reply(...)]`. No agent runs for them. A prior reply can include `toolHistory` with native Pi assistant and tool-result messages from the work before that reply. These remain in agent history, not the visible Slack transcript or the current run's tool calls. The visible thread transcript, durable agent history, and conversation messages all exist as a completed turn would have left them, and a thread Junior replied in stays subscribed.
 3. **Mocked third-party APIs.** Slack, provider HTTP, MCP fixtures, and image generation through the shared MSW handlers and fixtures.
 
 Do not add a knob that writes runtime state directly, scripts the model, or replaces a Junior-owned module. `active_turn_compaction` is the one remaining exception: the active-turn compactor takes no trigger override, so it still seeds a paused turn record.

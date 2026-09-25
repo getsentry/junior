@@ -1,8 +1,44 @@
+import { readFileSync } from "node:fs";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { mention, reply } from "../../../src/helpers";
 import type {
   EvalEventThreadFixture,
   HistoryEvent,
 } from "../../../src/harness/types";
+
+// Prior work must match the file the live continuation will find. Without the
+// tool result, the summaries treated that work as an unverified assistant claim.
+function completedImplementation() {
+  const path = "skills/coding-workspace-fixture/project/src/work-object.ts";
+  const content = readFileSync(
+    new URL(
+      "../../../fixtures/coding-skills/coding-workspace-fixture/project/src/work-object.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  return [
+    fauxAssistantMessage({
+      type: "toolCall",
+      id: "prior-stable-id-write",
+      name: "writeFile",
+      arguments: { path, content },
+    }),
+    {
+      role: "toolResult" as const,
+      toolCallId: "prior-stable-id-write",
+      toolName: "writeFile",
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({ path, bytes: Buffer.byteLength(content) }),
+        },
+      ],
+      isError: false,
+      timestamp: 0,
+    },
+  ];
+}
 
 /** Recreate completed coding work followed by old maintenance instructions. */
 export function handoffHistory(thread: EvalEventThreadFixture): HistoryEvent[] {
@@ -19,10 +55,13 @@ export function handoffHistory(thread: EvalEventThreadFixture): HistoryEvent[] {
       "Make Work Object IDs stable across threads in skills/coding-workspace-fixture/project/src/work-object.ts. Keep this local; do not push or edit GitHub. Use editFile for source changes so I can review the diff.",
       { thread },
     ),
-    reply(
-      "Implemented stable IDs in work-object.ts using WorkObjectIdentityManager and createWorkObjectIdentityManager. workObjectId returns JSON.stringify([object.provider, object.key]). Old references stop working. The PR is still a draft; live Slack rendering is unverified.",
-      { thread },
-    ),
+    {
+      ...reply(
+        "Implemented stable IDs in work-object.ts using WorkObjectIdentityManager and createWorkObjectIdentityManager. workObjectId returns JSON.stringify([object.provider, object.key]). Old references stop working. The PR is still a draft; live Slack rendering is unverified.",
+        { thread },
+      ),
+      toolHistory: completedImplementation(),
+    },
     mention(`${maintenance}\nA deployment bot posted a preview URL.`, {
       thread,
       author: { user_id: "UJRNEVENT", full_name: "Junior event", is_bot: true },
