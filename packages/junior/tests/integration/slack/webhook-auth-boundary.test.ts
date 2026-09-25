@@ -34,12 +34,20 @@ describe("Slack webhook auth boundary", () => {
   });
 
   it.each([
-    { channel: "C123", eventType: "app_mention" as const },
-    { channel: "D123", eventType: "message" as const },
-    { channel: "C123", eventType: "message" as const },
+    { channel: "C123", eventType: "app_mention" as const, fields: {} },
+    { channel: "D123", eventType: "message" as const, fields: {} },
+    { channel: "C123", eventType: "message" as const, fields: {} },
+    // Bolt's external Enterprise mention has a receiving team and an unknown
+    // author workspace. Only IDs change here; keep these fields out of defaults.
+    // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L1022-L1053
+    {
+      channel: "C123",
+      eventType: "app_mention" as const,
+      fields: { team: "T123", user_team: "E123", source_team: "E123" },
+    },
   ])(
-    "verifies authors without team fields before accepting $eventType in $channel",
-    async ({ channel, eventType }) => {
+    "verifies unresolved authors before accepting $eventType in $channel: $fields",
+    async ({ channel, eventType, fields }) => {
       const state = createMemoryState();
       await state.connect();
       const threadTs = "1712345.0001";
@@ -58,6 +66,7 @@ describe("Slack webhook auth boundary", () => {
             ? `<@${adapter.botUserId}> hello`
             : "hello",
       });
+      Object.assign(envelope.event, fields);
       const services = {
         getSlackAdapter: () => adapter,
         queue,
@@ -107,6 +116,63 @@ describe("Slack webhook auth boundary", () => {
       expect(
         getCapturedSlackApiCalls("users.info").at(-1)?.params,
       ).toMatchObject({ user: "U123" });
+      await state.disconnect();
+    },
+  );
+
+  it.each(["message", "app_mention"] as const)(
+    "uses %s author fields without a lookup and rejects external authors",
+    async (eventType) => {
+      const state = createMemoryState();
+      await state.connect();
+      const adapter = createSlackAdapterFixture();
+      const queue = createConversationWorkQueueTestAdapter();
+      const threadTs = "1712345.0001";
+      const threadId = `slack:C123:${threadTs}`;
+      await state.subscribe(threadId);
+      const services = {
+        getSlackAdapter: () => adapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      };
+      // Bolt's message fixture identifies the author with team. Its mention
+      // fixture has different team and user_team values. Change IDs only.
+      // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L717-L744
+      // https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/tests/slack_bolt/request/test_internals.py#L1055-L1081
+      for (const [index, team] of ["TEXTERNAL", "T123"].entries()) {
+        const envelope = slackEventsApiEnvelope({
+          eventType,
+          channel: "C123",
+          ts: `1712345.000${index + 2}`,
+          threadTs,
+          text:
+            eventType === "app_mention"
+              ? `<@${adapter.botUserId}> hello`
+              : "hello",
+        });
+        const response = await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest({
+            ...envelope,
+            is_ext_shared_channel: true,
+            event: {
+              ...envelope.event,
+              ...(eventType === "message"
+                ? { team }
+                : { team: "T123", user_team: team, source_team: team }),
+            },
+          }),
+          services,
+        });
+        expect(response.status).toBe(200);
+        expect(queue.queuedMessages()).toHaveLength(index);
+        const work = await getConversationWorkState({
+          conversationId: threadId,
+          state,
+        });
+        expect(work !== undefined).toBe(index === 1);
+      }
+      expect(getCapturedSlackApiCalls("users.info")).toEqual([]);
       await state.disconnect();
     },
   );

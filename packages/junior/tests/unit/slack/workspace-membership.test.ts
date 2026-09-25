@@ -15,9 +15,9 @@ describe("isSlackWorkspaceMember", () => {
   });
 
   it.each([
-    { user_team: LOCAL_TEAM },
-    { source_team: LOCAL_TEAM },
-    { user_team: LOCAL_TEAM, source_team: EXTERNAL_TEAM },
+    { user: "U123", user_team: LOCAL_TEAM },
+    { user: "U123", type: "message", team: LOCAL_TEAM },
+    { user: "U123", user_team: LOCAL_TEAM, source_team: EXTERNAL_TEAM },
   ])("accepts a local author: %j", async (raw) => {
     await runWithWorkspaceTeamId(LOCAL_TEAM, async () => {
       await expect(isSlackWorkspaceMember(raw)).resolves.toBe(true);
@@ -31,13 +31,14 @@ describe("isSlackWorkspaceMember", () => {
     [],
     {},
     { team: LOCAL_TEAM, team_id: LOCAL_TEAM },
-    { user_team: EXTERNAL_TEAM },
-    { source_team: EXTERNAL_TEAM },
-    { user_team: EXTERNAL_TEAM, source_team: LOCAL_TEAM },
-    { user_team: "", source_team: LOCAL_TEAM },
-    { user_team: 123, source_team: LOCAL_TEAM },
-    { user_team: null, source_team: LOCAL_TEAM },
-    { source_team: 123 },
+    { user_team: LOCAL_TEAM },
+    { user: "U123", user_team: EXTERNAL_TEAM },
+    { user: "U123", type: "message", team: EXTERNAL_TEAM },
+    { user: "U123", user_team: EXTERNAL_TEAM, team: LOCAL_TEAM },
+    { user: "U123", user_team: "", source_team: LOCAL_TEAM },
+    { user: "U123", user_team: 123, source_team: LOCAL_TEAM },
+    { user: "U123", user_team: null, source_team: LOCAL_TEAM },
+    { user: "U123", source_team: 123 },
   ])("rejects an external or unknown author: %j", async (raw) => {
     await runWithWorkspaceTeamId(LOCAL_TEAM, async () => {
       await expect(isSlackWorkspaceMember(raw)).resolves.toBe(false);

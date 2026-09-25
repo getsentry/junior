@@ -160,12 +160,21 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Slack messages require an author team that matches the installation workspace.
-  Use `user_team`, or `source_team` when `user_team` is absent. When both are
-  absent, use `users.info` to verify the author's `team_id`. Missing workspace,
-  invalid author fields, or an unverified team blocks the message before routing,
-  storage, or reactions. API failures reach the webhook's retryable boundary.
-  The event's `team` and envelope's `team_id` do not prove author membership.
+- Slack messages require a user ID and an author team that matches the
+  installation workspace. Use a workspace-valued `user_team` first. For ordinary
+  `message` events without a subtype or `user_team`, use `event.team`, as
+  [Slack's Bolt implementation does](https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/slack_bolt/request/internals.py#L121-L158).
+  Do not apply that rule to mentions or message subtypes. A mention's `team`
+  can name the receiving workspace while its author belongs to another org.
+  Missing author teams and Enterprise-valued `user_team` require `users.info`.
+  Accept only a matching user ID and `team_id` from that lookup. Unknown authors
+  stay blocked before routing, storage, or reactions. API failures reach the
+  webhook's retryable boundary. Lookup results are not cached.
+  `source_team` describes message origin, not user membership. Envelope team IDs
+  and the external-sharing flag do not prove membership in this exact workspace.
+  See [Slack's field definitions](https://docs.slack.dev/enterprise/developing-for-enterprise-orgs#events_api).
+  Keep documented minimal message fixtures unchanged. Add optional fields only
+  in targeted cases with an upstream payload or fixture reference.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
