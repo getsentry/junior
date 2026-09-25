@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { buildCompactDiff } from "@/chat/tools/sandbox/text-edits";
 import { mention, reply } from "../../../src/helpers";
 import type {
   EvalEventThreadFixture,
@@ -17,21 +18,82 @@ function completedImplementation() {
     ),
     "utf8",
   );
+  const edits = [
+    {
+      oldText:
+        "constructor(private readonly object: WorkObject, private readonly threadId: string) {}",
+      newText: "constructor(private readonly object: WorkObject) {}",
+    },
+    {
+      oldText:
+        "JSON.stringify([this.threadId, this.object.provider, this.object.key])",
+      newText: "JSON.stringify([this.object.provider, this.object.key])",
+    },
+    {
+      oldText:
+        "function createWorkObjectIdentityManager(object: WorkObject, threadId: string) {\n  return new WorkObjectIdentityManager(object, threadId);",
+      newText:
+        "function createWorkObjectIdentityManager(object: WorkObject) {\n  return new WorkObjectIdentityManager(object);",
+    },
+    {
+      oldText:
+        "export function workObjectId(object: WorkObject, threadId: string): string {\n  return createWorkObjectIdentityManager(object, threadId).getIdentity();",
+      newText:
+        "export function workObjectId(object: WorkObject): string {\n  return createWorkObjectIdentityManager(object).getIdentity();",
+    },
+  ];
+  const previousContent = edits.reduce(
+    (text, edit) => text.replace(edit.newText, edit.oldText),
+    content,
+  );
+  const diff = buildCompactDiff(previousContent, content);
+  const verification = `node --experimental-transform-types --disable-warning=ExperimentalWarning --input-type=module -e 'import assert from "node:assert/strict"; import { workObjectId } from "./${path}"; const object = {provider:"github",key:"example/widgets#42"}; assert.equal(workObjectId(object), JSON.stringify([object.provider, object.key])); console.log("stable ID check passed")'`;
   return [
     fauxAssistantMessage({
       type: "toolCall",
-      id: "prior-stable-id-write",
-      name: "writeFile",
-      arguments: { path, content },
+      id: "prior-stable-id-edit",
+      name: "editFile",
+      arguments: { path, edits },
     }),
     {
       role: "toolResult" as const,
-      toolCallId: "prior-stable-id-write",
-      toolName: "writeFile",
+      toolCallId: "prior-stable-id-edit",
+      toolName: "editFile",
       content: [
         {
           type: "text" as const,
-          text: JSON.stringify({ path, bytes: Buffer.byteLength(content) }),
+          text: JSON.stringify({
+            path,
+            target: path,
+            replacements: edits.length,
+            first_changed_line: diff.firstChangedLine,
+            truncated: diff.truncated,
+            diff: diff.diff,
+          }),
+        },
+      ],
+      isError: false,
+      timestamp: 0,
+    },
+    fauxAssistantMessage({
+      type: "toolCall",
+      id: "prior-stable-id-check",
+      name: "bash",
+      arguments: { command: `cat ${path} && ${verification}` },
+    }),
+    {
+      role: "toolResult" as const,
+      toolCallId: "prior-stable-id-check",
+      toolName: "bash",
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            exit_code: 0,
+            stdout: `${content}\nstable ID check passed\n`,
+            stderr: "",
+            timed_out: false,
+          }),
         },
       ],
       isError: false,
@@ -57,7 +119,7 @@ export function handoffHistory(thread: EvalEventThreadFixture): HistoryEvent[] {
     ),
     {
       ...reply(
-        "Implemented stable IDs in work-object.ts using WorkObjectIdentityManager and createWorkObjectIdentityManager. workObjectId returns JSON.stringify([object.provider, object.key]). Old references stop working. The PR is still a draft; live Slack rendering is unverified.",
+        "Implemented stable IDs in work-object.ts using WorkObjectIdentityManager and createWorkObjectIdentityManager. workObjectId returns JSON.stringify([object.provider, object.key]). The Node check passed. Changes remain local. Old references stop working; live Slack rendering is unverified.",
         { thread },
       ),
       toolHistory: completedImplementation(),
@@ -86,7 +148,7 @@ export function handoffHistory(thread: EvalEventThreadFixture): HistoryEvent[] {
     ),
     mention("that's fine I just need it to work going forward", { thread }),
     reply(
-      "Keeping the clean cutover, no compatibility layer. New cards use stable IDs and delivery logs.",
+      "Keeping the clean cutover, no compatibility layer. New cards use stable IDs.",
       { thread },
     ),
   ];

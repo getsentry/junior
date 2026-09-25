@@ -143,6 +143,35 @@ meaningful for either route. Keep all remaining input and assertions unchanged.
 This is a setup correction, not new evidence for the task-loss hypothesis. The
 model must still choose and call handoff; no live model response is scripted.
 
+Commit: `068359623`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36179191521).
+Both cases recalled memory, handed off, and completed cleanup. The terse case
+routed from standard to handoff and passed in 57.9 seconds. Its summary demoted
+`Deslop` to a preference, but asked the continuation to inspect prior work. The
+explicit control switched twice and passed in 58.9 seconds. This is not a
+reproduction.
+
+The terse summary identified contradictions in our fixture: it used `writeFile`
+after an `editFile` request, had no verification result, and claimed a PR and
+delivery logs despite the local-only work. The continuation corrected those
+claims and simplified the file. Those are valid reasons to reopen the old task.
+
+### Pair 6: correct the completed-work fixture
+
+Hypothesis: the fixture's incomplete or contradictory prior work supplies a
+recovery path after summary task loss. Production had completed edits and checks.
+Correct the fixture to use the requested `editFile`, include a Node verification
+result, and remove unsupported claims about a PR and delivery logs. The edit
+changes thread-dependent IDs to stable IDs. It does not remove the wrappers.
+The verification command was run locally against the fixture and passed.
+
+Keep the new requests, source file, memory seed, model defaults, maintenance
+events, and assertions unchanged. The summary and continuation remain live. A
+normal completion without cleanup after a successful handoff is the target
+failure. A timeout or completed cleanup is not a reproduction. This does not
+isolate which of the corrected fixture defects matters; it tests the general
+completed-work hypothesis with consistent prior evidence.
+
 ## Result and next experiment boundary
 
 The product rule is that handoff must preserve the active authored instruction.
@@ -160,7 +189,7 @@ that input. Do not add arbitrary history to match its token count. Do not script
 the summary or continuation in that live experiment.
 
 No runtime fix is part of these experiments. The production failure remains
-established by its trace; through pair 3, the reduced live reproduction remains
+established by its trace; through pair 5, the reduced live reproduction remains
 incomplete.
 
 ## Limits
@@ -168,8 +197,8 @@ incomplete.
 This is a reduced coding task, not an exact replay. Prior maintenance text uses
 bot-authored Slack history fixtures, not the original system-event provenance.
 The model defaults differ from the original production model configuration.
-The fixture has only one prior tool exchange. These differences remain possible causes
-if the small case does not fail.
+The fixture has only prior edit and verification exchanges. These differences
+remain possible causes if the small case does not fail.
 
 CI currently runs the integration suite on changes to this folder. Each push
 runs this pair once. Do not rerun the suite without reviewing the first result.
