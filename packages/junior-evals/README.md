@@ -14,8 +14,7 @@ There are four independently runnable suites:
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
 - We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client.
-- Behavioral evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. The suite does not pin models or add profiles.
-- Integration evals still pin standard to `xai/grok-4.5`, auxiliary work to `anthropic/claude-haiku-4.5`, Guardian review to `openai/gpt-6-luna`, and handoff continuation to `openai/gpt-5.6-sol`.
+- Behavioral and integration evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. Neither suite pins models or adds profiles.
 - Router evals use the shared core profiles and configured fast model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
 
 ## Layer Boundaries
