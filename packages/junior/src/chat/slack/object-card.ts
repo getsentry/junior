@@ -52,13 +52,6 @@ export function renderSlackObjectCard(
     ...field,
     type: "string" as const,
   }));
-  if (card.sourceUpdatedAt)
-    customFields.push({
-      key: "sourceUpdatedAt",
-      label: "Source updated",
-      type: "string" as const,
-      value: card.sourceUpdatedAt,
-    });
   const entity: SlackEntity = {
     ...(task
       ? {

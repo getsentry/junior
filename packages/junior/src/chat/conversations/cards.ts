@@ -50,9 +50,6 @@ export function messageCardText(card: MessageCard): string {
         ...objectFactFields(card.facts).map(
           (field) => `${field.label}: ${field.value}`,
         ),
-        card.sourceUpdatedAt
-          ? `Source updated: ${card.sourceUpdatedAt}`
-          : undefined,
         card.trigger,
         card.warning,
         card.url,

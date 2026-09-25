@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
-import { formatTime } from "../format";
 
 /** Show the facts saved with this Message. Opening a source is always explicit. */
 export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
@@ -88,20 +87,15 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
       </div>
       <div className="grid min-w-0 gap-4 px-4 pb-4 md:px-5">
         {card.status && <StatusChip size="compact">{card.status}</StatusChip>}
-        {fields.length > 0 && facts(fields.slice(0, 3))}
-        {(fields.length > 3 || card.description) && (
+        {fields.length > 0 && facts(fields)}
+        {card.description && (
           <details className="min-w-0 border-t border-dashboard-border pt-3">
             <summary className="cursor-pointer text-xs font-medium text-dashboard-text-muted focus-visible:outline-dashboard-focus">
               More details
             </summary>
-            <div className="mt-3 grid gap-3">
-              {fields.length > 3 && facts(fields.slice(3))}
-              {card.description && (
-                <p className="m-0 whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
-                  {card.description}
-                </p>
-              )}
-            </div>
+            <p className="mb-0 mt-3 whitespace-pre-wrap break-words text-sm text-dashboard-text-muted">
+              {card.description}
+            </p>
           </details>
         )}
         {card.warning && (
@@ -122,21 +116,7 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
             <ArrowUpRight aria-hidden="true" size={14} />
           </a>
         )}
-        <span className="text-dashboard-text-muted">
-          Saved snapshot
-          {card.sourceUpdatedAt && (
-            <>
-              {" "}
-              · Source updated{" "}
-              <time dateTime={card.sourceUpdatedAt}>
-                {formatTime(card.sourceUpdatedAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              </time>
-            </>
-          )}
-        </span>
+        <span className="text-dashboard-text-muted">Saved snapshot</span>
       </div>
     </section>
   );
