@@ -435,13 +435,12 @@ describe("durable queue contract", () => {
   });
 
   describe("long turn survives host limit", () => {
-    it("parks mid-work under a spent deadline, then finishes on a fresh wake", async () => {
-      // Live multi-slice shape: mention → tool work → host deadline at the
-      // post-tool model step → park → fresh queue wake → final reply.
-      // Only model stream + Slack HTTP are faked.
+    it("re-parks when a later attempt times out before any new work is saved", async () => {
+      // JUNIOR-7G: a second timeout must preserve the saved tool work.
       const q = await slack({
         modelStream: createModelStream([
           { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Deploy checked.", waitFor: "abort" },
           { type: "text", text: "Deploy checked.", waitFor: "abort" },
           { type: "text", text: "Deploy checked." },
           { type: "text", text: "Deploy checked." },
@@ -449,14 +448,11 @@ describe("durable queue contract", () => {
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
-      // Hold the model response until the runtime aborts it, not a wall-clock sleep.
       await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
         status: "yielded",
       });
 
       const turnId = "turn_1712345_0001";
-      // Holding the next model step past the host deadline marks the agent
-      // timed out and parks for resume (production multi-slice shape).
       await expect(
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({
@@ -473,51 +469,9 @@ describe("durable queue contract", () => {
         execution: { status: "paused" },
       });
       expect(afterYield?.lease).toBeUndefined();
-      expect(q.wakes.hasQueuedMessages()).toBe(true);
-      expect(q.replies()).toHaveLength(0);
-
-      // Fresh host request finishes the same turn with one destination post.
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
-      await expectTerminalTurn(q, {
-        turnId,
-        state: "completed",
-        replies: ["Deploy checked."],
-      });
-      await expectAssistantInSql("Deploy checked.");
-      await expectNextTurn(q, "1712345.0011");
-    });
-
-    it("re-parks when a later attempt times out before any new work is saved", async () => {
-      // JUNIOR-7G: first attempt parks after real tool work. The next wake
-      // spends the whole host budget on the model call and saves nothing new.
-      // That attempt must re-park (not fail), then a full-budget wake finishes.
-      const q = await slack({
-        modelStream: createModelStream([
-          { type: "toolCall", name: "systemTime", arguments: {} },
-          { type: "text", text: "Deploy checked.", waitFor: "abort" },
-          { type: "text", text: "Deploy checked.", waitFor: "abort" },
-          { type: "text", text: "Deploy checked." },
-          { type: "text", text: "Deploy checked." },
-        ]),
-      });
-
-      await expect(q.send()).resolves.toMatchObject({ status: 200 });
-      await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
-        status: "yielded",
-      });
-
-      const turnId = "turn_1712345_0001";
-      await expect(
-        getTurnRecord(CONVERSATION_ID, turnId),
-      ).resolves.toMatchObject({
-        state: "paused",
-        resumeReason: "timeout",
-        turnId,
-      });
       expect(q.replies()).toHaveLength(0);
       expect(q.wakes.hasQueuedMessages()).toBe(true);
 
-      // The second model response also waits for the runtime to abort it.
       await expect(q.next(almostSpentStartedAtMs(2_500))).resolves.toEqual({
         status: "yielded",
       });
@@ -531,7 +485,6 @@ describe("durable queue contract", () => {
       expect(q.replies()).toHaveLength(0);
       expect(q.wakes.hasQueuedMessages()).toBe(true);
 
-      // Fresh full-budget wake finishes the same turn with one reply.
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       await expectTerminalTurn(q, {
         turnId,
