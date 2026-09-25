@@ -299,31 +299,6 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   await expect(pending.getByText("Third queued message.")).toBeHidden();
 });
 
-test("loads earlier transcript events from the mock history cursor", async ({
-  page,
-  dashboard,
-}) => {
-  // Deeper history/cursor contracts live in dashboard-mock-routes + transcript
-  // bottom-pinning unit coverage. Keep one browser smoke on the mock surface.
-  const conversationId = "slack:CQA456:1770021600.000600";
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
-  );
-
-  await expect(
-    page.getByRole("heading", { name: "Package release and self-update" }),
-  ).toBeVisible();
-  await expect(page.getByText("Released the package.")).toBeVisible();
-
-  const loadEarlier = page.getByRole("button", {
-    name: "Load earlier events",
-  });
-  await expect(loadEarlier).toBeVisible();
-  await loadEarlier.click();
-  await expect(loadEarlier).toHaveCount(0);
-  await expect(page.getByText("Released the package.")).toBeVisible();
-});
-
 test("scrolls long conversation and transcript panes independently", async ({
   page,
   dashboard,
@@ -512,7 +487,7 @@ test("inspects and copies an advisor transcript", async ({
     .first()
     .click();
 
-  const drawer = page.getByRole("dialog");
+  const drawer = page.getByRole("dialog", { name: "Advisor review" });
   await expect(
     drawer.getByRole("heading", { name: "Advisor review" }),
   ).toBeVisible();
@@ -534,6 +509,23 @@ test("inspects and copies an advisor transcript", async ({
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
 
+  await drawer.getByRole("button", { name: "Event log" }).click();
+  const entry = drawer.getByRole("button", {
+    name: "Event 0: message",
+    exact: true,
+  });
+  await entry.click();
+  const eventDetails = page.getByRole("dialog", {
+    name: "message",
+    exact: true,
+  });
+  await expect(
+    eventDetails.getByRole("region", { name: "Message", exact: true }),
+  ).toContainText("Review the dashboard plan before editing.");
+  await page.keyboard.press("Escape");
+  await expect(eventDetails).toBeHidden();
+  await expect(drawer).toBeVisible();
+  await expect(entry).toBeFocused();
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
 });

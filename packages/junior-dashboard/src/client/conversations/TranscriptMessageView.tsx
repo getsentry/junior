@@ -2,9 +2,7 @@ import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
 
-import { HighlightedCode } from "../code";
 import {
-  detectLanguage,
   formatMessageTimestamp,
   transcriptMessageActorLabel,
   transcriptRoleKind,
@@ -13,10 +11,7 @@ import { cn } from "../styles";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
-import {
-  messageRawText,
-  type TranscriptViewMode,
-} from "./transcriptRenderModel";
+import { messageRawText } from "./transcriptRenderModel";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -33,7 +28,6 @@ export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
     message: TranscriptViewMessage;
     conversation: ConversationTranscript;
-    view: TranscriptViewMode;
   }) {
     const rawText = messageRawText(props.message);
     const role = props.message.role;
@@ -45,12 +39,7 @@ export const TranscriptMessageView = memo(
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
-            !shouldCopyRawTranscript(
-              props.view,
-              rawText,
-              selection,
-              event.currentTarget,
-            )
+            !shouldCopyRawTranscript(rawText, selection, event.currentTarget)
           ) {
             return;
           }
@@ -72,44 +61,32 @@ export const TranscriptMessageView = memo(
           message={props.message}
           conversation={props.conversation}
         />
-        {props.view === "raw" ? (
-          <HighlightedCode code={rawText} language={detectLanguage(rawText)} />
-        ) : (
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-            {props.message.parts.map((part, index) =>
-              part.type === "text" ? (
-                <TranscriptText
-                  key={index}
-                  role={role}
-                  text={part.text ?? ""}
-                />
-              ) : null,
-            )}
-          </div>
-        )}
-        {props.view === "rich" &&
-          props.message.cards?.map((card) => {
-            switch (card.kind) {
-              case "object":
-                return (
-                  <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
-                );
-              case "automation":
-                return (
-                  <AutomationCard key={`${card.kind}:${card.id}`} card={card} />
-                );
-            }
-          })}
-        {props.view === "rich" &&
-        props.message.role === "user" &&
-        props.message.contexts?.length ? (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+          {props.message.parts.map((part, index) =>
+            part.type === "text" ? (
+              <TranscriptText key={index} role={role} text={part.text ?? ""} />
+            ) : null,
+          )}
+        </div>
+        {props.message.cards?.map((card) => {
+          switch (card.kind) {
+            case "object":
+              return (
+                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+              );
+            case "automation":
+              return (
+                <AutomationCard key={`${card.kind}:${card.id}`} card={card} />
+              );
+          }
+        })}
+        {props.message.role === "user" && props.message.contexts?.length ? (
           <TranscriptTurnContextView contexts={props.message.contexts} />
         ) : null}
       </TranscriptMessageShell>
     );
   },
   (previous, next) =>
-    previous.view === next.view &&
     previous.message === next.message &&
     previous.conversation.surface === next.conversation.surface &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,

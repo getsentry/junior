@@ -76,14 +76,11 @@ function conversation(
   };
 }
 
-function renderTranscript(
-  detail: ConversationTranscript,
-  view: "raw" | "rich" = "rich",
-): string {
+function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view={view} />
+        <ConversationTranscriptView conversation={detail} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -842,22 +839,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Internal error");
   });
 
-  it("does not invent an object for an empty raw message", () => {
-    const html = renderTranscript(
-      conversation([
-        event(0, {
-          type: "message",
-          messageId: "assistant-1",
-          role: "assistant",
-          text: "",
-        }),
-      ]),
-      "raw",
-    );
-
-    expect(html).not.toContain("{}");
-  });
-
   it("renders one in-progress row for a tool start", () => {
     const html = renderTranscript(
       conversation(
@@ -1001,7 +982,6 @@ describe("dashboard canonical-event components", () => {
           <ConversationTranscriptView
             conversation={conversation(events)}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
@@ -1096,7 +1076,6 @@ describe("dashboard canonical-event components", () => {
               }),
             ])}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,

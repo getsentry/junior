@@ -19,7 +19,6 @@ import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 export function TranscriptToolView(props: {
   part: TranscriptViewToolCallPart;
   timestamp?: number;
-  view?: "raw" | "rich";
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(
@@ -36,63 +35,35 @@ export function TranscriptToolView(props: {
   const signature = (
     <ToolSignature
       name={props.part.name}
-      preview={props.view === "raw" ? null : preview}
+      preview={preview}
       status={props.part.status}
     />
   );
-  const frame =
-    props.view === "raw" && hasDetails ? (
-      <ToolFrame
-        meta={meta}
-        mobileSummaryMeta={mobileSummary}
-        raw
-        signature={signature}
-      >
-        <ToolBody>
+  const frame = (
+    <ToolFrame
+      expandable={hasDetails}
+      meta={meta}
+      mobileSummaryMeta={mobileSummary}
+      signature={signature}
+    >
+      {props.part.input !== undefined ? (
+        <ToolBody label="arguments">
           <HighlightedCode
-            code={stringifyPartValue({
-              call: {
-                id: props.part.id,
-                input: props.part.input,
-                name: props.part.name,
-              },
-              result:
-                props.part.status === "running"
-                  ? undefined
-                  : {
-                      outcome: props.part.status,
-                      output: props.part.output,
-                    },
-            })}
+            code={stringifyPartValue(props.part.input)}
             language="json"
           />
         </ToolBody>
-      </ToolFrame>
-    ) : (
-      <ToolFrame
-        expandable={hasDetails}
-        meta={meta}
-        mobileSummaryMeta={mobileSummary}
-        signature={signature}
-      >
-        {props.part.input !== undefined ? (
-          <ToolBody label="arguments">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.input)}
-              language="json"
-            />
-          </ToolBody>
-        ) : null}
-        {props.part.output !== undefined ? (
-          <ToolBody label="result">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.output)}
-              language="json"
-            />
-          </ToolBody>
-        ) : null}
-      </ToolFrame>
-    );
+      ) : null}
+      {props.part.output !== undefined ? (
+        <ToolBody label="result">
+          <HighlightedCode
+            code={stringifyPartValue(props.part.output)}
+            language="json"
+          />
+        </ToolBody>
+      ) : null}
+    </ToolFrame>
+  );
 
   return <div className="min-w-0">{frame}</div>;
 }
