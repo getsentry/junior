@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
@@ -22,11 +22,9 @@ import {
 } from "../../../fixtures/conversation";
 import { testViewer } from "../../../fixtures/user";
 import {
-  createSlackAdapterFixture,
-  createNoopSlackWebhookRuntime,
-  handleSlackWebhookAndFlush,
-  slackEnvelope,
-  slackWebhookRequest,
+  createConversationWorkSlackHarness,
+  CONVERSATION_ID,
+  SLACK_DESTINATION,
 } from "../../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../../fixtures/slack-api-outbox";
 import { cancelConversationPendingMessagesForViewer } from "@/api/conversations/cancel-pending-messages";
@@ -35,41 +33,21 @@ describe("conversation cancel pending messages API", () => {
   afterEach(async () => {
     await closeConversationFixture();
     await closeDb();
-    vi.unstubAllEnvs();
   });
 
   it("clears a queued Slack receipt when a participant cancels it", async () => {
-    vi.stubEnv("SLACK_SIGNING_SECRET", "slack-signature-fixture");
-    vi.stubEnv("SLACK_BOT_TOKEN", "slack-bot-fixture");
-    const { conversationStore, queue, state } =
-      await createConversationFixture();
-    const adapter = createSlackAdapterFixture();
-    const conversationId = "slack:C123:1712345.0001";
+    const { actor, conversationStore } = await createConversationFixture();
+    const harness = await createConversationWorkSlackHarness();
+    const conversationId = CONVERSATION_ID;
     await conversationStore.recordActivity({
-      actor: {
-        platform: "slack",
-        teamId: "T123",
-        slackUserId: "U123",
-        email: "alice@example.com",
-      },
+      actor: { email: actor.email },
       conversationId,
-      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      destination: SLACK_DESTINATION,
       nowMs: Date.now(),
       source: "slack",
       visibility: "public",
     });
-    await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest(
-        slackEnvelope({ text: "<@U0BOT> do this later" }),
-      ),
-      services: {
-        getSlackAdapter: () => adapter,
-        queue,
-        state,
-        conversationStore,
-        runtime: createNoopSlackWebhookRuntime(),
-      },
-    });
+    await harness.send();
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
     const result = await cancelConversationPendingMessagesForViewer(
       testViewer("alice@example.com"),

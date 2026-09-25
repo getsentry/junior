@@ -26,7 +26,7 @@ import {
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
-import { stopProcessingReactionForMessage } from "@/chat/providers/slack/processing-reaction";
+import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
@@ -46,7 +46,11 @@ import {
   requireSlackDestination,
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
+import {
+  botConfig,
+  getChatConfig,
+  type CrossActorMidRunMode,
+} from "@/chat/config";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -492,9 +496,10 @@ export async function clearSlackPendingReactions(args: {
         installation: metadata.installation ?? {},
         state: args.state,
         task: () =>
-          stopProcessingReactionForMessage({
+          removeReactionFromMessage({
             channelId: target.channelId,
             timestamp,
+            emoji: getChatConfig().slack.processingReactionEmoji,
           }),
       });
     } catch (error) {

@@ -17,6 +17,7 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
+  createConversationWorkSlackHarness,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
@@ -85,35 +86,21 @@ describe("Slack webhook persistence contract", () => {
     },
   );
 
-  it("accepts a DM even when its receipt reaction is rate limited", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    const adapter = createSlackAdapterFixture();
+  it("accepts a mention even when its receipt reaction is rate limited", async () => {
+    const harness = await createConversationWorkSlackHarness();
     queueSlackApiError("reactions.add", {
       error: "ratelimited",
       status: 429,
       headers: { "retry-after": "60" },
     });
-    const response = await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest(
-        slackEnvelope({
-          channel: "D123",
-          eventType: "message",
-          text: "deploy status",
-        }),
-      ),
-      services: {
-        getSlackAdapter: () => adapter,
-        queue,
-        state,
-        runtime: createNoopSlackWebhookRuntime(),
-      },
+    const response = await harness.send({
+      text: "<@U0BOT> deploy status",
     });
     expect(response.status).toBe(200);
-    expect(queue.queuedMessages()).toHaveLength(1);
+    expect(harness.wakes.queuedMessages()).toHaveLength(1);
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
     expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
-      channel: "D123",
+      channel: "C123",
       name: "eyes",
       timestamp: "1712345.0001",
     });

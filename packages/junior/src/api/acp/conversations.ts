@@ -153,10 +153,7 @@ export function createAcpConversations(
         queue: options.queue,
         state: options.state,
       });
-      if (
-        stopped.status === "requested" &&
-        stopped.pendingMessages.some((message) => message.source === "slack")
-      ) {
+      if (stopped.status === "requested") {
         await clearSlackPendingReactions({
           getSlackAdapter: getProductionSlackAdapter,
           messages: stopped.pendingMessages,

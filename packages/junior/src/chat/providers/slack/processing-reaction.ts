@@ -65,27 +65,6 @@ export async function startProcessingReaction(args: {
   });
 }
 
-/** Clear processing UI for a message, including queued input cancelled before a Turn. */
-export async function stopProcessingReactionForMessage(args: {
-  channelId: string;
-  timestamp: SlackMessageTs;
-}): Promise<boolean> {
-  try {
-    await removeReactionFromMessage({
-      ...args,
-      emoji: getChatConfig().slack.processingReactionEmoji,
-    });
-    return true;
-  } catch (error) {
-    logException(error, "slack.processing.reaction_remove.failed", {
-      "app.slack.action": "reactions.remove",
-      "messaging.message.id": args.timestamp,
-      ...getSlackErrorObservabilityAttributes(error),
-    });
-    return false;
-  }
-}
-
 /** Start Junior's automatic Slack processing reaction for a known Slack message. */
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
@@ -114,7 +93,21 @@ export async function startProcessingReactionForMessage(args: {
       return false;
     }
 
-    return stopProcessingReactionForMessage(args);
+    try {
+      await removeReactionFromMessage({
+        channelId: args.channelId,
+        timestamp: args.timestamp,
+        emoji: getChatConfig().slack.processingReactionEmoji,
+      });
+      return true;
+    } catch (error) {
+      logException(error, "slack.processing.reaction_remove.failed", {
+        "app.slack.action": "reactions.remove",
+        "messaging.message.id": args.timestamp,
+        ...getSlackErrorObservabilityAttributes(error),
+      });
+      return false;
+    }
   };
 
   return {

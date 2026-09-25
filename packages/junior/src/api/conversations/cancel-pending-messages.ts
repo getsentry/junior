@@ -44,15 +44,10 @@ export async function cancelConversationPendingMessagesForViewer(
         : undefined),
       conversationStore: getConversationStore(),
     });
-    const cancelledSlackMessages = result.cancelledMessages.filter(
-      (message) => message.source === "slack",
-    );
-    if (cancelledSlackMessages.length) {
-      await clearSlackPendingReactions({
-        getSlackAdapter: getProductionSlackAdapter,
-        messages: cancelledSlackMessages,
-      });
-    }
+    await clearSlackPendingReactions({
+      getSlackAdapter: getProductionSlackAdapter,
+      messages: result.cancelledMessages,
+    });
     return {
       cancelledCount: result.cancelledInboundMessageIds.length,
       cancelledInboundMessageIds: result.cancelledInboundMessageIds,
