@@ -5,7 +5,6 @@ import {
   failConversationOutboxMessage,
   mailboxMessageFromOutbox,
   mergeConversationMailboxMessages,
-  removeConversationOutboxMessage,
   upsertConversationOutboxMessage,
 } from "../src/client/conversations/conversationOutbox";
 
@@ -14,14 +13,15 @@ describe("conversation outbox", () => {
     expect(
       conversationOutboxMessageForSubmit({
         idempotencyKey: "attempt-1",
+        messageId: "accepted-1",
         message: "Continue in Junior",
         now: "2026-01-01T00:00:00.000Z",
       }),
     ).toEqual({
       createdAt: "2026-01-01T00:00:00.000Z",
       idempotencyKey: "attempt-1",
+      messageId: "accepted-1",
       message: "Continue in Junior",
-      messageId: "client:attempt-1",
       status: "sending",
     });
   });
@@ -30,6 +30,7 @@ describe("conversation outbox", () => {
     const outbox = [
       conversationOutboxMessageForSubmit({
         idempotencyKey: "attempt-1",
+        messageId: "accepted-1",
         message: "Continue in Junior",
         now: "2026-01-01T00:00:00.000Z",
       }),
@@ -43,21 +44,12 @@ describe("conversation outbox", () => {
     ]);
   });
 
-  it("drops an outbox row once the accept request succeeds", () => {
-    const outbox = [
-      conversationOutboxMessageForSubmit({
-        idempotencyKey: "attempt-1",
-        message: "Continue in Junior",
-      }),
-    ];
-    expect(removeConversationOutboxMessage(outbox, "attempt-1")).toEqual([]);
-  });
-
   it("reuses the same outbox slot when retrying a failed send", () => {
     const failed = failConversationOutboxMessage(
       [
         conversationOutboxMessageForSubmit({
           idempotencyKey: "attempt-1",
+          messageId: "accepted-1",
           message: "Continue in Junior",
           now: "2026-01-01T00:00:00.000Z",
         }),
@@ -66,6 +58,7 @@ describe("conversation outbox", () => {
     );
     const retry = conversationOutboxMessageForSubmit({
       idempotencyKey: "attempt-1",
+      messageId: "accepted-1",
       message: "Continue in Junior",
       now: "2026-01-01T00:00:05.000Z",
     });
@@ -113,6 +106,7 @@ describe("conversation outbox", () => {
       [
         conversationOutboxMessageForSubmit({
           idempotencyKey: "attempt-2",
+          messageId: "accepted-2",
           message: "next",
           now: "2026-01-01T00:00:01.000Z",
         }),

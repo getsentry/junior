@@ -1,12 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -20,6 +12,7 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
@@ -99,16 +92,11 @@ export function ConversationPage(props: {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
-  // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
-  // composer keystrokes stay urgent without changing visible transcript content.
-  // Fall back to the latest detail on first load so the body is never blank while
-  // the deferred value catches up from undefined.
-  const deferredTranscript = useDeferredValue(detail.data);
-  const transcript = deferredTranscript ?? detail.data;
+  const transcript = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
-  // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
+  // History and mailbox use the same deferred server snapshot.
   const live = conversationIsLive(visualStatus, detail.data);
   // Key on the event array, not the whole detail object. Metadata-only polls
   // reuse events via structural sharing, so the footer keeps a stable id list.
@@ -262,7 +250,9 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     pinRequestVersion={pinRequestVersion}
-                    responding={!detail.error && live}
+                    responding={
+                      !detail.error && conversationIsResponding(transcript)
+                    }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
                     transcript={transcript}

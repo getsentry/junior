@@ -1,3 +1,4 @@
+export { webMessageId } from "../chat/conversations/web-message-id";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export { messageCardText } from "../chat/conversations/cards";

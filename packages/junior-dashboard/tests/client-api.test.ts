@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
@@ -28,6 +30,18 @@ function event(seq: number): ConversationReportEvent {
 describe("dashboard client API", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("preserves stored web Message ids when deriving them in the browser", async () => {
+    const conversationId = "slack:C1:123";
+    const idempotencyKey = "attempt-1";
+    const storedId = `api-msg:${createHash("sha256")
+      .update(`${conversationId}\u0000${idempotencyKey}`)
+      .digest("hex")
+      .slice(0, 24)}`;
+    expect(await webMessageId({ conversationId, idempotencyKey })).toBe(
+      storedId,
+    );
   });
 
   it("restarts Google sign-in when product API auth expires", async () => {
