@@ -1,4 +1,29 @@
 # Changelog
+## 0.227.0
+
+### New Features ✨
+
+- (chat) Add images to web chat by @sentry-junior in [#1933](https://github.com/getsentry/junior/pull/1933)
+- (dashboard) Make cache trends easier to inspect by @sentry-junior in [#1942](https://github.com/getsentry/junior/pull/1942)
+- (watches) Add heartbeat-backed timer watches by @sentry-junior in [#1937](https://github.com/getsentry/junior/pull/1937)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Match cost totals to the model breakdown by @sentry-junior in [#1944](https://github.com/getsentry/junior/pull/1944)
+- Hide the composer in the event log by @sentry-junior in [#1940](https://github.com/getsentry/junior/pull/1940)
+
+#### Other
+
+- (cards) Limit object cards to four attributes by @sentry-junior in [#1941](https://github.com/getsentry/junior/pull/1941)
+- (slack) Require workspace membership for messages by @sentry-junior in [#1936](https://github.com/getsentry/junior/pull/1936)
+
+### Internal Changes 🔧
+
+- (release) Verify GitHub packages before publishing by @sentry-junior in [#1935](https://github.com/getsentry/junior/pull/1935)
+- (slack) Reuse SDK types and validate input by @sentry-junior in [#1943](https://github.com/getsentry/junior/pull/1943)
+
 ## 0.226.0
 
 ### New Features ✨
