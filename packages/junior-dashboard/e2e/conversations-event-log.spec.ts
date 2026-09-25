@@ -41,7 +41,7 @@ test("inspects all reporting events and searches full event data", async ({
   const panel = page.getByRole("dialog", { name: "turn_routed", exact: true });
   await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
   await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
-  await expect(panel.locator("pre")).toHaveCount(0);
+  await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
   await expect(close).toBeFocused();
   await page.keyboard.press("Shift+Tab");
@@ -84,8 +84,6 @@ test("loads earlier events without merging tool starts and results", async ({
   page,
   dashboard,
 }) => {
-  // Deeper history/cursor contracts live in dashboard-mock-routes + transcript
-  // bottom-pinning unit coverage. Keep one browser smoke on the mock surface.
   const conversationId = "slack:CQA456:1770021600.000600";
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,

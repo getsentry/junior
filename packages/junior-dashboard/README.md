@@ -23,14 +23,10 @@ name, through dashboard settings.
   active. Earlier event pages use a separate infinite query loaded on demand.
   The client derives one ordered transcript from those immutable responses;
   paginated reads never write into another resource's cache.
-- The server adapts canonical runtime events into normalized reporting events.
-  The conversation transcript reduces tool and subagent observations by stable
-  identity into one row. The event log shows each reporting event in sequence
-  order, including lifecycle, routing, and context events. It does not use the
-  transcript reducer. Each row opens labeled fields and readable content in a detail drawer.
-  The exact reporting event remains available under Raw JSON.
-  Search includes event fields and payloads on loaded pages. Earlier pages load
-  on demand. Server privacy rules still apply; this is not a raw storage viewer.
+- The server adapts canonical runtime events into privacy-safe reporting events.
+  The transcript combines tool and subagent updates. The event log keeps each
+  event in sequence order, with readable details and optional raw JSON.
+  Search covers loaded pages; earlier events load on demand.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure

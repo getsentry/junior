@@ -36,6 +36,7 @@ export function Transcript(props: {
 }) {
   const view = props.view ?? "rich";
   const search = props.search ?? "";
+  const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
@@ -81,12 +82,8 @@ export function Transcript(props: {
               type="button"
             >
               {props.loadingPreviousPage
-                ? view === "raw"
-                  ? "Loading earlier events…"
-                  : "Loading earlier messages…"
-                : view === "raw"
-                  ? "Show earlier events"
-                  : "Show earlier messages"}
+                ? `Loading earlier ${historyLabel}…`
+                : `Show earlier ${historyLabel}`}
             </button>
             <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
           </div>
@@ -109,7 +106,6 @@ export function Transcript(props: {
             onOpenSubagentTranscript={props.onOpenSubagentTranscript}
             conversation={props.transcript}
             responding={props.responding ?? props.live ?? false}
-            view={view}
           />
         )}
         <div

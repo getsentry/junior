@@ -1,11 +1,11 @@
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
+import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
 
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
-  const [rawOpen, setRawOpen] = useState(false);
   const data = event.data;
   let content: ReactNode;
 
@@ -17,7 +17,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
           <DetailValue value={metadata} />
           <DetailSection title="Message">
             {redacted ? (
-              <HiddenContent />
+              <RedactedMarker />
             ) : (
               <TranscriptText text={text ?? ""} />
             )}
@@ -59,7 +59,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
       content = data.parts.map((part, index) => (
         <DetailSection key={index} title="Reasoning">
           {part.redacted ? (
-            <HiddenContent />
+            <RedactedMarker />
           ) : (
             <TranscriptText text={part.text ?? ""} />
           )}
@@ -100,21 +100,13 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
   return (
     <div className="grid min-w-0 gap-6">
       {content}
-      <details
-        onToggle={(event) => setRawOpen(event.currentTarget.open)}
-        className="border-t border-dashboard-border pt-4"
-      >
+      <details className="border-t border-dashboard-border pt-4">
         <summary className="cursor-pointer text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           Raw JSON
         </summary>
-        {rawOpen ? (
-          <pre
-            className="mb-0 mt-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text"
-            tabIndex={0}
-          >
-            {JSON.stringify(event, null, 2)}
-          </pre>
-        ) : null}
+        <pre className="mb-0 mt-3 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text">
+          {JSON.stringify(event, null, 2)}
+        </pre>
       </details>
     </div>
   );
@@ -128,12 +120,6 @@ function DetailSection(props: { title: string; children: ReactNode }) {
       </h3>
       {props.children}
     </section>
-  );
-}
-
-function HiddenContent() {
-  return (
-    <p className="m-0 text-sm text-dashboard-text-muted">Content hidden</p>
   );
 }
 

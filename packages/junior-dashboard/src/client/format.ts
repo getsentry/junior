@@ -787,44 +787,6 @@ function normalizeLanguage(language: string | undefined): BundledLanguage {
     : "markdown";
 }
 
-/** Detect the syntax highlighter language for raw transcript blocks. */
-export function detectLanguage(text: string): BundledLanguage {
-  const trimmed = text.trim();
-  if (!trimmed) return "markdown";
-  try {
-    JSON.parse(trimmed);
-    return "json";
-  } catch {
-    // continue with heuristics
-  }
-  if (prettyJsonl(trimmed)) return "json";
-  if (/^<[\s\S]+>$/.test(trimmed) && /<\/?[a-zA-Z][^>]*>/.test(trimmed)) {
-    return "xml";
-  }
-  // Mixed prose + block-level XML: detect when a complete open/close element pair
-  // appears on its own lines. Handles system prompts and runtime context blocks
-  // that start with plain text but contain structured XML sections.
-  const blockOpen = trimmed.match(
-    /(?:^|\n)[ \t]*<([A-Za-z_][\w:.-]*)(?:[ \t][^<>]*)?>[ \t]*(?=\n|$)/,
-  );
-  if (blockOpen?.[1]) {
-    const tag = blockOpen[1].replace(/[$()*+.?[\\^{|}]/g, "\\$&");
-    if (new RegExp(`(?:^|\\n)[ \\t]*</${tag}>[ \\t]*(?=\\n|$)`).test(trimmed)) {
-      return "xml";
-    }
-  }
-  if (/```|^#{1,6}\s|\n[-*]\s|\n\d+\.\s|\[[^\]]+\]\([^)]+\)/m.test(trimmed)) {
-    return "markdown";
-  }
-  if (/\b(import|export|const|let|function|interface|type)\b/.test(trimmed)) {
-    return "typescript";
-  }
-  if (/^\s*(\$|pnpm|npm|git|curl|cd|ls|node)\b/m.test(trimmed)) {
-    return "shellscript";
-  }
-  return "markdown";
-}
-
 function prettyJson(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
