@@ -102,3 +102,50 @@ exported types, tools, and tests are authoritative.
 
 Follow `../../policies/data-redaction.md`, `../../policies/security.md`, and the
 plugin contract in `../junior-plugin-api/README.md`.
+
+## Gap Observations
+
+The same passive extraction call can return up to three gap observations. A gap
+records a limitation that affected one request. It is not a durable fact about
+Junior's abilities. Gap rows never enter memory search, embeddings, or recall.
+All observations start unreviewed. A cited tool result means evidence is present,
+not that the root cause is confirmed. Assistant-only claims remain reported.
+
+Capture follows the existing passive extraction coverage: completed Slack and
+web Turns, except Turns that use explicit memory tools. It requires a linked
+User. It does not inspect crashed Turns, local runs, or historical conversations.
+`disableExtraction` disables both memory and gap capture.
+
+`gaps/store.ts` verifies that citations include the current Actor's request and
+an outcome. The extractor writes short summaries without secrets, customer
+identifiers, or personal details. Source visibility and ownership come from the
+runtime. No raw transcript is copied into a gap row or telemetry.
+
+The host's legacy `runId` field already contains the completed Turn ID. A capture
+row keyed by that ID and its gap rows commit in one transaction. The capture row
+also records an empty result. The first committed capture wins. Task retries,
+cache expiry, and different model wording cannot add observations for that Turn.
+The existing seven-day extraction cache avoids repeat model calls on task retry;
+the SQL capture protects the log after that cache expires.
+
+The Gaps page at `/plugins/memory/gaps` shows public observations and the viewer's
+private observations. Only the owner can confirm, dismiss, or reset a review,
+including for public observations. Review updates record the reviewer and time.
+The title links to the source Conversation. Evidence indices refer to the
+trimmed, nonempty background-task transcript. They are not message IDs or durable
+quotes. Source evidence can expire under conversation retention.
+
+The page supports search and one date, category, impact, or review filter at a
+time. The REST list at `GET /api/plugins/memory/gaps` supports combined filters
+(`days`, `category`, `impact`, `state`, `q`), plus `limit` and `cursor`.
+`POST /api/plugins/memory/gaps/:id/:state` updates an owner's review.
+Counts are distinct affected Turns per category in the visible filtered set,
+including unreviewed and dismissed observations unless filtered. They are not
+frequencies of grouped underlying gaps. Grouping, priorities, tickets, reports,
+and automatic fixes are outside this first version.
+
+Apply the memory migration before deployment. Deploy the plugin API, memory
+plugin, and dashboard together; older strict page schemas reject the new fields.
+Reload existing dashboard tabs. A rollback leaves the new tables unused. Before
+deleting a User or Conversation's gap data, delete the matching observations;
+retain the content-free capture marker if retries must not recreate them.

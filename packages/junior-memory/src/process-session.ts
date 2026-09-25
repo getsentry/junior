@@ -21,6 +21,9 @@ import {
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
 
+import { extractedGapSchema } from "./gaps/types";
+import { captureGaps } from "./gaps/store";
+
 const MEMORY_TOOL_NAMES = new Set([
   "archiveMemory",
   "createMemory",
@@ -45,12 +48,14 @@ const extractedMemoryCacheSchema = z.union([
     .object({
       costUsd: z.number().finite().nonnegative().optional(),
       memories: z.array(extractedMemorySchema).max(5),
+      // Old task caches remain valid during a rolling release.
+      gaps: z.array(extractedGapSchema).max(3).default([]),
     })
     .strict(),
   z
     .array(extractedMemorySchema)
     .max(5)
-    .transform((memories) => ({ memories })),
+    .transform((memories) => ({ memories, gaps: [] })),
 ]);
 
 /** Subject for a passively extracted memory, or drop when unproven. */
@@ -281,6 +286,12 @@ export async function processMemorySession(
       runtimeContext,
     });
   });
+
+  await captureGaps(
+    context.db as MemoryDb,
+    { ...run, transcript },
+    extraction.gaps,
+  );
 
   const captured: ReturnType<typeof capturedMemory>[] = [];
   for (const memory of extraction.memories) {

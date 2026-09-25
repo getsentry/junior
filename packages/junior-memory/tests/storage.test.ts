@@ -46,6 +46,10 @@ import {
   type MemoryReviewer,
 } from "../src/tools";
 import { listMemories } from "../src/viewer";
+import { listGaps } from "../src/gaps/store";
+import { createGapUserPage } from "../src/gaps/page";
+import type { ExtractedGap } from "../src/gaps/types";
+import { pluginUserPageContentSchema } from "@sentry/junior-plugin-api";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
@@ -303,6 +307,7 @@ function extractionModel(
     evidenceMessageIndices?: number[];
   }>,
   costUsd?: number,
+  gaps: ExtractedGap[] = [],
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
   const model: PluginModel = {
@@ -317,6 +322,7 @@ function extractionModel(
       return {
         ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
+          gaps,
           memories: memories.map(toResponseMemory),
         },
       };
@@ -574,6 +580,225 @@ const rejectMemory: MemoryReviewer = {
 };
 
 describe("memory plugin storage", () => {
+  it("captures gap observations once per Turn and enforces review and read ownership", async () => {
+    const fixture = await createMemoryFixture();
+    try {
+      const db = memoryDb(fixture);
+      const proposal: ExtractedGap = {
+        description: "Cannot read deployment status",
+        explanation:
+          "The lookup returned a permission error and the request stayed blocked.",
+        category: "permission",
+        impact: "blocked",
+        evidenceMessageIndices: [0, 1, 2],
+      };
+      const { model, calls } = extractionModel([], undefined, [
+        proposal,
+        { ...proposal, evidenceMessageIndices: [999] },
+      ]);
+      let run = completedRun({
+        actorUserId: "owner",
+        source: createWebSource("gap-conversation", "private"),
+        conversationId: "gap-conversation",
+        completedAtMs: Date.now(),
+        transcript: [
+          instructionMessage("Read the deployment status."),
+          {
+            type: "toolResult",
+            toolName: "deploymentStatus",
+            isError: true,
+            text: "403: permission denied",
+          },
+          {
+            type: "message",
+            role: "assistant",
+            text: "I could not read the deployment status because access was denied.",
+          },
+        ],
+      });
+      const context = processSessionContext({
+        db,
+        model,
+        state: createMemoryState(),
+        run: {
+          async load() {
+            return run;
+          },
+        },
+      });
+      await processMemorySession(context);
+      await processMemorySession(context);
+      expect(calls).toHaveLength(1);
+      let page = await listGaps(db, "owner", {});
+      expect(page.gaps).toHaveLength(1);
+      expect(page.gaps[0]).toMatchObject({
+        reviewState: "unreviewed",
+        evidenceKind: "tool",
+        scope: "private",
+        turnId: run.runId,
+      });
+      expect(page.counts).toEqual([{ category: "permission", turns: 1 }]);
+      expect((await listGaps(db, "other", {})).gaps).toEqual([]);
+      expect((await listGaps(db, "other", {})).counts).toEqual([]);
+      // A cache loss and changed model wording must not change the committed capture.
+      await processMemorySession({
+        ...context,
+        state: createMemoryState(),
+        model: extractionModel([], undefined, [
+          { ...proposal, description: "Different wording" },
+        ]).model,
+      });
+      expect((await listGaps(db, "owner", {})).gaps).toEqual(page.gaps);
+      expect(
+        await db.select().from(memorySqlSchema.juniorMemoryMemories),
+      ).toEqual([]);
+      expect(
+        await db.select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).toEqual([]);
+
+      let viewerId = "other";
+      const api = createMemoryApi({
+        db,
+        conversationEvents: {
+          async list() {
+            return [];
+          },
+        },
+        eventStats: {
+          async costsByDay() {
+            return [];
+          },
+          async costsByHour() {
+            return [];
+          },
+        },
+        users: {
+          async resolve(email) {
+            return { id: viewerId, email, identities: [] };
+          },
+        },
+      });
+      const auth = pluginApiRouteRequestContextSchema.parse({
+        pluginName: "memory",
+        auth: { user: { email: "viewer@example.com", emailVerified: true } },
+      });
+      const reviewUrl = `http://localhost/gaps/${page.gaps[0]!.id}/confirmed`;
+      expect(
+        (await api.fetch(new Request("http://localhost/gaps"), {})).status,
+      ).toBe(401);
+      expect(
+        (
+          await api.fetch(
+            new Request(reviewUrl, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+            }),
+            auth,
+          )
+        ).status,
+      ).toBe(404);
+      viewerId = "owner";
+      expect(
+        (
+          await api.fetch(
+            new Request(reviewUrl, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+            }),
+            auth,
+          )
+        ).status,
+      ).toBe(200);
+      page = await listGaps(db, "owner", { reviewState: "confirmed" });
+      expect(page.gaps[0]).toMatchObject({
+        reviewState: "confirmed",
+        reviewedByUserId: "owner",
+      });
+      const content = pluginUserPageContentSchema.parse(
+        await createGapUserPage().read(
+          { ...context, viewer: { id: "owner", identities: [] } },
+          { limit: 25, filter: "days:30" },
+        ),
+      );
+      expect(content.records[0]).toMatchObject({
+        title: proposal.description,
+        href: "/conversations/gap-conversation",
+      });
+      expect(
+        content.records[0]!.actions?.map((action) => action.label),
+      ).toEqual(["Reset review", "Dismiss"]);
+      expect(
+        (
+          await api.fetch(
+            new Request("http://localhost/gaps?cursor=broken"),
+            auth,
+          )
+        ).status,
+      ).toBe(400);
+
+      // Another Turn is another occurrence. Public does not grant review ownership.
+      run = {
+        ...run,
+        runId: "gap-turn-2",
+        source: createWebSource(run.conversationId, "public"),
+        completedAtMs: run.completedAtMs + 1,
+      };
+      await processMemorySession({
+        ...context,
+        id: "gap-task-2",
+        state: createMemoryState(),
+      });
+      const publicPage = await listGaps(db, "other", {});
+      expect(publicPage.gaps).toHaveLength(1);
+      viewerId = "other";
+      expect(
+        (
+          await api.fetch(
+            new Request(
+              `http://localhost/gaps/${publicPage.gaps[0]!.id}/dismissed`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+              },
+            ),
+            auth,
+          )
+        ).status,
+      ).toBe(404);
+      const firstPage = await listGaps(db, "owner", {
+        limit: 1,
+        category: "permission",
+      });
+      const nextPage = await listGaps(db, "owner", {
+        limit: 1,
+        cursor: firstPage.nextCursor,
+      });
+      expect(nextPage.gaps[0]!.id).not.toBe(firstPage.gaps[0]!.id);
+      expect(firstPage.counts).toEqual([{ category: "permission", turns: 2 }]);
+      expect(
+        (await listGaps(db, "owner", { impact: "workaround" })).gaps,
+      ).toEqual([]);
+      expect(
+        (await listGaps(db, "owner", { query: "deployment" })).gaps,
+      ).toHaveLength(2);
+
+      // Empty captures also survive retries with a different extraction result.
+      run = { ...run, runId: "gap-turn-empty" };
+      await processMemorySession({
+        ...context,
+        state: createMemoryState(),
+        model: extractionModel([]).model,
+      });
+      await processMemorySession({ ...context, state: createMemoryState() });
+      expect((await listGaps(db, "owner", {})).gaps).toHaveLength(2);
+      expect(
+        await db.select().from(memorySqlSchema.juniorMemoryGapCaptures),
+      ).toHaveLength(3);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("normalizes structured review responses", async () => {
     const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
     const model: PluginModel = {
@@ -696,6 +921,7 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
+            gaps: [],
             memories: [
               {
                 canonicalFact:
@@ -729,6 +955,7 @@ describe("memory plugin storage", () => {
         runtimeContext: localContext(),
       }),
     ).resolves.toEqual({
+      gaps: [],
       memories: [
         {
           content: "Prefers causes before mitigations in incident writeups.",
@@ -745,6 +972,7 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
+            gaps: [],
             memories: [
               {
                 canonicalFact: "Fact one.",
@@ -803,6 +1031,7 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
+            gaps: [],
             memories: Array.from({ length: 6 }, (_, index) => ({
               canonicalFact: `Fact ${index + 1}.`,
               expiresAtMs: null,
@@ -1072,6 +1301,7 @@ describe("memory plugin storage", () => {
           }
           return {
             object: {
+              gaps: [],
               memories: [
                 {
                   canonicalFact: "Prefers TypeScript for automation scripts.",
@@ -1152,10 +1382,11 @@ describe("memory plugin storage", () => {
               "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
             )
           ) {
-            return { object: { memories: [] } };
+            return { object: { memories: [], gaps: [] } };
           }
           return {
             object: {
+              gaps: [],
               memories: [
                 {
                   canonicalFact:
@@ -1587,6 +1818,7 @@ describe("memory plugin storage", () => {
           }
           return {
             object: {
+              gaps: [],
               memories: [
                 {
                   canonicalFact: firstContent,
