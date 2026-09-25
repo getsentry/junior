@@ -9,7 +9,7 @@ description: Update this junior-prod app to a published Junior GitHub release. U
 
 Run `git status --short` and `git branch --show-current`. Stop if `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, or `junior-release.json` has unrelated changes.
 
-Require the app's `scripts/update-junior-release.mjs` and `scripts/fetch-junior-release.mjs`. If absent, stop and report that the app needs the GitHub release install path. Do not fall back to npm or local source links.
+Require the app's `scripts/update-junior-release.mjs` and committed `junior-release.json`. If absent, stop and report that the app needs the GitHub release install path. Do not fall back to npm or local source links.
 
 Read the current version and commit from the committed `junior-release.json`. Inventory direct `@sentry/junior` and `@sentry/junior-*` packages in every dependency section. Keep packages in their current sections.
 
@@ -38,10 +38,10 @@ Create or reuse `build/update-junior-<target>` before changing files. Run from t
 
 ```bash
 pnpm junior:update <target>
-pnpm deps:install
+pnpm install --frozen-lockfile
 ```
 
-The update script downloads the manifest and required tarballs, checks SHA-256 hashes and Junior dependencies, and resolves the lockfile in a temporary directory. It changes tracked pins only after those checks succeed. Commit the manifest, `package.json`, and lockfile, not downloaded tarballs.
+The update script verifies required tarballs against the manifest, pins GitHub Release URLs, and resolves the lockfile in a temporary directory. It binds lockfile integrity to the verified bytes before changing tracked pins. Commit the manifest, `package.json`, and lockfile. pnpm owns downloads and caching during installs.
 
 If a release asset is missing or verification fails, stop. Report the exact target, package, and failure. Leave app pins unchanged. Do not republish, select a different version, repair hashes, or run `pnpm add` against npm. Do not add Junior packages to `minimumReleaseAgeExclude`; they no longer come from npm.
 
@@ -57,20 +57,20 @@ Ignore app-local values. Apply only clear, low-risk config changes required by t
 
 Register newly added standalone plugins in `plugins.ts`. Exclude runtime utility packages such as `@sentry/junior`, `@sentry/junior-plugin-api`, `@sentry/junior-testing`, and the dashboard package. Do not add every package in the release manifest to the app.
 
-Keep the app's verified install command in `vercel.json`. Keep `junior upgrade` in its build command: it applies database migrations, not package updates.
+Keep `pnpm install --frozen-lockfile` as the install command in `vercel.json`. Keep `junior upgrade` in its build command: it applies database migrations, not package updates.
 
 ### 5. Verify
 
 ```bash
 git diff --name-only
-pnpm deps:install
+pnpm install --frozen-lockfile
 node scripts/check-plugin-packages.mjs
 pnpm check
 pnpm typecheck
 pnpm build
 ```
 
-Expect `junior-release.json`, `package.json`, and `pnpm-lock.yaml`, plus only justified config changes. Confirm the manifest version matches the target, all direct Junior pins use its local tarballs, and overrides cover their Junior dependencies. Do not commit `.junior-packages/`.
+Expect `junior-release.json`, `package.json`, and `pnpm-lock.yaml`, plus only justified config changes. Confirm the manifest version matches the target, all direct Junior pins use its GitHub Release URLs, and overrides cover their Junior dependencies.
 
 Fix update-related check failures. Disclose pre-existing or environment failures. If a frozen install fails, do not silently refresh the lockfile: diagnose the cause and rerun the update script only after fixing it. Stop if package pins change without a lockfile change or config requires values that cannot be inferred safely.
 

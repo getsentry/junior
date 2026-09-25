@@ -4,7 +4,7 @@
 
 Update junior-prod from verified GitHub Release packages without waiting for npm.
 The skill owns release selection, release-note review, app checks, and a draft PR.
-The consumer app owns artifact validation and file changes through its scripts.
+The consumer app owns artifact validation and file changes through its update script. pnpm owns downloads, caching, and integrity checks on install.
 Release publication, production deployment, and source previews are out of scope.
 
 ## Shape and evidence
@@ -12,7 +12,7 @@ Release publication, production deployment, and source previews are out of scope
 Keep one inline workflow. Do not duplicate the app's deterministic package checks
 in skill instructions or bundle another copy of its scripts.
 
-Authoritative sources are the app's pinned manifest and update/install scripts,
+Authoritative sources are the app's pinned manifest and update script,
 GitHub release bodies, and example-app source at the manifest commits.
 The release manifest contract is documented in
 `packages/docs/src/content/docs/contribute/releasing.md`.
