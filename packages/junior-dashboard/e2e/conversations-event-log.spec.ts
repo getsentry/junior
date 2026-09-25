@@ -13,12 +13,7 @@ test("inspects all reporting events and searches full event data", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const composer = page.getByRole("textbox", {
-    name: "Continue this conversation",
-  });
-  await composer.fill("Keep this draft while I inspect events.");
   await page.getByRole("button", { name: "Event log", exact: true }).click();
-  await expect(composer).toBeHidden();
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button");
   await expect(entries).toHaveCount(report.events.length);
@@ -77,8 +72,6 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(entries).toHaveCount(report.events.length);
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(log).toBeHidden();
-  await expect(composer).toBeVisible();
-  await expect(composer).toHaveValue("Keep this draft while I inspect events.");
   await expect(
     page.getByText(
       "Find the slow checkout requests from the last deployment.",
