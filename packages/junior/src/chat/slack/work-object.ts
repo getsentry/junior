@@ -38,10 +38,7 @@ const payload = z.strictObject({
   }),
   custom_fields: z.array(customField).optional(),
 });
-// Slack rejected JSON punctuation in external_ref.id (JUNIOR-A3). Use the
-// conservative alphabet shared by Automation IDs and base64url annotation IDs;
-// this is Junior's supported subset, not Slack's full accepted pattern.
-/** Reject reference characters that can make Slack silently discard metadata. */
+/** Limit IDs to Junior's safe subset; Slack silently rejects JSON punctuation. */
 export const slackExternalRefIdSchema = z
   .string()
   .min(1)

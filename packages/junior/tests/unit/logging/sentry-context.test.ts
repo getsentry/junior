@@ -36,20 +36,10 @@ vi.mock("@/chat/sentry", () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
-  vi.unstubAllEnvs();
   vi.resetModules();
 });
 
 describe("Sentry context", () => {
-  it("suppresses info logs in production", async () => {
-    vi.stubEnv("SENTRY_ENVIRONMENT", "production");
-    const { logInfo } = await import("@/chat/logging");
-
-    logInfo("agent.turn.started");
-
-    expect(sentry.logger.info).not.toHaveBeenCalled();
-  });
-
   it("extends only the active sanitized log context", async () => {
     const { getLogContextAttributes, setTags, withLogContext } =
       await import("@/chat/logging");

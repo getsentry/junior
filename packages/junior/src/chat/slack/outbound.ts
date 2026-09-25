@@ -1,9 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
-import {
-  captureSlackPostWarning,
-  slackWorkObjectDiagnostics,
-} from "./work-object-diagnostics";
+import { captureSlackPostWarning } from "./post-warning";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
@@ -115,34 +112,13 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
-  // Include zero entities so a missing card can be traced to the sender.
-  const workObjectAttributes = {
+  const attributes = {
     "app.slack.channel_id": channelId,
-    "app.slack.thread_ts": threadTs,
+    ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
     "app.slack.work_object.count": entities?.length ?? 0,
-    "app.slack.block_count": input.blocks?.length ?? 0,
-    "app.slack.unfurl_links": false,
-    "app.slack.unfurl_media": false,
-    "app.slack.work_object.entity_types": [
-      ...new Set(entities?.map((entity) => entity.entity_type)),
-    ],
-    "app.slack.work_object.reference_types": [
-      ...new Set(
-        entities?.map((entity) =>
-          entity.external_ref.type === "annotation" ||
-          entity.external_ref.type === "automation"
-            ? entity.external_ref.type
-            : "other",
-        ),
-      ),
-    ],
-    "app.slack.work_object.metadata_bytes": entities
-      ? Buffer.byteLength(JSON.stringify({ entities }), "utf8")
-      : 0,
   };
   const response = await withSlackRetries(
     async () => {
-      setSpanAttributes(workObjectAttributes);
       const response = await getSlackClient().chat.postMessage({
         channel: channelId,
         text,
@@ -156,29 +132,18 @@ export async function postSlackMessage(input: {
         ...(entities ? { metadata: { entities } } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       });
-      // The request span ends when this callback returns. Acceptance is not rendering.
-      const diagnostics = slackWorkObjectDiagnostics(response);
-      const responseAttributes = {
-        "app.slack.work_object.accepted":
-          response.ok === true && Boolean(parseSlackMessageTs(response.ts)),
-        "messaging.message.id": parseSlackMessageTs(response.ts),
-      };
-      setSpanAttributes({ ...diagnostics, ...responseAttributes });
-      captureSlackPostWarning(
-        response,
-        { ...workObjectAttributes, ...responseAttributes },
-        diagnostics,
-      );
+      const messageId = parseSlackMessageTs(response.ts);
+      setSpanAttributes({ "messaging.message.id": messageId });
+      captureSlackPostWarning(response, {
+        ...attributes,
+        "messaging.message.id": messageId,
+      });
       return response;
     },
     3,
     {
       action: "chat.postMessage",
-      attributes: {
-        "app.slack.channel_id": channelId,
-        "app.slack.work_object.count": entities?.length ?? 0,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
-      },
+      attributes,
     },
   );
 

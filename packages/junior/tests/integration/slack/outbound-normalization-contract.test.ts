@@ -116,7 +116,6 @@ describe("Slack contract: outbound normalization", () => {
             ],
             unrelated: "private-response-data",
           },
-          message: { metadata: { entities } },
         },
       });
       const post = () =>
@@ -161,28 +160,12 @@ describe("Slack contract: outbound normalization", () => {
       expect(spans).toHaveLength(1);
       const attributes = spans[0]?.data;
       expect(attributes).toMatchObject({
-        "app.slack.block_count": 0,
-        "app.slack.unfurl_links": false,
-        "app.slack.unfurl_media": false,
         "app.slack.channel_id": "C123",
         "app.slack.thread_ts": "1700000000.000100",
         "app.slack.work_object.count": entities.length,
-        "app.slack.work_object.metadata_bytes": includeEntities
-          ? Buffer.byteLength(JSON.stringify({ entities }))
-          : 0,
-      });
-      expect(attributes?.["app.slack.work_object.entity_types"]).toEqual(
-        includeEntities ? ["slack#/entities/item"] : undefined,
-      );
-      expect(attributes?.["app.slack.work_object.reference_types"]).toEqual(
-        includeEntities ? ["annotation"] : undefined,
-      );
-      expect(attributes).toMatchObject({
-        "app.slack.work_object.accepted": true,
         "messaging.message.id": "1700000000.000200",
         "app.slack.warning_count": 1,
         "app.slack.diagnostic_codes": ["invalid_metadata_format"],
-        "app.slack.work_object.response_entity_count": entities.length,
       });
       expect(JSON.stringify(spans)).not.toContain("private-");
       expect(JSON.stringify(spans)).not.toContain("private.example");
@@ -204,7 +187,6 @@ describe("Slack contract: outbound normalization", () => {
       "app.slack.work_object.count": 0,
       "app.slack.api_error_code": "invalid_metadata_schema",
     });
-    expect(spans[0]?.data?.["app.slack.work_object.accepted"]).toBeUndefined();
     expect(JSON.stringify(spans)).not.toContain("private-message");
   });
 

@@ -37,46 +37,27 @@ use the query recipes below to find the failing turn and next query.
 | `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
 | `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
 
-## Work Object delivery
+## Slack post warnings
 
-Query Sentry spans with `app.slack.method:chat.postMessage`, then filter by
-`app.slack.channel_id` and `app.slack.thread_ts`, or the Conversation ID.
-Each request attempt records the entity count (including zero), entity types,
-reference types, metadata size, block count, and unfurl flags on the existing
-`http.client` span. Before the span ends, a returned response adds the Slack
-message timestamp, `app.slack.work_object.accepted`, warning and response message
-counts, known diagnostic codes, and whether it echoed `message.metadata.entities`.
-No extra delivery logs are emitted. Production info logs stay suppressed.
+Query spans with `app.slack.method:chat.postMessage`, then filter by channel,
+thread, or Conversation ID. Each attempt records the Work Object count. Returned
+responses add the message ID, warning and diagnostic message counts, and known
+warning codes. API failures retain their error code and span status.
 
-A returned response with warnings or diagnostic messages creates one warning-level
-Sentry issue event named `Slack chat.postMessage returned warnings`. It keeps the
-active trace link, message timestamp, request summary, and response diagnostics.
-Issues group by the method and sorted known codes; unknown codes use one fallback
-group. An accepted post is not retried or failed because of a warning.
+`post-warning.ts` captures one warning-level Sentry issue named
+`Slack chat.postMessage returned warnings` when a response contains warnings or
+diagnostic messages. It keeps the active trace, request context, and message ID.
+Issues group by sorted known warning codes, with one fallback for unknown codes.
+Warnings do not fail or retry an accepted post.
 
-The issue includes bounded summaries from only `response_metadata.warnings` and
-`.messages` (20 entries each, 2000 characters per entry). All Conversation
-visibility levels use the same allowlist: known codes, schema keys, and validation
-words such as `required`, `expected`, `object`, and `string`. Other words and
-values become `[value]`; unknown path segments become `*`. This keeps validation
-sentences inside Slack's quoted error arrays instead of removing each whole
-sentence. It also keeps safe reasons for private and unknown Conversations.
-Unknown validation terms can still be redacted. These summaries are not added to
-spans. No request payload or full Slack response is captured.
+The issue keeps bounded summaries of `response_metadata.warnings` and `.messages`:
+20 entries each, 2000 characters per entry. All Conversation visibility levels use
+the same allowlist of codes, schema keys, and validation words. Other values are
+redacted. This preserves validation sentences inside quoted arrays without
+recording request payloads or the full response. Unknown validation terms can
+still be redacted. Diagnostic text stays off spans.
 
-Diagnostic text can contain submitted values. These attributes never store raw
-response text, object titles, URLs, or reference IDs. Known schema keys in
-`[json-pointer:/...]` hints are kept; other path segments become `*`. This
-extraction is best effort because Slack does not promise a message format.
-Unrecognized counts and a truncation flag show when this summary is incomplete.
-
-A zero outbound count means Junior did not attach entities at this boundary.
-A positive count means Junior passed entities to the Slack SDK. An accepted
-response does not prove that Slack rendered a card. Missing response entities
-do not prove that Slack discarded them. For rejected requests, inspect the
-failed attempt's `app.slack.api_error_code` and error status. Response summaries
-are absent when the SDK throws. Existing `slack.action.failed` logs remain
-available for terminal failures.
+API acceptance and a positive entity count do not prove that Slack rendered a card.
 
 ## Query Recipes
 
