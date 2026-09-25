@@ -161,17 +161,21 @@ delegation without becoming the execution actor or a general task owner.
 ## Invariants
 
 - Slack messages require a user ID and an author team that matches the
-  installation workspace. Use a workspace-valued `user_team` first. For ordinary
-  `message` events without a subtype or `user_team`, use `event.team`, as
-  [Slack's Bolt implementation does](https://github.com/slackapi/bolt-python/blob/eddc4766559e5dc623700015c70ea360d076dced/slack_bolt/request/internals.py#L121-L158).
-  Do not apply that rule to mentions or message subtypes. A mention's `team`
-  can name the receiving workspace while its author belongs to another org.
-  Missing author teams and Enterprise-valued `user_team` require `users.info`.
-  Accept only a matching user ID and `team_id` from that lookup. Unknown authors
-  stay blocked before routing, storage, or reactions. API failures reach the
-  webhook's retryable boundary. Lookup results are not cached.
-  `source_team` describes message origin, not user membership. Envelope team IDs
-  and the external-sharing flag do not prove membership in this exact workspace.
+  installation workspace. A workspace-valued `user_team` supplies that evidence
+  without an API call. An explicit external author overrides cached membership.
+  Missing author teams and Enterprise-valued `user_team` use a cached
+  `users.info` result. On a miss, require a matching user ID and `team_id` and
+  reject deleted users. Store the verdict in app-scoped shared state, keyed by
+  workspace and user ID. Positive results expire after five minutes; negative
+  results expire after 30 seconds. Reads do not renew expiry. Concurrent misses
+  share a lookup through the state lock. Failures and incomplete responses are
+  not cached. Lookup and state failures reach the webhook's retryable boundary.
+  Unknown authors stay blocked before message storage, routing, or reactions.
+  The five-minute cache can delay a membership change by at most five minutes;
+  explicit external author fields replace a cached grant immediately.
+  `event.team`, `source_team`, envelope team IDs, and the external-sharing flag
+  do not grant membership. `source_team` describes message origin, not user
+  membership.
   See [Slack's field definitions](https://docs.slack.dev/enterprise/developing-for-enterprise-orgs#events_api).
   Keep documented minimal message fixtures unchanged. Add optional fields only
   in targeted cases with an upstream payload or fixture reference.

@@ -104,7 +104,7 @@ export class JuniorChat<
             });
             return;
           }
-          if (!(await isSlackWorkspaceMember(message.raw))) {
+          if (!(await isSlackWorkspaceMember(message.raw, this.getState()))) {
             return;
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
@@ -120,7 +120,7 @@ export class JuniorChat<
 
     const message = messageOrFactory;
     return runWithTurnRequestDeadline(async () => {
-      if (!(await isSlackWorkspaceMember(message.raw))) return;
+      if (!(await isSlackWorkspaceMember(message.raw, this.getState()))) return;
       const normalized = normalizeIncomingSlackThreadId(threadId, message);
       await super.processMessage(
         adapter,
