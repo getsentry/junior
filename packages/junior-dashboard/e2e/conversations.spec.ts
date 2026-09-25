@@ -220,13 +220,26 @@ test("opens a conversation in the built dashboard", async ({
   });
   await detailsButton.click();
   const details = page.getByRole("dialog", { name: "Checkout latency triage" });
-  await details.getByText("Facts, links & keywords", { exact: true }).click();
   await expect(
-    details.getByText("PAYMENTS-42 contained 418 events."),
+    details.getByRole("heading", { name: "Summary", exact: true }),
   ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: /getsentry\/payments#77/ }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+  await details.getByRole("tab", { name: "Memories" }).click();
+  await expect(
+    details.getByText("Use pnpm for repository commands."),
+  ).toBeVisible();
+  await details.getByRole("tab", { name: "Details", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
+
+  // The full durable Brief stays available after the transcript expires.
+  await page.getByText("Facts, links & keywords", { exact: true }).click();
+  await expect(
+    page.getByText("PAYMENTS-42 contained 418 events."),
+  ).toBeVisible();
 
   await expect(
     page.getByRole("link", { name: "Conversations" }),

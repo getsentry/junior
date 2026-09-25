@@ -141,6 +141,8 @@ export function ConversationPage(props: {
           <section className="min-w-0">
             <ConversationHeader
               conversationId={conversationId}
+              lastActivityAt={conversation?.lastSeenAt}
+              sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={
                 <CopyMarkdownButton
                   key={conversationDetail?.conversationId ?? "loading"}
@@ -181,38 +183,23 @@ export function ConversationPage(props: {
               }}
               brief={
                 detail.data?.brief ? (
-                  <ConversationBrief brief={detail.data.brief} />
+                  <ConversationBrief
+                    brief={detail.data.brief}
+                    variant="summary"
+                  />
                 ) : null
               }
               identity={
-                hasConversationIdentity({
-                  conversation,
-                  conversationId,
-                  detail: detail.data,
-                }) ? (
-                  <ConversationIdentity
-                    conversation={conversation}
-                    conversationId={conversationId}
-                    detail={detail.data}
-                  />
+                hasConversationIdentity({ conversation }) ? (
+                  <ConversationIdentity conversation={conversation} />
                 ) : null
               }
               live={live}
               meta={
                 <ConversationHeaderMeta
                   identity={
-                    hasConversationIdentity({
-                      conversation,
-                      conversationId,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationIdentity
-                        conversation={conversation}
-                        conversationId={conversationId}
-                        detail={detail.data}
-                        variant="compact"
-                      />
+                    hasConversationIdentity({ conversation }) ? (
+                      <ConversationIdentity conversation={conversation} />
                     ) : null
                   }
                   stats={
