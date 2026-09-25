@@ -64,6 +64,8 @@ describe("Linear MCP create annotations", () => {
               assignee: "Sam",
               priority: "High",
               project: "Quality",
+              labels: input.id ? ["Bug", { name: "Backend" }] : null,
+              updatedAt: input.id ? "2026-09-25T14:00:00Z" : null,
               url: issueUrl,
             },
           },
@@ -218,11 +220,13 @@ describe("Linear MCP create annotations", () => {
           plugin: "linear",
           key: "ENG-123",
           status: "In Progress",
+          sourceUpdatedAt: "2026-09-25T14:00:00Z",
           facts: {
             type: "task",
             assignees: ["Sam"],
             priority: "High",
             project: "Quality",
+            labels: ["Bug", "Backend"],
           },
         },
       ]);

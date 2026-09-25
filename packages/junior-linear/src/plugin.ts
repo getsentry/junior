@@ -36,9 +36,9 @@ const saveIssueResultSchema = z
           .nullish(),
         project: namedFact,
         cycle: namedFact,
-        labels: z.array(z.string()).optional(),
+        labels: z.array(namedFact).nullish(),
         dueDate: z.iso.date().nullish(),
-        updatedAt: z.iso.datetime({ offset: true }).optional(),
+        updatedAt: z.iso.datetime({ offset: true }).nullish(),
       })
       .passthrough(),
   })
@@ -74,7 +74,7 @@ async function annotateSavedIssue(
         url: issue.url,
         status: issue.status,
         displayType: "Issue",
-        sourceUpdatedAt: issue.updatedAt,
+        sourceUpdatedAt: issue.updatedAt ?? undefined,
         facts: {
           type: "task",
           assignees:
@@ -94,7 +94,7 @@ async function annotateSavedIssue(
           dueDate: issue.dueDate ?? undefined,
           labels: issue.labels
             ?.slice(0, 5)
-            .map((label) => short(label)!)
+            .map((label) => factName(label)!)
             .filter(Boolean),
         },
       },
