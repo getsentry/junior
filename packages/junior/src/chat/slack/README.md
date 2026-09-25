@@ -69,7 +69,11 @@ New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
 Object annotation previews use Task for tasks and Item for code changes and
 other objects. Their `external_ref` identifies the Conversation, plugin, and
-object key, not a Message snapshot. Details show the latest saved annotation, not
+object key, not a Message snapshot. The ID is the UTF-8 JSON tuple encoded as
+base64url without padding. This encoding preserves punctuation and Unicode in
+keys without sending JSON punctuation to Slack. The detail handler decodes the
+same format. Raw JSON IDs are no longer accepted; Slack rejected those IDs.
+Encoding does not grant access or hide the reference. Details show the latest saved annotation, not
 a live provider lookup. Opening or refreshing details can update an earlier
 Slack preview. The saved Message and web transcript remain unchanged. Annotations
 contain last saved facts; not every provider change updates them.
@@ -83,6 +87,10 @@ See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-o
 
 `work-object.ts` defines the outbound schema and derives its TypeScript types.
 It covers the Item and Task entities Junior sends, not every Slack feature.
+Reference IDs must use Junior's conservative `[A-Za-z0-9_-]+` alphabet.
+This covers Automation IDs and base64url annotation references. It is not a
+claim about Slack's full allowed pattern. Slack rejected the old JSON IDs with
+`invalid_metadata_format` and ignored their metadata (Sentry issue JUNIOR-A3).
 Item entities cannot contain Task fields. Custom string and timestamp fields
 require values of the matching type. Unknown fields fail validation rather
 than disappear. Message posts and both detail handlers validate at the API

@@ -68,7 +68,10 @@ export function renderSlackObjectCard(
           },
         }),
     external_ref: {
-      id: JSON.stringify([conversationId, card.plugin, card.key]),
+      id: Buffer.from(
+        JSON.stringify([conversationId, card.plugin, card.key]),
+        "utf8",
+      ).toString("base64url"),
       type: "annotation",
     },
     url: card.url,
