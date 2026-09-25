@@ -1,4 +1,23 @@
 # Changelog
+## 0.226.0
+
+### New Features ✨
+
+- (annotations) Enrich Slack and web cards with bounded object facts by @sentry-junior in [#1929](https://github.com/getsentry/junior/pull/1929)
+- (dashboard) Add a scannable conversation event log by @sentry-junior in [#1931](https://github.com/getsentry/junior/pull/1931)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep message handoffs visible and consistent by @sentry-junior in [#1932](https://github.com/getsentry/junior/pull/1932)
+- Simplify conversation details by @sentry-junior in [#1930](https://github.com/getsentry/junior/pull/1930)
+
+#### Other
+
+- (chat) Preserve agent history through SQL storage by @sentry-junior in [#1926](https://github.com/getsentry/junior/pull/1926)
+- (slack) Acknowledge mentions before queued work starts by @sentry-junior in [#1927](https://github.com/getsentry/junior/pull/1927)
+
 ## 0.225.0
 
 ### Bug Fixes 🐛
