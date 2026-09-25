@@ -1,13 +1,45 @@
+import type { SlackEvent as AdapterEvent } from "@chat-adapter/slack";
 import type {
   AppMentionEvent,
   AssistantThreadStartedEvent,
   GenericMessageEvent,
 } from "@slack/types";
 import { z } from "zod";
+import { slackMessageTsSchema } from "@/chat/slack/timestamp";
+import {
+  parseSlackChannelId,
+  parseSlackTeamId,
+  parseSlackUserId,
+} from "@/chat/slack/ids";
+
+// Message dates must also fit JavaScript's Date range.
+const eventTimestampSchema = slackMessageTsSchema.refine((value) =>
+  Number.isFinite(new Date(Number(value) * 1_000).getTime()),
+);
+
+export const slackSlashCommandSchema = z.object({
+  channel_id: z
+    .string()
+    .trim()
+    .refine((value) => Boolean(parseSlackChannelId(value))),
+  team_id: z
+    .string()
+    .trim()
+    .refine((value) => Boolean(parseSlackTeamId(value))),
+  user_id: z
+    .string()
+    .trim()
+    .refine((value) => Boolean(parseSlackUserId(value))),
+  text: z.string(),
+  enterprise_id: z.string().optional(),
+  is_enterprise_install: z.enum(["true", "false"]).optional(),
+});
+
+export type SlackSlashCommandForm = z.output<typeof slackSlashCommandSchema>;
 
 export const slackAssistantThreadSchema = z.object({
   channel_id: z.string().min(1),
-  thread_ts: z.string().min(1),
+  thread_ts: eventTimestampSchema,
   user_id: z.string(),
   context: z.object({
     channel_id: z.string().optional(),
@@ -32,14 +64,60 @@ type MessageFields = Partial<
     Pick<GenericMessageEvent, "channel_type">
 >;
 
-// Validate fields that ingress reads. Keep other fields for Chat SDK parsing.
+// Validate fields read by ingress and the adapter's parseMessage/extractLinks.
+// Preserve other fields, including nested blocks and files, for content projection.
 // Membership is checked separately so invalid author fields cannot fall back.
 const slackEventSchema = z.looseObject({
   type: z.string(),
+  attachments: z
+    .array(
+      z.looseObject({
+        from_url: z.string().optional(),
+        original_url: z.string().optional(),
+        title: z.string().optional(),
+        text: z.string().optional(),
+        image_url: z.string().optional(),
+        thumb_url: z.string().optional(),
+        service_name: z.string().optional(),
+      }),
+    )
+    .optional(),
+  files: z
+    .array(
+      z.looseObject({
+        id: z.string().optional(),
+        mimetype: z.string().optional(),
+        url_private: z.string().optional(),
+        name: z.string().optional(),
+        size: z.number().optional(),
+        original_w: z.number().optional(),
+        original_h: z.number().optional(),
+      }),
+    )
+    .optional(),
+  edited: z.looseObject({ ts: eventTimestampSchema }).optional(),
+  team: z.string().optional(),
+  team_id: z.string().optional(),
+  username: z.string().optional(),
   blocks: z
     .array(
       z.looseObject({
         type: z.string(),
+        elements: z
+          .array(
+            z.looseObject({
+              type: z.string(),
+              elements: z
+                .array(
+                  z.looseObject({
+                    type: z.string(),
+                    url: z.string().optional(),
+                  }),
+                )
+                .optional(),
+            }),
+          )
+          .optional(),
         text: z
           .union([
             z.string(),
@@ -57,13 +135,13 @@ const slackEventSchema = z.looseObject({
   channel_type: z
     .enum(["channel", "group", "mpim", "im", "app_home"])
     .optional(),
-  event_ts: z.string().optional(),
+  event_ts: eventTimestampSchema.optional(),
   subtype: z.string().optional(),
   text: z.string().optional(),
-  thread_ts: z.string().optional(),
-  ts: z.string().optional(),
+  thread_ts: eventTimestampSchema.optional(),
+  ts: eventTimestampSchema.optional(),
   user: z.string().optional(),
-}) satisfies z.ZodType<MessageFields>;
+}) satisfies z.ZodType<MessageFields & AdapterEvent>;
 
 // @slack/types has event types, but no Events API envelope or interactive payload.
 export const slackEventEnvelopeSchema = z.object({

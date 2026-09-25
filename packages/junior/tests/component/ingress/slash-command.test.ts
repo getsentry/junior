@@ -1,4 +1,3 @@
-import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -8,28 +7,17 @@ async function loadHandler() {
   return import("@/chat/ingress/slash-command");
 }
 
-function createSlashEvent(
-  text: string,
-  userOverrides: Partial<SlashCommandEvent["user"]> = {},
-) {
-  const postEphemeral = vi.fn(async () => {});
-  const user = {
-    userId: "U123",
-    userName: "user",
-    fullName: "User",
-    isBot: false,
-    isMe: false,
-    ...userOverrides,
-  };
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+function createSlashEvent(text: string, userId = "U123") {
+  const postEphemeral = vi.fn(async () => null);
   const event = {
     text,
-    user,
+    userId,
     channel: { postEphemeral },
-    raw: {},
-  } as SlashCommandEvent;
+    teamId: "T123",
+    channelId: "C123",
+  };
 
-  return { event, postEphemeral, user };
+  return { event, postEphemeral, user: userId };
 }
 
 describe("slash command ingress", () => {
@@ -68,7 +56,7 @@ describe("slash command ingress", () => {
 
   it("requires a Slack actor id before credential commands", async () => {
     const { handleSlashCommand } = await loadHandler();
-    const { event } = createSlashEvent("link github", { userId: "" });
+    const { event } = createSlashEvent("link github", "");
 
     await expect(handleSlashCommand(event)).rejects.toThrow(
       "Slack slash command requires a actor user id",
@@ -77,7 +65,7 @@ describe("slash command ingress", () => {
 
   it("rejects synthetic unknown actor ids before credential commands", async () => {
     const { handleSlashCommand } = await loadHandler();
-    const { event } = createSlashEvent("link github", { userId: "unknown" });
+    const { event } = createSlashEvent("link github", "unknown");
 
     await expect(handleSlashCommand(event)).rejects.toThrow(
       "Slack slash command requires a actor user id",
