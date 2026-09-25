@@ -1718,6 +1718,9 @@ Conversation: \`local:test:old-conversation\`
       egressFetch: async () =>
         new Response(
           JSON.stringify({
+            user: { login: "alex" },
+            head: { ref: "feature/cards" },
+            base: { ref: "main" },
             number: 691,
             html_url: "https://github.com/getsentry/junior/pull/691",
           }),
@@ -1736,6 +1739,16 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
     ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          facts: {
+            type: "code_change",
+            author: "alex",
+            sourceBranch: "feature/cards",
+            targetBranch: "main",
+          },
+        },
+      ],
       number: 691,
       subscribable: {
         identifier: "getsentry/junior#691",
@@ -1751,6 +1764,16 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-idempotent-pr-create" },
       ),
     ).resolves.toMatchObject({
+      objectAnnotations: [
+        {
+          facts: {
+            type: "code_change",
+            author: "alex",
+            sourceBranch: "feature/cards",
+            targetBranch: "main",
+          },
+        },
+      ],
       number: 691,
       subscribable: {
         identifier: "getsentry/junior#691",

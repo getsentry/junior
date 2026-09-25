@@ -202,52 +202,53 @@ private object public. Detail views of saved annotations use Conversation access
 not the original actor's provider credentials. Live provider details and actions
 are not part of this contract.
 
-### Enrichment direction (not implemented)
+### Object facts
 
-The intent comments in `packages/junior-plugin-api/src/object-annotations.ts`
-define the preview and detail fields for each object type. Start with code
-changes and tasks. Add typed optional facts for those previews, not arbitrary
-provider JSON or stored Slack layout. No new table is needed for this first step;
-the existing annotation JSON can hold the small, validated preview.
+Plugins select facts from the successful provider response, before core saves
+an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
+and field order. It contains no provider fields or Slack layout. Both Slack and
+the web card use these facts. The Slack detail panel reads the latest saved
+annotation, not a new provider response. The web transcript shows the Message
+snapshot and labels it as saved.
 
-Storage cost is more than the annotation row. `plugins/annotations.ts` replaces
-one row per Conversation, plugin, kind, and key. `annotation-results.ts` also
-adds `objectCards` to the tool result without removing `objectAnnotations`.
-Delivery then saves the selected card in Message metadata. A large object would
-therefore be copied into history as well as the latest annotation. Keep the
-saved facts small at the producer, before they reach any of these paths.
+- Code changes show review and check summaries when known, then author,
+  requested reviewers, conflicts, branches, and change size. GitHub REST PR
+  responses do not include review decisions or check totals. The producer must
+  not invent these from requested reviewers, mergeability, or lifecycle state.
+- Tasks show assignees and priority, then project, cycle, due date, and labels.
+  An empty assignee list means unassigned. An absent list means unknown.
+- Deployments use Item cards. Vercel selects project, target, revision, and
+  branch from its existing deployment response. It never copies environment
+  values. A missing target stays unknown.
+- Automations use the existing card and detail page. Cards show state, trigger,
+  and warning. The existing Automation record owns full details and actions.
+- Other Items remain useful with just a title and source link.
 
-Proposed storage rules:
+The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have
+schema bounds. Producers select at most five entries per list and shorten
+optional display text. They do not shorten object keys or source URLs. This
+limit applies to new facts, not to the entire annotation, which also contains
+identity and existing bounded fields. No new table or cache is needed.
 
-- Save identity, preview fields, and an explicit time of the last provider check.
-  Do not treat the annotation row's `updatedAt` as proof of fresh provider data.
-- Start with a target of 4 KiB of serialized UTF-8 JSON per enriched preview.
-  This is a proposed budget, not a current limit. Measure real code-change and
-  task examples before enforcing it. Bound text and list lengths in their typed
-  schemas. Preserve required identity; shorten optional display text, never IDs
-  or URLs. Leave large descriptions and lists out of the preview.
-- Save counts and states, not check runs, reviews, comments, diffs, logs, or full
-  provider responses. Keep an author or assignee reference and display name,
-  not a copied user profile. Use source links for full detail.
-- Fill previews from successful tool responses first. Use existing provider
-  events for silent updates when they supply the needed facts. Updating facts
-  must not queue a new Message, start a Watch, or poll every annotation.
-- Keep delivered Message snapshots unchanged. Do not replace them with live
-  references just to save bytes; that would change the meaning of old replies.
-  Do not add an annotation history table or a global object cache at this stage.
+Core replaces `objectAnnotations` with owned `objectCards` in successful tool
+results. This avoids two copies in the same tool result. Delivery still saves
+an independent Message snapshot. Background annotation updates stay silent and
+must not change that snapshot, start Watches, or send new Messages.
 
-For expanded details, use the existing authoritative record when Junior owns
-it. Automation details already do this; do not copy more instructions or run
-history into annotations. For external objects, a later provider-owned lookup
-can fetch a bounded detail view on open or refresh. It must check current
-provider access and which facts can be shared with the Conversation. Never
-reuse the original actor's credentials solely because they created the card.
-Slack can copy detail metadata into a shared preview, so access for the clicking
-user alone is not enough to disclose new facts. Use the source link when safe
-sharing cannot be established.
+`sourceUpdatedAt` is the provider's update time, not the database write time.
+A silent status-only update does not claim to refresh every other fact. New
+full responses replace the facts; missing values do not retain old values.
 
-Do not persist fetched details in annotations, tool history, or Message cards.
-If lookup latency or rate limits later justify a cache, give it a short expiry,
-a size bound, and an access scope; a cache hit must not grant access. Add no
-cache until measurements show the need. Start with saved previews and source
-links while the external detail access contract is unresolved.
+All added facts must be safe for the Conversation audience, just like Message
+text. Slack detail access still checks the workspace and Conversation. This
+change adds no provider fetches or write actions. Source links let the provider
+check access to larger details.
+
+#### Release safety
+
+Old annotations remain valid because the new fields are optional. The previous
+strict reader does not accept enriched annotations or Message snapshots. Drain
+workers and deploy the API, plugins, and dashboard together before writing new
+facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
+these fields after enriched cards have been written. A rollback needs a reader
+that accepts the new fields, even if it does not display them.

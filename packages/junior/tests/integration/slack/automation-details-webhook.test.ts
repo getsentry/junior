@@ -145,6 +145,7 @@ describe("Slack Work Object details", () => {
       title: "Saved issue",
       objectType: "task",
       status: "Started",
+      facts: { type: "task", assignees: ["Sam"], priority: "High" },
       url: "https://example.com/issues/1",
     });
     const id = renderSlackObjectCard(
@@ -169,6 +170,21 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: { title: { text: "Saved issue" } },
           fields: { status: { value: "Started" } },
+          display_order: ["status", "assignees", "priority"],
+          custom_fields: [
+            {
+              key: "assignees",
+              label: "Assignees",
+              type: "string",
+              value: "Sam",
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              type: "string",
+              value: "High",
+            },
+          ],
         },
       },
     });

@@ -12,6 +12,16 @@ import {
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
+const namedFact = z
+  .union([z.string(), z.object({ name: z.string() })])
+  .nullish();
+const short = (value: string | undefined) => {
+  const text = value?.trim();
+  return text ? (text.length > 64 ? `${text.slice(0, 63)}…` : text) : undefined;
+};
+const factName = (value: z.output<typeof namedFact>) =>
+  short(typeof value === "string" ? value : value?.name);
+
 const saveIssueResultSchema = z
   .object({
     issue: z
@@ -20,6 +30,15 @@ const saveIssueResultSchema = z
         url: z.url(),
         title: z.string().optional(),
         status: z.string().optional(),
+        assignee: namedFact,
+        priority: z
+          .union([z.string(), z.number(), z.object({ name: z.string() })])
+          .nullish(),
+        project: namedFact,
+        cycle: namedFact,
+        labels: z.array(z.string()).optional(),
+        dueDate: z.iso.date().nullish(),
+        updatedAt: z.iso.datetime({ offset: true }).optional(),
       })
       .passthrough(),
   })
@@ -54,6 +73,30 @@ async function annotateSavedIssue(
         title: (issue.title || identifier).slice(0, 512),
         url: issue.url,
         status: issue.status,
+        displayType: "Issue",
+        sourceUpdatedAt: issue.updatedAt,
+        facts: {
+          type: "task",
+          assignees:
+            issue.assignee === undefined
+              ? undefined
+              : factName(issue.assignee)
+                ? [factName(issue.assignee)!]
+                : [],
+          priority:
+            typeof issue.priority === "number"
+              ? ["No priority", "Urgent", "High", "Normal", "Low"][
+                  issue.priority
+                ]
+              : factName(issue.priority),
+          project: factName(issue.project),
+          cycle: factName(issue.cycle),
+          dueDate: issue.dueDate ?? undefined,
+          labels: issue.labels
+            ?.slice(0, 5)
+            .map((label) => short(label)!)
+            .filter(Boolean),
+        },
       },
     ],
   };

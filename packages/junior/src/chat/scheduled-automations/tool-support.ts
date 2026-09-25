@@ -321,6 +321,7 @@ export async function scheduleAutomationToolResult(
     title,
     url: automation.dashboardUrl,
     description: automation.instruction,
+    status: automation.status,
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
         ? `${new Intl.DateTimeFormat("en-US", {
