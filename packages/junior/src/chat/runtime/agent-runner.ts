@@ -1,4 +1,3 @@
-import { loadInputImages } from "@/chat/attachments/images";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   isAgentRunFeatureDisabled,
@@ -60,6 +59,9 @@ export function createAgentRunner(
           : undefined),
       };
       if (run.instruction.storedAttachments?.length) {
+        // Image storage loads runtime config. Keep it behind execution so the
+        // local CLI can set its defaults before config is first read.
+        const { loadInputImages } = await import("@/chat/attachments/images");
         const storage = nextRun.environment?.attachmentStorage;
         if (!storage) throw new Error("Attachment storage is unavailable.");
         nextRun.instruction = {
