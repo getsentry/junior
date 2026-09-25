@@ -280,7 +280,7 @@ describe("searchConversationEvents", () => {
         conversationId: CURRENT_CONVERSATION_ID,
         seq: 0,
         historyVersion: 1,
-        schemaVersion: 2,
+        schemaVersion: 99,
         type: "handoff",
         payload: {
           modelId: "future/model",
