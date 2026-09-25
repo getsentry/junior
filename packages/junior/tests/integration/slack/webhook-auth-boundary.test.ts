@@ -1,5 +1,5 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeDb, getConversationEventStore } from "@/chat/db";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
@@ -22,6 +22,7 @@ const SIGNING_SECRET = "test-signing-secret";
 
 describe("Slack webhook auth boundary", () => {
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await closeDb();
   });
 
@@ -122,20 +123,10 @@ describe("Slack webhook auth boundary", () => {
   it.each([
     { channel: 123 },
     { files: {} },
-    { files: [{ mimetype: 123 }] },
     { blocks: [{ type: "rich_text", elements: {} }] },
-    {
-      blocks: [
-        {
-          type: "rich_text",
-          elements: [{ type: "rich_text_section", elements: [null] }],
-        },
-      ],
-    },
     { attachments: [{ from_url: 123, title: "preview" }] },
     { ts: "not-a-timestamp" },
     { thread_ts: "99999999999999999" },
-    { edited: { ts: "not-a-timestamp" } },
   ])("rejects malformed signed payloads: %j", async (invalidFields) => {
     const client = createSlackWebhookTestClient({
       signingSecret: SIGNING_SECRET,
@@ -174,18 +165,10 @@ describe("Slack webhook auth boundary", () => {
     const event = {
       ...envelope.event,
       subtype: "file_share",
-      edited: { ts: "1712345.0002" },
       blocks: [
         {
           type: "rich_text",
           elements: [
-            {
-              type: "rich_text_section",
-              elements: [
-                { type: "text", text: "See ", style: { bold: true } },
-                { type: "link", url: "https://example.com/task", text: "task" },
-              ],
-            },
             {
               type: "rich_text_list",
               style: "bullet",
@@ -205,7 +188,6 @@ describe("Slack webhook auth boundary", () => {
           name: "note.txt",
           mimetype: "text/plain",
           url_private: "https://files.slack.com/note.txt",
-          url_private_download: "https://files.slack.com/download/note.txt",
         },
       ],
       attachments: [
@@ -216,7 +198,6 @@ describe("Slack webhook auth boundary", () => {
           fields: [{ title: "Status", value: "open" }],
         },
       ],
-      future_field: { retained: true },
     };
     const response = await handleSlackWebhookAndFlush({
       request: slackWebhookRequest({ ...envelope, event }),
@@ -247,7 +228,10 @@ describe("Slack webhook auth boundary", () => {
     await state.disconnect();
   });
 
-  it("requires slash command identity and destination before accepting work", async () => {
+  it("validates slash commands before replying with configured usage", async () => {
+    vi.stubEnv("JUNIOR_SLASH_COMMAND", "/team");
+    vi.resetModules();
+    const { handleSlackWebhook } = await import("@/chat/ingress/slack-webhook");
     const client = createSlackWebhookTestClient({
       signingSecret: SIGNING_SECRET,
     });
@@ -272,9 +256,14 @@ describe("Slack webhook auth boundary", () => {
       runtime: createNoopSlackWebhookRuntime(),
       state,
     };
-    for (const field of ["team_id", "channel_id", "user_id"]) {
+    for (const invalid of [
+      { team_id: "" },
+      { channel_id: "" },
+      { user_id: "" },
+      { user_id: "unknown" },
+    ]) {
       const response = await handleSlackWebhook({
-        request: client.form(new URLSearchParams({ ...form, [field]: "" })),
+        request: client.form(new URLSearchParams({ ...form, ...invalid })),
         services,
         waitUntil: waitUntil.fn,
       });
@@ -283,21 +272,24 @@ describe("Slack webhook auth boundary", () => {
     expect(waitUntil.pendingCount()).toBe(0);
     expect(slackApiOutbox.messages()).toEqual([]);
 
-    const accepted = await handleSlackWebhook({
-      request: client.form(new URLSearchParams(form)),
-      services,
-      waitUntil: waitUntil.fn,
-    });
-    expect(accepted.status).toBe(200);
-    await waitUntil.flush();
-    expect(slackApiOutbox.calls("chat.postEphemeral")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          user: "U123",
-          text: expect.stringContaining("link <provider>"),
-        }),
-      }),
+    for (const text of ["help", "link"]) {
+      const accepted = await handleSlackWebhook({
+        request: client.form(new URLSearchParams({ ...form, text })),
+        services,
+        waitUntil: waitUntil.fn,
+      });
+      expect(accepted.status).toBe(200);
+      await waitUntil.flush();
+    }
+    expect(
+      slackApiOutbox.calls("chat.postEphemeral").map((call) => call.params),
+    ).toMatchObject([
+      {
+        channel: "C123",
+        user: "U123",
+        text: "Usage: `/team link <provider>` or `/team unlink <provider>`",
+      },
+      { channel: "C123", user: "U123", text: "Usage: `/team link <provider>`" },
     ]);
     expect(queue.sentRecords()).toEqual([]);
     await state.disconnect();

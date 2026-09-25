@@ -7,9 +7,9 @@ import type {
 import { z } from "zod";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import {
-  parseSlackChannelId,
-  parseSlackTeamId,
-  parseSlackUserId,
+  slackChannelIdSchema,
+  slackTeamIdSchema,
+  slackUserIdSchema,
 } from "@/chat/slack/ids";
 
 // Message dates must also fit JavaScript's Date range.
@@ -18,18 +18,9 @@ const eventTimestampSchema = slackMessageTsSchema.refine((value) =>
 );
 
 export const slackSlashCommandSchema = z.object({
-  channel_id: z
-    .string()
-    .trim()
-    .refine((value) => Boolean(parseSlackChannelId(value))),
-  team_id: z
-    .string()
-    .trim()
-    .refine((value) => Boolean(parseSlackTeamId(value))),
-  user_id: z
-    .string()
-    .trim()
-    .refine((value) => Boolean(parseSlackUserId(value))),
+  channel_id: z.string().trim().pipe(slackChannelIdSchema),
+  team_id: z.string().trim().pipe(slackTeamIdSchema),
+  user_id: z.string().trim().pipe(slackUserIdSchema),
   text: z.string(),
   enterprise_id: z.string().optional(),
   is_enterprise_install: z.enum(["true", "false"]).optional(),

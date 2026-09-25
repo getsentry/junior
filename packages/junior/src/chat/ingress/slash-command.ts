@@ -5,14 +5,18 @@ import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
-import { createActor, parseActorUserId } from "@/chat/actor";
+import type {
+  SlackChannelId,
+  SlackTeamId,
+  SlackUserId,
+} from "@/chat/slack/ids";
 
 type SlackSlashCommand = {
   text: string;
-  userId: string;
+  userId: SlackUserId;
   channel: Pick<Channel, "postEphemeral">;
-  teamId: string;
-  channelId: string;
+  teamId: SlackTeamId;
+  channelId: SlackChannelId;
 };
 
 async function postEphemeral(
@@ -24,21 +28,12 @@ async function postEphemeral(
   });
 }
 
-function requireActorId(event: SlackSlashCommand): string {
-  const userId = parseActorUserId(event.userId);
-  if (!userId) {
-    throw new Error("Slack slash command requires a actor user id");
-  }
-  return userId;
-}
-
 function getCommandName(): string {
   return getChatConfig().slack.slashCommand;
 }
 
 async function handleLink(
   event: SlackSlashCommand,
-  actorId: string,
   provider: string,
 ): Promise<void> {
   if (!pluginCatalogRuntime.isProvider(provider)) {
@@ -54,13 +49,9 @@ async function handleLink(
     return;
   }
 
-  const actor = createActor(
-    { platform: "slack", teamId: event.teamId, userId: actorId },
-    { platform: "slack", teamId: event.teamId, userId: actorId },
-  );
   const result = await startOAuthFlow(provider, {
-    actorId,
-    ...(actor ? { actor } : undefined),
+    actorId: event.userId,
+    actor: { platform: "slack", teamId: event.teamId, userId: event.userId },
     channelId: event.channelId,
   });
 
@@ -84,7 +75,6 @@ async function handleLink(
 
 async function handleUnlink(
   event: SlackSlashCommand,
-  actorId: string,
   provider: string,
 ): Promise<void> {
   if (!pluginCatalogRuntime.isProvider(provider)) {
@@ -104,7 +94,7 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await unlinkProvider(actorId, provider, tokenStore, event.teamId);
+  await unlinkProvider(event.userId, provider, tokenStore, event.teamId);
 
   logInfo("slash_command.credential.unlinked", {
     "app.credential.provider": provider,
@@ -139,11 +129,10 @@ export async function handleSlashCommand(
   }
 
   const normalized = provider.toLowerCase();
-  const actorId = requireActorId(event);
 
   if (subcommand === "link") {
-    await handleLink(event, actorId, normalized);
+    await handleLink(event, normalized);
   } else {
-    await handleUnlink(event, actorId, normalized);
+    await handleUnlink(event, normalized);
   }
 }
