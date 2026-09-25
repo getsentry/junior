@@ -16,7 +16,7 @@ not whether memory was absent.
 the same history, memory, source file, and configured model defaults. The
 meaning of `Deslop` is seeded through the real memory store. It is not explained
 in prior messages. Recall, routing, handoff, summary, and continuation are live.
-Both requests start with `Switch to the standard profile first.`. This is a
+Both requests ask to switch to the other configured profile first. This is a
 requested handoff, not the spontaneous handoff from the production failure.
 
 The fixture source has a class and factory that only wrap stable ID generation.
@@ -126,6 +126,23 @@ does not reproduce silent abandonment. No summary or continuation is scripted.
 The explicit-request case remains the control. This is still a reduced fixture,
 not a replay of the full production tool history.
 
+Commit: `b9ad446d5`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36177662562).
+The terse case routed to standard, recalled the definition, made no handoff, and
+completed cleanup in 45 seconds. The explicit control routed to handoff, switched
+to standard, and passed in 42 seconds. Its live summary recognized the prior write
+and kept the new cleanup task. The terse case did not reach the boundary under
+test, so this run cannot test the hypothesis about completed tool work.
+
+### Pair 5: request the other configured profile
+
+Change only the common switch prefix to `Switch to the other configured profile
+first.`. The fixed standard destination becomes a no-op when the router selects
+standard, as pair 4 demonstrated. Asking for the other profile makes the switch
+meaningful for either route. Keep all remaining input and assertions unchanged.
+This is a setup correction, not new evidence for the task-loss hypothesis. The
+model must still choose and call handoff; no live model response is scripted.
+
 ## Result and next experiment boundary
 
 The product rule is that handoff must preserve the active authored instruction.
@@ -151,7 +168,7 @@ incomplete.
 This is a reduced coding task, not an exact replay. Prior maintenance text uses
 bot-authored Slack history fixtures, not the original system-event provenance.
 The model defaults differ from the original production model configuration.
-The fixture has no long tool history. These differences remain possible causes
+The fixture has only one prior tool exchange. These differences remain possible causes
 if the small case does not fail.
 
 CI currently runs the integration suite on changes to this folder. Each push
