@@ -259,8 +259,7 @@ export function CostMetric(props: {
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
 }) {
-  // Run totals update at checkpoints; model history includes newer calls.
-  // Use the same source for the headline and its model breakdown.
+  // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
   const total = totalConversationCost(summary, props.auxiliaryCosts);
   if (!total && !props.live) return null;

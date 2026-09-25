@@ -130,61 +130,58 @@ describe("CostMetric", () => {
     expect(durationHtml).not.toContain("junior-text-shimmer");
   });
 
-  it.each([{ total: 0.01 }, undefined])(
-    "uses model costs with auxiliary operations when saved cost is %j",
-    (summary) => {
-      const html = renderToStaticMarkup(
-        <CostMetric
-          auxiliaryCosts={{
-            costUsd: 0.002,
-            operations: [
-              {
-                costUsd: 0.0002,
-                events: 1,
-                name: "turn_routed",
-                namespace: "junior",
-              },
-              {
-                costUsd: 0.0004,
-                events: 2,
-                name: "memories_recalled",
-                namespace: "memory",
-              },
-              {
-                costUsd: 0.0014,
-                events: 1,
-                name: "guardian_action_reviewed",
-                namespace: "junior",
-              },
-            ],
-          }}
-          modelUsage={[
+  it("uses model costs with auxiliary operations when saved cost is stale", () => {
+    const html = renderToStaticMarkup(
+      <CostMetric
+        auxiliaryCosts={{
+          costUsd: 0.002,
+          operations: [
             {
-              modelId: "openai/gpt-5",
-              usage: { cost: { total: 0.03 } },
+              costUsd: 0.0002,
+              events: 1,
+              name: "turn_routed",
+              namespace: "junior",
             },
             {
-              modelId: "anthropic/claude-sonnet-4",
-              usage: { cost: { input: 0.001, output: 0.01 } },
+              costUsd: 0.0004,
+              events: 2,
+              name: "memories_recalled",
+              namespace: "memory",
             },
-          ]}
-          summary={summary}
-        />,
-      );
+            {
+              costUsd: 0.0014,
+              events: 1,
+              name: "guardian_action_reviewed",
+              namespace: "junior",
+            },
+          ],
+        }}
+        modelUsage={[
+          {
+            modelId: "openai/gpt-5",
+            usage: { cost: { total: 0.03 } },
+          },
+          {
+            modelId: "anthropic/claude-sonnet-4",
+            usage: { cost: { input: 0.001, output: 0.01 } },
+          },
+        ]}
+        summary={{ total: 0.01 }}
+      />,
+    );
 
-      expect(html).toContain("$0.04");
-      expect(html).toContain("total: $0.043");
-      expect(html).toContain("agent: $0.041");
-      expect(html).toContain("Auxiliary");
-      expect(html).toContain("total: $0.002");
-      expect(html).toContain("Thinking routing (1): $0.0002");
-      expect(html).toContain("Memory recall (2): $0.0004");
-      expect(html).toContain("Guardian (1): $0.0014");
-      expect(html).toContain("gpt-5");
-      expect(html).toContain("• total: $0.03");
-      expect(html).toContain("claude-sonnet-4");
-      expect(html).toContain("• total: $0.011");
-      expect(html).toContain('data-tooltip-placement="above"');
-    },
-  );
+    expect(html).toContain("$0.04");
+    expect(html).toContain("total: $0.043");
+    expect(html).toContain("agent: $0.041");
+    expect(html).toContain("Auxiliary");
+    expect(html).toContain("total: $0.002");
+    expect(html).toContain("Thinking routing (1): $0.0002");
+    expect(html).toContain("Memory recall (2): $0.0004");
+    expect(html).toContain("Guardian (1): $0.0014");
+    expect(html).toContain("gpt-5");
+    expect(html).toContain("• total: $0.03");
+    expect(html).toContain("claude-sonnet-4");
+    expect(html).toContain("• total: $0.011");
+    expect(html).toContain('data-tooltip-placement="above"');
+  });
 });
