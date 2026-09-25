@@ -36,10 +36,29 @@ vi.mock("@/chat/sentry", () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
   vi.resetModules();
 });
 
 describe("Sentry context", () => {
+  it("keeps Work Object delivery evidence in production without enabling other info logs", async () => {
+    vi.stubEnv("SENTRY_ENVIRONMENT", "production");
+    const { logInfo } = await import("@/chat/logging");
+
+    logInfo("agent.turn.started");
+    logInfo("slack.work_object.post.started", {
+      "app.slack.work_object.count": 0,
+    });
+    logInfo("slack.work_object.post.accepted", {
+      "app.slack.warning_count": 1,
+    });
+
+    expect(sentry.logger.info.mock.calls.map(([event]) => event)).toEqual([
+      "slack.work_object.post.started",
+      "slack.work_object.post.accepted",
+    ]);
+  });
+
   it("extends only the active sanitized log context", async () => {
     const { getLogContextAttributes, setTags, withLogContext } =
       await import("@/chat/logging");

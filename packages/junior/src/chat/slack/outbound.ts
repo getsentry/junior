@@ -1,4 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
+import { logInfo } from "@/chat/logging";
+import { slackWorkObjectDiagnostics } from "./work-object-diagnostics";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
@@ -110,6 +112,32 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
+  // Include zero entities so a missing card can be traced to the sender.
+  const workObjectAttributes = {
+    "app.slack.channel_id": channelId,
+    "app.slack.thread_ts": threadTs,
+    "app.slack.work_object.count": entities?.length ?? 0,
+    "app.slack.block_count": input.blocks?.length ?? 0,
+    "app.slack.unfurl_links": false,
+    "app.slack.unfurl_media": false,
+    "app.slack.work_object.entity_types": [
+      ...new Set(entities?.map((entity) => entity.entity_type)),
+    ],
+    "app.slack.work_object.reference_types": [
+      ...new Set(
+        entities?.map((entity) =>
+          entity.external_ref.type === "annotation" ||
+          entity.external_ref.type === "automation"
+            ? entity.external_ref.type
+            : "other",
+        ),
+      ),
+    ],
+    "app.slack.work_object.metadata_bytes": entities
+      ? Buffer.byteLength(JSON.stringify({ entities }), "utf8")
+      : 0,
+  };
+  logInfo("slack.work_object.post.started", workObjectAttributes);
   const response = await withSlackRetries(
     () =>
       getSlackClient().chat.postMessage({
@@ -128,6 +156,11 @@ export async function postSlackMessage(input: {
     3,
     {
       action: "chat.postMessage",
+      attributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.work_object.count": entities?.length ?? 0,
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
+      },
       spanAttributes: {
         "app.slack.channel_id": channelId,
         ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
@@ -139,6 +172,13 @@ export async function postSlackMessage(input: {
   if (!messageTs) {
     throw new Error("Slack message posted without ts");
   }
+
+  // Acceptance and echoed metadata do not prove that Slack rendered a card.
+  logInfo("slack.work_object.post.accepted", {
+    ...workObjectAttributes,
+    "messaging.message.id": messageTs,
+    ...slackWorkObjectDiagnostics(response),
+  });
 
   return {
     ts: messageTs,

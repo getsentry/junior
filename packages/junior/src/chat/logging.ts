@@ -217,8 +217,14 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return getSentryEnvironment() === "production" && level === "info";
+function shouldSuppressInfoLog(level: LogLevel, eventName: unknown): boolean {
+  // Keep safe Work Object delivery evidence even when Slack silently omits a card.
+  return (
+    getSentryEnvironment() === "production" &&
+    level === "info" &&
+    eventName !== "slack.work_object.post.started" &&
+    eventName !== "slack.work_object.post.accepted"
+  );
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
@@ -643,7 +649,7 @@ function emitSentry(
   body: string,
   attributes: LogAttributes,
 ): void {
-  if (shouldSuppressInfoLog(level)) {
+  if (shouldSuppressInfoLog(level, attributes["event.name"])) {
     return;
   }
 

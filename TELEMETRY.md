@@ -37,6 +37,28 @@ use the query recipes below to find the failing turn and next query.
 | `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
 | `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
 
+## Work Object delivery
+
+Query Sentry Logs by `app.slack.channel_id` and `app.slack.thread_ts`, or use
+the Conversation ID. `slack.work_object.post.started` records the entity count,
+entity types, reference types, metadata size, block count, and unfurl flags.
+It also records posts with zero entities. `slack.work_object.post.accepted`
+adds the Slack message timestamp, warning and response message counts, known
+diagnostic codes, and whether the response echoed `message.metadata.entities`.
+Both events remain enabled in production. Other info logs stay suppressed there.
+
+Diagnostic text can contain submitted values. These events never store raw
+response text, object titles, URLs, or reference IDs. Known schema keys in
+`[json-pointer:/...]` hints are kept; other path segments become `*`. This
+extraction is best effort because Slack does not promise a message format.
+Unrecognized counts and a truncation flag show when this summary is incomplete.
+
+A zero outbound count means Junior did not attach entities at this boundary.
+A positive count means Junior passed entities to the Slack SDK. An accepted
+response does not prove that Slack rendered a card. Missing response entities
+do not prove that Slack discarded them. For rejected requests, check
+`slack.action.failed` with the same channel and thread attributes.
+
 ## Query Recipes
 
 Conversation timeline from a Slack thread, footer link, or conversation ID.
