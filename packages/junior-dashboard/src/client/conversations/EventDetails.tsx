@@ -4,14 +4,14 @@ import type { ReactNode } from "react";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
 import { eventLogModel } from "./eventLog";
-import { formatCostBreakdown, summarizeCost } from "../format";
+import { formatCostBreakdown } from "../format";
+import { EventUsage } from "./EventUsage";
 
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
   const data = event.data;
   const model = eventLogModel(event);
-  const usage = event.modelCall?.usage;
-  const cost = summarizeCost(usage);
+  const { usage, ...callAttributes } = event.modelCall ?? {};
   let content: ReactNode;
 
   switch (data.type) {
@@ -30,7 +30,7 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
             value={{
               ...metadata,
               ...(costUsd !== undefined
-                ? { routerCostUsd: costUsd }
+                ? { routerCostUsd: formatCostBreakdown({ total: costUsd }) }
                 : undefined),
             }}
           />
@@ -44,12 +44,20 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
         modelId: _modelId,
         modelProfile: _profile,
         reasoningLevel: _reasoning,
+        summary,
         ...metadata
       } = data;
       content = (
-        <DetailSection title="Handoff">
-          <DetailValue value={metadata} />
-        </DetailSection>
+        <>
+          {Object.keys(metadata).length > 0 ? (
+            <DetailValue value={metadata} />
+          ) : null}
+          {summary ? (
+            <DetailSection title="Continuation summary">
+              <TranscriptText text={summary} />
+            </DetailSection>
+          ) : null}
+        </>
       );
       break;
     }
@@ -141,65 +149,28 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
   }
 
   return (
-    <div className="grid min-w-0 gap-6">
-      <section
-        aria-label={
-          data.type === "handoff" ? "Handoff target" : "Model at this event"
+    <div className="@container grid min-w-0 gap-6">
+      <DetailSection
+        title={
+          data.type === "handoff" ? "Target configuration" : "Configuration"
         }
-        className="grid min-w-0 gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised p-4"
       >
-        <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-          {data.type === "handoff" ? "Handoff target" : "Model at this event"}
-        </h3>
-        <p className="m-0 break-words font-mono text-base font-semibold text-violet-300 [overflow-wrap:anywhere]">
-          {model?.modelId ?? "Model not recorded"}
-        </p>
-        {model ? (
-          <DetailValue
-            value={{
-              modelProfile: model.modelProfile ?? "Not recorded",
-              reasoningLevel: model.reasoningLevel ?? "Not recorded",
-            }}
-          />
-        ) : null}
-      </section>
+        <DetailValue
+          value={{
+            model: model?.modelId ?? "Not recorded",
+            ...(model
+              ? {
+                  modelProfile: model.modelProfile ?? "Not recorded",
+                  reasoningLevel: model.reasoningLevel ?? "Not recorded",
+                }
+              : undefined),
+            ...callAttributes,
+          }}
+        />
+      </DetailSection>
       {event.modelCall ? (
-        <DetailSection title="Model call">
-          <DetailValue value={{ ...event.modelCall, usage: undefined }} />
-          {usage ? (
-            <>
-              <DetailSection title="Tokens">
-                <DetailValue
-                  value={Object.fromEntries(
-                    Object.entries(usage).filter(([key]) => key !== "cost"),
-                  )}
-                />
-              </DetailSection>
-              {cost ? (
-                <DetailSection title="Estimated cost (USD)">
-                  <DetailValue
-                    value={Object.fromEntries(
-                      Object.entries({ ...usage.cost, total: cost.total })
-                        .filter(([, value]) => value !== undefined)
-                        .map(([key, value]) => [
-                          key,
-                          formatCostBreakdown({ total: value! }),
-                        ]),
-                    )}
-                  />
-                </DetailSection>
-              ) : null}
-            </>
-          ) : (
-            <p className="m-0 text-sm text-dashboard-text-muted">
-              Token usage and cost were not recorded for this call.
-            </p>
-          )}
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            Usage is for this model call only, not the tool execution or
-            conversation total. Input excludes cache reads and writes. Reasoning
-            is part of output, not an extra token total.
-          </p>
+        <DetailSection title="Call usage">
+          <EventUsage usage={usage} />
         </DetailSection>
       ) : null}
       {content}
@@ -217,8 +188,8 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
 
 function DetailSection(props: { title: string; children: ReactNode }) {
   return (
-    <section aria-label={props.title} className="grid min-w-0 gap-3">
-      <h3 className="m-0 break-words text-sm font-semibold text-dashboard-text">
+    <section aria-label={props.title} className="grid min-w-0 gap-2">
+      <h3 className="m-0 border-b border-dashboard-border pb-2 text-sm font-semibold text-dashboard-text">
         {props.title}
       </h3>
       {props.children}
@@ -234,7 +205,8 @@ function fieldLabel(key: string): string {
   return (words.charAt(0).toUpperCase() + words.slice(1))
     .replace(/\bid\b/gi, "ID")
     .replace(/\bids\b/gi, "IDs")
-    .replace(/\busd\b/gi, "USD");
+    .replace(/\busd\b/gi, "USD")
+    .replace(/\bapi\b/gi, "API");
 }
 
 // Keep arbitrary tool and context payloads readable without guessing their schema.
@@ -257,7 +229,7 @@ function DetailValue({ value }: { value: unknown }) {
       ([, entry]) => entry !== undefined,
     );
     return fields.length ? (
-      <dl className="m-0 grid min-w-0 gap-3">
+      <dl className="m-0 grid min-w-0 divide-y divide-dashboard-border-subtle">
         {fields.map(([key, entry]) => {
           const nested = typeof entry === "object" && entry !== null;
           return (
@@ -265,15 +237,21 @@ function DetailValue({ value }: { value: unknown }) {
               key={key}
               className={
                 nested
-                  ? "grid min-w-0 gap-2"
-                  : "grid min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,1fr)] gap-3"
+                  ? "grid min-w-0 gap-2 py-2"
+                  : "grid min-w-0 grid-cols-[minmax(0,7rem)_minmax(0,1fr)] items-baseline gap-x-4 py-2 @min-[30rem]:grid-cols-[minmax(0,10rem)_minmax(0,1fr)]"
               }
             >
-              <dt className="break-words text-sm text-dashboard-text-muted">
+              <dt className="break-words text-xs leading-relaxed text-dashboard-text-muted">
                 {fieldLabel(key)}
               </dt>
               <dd className="m-0 min-w-0">
-                <DetailValue value={entry} />
+                {nested ? (
+                  <div className="border-l border-dashboard-border pl-3">
+                    <DetailValue value={entry} />
+                  </div>
+                ) : (
+                  <DetailValue value={entry} />
+                )}
               </dd>
             </div>
           );
@@ -284,7 +262,7 @@ function DetailValue({ value }: { value: unknown }) {
     );
   }
   return (
-    <span className="block whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
+    <span className="block whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
       {value === null ? "null" : value === "" ? "Empty text" : String(value)}
     </span>
   );
