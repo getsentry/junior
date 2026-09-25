@@ -270,7 +270,7 @@ export function ConversationPage(props: {
           </section>
         }
         dock={
-          detail.data?.isParticipant ? (
+          view === "rich" && detail.data?.isParticipant ? (
             <ConversationReplyFooter
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
