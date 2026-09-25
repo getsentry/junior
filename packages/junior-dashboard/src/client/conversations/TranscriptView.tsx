@@ -45,10 +45,7 @@ export function Transcript(props: {
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
-    version:
-      view === "raw"
-        ? `events:${props.transcript?.events.length ?? 0}:${props.transcript?.events.at(-1)?.seq ?? ""}`
-        : transcriptBottomVersion(props.transcript),
+    version: transcriptBottomVersion(props.transcript, view),
   });
 
   if (!props.transcript) {

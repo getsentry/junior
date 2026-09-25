@@ -12,6 +12,7 @@ import {
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import type { ConversationTranscript } from "../types";
+import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
@@ -89,15 +90,16 @@ export function transcriptJuniorMessageVersion(
 /** Build a compact visible-tail key so metadata-only polls do not look new. */
 export function transcriptBottomVersion(
   conversation: ConversationTranscript | undefined,
+  view: TranscriptViewMode = "rich",
 ): string {
   if (!conversation) return "empty";
 
-  // Scan only for the last event that adds or changes a rendered transcript row.
-  // This avoids rebuilding the transcript while ignoring routing metadata.
+  // Only the visible tail matters. Earlier pages must not count as new activity.
+  // The event log shows all events; the transcript omits some metadata events.
   let last: ConversationReportEvent | undefined;
   for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
     const event = conversation.events[index]!;
-    if (!changesVisibleTranscript(event)) continue;
+    if (view === "rich" && !changesVisibleTranscript(event)) continue;
     last = event;
     break;
   }
