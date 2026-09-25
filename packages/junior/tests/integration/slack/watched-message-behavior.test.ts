@@ -274,8 +274,17 @@ describe("Slack behavior: subscribed messages", () => {
     await slackRuntime.handleSubscribedMessage(thread, latest, {
       destination: createTestDestination(thread),
       messageContext: {
-        skipped: [queued],
-        totalSinceLastHandler: 2,
+        skipped: [
+          queued,
+          createTestMessage({
+            id: "m-subscribed-queued-other-stop",
+            text: "<@UOTHER> stop",
+            isMention: false,
+            threadId: thread.id,
+            author: { userId: "U0TESTER" },
+          }),
+        ],
+        totalSinceLastHandler: 3,
       },
     });
 
@@ -713,7 +722,11 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(1);
   });
 
-  it("stays silent when a subscribed message is clearly directed at another bot", async () => {
+  it.each([
+    "@Cursor can you help address issue 87?",
+    "@Cursor stop",
+    "@Cursor !stop",
+  ])("stays silent for another bot's message: %s", async (text) => {
     let classifierCalled = false;
 
     const { slackRuntime } = createRuntime({
@@ -735,7 +748,7 @@ describe("Slack behavior: subscribed messages", () => {
     });
     const message = createTestMessage({
       id: "m-subscribed-other-bot",
-      text: "@Cursor can you help address issue 87?",
+      text,
       isMention: false,
       threadId: thread.id,
       author: { userId: "U0TESTER" },
@@ -758,7 +771,7 @@ describe("Slack behavior: subscribed messages", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "m-subscribed-other-bot",
-          text: "@Cursor can you help address issue 87?",
+          text,
           meta: expect.objectContaining({
             replied: false,
             skippedReason: "directed_to_other_party:named_mention:Cursor",

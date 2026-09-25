@@ -27,6 +27,7 @@ import {
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
@@ -406,8 +407,10 @@ async function routeParsedMessage(args: {
   }
 
   const stopDecision = getThreadStopDecision({
+    botUserName: botConfig.userName,
     rawText: args.event.text ?? "",
     text: args.event.text ?? "",
+    isExplicitMention: isMention,
   });
   if (stopDecision) {
     await handleSlackThreadStop({

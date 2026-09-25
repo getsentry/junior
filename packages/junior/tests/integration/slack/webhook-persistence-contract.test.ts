@@ -196,9 +196,8 @@ describe("Slack webhook persistence contract", () => {
 
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
-      const history = await getConversationEventStore().loadMessageHistory(
-        threadId,
-      );
+      const history =
+        await getConversationEventStore().loadMessageHistory(threadId);
       expect(history.events).toEqual([
         expect.objectContaining({
           data: expect.objectContaining({
@@ -301,13 +300,38 @@ describe("Slack webhook persistence contract", () => {
       const canonicalThreadId = `slack:C123:${threadTs}`;
       await state.subscribe(canonicalThreadId);
 
+      for (const [index, text] of [
+        "<@UOTHER> stop",
+        "@otheruser stop",
+        "<@UOTHER> !stop",
+      ].entries()) {
+        const response = await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              eventType: "message",
+              text,
+              threadTs,
+              ts: `1712345.00081${index + 1}`,
+            }),
+          ),
+          services: {
+            getSlackAdapter: () => slackAdapter,
+            queue,
+            runtime: createNoopSlackWebhookRuntime(),
+            state,
+          },
+        });
+        expect(response.status).toBe(200);
+        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
+      }
+
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           slackEnvelope({
             eventType: "message",
-            text: "!stop",
+            text: `<@${SLACK_BOT_USER_ID}> stop`,
             threadTs,
-            ts: "1712345.000811",
+            ts: "1712345.000814",
           }),
         ),
         services: {
