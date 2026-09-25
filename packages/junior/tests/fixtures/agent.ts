@@ -1,4 +1,5 @@
 import type { Context, Message } from "@earendil-works/pi-ai";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { vi } from "vitest";
 import type { BotConfig } from "@/chat/config";
 import { botConfig } from "@/chat/config";
@@ -27,6 +28,7 @@ type AgentFixtureOptions = {
   botConfig?: Partial<BotConfig>;
   previousTurns?: PreviousTurn[];
   responses?: string[];
+  modelStream?: StreamFn;
 };
 
 /**
@@ -45,12 +47,10 @@ export async function createAgent(
     ...(options.responses ?? ["First response.", "Second response."]),
   ];
   const model = vi.fn(
-    createModelStream(
-      responses.map((text) => ({
-        type: "text" as const,
-        text,
-      })),
-    ),
+    options.modelStream ??
+      createModelStream(
+        responses.map((text) => ({ type: "text" as const, text })),
+      ),
   );
   const conversation = await createConversationWebHarness(model);
   let conversationId: string | undefined;

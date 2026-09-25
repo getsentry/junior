@@ -1,5 +1,8 @@
+import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -89,6 +92,8 @@ const createPullRequestStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createPullRequestInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -111,6 +116,8 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
+  facts?: ObjectAnnotation["facts"];
+  sourceUpdatedAt?: string;
   number: number;
   url: string;
 }
@@ -321,6 +328,7 @@ async function createGitHubPullRequest(
     );
   }
   return {
+    ...githubObjectFacts("code_change", parsed),
     number: pullRequest.number,
     url: pullRequest.html_url,
   };
@@ -340,7 +348,11 @@ function gitHubPullRequestToolResult(
         ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
       })
     : undefined;
-  return { ...result, ...(subscribable ? { subscribable } : undefined) };
+  return {
+    number: result.number,
+    url: result.url,
+    ...(subscribable ? { subscribable } : undefined),
+  };
 }
 
 async function gitHubPullRequestStructuredResult(
@@ -358,6 +370,8 @@ async function gitHubPullRequestStructuredResult(
   );
   const objectAnnotations = [
     githubObjectAnnotation({
+      facts: result.facts,
+      sourceUpdatedAt: result.sourceUpdatedAt,
       repo: input.repo,
       number: result.number,
       title: input.title,
@@ -441,6 +455,11 @@ export function createGitHubPullRequestTool(
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
               number: state.number,
               url: state.url,
             };

@@ -61,6 +61,11 @@ describe("Linear MCP create annotations", () => {
               identifier: "ENG-123",
               title: input.title ?? "Linear MCP create issue",
               status: input.state ?? "Todo",
+              assignee: "Sam",
+              priority: "High",
+              project: "Quality",
+              labels: input.id ? ["Bug", { name: "Backend" }] : null,
+              updatedAt: input.id ? "2026-09-25T14:00:00Z" : null,
               url: issueUrl,
             },
           },
@@ -211,7 +216,19 @@ describe("Linear MCP create annotations", () => {
       ).resolves.toHaveLength(1);
 
       expect(updateResult.details.objectCards).toMatchObject([
-        { plugin: "linear", key: "ENG-123", status: "In Progress" },
+        {
+          plugin: "linear",
+          key: "ENG-123",
+          status: "In Progress",
+          sourceUpdatedAt: "2026-09-25T14:00:00Z",
+          facts: {
+            type: "task",
+            assignees: ["Sam"],
+            priority: "High",
+            project: "Quality",
+            labels: ["Bug", "Backend"],
+          },
+        },
       ]);
       expect(saveCalls).toEqual([
         createInput,

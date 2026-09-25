@@ -34,6 +34,8 @@ export function ConversationHeader(props: {
   conversationId: string;
   identity: ReactNode;
   linkedWork?: ReactNode;
+  lastActivityAt?: string;
+  sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
   onSearchChange(value: string): void;
@@ -233,6 +235,8 @@ export function ConversationHeader(props: {
           brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
+          lastActivityAt={props.lastActivityAt}
+          sentryConversationUrl={props.sentryConversationUrl}
           onClose={() => setDetailsOpen(false)}
           privacy={props.privacy}
           stats={props.stats}

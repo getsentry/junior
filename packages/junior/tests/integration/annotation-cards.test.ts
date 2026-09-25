@@ -29,6 +29,13 @@ const annotation: ObjectAnnotation = {
   title: "Fix the parser",
   url: "https://example.com/pull/1",
   status: "open",
+  facts: {
+    type: "code_change",
+    author: "alex",
+    sourceBranch: "feature/parser",
+    targetBranch: "main",
+    changedFiles: 2,
+  },
 };
 
 afterEach(closeConversationFixture);
@@ -127,6 +134,17 @@ it("saves plugin object results once per reply, leaves background updates silent
     for (const result of toolResults) {
       expect(result.details).not.toHaveProperty("cards");
     }
+    const selectedResults = toolResults.filter(
+      (result) =>
+        result.details &&
+        typeof result.details === "object" &&
+        "objectCards" in result.details,
+    );
+    expect(selectedResults).toHaveLength(2);
+    for (const result of selectedResults) {
+      expect(result.details).not.toHaveProperty("objectAnnotations");
+    }
+
     await expect(
       listConversationAnnotations(getDb(), conversationId),
     ).resolves.toMatchObject(cards);
@@ -157,12 +175,38 @@ it("saves plugin object results once per reply, leaves background updates silent
               display_type: "Pull request",
               product_name: "objects",
             },
+            display_order: [
+              "status",
+              "author",
+              "sourceBranch",
+              "targetBranch",
+              "changedFiles",
+            ],
             custom_fields: [
               {
                 key: "status",
                 label: "Status",
                 type: "string",
                 value: "draft",
+              },
+              { key: "author", label: "Author", type: "string", value: "alex" },
+              {
+                key: "sourceBranch",
+                label: "From",
+                type: "string",
+                value: "feature/parser",
+              },
+              {
+                key: "targetBranch",
+                label: "Into",
+                type: "string",
+                value: "main",
+              },
+              {
+                key: "changedFiles",
+                label: "Files changed",
+                type: "string",
+                value: "2",
               },
             ],
           },

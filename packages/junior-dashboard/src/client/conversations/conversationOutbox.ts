@@ -1,14 +1,14 @@
 import type { InputImage } from "@sentry/junior/api/schema";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
-/** Client-owned mailbox row waiting on accept or retry. */
+/** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
   createdAt: string;
   idempotencyKey: string;
   message: string;
   images?: InputImage[];
   messageId: string;
-  status: "failed" | "sending";
+  status: "accepted" | "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
@@ -28,6 +28,7 @@ export function conversationOutboxMessageForSubmit(input: {
   idempotencyKey: string;
   message: string;
   images?: InputImage[];
+  messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
   const createdAt = input.now ?? new Date().toISOString();
@@ -36,7 +37,7 @@ export function conversationOutboxMessageForSubmit(input: {
     idempotencyKey: input.idempotencyKey,
     message: input.message,
     ...(input.images?.length ? { images: input.images } : undefined),
-    messageId: `client:${input.idempotencyKey}`,
+    messageId: input.messageId,
     status: "sending",
   };
 }
@@ -63,7 +64,7 @@ export function mailboxMessageFromOutbox(
 /**
  * Merge accepted mailbox rows with local outbox rows.
  *
- * Server rows win once present. Outbox rows stay visible while sending or failed
+ * Server rows win once present. Local rows stay visible until the server sees them
  * so a submit never depends on restoring text into the composer.
  *
  * Preserve list identity when the visible rows did not change so live polls do
@@ -160,13 +161,16 @@ export function upsertConversationOutboxMessage(
   return next;
 }
 
-/** Drop one outbox row after the server accepts it. */
-export function removeConversationOutboxMessage(
+/** Keep the local row until a server snapshot contains the accepted Message. */
+export function acceptConversationOutboxMessage(
   current: readonly ConversationOutboxMessage[] | undefined,
   idempotencyKey: string,
+  messageId: string,
 ): ConversationOutboxMessage[] {
-  return (current ?? []).filter(
-    (message) => message.idempotencyKey !== idempotencyKey,
+  return (current ?? []).map((message) =>
+    message.idempotencyKey === idempotencyKey
+      ? { ...message, messageId, status: "accepted" }
+      : message,
   );
 }
 

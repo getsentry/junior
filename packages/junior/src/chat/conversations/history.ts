@@ -12,6 +12,7 @@ import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { conversationMessageProvenanceSchema } from "./provenance";
+import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
 const userMessageEventDataSchema = z
   .object({
@@ -492,10 +493,15 @@ const conversationEventEnvelopeSchema = z
  * `schemaVersion` is persisted with every physical event row.
  */
 export const conversationEventSchema = z.union([
-  conversationEventEnvelopeSchema.extend({
-    schemaVersion: z.literal(1),
-    data: conversationEventDataSchema,
-  }),
+  conversationEventEnvelopeSchema
+    .extend({
+      schemaVersion: z.union([z.literal(1), z.literal(2)]),
+      data: conversationEventDataSchema,
+    })
+    .refine(
+      (event) =>
+        event.schemaVersion === 1 || isEncodedHistoryType(event.data.type),
+    ),
   conversationEventEnvelopeSchema.extend({
     data: unknownConversationEventDataSchema,
   }),
@@ -506,7 +512,7 @@ export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
 /** A decoded message-summary event and its readable history boundary. */
 export type MessagesSummarizedEvent = Omit<
-  Extract<ConversationEvent, { schemaVersion: 1 }>,
+  Extract<ConversationEvent, { schemaVersion: 1 | 2 }>,
   "data"
 > & {
   data: Extract<ConversationEventData, { type: "messages_summarized" }>;
@@ -527,7 +533,7 @@ const storedConversationEventSchema = conversationEventEnvelopeSchema.extend({
 /**
  * Decode a physical event row without making old or future event types
  * unreadable. Unsupported rows stay opaque until an upgrade migration defines
- * their semantics; known version-one events remain strict so corrupt canonical
+ * their semantics; supported events remain strict so corrupt canonical
  * data cannot be mistaken for compatibility data.
  */
 export function decodeStoredConversationEvent(
@@ -536,6 +542,12 @@ export function decodeStoredConversationEvent(
   const stored = storedConversationEventSchema.parse(value);
   const { type, payload, ...envelope } = stored;
   const knownType = knownConversationEventTypeSchema.safeParse(type).success;
+  if (stored.schemaVersion === 2 && isEncodedHistoryType(type)) {
+    return conversationEventSchema.parse({
+      ...envelope,
+      data: { ...decodeHistoryPayload(type, payload), type },
+    });
+  }
   if (stored.schemaVersion === 1 && knownType) {
     const data =
       typeof payload === "object" && payload !== null && !Array.isArray(payload)

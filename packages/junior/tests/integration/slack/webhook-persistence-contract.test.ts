@@ -17,6 +17,7 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
+  createConversationWorkSlackHarness,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
@@ -24,6 +25,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
@@ -83,6 +85,26 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("accepts a mention even when its receipt reaction is rate limited", async () => {
+    const harness = await createConversationWorkSlackHarness();
+    queueSlackApiError("reactions.add", {
+      error: "ratelimited",
+      status: 429,
+      headers: { "retry-after": "60" },
+    });
+    const response = await harness.send({
+      text: "<@U0BOT> deploy status",
+    });
+    expect(response.status).toBe(200);
+    expect(harness.wakes.queuedMessages()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
+      channel: "C123",
+      name: "eyes",
+      timestamp: "1712345.0001",
+    });
+  });
 
   it("returns retryable response when a routing-state read fails before persistence", async () => {
     const queue = createConversationWorkQueueTestAdapter();

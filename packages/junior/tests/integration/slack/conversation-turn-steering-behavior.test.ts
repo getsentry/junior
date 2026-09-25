@@ -4,13 +4,17 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
+  createConversationWorkSlackHarness,
   deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import {
+  resetSlackApiMockState,
+  queueSlackApiError,
+} from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -30,10 +34,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import { isUserActor } from "@/chat/actor";
 import type { CrossActorMidRunMode } from "@/chat/config";
 import { createWatch, listWatches } from "@/chat/events/store";
-import {
-  createModelAgentRunnerForRun,
-  neverRunAgentRunner,
-} from "../../fixtures/agent-runner";
+import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 
 const CHANNEL_ID = "CSTEER";
@@ -72,9 +73,17 @@ function reactionTargets(
 }
 
 function reactionTargetsByName(name: string) {
-  return reactionTargets(
-    slackApiOutbox.reactionAdds().filter((call) => call.params.name === name),
-  );
+  // Slack reactions are sets. Ingress and the worker can both add the same
+  // processing emoji; the second call is an idempotent already_reacted.
+  return [
+    ...new Map(
+      reactionTargets(
+        slackApiOutbox
+          .reactionAdds()
+          .filter((call) => call.params.name === name),
+      ).map((target) => [JSON.stringify(target), target]),
+    ).values(),
+  ];
 }
 
 type CompleteObjectOverride = NonNullable<
@@ -182,53 +191,33 @@ describe("Slack behavior: durable turn steering", () => {
     await disconnectStateAdapter();
   });
 
-  it("does not enqueue duplicate Slack event retries for a persisted message", async () => {
-    const state = getStateAdapter();
-    const { conversationId, queue, services } = createTurnHarness({
-      agentRunner: neverRunAgentRunner(),
-      state,
-    });
-    const event = makeMessageEvent({
-      eventType: "app_mention",
-      text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
-      ts: THREAD_TS,
-    });
+  it("does not replay receipts or work for duplicate Slack deliveries", async () => {
+    const harness = await createConversationWorkSlackHarness();
+    const releaseSend = deferred();
+    const sendEntered = harness.wakes.holdNextSendUntil(releaseSend.promise);
+    const first = harness.send();
+    await sendEntered;
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    const duplicate = harness.send();
+    releaseSend.resolve();
+    for (const response of await Promise.all([first, duplicate])) {
+      expect(response.status).toBe(200);
+    }
+    expect(harness.wakes.queuedMessages()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
 
-    await expect(
-      handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(event),
-        services,
-      }),
-    ).resolves.toMatchObject({ status: 200 });
-    await expect(
-      handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(event),
-        services,
-      }),
-    ).resolves.toMatchObject({ status: 200 });
-
-    const inboundMessageId = `slack:T123:${conversationId}:${THREAD_TS}`;
-    expect(queue.sendAttempts()).toEqual([
-      {
-        conversationId,
-        idempotencyKey: inboundMessageId,
-      },
-    ]);
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId,
-        idempotencyKey: inboundMessageId,
-      },
-    ]);
-
-    const work = await getConversationWorkState({
-      conversationId,
-      state,
-    });
-    expect(work?.messages.map((message) => message.inboundMessageId)).toEqual([
-      inboundMessageId,
-    ]);
-    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
+    // The worker takes over a receipt already present in Slack.
+    queueSlackApiError("reactions.add", { error: "already_reacted" });
+    await harness.drain();
+    expect(harness.replies()).toHaveLength(1);
+    expect(slackApiOutbox.reactionRemovals()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds().at(-1)?.params.name).toBe(
+      "white_check_mark",
+    );
+    const calls = slackApiOutbox.calls();
+    await harness.send();
+    await harness.drain();
+    expect(slackApiOutbox.calls()).toEqual(calls);
   });
 
   it("steers same-actor explicit mentions and then processes follow-up messages", async () => {
@@ -318,7 +307,16 @@ describe("Slack behavior: durable turn steering", () => {
       expect(response.status).toBe(200);
     }
 
-    releaseAgent.resolve();
+    try {
+      // Receipt must be visible before the active model call can finish.
+      expect(reactionTargetsByName("eyes")).toEqual([
+        { channel: CHANNEL_ID, name: "eyes", timestamp: THREAD_TS },
+        { channel: CHANNEL_ID, name: "eyes", timestamp: "1712345.000300" },
+      ]);
+    } finally {
+      releaseAgent.resolve();
+      await activeTurn;
+    }
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
@@ -708,6 +706,22 @@ describe("Slack behavior: durable turn steering", () => {
     const activeTurn = runNextQueuedWork();
     await agentEntered.promise;
 
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        makeMessageEvent({
+          eventType: "app_mention",
+          text: `<@${SLACK_BOT_USER_ID}> queued before stop`,
+          ts: "1712345.000300",
+        }),
+      ),
+      services,
+    });
+    expect(reactionTargetsByName("eyes")).toContainEqual({
+      channel: CHANNEL_ID,
+      name: "eyes",
+      timestamp: "1712345.000300",
+    });
+
     await expect(
       handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
@@ -745,13 +759,15 @@ describe("Slack behavior: durable turn steering", () => {
     await expect(listWatches({ conversationId, state })).resolves.toEqual([]);
     expect(agentRuns).toHaveLength(1);
 
-    expect(reactionTargetsByName("eyes")).toEqual([
-      {
-        channel: CHANNEL_ID,
-        name: "eyes",
-        timestamp: THREAD_TS,
-      },
-    ]);
+    const expectedStopped = [THREAD_TS, "1712345.000300"].map((timestamp) => ({
+      channel: CHANNEL_ID,
+      name: "eyes",
+      timestamp,
+    }));
+    expect(reactionTargetsByName("eyes")).toEqual(expectedStopped);
+    expect(reactionTargets(slackApiOutbox.reactionRemovals())).toEqual(
+      expectedStopped,
+    );
     expect(reactionTargetsByName("white_check_mark")).toEqual([]);
     const persistedState = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persistedState);

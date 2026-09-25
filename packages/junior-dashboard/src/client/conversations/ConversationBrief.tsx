@@ -20,9 +20,29 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
     partial: "warning",
   };
 
-/** Render a Conversation's durable Brief content. */
-export function ConversationBrief(props: { brief: ConversationBriefReport }) {
+/** Show a summary in details, or the durable Brief when a transcript expires. */
+export function ConversationBrief(props: {
+  brief: ConversationBriefReport;
+  variant?: "summary" | "full";
+}) {
   const { content } = props.brief;
+  if (props.variant === "summary") {
+    return (
+      <div className="grid min-w-0 gap-4">
+        <p className="m-0 text-sm leading-relaxed text-dashboard-text">
+          {content.summary}
+        </p>
+        {content.openDecisions.length > 0 ? (
+          <div className="grid gap-2">
+            <h4 className="m-0 text-sm font-medium text-dashboard-text">
+              Open decisions
+            </h4>
+            <BriefOpenDecisions decisions={content.openDecisions} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -56,18 +76,7 @@ export function ConversationBrief(props: { brief: ConversationBriefReport }) {
             ) : null}
             {content.openDecisions.length ? (
               <Detail label="Open decisions">
-                <ul className="m-0 grid list-none gap-2 p-0">
-                  {content.openDecisions.map((decision, index) => (
-                    <li key={`${decision.text}:${index}`}>
-                      <div>{decision.text}</div>
-                      {decision.owner ? (
-                        <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
-                          owner · {decision.owner}
-                        </div>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                <BriefOpenDecisions decisions={content.openDecisions} />
               </Detail>
             ) : null}
           </DetailList>
@@ -165,6 +174,25 @@ function BriefDecisions(props: { decisions: BriefContent["decisions"] }) {
           {decision.by ? (
             <div className="mt-0.5 font-mono text-xs text-dashboard-text-muted">
               by · {decision.by}
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BriefOpenDecisions(props: {
+  decisions: BriefContent["openDecisions"];
+}) {
+  return (
+    <ul className="m-0 grid list-none gap-2 p-0">
+      {props.decisions.map((decision, index) => (
+        <li key={`${decision.text}:${index}`}>
+          <div>{decision.text}</div>
+          {decision.owner ? (
+            <div className="mt-1 text-xs text-dashboard-text-muted">
+              Owner: {decision.owner}
             </div>
           ) : null}
         </li>

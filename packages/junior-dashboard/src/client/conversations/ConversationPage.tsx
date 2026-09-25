@@ -1,13 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import {
-  memo,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -21,6 +13,7 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
@@ -30,11 +23,9 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
-  ConversationIdentity,
   ConversationPrivacyChip,
   ConversationStats,
   hasConversationAnnotations,
-  hasConversationIdentity,
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
@@ -46,6 +37,10 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Card } from "../components/layout/Card";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { Transcript } from "./TranscriptView";
@@ -88,21 +83,21 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const participants = conversationParticipants(conversation);
+  const identity =
+    participants.length > 0 ? (
+      <ParticipantAvatarStack participants={participants} size="detail" />
+    ) : null;
   const conversationDetail = detail.data;
   useEffect(() => {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
-  // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
-  // composer keystrokes stay urgent without changing visible transcript content.
-  // Fall back to the latest detail on first load so the body is never blank while
-  // the deferred value catches up from undefined.
-  const deferredTranscript = useDeferredValue(detail.data);
-  const transcript = deferredTranscript ?? detail.data;
+  const transcript = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
-  // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
+  // History and mailbox use the same deferred server snapshot.
   const live = conversationIsLive(visualStatus, detail.data);
   // Key on the event array, not the whole detail object. Metadata-only polls
   // reuse events via structural sharing, so the footer keeps a stable id list.
@@ -142,6 +137,8 @@ export function ConversationPage(props: {
           <section className="min-w-0">
             <ConversationHeader
               conversationId={conversationId}
+              lastActivityAt={conversation?.lastSeenAt}
+              sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={
                 <CopyMarkdownButton
                   key={conversationDetail?.conversationId ?? "loading"}
@@ -182,40 +179,17 @@ export function ConversationPage(props: {
               }}
               brief={
                 detail.data?.brief ? (
-                  <ConversationBrief brief={detail.data.brief} />
-                ) : null
-              }
-              identity={
-                hasConversationIdentity({
-                  conversation,
-                  conversationId,
-                  detail: detail.data,
-                }) ? (
-                  <ConversationIdentity
-                    conversation={conversation}
-                    conversationId={conversationId}
-                    detail={detail.data}
+                  <ConversationBrief
+                    brief={detail.data.brief}
+                    variant="summary"
                   />
                 ) : null
               }
+              identity={identity}
               live={live}
               meta={
                 <ConversationHeaderMeta
-                  identity={
-                    hasConversationIdentity({
-                      conversation,
-                      conversationId,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationIdentity
-                        conversation={conversation}
-                        conversationId={conversationId}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
+                  identity={identity}
                   stats={
                     hasConversationStats({
                       conversation,
@@ -277,7 +251,9 @@ export function ConversationPage(props: {
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
                     pinRequestVersion={pinRequestVersion}
-                    responding={!detail.error && live}
+                    responding={
+                      !detail.error && conversationIsResponding(transcript)
+                    }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
                     transcript={transcript}
