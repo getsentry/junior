@@ -113,3 +113,58 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toContainText("bash · completed");
   await expect(log.getByText(/Released the package/)).toBeVisible();
 });
+
+for (const width of [1440, 390]) {
+  test(`switching views does not announce new activity (${width}px)`, async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const conversationId = "slack:CQA123:1770003600.000200";
+    const api = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const response = await page.request.get(`${dashboard.baseURL}${api}`);
+    const report = await response.json();
+    report.events = Array.from({ length: 40 }, (_, seq) => ({
+      seq,
+      createdAt: report.startedAt,
+      data: {
+        type: "message",
+        messageId: `message-${seq}`,
+        role: "user",
+        text: `Message ${seq}`,
+      },
+    }));
+    report.events.push({
+      seq: 40,
+      createdAt: report.lastSeenAt,
+      data: { type: "message_handled", messageId: "message-39" },
+    });
+    await page.route(`**${api}`, (route) => route.fulfill({ json: report }));
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    await expect(page.getByText("Message 39", { exact: true })).toBeVisible();
+    const scroll = page.locator("[data-chat-scroll]");
+    await scroll.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
+
+    for (const view of ["Event log", "Conversation"]) {
+      if (width < 768)
+        await page.getByRole("button", { name: "Conversation menu" }).click();
+      await page.getByRole("button", { name: view, exact: true }).click();
+      const first =
+        view === "Event log"
+          ? page.getByRole("button", { name: "Event 0: message", exact: true })
+          : page.getByText("Message 0", { exact: true });
+      await expect(first).toBeInViewport();
+      await expect(
+        page.getByRole("button", {
+          name: "Jump to latest update",
+          exact: true,
+        }),
+      ).toBeHidden();
+    }
+  });
+}
