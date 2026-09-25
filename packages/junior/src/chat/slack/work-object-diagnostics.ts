@@ -1,5 +1,4 @@
 import { isRecord } from "@/chat/coerce";
-import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import { getLogContextAttributes } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 
@@ -42,7 +41,62 @@ const pathFields = new Set([
   "format",
   "link",
   "display_order",
+  "app_unfurl_url",
+  "app_id",
+  "created_by",
+  "created_at",
+  "updated_by",
+  "updated_at",
+  "full_size_preview",
+  "preview_url",
+  "mime_type",
 ]);
+
+// Keep validation language, not arbitrary provider prose. Slack nests error
+// sentences inside quoted arrays, so removing every quoted string loses the cause.
+const diagnosticWords = new Set(
+  `WARN ERROR Message message metadata was incorrectly formatted The the will be
+  ignored as a result For for event entity refer to following errors error
+  missing required field fields property properties additional unexpected unknown
+  unsupported invalid expected received actual type types must should match matches
+  matching does not is are has have of at in on and or an only allowed allow
+  value values string number integer boolean object array null minimum maximum
+  length min max items item empty nonempty too long short large small size limit
+  exceeded exceeds less greater than equal valid format schema validation failed
+  failure cannot contain contains found one any all none enum pattern definition
+  defined constraint constraints satisfy satisfies with without provided specified
+  unrecognized unrecognised recognized recognised extraneous disallowed duplicate
+  unique malformed nested root exactly needs need requires requirement supported
+  json-pointer input different schema_uri schema_id schemas additionalProperties
+  minLength maxLength minItems maxItems anyOf oneOf allOf`.split(/\s+/),
+);
+
+function summarizeDiagnostic(value: string): string {
+  return value
+    .slice(0, 2000)
+    .replace(/\b(?:https?:\/\/|www\.)[^\s"'`<>]+/gi, "[value]")
+    .replace(
+      /\/[^\s"'`[\],;()]*|[\p{L}\p{N}\p{M}_]+(?:[-./:@=+%~][\p{L}\p{N}\p{M}_]+)*|[^\s\w[\]{}():,;."'`/*=<>!?+-]/gu,
+      (token) => {
+        if (token.startsWith("/")) {
+          return token
+            .split("/")
+            .slice(0, 17)
+            .map((part, index) =>
+              index === 0 ? "" : pathFields.has(part) ? part : "*",
+            )
+            .join("/");
+        }
+        return codes.has(token) ||
+          pathFields.has(token) ||
+          diagnosticWords.has(token)
+          ? token
+          : "[value]";
+      },
+    )
+    .replace(/\s+/g, " ")
+    .slice(0, 2000);
+}
 
 /** Capture accepted Slack response warnings without turning them into retries. */
 export function captureSlackPostWarning(
@@ -60,36 +114,15 @@ export function captureSlackPostWarning(
     isRecord(response) && isRecord(response.response_metadata)
       ? response.response_metadata
       : {};
-  const publicText = getCurrentConversationPrivacy() === "public";
   const summaries: Record<string, string[]> = {};
-  if (publicText) {
-    // Only these diagnostic fields may contain public excerpts, never the response body.
-    for (const key of ["warnings", "messages"] as const) {
-      const values = metadata[key];
-      if (!Array.isArray(values)) continue;
-      summaries[key] = values
-        .slice(0, 20)
-        .filter((value): value is string => typeof value === "string")
-        .map((value) =>
-          value
-            .slice(0, 2000)
-            .replace(
-              /(["'`])([^\n]*?)\1/g,
-              (_match, quote: string, text: string) =>
-                pathFields.has(text) ? `${quote}${text}${quote}` : "[value]",
-            )
-            .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "[url]")
-            .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
-            .replace(/\b(?:xox[baprs]-|sk-)[A-Za-z0-9_-]+/g, "[token]")
-            .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
-            .replace(
-              /\b(?:[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY)|authorization|cookie)\s*[=:]\s*\S+/gi,
-              "[credential]",
-            )
-            .replace(/\s+/g, " ")
-            .slice(0, 2000),
-        );
-    }
+  // Apply the same allowlist in public, private, and unknown Conversations.
+  for (const key of ["warnings", "messages"] as const) {
+    const values = metadata[key];
+    if (!Array.isArray(values)) continue;
+    summaries[key] = values
+      .slice(0, 20)
+      .filter((value): value is string => typeof value === "string")
+      .map(summarizeDiagnostic);
   }
   const knownCodes = diagnostics["app.slack.diagnostic_codes"];
   captureMessage("Slack chat.postMessage returned warnings", {
@@ -103,10 +136,7 @@ export function captureSlackPostWarning(
       ...getLogContextAttributes(),
       ...attributes,
       ...diagnostics,
-      "app.slack.diagnostic_text_omitted": !publicText,
-      ...(publicText
-        ? { "app.slack.response_diagnostics": summaries }
-        : undefined),
+      "app.slack.response_diagnostics": summaries,
     },
   });
 }

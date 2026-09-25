@@ -111,7 +111,8 @@ describe("Slack contract: outbound normalization", () => {
           response_metadata: {
             warnings: ["invalid_metadata_format"],
             messages: [
-              '[WARN] missing "event_type" for "private-title" at https://private.example/pull/1 user@example.com xoxb-private-token Bearer private-bearer API_KEY=private-key',
+              '[WARN] Message metadata was incorrectly formatted. The message metadata will be ignored as a result. For event metadata, refer to the following errors: ["missing required field: event_type","missing required field: event_payload"]. For entity metadata, refer to the following errors: ["expected object at /entities/0/entity_payload, received string: private-title"].',
+              '"private-title" https://private.example/pull/1 user@example.com xoxb-private-token Bearer private-bearer API_KEY=private-key 秘密 /entities/private-reference/title',
             ],
             unrelated: "private-response-data",
           },
@@ -145,19 +146,16 @@ describe("Slack contract: outbound normalization", () => {
         extra: {
           "messaging.message.id": "1700000000.000200",
           "app.slack.warning_count": 1,
-          "app.slack.diagnostic_text_omitted": privacy !== "public",
         },
       });
-      expect(events[0]?.extra?.["app.slack.response_diagnostics"]).toEqual(
-        privacy === "public"
-          ? {
-              warnings: ["invalid_metadata_format"],
-              messages: [
-                '[WARN] missing "event_type" for [value] at [url] [email] [token] Bearer [redacted] [credential]',
-              ],
-            }
-          : undefined,
-      );
+      expect(events[0]?.extra?.["app.slack.response_diagnostics"]).toEqual({
+        warnings: ["invalid_metadata_format"],
+        messages: [
+          '[WARN] Message metadata was incorrectly formatted. The message metadata will be ignored as a result. For event metadata, refer to the following errors: ["missing required field: event_type","missing required field: event_payload"]. For entity metadata, refer to the following errors: ["expected object at /entities/*/entity_payload, received string: [value]"].',
+          '"[value]" [value] [value] [value] [value] [value] [value] [value] /entities/*/title',
+        ],
+      });
+      expect(JSON.stringify(events)).not.toContain("秘密");
       expect(JSON.stringify(events)).not.toContain("private-");
       expect(JSON.stringify(events)).not.toContain("private.example");
       expect(spans).toHaveLength(1);
