@@ -37,28 +37,6 @@ use the query recipes below to find the failing turn and next query.
 | `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
 | `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
 
-## Slack post warnings
-
-Query spans with `app.slack.method:chat.postMessage`, then filter by channel,
-thread, or Conversation ID. Each attempt records the Work Object count. Returned
-responses add the message ID, warning and diagnostic message counts, and known
-warning codes. API failures retain their error code and span status.
-
-`post-warning.ts` captures one warning-level Sentry issue named
-`Slack chat.postMessage returned warnings` when a response contains warnings or
-diagnostic messages. It keeps the active trace, request context, and message ID.
-Issues group by sorted known warning codes, with one fallback for unknown codes.
-Warnings do not fail or retry an accepted post.
-
-The issue keeps bounded summaries of `response_metadata.warnings` and `.messages`:
-20 entries each, 2000 characters per entry. All Conversation visibility levels use
-the same allowlist of codes, schema keys, and validation words. Other values are
-redacted. This preserves validation sentences inside quoted arrays without
-recording request payloads or the full response. Unknown validation terms can
-still be redacted. Diagnostic text stays off spans.
-
-API acceptance and a positive entity count do not prove that Slack rendered a card.
-
 ## Query Recipes
 
 Conversation timeline from a Slack thread, footer link, or conversation ID.

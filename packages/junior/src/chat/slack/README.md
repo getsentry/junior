@@ -89,7 +89,6 @@ Junior's conservative `[A-Za-z0-9_-]+` subset. Items cannot contain Task fields;
 custom fields require values of the matching type. Unknown fields fail validation.
 
 `post-warning.ts` reports accepted Slack warnings without retrying the message.
-See `TELEMETRY.md` for the safe diagnostic fields and issue lookup.
 
 Before rollout, check a GitHub issue, pull request, and Linear issue in a test
 Slack Conversation with Item and Task previews enabled. Check initial rendering,
