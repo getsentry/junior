@@ -466,13 +466,13 @@ describe("context compaction projection reset", () => {
     );
     expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
     expect(textOf(handoffMessages[1]!)).toContain(
-      "<current-instruction>\nAnother language model started to solve this problem",
+      "Another language model started to solve this problem",
     );
     expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the multi-file implementation.",
     );
     expect(textOf(handoffMessages[1]!)).toContain(
-      "&lt;open-plan&gt;\n[{&quot;step&quot;:&quot;Edit both modules&quot;,&quot;status&quot;:&quot;in_progress&quot;},{&quot;step&quot;:&quot;Run focused tests&quot;,&quot;status&quot;:&quot;pending&quot;}]\n&lt;/open-plan&gt;",
+      '<open-plan>\n[{"step":"Edit both modules","status":"in_progress"},{"step":"Run focused tests","status":"pending"}]\n</open-plan>',
     );
     const durableHandoffMessages = handoffMessages;
     await expect(loadProjection({ conversationId })).resolves.toEqual(
@@ -496,7 +496,7 @@ describe("context compaction projection reset", () => {
         item: {
           type: "user_message",
           content: (message as { content: unknown[] }).content,
-          timestamp: 3,
+          timestamp: expect.any(Number),
           provenance: { authority: "context" },
         },
       })),
@@ -637,7 +637,7 @@ describe("context compaction projection reset", () => {
     expect(textOf(messages[0]!)).toContain("Current runtime context");
     expect(textOf(messages[0]!)).toContain("Use pnpm.");
     expect(textOf(messages[0]!)).not.toContain("Stale runtime context");
-    expect(textOf(messages[1]!)).toContain("<current-instruction>");
+    expect(textOf(messages[1]!)).not.toContain("<current-instruction>");
 
     const agentsOnlyMessages = await compactContextForHandoff(
       {
@@ -651,7 +651,9 @@ describe("context compaction projection reset", () => {
     );
     expect(agentsOnlyMessages).toHaveLength(2);
     expect(textOf(agentsOnlyMessages[0]!)).toContain("Use pnpm.");
-    expect(textOf(agentsOnlyMessages[1]!)).toContain("<current-instruction>");
+    expect(textOf(agentsOnlyMessages[1]!)).not.toContain(
+      "<current-instruction>",
+    );
 
     await expect(
       compactContextForHandoff(

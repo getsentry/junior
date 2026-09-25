@@ -27,7 +27,7 @@ import {
   maintenanceHandoffSummary,
 } from "./agent-run-model-handoff-transcript";
 
-function expectedHandoffReplacementHistory() {
+function expectedHandoffReplacementHistory(instruction: string) {
   return [
     {
       item: {
@@ -43,15 +43,24 @@ function expectedHandoffReplacementHistory() {
       },
     },
     {
+      sourceEventSeq: expect.any(Number),
+      item: {
+        type: "user_message",
+        timestamp: expect.any(Number),
+        content: [
+          { type: "text", text: renderCurrentInstruction(instruction) },
+        ],
+        provenance: { authority: "instruction" },
+      },
+    },
+    {
       item: {
         type: "user_message",
         timestamp: expect.any(Number),
         content: [
           expect.objectContaining({
             type: "text",
-            text: expect.stringContaining(
-              `<current-instruction>\n${MODEL_HANDOFF_SUMMARY_PREFIX}`,
-            ),
+            text: expect.stringContaining(MODEL_HANDOFF_SUMMARY_PREFIX),
           }),
         ],
         provenance: { authority: "context" },
@@ -121,7 +130,9 @@ describe("model handoff execution", () => {
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
         summary: "Implement the requested change and verify it.",
-        replacementHistory: expectedHandoffReplacementHistory(),
+        replacementHistory: expectedHandoffReplacementHistory(
+          "Implement the multi-file refactor.",
+        ),
       },
     ]);
     await expect(
@@ -141,9 +152,10 @@ describe("model handoff execution", () => {
     expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "user",
       "assistant",
     ]);
-    expect(observations.afterHandoffMessages).toHaveLength(2);
+    expect(observations.afterHandoffMessages).toHaveLength(3);
     expect(observations.afterHandoffMessages[0]?.role).toBe("user");
     expect(observations.afterHandoffMessages[0]?.content).toEqual([
       expect.objectContaining({
@@ -153,12 +165,16 @@ describe("model handoff execution", () => {
     ]);
     expect(observations.afterHandoffMessages[1]?.role).toBe("user");
     expect(observations.afterHandoffMessages[1]?.content).toEqual([
-      expect.objectContaining({
+      {
         type: "text",
-        text: expect.stringContaining(
-          `<current-instruction>\n${MODEL_HANDOFF_SUMMARY_PREFIX}`,
-        ),
-      }),
+        text: renderCurrentInstruction("Implement the multi-file refactor."),
+      },
+    ]);
+    expect(observations.afterHandoffMessages[2]?.content).toEqual([
+      {
+        type: "text",
+        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\nImplement the requested change and verify it.`,
+      },
     ]);
 
     const followUp = await executeAgentRun({
@@ -255,6 +271,21 @@ describe("model handoff execution", () => {
         : [],
     );
     expect(instructions).toEqual([instruction]);
+    const projection = await loadConversationProjection({ conversationId });
+    expect(projection.messages.slice(0, 3)).toEqual(
+      observations.afterHandoffMessages,
+    );
+    expect(projection.provenance.slice(0, 3)).toEqual([
+      { authority: "context" },
+      { authority: "instruction", actor },
+      { authority: "context" },
+    ]);
+    expect(observations.afterHandoffMessages[2]?.content).toEqual([
+      {
+        type: "text",
+        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${maintenanceHandoffSummary}`,
+      },
+    ]);
   });
 
   it("blocks oversized steering after a tool handoff before the next provider request", async () => {
@@ -490,7 +521,9 @@ describe("model handoff execution", () => {
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
         summary: "Implement the requested change and verify it.",
-        replacementHistory: expectedHandoffReplacementHistory(),
+        replacementHistory: expectedHandoffReplacementHistory(
+          "Implement the focused code change.",
+        ),
       },
     ]);
 
@@ -565,7 +598,9 @@ describe("model handoff execution", () => {
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
         summary: "Implement the requested change and verify it.",
-        replacementHistory: expectedHandoffReplacementHistory(),
+        replacementHistory: expectedHandoffReplacementHistory(
+          "Implement the refactor.",
+        ),
       },
     ]);
   });

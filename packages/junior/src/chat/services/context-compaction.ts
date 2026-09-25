@@ -3,17 +3,14 @@
  *
  * This module bounds visible Pi history for long conversations. It strips
  * runtime-only turn context before summarizing and opens replacement epochs in
- * the durable event store. Capacity compaction retains recent user intent;
- * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
- * may later append the current bootstrap; future replacement strips it again.
+ * the durable event store. Active compaction and handoff retain the authored
+ * instruction before the summary. Normal checkpoints may later append the
+ * current bootstrap; future replacement strips it again.
  */
 import type { Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
-import {
-  renderCurrentInstruction,
-  unwrapCurrentInstruction,
-} from "@/chat/current-instruction";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -589,19 +586,26 @@ export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
-  const contextMessage = runtimeContextMessage(args.runtimeContext);
+  const retainedInstruction = await loadLastInstruction(args.conversationId);
+  const contextMessage = runtimeContextMessage(
+    args.runtimeContext,
+    retainedInstruction?.message.timestamp,
+  );
   if (!contextMessage) {
     throw new Error("Handoff requires the current runtime turn context");
   }
   const generatedSummary = await summarizeContext(args, deps);
   const continuation = appendOpenPlan(generatedSummary, args.piMessages);
-  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}`;
-  const instructionMessage = {
-    role: "user",
-    content: [{ type: "text", text: renderCurrentInstruction(summary) }],
-    timestamp: (contextMessage as { timestamp?: number }).timestamp,
-  } as PiMessage;
-  const messages = [contextMessage, instructionMessage];
+  // The summary supplies context. It must not become the authored instruction.
+  const replacement = [
+    { message: contextMessage, provenance: contextProvenance },
+    ...(retainedInstruction ? [retainedInstruction] : []),
+    {
+      message: userMessage(`${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}`),
+      provenance: contextProvenance,
+    },
+  ];
+  const messages = replacement.map((entry) => entry.message);
   args.signal?.throwIfAborted();
   await getConversationEventStore().replaceHistory(args.conversationId, {
     createdAtMs: Date.now(),
@@ -616,8 +620,11 @@ export async function compactContextForHandoff(
         ? { triggeringToolCallId: args.triggeringToolCallId }
         : undefined),
       summary: generatedSummary,
-      replacementHistory: messages.map((message) => ({
-        item: historyItemFromPiMessage(message, contextProvenance),
+      replacementHistory: replacement.map((entry) => ({
+        item: historyItemFromPiMessage(entry.message, entry.provenance),
+        ...("sourceEventSeq" in entry
+          ? { sourceEventSeq: entry.sourceEventSeq }
+          : undefined),
       })),
     },
   });

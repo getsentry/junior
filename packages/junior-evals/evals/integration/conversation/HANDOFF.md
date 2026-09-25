@@ -172,25 +172,32 @@ failure. A timeout or completed cleanup is not a reproduction. This does not
 isolate which of the corrected fixture defects matters; it tests the general
 completed-work hypothesis with consistent prior evidence.
 
-## Result and next experiment boundary
+Commit: `046f8be04`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36181388999).
+The terse request called handoff. The summary said “No known code work remains.”
+The continuation returned an old-work status reply without tools or a cleanup
+edit. It completed normally in 25.3 seconds. The explicit control handed off,
+removed the wrappers, and passed in 50.6 seconds. This reproduces task abandonment,
+not the production failure's exact silent ending.
 
-The product rule is that handoff must preserve the active authored instruction.
-A generated summary can supply context, but must not replace that instruction.
-`compactContextForHandoff` in `context-compaction.ts` currently wraps the summary
-as the new current instruction and replaces history with it plus runtime context.
-The component regression exposes this rule without another live model call.
+## Runtime fix control
 
-Do not rerun this pair just to obtain silence. A further live experiment needs
-an input that tests why the summary selects the old maintenance task rather than
-the old coding task. A candidate hypothesis is that the original task provenance
-and intervening history affect that selection. Test it with a sanitized replay
-of the production input and the production model configuration before reducing
-that input. Do not add arbitrary history to match its token count. Do not script
-the summary or continuation in that live experiment.
+Hypothesis: retaining the authored instruction outside the generated summary
+prevents a wrong summary from replacing the active task. Keep pair 6's requests,
+history, memory, source file, model configuration, and assertions unchanged.
+Change only the runtime's retention rule. Handoff must keep the latest committed
+instruction and its provenance, then append the summary as context. It must not
+wrap the summary as a new current instruction.
 
-No runtime fix is part of these experiments. The production failure remains
-established by its trace; through pair 5, the reduced live reproduction remains
-incomplete.
+The component regression fails before this fix and passes with it. It supplies
+the known wrong summary to test instruction retention. The live pair still uses
+real routing, recall, handoff, summarization, and continuation. A successful live
+control must perform the cleanup after handoff; a skipped handoff or timeout does
+not verify the fix.
+
+Local live setup is blocked: `pnpm dev:env` exits 1 because the checkout is not
+linked to a Vercel project. Use the existing PR CI to run the unchanged pair once.
+Review that result before any further live run. Do not rerun just to obtain a pass.
 
 ## Limits
 
