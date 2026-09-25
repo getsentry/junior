@@ -1,0 +1,49 @@
+# Handoff experiment
+
+## Hypothesis
+
+The handoff summary can select old maintenance instructions over a terse new
+cleanup request. The summary input appends historical thread context after the
+current request. That context contains a rule to stay silent. Handoff then
+replaces the authored request with the generated summary.
+
+Runtime context is stripped from history before summarization. This may remove
+useful memory, but we have not proved that it removed the definition in the
+production failure. Memory in the continuation does not establish what the
+summarizer saw. This experiment tests task selection, not that narrower claim.
+
+`handoff.eval.ts` compares `Deslop` with an explicit cleanup request. Both use
+the same history, memory, source file, and configured model defaults. The
+meaning of `Deslop` is seeded through the real memory store. It is not explained
+in prior messages. Recall, routing, handoff, summary, and continuation are live.
+
+The fixture source has a class and factory that only wrap stable ID generation.
+The request must remove those wrappers through a successful source edit after
+handoff. A promise or a reply without an edit does not pass.
+
+## Interpret the result
+
+- No handoff: inconclusive for task loss. Inspect the route before another run.
+- No memory recall: the terse request has no defined meaning in this setup.
+- Handoff followed by silence or maintenance work: candidate reproduction.
+  Inspect the saved summary before attributing the failure to summarization.
+- Terse request fails while explicit request completes: inspect both routes.
+  Different routes are not a controlled comparison of summarization. If both
+  hand off, compare summaries before claiming evidence for lost task meaning.
+- Both complete: reject this small case as a reproduction. Do not call it a fix.
+- Both fail: inspect setup and the actual summary before changing the fixture.
+
+Do not retry just to obtain a failure. A later experiment must name the new
+hypothesis and keep the other inputs fixed. A runtime fix is a separate control:
+the same failing input must complete after the fix.
+
+## Limits
+
+This is a reduced coding task, not an exact replay. Prior maintenance text uses
+bot-authored Slack history fixtures, not the original system-event provenance.
+The model defaults differ from the original production model configuration.
+The fixture has no long tool history. These differences remain possible causes
+if the small case does not fail.
+
+CI currently runs the integration suite on changes to this folder. Each push
+runs this pair once. Do not rerun the suite without reviewing the first result.

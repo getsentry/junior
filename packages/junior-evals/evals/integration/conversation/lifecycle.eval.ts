@@ -1,10 +1,8 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect, vi } from "vitest";
 import { getConversationStore } from "@/chat/db";
-import { handoffHistory } from "./handoff-history";
 import {
   conversationIds,
-  lastTurnReplies,
   mention,
   rubric,
   slackEvals,
@@ -104,33 +102,6 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       }),
     );
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
-  });
-
-  it("when handoff follows old PR events, finish the new cleanup request", async ({
-    run,
-  }) => {
-    const request = mention("Switch models, then deslop.");
-    const result = await run({
-      history: handoffHistory(request.thread),
-      initialEvents: [request],
-      requireSandboxReady: false,
-      criteria: rubric({
-        pass: [
-          "The reply supplies a rewritten PR title and description in plain language, rather than merely promising a rewrite.",
-          "The rewrite describes stable Work Object IDs across threads and delivery logs. It preserves the accepted break for old references and says live Slack rendering remains unverified.",
-        ],
-        fail: [
-          "The assistant waits for new PR events, says there is nothing to do, or asks what Deslop means.",
-          "The assistant only reports a summary, plan, or handoff instead of providing the rewritten copy.",
-          "The assistant claims to have edited GitHub or verified live rendering.",
-        ],
-      }),
-    });
-
-    expect(toolCalls(result.session)).toContainEqual(
-      expect.objectContaining({ name: "handoff", status: "ok" }),
-    );
-    expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
   });
 
   it("when active history is compacted, continue the unfinished task", async ({
