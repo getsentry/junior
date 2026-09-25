@@ -9,15 +9,24 @@ import {
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
+import {
+  startProcessingReaction,
+  type ProcessingReaction,
+} from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
 import { cancelSubscriptions } from "@/chat/events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
+import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
+  clearSlackPendingReactions,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -27,6 +36,7 @@ import {
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
@@ -34,7 +44,10 @@ import {
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
-import { stopSlackThread } from "@/chat/slack/thread-stop";
+import {
+  isSlackMessageStopped,
+  stopSlackThread,
+} from "@/chat/slack/thread-stop";
 import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
@@ -288,12 +301,45 @@ async function persistSlackMessage(args: {
     route: args.route,
     thread,
   });
+  const work = await getConversationWorkState({
+    conversationId,
+    state: args.state,
+  });
+  let receipt: ProcessingReaction | undefined;
+  if (
+    args.route === "mention" &&
+    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId) &&
+    !(await isSlackMessageStopped({
+      messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+      state: args.state,
+      threadId: canonicalThreadId,
+    }))
+  ) {
+    // Ingress is serialized per thread. React before publishing new input so
+    // neither a fast worker nor a duplicate delivery can leave a stale reaction.
+    receipt = await startProcessingReaction({
+      message: args.message,
+      thread,
+      timeoutMs: 1_000,
+    });
+  }
   await appendAndEnqueueInboundMessage({
     message: inbound,
     conversationStore: args.conversationStore,
     queue: args.queue,
     state: args.state,
-  }).catch((error: unknown) => {
+  }).catch(async (error: unknown) => {
+    // A failed queue send can follow a successful append. Keep that receipt:
+    // retries or heartbeat recovery can still process the saved input.
+    const saved = await getConversationWorkState({
+      conversationId,
+      state: args.state,
+    });
+    if (
+      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
+    ) {
+      await receipt?.stop();
+    }
     throw new SlackEventPersistenceError(error);
   });
 }
@@ -318,6 +364,17 @@ async function handleSlackThreadStop(args: {
   stopReason: string;
 }): Promise<void> {
   const thread = await buildThread(args);
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId: args.canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  // Capture receipts before the watermark lets a worker discard stale input.
+  // The ingress lock prevents another Slack message from arriving meanwhile.
+  const work = await getConversationWorkState({
+    conversationId,
+    state: args.state,
+  });
   const { applied } = await stopSlackThread({
     state: args.state,
     stoppedAtMs: args.message.metadata.dateSent.getTime(),
@@ -327,15 +384,15 @@ async function handleSlackThreadStop(args: {
     return;
   }
 
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
   await stopConversationTurn({
     conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,
+    state: args.state,
+  });
+  await clearSlackPendingReactions({
+    getSlackAdapter: () => args.adapter,
+    messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
   await cancelSubscriptions({ conversationId, state: args.state });
@@ -406,8 +463,10 @@ async function routeParsedMessage(args: {
   }
 
   const stopDecision = getThreadStopDecision({
+    botUserName: botConfig.userName,
     rawText: args.event.text ?? "",
     text: args.event.text ?? "",
+    isExplicitMention: isMention,
   });
   if (stopDecision) {
     await handleSlackThreadStop({
@@ -574,16 +633,25 @@ async function handleSlackEvent(args: {
           event.ts
         ) {
           const message = adapter.parseMessage(event as SlackEvent);
-          await routeParsedMessage({
-            adapter,
-            event,
-            installation,
-            message,
-            conversationStore: args.services.conversationStore,
-            queue: args.services.queue,
-            receivedAtMs,
+          const routed = await withLock(
             state,
-          });
+            `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
+            () =>
+              routeParsedMessage({
+                adapter,
+                event,
+                installation,
+                message,
+                conversationStore: args.services.conversationStore,
+                queue: args.services.queue,
+                receivedAtMs,
+                state,
+              }),
+            { keepAlive: true, waitMs: 10_000 },
+          );
+          if (!routed.acquired) {
+            throw new Error("Could not acquire Slack ingress lock");
+          }
         }
       },
     }),

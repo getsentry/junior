@@ -13,13 +13,12 @@ export function ToolFrame(props: {
   expandable?: boolean;
   meta: string[];
   mobileSummaryMeta?: string;
-  raw?: boolean;
   signature: ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
-  const staticFrame = searchActive || props.raw || !interactive;
+  const staticFrame = searchActive || !interactive;
   const header = (
     <TranscriptHeadingRow
       left={

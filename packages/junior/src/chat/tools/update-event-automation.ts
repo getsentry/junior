@@ -103,7 +103,7 @@ export function createUpdateEventAutomationTool(
       };
     },
     outputSchema: eventAutomationToolResultSchema,
-    async execute(input) {
+    async execute(input, options) {
       const current = await writableEventAutomation(
         context,
         input.automationId,
@@ -172,6 +172,7 @@ export function createUpdateEventAutomationTool(
       };
       if (instructionChanged) {
         const title = await generateShortTitle({
+          signal: options.signal,
           completeText,
           kind: "task",
           sourceText: nextInstruction,

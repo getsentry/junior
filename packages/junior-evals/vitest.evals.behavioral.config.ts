@@ -34,13 +34,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
   );
 }
-process.env.AI_MODEL = "xai/grok-4.5";
-process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
-process.env.AI_GUARDIAN_MODEL = "openai/gpt-6-luna";
-process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
-process.env.AI_MODEL_PROFILES = JSON.stringify({
-  coding: "openai/gpt-5.6-sol",
-});
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 export default defineConfig({
@@ -61,6 +54,7 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
+    sequence: { setupFiles: "list", hooks: "stack" },
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     // Behavioral quality cases. Strict suites have their own configs.
     include: ["evals/**/*.eval.ts"],
@@ -71,6 +65,7 @@ export default defineConfig({
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
+      path.resolve(__dirname, "src/eval-cleanup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

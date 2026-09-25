@@ -1,3 +1,4 @@
+import { createOAuthWork } from "./oauth-work";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -15,6 +16,7 @@ export async function runMcpOauthCallbackRoute(args: {
   expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
+  const work = createOAuthWork(args.agentRunner ?? realAgentRunner);
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
   const response = await GET(
@@ -25,7 +27,7 @@ export async function runMcpOauthCallbackRoute(args: {
     args.provider,
     testWaitUntil,
     {
-      agentRunner: args.agentRunner ?? realAgentRunner,
+      conversationWorkQueue: work.queue,
       ...(args.conversationWorkQueue
         ? { conversationWorkQueue: args.conversationWorkQueue }
         : undefined),
@@ -40,15 +42,7 @@ export async function runMcpOauthCallbackRoute(args: {
   for (const callback of callbacks) {
     await callback();
   }
-  if (
-    response.status === 200 &&
-    callbacks.length === 0 &&
-    args.expectBackgroundWork !== false
-  ) {
-    throw new Error(
-      `MCP OAuth callback route returned 200 without registering waitUntil() work for provider "${args.provider}"`,
-    );
-  }
+  if (!args.conversationWorkQueue) await work.drain();
   return response;
 }
 

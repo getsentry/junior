@@ -236,7 +236,7 @@ describe("local agent runner", () => {
           { type: "text", text: "Eval Auth is connected." },
         ]);
       });
-      oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+      oauthCallback = await startLocalOAuthCallbackServer();
       const completeAuthorization = async (authorizationUrl: string) => {
         const providerResponse = await fetch(authorizationUrl, {
           redirect: "manual",

@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
 import type {
   ConversationMetricDay,
@@ -37,6 +38,7 @@ import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack"
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
+import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -334,6 +336,8 @@ function FoundationsGalleryPage() {
   const [pressed, setPressed] = useState(true);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
+  const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
 
   return (
     <GalleryShell
@@ -354,6 +358,28 @@ function FoundationsGalleryPage() {
             workspaceActive
           />
         </DashboardChromeProvider>
+      </Fixture>
+      <Fixture title="Segmented tabs">
+        <div className="max-w-md">
+          <SegmentedTabs
+            items={[
+              { label: "Details", value: "details" },
+              { label: "Memories", value: "memories" },
+              { label: "Usage", value: "usage" },
+            ]}
+            label="Conversation panels"
+            onChange={setTab}
+            value={tab}
+          >
+            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+              {tab === "details"
+                ? "Conversation summary and linked work."
+                : tab === "memories"
+                  ? "What Junior learned from this conversation."
+                  : "Time, tokens, and cost for this conversation."}
+            </p>
+          </SegmentedTabs>
+        </div>
       </Fixture>
       <Fixture title="Narrow details drawer">
         <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
@@ -377,6 +403,34 @@ function FoundationsGalleryPage() {
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
               Linked work, the Brief, participants, and usage.
             </p>
+            <Button onClick={() => setNestedDrawerOpen(true)}>
+              Open nested details
+            </Button>
+            {nestedDrawerOpen
+              ? createPortal(
+                  <Drawer
+                    closeLabel="Close nested details"
+                    dismissLabel="Dismiss nested details"
+                    header={
+                      <h2
+                        id="gallery-nested-title"
+                        className="m-0 text-lg font-semibold"
+                      >
+                        Event details
+                      </h2>
+                    }
+                    onClose={() => setNestedDrawerOpen(false)}
+                    openKey="gallery-nested"
+                    titleId="gallery-nested-title"
+                  >
+                    <p className="m-0 text-sm text-dashboard-text-muted">
+                      Escape closes this drawer and returns focus to the parent
+                      drawer.
+                    </p>
+                  </Drawer>,
+                  document.body,
+                )
+              : null}
           </Drawer>
         ) : null}
       </Fixture>
@@ -688,7 +742,22 @@ function TranscriptsGalleryPage() {
             key: "getsentry/junior#1200",
             label: "getsentry/junior#1200",
             title: "Use object annotations for reply cards",
-            status: "draft",
+            status: "open",
+            displayType: "Pull request",
+            sourceUpdatedAt: "2026-09-25T13:45:00Z",
+            facts: {
+              type: "code_change",
+              author: "alex",
+              review: "changes_requested",
+              checks: { passed: 12, failed: 1, pending: 0 },
+              reviewers: ["sam"],
+              mergeable: false,
+              sourceBranch: "feature/object-cards",
+              targetBranch: "main",
+              changedFiles: 8,
+              additions: 120,
+              deletions: 30,
+            },
             url: "https://github.com/getsentry/junior/pull/1200",
           }}
         />
@@ -701,7 +770,47 @@ function TranscriptsGalleryPage() {
             label: "ENG-123",
             title: "Keep background annotation updates out of the next reply",
             status: "In Progress",
+            facts: {
+              type: "task",
+              assignees: ["Sam"],
+              priority: "High",
+              project: "Conversation quality",
+              cycle: "September",
+              dueDate: "2026-09-30",
+              labels: ["UX", "Reliability"],
+            },
             url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            displayType: "Deployment",
+            plugin: "vercel",
+            key: "dpl_example",
+            label: "dpl_example",
+            title: "junior-docs.vercel.app",
+            status: "READY",
+            url: "https://junior-docs.vercel.app",
+            facts: {
+              type: "deployment",
+              environment: "production",
+              project: "junior-docs",
+              revision: "ca37e26a9",
+              branch: "main",
+            },
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            plugin: "example",
+            key: "note",
+            label: "note",
+            title: "A saved item without a source link",
+            url: null,
           }}
         />
       </Fixture>
@@ -733,6 +842,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
+            status: "active",
             instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
@@ -754,6 +864,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "scheduled-1",
             title: "Weekly release digest",
+            status: "blocked",
             instruction:
               "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",

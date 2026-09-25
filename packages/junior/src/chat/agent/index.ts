@@ -623,10 +623,9 @@ async function executeAgentRunInPrivacyContext(
           source: storedTurnRoute.source,
         };
       }
-    } else if (
-      activeModelProfile === botConfig.defaultProfile &&
-      handoffEnabled
-    ) {
+    } else if (handoffEnabled) {
+      // Route each new turn. A handoff changes the active profile within its
+      // turn, but must not pin later requests to that profile indefinitely.
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -653,7 +652,7 @@ async function executeAgentRunInPrivacyContext(
           reason: `configured:${policy.reasoningLevel ? "agent_config" : "default"}:${turnRoute.reason}`,
         };
       }
-    } else if (!handoffEnabled) {
+    } else {
       const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
       const reasoningSource = policy.reasoningLevel
         ? "agent_config"
@@ -669,23 +668,6 @@ async function executeAgentRunInPrivacyContext(
           "medium",
         reason: `fixed:${reasoningSource}`,
         source: "configured",
-      };
-    } else {
-      const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
-      const reasoningSource = activeProfileConfig.reasoningLevel
-        ? "profile"
-        : policy.reasoningLevel
-          ? "agent_config"
-          : "default";
-      turnRoute = {
-        profile: activeModelProfile,
-        reasoningLevel:
-          activeProfileConfig.reasoningLevel ??
-          policy.reasoningLevel ??
-          botConfig.reasoningLevel ??
-          "medium",
-        reason: `inherited:${reasoningSource}`,
-        source: "inherited",
       };
     }
 

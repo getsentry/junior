@@ -114,7 +114,9 @@ export function createMcpAuthOrchestration(
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
       configuration: input.getConfiguration(),
       createAuthorizationState: input.authorization?.createState,
     });
@@ -195,7 +197,7 @@ export function createMcpAuthOrchestration(
       await recordPendingAuth(nextPendingAuth);
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
-        label: `Click here to link your ${providerLabel} MCP access`,
+        label: `Connect to ${providerLabel}`,
         completionText:
           "Once you've authorized, Junior will continue automatically.",
       };

@@ -19,13 +19,23 @@ name, through dashboard settings.
   signed-in user menu. Core-rendered lists own metrics, search query state,
   cursor pagination, record inspection, destructive confirmation, and
   authenticated plugin REST actions.
-- Conversation detail is a bounded TanStack Query resource that polls while
-  active. Earlier event pages use a separate infinite query loaded on demand.
-  The client derives one ordered transcript from those immutable responses;
-  paginated reads never write into another resource's cache.
-- The server adapts canonical runtime events into normalized reporting events.
-  The dashboard reduces tool and subagent observations by stable identity into
-  one row without interpreting Pi messages or host-only lifecycle shapes.
+- Conversation detail and mailbox use one TanStack Query snapshot. Read the
+  mailbox first, then history: workers commit input before they acknowledge it.
+  Publish both in one render so input moves from queue to transcript without a
+  gap. Poll every 2 seconds while active or waiting for input, and every 10
+  seconds while idle so other Sources can wake the open Conversation.
+- Local sends stay visible until a server snapshot contains their Message id.
+  Web ingress and the browser share one Message id function. The browser derives
+  the id before the first local render and before POST starts. This also
+  removes duplicates when a poll arrives before the accept response. Only Turn
+  lifecycle events enable the thinking indicator; queued work is not thinking.
+- Earlier event pages use a separate infinite query loaded on demand. The client
+  derives one ordered transcript from those immutable responses; paginated reads
+  never write into another resource's cache.
+- The server adapts canonical runtime events into privacy-safe reporting events.
+  The transcript combines tool and subagent updates. The event log keeps each
+  event in sequence order, with readable details and optional raw JSON.
+  Search covers loaded pages; earlier events load on demand.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure
@@ -45,7 +55,8 @@ Assert the user-visible outcome or external contract named by the journey.
 
 Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
 `test` from `./test` so every page gets the fixed current time and common API
-stubs. Keep one Playwright spec per user-facing route. After the page has loaded,
+stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
+length limit requires it. After the page has loaded,
 call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
 desktop and mobile image. Page behavior does not belong in a cross-page aggregate
 spec. Tests under `tests/` cover modules and component integration without

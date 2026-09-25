@@ -10,6 +10,7 @@ import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import { renderSlackObjectCard } from "@/chat/slack/object-card";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createConversationWorkQueueTestAdapter,
@@ -139,14 +140,27 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: "1",
+      key: 'repo/修正#1:"quoted"',
       label: "ENG-1",
       title: "Saved issue",
       objectType: "task",
       status: "Started",
+      facts: { type: "task", assignees: ["Sam"], priority: "High" },
       url: "https://example.com/issues/1",
     });
-    const id = JSON.stringify([conversationId, "objects", "1"]);
+    const id = renderSlackObjectCard(
+      {
+        kind: "object",
+        plugin: "objects",
+        key: 'repo/修正#1:"quoted"',
+        label: "ENG-1",
+        title: "Saved issue",
+        objectType: "task",
+        url: "https://example.com/issues/1",
+      },
+      conversationId,
+    ).entity!.external_ref.id;
+    expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(
       await requestDetails(id, "U123", "T123", "annotation"),
     ).toMatchObject({
@@ -156,6 +170,21 @@ describe("Slack Work Object details", () => {
         entity_payload: {
           attributes: { title: { text: "Saved issue" } },
           fields: { status: { value: "Started" } },
+          display_order: ["status", "assignees", "priority"],
+          custom_fields: [
+            {
+              key: "assignees",
+              label: "Assignees",
+              type: "string",
+              value: "Sam",
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              type: "string",
+              value: "High",
+            },
+          ],
         },
       },
     });
@@ -165,7 +194,7 @@ describe("Slack Work Object details", () => {
       db: getDb(),
     }).upsert({
       kind: "object",
-      key: "1",
+      key: 'repo/修正#1:"quoted"',
       label: "ENG-1",
       title: "Updated issue",
       objectType: "task",
@@ -186,6 +215,14 @@ describe("Slack Work Object details", () => {
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
+    for (const invalidId of [
+      JSON.stringify([conversationId, "objects", 'repo/修正#1:"quoted"']),
+      Buffer.from('{"not":"a reference tuple"}').toString("base64url"),
+    ]) {
+      expect(
+        await requestDetails(invalidId, "U123", "T123", "annotation"),
+      ).toMatchObject({ error: { status: "not_found" } });
+    }
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {

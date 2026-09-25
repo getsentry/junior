@@ -8,6 +8,7 @@ import {
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
+  DEFAULT_MODEL_PROFILES,
   type ModelProfileConfig,
   type ModelProfile,
   type ModelProfileInput,
@@ -236,15 +237,18 @@ function parseCrossActorMidRunMode(
   throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
 }
 
-const DEFAULT_MODEL_ID = "xai/grok-4.5";
+const DEFAULT_MODEL_ID = resolveGatewayModel(
+  DEFAULT_MODEL_PROFILES.standard.modelId,
+).id;
 const DEFAULT_FAST_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_GUARDIAN_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_HANDOFF_MODEL_ID = resolveGatewayModel(
-  "anthropic/claude-opus-5.5",
+  DEFAULT_MODEL_PROFILES.handoff.modelId,
 ).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = resolveGatewayModel("openai/gpt-6-luna").id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
+const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
@@ -268,11 +272,6 @@ function requireModelId(
   }
   return modelId;
 }
-
-const DEFAULT_STANDARD_PROFILE_DESCRIPTION =
-  "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.";
-const DEFAULT_HANDOFF_PROFILE_DESCRIPTION =
-  "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.";
 
 function parseOptionalProfileDescription(
   rawDescription: unknown,
@@ -399,13 +398,12 @@ function parseProfiles(
 ): Readonly<Record<string, ModelProfileConfig>> {
   const profiles: Record<string, ModelProfileConfig> = {
     standard: {
+      ...DEFAULT_MODEL_PROFILES.standard,
       modelId: standardModelId,
-      description: DEFAULT_STANDARD_PROFILE_DESCRIPTION,
     },
     handoff: {
+      ...DEFAULT_MODEL_PROFILES.handoff,
       modelId: handoffModelId,
-      description: DEFAULT_HANDOFF_PROFILE_DESCRIPTION,
-      reasoningLevel: "high",
     },
   };
   const trimmed = toOptionalTrimmed(rawValue);
@@ -499,7 +497,10 @@ function readBotConfig(
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
+    visionModelId:
+      env.AI_VISION_MODEL === undefined
+        ? DEFAULT_VISION_MODEL_ID
+        : validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,

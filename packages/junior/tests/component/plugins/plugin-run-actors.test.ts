@@ -101,7 +101,7 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
 vi.mock("@/chat/plugins/agent-hooks", async (importOriginal) => {
@@ -162,26 +162,26 @@ describe("run actor composition", () => {
 
   it("seeds the live actors getter with the run actor and grows it as steering drains", async () => {
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-run-actors",
-  instruction:   {
-  text: "hello",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-  actor: RUN_ACTOR,
-  durability:   {
-          drainSteeringMessages: async (inject) => {
-            await inject([
-              {
-                text: "steer me",
-                provenance: { authority: "instruction", actor: STEERING_ACTOR },
-              },
-            ]);
-            return [];
-          },
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-run-actors",
+      instruction: {
+        text: "hello",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+      actor: RUN_ACTOR,
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          await inject([
+            {
+              text: "steer me",
+              provenance: { authority: "instruction", actor: STEERING_ACTOR },
+            },
+          ]);
+          return [];
         },
-});
+      },
+    });
 
     expect(captured.runActor).toEqual(RUN_ACTOR);
     expect(captured.actorsGetter?.()).toEqual([RUN_ACTOR, STEERING_ACTOR]);
@@ -224,23 +224,23 @@ describe("run actor composition", () => {
 
   it("does not credit an unresolvable steering actor", async () => {
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-run-actors-unresolved",
-  instruction:   {
-  text: "hello",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-  actor: RUN_ACTOR,
-  durability:   {
-          drainSteeringMessages: async (inject) => {
-            await inject([
-              { text: "steer me", provenance: { authority: "instruction" } },
-            ]);
-            return [];
-          },
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-run-actors-unresolved",
+      instruction: {
+        text: "hello",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+      actor: RUN_ACTOR,
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          await inject([
+            { text: "steer me", provenance: { authority: "instruction" } },
+          ]);
+          return [];
         },
-});
+      },
+    });
 
     expect(captured.actorsGetter?.()).toEqual([RUN_ACTOR]);
   });

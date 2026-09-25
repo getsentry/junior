@@ -8,13 +8,14 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { getSlackClient } from "./client";
 import { renderSlackObjectCard } from "./object-card";
+import { slackEntitySchema, slackExternalRefIdSchema } from "./work-object";
 
 const eventSchema = z.object({
   trigger_id: z.string().min(1),
   user: z.string().min(1),
   external_ref: z.object({
     type: z.literal("annotation"),
-    id: z.string().max(4096),
+    id: slackExternalRefIdSchema.max(4096),
   }),
 });
 const refSchema = z.tuple([
@@ -43,7 +44,9 @@ export async function presentSlackAnnotationDetails(
   }
   let value: unknown;
   try {
-    value = JSON.parse(parsed.data.external_ref.id);
+    value = JSON.parse(
+      Buffer.from(parsed.data.external_ref.id, "base64url").toString("utf8"),
+    );
   } catch {
     await missing();
     return;
@@ -105,6 +108,6 @@ export async function presentSlackAnnotationDetails(
   }
   await client.entity.presentDetails({
     trigger_id: parsed.data.trigger_id,
-    metadata: entity,
+    metadata: slackEntitySchema.parse(entity),
   });
 }

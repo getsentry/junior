@@ -275,7 +275,7 @@ async function prepareLocalChatRun(
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });
-  const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+  const oauthCallback = await startLocalOAuthCallbackServer();
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {

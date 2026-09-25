@@ -15,6 +15,7 @@ export const observations = {
     | { type: unknown; data: unknown; mimeType: unknown }
     | undefined,
   initialHandoffProfiles: [] as string[],
+  handoffDescriptions: [] as string[],
   initialToolNames: [] as string[],
   mixedBatch: false,
   progressTool: false,

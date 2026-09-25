@@ -32,7 +32,7 @@ export function createUpdatePlanTool() {
     description: [
       "Updates the task plan.",
       "Provide an optional explanation and a list of plan items, each with a step and status.",
-      "At most one step can be in_progress at a time.",
+      "At most one step can be in_progress at a time. Mark finished steps completed and mark all steps completed when the work is done.",
     ].join("\n"),
     inputSchema: updatePlanInputSchema,
     execute: async () => ({

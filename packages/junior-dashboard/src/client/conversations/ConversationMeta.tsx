@@ -21,10 +21,6 @@ import {
   automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../components/ParticipantAvatarStack";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
@@ -376,12 +372,17 @@ export function ConversationAnnotations(props: {
     <div
       className={cn(
         "flex gap-x-4 gap-y-2",
-        props.layout === "strip" ? "overflow-x-auto" : "flex-wrap",
+        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
       )}
     >
       {links.map((link) => (
         <a
-          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          className={cn(
+            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+            props.layout === "strip"
+              ? "px-1 py-0.5 text-xs hover:text-cyan-100"
+              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
+          )}
           href={link.url ?? undefined}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
@@ -451,72 +452,6 @@ function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
       icon={resourceStatusIcon(props.status, props.url)}
       size={15}
     />
-  );
-}
-
-/** True when identity has content for the requested presentation. */
-export function hasConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}): boolean {
-  const variant = props.variant ?? "full";
-  const participants = conversationParticipants(props.conversation);
-  if (variant === "compact") return participants.length > 0;
-  const id = props.conversationId ?? props.conversation?.id;
-  return Boolean(
-    participants.length > 0 || id || props.detail?.sentryConversationUrl,
-  );
-}
-
-/** Render the conversation owner, optionally with id and Sentry deep link. */
-export function ConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}) {
-  if (!hasConversationIdentity(props)) return null;
-  const variant = props.variant ?? "full";
-  const participants = conversationParticipants(props.conversation);
-  const id = props.conversationId ?? props.conversation?.id;
-  const participantStack =
-    participants.length > 0 ? (
-      <ParticipantAvatarStack participants={participants} size="detail" />
-    ) : null;
-  if (variant === "compact") return participantStack;
-  const sentryLink = props.detail?.sentryConversationUrl ? (
-    <a
-      className="text-dashboard-text no-underline hover:underline"
-      href={props.detail.sentryConversationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
-      View in Sentry
-    </a>
-  ) : null;
-
-  return (
-    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-      {participantStack}
-      {id ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
-          {participantStack ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          <span className="min-w-0 max-w-[18rem] truncate">{id}</span>
-        </span>
-      ) : null}
-      {sentryLink ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {participantStack || id ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          {sentryLink}
-        </span>
-      ) : null}
-    </span>
   );
 }
 

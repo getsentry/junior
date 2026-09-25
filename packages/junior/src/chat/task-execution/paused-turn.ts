@@ -15,12 +15,16 @@ import {
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  loadProjection,
+  recordAuthorizationCompleted,
+} from "@/chat/conversations/projection";
+import { getTurnAuthorization } from "./authorized-turn";
 import {
   completeTurnRecord,
+  abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
-  getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
   type TurnRecord,
@@ -56,8 +60,6 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { withActiveLock } from "@/chat/state/locks";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -75,7 +77,10 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { clearPendingAuth } from "@/chat/services/pending-auth";
+import {
+  clearPendingAuth,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
@@ -255,7 +260,7 @@ async function resolveSlackResumeUserActor(args: {
  *
  * Sources, in order:
  * 1. Actor saved on the Turn.
- * 2. Actor and credentials supplied by dispatch or OAuth.
+ * 2. Actor and credentials supplied by dispatch.
  * 3. Legacy Event or Slack Message data.
  *
  * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
@@ -275,8 +280,7 @@ async function resolveResumeExecutionIdentity(args: {
 > {
   const routing = args.routingContext;
 
-  // Dispatch and OAuth supply the Actor and credentials. They also supply any
-  // credential subject.
+  // Dispatch supplies its Actor, credentials, and any credential subject.
   if (routing?.credentialContext) {
     const actor =
       args.actor ??
@@ -315,7 +319,8 @@ function isPausedTurn(summary: TurnSummary): boolean {
     summary.state === "paused" &&
     (summary.resumeReason === "timeout" ||
       summary.resumeReason === "yield" ||
-      summary.resumeReason === "retry")
+      summary.resumeReason === "retry" ||
+      summary.resumeReason === "auth")
   );
 }
 
@@ -391,9 +396,6 @@ async function runPausedTurnInContext(
     turnId: payload.turnId,
     channelId: thread?.channelId ?? destination.channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
-    lockKey: payload.conversationId,
-    // Queue continue runs under the conversation work lease already.
-    ownsConversationLease: true,
     executeTurn: async (run, saveResult, timeoutMs) =>
       await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     scheduleSessionCompletedPluginTasks:
@@ -411,7 +413,8 @@ async function runPausedTurnInContext(
           turn.state !== "paused" ||
           (turn.resumeReason !== "timeout" &&
             turn.resumeReason !== "yield" &&
-            turn.resumeReason !== "retry") ||
+            turn.resumeReason !== "retry" &&
+            turn.resumeReason !== "auth") ||
           turn.version !== payload.expectedVersion
         ) {
           return false;
@@ -447,7 +450,42 @@ async function runPausedTurnInContext(
           });
           return false;
         }
-        if (conversation.processing.activeTurnId !== payload.turnId) {
+        const authorization =
+          turn.resumeReason === "auth"
+            ? await getTurnAuthorization(turn)
+            : undefined;
+        if (turn.resumeReason === "auth") {
+          if (!authorization) return false;
+          const pendingAuth = conversation.processing.pendingAuth;
+          if (
+            pendingAuth &&
+            (pendingAuth.sessionId !== turn.turnId ||
+              pendingAuth.actorId !== authorization.actorId ||
+              pendingAuth.provider !== authorization.provider ||
+              pendingAuth.kind !== authorization.kind ||
+              pendingAuth.scope !== authorization.scope ||
+              (pendingAuth.kind === "mcp" &&
+                pendingAuth.authSessionId !== authorization.authSessionId) ||
+              !isPendingAuthLatestRequest(conversation, pendingAuth))
+          ) {
+            await abandonTurnRecord({
+              conversationId: payload.conversationId,
+              turnId: turn.turnId,
+              errorMessage:
+                "Authorization no longer belongs to the latest request",
+            });
+            clearPendingAuth(conversation, turn.turnId);
+            await persistThreadStateById(payload.conversationId, {
+              conversation,
+            });
+            return false;
+          }
+          if (
+            !pendingAuth &&
+            conversation.processing.activeTurnId !== turn.turnId
+          )
+            return false;
+        } else if (conversation.processing.activeTurnId !== payload.turnId) {
           return false;
         }
 
@@ -468,6 +506,22 @@ async function runPausedTurnInContext(
           return false;
         }
         const { actor, credentialContext } = identity;
+        if (
+          authorization &&
+          (!("userId" in actor) || actor.userId !== authorization.actorId)
+        ) {
+          throw new Error("Authorization actor does not match the paused Turn");
+        }
+        if (authorization) {
+          await recordAuthorizationCompleted({
+            conversationId: payload.conversationId,
+            ...authorization,
+          });
+          conversation.processing.activeTurnId = turn.turnId;
+          await persistThreadStateById(payload.conversationId, {
+            conversation,
+          });
+        }
 
         const locationConfiguration =
           getLocationConfigurationService(destination);
@@ -536,8 +590,10 @@ async function runPausedTurnInContext(
             ...(routing.location ? { location: routing.location } : undefined),
             source,
             ...(surface ? { surface } : undefined),
-            toolChannelId: destination.channelId,
+            toolChannelId:
+              authorization?.toolChannelId ?? destination.channelId,
             environment: {
+              configuration: authorization?.configuration,
               locationConfiguration,
             },
             state: {
@@ -736,19 +792,10 @@ async function runNextPausedTurnInContext(
       return false;
     }
 
-    const state = getStateAdapter();
-    await state.connect();
-    await withActiveLock(state, conversationId, async () => {
-      const record = await getTurnRecordForResume(
-        conversationId,
-        running.turnId,
-      );
-      if (!record || record.state !== "running") return;
-      await failStrandedTurnWithFallback({
-        conversationId,
-        errorMessage: "Turn lost its worker before reaching a safe boundary",
-        turn: record,
-      });
+    await failStrandedTurnWithFallback({
+      conversationId,
+      errorMessage: "Turn lost its worker before reaching a safe boundary",
+      turn: running,
     });
     return false;
   }
@@ -763,6 +810,7 @@ async function runNextPausedTurnInContext(
       turnId: summary.turnId,
     });
     if (!request) {
+      if (summary.resumeReason === "auth") continue;
       await failPausedTurn({
         conversationId,
         summary,

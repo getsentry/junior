@@ -941,11 +941,16 @@ export function createSlackTurnRuntime<
             Boolean(message.isMention) ||
             queuedMessages.some((queued) => queued.explicitMention);
           // Joined deferred text can hide a bare `stop`. Check each body alone.
-          const stopDecision = [...queuedMessages, currentText]
+          const stopDecision = [
+            ...queuedMessages,
+            { ...currentText, explicitMention: Boolean(message.isMention) },
+          ]
             .map((entry) =>
               getThreadStopDecision({
+                botUserName: deps.assistantUserName,
                 rawText: entry.rawText,
                 text: entry.userText,
+                isExplicitMention: entry.explicitMention,
               }),
             )
             .find((decision) => decision?.shouldUnsubscribe);

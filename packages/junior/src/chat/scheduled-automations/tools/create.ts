@@ -47,11 +47,17 @@ export function createSlackScheduleCreateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Create a one-time or recurring Junior task in the active Slack channel.",
+      "Create a one-time or recurring Junior task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
     executionMode: "sequential",
     inputSchema: z
       .object({
-        instruction: z.string().min(1).max(4000),
+        instruction: z
+          .string()
+          .min(1)
+          .max(4000)
+          .describe(
+            "Work to perform when the task runs. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
+          ),
         title: z
           .string()
           .trim()
@@ -161,6 +167,7 @@ export function createSlackScheduleCreateAutomationTool(
         context.source,
       );
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,

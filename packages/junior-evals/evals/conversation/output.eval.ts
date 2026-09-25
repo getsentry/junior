@@ -25,7 +25,7 @@ describeEval("Output Contract", slackEvals, (it) => {
     });
   });
 
-  it("when the reply contains multiple URLs, keep the full URLs visible instead of replacing them with labels", async ({
+  it("when asked for documentation, link to each official starting page", async ({
     run,
   }) => {
     await run({
@@ -38,10 +38,10 @@ describeEval("Output Contract", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant posts one reply that names the three documentation starting points.",
-          "Each documentation link displays its full URL as the link text. Bare `https://...` and Slack `<https://...>` forms are both acceptable.",
+          "Each starting point includes a link to the corresponding official Slack documentation. Descriptive labels, URL labels, and bare URLs are all acceptable.",
         ],
         fail: [
-          "Do not replace a full URL with a custom label using `[label](url)` or Slack `<url|label>` syntax.",
+          "Do not omit a requested documentation link or substitute an unofficial site.",
         ],
       }),
     });

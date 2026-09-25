@@ -291,6 +291,7 @@ export async function eventAutomationToolResult(
         title,
         url: automation.dashboardUrl,
         description: task.task.text,
+        status: automation.trigger.available ? "ready" : "unavailable",
         trigger: [
           task.trigger.label,
           task.trigger.events.join(", "),

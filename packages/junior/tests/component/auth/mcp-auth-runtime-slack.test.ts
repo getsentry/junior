@@ -494,9 +494,7 @@ describe("mcp auth runtime slack integration", () => {
           channel: "C123",
           user: "U123",
           thread_ts: "1700000000.001",
-          text: expect.stringContaining(
-            "Click here to link your Eval Auth MCP access",
-          ),
+          text: expect.stringContaining("Connect to Eval Auth"),
         }),
       }),
     ]);
@@ -505,7 +503,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
-          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nUse the link in the message above in this thread.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
     ]);
@@ -665,7 +663,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
-          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nUse the link in the message above in this thread.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
       expect.objectContaining({
@@ -762,7 +760,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C124",
           thread_ts: "1700000000.002",
-          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nUse the link in the message above in this thread.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* what did i say about the budget?\n\nI sent you a link.",
         }),
       }),
     ]);
@@ -1015,7 +1013,7 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C125",
           thread_ts: "1700000000.003",
-          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* use eval-auth directly for the budget answer\n\nUse the link in the message above in this thread.",
+          text: "<@U123> I need access to Eval Auth to continue.\n\n*Why:* use eval-auth directly for the budget answer\n\nI sent you a link.",
         }),
       }),
       expect.objectContaining({

@@ -29,6 +29,13 @@ const annotation: ObjectAnnotation = {
   title: "Fix the parser",
   url: "https://example.com/pull/1",
   status: "open",
+  facts: {
+    type: "code_change",
+    author: "alex",
+    sourceBranch: "feature/parser",
+    targetBranch: "main",
+    changedFiles: 2,
+  },
 };
 
 afterEach(closeConversationFixture);
@@ -45,6 +52,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         tools: () => ({
           save: definePluginTool({
             approvalMode: "approve",
+            exposure: "direct",
             annotations: {
               destructiveHint: false,
               idempotentHint: true,
@@ -82,11 +90,9 @@ it("saves plugin object results once per reply, leaves background updates silent
         },
         {
           type: "toolCall",
-          name: "executeTool",
-          arguments: {
-            tool_name: "objects_save",
-            arguments: { status: "draft" },
-          },
+          // PR creation is a direct plugin tool, not a catalog call.
+          name: "objects_save",
+          arguments: { status: "draft" },
         },
         {
           type: "toolCall",
@@ -128,6 +134,17 @@ it("saves plugin object results once per reply, leaves background updates silent
     for (const result of toolResults) {
       expect(result.details).not.toHaveProperty("cards");
     }
+    const selectedResults = toolResults.filter(
+      (result) =>
+        result.details &&
+        typeof result.details === "object" &&
+        "objectCards" in result.details,
+    );
+    expect(selectedResults).toHaveLength(2);
+    for (const result of selectedResults) {
+      expect(result.details).not.toHaveProperty("objectAnnotations");
+    }
+
     await expect(
       listConversationAnnotations(getDb(), conversationId),
     ).resolves.toMatchObject(cards);
@@ -140,17 +157,58 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
     expect(
       getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params.metadata,
-    ).toMatchObject({
+    ).toEqual({
       entities: [
         {
           entity_type: "slack#/entities/item",
           external_ref: {
-            id: JSON.stringify([conversationId, "objects", "repo#1"]),
+            id: Buffer.from(
+              JSON.stringify([conversationId, "objects", "repo#1"]),
+            ).toString("base64url"),
             type: "annotation",
           },
+          url: annotation.url,
           entity_payload: {
-            attributes: { title: { text: "Fix the parser" } },
-            custom_fields: [{ key: "status", value: "draft" }],
+            attributes: {
+              title: { text: "Fix the parser" },
+              display_id: "repo#1",
+              display_type: "Pull request",
+              product_name: "objects",
+            },
+            display_order: [
+              "status",
+              "author",
+              "sourceBranch",
+              "targetBranch",
+              "changedFiles",
+            ],
+            custom_fields: [
+              {
+                key: "status",
+                label: "Status",
+                type: "string",
+                value: "draft",
+              },
+              { key: "author", label: "Author", type: "string", value: "alex" },
+              {
+                key: "sourceBranch",
+                label: "From",
+                type: "string",
+                value: "feature/parser",
+              },
+              {
+                key: "targetBranch",
+                label: "Into",
+                type: "string",
+                value: "main",
+              },
+              {
+                key: "changedFiles",
+                label: "Files changed",
+                type: "string",
+                value: "2",
+              },
+            ],
           },
         },
       ],

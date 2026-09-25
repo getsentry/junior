@@ -1,4 +1,56 @@
 # Changelog
+## 0.226.0
+
+### New Features ✨
+
+- (annotations) Enrich Slack and web cards with bounded object facts by @sentry-junior in [#1929](https://github.com/getsentry/junior/pull/1929)
+- (dashboard) Add a scannable conversation event log by @sentry-junior in [#1931](https://github.com/getsentry/junior/pull/1931)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep message handoffs visible and consistent by @sentry-junior in [#1932](https://github.com/getsentry/junior/pull/1932)
+- Simplify conversation details by @sentry-junior in [#1930](https://github.com/getsentry/junior/pull/1930)
+
+#### Other
+
+- (chat) Preserve agent history through SQL storage by @sentry-junior in [#1926](https://github.com/getsentry/junior/pull/1926)
+- (slack) Acknowledge mentions before queued work starts by @sentry-junior in [#1927](https://github.com/getsentry/junior/pull/1927)
+
+## 0.225.0
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Enforce Work Object payload contracts by @sentry-junior in [#1922](https://github.com/getsentry/junior/pull/1922)
+- Ignore stop commands addressed to others by @sentry-junior in [#1923](https://github.com/getsentry/junior/pull/1923)
+
+#### Other
+
+- (agent) Align prompt steering and route each new turn by @sentry-junior in [#1917](https://github.com/getsentry/junior/pull/1917)
+- (evals) Stabilize eval runs and split the harness by concern by @sentry-junior in [#1903](https://github.com/getsentry/junior/pull/1903)
+- (tests) Remove durable queue timeout race by @sentry-junior in [#1925](https://github.com/getsentry/junior/pull/1925)
+
+### Internal Changes 🔧
+
+- Use a shared Evals workflow label by @sentry-junior in [#1920](https://github.com/getsentry/junior/pull/1920)
+
+## 0.224.0
+
+### New Features ✨
+
+- (slack) Make private authorization prompts clearer by @sentry-junior in [#1919](https://github.com/getsentry/junior/pull/1919)
+
+### Bug Fixes 🐛
+
+- (runtime) Resume OAuth turns through the conversation worker by @sentry-junior in [#1913](https://github.com/getsentry/junior/pull/1913)
+
+### Internal Changes 🔧
+
+- Remove CLAUDE.md by @sentry-junior in [#1916](https://github.com/getsentry/junior/pull/1916)
+
 ## 0.223.0
 
 ### New Features ✨

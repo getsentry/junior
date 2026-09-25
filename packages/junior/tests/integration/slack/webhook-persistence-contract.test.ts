@@ -17,6 +17,7 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
+  createConversationWorkSlackHarness,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
@@ -24,6 +25,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
@@ -83,6 +85,26 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("accepts a mention even when its receipt reaction is rate limited", async () => {
+    const harness = await createConversationWorkSlackHarness();
+    queueSlackApiError("reactions.add", {
+      error: "ratelimited",
+      status: 429,
+      headers: { "retry-after": "60" },
+    });
+    const response = await harness.send({
+      text: "<@U0BOT> deploy status",
+    });
+    expect(response.status).toBe(200);
+    expect(harness.wakes.queuedMessages()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
+      channel: "C123",
+      name: "eyes",
+      timestamp: "1712345.0001",
+    });
+  });
 
   it("returns retryable response when a routing-state read fails before persistence", async () => {
     const queue = createConversationWorkQueueTestAdapter();
@@ -196,9 +218,8 @@ describe("Slack webhook persistence contract", () => {
 
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
-      const history = await getConversationEventStore().loadMessageHistory(
-        threadId,
-      );
+      const history =
+        await getConversationEventStore().loadMessageHistory(threadId);
       expect(history.events).toEqual([
         expect.objectContaining({
           data: expect.objectContaining({
@@ -301,29 +322,39 @@ describe("Slack webhook persistence contract", () => {
       const canonicalThreadId = `slack:C123:${threadTs}`;
       await state.subscribe(canonicalThreadId);
 
-      const response = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          slackEnvelope({
-            eventType: "message",
-            text: "!stop",
-            threadTs,
-            ts: "1712345.000811",
-          }),
-        ),
-        services: {
-          getSlackAdapter: () => slackAdapter,
-          queue,
-          runtime: createNoopSlackWebhookRuntime(),
-          state,
+      for (const message of [
+        { text: "<@UOTHER> stop", ts: "1712345.000811", subscribed: true },
+        {
+          text: `<@${SLACK_BOT_USER_ID}> stop`,
+          ts: "1712345.000812",
+          subscribed: false,
         },
-      });
-
-      expect(response.status).toBe(200);
+      ]) {
+        const response = await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest(
+            slackEnvelope({
+              eventType: "message",
+              text: message.text,
+              threadTs,
+              ts: message.ts,
+            }),
+          ),
+          services: {
+            getSlackAdapter: () => slackAdapter,
+            queue,
+            runtime: createNoopSlackWebhookRuntime(),
+            state,
+          },
+        });
+        expect(response.status).toBe(200);
+        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(
+          message.subscribed,
+        );
+      }
       // Stop is control flow, not a mailbox message: it never enters the
       // durable Run queue, so a mention-route stop cannot resubscribe the
       // thread by starting a new Turn.
       expect(queue.queuedMessages()).toEqual([]);
-      await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(false);
     } finally {
       setExperimentalFeatures({ "passive-routing": true, subagents: true });
     }

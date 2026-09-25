@@ -165,15 +165,15 @@ describe("model handoff execution", () => {
       conversationId,
       runId: "run-model-handoff-follow-up",
       turnId: "turn-model-handoff-follow-up",
-      instruction: { text: "Now explain the verification result." },
+      instruction: { text: "Separate question: what time is it in London?" },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
     });
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
-    expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
+    expect(followUp.result.diagnostics.modelId).toBe("xai/grok-4.5");
     expect(observations.providerCalls).toBe(3);
-    expect(observations.routerCalls).toBe(1);
+    expect(observations.routerCalls).toBe(2);
     expect(
       (await getConversationEventStore().loadHistory(conversationId))
         .map((event) => event.data)
@@ -185,15 +185,21 @@ describe("model handoff execution", () => {
     ).toEqual({
       type: "turn_routed",
       turnId: "turn-model-handoff-follow-up",
-      modelProfile: "handoff",
-      modelId: "openai/gpt-5.6-sol",
+      modelProfile: "standard",
+      modelId: "xai/grok-4.5",
       reasoningLevel: "high",
-      source: "inherited",
+      source: "router",
+      confidence: 0.99,
     });
-    expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.afterHandoffModelId).toBe("xai/grok-4.5");
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
     expect(observations.summaryCalls).toBe(1);
+    expect(
+      observations.handoffDescriptions.map(
+        (description) => description.match(/Active profile: "([^"]+)"/)?.[1],
+      ),
+    ).toEqual(["standard", "handoff", "standard"]);
   });
 
   it("keeps a new human request when the handoff summary selects an old maintenance task", async () => {
@@ -415,6 +421,7 @@ describe("model handoff execution", () => {
     expect(observations.providerCalls).toBe(2);
     expect(observations.reasoningLevels).toEqual(["xhigh", "high"]);
 
+    observations.routedModelProfile = "handoff";
     const followUp = await executeAgentRun({
       conversationId,
       turnId: "turn-model-handoff-explicit-reasoning-follow-up",
@@ -487,6 +494,7 @@ describe("model handoff execution", () => {
       },
     ]);
 
+    observations.routedModelProfile = "coding";
     const followUp = await executeAgentRun({
       conversationId,
       runId: "run-named-model-handoff-follow-up",
@@ -498,7 +506,7 @@ describe("model handoff execution", () => {
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.4");
-    expect(observations.routerCalls).toBe(1);
+    expect(observations.routerCalls).toBe(2);
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
   });

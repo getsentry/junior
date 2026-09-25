@@ -1,5 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { createConnection } from "node:net";
+import { once } from "node:events";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { startEvalEgress } from "../../src/eval-egress";
@@ -85,10 +87,12 @@ setInterval(() => undefined, 1000);
         },
         verifyPublicUrl: async () => {
           publicVerificationAttempts += 1;
+          if (publicVerificationAttempts === 1)
+            throw new Error("DNS not ready");
         },
       });
-      expect(publicVerificationAttempts).toBe(1);
-      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("2");
+      expect(publicVerificationAttempts).toBe(2);
+      await expect(readFile(attemptMarker, "utf8")).resolves.toBe("3");
       expect(egress.baseUrl).toBe("https://eval-suite.trycloudflare.com");
       await expect(
         fetch(egress.controlUrl, {
@@ -107,8 +111,21 @@ setInterval(() => undefined, 1000);
           headers: { authorization: `Bearer ${egress.controlToken}` },
         }).then((response) => response.json()),
       ).resolves.toEqual({ resetCount: 2 });
-      await egress.close();
-      await expect(egress.close()).resolves.toBeUndefined();
+      // A disconnected tunnel can leave a partial HTTP request on the proxy.
+      const socket = createConnection({
+        host: "127.0.0.1",
+        port: Number(new URL(egress.controlUrl).port),
+      });
+      try {
+        await once(socket, "connect");
+        socket.write("GET /health HTTP/1.1\r\nHost: localhost\r\n");
+        const disconnected = once(socket, "close");
+        await egress.close();
+        await disconnected;
+        await expect(egress.close()).resolves.toBeUndefined();
+      } finally {
+        socket.destroy();
+      }
       await expect(readFile(closeMarker, "utf8")).resolves.toBe("closed");
     } finally {
       await rm(fixtureDir, { force: true, recursive: true });
