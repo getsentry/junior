@@ -1531,23 +1531,13 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain('aria-label="Conversations per day"');
-    expect(systemHtml).toContain("Cached input share");
-    expect(systemHtml).toContain("75.0%");
-    expect(systemHtml).toContain("Input token cache");
+    expect(systemHtml).toContain("Missing data in 1 of 1");
+    expect(systemHtml).toContain("Input cache");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
-    expect(systemHtml).toContain(
-      'class="inline-flex h-full min-w-0 flex-1 items-end"',
-    );
-    expect(systemHtml).toContain(
-      'class="flex w-full min-w-0 flex-col justify-end',
-    );
-    expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
-      systemHtml.indexOf("Input token cache"),
-    );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
@@ -1563,20 +1553,6 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
 
-    data.conversationStats!.metricDays[0] = {
-      ...data.conversationStats!.metricDays[0],
-      cachedInputTokens: 9_999,
-      inputTokens: 1,
-    };
-    const nearCompleteCacheHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-    expect(nearCompleteCacheHtml).toContain("&lt;100%");
-    expect(nearCompleteCacheHtml).toContain(
-      "9.9k read · 0 written · 1 uncached",
-    );
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");

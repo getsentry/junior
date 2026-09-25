@@ -1,3 +1,4 @@
+import { ChartFixtures } from "./ChartFixtures";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
@@ -12,14 +13,8 @@ import {
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
-import type {
-  ConversationMetricDay,
-  LocationActivityDayReport,
-  PeopleActivityDayReport,
-} from "@sentry/junior/api/schema";
 
 import { Button, ToggleButton } from "../../components/Button";
-import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
@@ -28,7 +23,6 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
-import { CardHeader } from "../../components/layout/CardHeader";
 import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
 import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -46,10 +40,6 @@ import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShe
 import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
-import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
-import { ContributionGrid } from "../people/ContributionGrid";
-import { PeopleActivityChart } from "../people/PeopleActivityChart";
-import { ConversationActivityChart } from "../system/ConversationActivityChart";
 
 export type GallerySectionId = "foundations" | "charts" | "transcripts";
 
@@ -135,38 +125,6 @@ Findings:
 - the dashboard preserves single breaks as \`<br>\`
 
 See https://docs.sentry.io for product docs.`;
-
-const METRIC_DAYS: ConversationMetricDay[] = fixtureDates(14).map(
-  (date, index) => ({
-    conversations: 4 + ((index * 5) % 17),
-    costUsd: 0.7 + ((index * 7) % 11) * 0.18,
-    date,
-    durationMs: 90_000 + ((index * 41) % 13) * 24_000,
-    tokens: 18_000 + ((index * 17) % 19) * 2_300,
-  }),
-);
-
-const PEOPLE_DAYS: PeopleActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    activePeople: 4 + ((index * 7) % 13),
-    conversations: 18 + ((index * 11) % 31),
-    date,
-  }),
-);
-
-const LOCATION_DAYS: LocationActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    date,
-    privateConversations: 3 + ((index * 5) % 12),
-    publicConversations: 12 + ((index * 9) % 28),
-  }),
-);
-
-const CONTRIBUTION_DAYS = fixtureDates(70).map((date, index) => ({
-  conversations: index % 9 === 0 ? 0 : 1 + ((index * 7) % 18),
-  date,
-  durationMs: index % 9 === 0 ? 0 : 45_000 + ((index * 13) % 20) * 18_000,
-}));
 
 type ToolCallFixture = {
   description: string;
@@ -711,17 +669,7 @@ function ChartsGalleryPage() {
       sectionId="charts"
       title="Charts"
     >
-      <ConversationActivityChart days={METRIC_DAYS} />
-      <SystemMetricCharts days={METRIC_DAYS} />
-      <PeopleActivityChart days={PEOPLE_DAYS} />
-      <LocationDirectoryActivityChart days={LOCATION_DAYS} />
-      <Card>
-        <CardHeader
-          description="Daily conversation intensity over ten weeks."
-          title="Contribution activity"
-        />
-        <ContributionGrid days={CONTRIBUTION_DAYS} />
-      </Card>
+      <ChartFixtures />
     </GalleryShell>
   );
 }
@@ -980,12 +928,5 @@ function TokenSwatchRow(props: {
         ))}
       </div>
     </div>
-  );
-}
-
-function fixtureDates(count: number): string[] {
-  const start = Date.UTC(2026, 4, 1);
-  return Array.from({ length: count }, (_, index) =>
-    new Date(start + index * 86_400_000).toISOString().slice(0, 10),
   );
 }

@@ -2,7 +2,7 @@ import type {
   ConversationMetricDay,
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
-import { CircleDollarSign, Gauge, MessageSquare, Sigma } from "lucide-react";
+import { CircleDollarSign, MessageSquare, Sigma } from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
@@ -21,36 +21,16 @@ import { GuardianActivity } from "./GuardianActivity";
 function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
     (total, day) => ({
-      cachedInputTokens: total.cachedInputTokens + (day.cachedInputTokens ?? 0),
-      cacheCreationTokens:
-        total.cacheCreationTokens + (day.cacheCreationTokens ?? 0),
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
-      inputTokens: total.inputTokens + (day.inputTokens ?? 0),
       tokens: total.tokens + (day.tokens ?? 0),
     }),
     {
-      cachedInputTokens: 0,
-      cacheCreationTokens: 0,
       conversations: 0,
       costUsd: 0,
-      inputTokens: 0,
       tokens: 0,
     },
   );
-}
-
-function formatCachedInputShare(
-  uncachedInputTokens: number,
-  cachedInputTokens: number,
-  cacheCreationTokens: number,
-) {
-  const totalInputTokens =
-    uncachedInputTokens + cachedInputTokens + cacheCreationTokens;
-  if (!totalInputTokens) return "—";
-  const percentage = (cachedInputTokens / totalInputTokens) * 100;
-  if (percentage < 100 && percentage >= 99.95) return "<100%";
-  return `${percentage.toFixed(1)}%`;
 }
 
 /** Present selectable daily runtime and model-usage trends. */
@@ -103,7 +83,7 @@ export function SystemActivity(props: {
           Metrics refresh failed. Showing cached data.
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard
           detail={`Root conversations in the ${timeRangeDetail(props.range)}`}
           icon={MessageSquare}
@@ -122,19 +102,9 @@ export function SystemActivity(props: {
           label="Model spend"
           value={formatCostSummary({ total: totals.costUsd })}
         />
-        <StatCard
-          detail={`${formatCompactNumber(totals.cachedInputTokens)} read · ${formatCompactNumber(totals.cacheCreationTokens)} written · ${formatCompactNumber(totals.inputTokens)} uncached`}
-          icon={Gauge}
-          label="Cached input share"
-          value={formatCachedInputShare(
-            totals.inputTokens,
-            totals.cachedInputTokens,
-            totals.cacheCreationTokens,
-          )}
-        />
       </div>
-      <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
+      <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
       <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />
     </section>
   );
