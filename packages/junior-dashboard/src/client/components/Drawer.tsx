@@ -47,6 +47,10 @@ export function Drawer(props: {
         ?.focus();
     });
     const onKeyDown = (event: KeyboardEvent) => {
+      // An event detail drawer can open above a child conversation drawer.
+      // Only the last mounted drawer owns Escape and the focus trap.
+      const drawers = document.querySelectorAll("[data-dashboard-drawer]");
+      if (drawers[drawers.length - 1] !== dialogRef.current) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
@@ -94,6 +98,7 @@ export function Drawer(props: {
     <div
       aria-labelledby={props.titleId}
       aria-modal="true"
+      data-dashboard-drawer=""
       className="fixed inset-0 z-50"
       ref={dialogRef}
       role="dialog"

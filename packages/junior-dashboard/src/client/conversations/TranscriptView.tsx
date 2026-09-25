@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { Button } from "../components/Button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
+import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
@@ -43,7 +44,10 @@ export function Transcript(props: {
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
-    version: transcriptBottomVersion(props.transcript),
+    version:
+      view === "raw"
+        ? `events:${props.transcript?.events.length ?? 0}:${props.transcript?.events.at(-1)?.seq ?? ""}`
+        : transcriptBottomVersion(props.transcript),
   });
 
   if (!props.transcript) {
@@ -77,8 +81,12 @@ export function Transcript(props: {
               type="button"
             >
               {props.loadingPreviousPage
-                ? "Loading earlier messages…"
-                : "Show earlier messages"}
+                ? view === "raw"
+                  ? "Loading earlier events…"
+                  : "Loading earlier messages…"
+                : view === "raw"
+                  ? "Show earlier events"
+                  : "Show earlier messages"}
             </button>
             <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
           </div>
@@ -91,12 +99,19 @@ export function Transcript(props: {
             Earlier events could not be loaded.
           </div>
         ) : null}
-        <ConversationTranscriptView
-          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          conversation={props.transcript}
-          responding={props.responding ?? props.live ?? false}
-          view={view}
-        />
+        {view === "raw" ? (
+          <ConversationEventLog
+            key={props.transcript.conversationId}
+            conversation={props.transcript}
+          />
+        ) : (
+          <ConversationTranscriptView
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={props.transcript}
+            responding={props.responding ?? props.live ?? false}
+            view={view}
+          />
+        )}
         <div
           aria-hidden="true"
           className="h-px"

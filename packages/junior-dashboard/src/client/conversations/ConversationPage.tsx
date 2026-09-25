@@ -253,7 +253,13 @@ export function ConversationPage(props: {
               view={view}
             />
 
-            <div className="mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7">
+            <div
+              className={
+                view === "raw"
+                  ? "w-full pt-5 md:pt-7"
+                  : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
+              }
+            >
               {detail.isPending ? (
                 <TranscriptLoading />
               ) : detail.error && !detail.data ? (

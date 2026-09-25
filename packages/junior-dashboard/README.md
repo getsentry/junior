@@ -24,8 +24,12 @@ name, through dashboard settings.
   The client derives one ordered transcript from those immutable responses;
   paginated reads never write into another resource's cache.
 - The server adapts canonical runtime events into normalized reporting events.
-  The dashboard reduces tool and subagent observations by stable identity into
-  one row without interpreting Pi messages or host-only lifecycle shapes.
+  The conversation transcript reduces tool and subagent observations by stable
+  identity into one row. The event log shows each reporting event in sequence
+  order, including lifecycle, routing, and context events. It does not use the
+  transcript reducer. Each row opens the full reporting event in a detail drawer.
+  Search includes event fields and payloads on loaded pages. Earlier pages load
+  on demand. Server privacy rules still apply; this is not a raw storage viewer.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure
