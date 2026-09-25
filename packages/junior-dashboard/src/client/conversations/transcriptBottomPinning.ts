@@ -74,7 +74,7 @@ export function transcriptJuniorMessageVersion(
         data.redacted ? "redacted" : (data.text?.length ?? 0),
       ].join(":");
     }
-    if (data.type === "assistant_message") {
+    if (data.type === "assistant_message" && data.parts.length > 0) {
       const lastPart = data.parts.at(-1);
       return [
         event.seq,
@@ -118,7 +118,7 @@ function changesVisibleTranscript(event: ConversationReportEvent): boolean {
   if (data.type === "turn_lifecycle") return data.state === "failed";
   return (
     data.type === "message" ||
-    data.type === "assistant_message" ||
+    (data.type === "assistant_message" && data.parts.length > 0) ||
     data.type === "tool_calls" ||
     data.type === "subagent" ||
     data.type === "structured_event" ||

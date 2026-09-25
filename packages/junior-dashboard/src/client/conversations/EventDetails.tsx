@@ -3,13 +3,56 @@ import type { ReactNode } from "react";
 
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptText } from "./TranscriptText";
+import { eventLogModel } from "./eventLog";
+import { formatCostBreakdown, summarizeCost } from "../format";
 
 /** Present event content as readable sections, with the exact report available on demand. */
 export function EventDetails({ event }: { event: ConversationReportEvent }) {
   const data = event.data;
+  const model = eventLogModel(event);
+  const usage = event.modelCall?.usage;
+  const cost = summarizeCost(usage);
   let content: ReactNode;
 
   switch (data.type) {
+    case "turn_routed": {
+      const {
+        type: _,
+        modelId: _modelId,
+        modelProfile: _profile,
+        reasoningLevel: _reasoning,
+        costUsd,
+        ...metadata
+      } = data;
+      content = (
+        <DetailSection title="Route selection">
+          <DetailValue
+            value={{
+              ...metadata,
+              ...(costUsd !== undefined
+                ? { routerCostUsd: costUsd }
+                : undefined),
+            }}
+          />
+        </DetailSection>
+      );
+      break;
+    }
+    case "handoff": {
+      const {
+        type: _,
+        modelId: _modelId,
+        modelProfile: _profile,
+        reasoningLevel: _reasoning,
+        ...metadata
+      } = data;
+      content = (
+        <DetailSection title="Handoff">
+          <DetailValue value={metadata} />
+        </DetailSection>
+      );
+      break;
+    }
     case "message": {
       const { type: _, text, redacted, ...metadata } = data;
       content = (
@@ -99,6 +142,66 @@ export function EventDetails({ event }: { event: ConversationReportEvent }) {
 
   return (
     <div className="grid min-w-0 gap-6">
+      <section
+        aria-label={
+          data.type === "handoff" ? "Handoff target" : "Model at this event"
+        }
+        className="grid min-w-0 gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised p-4"
+      >
+        <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
+          {data.type === "handoff" ? "Handoff target" : "Model at this event"}
+        </h3>
+        <p className="m-0 break-words font-mono text-base font-semibold text-violet-300 [overflow-wrap:anywhere]">
+          {model?.modelId ?? "Model not recorded"}
+        </p>
+        {model ? (
+          <DetailValue
+            value={{
+              modelProfile: model.modelProfile ?? "Not recorded",
+              reasoningLevel: model.reasoningLevel ?? "Not recorded",
+            }}
+          />
+        ) : null}
+      </section>
+      {event.modelCall ? (
+        <DetailSection title="Model call">
+          <DetailValue value={{ ...event.modelCall, usage: undefined }} />
+          {usage ? (
+            <>
+              <DetailSection title="Tokens">
+                <DetailValue
+                  value={Object.fromEntries(
+                    Object.entries(usage).filter(([key]) => key !== "cost"),
+                  )}
+                />
+              </DetailSection>
+              {cost ? (
+                <DetailSection title="Estimated cost (USD)">
+                  <DetailValue
+                    value={Object.fromEntries(
+                      Object.entries({ ...usage.cost, total: cost.total })
+                        .filter(([, value]) => value !== undefined)
+                        .map(([key, value]) => [
+                          key,
+                          formatCostBreakdown({ total: value! }),
+                        ]),
+                    )}
+                  />
+                </DetailSection>
+              ) : null}
+            </>
+          ) : (
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              Token usage and cost were not recorded for this call.
+            </p>
+          )}
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            Usage is for this model call only, not the tool execution or
+            conversation total. Input excludes cache reads and writes. Reasoning
+            is part of output, not an extra token total.
+          </p>
+        </DetailSection>
+      ) : null}
       {content}
       <details className="border-t border-dashboard-border pt-4">
         <summary className="cursor-pointer text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
@@ -150,7 +253,9 @@ function DetailValue({ value }: { value: unknown }) {
     );
   }
   if (typeof value === "object" && value !== null) {
-    const fields = Object.entries(value);
+    const fields = Object.entries(value).filter(
+      ([, entry]) => entry !== undefined,
+    );
     return fields.length ? (
       <dl className="m-0 grid min-w-0 gap-3">
         {fields.map(([key, entry]) => {

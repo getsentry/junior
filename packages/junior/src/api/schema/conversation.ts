@@ -441,7 +441,7 @@ const conversationReportToolCallsEventDataSchema = z
 const conversationReportAssistantMessageEventDataSchema = z
   .object({
     type: z.literal("assistant_message"),
-    parts: z.array(conversationReportReasoningPartSchema).min(1),
+    parts: z.array(conversationReportReasoningPartSchema),
   })
   .strict();
 
@@ -602,6 +602,23 @@ export const conversationReportEventSchema = z
     seq: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     data: conversationReportEventDataSchema,
+    model: z
+      .object({
+        modelId: z.string().min(1),
+        modelProfile: z.string().min(1).optional(),
+        reasoningLevel: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    modelCall: z
+      .object({
+        provider: z.string().min(1).optional(),
+        api: z.string().min(1).optional(),
+        stopReason: z.string().min(1).optional(),
+        usage: conversationUsageSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

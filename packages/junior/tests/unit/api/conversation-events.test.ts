@@ -413,6 +413,8 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 11,
+        model: { modelId: "openai/gpt-5" },
+        modelCall: { api: "responses", provider: "openai", stopReason: "stop" },
         createdAt: "1970-01-01T00:00:10.000Z",
         data: {
           type: "tool_calls",
@@ -442,6 +444,7 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 12,
+        model: { modelId: "openai/gpt-5" },
         createdAt: "1970-01-01T00:00:05.000Z",
         data: {
           type: "tool_calls",
@@ -458,6 +461,7 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 13,
+        model: { modelId: "openai/gpt-5" },
         createdAt: "1970-01-01T00:00:01.000Z",
         data: {
           type: "message_handled",
@@ -545,8 +549,8 @@ describe("conversation report event projection", () => {
       projectConversationReportEventPage({
         canExposePayload: true,
         events: redactedOnly,
-      }),
-    ).toEqual([]);
+      })[0]?.data,
+    ).toEqual({ type: "assistant_message", parts: [] });
 
     const withTool = [
       event(

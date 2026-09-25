@@ -214,6 +214,12 @@ describe("transcript bottom pinning", () => {
                 messageId: "assistant-1",
               },
             },
+            {
+              seq: 2,
+              createdAt: "2026-01-01T00:00:03.000Z",
+              data: { type: "assistant_message", parts: [] },
+              modelCall: { usage: { inputTokens: 120 } },
+            },
           ],
         }),
         view,

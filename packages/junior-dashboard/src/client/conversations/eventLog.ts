@@ -1,6 +1,57 @@
-import type { ConversationReportEventData } from "@sentry/junior/api/schema";
+import type {
+  ConversationReportEvent,
+  ConversationReportEventData,
+} from "@sentry/junior/api/schema";
 
 import { toolCallPreview } from "./toolCallPreview";
+import {
+  formatCompactNumber,
+  formatCostBreakdown,
+  summarizeCost,
+} from "../format";
+
+/** Read recorded event configuration, including reports from before model context was added. */
+export function eventLogModel(
+  event: ConversationReportEvent,
+): ConversationReportEvent["model"] {
+  if (event.model) return event.model;
+  const data = event.data;
+  if (data.type === "turn_routed" || data.type === "handoff") {
+    return {
+      modelId: data.modelId,
+      modelProfile: data.modelProfile,
+      reasoningLevel: data.reasoningLevel,
+    };
+  }
+  return undefined;
+}
+
+/** Keep call costs distinct from router cost and never repeat usage on tool results. */
+export function eventLogUsage(event: ConversationReportEvent): string {
+  const usage = event.modelCall?.usage;
+  const cost = summarizeCost(usage);
+  const fields = [
+    cost ? `${formatCostBreakdown(cost)} call` : undefined,
+    event.data.type === "turn_routed" && event.data.costUsd !== undefined
+      ? `${formatCostBreakdown({ total: event.data.costUsd })} router`
+      : undefined,
+    ...(
+      [
+        ["inputTokens", "in"],
+        ["outputTokens", "out"],
+        ["cachedInputTokens", "cache read"],
+        ["cacheCreationTokens", "cache write"],
+        ["reasoningTokens", "reasoning"],
+        ["totalTokens", "total"],
+      ] as const
+    ).map(([key, label]) =>
+      usage?.[key] !== undefined
+        ? `${formatCompactNumber(usage[key])} ${label}`
+        : undefined,
+    ),
+  ];
+  return fields.filter((field) => field !== undefined).join(" · ");
+}
 
 /** Summarize an event without merging it with earlier or later events. */
 export function eventLogSummary(data: ConversationReportEventData): string {
@@ -10,9 +61,11 @@ export function eventLogSummary(data: ConversationReportEventData): string {
     case "message_handled":
       return data.messageId;
     case "assistant_message":
-      return data.parts
-        .map((part) => (part.redacted ? "Content hidden" : part.text))
-        .join(" · ");
+      return (
+        data.parts
+          .map((part) => (part.redacted ? "Content hidden" : part.text))
+          .join(" · ") || "Model call recorded"
+      );
     case "tool_calls":
       return data.calls
         .map((call) => {
@@ -25,7 +78,7 @@ export function eventLogSummary(data: ConversationReportEventData): string {
         ? `${data.state} · ${data.failureCode}${data.failureReason ? ` · ${data.failureReason}` : ""}`
         : `${data.state} · ${data.turnId}`;
     case "turn_routed":
-      return `${data.modelProfile} · ${data.modelId} · ${data.reasoningLevel}`;
+      return `Route selected · ${data.source}${data.confidence !== undefined ? ` · ${Math.round(data.confidence * 100)}% confidence` : ""}`;
     case "turn_context":
       return `${data.pluginName} · ${data.kind} · v${data.version}`;
     case "guardian_action_reviewed":
@@ -39,7 +92,7 @@ export function eventLogSummary(data: ConversationReportEventData): string {
     case "compaction":
       return data.summary ?? "Agent history compacted";
     case "handoff":
-      return `${data.modelProfile} · ${data.modelId}`;
+      return "Handoff · New configuration applied";
     case "subagent":
       return `${data.subagentKind} · ${data.status} · ${data.childConversationId}`;
   }

@@ -30,6 +30,20 @@ events:
   include the generated continuation summary, but never the full replacement
   history.
 
+Each report event can include `model`: the recorded model ID, model profile,
+and reasoning level at that event. Route and handoff events set these values.
+Assistant calls supply the actual model ID. Turn boundaries clear the context.
+Pages resolve the last route boundary and assistant call before the scanned rows
+with bounded lookups. Missing settings stay absent; current host configuration
+is never used to fill historical gaps.
+
+`modelCall` appears only on an assistant call. It contains allowlisted provider,
+API, stop reason, token counters, and estimated USD costs. Text-only calls have
+empty reporting `parts` so the event log retains their usage without duplicating
+the delivered Message in the transcript. Tool starts and results do not repeat
+call usage. Router cost stays on `turn_routed.costUsd`. Opaque provider metadata
+and replacement history remain outside the reporting API.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 
