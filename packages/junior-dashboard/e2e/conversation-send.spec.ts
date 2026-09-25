@@ -295,6 +295,26 @@ test("hands web and external messages from queue to history without gaps", async
       json: { conversationId, messageId: web.messageId, status: "accepted" },
     });
   });
+  // Record transient empty states too: the first query result must not leave
+  // the loading view before its snapshot reaches the transcript.
+  await page.addInitScript(() => {
+    const state = { sawEmptyTranscript: false };
+    Object.assign(window, { transcriptLoad: state });
+    const observer = new MutationObserver(() => {
+      if (
+        document.body?.textContent?.includes(
+          "No transcript is available for this conversation.",
+        )
+      ) {
+        state.sawEmptyTranscript = true;
+      }
+    });
+    observer.observe(document, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
@@ -371,6 +391,14 @@ test("hands web and external messages from queue to history without gaps", async
   ).toBeVisible();
   await expect(thinking).toBeVisible();
 
+  expect(
+    await page.evaluate(() => {
+      const state = window as typeof window & {
+        transcriptLoad: { sawEmptyTranscript: boolean };
+      };
+      return state.transcriptLoad.sawEmptyTranscript;
+    }),
+  ).toBe(false);
   const samples = await page.evaluate(() => {
     const state = window as typeof window & {
       handoffSamples: number[];

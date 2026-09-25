@@ -492,7 +492,13 @@ export function useConversationData(conversationId: string | undefined) {
   );
   // Defer the whole server snapshot, not history alone. Queue removal and the
   // matching transcript must paint together while composer input stays urgent.
-  const detailData = useDeferredValue(detail.data);
+  const deferredDetail = useDeferredValue(detail.data);
+  // Defer refreshes only within this Conversation. First load and navigation
+  // must use the current query, never an empty or different Conversation snapshot.
+  const detailData =
+    deferredDetail && deferredDetail.conversationId === conversationId
+      ? deferredDetail
+      : detail.data;
   const mailbox = detailData?.mailbox;
   // Accept is not visibility. Keep a local row until either server resource
   // contains its real Message id. History and mailbox arrive in one render.
