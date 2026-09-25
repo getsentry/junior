@@ -1,3 +1,4 @@
+import { ForkConversationButton } from "./ForkConversationButton";
 import { TranscriptAttachment } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
@@ -56,6 +57,18 @@ export const TranscriptMessageView = memo(
                     key="timestamp"
                     value={props.message.timestamp}
                   />,
+                  ...(props.message.messageId &&
+                  !props.message.pending &&
+                  props.conversation.isParticipant
+                    ? [
+                        <ForkConversationButton
+                          key="fork"
+                          conversationId={props.conversation.conversationId}
+                          messageId={props.message.messageId}
+                          text={rawText}
+                        />,
+                      ]
+                    : []),
                 ]
               : [formatMessageTimestamp(props.message.timestamp)]
           }
@@ -98,6 +111,7 @@ export const TranscriptMessageView = memo(
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
+    previous.conversation.isParticipant === next.conversation.isParticipant &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,
 );
 

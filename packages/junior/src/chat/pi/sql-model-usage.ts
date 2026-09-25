@@ -106,8 +106,12 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
     ...(row.reasoningTokens === null
       ? undefined
       : { reasoningTokens: row.reasoningTokens }),
-    ...(row.totalTokens === null ? undefined : { totalTokens: row.totalTokens }),
-    ...(Object.keys(definedCost).length > 0 ? { cost: definedCost } : undefined),
+    ...(row.totalTokens === null
+      ? undefined
+      : { totalTokens: row.totalTokens }),
+    ...(Object.keys(definedCost).length > 0
+      ? { cost: definedCost }
+      : undefined),
   };
   return hasAgentTurnUsage(result)
     ? agentTurnUsageSchema.parse(result)
@@ -171,6 +175,8 @@ export async function readConversationModelUsageFromSql(
           ? eq(juniorConversations.rootConversationId, options.conversationId)
           : eq(juniorConversationEvents.conversationId, options.conversationId),
         eq(juniorConversationEvents.type, "assistant_message"),
+        // Fork history is replay context, not another model call.
+        sql`coalesce(${juniorConversationEvents.idempotencyKey}, '') not like 'fork:history:%'`,
         sql`jsonb_typeof(${message}->'provider') = 'string'`,
         sql`jsonb_typeof(${message}->'model') = 'string'`,
         sql`coalesce(${message}->>'provider', '') <> ''`,

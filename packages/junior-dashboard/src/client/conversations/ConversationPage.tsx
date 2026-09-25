@@ -1,3 +1,5 @@
+import { Link } from "react-router";
+import { conversationPath } from "./conversationRoutes";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
@@ -135,6 +137,26 @@ export function ConversationPage(props: {
         scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
         scroll={
           <section className="min-w-0">
+            {detail.data?.forkedFromConversationId ||
+            detail.data?.forks?.length ? (
+              <nav
+                aria-label="Conversation forks"
+                className="mb-3 flex flex-wrap gap-3 text-sm text-dashboard-text-muted"
+              >
+                {detail.data.forkedFromConversationId ? (
+                  <Link
+                    to={conversationPath(detail.data.forkedFromConversationId)}
+                  >
+                    Forked from source conversation
+                  </Link>
+                ) : null}
+                {detail.data.forks?.map((id, index) => (
+                  <Link key={id} to={conversationPath(id)}>
+                    Fork {index + 1}
+                  </Link>
+                ))}
+              </nav>
+            ) : null}
             <ConversationHeader
               conversationId={conversationId}
               lastActivityAt={conversation?.lastSeenAt}

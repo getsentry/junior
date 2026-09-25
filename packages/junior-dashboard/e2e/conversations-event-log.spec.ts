@@ -78,6 +78,105 @@ test("inspects all reporting events and searches full event data", async ({
       { exact: true },
     ),
   ).toBeVisible();
+
+  // Both views use the same cutoff and retry-safe create request.
+  const forkAction = page
+    .getByRole("button", { name: "Fork after this message" })
+    .last();
+  await forkAction.click();
+  const forkDialog = page.getByRole("dialog", {
+    name: "Fork Conversation",
+    exact: true,
+  });
+  await expect(
+    forkDialog.getByText(/Sandbox files and active work are not copied/),
+  ).toBeVisible();
+  await screenshot(page, "conversation-fork-dialog");
+  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
+  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  const reply = report.events.findLast(
+    (event: { data: { type: string; role?: string } }) =>
+      event.data.type === "message" && event.data.role === "assistant",
+  );
+  await log
+    .getByRole("button", { name: `Event ${reply.seq}: message`, exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "message", exact: true })
+    .getByRole("button", { name: "Fork after this message" })
+    .click();
+  const requests: Array<{
+    cutoff: { kind: string; messageId: string };
+    idempotencyKey: string;
+  }> = [];
+  const forkId = "local:web:fork-browser-test";
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
+    async (route) => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill(
+        requests.length === 1
+          ? {
+              status: 503,
+              json: { error: "Could not create the fork. Try again." },
+            }
+          : {
+              json: {
+                conversationId: forkId,
+                sourceConversationId: conversationId,
+                throughSeq: reply.seq,
+                sourceMessageId: reply.data.messageId,
+                status: "created",
+              },
+            },
+      );
+    },
+  );
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}`,
+    (route) =>
+      route.fulfill({
+        json: {
+          ...report,
+          conversationId: forkId,
+          forkedFromConversationId: conversationId,
+          events: [],
+          isParticipant: true,
+          status: "completed",
+          forks: [],
+        },
+      }),
+  );
+  const pendingResponse = await page.request.get(
+    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+  );
+  const pending = await pendingResponse.json();
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
+    (route) =>
+      route.fulfill({
+        json: { ...pending, conversationId: forkId, messages: [] },
+      }),
+  );
+  await forkDialog
+    .getByRole("button", { name: "Create fork", exact: true })
+    .click();
+  await expect(forkDialog.getByRole("alert")).toHaveText(
+    "Could not create the fork. Try again.",
+  );
+  await forkDialog
+    .getByRole("button", { name: "Create fork", exact: true })
+    .click();
+  await expect(page).toHaveURL(new RegExp(encodeURIComponent(forkId)));
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]?.cutoff).toEqual({
+    kind: "message",
+    messageId: reply.data.messageId,
+  });
+  await expect(
+    page.getByRole("link", { name: "Forked from source conversation" }),
+  ).toBeVisible();
 });
 
 test("loads earlier events without merging tool starts and results", async ({

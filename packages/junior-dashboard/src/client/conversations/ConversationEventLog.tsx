@@ -7,6 +7,7 @@ import { cn } from "../styles";
 import type { ConversationTranscript } from "../types";
 import { eventLogSummary, eventLogTone } from "./eventLog";
 import { EventDetails } from "./EventDetails";
+import { ForkConversationButton } from "./ForkConversationButton";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
@@ -151,6 +152,24 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               titleId={titleId}
               width="wide"
             >
+              {conversation.isParticipant &&
+              selected.data.type === "message" &&
+              selected.data.role === "assistant" &&
+              !selected.data.redacted ? (
+                <div className="mb-3 flex items-center gap-2 text-sm">
+                  <ForkConversationButton
+                    conversationId={conversation.conversationId}
+                    messageId={selected.data.messageId}
+                    text={selected.data.text ?? ""}
+                  />
+                  <span>Fork after this reply</span>
+                </div>
+              ) : (
+                <p className="text-sm text-dashboard-text-muted">
+                  Forks start after completed assistant replies, not status
+                  events or unfinished tool calls.
+                </p>
+              )}
               <EventDetails key={selected.seq} event={selected} />
             </Drawer>,
             document.body,

@@ -41,6 +41,14 @@ const agentsInstructionsUpdatedContentSchema = z
   })
   .strict();
 
+const conversationForkedContentSchema = z
+  .object({
+    sourceConversationId: z.string().min(1),
+    throughSeq: z.number().int().nonnegative(),
+    sourceMessageId: z.string().min(1).optional(),
+  })
+  .strict();
+
 function providerTitle(content: {
   provider: string;
   providerLabel?: string;
@@ -152,10 +160,34 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
   },
 });
 
+/** Junior-owned backlink for a conversation forked from an earlier cutoff. */
+export const conversationForkedEvent = defineConversationEvent({
+  name: "conversation_forked",
+  version: 1,
+  schema: conversationForkedContentSchema,
+  renderEvent(event) {
+    return {
+      icon: "activity",
+      title: "Forked conversation",
+      preview: `From ${event.sourceConversationId} through seq ${event.throughSeq}`,
+      details: [
+        {
+          title: "Forked conversation",
+          description: event.sourceMessageId
+            ? `Source message \`${event.sourceMessageId}\` in \`${event.sourceConversationId}\``
+            : `Source conversation \`${event.sourceConversationId}\``,
+          metadata: [`seq ${event.throughSeq}`],
+        },
+      ],
+    };
+  },
+});
+
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   agentsInstructionsUpdatedEvent,
+  conversationForkedEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */

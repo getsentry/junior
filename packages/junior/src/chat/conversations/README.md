@@ -130,6 +130,39 @@ event data is represented by identifying fields and its original JSON byte
 size. The complete event array also has a fixed byte budget and reports omitted
 events through its pagination contract.
 
+## Conversation Forks
+
+`forkConversation` creates an independent web root through one completed
+assistant reply. A message cutoff uses the exact delivery-to-agent event key;
+unknown or fallback replies cannot select unrelated history. Sequence cutoffs
+must also end with a completed assistant reply and no unfinished tool calls.
+The history version at that cutoff wins, including when the source later
+compacts or hands off.
+
+The API checks source access under the source Conversation lock. Creation and
+history seeding share the source and fork locks in one SQL transaction. Retry
+identity includes the source, requester email, and client key. A retry returns
+the first completed fork. Forks retain source visibility; missing visibility
+stays private. The requester owns the new root. Historical authors do not become
+participants. Copied model messages keep their exact fields and attribution.
+The `fork:history:` event keys exclude those copies from model usage reports.
+
+The indexed `forked_from_conversation_id` relation is separate from delegation.
+Deleting a source clears this link but does not delete the fork. Detail reads
+filter both source and fork links through the usual access checks.
+
+The dashboard offers the action on assistant replies in the conversation and
+event log. It opens the new Conversation without starting a Turn. The user then
+sends a new instruction through the normal web composer. The copied history is
+model context, not a duplicate of the source's visible Messages; the source link
+opens that transcript. Compacted history cannot recover discarded context.
+
+Forks do not copy the Sandbox, files, Location, execution state, pending input,
+credentials, approvals, subagents, Watches, Automations, attachments, or mutable
+annotations. An appended context message explains this boundary to the agent.
+A Sandbox is created lazily through the normal runtime. Sandbox file transfer
+and historical snapshots are tracked in #1947.
+
 ## Stored Event Compatibility
 
 Live writers accept only the canonical event types and current schema version.
