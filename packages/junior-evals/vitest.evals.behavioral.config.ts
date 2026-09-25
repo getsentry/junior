@@ -34,13 +34,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
     `JUNIOR_EVAL_REDIS_URL must point at localhost or 127.0.0.1, got ${evalRedisHostname}`,
   );
 }
-process.env.AI_MODEL = "xai/grok-4.5";
-process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
-process.env.AI_GUARDIAN_MODEL = "openai/gpt-6-luna";
-process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
-process.env.AI_MODEL_PROFILES = JSON.stringify({
-  coding: "openai/gpt-5.6-sol",
-});
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 export default defineConfig({

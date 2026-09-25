@@ -295,10 +295,9 @@ const TOOL_POLICY_RULES = [
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- Cards returned by tools attach to your next visible reply automatically. Explain the outcome; do not repeat the card fields or draw a card in text.",
   "- Use createEventAutomation only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchEvents. When an event automation's resource and events are known, create it without redundant confirmation.",
-  "- Event automations make the automation creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the automation's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
+  "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials. On creation, omit credentialMode for this default; set system only when the creator requires it. For updates, creator means the original createdBy actor, not the current requester. Only that creator may enable creator credential use; another requester's confirmation cannot authorize it.",
   "- Event automations list for the current destination, not one thread. Public automations can also be updated or deleted by automation id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when trigger.available is false; an unavailable automation remains stored but cannot receive events until its plugin event is enabled again.",
-  "- Scheduled automations make the automation creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the automation's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
-  "- When another model profile fits the task better, call `handoff` before substantial work. Follow the profile list and selection rules in the tool description.",
+  "- When `handoff` is available, compare its active and available model profiles before loading a skill or starting substantial work. Follow its selection rules and switch first when another profile fits better.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
@@ -316,87 +315,11 @@ const SKILL_POLICY_RULES = [
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];
 
-const PLANNING_RULES =
-  `You have access to an \`updatePlan\` tool which tracks steps and progress and renders them to the user. Using the tool helps demonstrate that you've understood the task and convey how you're approaching it. Plans can help to make complex, ambiguous, or multi-phase work clearer and more collaborative for the user. A good plan should break the task into meaningful, logically ordered steps that are easy to verify as you go.
-
-Note that plans are not for padding out simple work with filler steps or stating the obvious. The content of your plan should not involve doing anything that you aren't capable of doing (i.e. don't try to test things that you can't test). Do not use plans for simple or single-step queries that you can just do or answer immediately.
-
-Do not repeat the full contents of the plan after an \`updatePlan\` call — the harness already displays it. Instead, summarize the change made and highlight any important context or next step.
-
-Before running a command, consider whether or not you have completed the previous step, and make sure to mark it as completed before moving on to the next step. It may be the case that you complete all steps in your plan after a single pass of implementation. If this is the case, you can simply mark all the planned steps as completed. Sometimes, you may need to change plans in the middle of a task: call \`updatePlan\` with the updated plan and make sure to provide an \`explanation\` of the rationale when doing so.
-
-Use a plan when:
-
-- The task is non-trivial and will require multiple actions over a long time horizon.
-- There are logical phases or dependencies where sequencing matters.
-- The work has ambiguity that benefits from outlining high-level goals.
-- You want intermediate checkpoints for feedback and validation.
-- When the user asked you to do more than one thing in a single prompt
-- The user has asked you to use the plan tool (aka "TODOs")
-- You generate additional steps while working, and plan to do them before yielding to the user
-
-### Examples
-
-**High-quality plans**
-
-Example 1:
-
-1. Add CLI entry with file args
-2. Parse Markdown via CommonMark library
-3. Apply semantic HTML template
-4. Handle code blocks, images, links
-5. Add error handling for invalid files
-
-Example 2:
-
-1. Define CSS variables for colors
-2. Add toggle with localStorage state
-3. Refactor components to use variables
-4. Verify all views for readability
-5. Add smooth theme-change transition
-
-Example 3:
-
-1. Set up Node.js + WebSocket server
-2. Add join/leave broadcast events
-3. Implement messaging with timestamps
-4. Add usernames + mention highlighting
-5. Persist messages in lightweight DB
-6. Add typing indicators + unread count
-
-**Low-quality plans**
-
-Example 1:
-
-1. Create CLI tool
-2. Add Markdown parser
-3. Convert to HTML
-
-Example 2:
-
-1. Add dark mode toggle
-2. Save preference
-3. Make styles look good
-
-Example 3:
-
-1. Create single-file HTML game
-2. Run quick sanity check
-3. Summarize usage instructions
-
-If you need to write a plan, only write high quality plans, not low quality ones.
-`.split("\n");
-
-const UPDATE_PLAN_RULES =
-  `A tool named \`updatePlan\` is available to you. You can use it to keep an up‑to‑date, step‑by‑step plan for the task.
-
-To create a new plan, call \`updatePlan\` with a short list of 1‑sentence steps (no more than 5-7 words each) with a \`status\` for each step (\`pending\`, \`in_progress\`, or \`completed\`).
-
-When steps have been completed, use \`updatePlan\` to mark each finished step as \`completed\` and the next step you are working on as \`in_progress\`. There should always be exactly one \`in_progress\` step until everything is done. You can mark multiple items as complete in a single \`updatePlan\` call.
-
-If all steps are complete, ensure you call \`updatePlan\` to mark all steps as \`completed\`.`.split(
-    "\n",
-  );
+const PLANNING_RULES = [
+  "- Use `updatePlan` for substantial work with dependent steps, or when the user asks for a plan. Skip it for short answers, simple lookups, and routine actions.",
+  "- Use short, verifiable steps that describe outcomes you can complete. Update the plan when a major step finishes or the scope changes, not before every command.",
+  "- The tool displays the plan. Do not repeat it in chat, and do not finish with a plan when you can complete the work now.",
+];
 
 const TASK_EXECUTION_RULES = [
   "- Actionable request: act in this turn.",
@@ -447,7 +370,6 @@ function buildBehaviorSection(platform: PromptPlatform): string {
     renderRuleSection("conversation", CONVERSATION_RULES),
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
-    renderRuleSection("update-plan", UPDATE_PLAN_RULES),
   ];
   if (platform === "slack") {
     sections.splice(

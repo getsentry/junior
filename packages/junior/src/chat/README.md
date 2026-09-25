@@ -241,6 +241,25 @@ delegation without becoming the execution actor or a general task owner.
   evidence selected with the Codex Guardian transcript rules. It cannot override
   deterministic context checks, and unavailable review fails closed.
 
+## Model profiles and steering
+
+`model-profile.ts` owns the default model ids, fixed reasoning levels, and
+task-fit descriptions. Apps can replace them through `createApp()`.
+`services/turn-router.ts` selects a profile for each new Turn when handoff is
+enabled. It selects reasoning independently, then applies any fixed level from
+the selected profile. A saved Turn route, or a later handoff in that Turn, wins
+on resume. A previous Turn's handoff does not pin a new request to that profile.
+When handoff is disabled, the agent keeps the active profile and configured
+reasoning without calling the router.
+
+`tools/handoff/tool.ts` owns in-turn switch rules. Its description includes the
+active profile and the other available profiles. `agent/handoff.ts` refreshes
+that description after each switch. The system prompt points to this contract
+before skill selection; it does not repeat the task-fit descriptions.
+
+The system prompt owns when a plan helps. The `updatePlan` tool owns plan input
+and status rules.
+
 ## Task agent input
 
 `task-input.ts` owns agent input for every task run (schedule, event, or

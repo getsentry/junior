@@ -163,7 +163,7 @@ describe("Slack behavior: mixed attachment media", () => {
     );
   }, 20_000);
 
-  it("keeps raw image attachments when AI_VISION_MODEL is unset", async () => {
+  it("keeps raw image attachments when AI_VISION_MODEL is explicitly empty", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
 
     const capturedAttachmentMediaTypes: string[][] = [];
