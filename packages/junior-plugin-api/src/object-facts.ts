@@ -44,7 +44,7 @@ export type ObjectFacts = z.output<typeof objectFactsSchema>;
 
 type ObjectField = { key: string; label: string; value: string };
 
-/** Give Slack, web, and text the same field meaning and reading order. */
+/** Show at most four card attributes, in priority order, on every surface. */
 export function objectFactFields(
   facts: ObjectFacts | undefined,
 ): ObjectField[] {
@@ -86,9 +86,6 @@ export function objectFactFields(
       );
       add("sourceBranch", "From", facts.sourceBranch);
       add("targetBranch", "Into", facts.targetBranch);
-      add("changedFiles", "Files changed", facts.changedFiles);
-      add("additions", "Lines added", facts.additions);
-      add("deletions", "Lines removed", facts.deletions);
       break;
     }
     case "task":
@@ -110,5 +107,5 @@ export function objectFactFields(
       add("branch", "Branch", facts.branch);
       break;
   }
-  return fields;
+  return fields.slice(0, 4);
 }

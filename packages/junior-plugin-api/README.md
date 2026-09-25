@@ -158,6 +158,10 @@ a verified HTTP(S) `url` (or null), and an `objectType`: `task`, `code_change`,
 use `trigger` and `warning`. Do not send Slack layout JSON or infer facts that
 the provider did not return.
 
+Keep Message cards compact. Show at most four fact attributes, in priority
+order, plus the status. Omit code-change size counts and source update times
+from the card. Keep those values in saved facts; this is a display limit.
+
 The `afterMcpTool` hook can return `{ objectAnnotations }` after a successful
 hosted tool call. Use `ctx.annotations.upsert` instead when facts must change
 without selecting a reply card, such as a background webhook update. Only return
