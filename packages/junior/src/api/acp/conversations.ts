@@ -158,7 +158,7 @@ export function createAcpConversations(
         stopped.pendingMessages.some((message) => message.source === "slack")
       ) {
         await clearSlackPendingReactions({
-          adapter: getProductionSlackAdapter(),
+          getSlackAdapter: getProductionSlackAdapter,
           messages: stopped.pendingMessages,
           state: options.state,
         });

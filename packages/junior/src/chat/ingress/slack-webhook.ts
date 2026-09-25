@@ -364,6 +364,17 @@ async function handleSlackThreadStop(args: {
   stopReason: string;
 }): Promise<void> {
   const thread = await buildThread(args);
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId: args.canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  // Capture receipts before the watermark lets a worker discard stale input.
+  // The ingress lock prevents another Slack message from arriving meanwhile.
+  const work = await getConversationWorkState({
+    conversationId,
+    state: args.state,
+  });
   const { applied } = await stopSlackThread({
     state: args.state,
     stoppedAtMs: args.message.metadata.dateSent.getTime(),
@@ -373,20 +384,15 @@ async function handleSlackThreadStop(args: {
     return;
   }
 
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
-  const stopped = await stopConversationTurn({
+  await stopConversationTurn({
     conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,
     state: args.state,
   });
   await clearSlackPendingReactions({
-    adapter: args.adapter,
-    messages: stopped.status === "requested" ? stopped.pendingMessages : [],
+    getSlackAdapter: () => args.adapter,
+    messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
   await cancelSubscriptions({ conversationId, state: args.state });

@@ -8,6 +8,7 @@ import {
   type StateAdapter,
 } from "chat";
 import { z } from "zod";
+import { logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
@@ -472,29 +473,37 @@ function parseSlackMetadata(
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Clear processing reactions for Slack input cancelled before a worker owns it. */
+/** Clear cancelled Slack receipts without failing the stop or cancellation. */
 export async function clearSlackPendingReactions(args: {
-  adapter: SlackAdapter;
+  getSlackAdapter: () => SlackAdapter;
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
   for (const record of args.messages) {
     if (record.source !== "slack") continue;
-    const metadata = parseSlackMetadata(record.input.metadata);
-    if (!metadata || metadata.route !== "mention") continue;
-    const timestamp = getMessageTs(Message.fromJSON(metadata.message));
-    const target = parseSlackThreadId(metadata.thread.id);
-    if (!timestamp || !target) continue;
-    await runWithSlackInstallation({
-      adapter: args.adapter,
-      installation: metadata.installation ?? {},
-      state: args.state,
-      task: () =>
-        stopProcessingReactionForMessage({
-          channelId: target.channelId,
-          timestamp,
-        }),
-    });
+    try {
+      const metadata = parseSlackMetadata(record.input.metadata);
+      if (!metadata || metadata.route !== "mention") continue;
+      const timestamp = getMessageTs(Message.fromJSON(metadata.message));
+      const target = parseSlackThreadId(metadata.thread.id);
+      if (!timestamp || !target) continue;
+      await runWithSlackInstallation({
+        adapter: args.getSlackAdapter(),
+        installation: metadata.installation ?? {},
+        state: args.state,
+        task: () =>
+          stopProcessingReactionForMessage({
+            channelId: target.channelId,
+            timestamp,
+          }),
+      });
+    } catch (error) {
+      // Receipts are optional UI. Adapter and installation failures must not
+      // undo cancellation or prevent cleanup of the other queued messages.
+      logException(error, "slack.processing.pending_reaction_cleanup.failed", {
+        "messaging.message.id": record.inboundMessageId,
+      });
+    }
   }
 }
 

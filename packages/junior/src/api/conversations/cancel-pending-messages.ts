@@ -49,7 +49,7 @@ export async function cancelConversationPendingMessagesForViewer(
     );
     if (cancelledSlackMessages.length) {
       await clearSlackPendingReactions({
-        adapter: getProductionSlackAdapter(),
+        getSlackAdapter: getProductionSlackAdapter,
         messages: cancelledSlackMessages,
       });
     }
