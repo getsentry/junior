@@ -1,4 +1,8 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import {
+  readMessageAttachments,
+  type MessageAttachment,
+} from "@/chat/attachments/input";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -210,6 +214,7 @@ export function createConversationTurnWorker(
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
     let text = "";
+    let attachments: MessageAttachment[] = [];
     let turnId = "";
     let userMessageId = "";
     let startedAtMs = Date.now();
@@ -233,6 +238,9 @@ export function createConversationTurnWorker(
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      attachments = resolved.batch.flatMap((entry) =>
+        readMessageAttachments(entry.message.input.attachments),
+      );
       startedAtMs = first.message.createdAtMs;
       userMessageId = first.message.inboundMessageId;
       turnId = buildDeterministicTurnId(userMessageId);
@@ -277,6 +285,7 @@ export function createConversationTurnWorker(
       });
       userMessageId = userMessage.id;
       text = userMessage.text;
+      attachments = userMessage.meta?.attachments ?? [];
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = [userMessageId];
     }
@@ -370,6 +379,7 @@ export function createConversationTurnWorker(
             createdAtMs: startedAtMs,
             author,
             meta: {
+              ...(attachments.length ? { attachments } : undefined),
               explicitMention: true,
               replied: false,
               ...(source.kind === "web"
@@ -523,6 +533,7 @@ export function createConversationTurnWorker(
               runId: currentRunId,
               instruction: {
                 text,
+                storedAttachments: attachments,
                 context: buildConversationContext(conversation, {
                   excludeMessageId: userMessageId,
                 }),

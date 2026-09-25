@@ -207,8 +207,8 @@ function withoutModelUsage(
 
 /**
  * Reuse an unchanged event array without holding back fresh detail metadata.
- * Reporting events are immutable by sequence, so sequence and timestamp form a
- * cheap poll version. This avoids a deep walk through every event payload.
+ * Sequence and timestamp cover immutable event facts. Attachment metadata can
+ * arrive after a Slack download, so compare it without walking other payloads.
  */
 export function reuseConversationEventReferences(
   previous: ConversationDetailReport | undefined,
@@ -228,6 +228,13 @@ function sameConversationEventVersion(
     const left = previous[index]!;
     const right = next[index]!;
     if (left.seq !== right.seq || left.createdAt !== right.createdAt)
+      return false;
+    if (
+      left.data.type === "message" &&
+      right.data.type === "message" &&
+      JSON.stringify(left.data.attachments) !==
+        JSON.stringify(right.data.attachments)
+    )
       return false;
   }
   return true;

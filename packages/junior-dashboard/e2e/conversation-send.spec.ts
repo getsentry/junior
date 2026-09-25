@@ -1,6 +1,11 @@
 import { webMessageId } from "@sentry/junior/api/schema";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import type {
+  ConversationPendingMessage,
+  InputImage,
+} from "@sentry/junior/api/schema";
 import { expect, test } from "./test";
+import { screenshot } from "./screenshot";
+import { mockChartPng } from "../src/mock-reporting/chart-png";
 
 test("starts and continues conversations from the dashboard", async ({
   page,
@@ -11,9 +16,13 @@ test("starts and continues conversations from the dashboard", async ({
     idempotencyKey: string;
     message: string;
     visibility?: "private" | "public";
+    images?: InputImage[];
   }> = [];
-  const continueRequests: Array<{ idempotencyKey: string; message: string }> =
-    [];
+  const continueRequests: Array<{
+    idempotencyKey: string;
+    message: string;
+    images?: InputImage[];
+  }> = [];
   let releaseFirstContinue: (() => void) | undefined;
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
@@ -85,7 +94,44 @@ test("starts and continues conversations from the dashboard", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
   const startComposer = page.getByLabel("Start a conversation");
-  await startComposer.fill("Start from the dashboard");
+  const imageBase64 = mockChartPng.toString("base64");
+  await page.getByLabel("Choose images").setInputFiles({
+    name: "notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("notes"),
+  });
+  await expect(
+    page.getByText("Use PNG, JPEG, GIF, or WebP image files."),
+  ).toBeVisible();
+  await startComposer.evaluate((element, data) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(
+      new File(
+        [Uint8Array.from(atob(data), (c) => c.charCodeAt(0))],
+        "pasted.png",
+        { type: "image/png" },
+      ),
+    );
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData,
+      }),
+    );
+  }, imageBase64);
+  await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
+  await screenshot(page, "conversation-image-draft");
+  await page.getByRole("button", { name: "Remove pasted.png" }).click();
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("Choose images").setInputFiles({
+    name: "pasted.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(imageBase64, "base64"),
+  });
+  await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => createRequests.length).toBe(1);
   // Create restore keeps send locked while the first accept is open so a later
@@ -103,9 +149,13 @@ test("starts and continues conversations from the dashboard", async ({
   ).toBeVisible();
   // New roots have no mailbox outbox, so a failed create restores the draft and
   // keeps the same idempotency key for a safe retry.
-  await expect(startComposer).toHaveValue("Start from the dashboard");
+  await expect(startComposer).toHaveValue("");
+  await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
+  expect(createRequests[0]?.images).toEqual([
+    { filename: "pasted.png", contentType: "image/png", data: imageBase64 },
+  ]);
   const failedCreateKey = createRequests[0]?.idempotencyKey;
-  expect(createRequests[0]?.message).toBe("Start from the dashboard");
+  expect(createRequests[0]?.message).toBe("");
   expect(createRequests[0]?.visibility).toBe("private");
   expect(failedCreateKey).toBeTruthy();
 
@@ -115,8 +165,9 @@ test("starts and continues conversations from the dashboard", async ({
   );
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
-  expect(createRequests[1]?.message).toBe("Start from the dashboard");
+  expect(createRequests[1]?.message).toBe("");
   expect(createRequests[1]?.visibility).toBe("private");
+  expect(createRequests[1]?.images).toEqual(createRequests[0]?.images);
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(
@@ -140,6 +191,21 @@ test("starts and continues conversations from the dashboard", async ({
   ).toHaveCount(0);
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Continue in Junior");
+  await composer.evaluate((element, data) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File(
+        [Uint8Array.from(atob(data), (c) => c.charCodeAt(0))],
+        "dropped.png",
+        { type: "image/png" },
+      ),
+    );
+    element.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }),
+    );
+  }, imageBase64);
+  await expect(page.getByRole("img", { name: "dropped.png" })).toBeVisible();
+  await screenshot(page, "conversation-image-reply");
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
@@ -166,6 +232,8 @@ test("starts and continues conversations from the dashboard", async ({
   await pending.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => continueRequests.length).toBe(3);
   expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
+  expect(continueRequests[2]?.images).toEqual(continueRequests[0]?.images);
+  expect(continueRequests[2]?.images?.[0]?.filename).toBe("dropped.png");
   // The accepted message stays out of the composer before background transcript
   // refreshes finish. Keep the local row until a server snapshot sees it.
   await expect(composer).toHaveValue("");

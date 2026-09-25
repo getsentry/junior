@@ -74,6 +74,7 @@ export function pendingTranscriptMessage(
     parts: message.redacted
       ? [{ type: "text", redacted: true }]
       : [{ type: "text", text: message.text ?? "" }],
+    ...(message.attachments ? { attachments: message.attachments } : undefined),
     pending: true,
     role: "user",
     source: message.source,
@@ -199,6 +200,7 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
+        ...(data.attachments ? { attachments: data.attachments } : undefined),
         ...(data.cards ? { cards: data.cards } : undefined),
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }

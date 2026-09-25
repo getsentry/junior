@@ -51,6 +51,17 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const inputImage = page.getByRole("img", { name: "input-chart.png" });
+  await inputImage.scrollIntoViewIfNeeded();
+  await expect(inputImage).toBeVisible();
+  await inputImage.click();
+  await expect(
+    page.getByRole("dialog", { name: "input-chart.png" }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "input-chart.png" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   const image = page
     .locator('a[href*="/attachments/qa-chart-png"]')
     .filter({ has: page.locator('img[alt="chart.png"]') })

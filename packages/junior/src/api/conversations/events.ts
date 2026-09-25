@@ -1,3 +1,4 @@
+import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCards } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
@@ -343,7 +344,12 @@ function reportEventData(args: {
           ? { cards: readMessageCards(data.meta) }
           : undefined),
         ...(args.canExposePayload
-          ? { text: data.text }
+          ? {
+              text: data.text,
+              ...(data.meta?.attachments
+                ? { attachments: readMessageAttachments(data.meta.attachments) }
+                : undefined),
+            }
           : { redacted: true as const }),
       };
     }

@@ -3,6 +3,7 @@ import type {
   ConversationDetailReport,
   ConversationFeed,
   ConversationPendingMessagesReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -339,19 +340,22 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   const onSubmit = useCallback(
-    async (message: string, idempotencyKey: string) => {
+    async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
         message,
+        images,
       });
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
-    if (!message.idempotencyKey || !message.text) return;
+    if (!message.idempotencyKey || (!message.text && !message.images?.length))
+      return;
     void appendMessageRef.current.mutateAsync({
       idempotencyKey: message.idempotencyKey,
-      message: message.text,
+      message: message.text ?? "",
+      images: message.images,
     });
   }, []);
   const onSubmitStart = useCallback(() => {

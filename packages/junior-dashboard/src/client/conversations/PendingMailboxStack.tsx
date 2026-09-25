@@ -120,7 +120,13 @@ function PendingRow(props: {
   onCancel?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
-  const text = props.message.text ?? "";
+  const filenames = [
+    ...(props.message.images ?? []),
+    ...(props.message.attachments ?? []),
+  ]
+    .map((attachment) => attachment.filename)
+    .join(", ");
+  const text = [props.message.text, filenames].filter(Boolean).join(" · ");
   const redacted = Boolean(props.message.redacted);
   // Pending rows can come from web or Slack. Avoid rebuilding a full
   // transcript projection just to label the stack above the composer.

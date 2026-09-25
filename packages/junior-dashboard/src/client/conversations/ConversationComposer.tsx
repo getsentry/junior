@@ -1,3 +1,5 @@
+import { INPUT_IMAGE_TYPES, type InputImage } from "@sentry/junior/api/schema";
+import { ComposerImages, readComposerImages } from "./ComposerImages";
 import {
   memo,
   useEffect,
@@ -8,7 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Send } from "lucide-react";
+import { ImagePlus, Send } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
@@ -21,6 +23,8 @@ const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
 
 type ConversationDraft = {
+  /** Image bytes are not restored from localStorage; do not reuse their send key. */
+  hasImages?: boolean;
   /** Key issued for `lastSubmittedText`. Reused while the next send matches it. */
   idempotencyKey: string;
   /** Trimmed text the current idempotency key was issued for. */
@@ -29,19 +33,23 @@ type ConversationDraft = {
 };
 
 type ConversationAttempt = {
+  images?: InputImage[];
   idempotencyKey: string;
   lastSubmittedText: string;
 };
 
-/** Choose the send attempt for one submit. Same trimmed text reuses the key. */
+/** Reuse a send key only while its text and image selection stay unchanged. */
 export function conversationAttemptForSubmit(
   current: ConversationAttempt,
   text: string,
+  images?: InputImage[],
 ): ConversationAttempt {
-  if (text === current.lastSubmittedText) return current;
+  if (text === current.lastSubmittedText && images === current.images)
+    return current;
   return {
     idempotencyKey: crypto.randomUUID(),
     lastSubmittedText: text,
+    images,
   };
 }
 
@@ -64,7 +72,11 @@ type ConversationComposerProps = {
   restoreDraftOnError?: boolean;
   submitLabel: string;
   onFocus?: () => void;
-  onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmit(
+    message: string,
+    idempotencyKey: string,
+    images?: InputImage[],
+  ): Promise<void>;
   onSubmitStart?: () => void;
 };
 
@@ -82,6 +94,13 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [canSend, setCanSend] = useState(() =>
     Boolean(initialDraft.text.trim()),
   );
+  const [images, setImages] = useState<InputImage[]>([]);
+  const imagesRef = useRef(images);
+  const [imageError, setImageError] = useState<string>();
+  const [readingImages, setReadingImages] = useState(false);
+  const readingImagesRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -149,6 +168,30 @@ export const ConversationComposer = memo(function ConversationComposer(
     setCanSend(nextCanSend);
   };
 
+  const replaceImages = (next: InputImage[]) => {
+    imagesRef.current = next;
+    setImages(next);
+  };
+  const addImages = async (files: File[]) => {
+    if (!files.length || readingImagesRef.current || sendLocked) return;
+    readingImagesRef.current = true;
+    setReadingImages(true);
+    setImageError(undefined);
+    try {
+      replaceImages(await readComposerImages(files, imagesRef.current));
+      textareaRef.current?.focus({ preventScroll: true });
+    } catch (error) {
+      setImageError(
+        error instanceof Error
+          ? error.message
+          : "Could not read images. Add them again.",
+      );
+    } finally {
+      readingImagesRef.current = false;
+      setReadingImages(false);
+    }
+  };
+
   const scheduleDraftStorage = () => {
     if (storageTimerRef.current !== undefined) {
       window.clearTimeout(storageTimerRef.current);
@@ -187,16 +230,27 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = draftRef.current.text.trim();
-    if (!text || !online || submittingRef.current || sendLocked) return;
+    const submittedImages = imagesRef.current;
+    if (
+      (!text && !submittedImages.length) ||
+      !online ||
+      submittingRef.current ||
+      sendLocked ||
+      readingImagesRef.current
+    )
+      return;
 
-    // Keep the key while the trimmed text matches the last attempt. Edits that
-    // return to the same text (typo undo, IME) must not mint a new key or a
-    // retry can duplicate a send the server already accepted.
-    const attempt = conversationAttemptForSubmit(attemptRef.current, text);
+    const attempt = conversationAttemptForSubmit(
+      attemptRef.current,
+      text,
+      submittedImages.length ? submittedImages : undefined,
+    );
     attemptRef.current = attempt;
     const submitToken = ++submitTokenRef.current;
     const submittedDraft: ConversationDraft = {
-      ...attempt,
+      idempotencyKey: attempt.idempotencyKey,
+      lastSubmittedText: attempt.lastSubmittedText,
+      hasImages: submittedImages.length > 0,
       text,
     };
     // Clear immediately so the reader can compose the next message. Existing
@@ -207,6 +261,8 @@ export const ConversationComposer = memo(function ConversationComposer(
       text: "",
     };
     replaceMessage(clearedDraft);
+    replaceImages([]);
+    setImageError(undefined);
     storeDraft(storageKey, clearedDraft);
     attemptRef.current = nextAttempt;
     submittingRef.current = true;
@@ -222,7 +278,11 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
 
     try {
-      await props.onSubmit(text, attempt.idempotencyKey);
+      await props.onSubmit(
+        text,
+        attempt.idempotencyKey,
+        submittedImages.length ? submittedImages : undefined,
+      );
     } catch {
       if (!props.restoreDraftOnError) {
         // Parent keeps the failed message in the mailbox queue for retry.
@@ -231,7 +291,8 @@ export const ConversationComposer = memo(function ConversationComposer(
       // Ignore stale failures after a newer submit owns the composer.
       if (submitToken !== submitTokenRef.current) return;
       // Restore only when the reader has not already started another draft.
-      if (draftRef.current.text) return;
+      if (draftRef.current.text || imagesRef.current.length) return;
+      replaceImages(submittedImages);
       replaceMessage(submittedDraft);
       attemptRef.current = attempt;
       storeDraft(storageKey, submittedDraft);
@@ -244,7 +305,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       void submit();
     }
@@ -252,7 +317,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error ? (
+      {!online || props.error || imageError ? (
         <div
           aria-live="polite"
           className={
@@ -261,7 +326,11 @@ export const ConversationComposer = memo(function ConversationComposer(
               : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
           }
         >
-          {!online ? "Connect to send. Your draft is saved." : props.error}
+          {!online
+            ? images.length
+              ? "Connect to send. Image drafts stay here until you leave."
+              : "Connect to send. Your draft is saved."
+            : (imageError ?? props.error)}
         </div>
       ) : null}
       <form
@@ -272,9 +341,64 @@ export const ConversationComposer = memo(function ConversationComposer(
             ? "block overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35"
             : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
           dashboardComposerSurfaceClass,
+          dragging && "ring-2 ring-cyan-300",
         )}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(false);
+          void addImages(Array.from(event.dataTransfer.files));
+        }}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData.files);
+          if (!files.length) return;
+          event.preventDefault();
+          void addImages(files);
+        }}
         onSubmit={submit}
       >
+        {images.length ? (
+          <ComposerImages
+            images={images}
+            disabled={readingImages || sendLocked}
+            onRemove={(index) => {
+              if (readingImagesRef.current || sendLocked) return;
+              replaceImages(imagesRef.current.filter((_, i) => i !== index));
+              setImageError(undefined);
+            }}
+          />
+        ) : null}
+        {dragging || readingImages ? (
+          <div
+            role="status"
+            className="col-span-full px-3 pt-2 text-sm text-dashboard-text-muted"
+          >
+            {readingImages ? "Reading images…" : "Drop images here"}
+          </div>
+        ) : null}
+        <input
+          accept={INPUT_IMAGE_TYPES.join(",")}
+          aria-label="Choose images"
+          className="sr-only"
+          multiple
+          onChange={(event) => {
+            void addImages(Array.from(event.currentTarget.files ?? []));
+            event.currentTarget.value = "";
+          }}
+          ref={fileInputRef}
+          tabIndex={-1}
+          type="file"
+        />
         <label className="sr-only" htmlFor={id}>
           {props.label}
         </label>
@@ -285,6 +409,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoComplete="off"
           autoCorrect="off"
           className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-14 md:max-h-none md:resize-y md:overflow-visible md:px-4 md:py-3"
+          disabled={Boolean(props.restoreDraftOnError && createPending)}
           enterKeyHint="send"
           id={id}
           inputMode="text"
@@ -310,6 +435,15 @@ export const ConversationComposer = memo(function ConversationComposer(
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
+            <Button
+              aria-label="Attach images"
+              disabled={sendLocked || readingImages}
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach images (up to 3 MB total)"
+              type="button"
+            >
+              <ImagePlus aria-hidden="true" size={16} />
+            </Button>
             {props.footerStart}
             {props.footerStart ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
@@ -320,7 +454,12 @@ export const ConversationComposer = memo(function ConversationComposer(
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}
             className="rounded-lg !border-0 !bg-cyan-100 font-sans !text-dashboard-text-inverse hover:!bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted"
-            disabled={!canSend || !online || sendLocked}
+            disabled={
+              (!canSend && !images.length) ||
+              !online ||
+              sendLocked ||
+              readingImages
+            }
             title={
               !online
                 ? "Connect to send"
@@ -372,7 +511,10 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             // a retry after reload still reuses it.
             text.trim();
       return {
-        idempotencyKey: draft.idempotencyKey,
+        idempotencyKey:
+          "hasImages" in draft && draft.hasImages
+            ? crypto.randomUUID()
+            : draft.idempotencyKey,
         lastSubmittedText,
         text,
       };

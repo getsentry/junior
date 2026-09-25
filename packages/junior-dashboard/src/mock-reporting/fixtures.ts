@@ -631,6 +631,15 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       reportEvent(0, startedAt, {
         type: "message",
         messageId: "qa-user",
+        source: "slack",
+        attachments: [
+          {
+            id: "qa-chart-png",
+            filename: "input-chart.png",
+            contentType: "image/png",
+            bytes: 6400,
+          },
+        ],
         role: "user",
         text: "Review the dashboard plan before editing.",
         actorIdentity: actor(undefined, "Taylor Chen", "taylor"),

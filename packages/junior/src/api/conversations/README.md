@@ -30,7 +30,10 @@ events:
   include the generated continuation summary, but never the full replacement
   history.
 
-The projection is append-only: later canonical facts produce new observations
+Message attachments can appear after the source file finishes storing. Clients
+must compare attachment metadata as well as event sequence on refresh.
+
+Other projections are append-only: later canonical facts produce new observations
 instead of changing previously returned events. Clients reduce observations by
 stable identity. A terminal tool or subagent observation includes its start
 context even when the canonical start is outside the requested page. Resolving
