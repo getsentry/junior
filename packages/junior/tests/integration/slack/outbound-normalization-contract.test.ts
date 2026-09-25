@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import * as Sentry from "@/chat/sentry";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import type { SlackEntity } from "@/chat/slack/work-object";
 import {
   buildSlackReplyBlocks,
@@ -25,7 +25,33 @@ import {
 } from "../../msw/handlers/slack-api";
 
 describe("Slack contract: outbound normalization", () => {
+  const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
+  let client: ReturnType<typeof Sentry.init>;
+
+  beforeAll(() => {
+    client = Sentry.init({
+      dsn: "https://public@example.com/1",
+      tracesSampleRate: 1,
+      defaultIntegrations: false,
+      transport: () => ({
+        send: async () => ({ statusCode: 200 }),
+        flush: async () => true,
+      }),
+    });
+    client?.on("spanEnd", (span) => {
+      const json = Sentry.spanToJSON(span);
+      if (json.description === "POST slack.com/api/chat.postMessage") {
+        spans.push(json);
+      }
+    });
+  });
+
+  afterAll(async () => {
+    await client?.close();
+  });
+
   beforeEach(() => {
+    spans.length = 0;
     process.env.SLACK_BOT_TOKEN =
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
     setPlugins([]);
@@ -51,7 +77,7 @@ describe("Slack contract: outbound normalization", () => {
   });
 
   it.each([false, true])(
-    "records safe delivery diagnostics with entities=%s",
+    "records safe delivery diagnostics on the completed request span with entities=%s",
     async (includeEntities) => {
       const entities: SlackEntity[] = includeEntities
         ? [
@@ -73,26 +99,18 @@ describe("Slack contract: outbound normalization", () => {
           message: { metadata: { entities } },
         },
       });
-      const records: EmittedLogRecord[] = [];
-      const unregister = registerLogRecordSink((record) => {
-        if (record.eventName.startsWith("slack.work_object.post."))
-          records.push(record);
+      await postSlackMessage({
+        channelId: "C123",
+        threadTs: "1700000000.000100",
+        text: "private-message",
+        entities,
       });
-      try {
-        await postSlackMessage({
-          channelId: "C123",
-          threadTs: "1700000000.000100",
-          text: "private-message",
-          entities,
-        });
-      } finally {
-        unregister();
-      }
-      expect(records.map((record) => record.eventName)).toEqual([
-        "slack.work_object.post.started",
-        "slack.work_object.post.accepted",
-      ]);
-      expect(records[0]?.attributes).toMatchObject({
+      expect(spans).toHaveLength(1);
+      const attributes = spans[0]?.data;
+      expect(attributes).toMatchObject({
+        "app.slack.block_count": 0,
+        "app.slack.unfurl_links": false,
+        "app.slack.unfurl_media": false,
         "app.slack.channel_id": "C123",
         "app.slack.thread_ts": "1700000000.000100",
         "app.slack.work_object.count": entities.length,
@@ -100,22 +118,42 @@ describe("Slack contract: outbound normalization", () => {
           ? Buffer.byteLength(JSON.stringify({ entities }))
           : 0,
       });
-      expect(
-        records[0]?.attributes["app.slack.work_object.entity_types"],
-      ).toEqual(includeEntities ? ["slack#/entities/item"] : undefined);
-      expect(
-        records[0]?.attributes["app.slack.work_object.reference_types"],
-      ).toEqual(includeEntities ? ["annotation"] : undefined);
-      expect(records[1]?.attributes).toMatchObject({
+      expect(attributes?.["app.slack.work_object.entity_types"]).toEqual(
+        includeEntities ? ["slack#/entities/item"] : undefined,
+      );
+      expect(attributes?.["app.slack.work_object.reference_types"]).toEqual(
+        includeEntities ? ["annotation"] : undefined,
+      );
+      expect(attributes).toMatchObject({
+        "app.slack.work_object.accepted": true,
         "messaging.message.id": "1700000000.000200",
         "app.slack.warning_count": 1,
         "app.slack.diagnostic_codes": ["missing_charset"],
         "app.slack.work_object.response_entity_count": entities.length,
       });
-      expect(JSON.stringify(records)).not.toContain("private-");
-      expect(JSON.stringify(records)).not.toContain("private.example");
+      expect(JSON.stringify(spans)).not.toContain("private-");
+      expect(JSON.stringify(spans)).not.toContain("private.example");
     },
   );
+
+  it("keeps request attributes and the API error on a rejected post span", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: { ok: false, error: "invalid_metadata_schema" },
+    });
+
+    await expect(
+      postSlackMessage({ channelId: "C123", text: "private-message" }),
+    ).rejects.toMatchObject({ apiError: "invalid_metadata_schema" });
+
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.status).not.toBe("ok");
+    expect(spans[0]?.data).toMatchObject({
+      "app.slack.work_object.count": 0,
+      "app.slack.api_error_code": "invalid_metadata_schema",
+    });
+    expect(spans[0]?.data?.["app.slack.work_object.accepted"]).toBeUndefined();
+    expect(JSON.stringify(spans)).not.toContain("private-message");
+  });
 
   it("rejects Task fields on Item entities before chat.postMessage", async () => {
     await expect(

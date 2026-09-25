@@ -39,15 +39,16 @@ use the query recipes below to find the failing turn and next query.
 
 ## Work Object delivery
 
-Query Sentry Logs by `app.slack.channel_id` and `app.slack.thread_ts`, or use
-the Conversation ID. `slack.work_object.post.started` records the entity count,
-entity types, reference types, metadata size, block count, and unfurl flags.
-It also records posts with zero entities. `slack.work_object.post.accepted`
-adds the Slack message timestamp, warning and response message counts, known
-diagnostic codes, and whether the response echoed `message.metadata.entities`.
-Both events remain enabled in production. Other info logs stay suppressed there.
+Query Sentry spans with `app.slack.method:chat.postMessage`, then filter by
+`app.slack.channel_id` and `app.slack.thread_ts`, or the Conversation ID.
+Each request attempt records the entity count (including zero), entity types,
+reference types, metadata size, block count, and unfurl flags on the existing
+`http.client` span. Before the span ends, a returned response adds the Slack
+message timestamp, `app.slack.work_object.accepted`, warning and response message
+counts, known diagnostic codes, and whether it echoed `message.metadata.entities`.
+No extra delivery logs are emitted. Production info logs stay suppressed.
 
-Diagnostic text can contain submitted values. These events never store raw
+Diagnostic text can contain submitted values. These attributes never store raw
 response text, object titles, URLs, or reference IDs. Known schema keys in
 `[json-pointer:/...]` hints are kept; other path segments become `*`. This
 extraction is best effort because Slack does not promise a message format.
@@ -56,8 +57,10 @@ Unrecognized counts and a truncation flag show when this summary is incomplete.
 A zero outbound count means Junior did not attach entities at this boundary.
 A positive count means Junior passed entities to the Slack SDK. An accepted
 response does not prove that Slack rendered a card. Missing response entities
-do not prove that Slack discarded them. For rejected requests, check
-`slack.action.failed` with the same channel and thread attributes.
+do not prove that Slack discarded them. For rejected requests, inspect the
+failed attempt's `app.slack.api_error_code` and error status. Response summaries
+are absent when the SDK throws. Existing `slack.action.failed` logs remain
+available for terminal failures.
 
 ## Query Recipes
 

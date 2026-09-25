@@ -1,5 +1,5 @@
 import { SlackActionError } from "@/chat/slack/client";
-import { logInfo } from "@/chat/logging";
+import { setSpanAttributes } from "@/chat/logging";
 import { slackWorkObjectDiagnostics } from "./work-object-diagnostics";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
@@ -137,10 +137,10 @@ export async function postSlackMessage(input: {
       ? Buffer.byteLength(JSON.stringify({ entities }), "utf8")
       : 0,
   };
-  logInfo("slack.work_object.post.started", workObjectAttributes);
   const response = await withSlackRetries(
-    () =>
-      getSlackClient().chat.postMessage({
+    async () => {
+      setSpanAttributes(workObjectAttributes);
+      const response = await getSlackClient().chat.postMessage({
         channel: channelId,
         text,
         unfurl_links: false,
@@ -152,17 +152,22 @@ export async function postSlackMessage(input: {
           : undefined),
         ...(entities ? { metadata: { entities } } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
-      }),
+      });
+      // The request span ends when this callback returns. Acceptance is not rendering.
+      setSpanAttributes({
+        ...slackWorkObjectDiagnostics(response),
+        "app.slack.work_object.accepted":
+          response.ok === true && Boolean(parseSlackMessageTs(response.ts)),
+        "messaging.message.id": parseSlackMessageTs(response.ts),
+      });
+      return response;
+    },
     3,
     {
       action: "chat.postMessage",
       attributes: {
         "app.slack.channel_id": channelId,
         "app.slack.work_object.count": entities?.length ?? 0,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
-      },
-      spanAttributes: {
-        "app.slack.channel_id": channelId,
         ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
       },
     },
@@ -172,13 +177,6 @@ export async function postSlackMessage(input: {
   if (!messageTs) {
     throw new Error("Slack message posted without ts");
   }
-
-  // Acceptance and echoed metadata do not prove that Slack rendered a card.
-  logInfo("slack.work_object.post.accepted", {
-    ...workObjectAttributes,
-    "messaging.message.id": messageTs,
-    ...slackWorkObjectDiagnostics(response),
-  });
 
   return {
     ts: messageTs,
