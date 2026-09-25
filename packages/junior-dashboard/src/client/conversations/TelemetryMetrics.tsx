@@ -9,6 +9,7 @@ import {
   formatTime,
   formatTokenSummary,
   summarizeCost,
+  summarizeModelCost,
   summarizeUsage,
   totalConversationCost,
   type CostUsageSummary,
@@ -258,7 +259,9 @@ export function CostMetric(props: {
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
 }) {
-  const total = totalConversationCost(props.summary, props.auxiliaryCosts);
+  // Model history can include calls not yet counted in saved Run totals.
+  const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
+  const total = totalConversationCost(summary, props.auxiliaryCosts);
   if (!total && !props.live) return null;
   const pending = Boolean(props.live);
   const label = total
@@ -269,7 +272,7 @@ export function CostMetric(props: {
       align={props.align}
       tooltipPlacement="above"
       {...costTooltip(
-        props.summary,
+        summary,
         props.modelUsage,
         props.auxiliaryCosts,
         props.liveModelId,
