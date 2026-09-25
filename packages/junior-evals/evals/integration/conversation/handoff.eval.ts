@@ -13,7 +13,9 @@ import { lastTurnReplies, mention, slackEvals } from "../../../src/helpers";
 // Hypothesis: the summary selects old maintenance instructions over a terse
 // cleanup request. Runtime memory defines the request, not the prior messages.
 // Change only the current request in the control. Neither case scripts handoff,
-// summarization, or continuation. A run without handoff is inconclusive.
+// summarization, or continuation. Both ask for a model switch because routing
+// alone selected the coding profile in the first pair and never called handoff.
+// A run without handoff is inconclusive.
 describeEval("Handoff task continuity", slackEvals, (it) => {
   for (const [label, instruction] of [
     ["terse request", "Deslop"],
@@ -40,7 +42,9 @@ describeEval("Handoff task continuity", slackEvals, (it) => {
       });
       const result = await run({
         history: handoffHistory(thread),
-        initialEvents: [mention(instruction, { thread })],
+        initialEvents: [
+          mention(`Switch models first. ${instruction}`, { thread }),
+        ],
         overrides: {
           ...memoryPluginOverrides,
           skill_dirs: ["fixtures/coding-skills"],

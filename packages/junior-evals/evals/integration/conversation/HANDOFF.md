@@ -16,6 +16,8 @@ summarizer saw. This experiment tests task selection, not that narrower claim.
 the same history, memory, source file, and configured model defaults. The
 meaning of `Deslop` is seeded through the real memory store. It is not explained
 in prior messages. Recall, routing, handoff, summary, and continuation are live.
+Both requests start with `Switch models first.`. This is a requested handoff,
+not the spontaneous handoff from the production failure.
 
 The fixture source has a class and factory that only wrap stable ID generation.
 The request must remove those wrappers through a successful source edit after
@@ -36,6 +38,28 @@ handoff. A promise or a reply without an edit does not pass.
 Do not retry just to obtain a failure. A later experiment must name the new
 hypothesis and keep the other inputs fixed. A runtime fix is a separate control:
 the same failing input must complete after the fix.
+
+## Runs
+
+### Pair 1: direct cleanup request
+
+Commit: `860a61a76`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36171352735).
+
+Both cases routed directly to the handoff profile (`anthropic/claude-opus-5.5`,
+high reasoning). Neither called `handoff`. Both removed the wrappers through
+`editFile`. The terse case recalled the definition. The explicit case did not.
+The assertions correctly failed because no handoff occurred. This is not a
+reproduction and gives no evidence about live summary task selection.
+
+### Pair 2: request a model switch
+
+Keep the history, source file, memory seed, and model defaults fixed. Add the
+same `Switch models first.` prefix to both requests. The first pair established
+that ordinary routing avoids the boundary we need to test. The prefix asks the
+live agent to enter that boundary without injecting a tool call or summary.
+The hypothesis remains that the terse task loses priority during summarization.
+Do not interpret routing failure or a tool timeout as task substitution.
 
 ## Limits
 
