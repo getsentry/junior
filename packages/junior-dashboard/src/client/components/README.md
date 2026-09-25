@@ -7,7 +7,10 @@ instead of copying Tailwind blocks.
 
 1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
    `StatusChip`, `StatusDot`, `Notice`, `Drawer`, `Tooltip`, `Skeleton`,
-   `PageContentSkeleton`, and other small reusable controls. Prefer
+   `PageContentSkeleton`, `SegmentedTabs`, and other small reusable controls.
+   Use `SegmentedTabs` for equal-width panel navigation. Pass the selected value,
+   items, change handler, and selected panel content. It owns tab/panel labels
+   and keyboard focus. Keep collection filters in `FilterTabList`. Prefer
    `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
    styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
    Prefer `StatusDot` for dense table or list status markers and `StatusChip`
@@ -30,10 +33,10 @@ instead of copying Tailwind blocks.
    - `layout/VisualViewportShell` — fixed shell, visualViewport CSS vars, body lock
    - `conversations/ChatLayout` — scroll-above-dock frame for reply threads
    - `conversations/ComposerDock` — reply bottom pad / dock chrome only
-   Pages pass children only. Home and create are one landing surface, not a dock,
-   and must
-   not reuse `ComposerDock`. Do not invent viewport height, offset, or bottom
-   safe-area math in page modules.
+     Pages pass children only. Home and create are one landing surface, not a dock,
+     and must
+     not reuse `ComposerDock`. Do not invent viewport height, offset, or bottom
+     safe-area math in page modules.
 3. **Features** — stay under `conversations/` or `pages/` until a surface is
    shared by two real callers.
 

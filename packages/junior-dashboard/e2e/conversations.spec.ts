@@ -220,13 +220,33 @@ test("opens a conversation in the built dashboard", async ({
   });
   await detailsButton.click();
   const details = page.getByRole("dialog", { name: "Checkout latency triage" });
-  await details.getByText("Facts, links & keywords", { exact: true }).click();
   await expect(
-    details.getByText("PAYMENTS-42 contained 418 events."),
+    details.getByRole("heading", { name: "Summary", exact: true }),
   ).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: /getsentry\/payments#77/ }),
+  ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+  const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
+  const memoriesTab = details.getByRole("tab", { name: "Memories" });
+  await detailsTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(memoriesTab).toBeFocused();
+  await expect(memoriesTab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    details.getByRole("tabpanel", { name: "Memories" }),
+  ).toContainText("Use pnpm for repository commands.");
+  await page.keyboard.press("Home");
+  await expect(detailsTab).toBeFocused();
+  await expect(detailsTab).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
+
+  // The full durable Brief stays available after the transcript expires.
+  await page.getByText("Facts, links & keywords", { exact: true }).click();
+  await expect(
+    page.getByText("PAYMENTS-42 contained 418 events."),
+  ).toBeVisible();
 
   await expect(
     page.getByRole("link", { name: "Conversations" }),
