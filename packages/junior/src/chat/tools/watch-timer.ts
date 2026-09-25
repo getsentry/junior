@@ -14,7 +14,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
       readOnlyHint: false,
     },
     description:
-      "Wake this conversation once after a delay. Returns immediately; timing follows the minute heartbeat and event batching. Use watchEvents instead when the event is available. Inspect or cancel with the existing watch tools.",
+      "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
     inputSchema: z
       .object({
         afterMs: z
