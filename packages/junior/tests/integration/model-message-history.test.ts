@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { streamSimple } from "@earendil-works/pi-ai/compat";
+import {
+  mockAnthropicStream,
+  withoutCacheMarkers,
+} from "../fixtures/anthropic-stream";
 import { botConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
@@ -34,20 +39,41 @@ describe("model message history", () => {
     Object.assign(botConfig, originalBotConfig);
     await closeConversationFixture();
   });
-  it("keeps earlier model messages and serialized tool arguments unchanged", async () => {
+  it("preserves native messages and provider request prefixes across Turns", async () => {
     const toolArguments = {
-      explanation: "Check the result before replying.",
+      explanation: "Check the result\u0000before replying.",
       plan: [
         { status: "in_progress", step: "Check the result" },
         { status: "pending", step: "Reply to the user" },
       ],
     };
-    const agent = await createAgent({
-      responses: [
-        { type: "toolCall", name: "updatePlan", arguments: toolArguments },
-        "First response.",
-        "Second response.",
+    mockTitleModel("Conversation title");
+    const requests = mockAnthropicStream("openai/gpt-6-astra", [
+      [
+        {
+          type: "thinking",
+          thinking: "Check the plan.",
+          signature: "opaque-signature",
+        },
+        { type: "redacted_thinking", data: "opaque-redacted-data" },
+        {
+          type: "tool_use",
+          id: "plan-call",
+          name: "updatePlan",
+          input: toolArguments,
+        },
       ],
+      [{ type: "text", text: "First response." }],
+      [{ type: "text", text: "Second response." }],
+    ]);
+    const agent = await createAgent({
+      modelStream: streamSimple,
+      botConfig: {
+        defaultProfile: "standard",
+        profiles: {
+          standard: { modelId: "openai/gpt-6-astra", reasoningLevel: "low" },
+        },
+      },
     });
 
     await agent.run("first request");
@@ -60,21 +86,49 @@ describe("model message history", () => {
     expect(second.messages.slice(0, first.messages.length)).toEqual(
       first.messages,
     );
-    const toolCall = (messages: typeof first.messages) =>
-      messages
-        .filter((message) => message.role === "assistant")
-        .flatMap((message) => message.content)
-        .find((part) => part.type === "toolCall");
-    const firstCall = toolCall(first.messages);
-    const secondCall = toolCall(second.messages);
-    expect(firstCall?.arguments).toEqual(toolArguments);
     expect(first.messages).toContainEqual(
       expect.objectContaining({ role: "toolResult", isError: false }),
     );
-    // Object equality misses key reordering from the SQL jsonb round trip.
-    expect(JSON.stringify(secondCall?.arguments)).toBe(
-      JSON.stringify(firstCall?.arguments),
+    const firstAssistant = first.messages.find(
+      (message) => message.role === "assistant",
     );
+    expect(firstAssistant?.content).toEqual([
+      {
+        type: "thinking",
+        thinking: "Check the plan.",
+        thinkingSignature: "opaque-signature",
+      },
+      {
+        type: "thinking",
+        thinking: "[Reasoning redacted]",
+        thinkingSignature: "opaque-redacted-data",
+        redacted: true,
+      },
+      {
+        type: "toolCall",
+        id: "plan-call",
+        name: "updatePlan",
+        arguments: toolArguments,
+      },
+    ]);
+    const stored = await agent.agentHistory();
+    expect(
+      JSON.stringify(
+        stored.find((message) => message.role === "assistant")?.content,
+      ),
+    ).toBe(JSON.stringify(firstAssistant?.content));
+    expect(stored.slice(0, first.messages.length)).toEqual(first.messages);
+    expect(requests).toHaveLength(3);
+    const before = requests[1]!;
+    const after = requests[2]!;
+    expect(JSON.stringify(after.system)).toBe(JSON.stringify(before.system));
+    expect(JSON.stringify(after.tools)).toBe(JSON.stringify(before.tools));
+    // Do not sort in the assertion: the real provider bytes must already match.
+    expect(
+      JSON.stringify(
+        withoutCacheMarkers(after.messages.slice(0, before.messages.length)),
+      ),
+    ).toBe(JSON.stringify(withoutCacheMarkers(before.messages)));
   });
 
   it("compacts preloaded history and completes the active turn", async () => {

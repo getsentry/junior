@@ -44,10 +44,30 @@ facts:
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
 
-The payload uses `jsonb`, which does not preserve object-key order. The Pi
-model-input conversion sorts tool-argument keys on every request, including
-nested objects. This keeps fresh and replayed arguments identical for prompt
-caching without changing stored history, argument values, or array order.
+Version-two model-history events store the native message fields as a JSON
+string in `payload.message`. Junior's event type replaces Pi's role, and user
+provenance stays outside the string. All other JSON message fields pass through
+without a field-by-field projection. The same encoding applies to messages in
+handoff and compaction replacements. Encode before SQL sanitization: `jsonb`
+then cannot reorder nested keys or replace NUL characters in message strings.
+
+`model`, `provider`, `usage`, and `toolCallId` outside the string are derived
+reporting fields for existing SQL queries. Replay reads only the encoded message,
+never those copies. This is one authoritative payload in the existing event log,
+not another transcript. Pi's completed messages and tool results are captured at
+the existing durable boundaries; partial stream deltas are not replay history.
+
+Version-one rows remain readable without rewriting old history. They cannot
+recover key order or characters already lost. Stop old workers before deploying
+version-two writers. Old releases cannot replay version-two events; rollback
+requires a compatible reader, not just an application version change. No database
+schema migration is required.
+
+The model-history integration test uses real Postgres and Pi's Anthropic parser
+and serializer, with only the model HTTP response faked. It compares message
+values and the serialized system, tools, and prior message prefix across Turns.
+Only moving cache markers are excluded. This protects request stability, not a
+promise that the provider will serve a cache hit.
 
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
