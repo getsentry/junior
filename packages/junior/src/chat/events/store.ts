@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import { updateTimerIndex } from "@/chat/events/timer-index";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -31,6 +32,7 @@ const subscriptionSchema = z
     createdAtMs: z.number().finite(),
     events: z.array(eventTypeSchema).min(1),
     expiresAtMs: z.number().finite(),
+    firesAtMs: z.number().finite().optional(),
     id: z.string().min(1),
     intent: z.string().min(1),
     label: z.string().min(1),
@@ -354,6 +356,95 @@ export async function createWatch(
   return parsed;
 }
 
+/** Create a retry-stable timer without keeping a process open. */
+export async function createTimerWatch(input: {
+  conversationId: string;
+  toolCallId: string;
+  afterMs: number;
+  intent: string;
+}): Promise<Watch> {
+  const state = getStateAdapter();
+  await state.connect();
+  const identifier = digest(`${input.conversationId}\0${input.toolCallId}`);
+  const selector = {
+    conversationId: input.conversationId,
+    namespace: "junior",
+    identifier,
+    events: ["timer.fired"],
+  };
+  const id = buildSubscriptionId(selector);
+  return await withSubscriptionLock(state, id, async () => {
+    const existing = parseSubscription(await state.get(subscriptionKey(id)));
+    if (existing) return existing;
+    const nowMs = Date.now();
+    const firesAtMs = nowMs + input.afterMs;
+    const expiresAtMs = firesAtMs + 24 * 60 * 60 * 1000;
+    const record = subscriptionSchema.parse({
+      ...selector,
+      id,
+      firesAtMs,
+      expiresAtMs,
+      resourceType: "timer",
+      label: "Timer",
+      intent: input.intent,
+      status: "active",
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    });
+    // The due entry precedes the record under the delivery lock. Hold the
+    // conversation index lock through publication so another Watch cannot
+    // shorten its TTL before this record exists.
+    await withIndexLock(
+      state,
+      conversationIndexKey(input.conversationId),
+      async () => {
+        const key = conversationIndexKey(input.conversationId);
+        const ids = [
+          ...new Set([...(await readSubscriptionIdIndex(state, key)), id]),
+        ];
+        await state.set(
+          key,
+          ids,
+          Math.max(
+            ttlUntil(expiresAtMs, nowMs),
+            await indexTtlMs(state, ids, nowMs),
+          ),
+        );
+        await state.set(
+          resourceIndexKey("junior", identifier),
+          [id],
+          ttlUntil(expiresAtMs, nowMs),
+        );
+        await updateTimerIndex(state, { kind: "add", id, atMs: firesAtMs });
+        await state.set(
+          subscriptionKey(id),
+          record,
+          ttlUntil(expiresAtMs, nowMs),
+        );
+      },
+    );
+    return record;
+  });
+}
+
+/** Claim live timer Watches and discard stale due-index entries. */
+export async function takeDueTimerWatches(nowMs: number): Promise<Watch[]> {
+  const state = getStateAdapter();
+  await state.connect();
+  const watches: Watch[] = [];
+  for (const id of await updateTimerIndex(state, { kind: "claim", nowMs })) {
+    await withSubscriptionLock(state, id, async () => {
+      const watch = parseSubscription(await state.get(subscriptionKey(id)));
+      if (watch && activeAt(watch, nowMs) && watch.firesAtMs !== undefined) {
+        if (watch.firesAtMs <= nowMs) watches.push(watch);
+      } else {
+        await updateTimerIndex(state, { kind: "remove", id });
+      }
+    });
+  }
+  return watches;
+}
+
 /** List active subscriptions bound to one conversation. */
 export async function listWatches(input: {
   conversationId: string;
@@ -399,6 +490,7 @@ export async function cancelWatch(input: {
       return undefined;
     }
     const nowMs = input.nowMs ?? Date.now();
+    if (current.status === "completed") return current;
     const next: Watch = {
       ...current,
       status: "cancelled",
@@ -421,6 +513,8 @@ export async function cancelWatch(input: {
       input.id,
       nowMs,
     );
+    if (current.firesAtMs !== undefined)
+      await updateTimerIndex(state, { kind: "remove", id: input.id });
     return next;
   });
 }
@@ -592,6 +686,9 @@ export async function deliverWatch(input: {
           current.id,
           nowMs,
         );
+      }
+      if (input.terminal && current.firesAtMs !== undefined) {
+        await updateTimerIndex(state, { kind: "remove", id: current.id });
       }
       return delivered;
     },

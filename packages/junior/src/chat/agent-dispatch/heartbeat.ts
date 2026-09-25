@@ -1,3 +1,4 @@
+import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -181,6 +182,12 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "scheduled_automations.heartbeat.failed");
+  }
+  try {
+    await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
+  } catch (error) {
+    // Timer claims expire for retry; a failure must not block plugin heartbeats.
+    logException(error, "watches.timer.heartbeat.failed");
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,

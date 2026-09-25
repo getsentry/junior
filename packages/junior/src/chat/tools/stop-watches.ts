@@ -48,6 +48,11 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
             "Watch was not found in the current conversation.",
           );
         }
+        if (stopped.status === "completed") {
+          throw new ToolInputError(
+            "Watch already completed; delivered input cannot be recalled.",
+          );
+        }
         stoppedIds = [stopped.id];
       } else {
         const subscriptions = await listWatches({
