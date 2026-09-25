@@ -48,6 +48,28 @@ describe("Slack contract: outbound normalization", () => {
     ]);
   });
 
+  it("rejects Task fields on Item entities before chat.postMessage", async () => {
+    await expect(
+      postSlackMessage({
+        channelId: "C123",
+        text: "The object is ready.",
+        entities: [
+          // @ts-expect-error Item entities must use custom_fields, not Task fields.
+          {
+            entity_type: "slack#/entities/item",
+            external_ref: { id: "1" },
+            url: "https://example.com/pull/1",
+            entity_payload: {
+              attributes: { title: { text: "Fix the parser" } },
+              fields: { status: { value: "draft" } },
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(/fields/);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
   it("passes block payloads with a top-level fallback text", async () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",

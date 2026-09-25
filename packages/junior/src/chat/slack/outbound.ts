@@ -1,6 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
-import type { SlackEntity } from "@/chat/slack/cards";
+import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
   getSlackClient,
@@ -100,6 +100,9 @@ export async function postSlackMessage(input: {
     "Slack message posting",
   );
   const text = requireSlackMessageText(input.text, "Slack message posting");
+  const entities = input.entities?.length
+    ? slackEntitySchema.array().parse(input.entities)
+    : undefined;
   const threadTs = input.threadTs
     ? requireSlackThreadTimestamp(
         input.threadTs,
@@ -119,9 +122,7 @@ export async function postSlackMessage(input: {
               blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),
-        ...(input.entities?.length
-          ? { metadata: { entities: input.entities } }
-          : undefined),
+        ...(entities ? { metadata: { entities } } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),
     3,

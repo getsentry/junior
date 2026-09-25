@@ -81,6 +81,19 @@ Automation details retain their current authoritative lookup and access checks.
 Link unfurls and actions are not implemented.
 See [Slack's detail API and Item schema](https://docs.slack.dev/messaging/work-objects-implementation#implementation-flexpane).
 
+`work-object.ts` defines the outbound schema and derives its TypeScript types.
+It covers the Item and Task entities Junior sends, not every Slack feature.
+Item entities cannot contain Task fields. Custom string and timestamp fields
+require values of the matching type. Unknown fields fail validation rather
+than disappear. Message posts and both detail handlers validate at the API
+boundary. Extend this schema with a documented Slack contract when adding a
+field; do not replace it with the SDK's permissive entity type.
+
+Both Automation and code change previews use Item. Their current custom fields
+match Slack's published schema. A successful schema check or API response does
+not prove that Slack displays the preview. Compare delivery evidence and the
+Slack client before calling a missing preview a schema failure.
+
 Before rollout, check a GitHub issue, pull request, and Linear issue in a test
 Slack Conversation with Item and Task previews enabled. Check initial rendering,
 open details, and denied access. After a saved annotation changes, refresh the

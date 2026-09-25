@@ -8,6 +8,7 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { getSlackClient } from "./client";
 import { renderSlackObjectCard } from "./object-card";
+import { slackEntitySchema } from "./work-object";
 
 const eventSchema = z.object({
   trigger_id: z.string().min(1),
@@ -105,6 +106,6 @@ export async function presentSlackAnnotationDetails(
   }
   await client.entity.presentDetails({
     trigger_id: parsed.data.trigger_id,
-    metadata: entity,
+    metadata: slackEntitySchema.parse(entity),
   });
 }
