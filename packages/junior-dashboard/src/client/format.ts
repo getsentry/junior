@@ -567,6 +567,18 @@ export function summarizeCost(
   return total !== undefined || componentTotal > 0 ? summary : undefined;
 }
 
+/** Sum the model costs shown in a Conversation's breakdown. */
+export function summarizeModelCost(
+  modelUsage: ConversationModelUsage[] | undefined,
+): CostUsageSummary | undefined {
+  let total: number | undefined;
+  for (const item of modelUsage ?? []) {
+    const summary = summarizeCost(item.usage);
+    if (summary) total = addCost(total ?? 0, summary.total);
+  }
+  return total === undefined ? undefined : { total };
+}
+
 /** Format estimated model cost in USD for consistent dashboard display. */
 export function formatCostSummary(
   summary: CostUsageSummary | undefined,

@@ -63,11 +63,7 @@ describe("CostMetric", () => {
 
   it("shows provisional cost while conversation metrics are live", () => {
     const emptyHtml = renderToStaticMarkup(
-      <CostMetric
-        live
-        liveModelId="xai/grok-4-5"
-        summary={undefined}
-      />,
+      <CostMetric live liveModelId="xai/grok-4-5" summary={undefined} />,
     );
     expect(emptyHtml).toContain("$…");
     expect(emptyHtml).toContain("grok-4-5");
@@ -84,7 +80,7 @@ describe("CostMetric", () => {
             usage: { cost: { total: 0.041 } },
           },
         ]}
-        summary={{ total: 0.041 }}
+        summary={{ total: 0.02 }}
       />,
     );
     expect(partialHtml).toContain("$0.04+");
@@ -134,50 +130,61 @@ describe("CostMetric", () => {
     expect(durationHtml).not.toContain("junior-text-shimmer");
   });
 
-  it("includes auxiliary operations in the total and tooltip", () => {
-    const html = renderToStaticMarkup(
-      <CostMetric
-        auxiliaryCosts={{
-          costUsd: 0.002,
-          operations: [
+  it.each([{ total: 0.01 }, undefined])(
+    "uses model costs with auxiliary operations when saved cost is %j",
+    (summary) => {
+      const html = renderToStaticMarkup(
+        <CostMetric
+          auxiliaryCosts={{
+            costUsd: 0.002,
+            operations: [
+              {
+                costUsd: 0.0002,
+                events: 1,
+                name: "turn_routed",
+                namespace: "junior",
+              },
+              {
+                costUsd: 0.0004,
+                events: 2,
+                name: "memories_recalled",
+                namespace: "memory",
+              },
+              {
+                costUsd: 0.0014,
+                events: 1,
+                name: "guardian_action_reviewed",
+                namespace: "junior",
+              },
+            ],
+          }}
+          modelUsage={[
             {
-              costUsd: 0.0002,
-              events: 1,
-              name: "turn_routed",
-              namespace: "junior",
+              modelId: "openai/gpt-5",
+              usage: { cost: { total: 0.03 } },
             },
             {
-              costUsd: 0.0004,
-              events: 2,
-              name: "memories_recalled",
-              namespace: "memory",
+              modelId: "anthropic/claude-sonnet-4",
+              usage: { cost: { input: 0.001, output: 0.01 } },
             },
-            {
-              costUsd: 0.0014,
-              events: 1,
-              name: "guardian_action_reviewed",
-              namespace: "junior",
-            },
-          ],
-        }}
-        modelUsage={[
-          {
-            modelId: "openai/gpt-5",
-            usage: { cost: { total: 0.041 } },
-          },
-        ]}
-        summary={{ total: 0.041 }}
-      />,
-    );
+          ]}
+          summary={summary}
+        />,
+      );
 
-    expect(html).toContain("$0.04");
-    expect(html).toContain("total: $0.043");
-    expect(html).toContain("agent: $0.041");
-    expect(html).toContain("Auxiliary");
-    expect(html).toContain("total: $0.002");
-    expect(html).toContain("Thinking routing (1): $0.0002");
-    expect(html).toContain("Memory recall (2): $0.0004");
-    expect(html).toContain("Guardian (1): $0.0014");
-    expect(html).toContain('data-tooltip-placement="above"');
-  });
+      expect(html).toContain("$0.04");
+      expect(html).toContain("total: $0.043");
+      expect(html).toContain("agent: $0.041");
+      expect(html).toContain("Auxiliary");
+      expect(html).toContain("total: $0.002");
+      expect(html).toContain("Thinking routing (1): $0.0002");
+      expect(html).toContain("Memory recall (2): $0.0004");
+      expect(html).toContain("Guardian (1): $0.0014");
+      expect(html).toContain("gpt-5");
+      expect(html).toContain("• total: $0.03");
+      expect(html).toContain("claude-sonnet-4");
+      expect(html).toContain("• total: $0.011");
+      expect(html).toContain('data-tooltip-placement="above"');
+    },
+  );
 });
