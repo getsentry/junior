@@ -44,6 +44,25 @@ facts:
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
 
+Version-two agent history items store message fields as JSON strings in
+`payload.message`. User provenance stays outside the string. Handoff and
+compaction store each replacement `item` as a JSON string. Encoding happens
+before SQL sanitization to preserve nested key order and NUL characters.
+Replay decodes all message fields; it does not rebuild them from a field list.
+
+SQL reports still read `model`, `provider`, `usage`, and `toolCallId` from the
+payload. Replay ignores these copies. No second history store is added.
+
+Version-one rows remain readable, but cannot recover data already lost. Stop
+old workers before deploying version-two writers. Old releases cannot replay
+version-two events. Rollback requires a compatible reader. No database schema
+migration is required.
+
+The agent history integration test checks stored messages and Pi's serialized
+request prefix through real Postgres. Only model HTTP responses are faked.
+The comparison excludes cache markers, not message fields or key order.
+Stable request prefixes do not guarantee provider cache hits.
+
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
 message arrived twice. `message_handled` remains the compact lifecycle fact
