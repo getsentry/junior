@@ -45,8 +45,8 @@ export function decodeInputImages(
   return files;
 }
 
-/** Store web image bytes before accepting a message into the mailbox. */
-export async function storeWebImages(args: {
+/** Store image bytes before accepting a message into the mailbox. */
+export async function storeInputImages(args: {
   conversationId: string;
   files: readonly SandboxFileUpload[];
   storage: AttachmentStorage;
@@ -69,13 +69,13 @@ export async function storeWebImages(args: {
   );
 }
 
-/** Restore web images from private storage for the native multimodal prompt. */
+/** Load stored images for model input. */
 export async function loadInputImages(args: {
   attachments: readonly MessageAttachment[];
   conversationId: string;
   storage: AttachmentStorage;
 }): Promise<AgentAttachment[]> {
-  const images = await Promise.all(
+  return await Promise.all(
     args.attachments.map(async (ref) => {
       const attachment = await readLiveAttachment({
         attachmentId: ref.id,
@@ -99,5 +99,4 @@ export async function loadInputImages(args: {
       };
     }),
   );
-  return images;
 }

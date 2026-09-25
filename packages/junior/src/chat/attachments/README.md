@@ -30,19 +30,13 @@ This module owns durable files linked to a conversation.
 
 ## Web image input
 
-The web composer accepts PNG, JPEG, GIF, and WebP images by paste, drop, or
-file selection. It sends image bytes with the message request. The request
-accepts up to three images with a total of 3 MB. This leaves space for base64
-and message text below the host request limit. Draft images stay in browser
-memory, not localStorage. A failed send retains them for retry.
+Web input stores image bytes before it enqueues the Message. Mailbox rows and
+visible Messages keep file metadata. The host loads the bytes for model input.
+Existing access, purge, and retention rules apply, including files left by a
+failed send.
 
-Web input creates the Conversation root, stores the files, then enqueues the
-Message. The mailbox and visible Message keep attachment metadata, not bytes.
-The host loads stored images into native model image parts. The existing
-attachment store owns access, idempotent writes, purge, and 30-day retention.
-A failed send can leave stored files without a Message; retention removes them.
+The 3 MB total limit leaves room for base64 and message text below the host
+request limit. Draft images stay in browser memory, not localStorage.
 
-Reporting resolves Slack file ids to the same private attachment read route.
-New Slack Messages keep file ids at ingestion. Older Messages can render images
-when their saved metadata includes file ids and the bytes are still stored.
-Files that Junior never stored cannot be recovered by reporting.
+Slack previews need both saved file ids and stored bytes. Reporting does not
+fetch missing files from Slack.

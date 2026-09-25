@@ -1,4 +1,4 @@
-import { loadInputImages } from "@/chat/attachments/web";
+import { loadInputImages } from "@/chat/attachments/images";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   isAgentRunFeatureDisabled,

@@ -33,19 +33,23 @@ type ConversationDraft = {
 };
 
 type ConversationAttempt = {
+  images?: InputImage[];
   idempotencyKey: string;
   lastSubmittedText: string;
 };
 
-/** Choose the send attempt for one submit. Same trimmed text reuses the key. */
+/** Reuse a send key only while its text and image selection stay unchanged. */
 export function conversationAttemptForSubmit(
   current: ConversationAttempt,
   text: string,
+  images?: InputImage[],
 ): ConversationAttempt {
-  if (text === current.lastSubmittedText) return current;
+  if (text === current.lastSubmittedText && images === current.images)
+    return current;
   return {
     idempotencyKey: crypto.randomUUID(),
     lastSubmittedText: text,
+    images,
   };
 }
 
@@ -92,7 +96,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   );
   const [images, setImages] = useState<InputImage[]>([]);
   const imagesRef = useRef(images);
-  const lastSubmittedImages = useRef<InputImage[]>([]);
   const [imageError, setImageError] = useState<string>();
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
@@ -237,24 +240,16 @@ export const ConversationComposer = memo(function ConversationComposer(
     )
       return;
 
-    // Keep the key while the trimmed text matches the last attempt. Edits that
-    // return to the same text (typo undo, IME) must not mint a new key or a
-    // retry can duplicate a send the server already accepted.
-    let attempt = conversationAttemptForSubmit(attemptRef.current, text);
-    if (
-      submittedImages !== lastSubmittedImages.current &&
-      (submittedImages.length || lastSubmittedImages.current.length)
-    ) {
-      attempt = {
-        idempotencyKey: crypto.randomUUID(),
-        lastSubmittedText: text,
-      };
-    }
-    lastSubmittedImages.current = submittedImages;
+    const attempt = conversationAttemptForSubmit(
+      attemptRef.current,
+      text,
+      submittedImages.length ? submittedImages : undefined,
+    );
     attemptRef.current = attempt;
     const submitToken = ++submitTokenRef.current;
     const submittedDraft: ConversationDraft = {
-      ...attempt,
+      idempotencyKey: attempt.idempotencyKey,
+      lastSubmittedText: attempt.lastSubmittedText,
       hasImages: submittedImages.length > 0,
       text,
     };

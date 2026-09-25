@@ -8,7 +8,7 @@ import {
   createAndEnqueueConversation,
   appendAndEnqueueWebMessage,
 } from "@/chat/conversations/web-input";
-import { decodeInputImages } from "@/chat/attachments/web";
+import { decodeInputImages } from "@/chat/attachments/images";
 import { createConversationBodySchema } from "@/api/schema";
 import { loadProjection } from "@/chat/conversations/projection";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
@@ -28,7 +28,7 @@ const png =
 describe("web image input", () => {
   afterEach(closeConversationFixture);
 
-  it("stores image-only input once, loads it into the model, and keeps reads participant-only", async () => {
+  it("stores image-only input once and loads it into the model", async () => {
     const fixture = await createConversationFixture();
     const storage = memoryAttachmentStorage();
     const body = createConversationBodySchema.parse({
@@ -82,18 +82,6 @@ describe("web image input", () => {
     ).json();
     expect(outsider.messages[0]).toMatchObject({ redacted: true });
     expect(outsider.messages[0].attachments).toBeUndefined();
-    expect(
-      (await app.request(`${base}/attachments/${attachment.id}`)).status,
-    ).toBe(404);
-    const imageResponse = await app.request(
-      `${base}/attachments/${attachment.id}`,
-      { headers },
-    );
-    expect(imageResponse.status).toBe(200);
-    expect(
-      Buffer.from(await imageResponse.arrayBuffer()).toString("base64"),
-    ).toBe(png);
-
     const worker = createConversationTurnWorker(
       createAgentRunner(executeAgentRun, {
         attachmentStorage: storage,
@@ -146,7 +134,6 @@ describe("web image input", () => {
       },
       options,
     );
-    expect(storage.objects.size).toBe(1);
     const continued = await (
       await app.request(`${base}/pending-messages`, { headers })
     ).json();

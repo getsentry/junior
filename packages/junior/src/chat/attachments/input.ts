@@ -1,14 +1,9 @@
+import { INPUT_IMAGE_TYPES } from "./media";
 import { z } from "zod";
 
 /** Bound JSON image input below the hosting platform's request size limit. */
 export const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
 export const MAX_INPUT_IMAGES = 3;
-export const INPUT_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-] as const;
 
 /** Image bytes accepted with a web message, never stored in its mailbox row. */
 export const inputImageSchema = z

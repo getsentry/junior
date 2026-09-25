@@ -1,5 +1,5 @@
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { decodeInputImages } from "@/chat/attachments/web";
+import { decodeInputImages } from "@/chat/attachments/images";
 import type { InputImage } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
@@ -18,6 +18,7 @@ import type {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
+/** Turn image validation failures into request errors before accepting work. */
 function parseImages(images: InputImage[] | undefined) {
   try {
     return decodeInputImages(images ?? []);

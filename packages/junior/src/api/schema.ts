@@ -1,5 +1,5 @@
+export { INPUT_IMAGE_TYPES } from "../chat/attachments/media";
 export {
-  INPUT_IMAGE_TYPES,
   MAX_INPUT_IMAGES,
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";

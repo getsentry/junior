@@ -1,6 +1,6 @@
 /** Store web input in a Conversation mailbox. */
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { storeWebImages } from "@/chat/attachments/web";
+import { storeInputImages } from "@/chat/attachments/images";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createHash } from "node:crypto";
@@ -289,7 +289,7 @@ export async function appendAndEnqueueWebMessage(
   if (input.images?.length) {
     if (!options.attachmentStorage)
       throw new Error("Attachment storage is unavailable.");
-    attachments = await storeWebImages({
+    attachments = await storeInputImages({
       conversationId: input.conversationId,
       files: input.images,
       storage: options.attachmentStorage,

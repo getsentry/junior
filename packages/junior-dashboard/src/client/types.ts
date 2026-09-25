@@ -1,3 +1,4 @@
+import type { MessageAttachment } from "@sentry/junior/api/schema";
 import type { MessageCard } from "@sentry/junior/api/schema";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
@@ -81,15 +82,8 @@ export type TranscriptViewStructuredEventPart = {
   version: number;
 };
 
-export type TranscriptViewDeliveredAttachment = {
-  bytes: number;
-  contentType: string;
-  filename: string;
-  id: string;
-};
-
 export type TranscriptViewAttachmentsDeliveredPart = {
-  attachments: TranscriptViewDeliveredAttachment[];
+  attachments: MessageAttachment[];
   type: "attachments_delivered";
 };
 
@@ -138,7 +132,7 @@ export type TranscriptViewMessage = {
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
-  attachments?: TranscriptViewDeliveredAttachment[];
+  attachments?: MessageAttachment[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

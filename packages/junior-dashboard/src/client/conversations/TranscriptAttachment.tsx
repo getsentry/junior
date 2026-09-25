@@ -1,16 +1,8 @@
+import { INPUT_IMAGE_TYPES } from "@sentry/junior/api/schema";
 import { FileText } from "lucide-react";
 import { ImageAttachment } from "../components/ImageAttachment";
-import type { TranscriptViewDeliveredAttachment } from "../types";
+import type { MessageAttachment } from "@sentry/junior/api/schema";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
-
-function mayDisplayInline(contentType: string): boolean {
-  return (
-    contentType === "image/gif" ||
-    contentType === "image/jpeg" ||
-    contentType === "image/png" ||
-    contentType === "image/webp"
-  );
-}
 
 function attachmentUrl(conversationId: string, attachmentId: string): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
@@ -24,13 +16,15 @@ function formatAttachmentBytes(bytes: number): string {
 
 /** Render one stored user or assistant attachment using the private read route. */
 export function TranscriptAttachment(props: {
-  attachment: TranscriptViewDeliveredAttachment;
+  attachment: MessageAttachment;
   conversationId: string;
 }) {
   const search = useTranscriptSearch();
   const href = attachmentUrl(props.conversationId, props.attachment.id);
   const size = formatAttachmentBytes(props.attachment.bytes);
-  const inline = mayDisplayInline(props.attachment.contentType);
+  const inline = INPUT_IMAGE_TYPES.some(
+    (type) => type === props.attachment.contentType,
+  );
   const meta = [props.attachment.contentType, size].join(" · ");
 
   if (inline && !search.active) {

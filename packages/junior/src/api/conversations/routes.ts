@@ -45,6 +45,12 @@ export function createConversationRoutes(options: {
   attachmentStorage: AttachmentStorage;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
+  const messageBodyLimit = bodyLimit({
+    maxSize: 4_450_000,
+    onError: () => {
+      throwApiError(413, "Images must total 3 MB or less.");
+    },
+  });
 
   app.get(
     "/",
@@ -75,12 +81,7 @@ export function createConversationRoutes(options: {
   app.post(
     "/",
     requireViewer,
-    bodyLimit({
-      maxSize: 4_450_000,
-      onError: () => {
-        throwApiError(413, "Images must total 3 MB or less.");
-      },
-    }),
+    messageBodyLimit,
     validateRequest(
       "json",
       createConversationBodySchema,
@@ -103,12 +104,7 @@ export function createConversationRoutes(options: {
   app.post(
     "/:conversationId/messages",
     requireViewer,
-    bodyLimit({
-      maxSize: 4_450_000,
-      onError: () => {
-        throwApiError(413, "Images must total 3 MB or less.");
-      },
-    }),
+    messageBodyLimit,
     validateRequest(
       "param",
       conversationParamsSchema,

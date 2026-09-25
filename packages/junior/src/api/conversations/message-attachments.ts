@@ -13,10 +13,9 @@ export async function hydrateMessageAttachments(
   const messages = events.flatMap((event) =>
     event.data.type === "message" ? [event.data] : [],
   );
-  const refs = new Map(
-    messages.map((message) => [message, slackFileIds(message.meta)]),
-  );
-  const ids = [...new Set([...refs.values()].flat())];
+  const ids = [
+    ...new Set(messages.flatMap((message) => slackFileIds(message.meta))),
+  ];
   if (!ids.length) return;
   const attachments = await db
     .db()
@@ -44,7 +43,7 @@ export async function hydrateMessageAttachments(
   );
   for (const message of messages) {
     const stored = readMessageAttachments(message.meta?.attachments);
-    const matched = (refs.get(message) ?? []).flatMap((id) => {
+    const matched = slackFileIds(message.meta).flatMap((id) => {
       const attachment = byFileId.get(id);
       return attachment ? [attachment] : [];
     });
