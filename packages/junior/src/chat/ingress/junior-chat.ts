@@ -104,7 +104,7 @@ export class JuniorChat<
             });
             return;
           }
-          if (!isSlackWorkspaceMember(message.raw)) {
+          if (!(await isSlackWorkspaceMember(message.raw))) {
             return;
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
@@ -119,19 +119,16 @@ export class JuniorChat<
     }
 
     const message = messageOrFactory;
-    if (!isSlackWorkspaceMember(message.raw)) {
-      return Promise.resolve();
-    }
-
-    const normalized = normalizeIncomingSlackThreadId(threadId, message);
-    return runWithTurnRequestDeadline(() =>
-      super.processMessage(
+    return runWithTurnRequestDeadline(async () => {
+      if (!(await isSlackWorkspaceMember(message.raw))) return;
+      const normalized = normalizeIncomingSlackThreadId(threadId, message);
+      await super.processMessage(
         adapter,
         normalized,
         withNormalizedThreadId(message, normalized),
         options,
-      ),
-    );
+      );
+    });
   }
 
   override processReaction(

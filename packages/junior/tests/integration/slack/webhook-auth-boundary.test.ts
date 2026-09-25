@@ -17,6 +17,12 @@ import {
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { usersInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+  queueSlackApiError,
+} from "../../msw/handlers/slack-api";
 
 const SIGNING_SECRET = "test-signing-secret";
 
@@ -26,54 +32,82 @@ describe("Slack webhook auth boundary", () => {
     await closeDb();
   });
 
-  it("drops unknown authors before replies or stored input", async () => {
-    const channel = "C123";
-    const state = createMemoryState();
-    await state.connect();
-    const threadTs = "1712345.0001";
-    const threadId = `slack:${channel}:${threadTs}`;
-    await state.subscribe(threadId);
-    const queue = createConversationWorkQueueTestAdapter();
-    const adapter = createSlackAdapterFixture();
-    const envelope = slackEnvelope({
-      channel,
-      threadTs,
-    });
-    const services = {
-      getSlackAdapter: () => adapter,
-      queue,
-      runtime: createNoopSlackWebhookRuntime(),
-      state,
-    };
+  it.each([
+    { channel: "C123", eventType: "app_mention" as const },
+    { channel: "D123", eventType: "message" as const },
+    { channel: "C123", eventType: "message" as const },
+  ])(
+    "verifies authors without team fields before accepting $eventType in $channel",
+    async ({ channel, eventType }) => {
+      const state = createMemoryState();
+      await state.connect();
+      const threadTs = "1712345.0001";
+      const threadId = `slack:${channel}:${threadTs}`;
+      await state.subscribe(threadId);
+      const queue = createConversationWorkQueueTestAdapter();
+      const adapter = createSlackAdapterFixture();
+      const envelope = slackEnvelope({
+        channel,
+        threadTs,
+        eventType,
+        text: "hello",
+      });
+      if (eventType === "app_mention") {
+        envelope.event.text = `<@${adapter.botUserId}> hello`;
+      }
+      const event = { ...envelope.event, user_team: undefined };
+      const services = {
+        getSlackAdapter: () => adapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      };
 
-    for (const userTeam of [undefined, 123]) {
-      const rejected = await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest({
-          ...envelope,
-          event: { ...envelope.event, user_team: userTeam },
-        }),
+      const profile = usersInfoOk({ userId: "U123" });
+      for (const teamId of [undefined, "TEXTERNAL"]) {
+        queueSlackApiResponse("users.info", {
+          body: { ...profile, user: { ...profile.user, team_id: teamId } },
+        });
+        const rejected = await handleSlackWebhookAndFlush({
+          request: slackWebhookRequest({ ...envelope, event }),
+          services,
+        });
+        expect(rejected.status).toBe(200);
+      }
+      expect(queue.queuedMessages()).toEqual([]);
+      expect(
+        await getConversationWorkState({ conversationId: threadId, state }),
+      ).toBeUndefined();
+      expect(
+        (await getConversationEventStore().loadMessageHistory(threadId)).events,
+      ).toEqual([]);
+      expect(slackApiOutbox.messages()).toEqual([]);
+      expect(slackApiOutbox.reactions()).toEqual([]);
+
+      queueSlackApiError("users.info", { error: "missing_scope" });
+      const failed = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({ ...envelope, event }),
         services,
       });
-      expect(rejected.status).toBe(200);
-    }
-    expect(queue.queuedMessages()).toEqual([]);
-    expect(
-      await getConversationWorkState({ conversationId: threadId, state }),
-    ).toBeUndefined();
-    expect(
-      (await getConversationEventStore().loadMessageHistory(threadId)).events,
-    ).toEqual([]);
-    expect(slackApiOutbox.messages()).toEqual([]);
-    expect(slackApiOutbox.reactions()).toEqual([]);
+      expect(failed.status).toBe(503);
+      expect(queue.queuedMessages()).toEqual([]);
+      expect(slackApiOutbox.reactions()).toEqual([]);
 
-    const accepted = await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest(envelope),
-      services,
-    });
-    expect(accepted.status).toBe(200);
-    expect(queue.queuedMessages()).toHaveLength(1);
-    await state.disconnect();
-  });
+      queueSlackApiResponse("users.info", {
+        body: { ...profile, user: { ...profile.user, team_id: "T123" } },
+      });
+      const accepted = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({ ...envelope, event }),
+        services,
+      });
+      expect(accepted.status).toBe(200);
+      expect(queue.queuedMessages()).toHaveLength(1);
+      expect(
+        getCapturedSlackApiCalls("users.info").at(-1)?.params,
+      ).toMatchObject({ user: "U123" });
+      await state.disconnect();
+    },
+  );
 
   it.each(["message", "factory"] as const)(
     "checks membership before SDK routing for a %s",
@@ -96,13 +130,17 @@ describe("Slack webhook auth boundary", () => {
       const waitUntil = client.waitUntil();
       const threadId = "slack:D123:1712345.0001";
 
-      for (const [index, userTeam] of [undefined, "T123"].entries()) {
+      const profile = usersInfoOk({ userId: "U123" });
+      queueSlackApiResponse("users.info", {
+        body: { ...profile, user: { ...profile.user, team_id: "T123" } },
+      });
+      for (const [index, userTeam] of ["TEXTERNAL", undefined].entries()) {
         const message = createTestMessage({
           id: `1712345.000${index + 1}`,
           threadId,
-          text: userTeam ?? "unknown",
+          text: userTeam ?? "verified",
           author: { userId: "U123" },
-          raw: { user_team: userTeam },
+          raw: { user: "U123", user_team: userTeam },
         });
         await runWithWorkspaceTeamId("T123", () =>
           bot.processMessage(
@@ -115,7 +153,7 @@ describe("Slack webhook auth boundary", () => {
         await waitUntil.flush();
       }
 
-      expect(handled).toEqual(["T123"]);
+      expect(handled).toEqual(["verified"]);
       await bot.shutdown();
     },
   );

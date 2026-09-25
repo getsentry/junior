@@ -161,10 +161,11 @@ delegation without becoming the execution actor or a general task owner.
 ## Invariants
 
 - Slack messages require an author team that matches the installation workspace.
-  Use `user_team`, or `source_team` when `user_team` is absent. Missing workspace
-  or author team data blocks the message before routing, storage, or reactions.
+  Use `user_team`, or `source_team` when `user_team` is absent. When both are
+  absent, use `users.info` to verify the author's `team_id`. Missing workspace,
+  invalid author fields, or an unverified team blocks the message before routing,
+  storage, or reactions. API failures reach the webhook's retryable boundary.
   The event's `team` and envelope's `team_id` do not prove author membership.
-  Do not query Slack for missing membership data.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.

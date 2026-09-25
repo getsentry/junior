@@ -580,7 +580,7 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
-          if (!isSlackWorkspaceMember(event)) return;
+          if (!(await isSlackWorkspaceMember(event))) return;
           const message = adapter.parseMessage(event);
           const routed = await withLock(
             state,
