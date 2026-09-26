@@ -1,4 +1,4 @@
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { HighlightedCode } from "../code";
@@ -50,25 +50,16 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
       signature={signature}
     >
       {props.part.input !== undefined ? (
-        <ToolBody label="arguments">
-          <ToolPayload value={props.part.input} />
-        </ToolBody>
+        <ToolPayload label="arguments" value={props.part.input} />
       ) : null}
       {props.part.output !== undefined ? (
-        <ToolBody label="result">
-          <ToolPayload value={props.part.output} />
-        </ToolBody>
+        <ToolPayload label="result" value={props.part.output} />
       ) : null}
     </ToolFrame>
   );
 
   return <div className="min-w-0">{frame}</div>;
 });
-
-function ToolPayload(props: { value: unknown }) {
-  const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
-  return <HighlightedCode code={code} language="json" />;
-}
 
 function ToolSignature(props: {
   name: string;
@@ -115,15 +106,14 @@ function ToolSignature(props: {
   );
 }
 
-function ToolBody(props: { children: ReactNode; label?: string }) {
+function ToolPayload(props: { label: string; value: unknown }) {
+  const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
   return (
     <div className="min-w-0 max-w-full overflow-hidden bg-black/20 px-2.5 py-2">
-      {props.label ? (
-        <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
-          {props.label}
-        </div>
-      ) : null}
-      {props.children}
+      <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
+        {props.label}
+      </div>
+      <HighlightedCode code={code} language="json" />
     </div>
   );
 }

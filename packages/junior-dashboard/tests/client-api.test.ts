@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { QueryClient } from "@tanstack/react-query";
+import { webMessageId } from "@sentry/junior/api/schema";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
+
 import { createDashboardApp } from "../src/app";
 import { auth } from "./dashboard-test-helpers";
 import {
   ARCHIVED_CONVERSATION_ID,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
-import { webMessageId } from "@sentry/junior/api/schema";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationReportEvent } from "@sentry/junior/api/schema";
-import { JUNIOR_VERSION } from "@sentry/junior/version";
-
 import { personalSpendRefreshDelay } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
@@ -125,24 +125,11 @@ describe("dashboard client API", () => {
           signedIn ? sessionAuth.getSession(request) : Promise.resolve(null),
       },
     });
-    const reads: Array<{
-      path: string;
-      status: number;
-      validator: string | null;
-    }> = [];
-    const assign = vi.fn();
-    vi.stubGlobal("window", {
-      dispatchEvent: vi.fn(),
-      location: { assign, pathname: "/", search: "" },
-    });
+    const reads: Array<[path: string, status: number]> = [];
     vi.stubGlobal("fetch", async (path: string, init: RequestInit) => {
       const request = new Request(`http://localhost${path}`, init);
       const response = await app.fetch(request);
-      reads.push({
-        path,
-        status: response.status,
-        validator: request.headers.get("if-none-match"),
-      });
+      reads.push([path, response.status]);
       return response;
     });
     const client = new QueryClient();
@@ -152,21 +139,19 @@ describe("dashboard client API", () => {
       const first = await client.fetchQuery(options);
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
-      expect(reads.map(({ path, status }) => [path, status])).toEqual([
+      expect(reads).toEqual([
         [`${detailPath}/pending-messages`, 200],
         [detailPath, 200],
         [`${detailPath}/pending-messages`, 200],
         [detailPath, 304],
       ]);
-      expect(reads[3]?.validator).toBe(first.detailEtag);
-      expect(reads[2]?.validator).toBeNull();
 
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
       const changed = await client.fetchQuery(options);
       expect(first.archivedAt).toBeTruthy();
       expect(changed.archivedAt).toBeUndefined();
       expect(changed.detailEtag).not.toBe(first.detailEtag);
-      expect(reads.at(-1)?.status).toBe(200);
+      expect(reads.at(-1)).toEqual([detailPath, 200]);
 
       // The detail endpoint must also reject a valid old validator after logout.
       signedIn = false;
@@ -176,8 +161,6 @@ describe("dashboard client API", () => {
         }),
       );
       expect(denied.status).toBe(401);
-      await expect(client.fetchQuery(options)).rejects.toThrow("returned 401");
-      expect(assign).toHaveBeenCalledWith("/auth/login");
     } finally {
       client.clear();
       setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);

@@ -661,7 +661,7 @@ export function useConversationData(conversationId: string | undefined) {
   };
 }
 
-/** Revalidate one bounded detail resource against its query-owned snapshot. */
+/** Reuse the cached detail when the server reports no change. */
 export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,

@@ -24,11 +24,10 @@ name, through dashboard settings.
   Publish both in one render so input moves from queue to transcript without a
   gap. Poll every 2 seconds while active or waiting for input, and every 10
   seconds while idle so other Sources can wake the open Conversation.
-- Detail polls use a weak ETag for the viewer-authorized response. Only the
-  report's `generatedAt` read time is excluded. The server still reads and
-  authorizes each request. A `304` reuses the parsed detail in TanStack Query;
-  the mailbox and its cancellation watermark always refresh. Optimistic detail
-  edits clear the validator. Responses are not stored in the browser HTTP cache.
+- Detail polls use an ETag (a hash of the response, except `generatedAt`).
+  After checking access, the server returns `304` for unchanged content. The
+  client reuses its parsed detail but always refreshes the mailbox. Local detail
+  edits clear the ETag. This saves transfer and parsing, not database reads.
 - Local sends stay visible until a server snapshot contains their Message id.
   Web ingress and the browser share one Message id function. The browser derives
   the id before the first local render and before POST starts. This also
@@ -81,19 +80,15 @@ saved set and links the report from the pull request.
 
 ## Browser assets
 
-The client build splits syntax grammars, the highlighting engine, and the single
-`github-dark` theme into content-hashed chunks. `client/code-languages.ts` owns
-supported languages and aliases. Keep imports explicit so bundling cannot pull
-in Shiki's complete theme registry.
+`client/code-languages.ts` lists languages and aliases with explicit imports.
+Load these grammars, the engine, and the `github-dark` theme on demand. Do not
+import Shiki's full bundle: it includes unused themes.
 
-The server build embeds `client.js` and its chunks. Serve them through the
-registered dashboard routes, including the core app's forwarding paths. Chunks
-use private immutable caching. The client entry remains uncached. If a chunk
-cannot load, code remains visible as plain text; do not force a page reload.
+The server embeds `client.js` and its chunks. Both dashboard and core routes
+must serve them. Cache content-hashed chunks privately; keep the entry uncached.
+If highlighting cannot load, show plain text without reloading the page.
 
-Closed tool details do not mount payload components. Format payloads only when
-the details open or search requires them. Reuse the payload size for unchanged
-results instead of encoding it on every poll.
+Mount and format tool payloads only when opened or searched.
 
 ## Type scale
 

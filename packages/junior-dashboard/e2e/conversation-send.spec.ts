@@ -174,7 +174,7 @@ test("starts and continues conversations from the dashboard", async ({
     `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
     async (route) => {
       if (holdDetailRefresh) await detailRefreshHeld;
-      // This fixture changes the response body, so the origin validator cannot apply.
+      // Request the full body because this test changes it.
       const response = await route.fetch({
         headers: { ...route.request().headers(), "if-none-match": "" },
       });
@@ -314,7 +314,7 @@ test("hands web and external messages from queue to history without gaps", async
   await page.route(path, async (route) => {
     detailReads += 1;
     await historyHeld;
-    // Queue/history state below is fixture-owned, not the origin's cached body.
+    // Request the full body because this test changes it.
     const response = await route.fetch({
       headers: { ...route.request().headers(), "if-none-match": "" },
     });
