@@ -5,48 +5,52 @@ import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
 
-/** Render an Event Message with its full text closed by default. */
+/** Render an Event Message whose heading expands its full text. */
 export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const text = messageRawText(props.message);
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,
   );
   const summary = props.message.trustedSummary ?? props.message.eventType ?? "";
+  const heading = (
+    <span className="flex min-h-6 min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="min-w-0 break-words font-display text-sm font-semibold leading-6 text-dashboard-text">
+        <HighlightText text={summary} />
+      </span>
+      {props.message.eventType ? (
+        <span className="break-all rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+          <HighlightText text={props.message.eventType} />
+        </span>
+      ) : null}
+    </span>
+  );
 
   return (
     <div className="min-w-0 py-1">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-0 font-display text-sm font-semibold leading-snug text-dashboard-text">
-          <HighlightText text={summary} />
-        </span>
-        {props.message.eventType ? (
-          <span className="rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
-            <HighlightText text={props.message.eventType} />
-          </span>
-        ) : null}
-      </div>
       {text ? (
-        <details className="group/event mt-1.5 min-w-0">
-          <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
+        <details className="group/event min-w-0">
+          <summary className="flex cursor-pointer list-none items-start gap-2 rounded-sm text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus [&::-webkit-details-marker]:hidden">
+            {heading}
             <ChevronRight
               aria-hidden="true"
-              className="size-3 transition-transform group-open/event:rotate-90"
+              className="mt-1.5 size-3 shrink-0 transition-transform group-open/event:rotate-90"
               strokeWidth={2.2}
             />
-            <span className="group-open/event:hidden">View raw event</span>
-            <span className="hidden group-open/event:inline">
-              Hide raw event
-            </span>
           </summary>
           <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border bg-dashboard-surface px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             <HighlightText text={text} />
           </pre>
         </details>
-      ) : redacted ? (
-        <div className="mt-2">
-          <RedactedMarker />
-        </div>
-      ) : null}
+      ) : (
+        <>
+          {heading}
+          {redacted ? (
+            <div className="mt-2">
+              <RedactedMarker />
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 
 import { Card } from "../components/layout/Card";
-import { cn } from "../styles";
 import { unavailableTranscriptLabel } from "../format";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
@@ -105,6 +104,7 @@ function SegmentEvents(props: {
   responding?: boolean;
 }) {
   return (
+    // This stack owns spacing between all top-level transcript rows.
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
@@ -292,12 +292,6 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (isCollapsibleActivityEntry(entry)) {
-      const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
-      const followsVisibleEvent =
-        previousEntry?.kind === "message" &&
-        Boolean(previousEntry.message.eventType) &&
-        (!search.active ||
-          entryMatchesSearch(previousEntry, search.normalizedQuery));
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
@@ -319,13 +313,7 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <div
-            className={cn(
-              "mobile-transcript-row pl-11",
-              followsVisibleEvent && "-mt-3",
-            )}
-            key={activityKey}
-          >
+          <div className="mobile-transcript-row pl-11" key={activityKey}>
             <TranscriptActivityGroup
               entries={visibleEntries}
               renderEntry={renderEntry}
