@@ -28,7 +28,7 @@ function description(body: string | null | undefined): string | undefined {
     /<!-- junior-(session-footer|request-attribution):start -->[\s\S]*?<!-- junior-\1:end -->/g,
     "",
   );
-  // Removal can join text into another opener. Repeat and drop unclosed comments.
+  // Removing a comment can form another <!-- opener.
   while (text.includes("<!--")) {
     text = text.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
   }
