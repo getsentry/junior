@@ -24,19 +24,6 @@ interface MatchedEdit {
 
 const MAX_DIFF_LINE_CHARS = 4_000;
 
-function truncateDiffLine(value: string): {
-  line: string;
-  truncated: boolean;
-} {
-  if (value.length <= MAX_DIFF_LINE_CHARS) {
-    return { line: value, truncated: false };
-  }
-  return {
-    line: `${value.slice(0, MAX_DIFF_LINE_CHARS)}... [line truncated]`,
-    truncated: true,
-  };
-}
-
 /** Preserve a text artifact's dominant line-ending style across rewrites. */
 export function detectLineEnding(value: string): "\r\n" | "\n" {
   return value.includes("\r\n") ? "\r\n" : "\n";
@@ -70,11 +57,9 @@ function countOccurrences(content: string, target: string): number {
 }
 
 function firstChangedLine(
-  oldContent: string,
-  newContent: string,
+  oldLines: string[],
+  newLines: string[],
 ): number | undefined {
-  const oldLines = oldContent.split("\n");
-  const newLines = newContent.split("\n");
   const count = Math.max(oldLines.length, newLines.length);
   for (let index = 0; index < count; index += 1) {
     if (oldLines[index] !== newLines[index]) {
@@ -156,10 +141,12 @@ export function buildCompactDiff(
   const width = String(Math.max(oldLines.length, newLines.length)).length;
   const output: string[] = [];
   let lineTruncated = false;
-  const pushLine = (value: string): void => {
-    const bounded = truncateDiffLine(value);
-    output.push(bounded.line);
-    lineTruncated ||= bounded.truncated;
+  const pushLine = (line: string): void => {
+    if (line.length > MAX_DIFF_LINE_CHARS) {
+      line = `${line.slice(0, MAX_DIFF_LINE_CHARS)}... [line truncated]`;
+      lineTruncated = true;
+    }
+    output.push(line);
   };
 
   let nextLine = 1;
@@ -194,7 +181,7 @@ export function buildCompactDiff(
   const bounded = truncateText(output.join("\n"), MAX_TEXT_CHARS);
   return {
     diff: bounded.content,
-    firstChangedLine: firstChangedLine(oldContent, newContent),
+    firstChangedLine: firstChangedLine(oldLines, newLines),
     truncated: lineTruncated || bounded.truncated,
   };
 }
