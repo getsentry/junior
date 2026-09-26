@@ -1,4 +1,10 @@
 # Changelog
+## 0.229.0
+
+### Bug Fixes 🐛
+
+- (chat) Preserve the active request through handoff by @sentry-junior in [#1938](https://github.com/getsentry/junior/pull/1938)
+
 ## 0.228.0
 
 ### New Features ✨
