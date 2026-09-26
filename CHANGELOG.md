@@ -1,4 +1,14 @@
 # Changelog
+## 0.228.0
+
+### New Features ✨
+
+- (objects) Distinguish native object types across web and Slack by @sentry-junior in [#1949](https://github.com/getsentry/junior/pull/1949)
+
+### Bug Fixes 🐛
+
+- (slack) Verify message authors with payload fields and a lookup fallback by @sentry-junior in [#1948](https://github.com/getsentry/junior/pull/1948)
+
 ## 0.227.0
 
 ### New Features ✨
