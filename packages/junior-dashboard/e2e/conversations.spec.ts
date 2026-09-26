@@ -39,6 +39,26 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const contextAction = page.getByRole("button", { name: "View turn context" });
+  await contextAction.scrollIntoViewIfNeeded();
+  await contextAction.click();
+  const contextPanel = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
+  await expect(
+    contextPanel.getByRole("heading", { name: "Recalled memories" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
+  await expect(contextAction).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextPanel
+    .getByRole("button", { name: "Close turn context", exact: true })
+    .click();
+  await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
 
   await page.goto(

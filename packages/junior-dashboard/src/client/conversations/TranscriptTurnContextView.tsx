@@ -1,10 +1,11 @@
 import { Brain, Braces, ChevronRight, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
-import { cn, dashboardInteractiveTextClass } from "../styles";
+import { cn } from "../styles";
 import { HighlightText } from "./transcriptSearch";
 
 /** Show structured context attached to one transcript user message. */
@@ -31,41 +32,41 @@ export function TranscriptTurnContextView(props: {
 
   return (
     <>
-      <div className="group/context relative hidden justify-end md:flex">
-        <button
-          aria-controls={panelId}
-          aria-expanded={open}
-          aria-label="View turn context"
-          className={cn(
-            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-white/10 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
-            dashboardInteractiveTextClass,
-            open && "border-white/10 bg-white/[0.06] text-cyan-100/80",
-          )}
-          onClick={() => setOpen(true)}
-          ref={triggerRef}
-          title="View turn context"
-          type="button"
-        >
-          <Braces aria-hidden="true" size={15} strokeWidth={1.8} />
-        </button>
-        <span
+      <button
+        aria-controls={panelId}
+        aria-expanded={open}
+        aria-label="View turn context"
+        className={cn(
+          "inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs leading-tight text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          open && "bg-dashboard-fill-hover text-dashboard-text",
+        )}
+        onClick={() => setOpen(true)}
+        ref={triggerRef}
+        title="View turn context"
+        type="button"
+      >
+        <Braces
           aria-hidden="true"
-          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-xs font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
-        >
-          View turn context
-        </span>
-      </div>
-
-      {open ? (
-        <TurnContextPanel
-          contexts={props.contexts}
-          id={panelId}
-          onClose={() => {
-            setOpen(false);
-            triggerRef.current?.focus();
-          }}
+          className="hidden sm:block"
+          size={13}
+          strokeWidth={1.8}
         />
-      ) : null}
+        <span>Context</span>
+      </button>
+
+      {open
+        ? createPortal(
+            <TurnContextPanel
+              contexts={props.contexts}
+              id={panelId}
+              onClose={() => {
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+            />,
+            document.body,
+          )
+        : null}
     </>
   );
 }

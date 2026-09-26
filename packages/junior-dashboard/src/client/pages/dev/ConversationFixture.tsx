@@ -11,6 +11,32 @@ const TIMESTAMP = "2026-08-07T12:00:00.000Z";
 const EVENTS: ConversationReportEventData[] = [
   {
     type: "message",
+    messageId: "gallery-user",
+    role: "user",
+    actorIdentity: { fullName: "Alex Rivera" },
+    text: "Show me the visual QA.",
+  },
+  { type: "turn_lifecycle", turnId: "gallery-turn", state: "started" },
+  {
+    type: "turn_context",
+    turnId: "gallery-turn",
+    pluginName: "memory",
+    kind: "recall",
+    version: 1,
+    content: {
+      memories: [
+        {
+          id: "gallery-memory",
+          content: "Use desktop and mobile screenshots for visual review.",
+          observedAtMs: Date.parse(TIMESTAMP),
+          scope: "personal",
+          kind: "preference",
+        },
+      ],
+    },
+  },
+  {
+    type: "message",
     messageId: "gallery-reply",
     role: "assistant",
     text: "The change is ready for review.\n\nI tightened the conversation layout and kept the event details available below.",
@@ -106,6 +132,7 @@ export function MessageAttachmentsFixture() {
         }}
         message={{
           sourceSeq: 0,
+          timestamp: Date.parse(TIMESTAMP),
           role: "assistant",
           parts: [{ type: "text", text: "Two charts and the review notes." }],
           attachments: [

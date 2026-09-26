@@ -49,6 +49,11 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
+          contextAction={
+            props.message.role === "user" && props.message.contexts?.length ? (
+              <TranscriptTurnContextView contexts={props.message.contexts} />
+            ) : undefined
+          }
           meta={
             props.message.role === "assistant"
               ? [
@@ -87,9 +92,6 @@ export const TranscriptMessageView = memo(
               );
           }
         })}
-        {props.message.role === "user" && props.message.contexts?.length ? (
-          <TranscriptTurnContextView contexts={props.message.contexts} />
-        ) : null}
       </TranscriptMessageShell>
     );
   },
@@ -135,6 +137,7 @@ export function RedactedMessageView(props: {
 }
 
 function TranscriptMessageHeader(props: {
+  contextAction?: ReactNode;
   meta?: ReactNode[];
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
@@ -149,14 +152,17 @@ function TranscriptMessageHeader(props: {
   return (
     <TranscriptHeadingRow
       left={
-        <span className={transcriptRoleLabelClass(props.message.role)}>
-          {roleLabel}
-        </span>
+        <>
+          <span className={transcriptRoleLabelClass(props.message.role)}>
+            {roleLabel}
+          </span>
+          {props.contextAction}
+        </>
       }
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
         showSlack || meta.length ? (
-          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-xs leading-snug text-dashboard-text-muted md:leading-none">
+          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
             {showSlack ? (
               <span className="inline-flex shrink-0" title="Slack">
                 <SlackMark className="size-3.5" />

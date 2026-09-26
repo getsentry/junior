@@ -56,14 +56,14 @@ function TranscriptAttachment(props: {
         imageClassName="max-h-48 w-auto max-w-full h-auto rounded-md object-contain"
         loading="lazy"
         src={href}
-        triggerClassName="block min-w-0 max-w-full flex-none"
+        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint p-1.5 transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       />
     );
   }
 
   return (
     <a
-      className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 no-underline transition-colors hover:bg-white/[0.04]"
+      className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"
