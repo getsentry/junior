@@ -16,6 +16,15 @@ function toolContext(
         number: 691,
         state: "open",
         title: "Add events",
+        body: `Add **events**.<!-- Internal template note -->
+
+<!-- junior-request-attribution:start -->
+via **Alex**.
+<!-- junior-request-attribution:end -->
+
+<!-- junior-session-footer:start -->
+[View Junior Session](https://example.com/session)
+<!-- junior-session-footer:end -->`,
         user: { login: "alex" },
         requested_reviewers: [{ login: "sam" }],
         mergeable: null,
@@ -53,6 +62,7 @@ describe("getPullRequest", () => {
       objectAnnotations: [
         {
           displayType: "Pull request",
+          description: "Add **events**.",
           sourceUpdatedAt: "2026-09-25T13:00:00Z",
           facts: {
             type: "code_change",

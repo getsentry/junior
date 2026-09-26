@@ -9,6 +9,14 @@ import type { SlackEntity } from "./work-object";
 import { renderSlackAutomationCard } from "./automation-card";
 import { escapeSlackMrkdwnText, formatSlackLink } from "./mrkdwn";
 
+function descriptionPreview(value: string | undefined): string {
+  const text = value?.replace(/\r\n/g, "\n").trim() ?? "";
+  const preview = text.split("\n").slice(0, 6).join("\n").slice(0, 500);
+  return preview.length < text.length
+    ? `${preview.slice(0, 499).trimEnd()}…`
+    : preview;
+}
+
 /** Render verified annotation facts as a native Task or Item preview. */
 export function renderSlackObjectCard(
   card: OwnedObjectAnnotation,
@@ -29,11 +37,13 @@ export function renderSlackObjectCard(
   const iconUrl = getDashboardObjectIconLink(presentation.icon);
   const title = card.title.slice(0, 160);
   const facts = objectFactFields(card.facts);
+  const description = descriptionPreview(card.description);
   const text = [
     escapeSlackMrkdwnText(type),
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     escapeSlackMrkdwnText(card.label),
     card.status ? escapeSlackMrkdwnText(card.status) : null,
+    description ? escapeSlackMrkdwnText(description) : null,
     card.warning
       ? escapeSlackMrkdwnText(`Needs attention: ${card.warning}`)
       : null,
@@ -58,6 +68,18 @@ export function renderSlackObjectCard(
     product_name: card.plugin,
   };
   const customFields = [
+    ...(description
+      ? [
+          {
+            key: "description",
+            label: "Description",
+            type: "string" as const,
+            value: description,
+            long: true,
+            format: "markdown" as const,
+          },
+        ]
+      : []),
     ...facts.map((field) => ({ ...field, type: "string" as const })),
     ...(card.warning
       ? [

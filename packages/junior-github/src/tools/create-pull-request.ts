@@ -94,6 +94,7 @@ const createPullRequestStateSchema = Type.Union([
       number: Type.Number(),
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -118,6 +119,7 @@ type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 interface GitHubPullRequestResult {
   facts?: ObjectAnnotation["facts"];
   sourceUpdatedAt?: string;
+  description?: string;
   number: number;
   url: string;
 }
@@ -372,6 +374,7 @@ async function gitHubPullRequestStructuredResult(
     githubObjectAnnotation({
       facts: result.facts,
       sourceUpdatedAt: result.sourceUpdatedAt,
+      description: result.description,
       repo: input.repo,
       number: result.number,
       title: input.title,
@@ -460,6 +463,7 @@ export function createGitHubPullRequestTool(
                   ? undefined
                   : objectFactsSchema.parse(state.facts),
               sourceUpdatedAt: state.sourceUpdatedAt,
+              description: state.description,
               number: state.number,
               url: state.url,
             };

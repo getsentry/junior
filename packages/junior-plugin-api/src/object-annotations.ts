@@ -7,7 +7,7 @@ import { objectTypeSchema } from "./object-presentation";
  * Plugins select small facts from responses they already have. Each surface owns
  * its layout. Omit unknown facts; do not infer approval or passing checks.
  *
- * Code changes show merge blockers. Tasks show ownership and planning context.
+ * Code changes show branch, status, and a description preview. Tasks show ownership and planning context.
  * Deployments show the target and revision. Automations show the trigger, state,
  * and warning; their existing detail view owns instructions and run history.
  * Other Items keep a title, source link, and optional status.

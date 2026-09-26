@@ -230,10 +230,13 @@ the web card use these facts. The Slack detail panel reads the latest saved
 annotation, not a new provider response. The web transcript shows the Message
 snapshot and labels it as saved.
 
-- Code changes show review and check summaries when known, then author,
-  requested reviewers, conflicts, branches, and change size. GitHub REST PR
-  responses do not include review decisions or check totals. The producer must
-  not invent these from requested reviewers, mergeability, or lifecycle state.
+- Code changes show the source branch and lifecycle status. They omit author,
+  reviewers, review and check summaries, conflicts, target branch, and change size.
+  GitHub also saves up to 4,000 characters of the PR description, without runtime
+  attribution, session footers, or HTML comments. Slack shows a Markdown preview
+  of at most 500 characters and six source lines, with an ellipsis when shortened.
+  Slack's `long` field option controls width, not automatic collapse. The source
+  link opens the full description. The web card uses its existing details toggle.
 - Tasks show assignees and priority, then project, cycle, due date, and labels.
   An empty assignee list means unassigned. An absent list means unknown.
 - Deployments use the `deployment` object type. Vercel selects project, target, revision, and

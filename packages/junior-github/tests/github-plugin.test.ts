@@ -1718,6 +1718,7 @@ Conversation: \`local:test:old-conversation\`
       egressFetch: async () =>
         new Response(
           JSON.stringify({
+            body: "A".repeat(4001),
             user: { login: "alex" },
             head: { ref: "feature/cards" },
             base: { ref: "main" },
@@ -1741,6 +1742,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       objectAnnotations: [
         {
+          description: `${"A".repeat(3999)}…`,
           facts: {
             type: "code_change",
             author: "alex",
@@ -1766,6 +1768,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       objectAnnotations: [
         {
+          description: `${"A".repeat(3999)}…`,
           facts: {
             type: "code_change",
             author: "alex",
