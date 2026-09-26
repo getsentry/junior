@@ -41,7 +41,9 @@ instead of copying Tailwind blocks.
      not reuse `ComposerDock`. Do not invent viewport height, offset, or bottom
      safe-area math in page modules.
 3. **Features** — stay under `conversations/` or `pages/` until a surface is
-   shared by two real callers.
+   shared by two real callers. Transcript layout stays in `conversations/`;
+   see [Transcript components](../conversations/README.md) for ownership.
+   Context panels use the shared `Drawer`, not a separate modal implementation.
 
 ## Rules
 

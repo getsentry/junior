@@ -8,6 +8,7 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
@@ -55,7 +56,7 @@ export function TranscriptReasoningView(props: {
     </>
   );
   const content = (
-    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 bg-violet-950/15 px-2.5 pb-2 pt-1.5">
+    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 bg-violet-950/15 px-2 pb-2 pt-1.5">
       <span aria-hidden="true" />
       <div className="min-w-0 whitespace-pre-wrap break-words text-xs leading-relaxed italic text-violet-100/65">
         <HighlightText text={rendered} />
@@ -66,7 +67,7 @@ export function TranscriptReasoningView(props: {
   if (searchActive) {
     return (
       <div className={reasoningFrameClass()}>
-        <div className="grid list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5">
+        <div className="grid list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2 py-1.5">
           {summary}
         </div>
         {content}
@@ -76,9 +77,9 @@ export function TranscriptReasoningView(props: {
 
   return (
     <details className={cn("group/reasoning", reasoningFrameClass())}>
-      <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5 transition-colors hover:bg-violet-300/[0.05] hover:text-violet-50 [&::-webkit-details-marker]:hidden">
+      <TranscriptSummary className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-2">
         {summary}
-      </summary>
+      </TranscriptSummary>
       {content}
     </details>
   );

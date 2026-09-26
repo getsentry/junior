@@ -28,7 +28,7 @@ export function ChatLayout(props: {
       <div
         aria-label={props.scrollAriaLabel}
         className={cn(
-          "min-h-0 overflow-y-auto overscroll-contain",
+          "min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
           props.scrollClassName,
         )}
         data-chat-scroll=""
