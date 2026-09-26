@@ -6,7 +6,7 @@ export function TranscriptLoading() {
     <div
       aria-busy="true"
       aria-live="polite"
-      className="grid gap-7"
+      className="grid gap-4"
       role="status"
     >
       <span className="sr-only">Loading conversation transcript</span>
@@ -25,7 +25,7 @@ function MessageLoading(props: { width: string }) {
   return (
     <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 md:grid-cols-[2.25rem_minmax(0,1fr)]">
       <Skeleton className="size-8 rounded-full" />
-      <div className="grid gap-3 pt-1">
+      <div className="grid gap-2 pt-1">
         <Skeleton className="h-3 w-24 opacity-70" />
         <Skeleton className={`h-4 max-w-xl ${props.width}`} />
         <Skeleton className="h-4 w-1/2 max-w-lg" />

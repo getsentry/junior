@@ -104,7 +104,7 @@ function SegmentEvents(props: {
   responding?: boolean;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 md:gap-7">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
       ) : props.conversation.eventHistory.status === "available" ? (
@@ -291,10 +291,6 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (isCollapsibleActivityEntry(entry)) {
-      const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
-      const followsEvent =
-        previousEntry?.kind === "message" &&
-        Boolean(previousEntry.message.eventType);
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
@@ -321,7 +317,6 @@ function TranscriptEntryList(props: {
             key={activityKey}
           >
             <TranscriptActivityGroup
-              separateFromPrevious={followsEvent}
               entries={visibleEntries}
               renderEntry={renderEntry}
             />

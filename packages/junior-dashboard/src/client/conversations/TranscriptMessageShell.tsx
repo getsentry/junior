@@ -48,7 +48,7 @@ export function TranscriptMessageShell(props: {
       ) : null}
       <div
         className={cn(
-          "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3",
+          "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2",
           kind === "user"
             ? "rounded-xl border border-dashboard-border bg-dashboard-surface-active px-4 py-3"
             : "py-1",
