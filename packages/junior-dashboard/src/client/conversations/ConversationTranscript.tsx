@@ -321,10 +321,8 @@ function TranscriptEntryList(props: {
         rows.push(
           <div
             className={cn(
-              "mobile-transcript-row",
-              followsVisibleEvent
-                ? "-mt-3 pl-[1.875rem]"
-                : "pl-11 md:pl-[3.125rem]",
+              "mobile-transcript-row pl-11",
+              followsVisibleEvent && "-mt-3",
             )}
             key={activityKey}
           >

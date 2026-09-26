@@ -6,10 +6,7 @@ import type {
   ConversationTranscript,
   TranscriptViewAttachmentsDeliveredPart,
 } from "../types";
-import {
-  TranscriptHeadingMeta,
-  TranscriptHeadingRow,
-} from "./TranscriptHeadingRow";
+import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 /** Render host-delivered conversation attachments as first-class transcript media. */
@@ -22,21 +19,16 @@ export function TranscriptAttachmentsDeliveredView(props: {
 
   return (
     <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
-      <TranscriptHeadingRow
-        left={
-          <>
-            <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-cyan-100">
-              {getDashboardAgentName()}
-            </span>
-            {timestamp ? (
-              <TranscriptHeadingMeta className="shrink-0 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
-                {timestamp}
-              </TranscriptHeadingMeta>
-            ) : null}
-          </>
-        }
-        leftClassName="flex-wrap gap-y-1 text-xs leading-snug text-cyan-100/70"
-      />
+      <TranscriptMessageHeading>
+        <span className="max-w-full truncate font-sans text-sm font-semibold leading-6 text-cyan-100">
+          {getDashboardAgentName()}
+        </span>
+        {timestamp ? (
+          <span className="text-xs leading-6 text-dashboard-text-muted">
+            {timestamp}
+          </span>
+        ) : null}
+      </TranscriptMessageHeading>
       <TranscriptAttachments
         attachments={props.part.attachments}
         conversationId={props.conversation.conversationId}

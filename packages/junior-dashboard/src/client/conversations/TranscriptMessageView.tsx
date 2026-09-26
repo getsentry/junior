@@ -13,10 +13,7 @@ import { TranscriptMessageShell } from "./TranscriptMessageShell";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
 import { messageRawText } from "./transcriptRenderModel";
-import {
-  TranscriptHeadingMeta,
-  TranscriptHeadingRow,
-} from "./TranscriptHeadingRow";
+import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
 import { TranscriptText } from "./TranscriptText";
@@ -150,42 +147,27 @@ function TranscriptMessageHeader(props: {
   );
 
   return (
-    <TranscriptHeadingRow
-      left={
-        <>
-          <span className={transcriptRoleLabelClass(props.message.role)}>
-            {roleLabel}
-          </span>
-          {showSlack || meta.length ? (
-            <TranscriptHeadingMeta className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
-              {showSlack ? (
-                <span className="inline-flex shrink-0" title="Slack">
-                  <SlackMark className="size-3.5" />
-                </span>
-              ) : null}
-              {showSlack && meta.length ? (
-                <span aria-hidden="true">·</span>
-              ) : null}
-              {meta.map((item, index) => (
-                <span className="contents" key={index}>
-                  {index > 0 ? <span aria-hidden="true">·</span> : null}
-                  {item}
-                </span>
-              ))}
-            </TranscriptHeadingMeta>
+    <TranscriptMessageHeading action={props.contextAction}>
+      <span className={transcriptRoleLabelClass(props.message.role)}>
+        {roleLabel}
+      </span>
+      {showSlack || meta.length ? (
+        <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">
+          {showSlack ? (
+            <span className="inline-flex shrink-0 self-center" title="Slack">
+              <SlackMark className="size-3.5" />
+            </span>
           ) : null}
-        </>
-      }
-      leftClassName={cn(
-        transcriptRoleClass(props.message.role),
-        "flex-wrap gap-y-1",
-        Boolean(props.contextAction) && "min-h-6",
-      )}
-      right={props.contextAction}
-      rightClassName={
-        props.contextAction ? "flex items-center self-start" : undefined
-      }
-    />
+          {showSlack && meta.length ? <span aria-hidden="true">·</span> : null}
+          {meta.map((item, index) => (
+            <span className="contents" key={index}>
+              {index > 0 ? <span aria-hidden="true">·</span> : null}
+              {item}
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </TranscriptMessageHeading>
   );
 }
 
@@ -202,24 +184,11 @@ function RedactedMetadataRow(props: { meta?: string }) {
   );
 }
 
-function transcriptRoleClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "text-xs leading-snug",
-    kind === "assistant" && "text-cyan-100/70",
-    kind === "user" && "text-dashboard-text-muted",
-    kind === "system" && "text-amber-200/80",
-    kind === "tool" && "text-dashboard-text-muted",
-    kind === "other" && "text-dashboard-text-muted",
-  );
-}
-
 function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight",
+    "inline-block max-w-full truncate font-sans text-sm font-semibold leading-6",
     kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",

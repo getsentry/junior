@@ -14,7 +14,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const summary = props.message.trustedSummary ?? props.message.eventType ?? "";
 
   return (
-    <div className="min-w-0 px-0.5 py-1">
+    <div className="min-w-0 py-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 font-display text-sm font-semibold leading-snug text-dashboard-text">
           <HighlightText text={summary} />

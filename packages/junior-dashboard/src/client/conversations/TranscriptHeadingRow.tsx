@@ -42,6 +42,23 @@ export function TranscriptHeadingRow(props: {
   );
 }
 
+/** Keep message authors and timestamps on one baseline beside a fixed action slot. */
+export function TranscriptMessageHeading(props: {
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="grid min-h-6 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
+        {props.children}
+      </div>
+      {props.action ? (
+        <div className="flex h-6 items-center">{props.action}</div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Render compact transcript heading metadata without changing row alignment. */
 export function TranscriptHeadingMeta(props: {
   children: ReactNode;

@@ -61,6 +61,23 @@ const EVENTS: ConversationReportEventData[] = [
     ],
   },
   {
+    type: "attachments_delivered",
+    attachments: [
+      {
+        id: "qa-chart-png",
+        filename: "before.png",
+        contentType: "image/png",
+        bytes: 18211,
+      },
+      {
+        id: "qa-chart-png",
+        filename: "after.png",
+        contentType: "image/png",
+        bytes: 18211,
+      },
+    ],
+  },
+  {
     type: "message",
     messageId: "gallery-comment",
     role: "user",
@@ -103,7 +120,7 @@ const EVENTS: ConversationReportEventData[] = [
 ];
 
 const CONVERSATION: ConversationDetailReport = {
-  conversationId: "internal:gallery-conversation",
+  conversationId: "internal:dashboard-qa",
   displayTitle: "Conversation spacing",
   cumulativeDurationMs: 0,
   isParticipant: true,
@@ -126,10 +143,7 @@ export function MessageAttachmentsFixture() {
   return (
     <div className="min-w-0 max-w-[52.5rem] bg-dashboard-bg p-3">
       <TranscriptMessageView
-        conversation={{
-          ...CONVERSATION,
-          conversationId: "internal:dashboard-qa",
-        }}
+        conversation={CONVERSATION}
         message={{
           sourceSeq: 0,
           timestamp: Date.parse(TIMESTAMP),
@@ -164,7 +178,7 @@ export function MessageAttachmentsFixture() {
 /** Show messages, cards, and activity after an event in the real scroll frame. */
 export function ConversationFixture() {
   return (
-    <div className="h-[36rem] min-w-0 max-w-[52.5rem] bg-dashboard-bg">
+    <div className="h-[64rem] min-w-0 max-w-[52.5rem] bg-dashboard-bg">
       <ChatLayout
         scrollAriaLabel="Gallery conversation transcript"
         scrollClassName="p-3"
