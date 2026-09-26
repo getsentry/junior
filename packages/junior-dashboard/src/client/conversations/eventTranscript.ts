@@ -1,3 +1,4 @@
+import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
@@ -124,12 +125,17 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
-  return transcriptMessagesFromEvents(conversation.events, pendingMessages);
+  return transcriptMessagesFromEvents(
+    conversation.events,
+    conversation.annotations,
+    pendingMessages,
+  );
 }
 
-/** Reduce ordered reporting events without subscribing to detail metadata. */
+/** Reduce ordered events and resolve cards from the latest saved annotations. */
 export function transcriptMessagesFromEvents(
   events: ConversationReportEvent[],
+  annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
@@ -201,7 +207,9 @@ export function transcriptMessagesFromEvents(
         ]),
         messageId: data.messageId,
         ...(data.attachments ? { attachments: data.attachments } : undefined),
-        ...(data.cards ? { cards: data.cards } : undefined),
+        ...(data.cards
+          ? { cards: resolveMessageCards(data.cards, annotations ?? []) }
+          : undefined),
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),

@@ -377,27 +377,8 @@ this directory.
 
 ## Message cards
 
-Object annotations hold the latest saved facts for a Conversation. Message cards
-hold the facts selected for one reply. Delivery saves each card in Message
-metadata. The web transcript renders that saved snapshot. Slack previews can
-refresh from detail responses without changing the stored Message. Each surface
-owns its layout and uses the same privacy rules as message text.
+Message cards reference the latest saved annotations in their Conversation.
+They do not fetch provider state or change agent history. Each surface owns its
+layout and uses the same privacy rules as Message text.
 
-See `conversations/README.md` for annotation storage, card selection, and silent
-updates. `conversations/cards.ts` also reads older Automation cards so stored
-Messages remain usable.
-
-### Deployment and recovery
-
-New object cards use `objectCards` in Message metadata and tool results. The
-legacy `cards` field stays Automation-only. The reader combines both formats;
-the transcript API and renderers still use one `cards` list.
-
-Enriched cards add optional facts to the existing object shape. Old saved cards
-remain valid, but old strict readers reject enriched cards. No database
-migration is required. See `conversations/README.md` for the release boundary.
-
-Drain active workers and deploy the API, plugins, and dashboard together.
-Reload old dashboard tabs. After enriched cards have been saved, rollback needs
-a reader that accepts the new fields. Rollback does not undo provider changes
-or remove Slack messages already posted.
+See `conversations/README.md` for storage, card selection, and release safety.

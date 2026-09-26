@@ -69,42 +69,65 @@ describe("canonical event transcript reduction", () => {
     ).toEqual(["first by sequence", "second by sequence"]);
   });
 
-  it("projects visible and redacted messages", () => {
-    const card = {
-      kind: "automation" as const,
-      id: "evt_review",
-      title: "Review fixes",
-      url: "https://junior.example.com/automations/evt_review",
-      instruction: "Review new fixes.",
-      trigger: "New pull requests",
-      warning: null,
+  it("resolves cards from current annotations without changing Message events", () => {
+    const ref = { kind: "object" as const, plugin: "github", key: "repo#1" };
+    const current = conversation([
+      event(0, "2026-01-01T00:00:00.000Z", {
+        type: "message",
+        messageId: "visible",
+        role: "assistant",
+        text: "safe answer",
+        cards: [ref],
+      }),
+      event(2, "2026-01-01T00:00:02.000Z", {
+        type: "message",
+        messageId: "private",
+        role: "user",
+        redacted: true,
+      }),
+    ]);
+    const annotation = {
+      ...ref,
+      objectType: "code_change" as const,
+      title: "Fix the parser",
+      label: "repo#1",
+      url: "https://example.com/pull/1",
+      status: "open",
+      createdAt: current.generatedAt,
+      updatedAt: current.generatedAt,
     };
-    const messages = conversationTranscriptMessages(
-      conversation([
-        event(0, "2026-01-01T00:00:00.000Z", {
-          type: "message",
-          messageId: "visible",
-          role: "assistant",
-          text: "safe answer",
-          cards: [card],
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "message",
-          messageId: "private",
-          role: "user",
-          redacted: true,
-        }),
-      ]),
-    );
-
+    current.annotations = [annotation];
+    const messages = conversationTranscriptMessages(current);
     expect(messages).toHaveLength(2);
     expect(messages[0]?.parts).toEqual([{ type: "text", text: "safe answer" }]);
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
-    expect(messages[0]?.cards).toEqual([card]);
     expect(messages[1]?.cards).toBeUndefined();
-    expect(messageRawText(messages[0]!)).toContain("Automation ID: evt_review");
-    const entry = groupTranscriptMessages(messages)[0]!;
-    expect(entryMatchesSearch(entry, "evt_review")).toBe(true);
+    expect(messageRawText(messages[0]!)).toContain("open");
+
+    const updated = conversationTranscriptMessages({
+      ...current,
+      annotations: [{ ...annotation, status: "merged" }],
+    });
+    expect(messageRawText(updated[0]!)).toContain("merged");
+    expect(
+      entryMatchesSearch(groupTranscriptMessages(updated)[0]!, "merged"),
+    ).toBe(true);
+    expect(current.events[0]?.data).toMatchObject({ cards: [ref] });
+
+    const missing = conversationTranscriptMessages({
+      ...current,
+      annotations: [],
+    });
+    expect(missing[0]?.cards).toEqual([
+      {
+        ...ref,
+        objectType: "item",
+        title: "repo#1",
+        label: "repo#1",
+        url: null,
+        warning: "Saved annotation is unavailable.",
+      },
+    ]);
   });
 
   it("preserves ordered reasoning and tool activity", () => {

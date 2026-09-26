@@ -1,3 +1,5 @@
+import { readConversationDetail } from "@/api/conversations/detail";
+import { testViewer } from "../fixtures/user";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   defineJuniorPlugin,
@@ -49,7 +51,7 @@ const annotation: ObjectAnnotation = {
 
 afterEach(closeConversationFixture);
 
-it("saves plugin object results once per reply, leaves background updates silent, and preserves Message snapshots", async () => {
+it("saves plugin object results once per reply, leaves background updates silent, and stores only Message card references", async () => {
   const previous = setPlugins([
     defineJuniorPlugin({
       manifest: {
@@ -135,11 +137,10 @@ it("saves plugin object results once per reply, leaves background updates silent
         event.data.type === "message" && event.data.role === "assistant",
     );
     const cards = [{ ...annotation, plugin: "objects", status: "draft" }];
-    expect(message?.data).toMatchObject({ meta: { objectCards: cards } });
+    const refs = [{ kind: "object", plugin: "objects", key: annotation.key }];
     if (!message || message.data.type !== "message")
       throw new Error("Expected an assistant Message");
-    expect(message.data.meta?.objectCards).toHaveLength(1);
-    // Old readers must never receive object cards in their Automation-only field.
+    expect(message.data.meta?.objectCards).toEqual(refs);
     expect(message.data.meta).not.toHaveProperty("cards");
     const toolResults = history
       .map((event) => event.data)
@@ -364,7 +365,21 @@ it("saves plugin object results once per reply, leaves background updates silent
     const saved = await getConversationEventStore().loadHistory(conversationId);
     expect(
       saved.find((event) => event.seq === message?.seq)?.data,
-    ).toMatchObject({ meta: { objectCards: cards } });
+    ).toMatchObject({ meta: { objectCards: refs } });
+
+    expect(saved.filter((event) => event.data.type === "tool_result")).toEqual(
+      history.filter((event) => event.data.type === "tool_result"),
+    );
+    const detail = await readConversationDetail(conversationId, {
+      viewer: testViewer(harness.actor.email),
+    });
+    expect(detail?.annotations).toMatchObject([
+      { plugin: "objects", key: annotation.key, status: "merged" },
+    ]);
+    const reported = detail?.events.find((event) => event.seq === message.seq);
+    if (reported?.data.type !== "message")
+      throw new Error("Expected a reported Message");
+    expect(reported.data.cards).toEqual(refs);
 
     harness.setModelStream(
       createModelStream([{ type: "text", text: "The object has merged." }]),

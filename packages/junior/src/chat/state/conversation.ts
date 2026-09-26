@@ -1,6 +1,6 @@
 import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import type { MessageCard } from "@/chat/conversations/cards";
+import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 
 type ConversationRole = "assistant" | "system" | "user";
@@ -15,6 +15,7 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   cards?: MessageCard[];
+  objectCards?: MessageCardRef[];
   attachments?: MessageAttachment[];
   slackFileIds?: string[];
   attachmentCount?: number;
