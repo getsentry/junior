@@ -271,19 +271,9 @@ describe("model handoff execution", () => {
       "&lt;current-instruction&gt;\nOtherwise remain silent.\n&lt;/current-instruction&gt;",
     );
 
-    // The summary must not replace the human instruction or its author.
-    const instructions = observations.afterHandoffMessages.flatMap((message) =>
-      message.role === "user"
-        ? (message.content ?? []).flatMap((part) =>
-            part.type === "text" &&
-            typeof part.text === "string" &&
-            part.text.startsWith("<current-instruction")
-              ? [part.text]
-              : [],
-          )
-        : [],
-    );
-    expect(instructions).toEqual([instruction]);
+    expect(observations.afterHandoffMessages[1]?.content).toEqual([
+      { type: "text", text: instruction },
+    ]);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.messages.slice(0, 3)).toEqual(
       observations.afterHandoffMessages,

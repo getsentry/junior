@@ -1,11 +1,10 @@
 /**
  * Context compaction.
  *
- * This module bounds visible Pi history for long conversations. It strips
- * runtime-only turn context before summarizing and opens replacement epochs in
- * the durable event store. Active compaction and handoff retain the authored
- * instruction before the summary. Normal checkpoints may later append the
- * current bootstrap; future replacement strips it again.
+ * Bounds Pi history for long conversations. Removes runtime context before
+ * summarizing and commits a history replacement. Active compaction and handoff
+ * keep the authored instruction before the summary. Checkpoints can append
+ * fresh runtime context; the next replacement removes it again.
  */
 import type { Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";

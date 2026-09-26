@@ -1,7 +1,5 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import { getConversationEventStore } from "@/chat/db";
-import { botConfig } from "@/chat/config";
 import { handoffHistory } from "./handoff-history";
 import {
   clearMemories,
@@ -10,12 +8,9 @@ import {
 } from "../../memory/helpers";
 import { lastTurnReplies, mention, slackEvals } from "../../../src/helpers";
 
-// Hypothesis: the summary selects old maintenance instructions over a terse
-// cleanup request. Runtime memory defines the request, not the prior messages.
-// Change only the current request in the control. Neither case scripts handoff,
-// summarization, or continuation. Both ask for a model switch because routing
-// alone selected the coding profile in the first pair and never called handoff.
-// A run without handoff is inconclusive.
+// Memory defines the terse request. Prior work is complete, so the continuation
+// must act on the new request rather than repeat old work. Both cases use live
+// handoff and summarization; only the cleanup request differs.
 describeEval("Handoff task continuity", slackEvals, (it) => {
   for (const [label, instruction] of [
     ["terse request", "Deslop"],
@@ -54,37 +49,6 @@ describeEval("Handoff task continuity", slackEvals, (it) => {
           ...memoryPluginOverrides,
           skill_dirs: ["fixtures/coding-skills"],
         },
-      }).finally(async () => {
-        const events = await getConversationEventStore().loadHistory(
-          `slack:${thread.channel_id}:${thread.thread_ts}`,
-        );
-        // Diagnostics distinguish failure to recall or hand off from task loss.
-        // They are not used as assertions about successful task completion.
-        console.info(
-          "Handoff experiment",
-          JSON.stringify({
-            label,
-            fastModelId: botConfig.fastModelId,
-            profiles: botConfig.profiles,
-            routes: events
-              .map((event) => event.data)
-              .filter((data) => data.type === "turn_routed"),
-            recall: events
-              .filter((event) => event.data.type === "turn_context")
-              .map((event) => event.data),
-            handoffs: events.flatMap((event) =>
-              event.data.type === "handoff"
-                ? [
-                    {
-                      seq: event.seq,
-                      modelId: event.data.modelId,
-                      summary: event.data.summary,
-                    },
-                  ]
-                : [],
-            ),
-          }),
-        );
       });
 
       const calls = toolCalls(result.session);
