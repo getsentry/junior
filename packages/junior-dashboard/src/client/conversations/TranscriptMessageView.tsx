@@ -156,30 +156,31 @@ function TranscriptMessageHeader(props: {
           <span className={transcriptRoleLabelClass(props.message.role)}>
             {roleLabel}
           </span>
-          {props.contextAction}
+          {showSlack || meta.length ? (
+            <TranscriptHeadingMeta className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
+              {showSlack ? (
+                <span className="inline-flex shrink-0" title="Slack">
+                  <SlackMark className="size-3.5" />
+                </span>
+              ) : null}
+              {showSlack && meta.length ? (
+                <span aria-hidden="true">·</span>
+              ) : null}
+              {meta.map((item, index) => (
+                <span className="contents" key={index}>
+                  {index > 0 ? <span aria-hidden="true">·</span> : null}
+                  {item}
+                </span>
+              ))}
+            </TranscriptHeadingMeta>
+          ) : null}
         </>
       }
-      leftClassName={transcriptRoleClass(props.message.role)}
-      right={
-        showSlack || meta.length ? (
-          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
-            {showSlack ? (
-              <span className="inline-flex shrink-0" title="Slack">
-                <SlackMark className="size-3.5" />
-              </span>
-            ) : null}
-            {showSlack && meta.length ? (
-              <span aria-hidden="true">·</span>
-            ) : null}
-            {meta.map((item, index) => (
-              <span className="contents" key={index}>
-                {index > 0 ? <span aria-hidden="true">·</span> : null}
-                {item}
-              </span>
-            ))}
-          </TranscriptHeadingMeta>
-        ) : undefined
-      }
+      leftClassName={cn(
+        transcriptRoleClass(props.message.role),
+        "flex-wrap gap-y-1",
+      )}
+      right={props.contextAction}
     />
   );
 }

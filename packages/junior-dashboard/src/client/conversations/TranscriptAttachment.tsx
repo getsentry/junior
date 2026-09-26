@@ -53,10 +53,10 @@ function TranscriptAttachment(props: {
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
-        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-md object-contain"
+        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-lg object-contain"
         loading="lazy"
         src={href}
-        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint p-1.5 transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       />
     );
   }

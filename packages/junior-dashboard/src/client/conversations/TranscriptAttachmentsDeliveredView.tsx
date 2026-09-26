@@ -24,18 +24,18 @@ export function TranscriptAttachmentsDeliveredView(props: {
     <TranscriptMessageShell role="assistant" actor={getDashboardAgentName()}>
       <TranscriptHeadingRow
         left={
-          <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-cyan-100">
-            {getDashboardAgentName()}
-          </span>
+          <>
+            <span className="inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight text-cyan-100">
+              {getDashboardAgentName()}
+            </span>
+            {timestamp ? (
+              <TranscriptHeadingMeta className="shrink-0 whitespace-nowrap text-xs leading-snug text-dashboard-text-muted md:leading-none">
+                {timestamp}
+              </TranscriptHeadingMeta>
+            ) : null}
+          </>
         }
-        leftClassName="text-xs leading-snug text-cyan-100/70"
-        right={
-          timestamp ? (
-            <TranscriptHeadingMeta className="text-xs leading-snug text-dashboard-text-muted md:leading-none">
-              {timestamp}
-            </TranscriptHeadingMeta>
-          ) : undefined
-        }
+        leftClassName="flex-wrap gap-y-1 text-xs leading-snug text-cyan-100/70"
       />
       <TranscriptAttachments
         attachments={props.part.attachments}

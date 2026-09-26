@@ -1,4 +1,4 @@
-import { Brain, Braces, ChevronRight, X } from "lucide-react";
+import { Brain, Braces, ChevronRight, Layers, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -37,21 +37,15 @@ export function TranscriptTurnContextView(props: {
         aria-expanded={open}
         aria-label="View turn context"
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs leading-tight text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={() => setOpen(true)}
         ref={triggerRef}
-        title="View turn context"
+        title="View context"
         type="button"
       >
-        <Braces
-          aria-hidden="true"
-          className="hidden sm:block"
-          size={13}
-          strokeWidth={1.8}
-        />
-        <span>Context</span>
+        <Layers aria-hidden="true" size={14} strokeWidth={1.8} />
       </button>
 
       {open
