@@ -93,7 +93,7 @@ describe("event automations", () => {
     vi.restoreAllMocks();
   });
 
-  it("delivers the last saved automation card and retains it in web history", async () => {
+  it("delivers the current automation card and retains its reference in web history", async () => {
     const conversationId = "local:automation-card";
     const links = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -106,9 +106,15 @@ describe("event automations", () => {
         nowMs: 1,
         visibility: "public",
       });
-      const created = await createTask("Review fixes.");
+      const taskContext = { ...context(), conversationId };
+      const created = await createTask(
+        "Review fixes.",
+        undefined,
+        undefined,
+        taskContext,
+      );
       const updated = await execute(
-        createUpdateEventAutomationTool(context(), EVENT_CATALOG),
+        createUpdateEventAutomationTool(taskContext, EVENT_CATALOG),
         {
           automationId: created.automation.id,
           credentialMode: "system",
@@ -222,7 +228,16 @@ describe("event automations", () => {
       expect(report.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            data: expect.objectContaining({ type: "message", cards }),
+            data: expect.objectContaining({
+              type: "message",
+              cards: [
+                {
+                  kind: "object",
+                  plugin: "junior",
+                  key: created.automation.id,
+                },
+              ],
+            }),
           }),
         ]),
       );

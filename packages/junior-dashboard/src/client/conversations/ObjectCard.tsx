@@ -8,7 +8,7 @@ import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
 
-/** Show the facts saved with this Message. Opening a source is always explicit. */
+/** Show the latest saved annotation. Opening a source is always explicit. */
 export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
@@ -105,7 +105,7 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
             <ArrowUpRight aria-hidden="true" size={14} />
           </a>
         )}
-        <span className="text-dashboard-text-muted">Saved snapshot</span>
+        <span className="text-dashboard-text-muted">Latest saved state</span>
       </div>
     </section>
   );

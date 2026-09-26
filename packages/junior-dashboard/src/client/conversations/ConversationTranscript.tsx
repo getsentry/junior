@@ -72,12 +72,11 @@ export const ConversationTranscriptView = memo(
     conversation: ConversationTranscript;
     responding?: boolean;
   }) {
-    // Event arrays stay stable across metadata-only polls. Project the transcript
-    // only when event content changes, not when timing metadata refreshes.
-    const events = props.conversation.events;
+    // Cards can change while their Message events stay unchanged.
+    const { events, annotations } = props.conversation;
     const messages = useMemo(
-      () => transcriptMessagesFromEvents(events),
-      [events],
+      () => transcriptMessagesFromEvents(events, annotations),
+      [events, annotations],
     );
 
     return (

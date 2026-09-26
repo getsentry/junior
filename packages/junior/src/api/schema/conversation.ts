@@ -4,7 +4,7 @@ import {
   MAX_INPUT_IMAGE_BYTES,
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
-import { messageCardSchema } from "@/chat/conversations/cards";
+import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
@@ -314,7 +314,7 @@ const conversationReportMessageEventDataSchema = z
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    cards: z.array(messageCardSchema).optional(),
+    cards: z.array(messageCardRefSchema).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),

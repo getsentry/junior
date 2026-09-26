@@ -1,4 +1,4 @@
-import { messageCardRefSchema } from "@/chat/conversations/cards";
+import { removedCardSchema } from "@/chat/conversations/cards";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
@@ -36,7 +36,7 @@ export function createSlackScheduleDeleteAutomationTool(
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema.extend({
-      removedCards: z.array(messageCardRefSchema),
+      removedCards: z.array(removedCardSchema),
     }),
     execute: async ({ automationId }) => {
       const lookup = await getWritableTask({ context, taskId: automationId });

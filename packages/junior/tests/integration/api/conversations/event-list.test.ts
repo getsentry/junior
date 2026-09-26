@@ -477,7 +477,7 @@ describe("conversation event list API", () => {
         event.data.messageId === "private-message-2",
     )?.data;
     expect(savedCards).toMatchObject({
-      cards: [expect.objectContaining({ id: "secret-task" })],
+      cards: [{ kind: "object", plugin: "junior", key: "secret-task" }],
     });
     expect(JSON.stringify(savedCards)).not.toContain('"operation"');
     expect(participantDetail.eventHistory.status).toBe("available");

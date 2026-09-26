@@ -198,8 +198,8 @@ Conversation. The provider owns its key, type, title, status, and optional field
 It is not the authoritative object store.
 
 Successful plugin tools return `objectAnnotations`. Core assigns the plugin
-owner, saves the annotations, and includes their snapshots in the tool result's
-`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+owner, saves the annotations, and replaces them with owned `objectCards` in the
+tool result. Hosted MCP hooks can return the same annotations. Raw MCP responses
 cannot set cards. Automation tools use the same saved object contract.
 
 `annotations.upsert` is storage-only. Webhook updates do not queue a card or
@@ -210,10 +210,20 @@ Pending cards come from committed successful tool results, not a scan of changed
 annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
 A visible Message consumes its cards. A new Turn does not inherit cards from a
-silent Turn. Store each delivered snapshot in the Message so background updates
-do not rewrite stored history. The web transcript shows this snapshot. Slack can
-refresh its preview from newer detail responses; it does not change the stored
-Message. Existing Automation cards remain readable.
+silent Turn. Delivery resolves the selected objects from saved annotations.
+Store only `{ kind, plugin, key }` references in Message `objectCards` metadata
+and report those references in transcript events. The Conversation supplies the
+scope; references cannot select another Conversation.
+
+The web transcript resolves each reference from the latest annotations in
+Conversation detail. Annotation changes refresh cards even when Message events
+and older history pages do not change. Copy, search, and export use the same
+resolved facts. If an annotation is missing, show its key and an unavailable
+notice, not stale facts. Slack detail requests also read saved annotations;
+Slack controls when a posted preview refreshes.
+
+Tool results and assistant text stay immutable. Message cards do not keep a
+second copy of those historical facts.
 
 Plugins must return only facts appropriate to disclose in the current
 Conversation. This contract does not expand provider permissions or make a
@@ -227,8 +237,8 @@ Plugins select facts from the successful provider response, before core saves
 an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
 and field order. It contains no provider fields or Slack layout. Both Slack and
 the web card use these facts. The Slack detail panel reads the latest saved
-annotation, not a new provider response. The web transcript shows the Message
-snapshot and labels it as saved.
+annotation, not a new provider response. The web transcript labels cards as
+latest saved state, not live provider state.
 
 - Code changes show the source branch and lifecycle status. They omit author,
   reviewers, review and check summaries, conflicts, target branch, and change size.
@@ -252,11 +262,6 @@ optional display text. They do not shorten object keys or source URLs. This
 limit applies to new facts, not to the entire annotation, which also contains
 identity and existing bounded fields. No new table or cache is needed.
 
-Core replaces `objectAnnotations` with owned `objectCards` in successful tool
-results. This avoids two copies in the same tool result. Delivery still saves
-an independent Message snapshot. Background annotation updates stay silent and
-must not change that snapshot, start Watches, or send new Messages.
-
 `sourceUpdatedAt` is the provider's update time, not the database write time.
 A silent status-only update does not claim to refresh every other fact. New
 full responses replace the facts; missing values do not retain old values.
@@ -268,12 +273,15 @@ check access to larger details.
 
 #### Release safety
 
-Old annotations remain valid because the new fields are optional. The previous
-strict reader does not accept enriched annotations or Message snapshots. Drain
-workers and deploy the API, plugins, and dashboard together before writing new
-facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
-these fields after enriched cards have been written. A rollback needs a reader
-that accepts the new fields, even if it does not display them.
+New Messages store references, not card snapshots. Readers reduce older object
+and Automation cards to references without rewriting stored history. An older
+Automation without a saved annotation shows the unavailable notice. No database
+migration or new table is needed.
+
+Drain workers and deploy the API and dashboard together. Reload old dashboard
+tabs. Old strict readers cannot read reference-only cards. Rollback requires a
+reader that accepts references after new Messages have been saved. Tool-result
+facts keep their existing format for agent replay.
 
 ### Object visual language
 

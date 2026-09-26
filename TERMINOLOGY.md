@@ -91,8 +91,9 @@ Canonical words used across Junior's code and documentation.
   store this type as `task`.
 - **Deployment**: a revision sent to a target environment.
 - **Item**: a linked object without a more specific native type.
-- **Message card**: typed saved facts attached to a Message. Each surface owns
-  its layout. A card records the facts at delivery, not live resource status.
+- **Message card**: a reference to an Annotation attached to a Message. Each
+  surface shows the latest saved facts and owns its layout. A card does not
+  record facts at delivery or fetch live provider state.
 - **Message update**: later delivery or hydration state for an existing
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent

@@ -43,20 +43,8 @@ const EVENTS: ConversationReportEventData[] = [
     cards: [
       {
         kind: "object",
-        objectType: "code_change",
         plugin: "github",
         key: "getsentry/junior#1200",
-        label: "getsentry/junior#1200",
-        title: "Tighten conversation spacing",
-        status: "draft",
-        displayType: "Pull request",
-        url: "https://github.com/getsentry/junior/pull/1200",
-        facts: {
-          type: "code_change",
-          author: "alex",
-          sourceBranch: "fix/conversation-spacing",
-          targetBranch: "main",
-        },
       },
     ],
   },
@@ -131,6 +119,27 @@ const CONVERSATION: ConversationDetailReport = {
   generatedAt: TIMESTAMP,
   surface: "internal",
   eventHistory: { status: "available" },
+  annotations: [
+    {
+      kind: "object",
+      objectType: "code_change",
+      plugin: "github",
+      key: "getsentry/junior#1200",
+      label: "getsentry/junior#1200",
+      title: "Tighten conversation spacing",
+      status: "draft",
+      displayType: "Pull request",
+      url: "https://github.com/getsentry/junior/pull/1200",
+      facts: {
+        type: "code_change",
+        author: "alex",
+        sourceBranch: "fix/conversation-spacing",
+        targetBranch: "main",
+      },
+      createdAt: TIMESTAMP,
+      updatedAt: TIMESTAMP,
+    },
+  ],
   events: EVENTS.map((data, seq) => ({
     seq,
     createdAt: new Date(Date.parse(TIMESTAMP) + seq * 1_000).toISOString(),

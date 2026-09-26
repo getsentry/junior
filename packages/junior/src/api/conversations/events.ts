@@ -1,6 +1,6 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { readMessageAttachments } from "@/chat/attachments/input";
-import { readMessageCards } from "@/chat/conversations/cards";
+import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
@@ -344,7 +344,7 @@ function reportEventData(args: {
           : undefined),
         ...(args.canExposePayload &&
         (data.meta?.cards || data.meta?.objectCards)
-          ? { cards: readMessageCards(data.meta) }
+          ? { cards: readMessageCardRefs(data.meta) }
           : undefined),
         ...(args.canExposePayload
           ? {
