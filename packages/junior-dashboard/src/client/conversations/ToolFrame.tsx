@@ -63,7 +63,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words bg-black/15 px-2.5 py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words bg-black/15 px-2 py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -81,9 +81,7 @@ export function ToolFrame(props: {
 
   return (
     <details className="group min-w-0 max-w-full overflow-hidden">
-      <TranscriptSummary
-        className={cn(toolHeaderClass(), "focus-visible:before:left-0")}
-      >
+      <TranscriptSummary className="block font-mono text-xs leading-tight text-dashboard-text-muted">
         {header}
       </TranscriptSummary>
       {mobileMeta}
@@ -93,5 +91,5 @@ export function ToolFrame(props: {
 }
 
 function toolHeaderClass(): string {
-  return "block px-2.5 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted";
+  return "block px-2 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted";
 }

@@ -104,8 +104,8 @@ function SegmentEvents(props: {
   responding?: boolean;
 }) {
   return (
-    // This stack owns spacing between all top-level transcript rows.
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+    // Row padding supplies 12px of the 16px between top-level content.
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
       ) : props.conversation.eventHistory.status === "available" ? (
@@ -288,6 +288,8 @@ function TranscriptEntryList(props: {
     return props.renderMessage(entry);
   };
 
+  // Row padding contains control effects inside mobile content-visibility bounds.
+  // Negative horizontal margins keep message text on the shared transcript edge.
   for (let index = 0; index < props.entries.length; ) {
     const entry = props.entries[index]!;
 
@@ -313,7 +315,10 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <div className="mobile-transcript-row pl-11" key={activityKey}>
+          <div
+            className="mobile-transcript-row -mx-2 py-1.5 pl-13 pr-2"
+            key={activityKey}
+          >
             <TranscriptActivityGroup
               entries={visibleEntries}
               renderEntry={renderEntry}
@@ -327,7 +332,7 @@ function TranscriptEntryList(props: {
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
         <div
-          className="mobile-transcript-row"
+          className="mobile-transcript-row -mx-2 px-2 py-1.5"
           key={`${props.keyPrefix}:${entry.key}`}
         >
           {renderEntry(entry)}

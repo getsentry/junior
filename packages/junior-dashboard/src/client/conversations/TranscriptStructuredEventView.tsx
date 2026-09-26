@@ -81,7 +81,7 @@ export function TranscriptStructuredEventView(props: {
   }
   return (
     <details className={`group/plugin-event ${surfaceClass}`}>
-      <TranscriptSummary>{header}</TranscriptSummary>
+      <TranscriptSummary className="-mx-2 -my-1.5">{header}</TranscriptSummary>
       {body}
     </details>
   );

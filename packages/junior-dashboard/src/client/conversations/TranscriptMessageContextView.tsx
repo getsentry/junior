@@ -34,7 +34,7 @@ export function TranscriptMessageContextView(props: {
         className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
         data-transcript-message-context
       >
-        <TranscriptSummary className="flex items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted">
+        <TranscriptSummary className="-mx-2 -my-1.5 flex items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted">
           <span className="min-w-0 truncate">Context from {actor}</span>
           <ChevronRight
             aria-hidden="true"

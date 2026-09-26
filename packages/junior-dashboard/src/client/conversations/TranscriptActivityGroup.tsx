@@ -171,7 +171,7 @@ export function TranscriptActivityGroup(props: {
     <details className="group/activity-run min-w-0" open={open}>
       <TranscriptSummary
         className={cn(
-          "flex w-fit max-w-full items-center gap-1 py-0.5 text-left text-xs leading-tight text-dashboard-text-muted",
+          "-mx-2 -my-1 flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
           live && "text-cyan-100/80",
         )}
         onClick={(event) => {
