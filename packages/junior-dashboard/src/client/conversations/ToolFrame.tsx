@@ -81,7 +81,9 @@ export function ToolFrame(props: {
 
   return (
     <details className="group min-w-0 max-w-full overflow-hidden">
-      <TranscriptSummary className={toolHeaderClass()}>
+      <TranscriptSummary
+        className={cn(toolHeaderClass(), "focus-visible:before:left-0")}
+      >
         {header}
       </TranscriptSummary>
       {mobileMeta}

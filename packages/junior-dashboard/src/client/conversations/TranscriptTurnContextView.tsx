@@ -177,7 +177,7 @@ function MemoryRecall(props: {
           className="group/memory border-t border-white/10 first:border-t-0"
           key={memory.id}
         >
-          <TranscriptSummary className="flex items-start gap-2.5 px-3 py-3">
+          <TranscriptSummary className="flex items-start gap-2.5 px-3 py-3 focus-visible:before:left-0">
             <ChevronRight
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"

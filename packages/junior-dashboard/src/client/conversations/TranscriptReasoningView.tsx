@@ -77,7 +77,7 @@ export function TranscriptReasoningView(props: {
 
   return (
     <details className={cn("group/reasoning", reasoningFrameClass())}>
-      <TranscriptSummary className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5">
+      <TranscriptSummary className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5 focus-visible:before:left-0">
         {summary}
       </TranscriptSummary>
       {content}
