@@ -10,6 +10,7 @@ import { HighlightText } from "./transcriptSearch";
 import { messageRawText } from "./transcriptRenderModel";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render ambient conversation context that is not a primary chat bubble. */
 export function TranscriptMessageContextView(props: {
@@ -33,14 +34,14 @@ export function TranscriptMessageContextView(props: {
         className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
         data-transcript-message-context
       >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
+        <TranscriptSummary className="flex items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted">
           <span className="min-w-0 truncate">Context from {actor}</span>
           <ChevronRight
             aria-hidden="true"
             className="shrink-0 transition-transform group-open/message-context:rotate-90"
             size={14}
           />
-        </summary>
+        </TranscriptSummary>
         <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
           {content}
         </div>

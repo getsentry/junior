@@ -4,6 +4,7 @@ import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render an Event Message whose heading expands its full text. */
 export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
@@ -29,14 +30,14 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     <div className="min-w-0 py-1">
       {text ? (
         <details className="group/event min-w-0">
-          <summary className="flex cursor-pointer list-none items-start gap-2 rounded-sm text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-dashboard-focus [&::-webkit-details-marker]:hidden">
+          <TranscriptSummary className="flex w-fit max-w-full items-start gap-2 text-dashboard-text-muted">
             {heading}
             <ChevronRight
               aria-hidden="true"
               className="mt-1.5 size-3 shrink-0 transition-transform group-open/event:rotate-90"
               strokeWidth={2.2}
             />
-          </summary>
+          </TranscriptSummary>
           <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-dashboard-border bg-dashboard-surface px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             <HighlightText text={text} />
           </pre>

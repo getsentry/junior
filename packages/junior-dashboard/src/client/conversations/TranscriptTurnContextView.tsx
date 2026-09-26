@@ -7,6 +7,7 @@ import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
 import { cn } from "../styles";
 import { HighlightText } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Show structured context attached to one transcript user message. */
 export function TranscriptTurnContextView(props: {
@@ -37,7 +38,7 @@ export function TranscriptTurnContextView(props: {
         aria-expanded={open}
         aria-label="View turn context"
         className={cn(
-          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={() => setOpen(true)}
@@ -102,7 +103,7 @@ function TurnContextPanel(props: {
           <button
             aria-label="Close turn context"
             autoFocus
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/10 hover:text-dashboard-text"
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
             onClick={props.onClose}
             title="Close turn context"
             type="button"
@@ -176,7 +177,7 @@ function MemoryRecall(props: {
           className="group/memory border-t border-white/10 first:border-t-0"
           key={memory.id}
         >
-          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+          <TranscriptSummary className="flex items-start gap-2.5 px-3 py-3">
             <ChevronRight
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
@@ -195,7 +196,7 @@ function MemoryRecall(props: {
                 <HighlightText text={memory.content} />
               </span>
             </span>
-          </summary>
+          </TranscriptSummary>
 
           <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
             <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">

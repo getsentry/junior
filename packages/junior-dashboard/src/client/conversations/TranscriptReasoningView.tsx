@@ -8,6 +8,7 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
@@ -76,9 +77,9 @@ export function TranscriptReasoningView(props: {
 
   return (
     <details className={cn("group/reasoning", reasoningFrameClass())}>
-      <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5 transition-colors hover:bg-violet-300/[0.05] hover:text-violet-50 [&::-webkit-details-marker]:hidden">
+      <TranscriptSummary className="grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 px-2.5 py-1.5">
         {summary}
-      </summary>
+      </TranscriptSummary>
       {content}
     </details>
   );
