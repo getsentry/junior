@@ -72,7 +72,9 @@ export function ToolFrame(props: {
   if (staticFrame) {
     return (
       <div className="min-w-0 max-w-full overflow-hidden">
-        <div className={cn(toolHeaderClass(), "cursor-default")}>{header}</div>
+        <div className="block px-2 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted">
+          {header}
+        </div>
         {mobileMeta}
         {props.children}
       </div>
@@ -88,8 +90,4 @@ export function ToolFrame(props: {
       {props.children}
     </details>
   );
-}
-
-function toolHeaderClass(): string {
-  return "block px-2 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted";
 }

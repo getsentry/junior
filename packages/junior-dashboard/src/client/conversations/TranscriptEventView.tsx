@@ -30,7 +30,10 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
     <div className="min-w-0 py-1">
       {text ? (
         <details className="group/event min-w-0">
-          <TranscriptSummary className="-mx-2 -my-1.5 flex items-start gap-2 text-dashboard-text-muted">
+          <TranscriptSummary
+            flush
+            className="flex items-start gap-2 text-dashboard-text-muted"
+          >
             {heading}
             <ChevronRight
               aria-hidden="true"

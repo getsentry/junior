@@ -51,16 +51,6 @@ export const TranscriptMessageView = memo(
               <TranscriptTurnContextView contexts={props.message.contexts} />
             ) : undefined
           }
-          meta={
-            props.message.role === "assistant"
-              ? [
-                  <TranscriptTimestamp
-                    key="timestamp"
-                    value={props.message.timestamp}
-                  />,
-                ]
-              : [formatMessageTimestamp(props.message.timestamp)]
-          }
           message={props.message}
           conversation={props.conversation}
         />
@@ -104,29 +94,20 @@ export function RedactedMessageView(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const meta =
-    props.message.role === "assistant"
-      ? [
-          <TranscriptTimestamp
-            key="timestamp"
-            value={props.message.timestamp}
-          />,
-        ]
-      : [formatMessageTimestamp(props.message.timestamp)];
-
   return (
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
     >
       <TranscriptMessageHeader
-        meta={meta}
         message={props.message}
         conversation={props.conversation}
       />
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
         {props.message.parts.map((_part, index) => (
-          <RedactedMetadataRow key={index} />
+          <div className="py-1" key={index}>
+            <RedactedMarker />
+          </div>
         ))}
       </div>
     </TranscriptMessageShell>
@@ -135,12 +116,11 @@ export function RedactedMessageView(props: {
 
 function TranscriptMessageHeader(props: {
   contextAction?: ReactNode;
-  meta?: ReactNode[];
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
   const showSlack = showsSlackSourceIcon(props.message, props.conversation);
-  const meta = props.meta ?? [];
+  const timestamp = formatMessageTimestamp(props.message.timestamp);
   const roleLabel = transcriptMessageActorLabel(
     props.conversation,
     props.message,
@@ -151,36 +131,22 @@ function TranscriptMessageHeader(props: {
       <span className={transcriptRoleLabelClass(props.message.role)}>
         {roleLabel}
       </span>
-      {showSlack || meta.length ? (
+      {showSlack || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">
           {showSlack ? (
             <span className="inline-flex shrink-0 self-center" title="Slack">
               <SlackMark className="size-3.5" />
             </span>
           ) : null}
-          {showSlack && meta.length ? <span aria-hidden="true">·</span> : null}
-          {meta.map((item, index) => (
-            <span className="contents" key={index}>
-              {index > 0 ? <span aria-hidden="true">·</span> : null}
-              {item}
-            </span>
-          ))}
+          {showSlack && timestamp ? <span aria-hidden="true">·</span> : null}
+          {props.message.role === "assistant" ? (
+            <TranscriptTimestamp value={props.message.timestamp} />
+          ) : (
+            timestamp
+          )}
         </span>
       ) : null}
     </TranscriptMessageHeading>
-  );
-}
-
-function RedactedMetadataRow(props: { meta?: string }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 max-md:grid-cols-1">
-      <RedactedMarker />
-      {props.meta ? (
-        <span className="min-w-0 break-words text-right text-dashboard-text-muted max-md:text-left">
-          {props.meta}
-        </span>
-      ) : null}
-    </div>
   );
 }
 

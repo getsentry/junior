@@ -182,7 +182,9 @@ export function ConversationFixture() {
       <ChatLayout
         scrollAriaLabel="Gallery conversation transcript"
         scrollClassName="p-3"
-        scroll={<ConversationTranscriptView conversation={CONVERSATION} />}
+        scroll={
+          <ConversationTranscriptView conversation={CONVERSATION} responding />
+        }
       />
     </div>
   );

@@ -168,10 +168,11 @@ export function TranscriptActivityGroup(props: {
   const open = activityGroupOpen(userOpen);
 
   return (
-    <details className="group/activity-run min-w-0" open={open}>
+    <details className="group/activity-run min-w-0 py-0.5" open={open}>
       <TranscriptSummary
+        flush
         className={cn(
-          "-mx-2 -my-1 flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
+          "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
           live && "text-cyan-100/80",
         )}
         onClick={(event) => {

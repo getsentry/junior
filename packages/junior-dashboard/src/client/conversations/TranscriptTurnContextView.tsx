@@ -1,7 +1,8 @@
-import { Brain, Braces, ChevronRight, Layers, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Brain, Braces, ChevronRight, Layers } from "lucide-react";
+import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { Drawer } from "../components/Drawer";
 import type { TranscriptViewTurnContext } from "../types";
 import { formatMessageTimestamp, formatTime } from "../format";
 import { memoryRecallContent, type MemoryRecallContent } from "./turnContext";
@@ -14,27 +15,12 @@ export function TranscriptTurnContextView(props: {
   contexts: TranscriptViewTurnContext[];
 }) {
   const [open, setOpen] = useState(false);
-  const panelId = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [open]);
+  const titleId = useId();
 
   return (
     <>
       <button
-        aria-controls={panelId}
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="View turn context"
         className={cn(
@@ -42,7 +28,6 @@ export function TranscriptTurnContextView(props: {
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={() => setOpen(true)}
-        ref={triggerRef}
         title="View context"
         type="button"
       >
@@ -51,14 +36,33 @@ export function TranscriptTurnContextView(props: {
 
       {open
         ? createPortal(
-            <TurnContextPanel
-              contexts={props.contexts}
-              id={panelId}
-              onClose={() => {
-                setOpen(false);
-                triggerRef.current?.focus();
-              }}
-            />,
+            <Drawer
+              closeLabel="Close turn context"
+              dismissLabel="Dismiss turn context"
+              header={
+                <>
+                  <h2
+                    className="m-0 text-sm font-semibold text-dashboard-text"
+                    id={titleId}
+                  >
+                    Turn context
+                  </h2>
+                  <p className="m-0 mt-1 text-xs text-dashboard-text-muted">
+                    Context supplied with this message
+                  </p>
+                </>
+              }
+              onClose={() => setOpen(false)}
+              openKey={titleId}
+              titleId={titleId}
+            >
+              {props.contexts.map((context, index) => (
+                <TurnContext
+                  context={context}
+                  key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
+                />
+              ))}
+            </Drawer>,
             document.body,
           )
         : null}
@@ -66,70 +70,11 @@ export function TranscriptTurnContextView(props: {
   );
 }
 
-function TurnContextPanel(props: {
-  contexts: TranscriptViewTurnContext[];
-  id: string;
-  onClose(): void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50">
-      <button
-        aria-label="Close turn context"
-        className="absolute inset-0 cursor-default border-0 bg-black/55 backdrop-blur-[1px]"
-        onClick={props.onClose}
-        type="button"
-      />
-      <section
-        aria-label="Turn context"
-        aria-modal="true"
-        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-white/15 bg-dashboard-surface-raised shadow-2xl shadow-black/70"
-        id={props.id}
-        role="dialog"
-      >
-        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/10 px-5 pt-[env(safe-area-inset-top)]">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-200/10 text-cyan-100/80">
-              <Braces aria-hidden="true" size={17} strokeWidth={1.8} />
-            </span>
-            <div className="min-w-0">
-              <h2 className="m-0 text-sm font-semibold text-dashboard-text">
-                Turn context
-              </h2>
-              <p className="m-0 mt-0.5 text-xs text-dashboard-text-muted">
-                Structured context supplied with this message
-              </p>
-            </div>
-          </div>
-          <button
-            aria-label="Close turn context"
-            autoFocus
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-            onClick={props.onClose}
-            title="Close turn context"
-            type="button"
-          >
-            <X aria-hidden="true" size={17} />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          {props.contexts.map((context, index) => (
-            <TurnContext
-              context={context}
-              key={`${context.pluginName}:${context.kind}:${context.version}:${index}`}
-            />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function TurnContext(props: { context: TranscriptViewTurnContext }) {
   const memory = memoryRecallContent(props.context);
 
   return (
-    <section className="border-b border-white/10 py-5 last:border-b-0">
+    <section className="border-b border-dashboard-border-strong py-5 last:border-b-0">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-2.5">
           {memory ? (
@@ -171,10 +116,10 @@ function MemoryRecall(props: {
   memories: MemoryRecallContent["memories"];
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-white/10">
+    <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
       {props.memories.map((memory, index) => (
         <details
-          className="group/memory border-t border-white/10 first:border-t-0"
+          className="group/memory border-t border-dashboard-border-strong first:border-t-0"
           key={memory.id}
         >
           <TranscriptSummary className="flex items-start gap-2.5">
@@ -198,7 +143,7 @@ function MemoryRecall(props: {
             </span>
           </TranscriptSummary>
 
-          <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
+          <div className="border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-4">
             <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
               <HighlightText text={memory.content} />
             </div>
@@ -230,7 +175,7 @@ function MemoryRecall(props: {
           </div>
         </details>
       ))}
-      <p className="m-0 border-t border-white/10 px-3 py-2 text-xs text-dashboard-text-muted">
+      <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
         {props.memories.length}{" "}
         {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
         {formatMessageTimestamp(Date.parse(props.loadedAt))}
@@ -242,7 +187,7 @@ function MemoryRecall(props: {
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
     <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-xs leading-relaxed text-dashboard-text-muted">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-dashboard-fill-soft p-3 text-xs leading-relaxed text-dashboard-text-muted">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
       <p className="m-0 mt-3 text-xs text-dashboard-text-muted">

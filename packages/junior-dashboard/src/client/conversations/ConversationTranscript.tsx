@@ -37,6 +37,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
@@ -104,8 +105,7 @@ function SegmentEvents(props: {
   responding?: boolean;
 }) {
   return (
-    // Row padding supplies 12px of the 16px between top-level content.
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
+    <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
       ) : props.conversation.eventHistory.status === "available" ? (
@@ -132,8 +132,12 @@ function SegmentEvents(props: {
           {unavailableTranscriptLabel(props.conversation)}
         </div>
       )}
-      {props.responding ? <TranscriptTypingIndicator /> : null}
-    </div>
+      {props.responding ? (
+        <TranscriptRow indent>
+          <TranscriptTypingIndicator />
+        </TranscriptRow>
+      ) : null}
+    </TranscriptRows>
   );
 }
 
@@ -288,8 +292,6 @@ function TranscriptEntryList(props: {
     return props.renderMessage(entry);
   };
 
-  // Row padding contains control effects inside mobile content-visibility bounds.
-  // Negative horizontal margins keep message text on the shared transcript edge.
   for (let index = 0; index < props.entries.length; ) {
     const entry = props.entries[index]!;
 
@@ -315,15 +317,12 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <div
-            className="mobile-transcript-row -mx-2 py-1.5 pl-13 pr-2"
-            key={activityKey}
-          >
+          <TranscriptRow indent key={activityKey}>
             <TranscriptActivityGroup
               entries={visibleEntries}
               renderEntry={renderEntry}
             />
-          </div>,
+          </TranscriptRow>,
         );
       }
       continue;
@@ -331,12 +330,9 @@ function TranscriptEntryList(props: {
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
-        <div
-          className="mobile-transcript-row -mx-2 px-2 py-1.5"
-          key={`${props.keyPrefix}:${entry.key}`}
-        >
+        <TranscriptRow key={`${props.keyPrefix}:${entry.key}`}>
           {renderEntry(entry)}
-        </div>,
+        </TranscriptRow>,
       );
     }
     index += 1;

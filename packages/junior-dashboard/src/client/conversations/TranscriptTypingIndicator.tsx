@@ -8,7 +8,7 @@ export function TranscriptTypingIndicator() {
   return (
     <div
       aria-live="polite"
-      className="flex items-center pl-11 text-sm text-dashboard-text-muted"
+      className="flex items-center text-sm text-dashboard-text-muted"
       role="status"
     >
       <ShimmerText active>{label}</ShimmerText>
