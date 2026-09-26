@@ -13,6 +13,37 @@ test("inspects all reporting events and searches full event data", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
+  const transcript = page.getByLabel("Conversation transcript", {
+    exact: true,
+  });
+  const toolSummary = transcript
+    .locator("summary")
+    .filter({ hasText: "webSearch" });
+  const activity = transcript
+    .locator("details")
+    .filter({
+      has: page.locator("summary").filter({ hasText: "webSearch" }),
+    })
+    .first();
+  await activity.locator(":scope > summary").click();
+  await toolSummary.focus();
+  await page.keyboard.press("Enter");
+  const toolResult = transcript
+    .locator("pre")
+    .filter({ hasText: "payments-v42 deploy notes" });
+  await expect(toolResult).toBeVisible();
+  await toolSummary.click();
+  await expect(toolResult).toBeHidden();
+
+  // Search must still reveal a result that the reader has closed.
+  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page
+    .getByPlaceholder("Search transcript…")
+    .fill("payments-v42 deploy notes");
+  await expect(toolResult).toBeVisible();
+  await page.getByPlaceholder("Search transcript…").fill("");
+  await expect(toolResult).toBeHidden();
+
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button");
@@ -61,7 +92,6 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
 
-  await page.getByRole("button", { name: "Search transcript" }).click();
   const search = page.getByPlaceholder("Search transcript…");
   await search.fill("memory-checkout-runbook");
   await expect(entries).toHaveCount(1);

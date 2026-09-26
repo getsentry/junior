@@ -497,6 +497,7 @@ function dashboardHostRoutePaths(
     "/_junior/dashboard/avatar.png",
     "/_junior/dashboard/object-icons/*",
     "/_junior/dashboard/client.js",
+    "/_junior/dashboard/chunks/*",
     "/_junior/dashboard/icon-512.png",
     "/_junior/dashboard/manifest.webmanifest",
     loginPath,

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { cn } from "../styles";
 import {
@@ -17,6 +17,7 @@ export function ToolFrame(props: {
   signature: ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
+  const [open, setOpen] = useState(false);
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
   const staticFrame = searchActive || !interactive;
@@ -82,12 +83,21 @@ export function ToolFrame(props: {
   }
 
   return (
-    <details className="group min-w-0 max-w-full overflow-hidden">
+    <details
+      className="group min-w-0 max-w-full overflow-hidden"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <TranscriptSummary className="block font-mono text-xs leading-tight text-dashboard-text-muted">
         {header}
       </TranscriptSummary>
-      {mobileMeta}
-      {props.children}
+      {/* Closed details hide DOM, but still mount React children and run Shiki. */}
+      {open ? (
+        <>
+          {mobileMeta}
+          {props.children}
+        </>
+      ) : null}
     </details>
   );
 }

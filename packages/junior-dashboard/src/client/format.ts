@@ -1,4 +1,5 @@
-import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
+import type { BundledLanguage } from "shiki/bundle/web";
+import { dashboardCodeLanguages } from "./code-languages";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
@@ -794,7 +795,7 @@ function normalizeLanguage(language: string | undefined): BundledLanguage {
     yml: "yaml",
   };
   const candidate = aliases[normalized] ?? normalized;
-  return candidate in bundledLanguages
+  return Object.hasOwn(dashboardCodeLanguages, candidate)
     ? (candidate as BundledLanguage)
     : "markdown";
 }

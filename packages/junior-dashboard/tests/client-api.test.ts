@@ -1,9 +1,16 @@
 import { createHash } from "node:crypto";
+import { QueryClient } from "@tanstack/react-query";
 import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 
+import { createDashboardApp } from "../src/app";
+import { auth } from "./dashboard-test-helpers";
+import {
+  ARCHIVED_CONVERSATION_ID,
+  setMockConversationArchived,
+} from "../src/mock-reporting/fixtures";
 import { personalSpendRefreshDelay } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
@@ -102,6 +109,62 @@ describe("dashboard client API", () => {
     await expect(
       readConversationEvents("slack:C1:123", "same-cursor"),
     ).rejects.toThrow("Conversation history cursor did not advance");
+  });
+
+  it("revalidates detail without caching the mailbox or bypassing sign-in", async () => {
+    let signedIn = true;
+    const sessionAuth = auth({
+      user: { email: "dev@example.com", emailVerified: true },
+    });
+    const app = createDashboardApp({
+      allowedEmails: ["dev@example.com"],
+      mockConversations: true,
+      auth: {
+        ...sessionAuth,
+        getSession: (request) =>
+          signedIn ? sessionAuth.getSession(request) : Promise.resolve(null),
+      },
+    });
+    const reads: Array<[path: string, status: number]> = [];
+    vi.stubGlobal("fetch", async (path: string, init: RequestInit) => {
+      const request = new Request(`http://localhost${path}`, init);
+      const response = await app.fetch(request);
+      reads.push([path, response.status]);
+      return response;
+    });
+    const client = new QueryClient();
+    const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
+    const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
+    try {
+      const first = await client.fetchQuery(options);
+      const second = await client.fetchQuery(options);
+      expect(second.events).toBe(first.events);
+      expect(reads).toEqual([
+        [`${detailPath}/pending-messages`, 200],
+        [detailPath, 200],
+        [`${detailPath}/pending-messages`, 200],
+        [detailPath, 304],
+      ]);
+
+      setMockConversationArchived(ARCHIVED_CONVERSATION_ID, false);
+      const changed = await client.fetchQuery(options);
+      expect(first.archivedAt).toBeTruthy();
+      expect(changed.archivedAt).toBeUndefined();
+      expect(changed.detailEtag).not.toBe(first.detailEtag);
+      expect(reads.at(-1)).toEqual([detailPath, 200]);
+
+      // The detail endpoint must also reject a valid old validator after logout.
+      signedIn = false;
+      const denied = await app.fetch(
+        new Request(`http://localhost${detailPath}`, {
+          headers: { "if-none-match": changed.detailEtag! },
+        }),
+      );
+      expect(denied.status).toBe(401);
+    } finally {
+      client.clear();
+      setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    }
   });
 
   it("keeps polling active detail after a failed refresh", () => {

@@ -142,14 +142,26 @@ export async function fetchDashboardJson<T>(
   path: string,
   signal?: AbortSignal,
 ): Promise<T> {
+  const response = await readDashboardResponse(path, signal);
+  return schema.parse(await response.json());
+}
+
+/** Read an authenticated response, allowing 304 only for an explicit validator. */
+export async function readDashboardResponse(
+  path: string,
+  signal?: AbortSignal,
+  etag?: string,
+): Promise<Response> {
   const response = await fetchDashboard(path, {
     credentials: "same-origin",
     ...(signal ? { signal } : undefined),
+    ...(etag
+      ? { cache: "no-store" as const, headers: { "if-none-match": etag } }
+      : undefined),
   });
-  if (response.status === 401) {
-    restartDashboardSignIn();
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok && !(etag && response.status === 304)) {
     await throwDashboardApiError(path, response);
   }
-  if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return response;
 }

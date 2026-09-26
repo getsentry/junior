@@ -174,7 +174,10 @@ test("starts and continues conversations from the dashboard", async ({
     `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
     async (route) => {
       if (holdDetailRefresh) await detailRefreshHeld;
-      const response = await route.fetch();
+      // Request the full body because this test changes it.
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), "if-none-match": "" },
+      });
       await route.fulfill({
         response,
         json: { ...(await response.json()), isParticipant: true },
@@ -311,7 +314,10 @@ test("hands web and external messages from queue to history without gaps", async
   await page.route(path, async (route) => {
     detailReads += 1;
     await historyHeld;
-    const response = await route.fetch();
+    // Request the full body because this test changes it.
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), "if-none-match": "" },
+    });
     const detail = await response.json();
     await route.fulfill({
       response,

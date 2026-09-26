@@ -12,6 +12,7 @@ import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
+import { revalidateConversation } from "./conversation-cache";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -44,6 +45,7 @@ import {
   dashboardPagePaths,
   readDashboardAvatarHeader,
   readDashboardClient,
+  readDashboardClientChunk,
   renderDashboard,
   renderFavicon,
   renderForbiddenPage,
@@ -571,6 +573,7 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
+  app.use("/api/conversations/:conversationId", revalidateConversation);
 
   for (const route of authenticatedRoutes) {
     const handler = (c: Context<{ Variables: Variables }>) => {
@@ -703,6 +706,17 @@ export function createDashboardApp(
       headers: {
         "cache-control": "no-store",
         "content-type": "application/javascript; charset=utf-8",
+      },
+    });
+  });
+  app.get("/_junior/dashboard/chunks/:file", (c) => {
+    const chunk = readDashboardClientChunk(c.req.param("file"));
+    if (!chunk) return c.notFound();
+    return new Response(chunk, {
+      headers: {
+        "cache-control": "private, max-age=31536000, immutable",
+        "content-type": "application/javascript; charset=utf-8",
+        "x-content-type-options": "nosniff",
       },
     });
   });
