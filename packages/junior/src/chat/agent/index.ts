@@ -1228,11 +1228,14 @@ async function executeAgentRunInPrivacyContext(
           } as PiMessage;
           if (shouldPromptAgent) {
             const promptPersisted =
-              await runResume.requireDurableInputCheckpoint([
-                ...agent!.state.messages,
-                ...(contextMessage ? [contextMessage] : []),
-                freshPromptMessage,
-              ]);
+              await runResume.requireDurableInputCheckpoint(
+                [
+                  ...agent!.state.messages,
+                  ...(contextMessage ? [contextMessage] : []),
+                  freshPromptMessage,
+                ],
+                [instructionProvenanceFor(actor)],
+              );
             if (promptPersisted) {
               await runResume.commitInput();
             }

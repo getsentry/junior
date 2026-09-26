@@ -241,7 +241,12 @@ delegation without becoming the execution actor or a general task owner.
   remains context-authority on resume, and may be replaced before a later model
   sample without replaying the actor's instruction. Ambient thread history in
   that context message is evidence only; only `<current-instruction>` authorizes
-  work.
+  work. Active compaction and handoff keep the latest committed instruction
+  verbatim, with its author and source event. The generated summary follows it
+  as escaped text inside `<thread-context authority="evidence-only">`, not as a
+  new instruction. Runtime-owned open plan state and completed handoff facts
+  stay outside that block. Steering messages are drained after handoff and pass
+  through the normal capacity check.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt

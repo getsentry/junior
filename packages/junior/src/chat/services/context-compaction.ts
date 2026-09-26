@@ -1,19 +1,15 @@
 /**
  * Context compaction.
  *
- * This module bounds visible Pi history for long conversations. It strips
- * runtime-only turn context before summarizing and opens replacement epochs in
- * the durable event store. Capacity compaction retains recent user intent;
- * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
- * may later append the current bootstrap; future replacement strips it again.
+ * Bounds Pi history for long conversations. Removes runtime context before
+ * summarizing and commits a history replacement. Active compaction and handoff
+ * keep the authored instruction before the summary. Checkpoints can append
+ * fresh runtime context; the next replacement removes it again.
  */
 import type { Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
-import {
-  renderCurrentInstruction,
-  unwrapCurrentInstruction,
-} from "@/chat/current-instruction";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -40,10 +36,8 @@ import {
 } from "@/chat/pi/conversation-events";
 import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
 import {
-  ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   isCompactionSummaryText,
-  MODEL_HANDOFF_SUMMARY_PREFIX,
 } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
@@ -51,6 +45,7 @@ import {
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
+import { escapeXml } from "@/chat/xml";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_CHARS = 6_000;
@@ -387,6 +382,16 @@ async function summarizeContext(
   return summary.slice(0, MAX_SUMMARY_CHARS);
 }
 
+/** Keep generated text inside the existing evidence-only prompt boundary. */
+function renderCompactionSummary(summary: string): string {
+  return [
+    COMPACTION_SUMMARY_PREFIX,
+    '<thread-context authority="evidence-only">',
+    escapeXml(summary),
+    "</thread-context>",
+  ].join("\n");
+}
+
 /** Measure provider-visible history without counting host-only message fields. */
 function estimateHistoryTokens(messages: PiMessage[]): number {
   return estimateContextTokens(messages).tokens;
@@ -512,10 +517,13 @@ async function writeCompactedThreadContext(
   const retained = selectRetainedUserMessageEntries(
     trimTrailingAssistantMessages(sourceProjection.messages),
   );
-  const continuation = appendOpenPlan(summary, sourceMessages);
+  const continuation = appendOpenPlan(
+    renderCompactionSummary(summary),
+    sourceMessages,
+  );
   const replacement = [
     ...retained.map((entry) => entry.message),
-    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${continuation}`),
+    userMessage(continuation),
   ];
   const replacementInputTokens = estimateHistoryTokens(replacement);
   // Provenance comes from the committed projection so retained user asks keep
@@ -589,19 +597,33 @@ export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
-  const contextMessage = runtimeContextMessage(args.runtimeContext);
+  const retainedInstruction = await loadLastInstruction(args.conversationId);
+  const contextMessage = runtimeContextMessage(
+    args.runtimeContext,
+    retainedInstruction?.message.timestamp,
+  );
   if (!contextMessage) {
     throw new Error("Handoff requires the current runtime turn context");
   }
   const generatedSummary = await summarizeContext(args, deps);
-  const continuation = appendOpenPlan(generatedSummary, args.piMessages);
-  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${continuation}`;
-  const instructionMessage = {
-    role: "user",
-    content: [{ type: "text", text: renderCurrentInstruction(summary) }],
-    timestamp: (contextMessage as { timestamp?: number }).timestamp,
-  } as PiMessage;
-  const messages = [contextMessage, instructionMessage];
+  const continuation = appendOpenPlan(
+    renderCompactionSummary(generatedSummary),
+    args.piMessages,
+  );
+  // The summary supplies context. It must not become the authored instruction.
+  const replacement = [
+    { message: contextMessage, provenance: contextProvenance },
+    ...(retainedInstruction ? [retainedInstruction] : []),
+    {
+      // Summarization runs inside the handoff tool, before its result exists.
+      // This fact becomes visible only after the replacement commits.
+      message: userMessage(
+        `${continuation}\n\nModel handoff completed: ${JSON.stringify(args.target)}.`,
+      ),
+      provenance: contextProvenance,
+    },
+  ];
+  const messages = replacement.map((entry) => entry.message);
   args.signal?.throwIfAborted();
   await getConversationEventStore().replaceHistory(args.conversationId, {
     createdAtMs: Date.now(),
@@ -616,8 +638,11 @@ export async function compactContextForHandoff(
         ? { triggeringToolCallId: args.triggeringToolCallId }
         : undefined),
       summary: generatedSummary,
-      replacementHistory: messages.map((message) => ({
-        item: historyItemFromPiMessage(message, contextProvenance),
+      replacementHistory: replacement.map((entry) => ({
+        item: historyItemFromPiMessage(entry.message, entry.provenance),
+        ...("sourceEventSeq" in entry
+          ? { sourceEventSeq: entry.sourceEventSeq }
+          : undefined),
       })),
     },
   });
@@ -673,10 +698,11 @@ export async function compactActiveContextIfNeeded(
     return { compacted: false, reason: "summary_failed" };
   }
 
-  const continuation = appendOpenPlan(summary, source.messages);
-  const summaryMessage = userMessage(
-    `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${continuation}`,
+  const continuation = appendOpenPlan(
+    renderCompactionSummary(summary),
+    source.messages,
   );
+  const summaryMessage = userMessage(continuation);
   const retainedInstruction =
     pendingMessages.length === 0
       ? await loadLastInstruction(args.conversationId)

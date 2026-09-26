@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
 import { observations } from "./agent-run-model-handoff-state";
 
 export { observations } from "./agent-run-model-handoff-state";
@@ -31,7 +32,11 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
         },
       };
     },
-    completeText: async (args: { signal?: AbortSignal }) => {
+    completeText: async (args: {
+      messages: PiMessage[];
+      signal?: AbortSignal;
+    }) => {
+      observations.summaryMessages = structuredClone(args.messages);
       observations.handoffStatusBeforeSummary =
         observations.statuses.includes("Switching models");
       observations.summaryCalls += 1;
@@ -48,7 +53,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
           args.signal?.addEventListener("abort", abort, { once: true });
         });
       }
-      return { text: "Implement the requested change and verify it." };
+      return { text: observations.summaryText };
     },
   };
 });
@@ -204,6 +209,8 @@ export async function resetHandoffTestState(): Promise<void> {
   observations.afterHandoffProfiles = [];
   observations.afterHandoffToolNames = [];
   observations.initialModelId = "";
+  observations.summaryMessages = [];
+  observations.summaryText = "Implement the requested change and verify it.";
   observations.initialImagePart = undefined;
   observations.initialHandoffProfiles = [];
   observations.handoffDescriptions = [];
