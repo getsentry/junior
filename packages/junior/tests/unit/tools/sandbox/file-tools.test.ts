@@ -172,6 +172,67 @@ describe("sandbox file tools", () => {
     expect(JSON.parse(result.content[0].text)).toEqual(result.details);
   });
 
+  it("keeps distant edits in separate hunks with correct line numbers", async () => {
+    const original = Array.from(
+      { length: 1_000 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const memory = createMemoryFs({ "large.ts": original });
+    const result = await editFile({
+      fs: memory.fs,
+      path: "large.ts",
+      edits: [
+        { oldText: "line 2\n", newText: "changed\ninserted\n" },
+        { oldText: "line 998\n", newText: "" },
+      ],
+    });
+
+    expect(memory.read("large.ts")).toBe(
+      original
+        .replace("line 2\n", "changed\ninserted\n")
+        .replace("line 998\n", ""),
+    );
+    expect(result.details).toMatchObject({
+      first_changed_line: 2,
+      truncated: false,
+    });
+    expect(result.details.diff).toMatchInlineSnapshot(`
+      "    1 line 1
+      -   2 line 2
+      +   2 changed
+      +   3 inserted
+          4 line 3
+          5 line 4
+          6 line 5
+            ...
+        996 line 995
+        997 line 996
+        998 line 997
+      - 998 line 998
+        999 line 999
+       1000 line 1000
+      \\ No newline at end of file"
+    `);
+  });
+
+  it.each([
+    ["old", "", "-1 old\n\\ No newline at end of file"],
+    ["old", "old\n", "-1 old\n\\ No newline at end of file\n+1 old"],
+  ])(
+    "reports an end-of-file edit from %j to %j",
+    async (oldText, newText, diff) => {
+      const memory = createMemoryFs({ "file.txt": oldText });
+      const result = await editFile({
+        fs: memory.fs,
+        path: "file.txt",
+        edits: [{ oldText, newText }],
+      });
+      expect(memory.read("file.txt")).toBe(newText);
+      expect(result.details.diff).toBe(diff);
+      expect(result.details.truncated).toBe(false);
+    },
+  );
+
   it("bounds huge single-line edit diffs without duplicating them", async () => {
     const memory = createMemoryFs({
       "generated.js": `const data = "${"a".repeat(100_000)}";\n`,

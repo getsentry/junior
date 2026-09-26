@@ -5,6 +5,7 @@ import {
   registerApiProvider,
   streamAnthropic,
   streamSimpleAnthropic,
+  type CacheRetention,
   type Message,
   type Model,
   type ThinkingLevel,
@@ -233,6 +234,7 @@ export async function completeText(params: {
   system?: string;
   messages: Message[];
   messageAttributeMode?: "content" | "metadata";
+  cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
@@ -312,6 +314,7 @@ export async function completeText(params: {
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
+            cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
           },
