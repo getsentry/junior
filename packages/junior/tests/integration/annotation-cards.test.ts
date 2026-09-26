@@ -34,7 +34,9 @@ const annotation: ObjectAnnotation = {
   facts: {
     type: "code_change",
     author: "alex",
+    reviewers: ["sam"],
     review: "required",
+    checks: { passed: 1, failed: 0, pending: 2 },
     mergeable: true,
     additions: 20,
     deletions: 5,
@@ -189,13 +191,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
               product_name: "objects",
             },
-            display_order: [
-              "status",
-              "review",
-              "author",
-              "sourceBranch",
-              "targetBranch",
-            ],
+            display_order: ["status", "sourceBranch"],
             custom_fields: [
               {
                 key: "status",
@@ -204,23 +200,10 @@ it("saves plugin object results once per reply, leaves background updates silent
                 value: "draft",
               },
               {
-                key: "review",
-                label: "Review",
-                type: "string",
-                value: "Review required",
-              },
-              { key: "author", label: "Author", type: "string", value: "alex" },
-              {
                 key: "sourceBranch",
-                label: "From",
+                label: "Branch",
                 type: "string",
                 value: "feature/parser",
-              },
-              {
-                key: "targetBranch",
-                label: "Into",
-                type: "string",
-                value: "main",
               },
             ],
           },

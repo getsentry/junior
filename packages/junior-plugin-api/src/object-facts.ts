@@ -59,27 +59,10 @@ export function objectFactFields(
       fields.push({ key, label, value: String(value) });
   }
   switch (facts.type) {
-    case "code_change": {
-      const review = {
-        required: "Review required",
-        approved: "Approved",
-        changes_requested: "Changes requested",
-      };
-      add("review", "Review", facts.review && review[facts.review]);
-      const checks = facts.checks;
-      add(
-        "checks",
-        "Checks",
-        checks &&
-          `${checks.failed} failed · ${checks.pending} pending · ${checks.passed} passed`,
-      );
-      add("author", "Author", facts.author);
-      add("reviewers", "Requested reviewers", list(facts.reviewers));
-      // Conflict status can change without a card update. Do not display it.
-      add("sourceBranch", "From", facts.sourceBranch);
-      add("targetBranch", "Into", facts.targetBranch);
+    case "code_change":
+      // Keep cards minimal. Review, checks, and conflicts can become stale.
+      add("sourceBranch", "Branch", facts.sourceBranch);
       break;
-    }
     case "task":
       add(
         "assignees",
