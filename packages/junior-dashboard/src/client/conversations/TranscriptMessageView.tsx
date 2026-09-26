@@ -179,8 +179,12 @@ function TranscriptMessageHeader(props: {
       leftClassName={cn(
         transcriptRoleClass(props.message.role),
         "flex-wrap gap-y-1",
+        Boolean(props.contextAction) && "min-h-6",
       )}
       right={props.contextAction}
+      rightClassName={
+        props.contextAction ? "flex items-center self-start" : undefined
+      }
     />
   );
 }
