@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const person = z.object({ login: z.string() });
 const responseSchema = z.object({
+  body: z.string().nullable().optional(),
   user: person.nullable().optional(),
   requested_reviewers: z.array(person).optional(),
   assignees: z.array(person).optional(),
@@ -22,13 +23,30 @@ const short = (value: string | undefined) => {
   return text ? (text.length > 64 ? `${text.slice(0, 63)}…` : text) : undefined;
 };
 
+function description(body: string | null | undefined): string | undefined {
+  let text = (body ?? "").replace(
+    /<!-- junior-(session-footer|request-attribution):start -->[\s\S]*?<!-- junior-\1:end -->/g,
+    "",
+  );
+  // Removing a comment can form another <!-- opener.
+  while (text.includes("<!--")) {
+    text = text.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+  }
+  text = text.trim();
+  if (!text) return undefined;
+  return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
+}
+
 /** Select card facts from GitHub REST responses; never infer reviews or checks. */
 export function githubObjectFacts(
   type: "task" | "code_change",
   response: unknown,
-): Pick<ObjectAnnotation, "facts" | "sourceUpdatedAt"> {
+): Pick<ObjectAnnotation, "facts" | "sourceUpdatedAt" | "description"> {
   const data = responseSchema.parse(response);
-  return {
+  const result: Pick<
+    ObjectAnnotation,
+    "facts" | "sourceUpdatedAt" | "description"
+  > = {
     sourceUpdatedAt: data.updated_at,
     facts:
       type === "code_change"
@@ -61,4 +79,6 @@ export function githubObjectFacts(
               .filter(Boolean),
           },
   };
+  if (type === "code_change") result.description = description(data.body);
+  return result;
 }

@@ -68,6 +68,7 @@ export function githubObjectAnnotation(input: {
   status: string;
   facts?: ObjectAnnotation["facts"];
   sourceUpdatedAt?: string;
+  description?: string;
 }): ObjectAnnotation {
   return {
     kind: "object",
@@ -79,6 +80,7 @@ export function githubObjectAnnotation(input: {
     status: input.status,
     displayType: input.objectType === "code_change" ? "Pull request" : "Issue",
     facts: input.facts,
+    description: input.description,
     sourceUpdatedAt: input.sourceUpdatedAt,
   };
 }

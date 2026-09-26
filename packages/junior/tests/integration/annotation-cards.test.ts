@@ -28,13 +28,16 @@ const annotation: ObjectAnnotation = {
   key: "repo#1",
   label: "repo#1",
   title: "Fix the parser",
+  description: `Fix **parsing**. ${"More context. ".repeat(50)}`,
   url: "https://example.com/pull/1",
   status: "open",
   sourceUpdatedAt: "2026-09-25T12:00:00Z",
   facts: {
     type: "code_change",
     author: "alex",
+    reviewers: ["sam"],
     review: "required",
+    checks: { passed: 1, failed: 0, pending: 2 },
     mergeable: true,
     additions: 20,
     deletions: 5,
@@ -189,13 +192,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
               product_name: "objects",
             },
-            display_order: [
-              "status",
-              "review",
-              "author",
-              "mergeable",
-              "sourceBranch",
-            ],
+            display_order: ["status", "description", "sourceBranch"],
             custom_fields: [
               {
                 key: "status",
@@ -204,21 +201,16 @@ it("saves plugin object results once per reply, leaves background updates silent
                 value: "draft",
               },
               {
-                key: "review",
-                label: "Review",
+                key: "description",
+                label: "Description",
                 type: "string",
-                value: "Review required",
-              },
-              { key: "author", label: "Author", type: "string", value: "alex" },
-              {
-                key: "mergeable",
-                label: "Conflicts",
-                type: "string",
-                value: "No conflicts",
+                value: `${annotation.description!.slice(0, 499).trimEnd()}…`,
+                long: true,
+                format: "markdown",
               },
               {
                 key: "sourceBranch",
-                label: "From",
+                label: "Branch",
                 type: "string",
                 value: "feature/parser",
               },
@@ -229,11 +221,18 @@ it("saves plugin object results once per reply, leaves background updates silent
     });
 
     const mixedCards = [
-      { ...annotation, plugin: "objects", status: "closed", facts: undefined },
+      {
+        ...annotation,
+        plugin: "objects",
+        status: "closed",
+        facts: undefined,
+        description: "One\nTwo\nThree\nFour\nFive\nSix\nSeven",
+      },
       {
         ...annotation,
         plugin: "objects",
         key: "issue-1",
+        description: undefined,
         objectType: "task" as const,
         status: "closed",
         facts: undefined,
@@ -242,6 +241,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         ...annotation,
         plugin: "objects",
         key: "deploy-1",
+        description: "  ",
         objectType: "deployment" as const,
         status: "ERROR",
         facts: { type: "deployment" as const, environment: "production" },
@@ -276,6 +276,13 @@ it("saves plugin object results once per reply, leaves background updates silent
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
               },
             },
+            custom_fields: [
+              { key: "status", value: "closed" },
+              {
+                key: "description",
+                value: "One\nTwo\nThree\nFour\nFive\nSix…",
+              },
+            ],
           },
         },
         {
@@ -288,6 +295,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
             },
             fields: { status: { value: "closed" } },
+            custom_fields: [],
           },
         },
         {
@@ -299,6 +307,10 @@ it("saves plugin object results once per reply, leaves background updates silent
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/rocket.png",
               },
             },
+            custom_fields: [
+              { key: "status", value: "ERROR" },
+              { key: "environment", value: "production" },
+            ],
           },
         },
         {
