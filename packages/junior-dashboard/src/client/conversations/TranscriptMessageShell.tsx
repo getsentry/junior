@@ -14,7 +14,7 @@ export function TranscriptMessageShell(props: {
   return (
     <article
       className={cn(
-        "grid min-w-0 gap-3",
+        "group/message grid min-w-0 gap-3",
         hasAvatar && "grid-cols-[2rem_minmax(0,1fr)] text-dashboard-text",
         kind === "system" &&
           "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text",

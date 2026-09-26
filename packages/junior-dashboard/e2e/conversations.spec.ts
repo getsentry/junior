@@ -41,7 +41,11 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   ).toBeVisible();
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
-  await contextAction.click();
+  await contextAction.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(contextAction).toBeFocused();
+  await page.keyboard.press("Enter");
   const contextPanel = page.getByRole("dialog", {
     name: "Turn context",
     exact: true,

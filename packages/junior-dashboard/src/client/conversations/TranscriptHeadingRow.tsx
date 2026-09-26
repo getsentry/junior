@@ -51,7 +51,7 @@ export function TranscriptMessageHeading(props: {
     <div className="flex min-h-6 min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
       {props.children}
       {props.action ? (
-        <div className="flex h-6 shrink-0 items-center self-center">
+        <div className="flex h-6 shrink-0 items-center self-center [@media(hover:hover)_and_(pointer:fine)_and_(not_(any-pointer:coarse))]:opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100 has-[[aria-expanded=true]]:opacity-100">
           {props.action}
         </div>
       ) : null}
