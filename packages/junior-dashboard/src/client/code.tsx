@@ -1,12 +1,31 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { codeToHtml, type BundledLanguage } from "shiki/bundle/web";
+import type { BundledLanguage } from "shiki/bundle/web";
+import {
+  createBundledHighlighter,
+  createSingletonShorthands,
+  guessEmbeddedLanguages,
+} from "shiki/core";
 
 import { cn } from "./styles";
+import { dashboardCodeLanguages } from "./code-languages";
 import {
   buildSearchDecorations,
   useTranscriptSearch,
 } from "./conversations/transcriptSearch";
+
+// Keep one theme. Split language grammars and the engine into on-demand chunks.
+const { codeToHtml } = createSingletonShorthands(
+  createBundledHighlighter({
+    langs: dashboardCodeLanguages,
+    themes: { "github-dark": () => import("shiki/themes/github-dark.mjs") },
+    engine: async () => {
+      const { createOnigurumaEngine } = await import("shiki/engine/oniguruma");
+      return createOnigurumaEngine(import("shiki/wasm"));
+    },
+  }),
+  { guessEmbeddedLanguages },
+);
 
 declare const shikiHtmlBrand: unique symbol;
 

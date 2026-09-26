@@ -24,6 +24,11 @@ name, through dashboard settings.
   Publish both in one render so input moves from queue to transcript without a
   gap. Poll every 2 seconds while active or waiting for input, and every 10
   seconds while idle so other Sources can wake the open Conversation.
+- Detail polls use a weak ETag for the viewer-authorized response. Only the
+  report's `generatedAt` read time is excluded. The server still reads and
+  authorizes each request. A `304` reuses the parsed detail in TanStack Query;
+  the mailbox and its cancellation watermark always refresh. Optimistic detail
+  edits clear the validator. Responses are not stored in the browser HTTP cache.
 - Local sends stay visible until a server snapshot contains their Message id.
   Web ingress and the browser share one Message id function. The browser derives
   the id before the first local render and before POST starts. This also
@@ -73,6 +78,22 @@ Dashboard E2E writes screenshots to
 `.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
 on the default branch. On a pull request, it compares the new set with the
 saved set and links the report from the pull request.
+
+## Browser assets
+
+The client build splits syntax grammars, the highlighting engine, and the single
+`github-dark` theme into content-hashed chunks. `client/code-languages.ts` owns
+supported languages and aliases. Keep imports explicit so bundling cannot pull
+in Shiki's complete theme registry.
+
+The server build embeds `client.js` and its chunks. Serve them through the
+registered dashboard routes, including the core app's forwarding paths. Chunks
+use private immutable caching. The client entry remains uncached. If a chunk
+cannot load, code remains visible as plain text; do not force a page reload.
+
+Closed tool details do not mount payload components. Format payloads only when
+the details open or search requires them. Reuse the payload size for unchanged
+results instead of encoding it on every poll.
 
 ## Type scale
 

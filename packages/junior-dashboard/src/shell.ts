@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
+  dashboardClientChunks,
   dashboardInstallIconAsset,
   dashboardTailwindAsset,
 } from "./assets";
@@ -59,6 +60,20 @@ export function readDashboardClient(): string {
     throw new Error("Junior dashboard client bundle was not found");
   }
   return client;
+}
+
+/** Read a content-hashed browser chunk without allowing arbitrary file paths. */
+export function readDashboardClientChunk(file: string): string | undefined {
+  if (!/^[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+\.js$/.test(file)) return undefined;
+  return (
+    (Object.hasOwn(dashboardClientChunks, file)
+      ? dashboardClientChunks[file]
+      : undefined) ||
+    readAssetUrl(new URL(`./chunks/${file}`, import.meta.url)) ||
+    readAssetUrl(new URL(`../dist/chunks/${file}`, import.meta.url)) ||
+    readWorkspaceAsset(`chunks/${file}`) ||
+    undefined
+  );
 }
 
 function readDashboardTailwind(): string {

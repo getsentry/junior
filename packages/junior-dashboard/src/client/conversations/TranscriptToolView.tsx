@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { HighlightedCode } from "../code";
@@ -16,7 +16,7 @@ import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
-export function TranscriptToolView(props: {
+export const TranscriptToolView = memo(function TranscriptToolView(props: {
   part: TranscriptViewToolCallPart;
   timestamp?: number;
 }) {
@@ -27,7 +27,10 @@ export function TranscriptToolView(props: {
   );
   const hasDetails =
     props.part.input !== undefined || props.part.output !== undefined;
-  const responseSize = formatPayloadSize(props.part.output);
+  const responseSize = useMemo(
+    () => formatPayloadSize(props.part.output),
+    [props.part.output],
+  );
   const executionMeta = [duration, responseSize].filter(isString).join(" · ");
   const meta = [executionMeta, timestamp].filter(isString);
   const mobileSummary = executionMeta;
@@ -48,24 +51,23 @@ export function TranscriptToolView(props: {
     >
       {props.part.input !== undefined ? (
         <ToolBody label="arguments">
-          <HighlightedCode
-            code={stringifyPartValue(props.part.input)}
-            language="json"
-          />
+          <ToolPayload value={props.part.input} />
         </ToolBody>
       ) : null}
       {props.part.output !== undefined ? (
         <ToolBody label="result">
-          <HighlightedCode
-            code={stringifyPartValue(props.part.output)}
-            language="json"
-          />
+          <ToolPayload value={props.part.output} />
         </ToolBody>
       ) : null}
     </ToolFrame>
   );
 
   return <div className="min-w-0">{frame}</div>;
+});
+
+function ToolPayload(props: { value: unknown }) {
+  const code = useMemo(() => stringifyPartValue(props.value), [props.value]);
+  return <HighlightedCode code={code} language="json" />;
 }
 
 function ToolSignature(props: {

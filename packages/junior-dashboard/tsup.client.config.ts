@@ -9,7 +9,10 @@ export default defineConfig({
   dts: false,
   outDir: "dist",
   clean: true,
-  splitting: false,
+  splitting: true,
+  esbuildOptions(options) {
+    options.chunkNames = "chunks/[name]-[hash]";
+  },
   minify: true,
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
