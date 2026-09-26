@@ -870,7 +870,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("missing result");
   });
 
-  it("replaces the running treatment with details on the same completed row", () => {
+  it("keeps completed tool details unmounted until opened", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
@@ -908,15 +908,15 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain("arguments");
-    expect(html).toContain("result");
+    expect(html).not.toContain("arguments");
+    expect(html).not.toContain("result");
     expect(html).toContain("regression");
-    expect(html).toContain("matches");
+    expect(html).not.toContain("matches");
     expect(html).not.toContain("running");
     expect(html).not.toContain("completed");
   });
 
-  it("renders a terminal tool error with its result details", () => {
+  it("shows a terminal tool failure without mounting its result", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
@@ -943,10 +943,9 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain("search");
-    expect(html).toContain("error");
-    expect(html).toContain("result");
-    expect(html).toContain("timed out");
+    expect(html).toContain('aria-label="search (failed)"');
+    expect(html).not.toContain("result");
+    expect(html).not.toContain("timed out");
     expect(html).not.toContain("running");
   });
 
