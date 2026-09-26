@@ -52,7 +52,7 @@ export function createVercelWebhookRoute(args: {
       }
       const events = normalizeVercelEvents({ body });
       for (const event of events) {
-        await args.events.publish(event);
+        await args.events.publish({ ...event, objectType: "deployment" });
       }
       return new Response(events.length ? "Accepted" : "Ignored", {
         status: 202,

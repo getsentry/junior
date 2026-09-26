@@ -1672,6 +1672,7 @@ describe("GitHub-owned issue outcomes", () => {
         {
           annotation: {
             kind: "resource_link",
+            objectType: "task",
             key: "getsentry/junior#990",
             label: "getsentry/junior#990",
             status: "closed",
@@ -2192,6 +2193,7 @@ describe("GitHub-owned pull request outcomes", () => {
           {
             annotation: {
               kind: "resource_link",
+              objectType: "code_change",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
               status: "merged",
@@ -2202,6 +2204,7 @@ describe("GitHub-owned pull request outcomes", () => {
           {
             annotation: {
               kind: "resource_link",
+              objectType: "code_change",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
               status: "merged",
@@ -2214,10 +2217,12 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(published).toEqual([
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior#946",
         }),
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior",
         }),
         expect.objectContaining({
@@ -2232,10 +2237,12 @@ describe("GitHub-owned pull request outcomes", () => {
         // storage remains idempotent.
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior#946",
         }),
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior",
         }),
         expect.objectContaining({

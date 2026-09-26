@@ -18,6 +18,9 @@ instead of copying Tailwind blocks.
    variants over ad-hoc pulse blocks in route modules. Use `PageRouteLoading`
    when a standard page must keep its real header above a body skeleton. Use a
    feature-owned loading component for distinct geometry, such as conversations.
+   `ObjectIcon` owns native Ticket, Code change, Automation, Deployment, and
+   Item icons. It uses the shared type/status mapping and original Octicons
+   paths. Do not replace it with a provider logo or a status-only icon.
    Structural colors live
    as slim `dashboard-*` tokens in `src/tailwind.css` (canvas, surface, text,
    border, fill, overlay, focus). Prefer those roles over `white/*`, `black/*`,

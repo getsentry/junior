@@ -18,7 +18,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src/object-icons.LICENSE"
   ],
   "dependencies": {
     "commander": "^14.0.3",

@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import type { ObjectType } from "@sentry/junior-plugin-api";
+import { ObjectIcon } from "../components/ObjectIcon";
 import {
   Activity,
   Bot,
@@ -35,6 +37,7 @@ type TranscriptRailEventKind =
 export function TranscriptRailEvent(props: {
   children: ReactNode;
   icon?: LucideIcon;
+  objectType?: ObjectType;
   kind: TranscriptRailEventKind;
 }) {
   const marker = transcriptRailMarker(props.kind);
@@ -52,7 +55,11 @@ export function TranscriptRailEvent(props: {
           marker.className,
         )}
       >
-        <Icon size={11} strokeWidth={2.2} />
+        {props.objectType ? (
+          <ObjectIcon objectType={props.objectType} size={14} decorative />
+        ) : (
+          <Icon size={11} strokeWidth={2.2} />
+        )}
       </span>
       <div className="min-w-0">{props.children}</div>
     </div>

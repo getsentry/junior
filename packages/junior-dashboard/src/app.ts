@@ -1,3 +1,4 @@
+import { objectIconImages } from "./object-icon-images";
 import { Hono, type Context, type Next } from "hono";
 import {
   authenticatePersonalToken,
@@ -465,6 +466,24 @@ export function createDashboardApp(
     app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
   }
 
+  // These fixed, non-sensitive images must be public so Slack can fetch them.
+  app.get("/_junior/dashboard/object-icons/v1/:file", (c) => {
+    const file = c.req.param("file");
+    if (!file?.endsWith(".png")) return c.notFound();
+    const icon = file.slice(0, -4);
+    const image =
+      icon && Object.hasOwn(objectIconImages, icon)
+        ? objectIconImages[icon]
+        : undefined;
+    if (!image) return c.notFound();
+    return new Response(Buffer.from(image, "base64"), {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());

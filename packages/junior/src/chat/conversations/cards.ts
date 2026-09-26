@@ -80,5 +80,10 @@ export function annotationCard(
   const { createdAt: _createdAt, updatedAt: _updatedAt, ...value } = annotation;
   return value.kind === "object"
     ? value
-    : { ...value, kind: "object", objectType: "item", title: value.label };
+    : {
+        ...value,
+        kind: "object",
+        objectType: value.objectType ?? "item",
+        title: value.label,
+      };
 }

@@ -1,3 +1,4 @@
+import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
@@ -681,6 +682,9 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Object visual language">
+        <ObjectFixtures />
+      </Fixture>
       <Fixture title="Object annotations">
         <ObjectCard
           card={{
@@ -733,7 +737,7 @@ function TranscriptsGalleryPage() {
         <ObjectCard
           card={{
             kind: "object",
-            objectType: "item",
+            objectType: "deployment",
             displayType: "Deployment",
             plugin: "vercel",
             key: "dpl_example",

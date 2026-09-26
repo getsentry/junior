@@ -1,5 +1,7 @@
+import { getDashboardObjectIconLink } from "@/chat/dashboard-link";
 import {
   objectFactFields,
+  objectPresentation,
   type OwnedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import type { SlackCard } from "./cards";
@@ -22,12 +24,19 @@ export function renderSlackObjectCard(
       status: card.status,
     });
   }
+  const presentation = objectPresentation(card);
+  const type = card.displayType ?? presentation.label;
+  const iconUrl = getDashboardObjectIconLink(presentation.icon);
   const title = card.title.slice(0, 160);
   const facts = objectFactFields(card.facts);
   const text = [
+    escapeSlackMrkdwnText(type),
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     escapeSlackMrkdwnText(card.label),
     card.status ? escapeSlackMrkdwnText(card.status) : null,
+    card.warning
+      ? escapeSlackMrkdwnText(`Needs attention: ${card.warning}`)
+      : null,
     ...facts.map((field) =>
       escapeSlackMrkdwnText(`${field.label}: ${field.value}`),
     ),
@@ -39,19 +48,28 @@ export function renderSlackObjectCard(
   const attributes = {
     title: { text: title },
     display_id: card.label,
-    display_type:
-      card.displayType ??
-      (card.objectType === "code_change"
-        ? "Pull request"
-        : task
-          ? "Issue"
-          : "Item"),
+    display_type: type,
+    product_icon: iconUrl
+      ? {
+          url: iconUrl,
+          alt_text: `${type}${card.status ? `: ${card.status}` : ""}`,
+        }
+      : undefined,
     product_name: card.plugin,
   };
-  const customFields = facts.map((field) => ({
-    ...field,
-    type: "string" as const,
-  }));
+  const customFields = [
+    ...facts.map((field) => ({ ...field, type: "string" as const })),
+    ...(card.warning
+      ? [
+          {
+            key: "warning",
+            label: "Needs attention",
+            type: "string" as const,
+            value: card.warning,
+          },
+        ]
+      : []),
+  ];
   const entity: SlackEntity = {
     ...(task
       ? {

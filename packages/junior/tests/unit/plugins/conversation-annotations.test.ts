@@ -2,6 +2,7 @@ import {
   conversationAnnotationInputSchema,
   objectAnnotationSchema,
   objectFactFields,
+  objectPresentation,
 } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import { ZodError } from "zod";
@@ -27,6 +28,34 @@ describe("conversation annotations", () => {
       }),
     ).toMatchObject(annotation);
   });
+  it("keeps object identity across lifecycle and warning states", () => {
+    for (const [status, icon] of Object.entries({
+      open: "git-pull-request",
+      draft: "git-pull-request-draft",
+      closed: "git-pull-request-closed",
+      merged: "git-merge",
+      warning: "git-pull-request",
+    })) {
+      expect(
+        objectPresentation({ objectType: "code_change", status }).icon,
+      ).toBe(icon);
+      expect(objectPresentation({ objectType: "task", status }).icon).not.toBe(
+        icon,
+      );
+    }
+    expect(
+      objectPresentation({ objectType: "deployment", status: "ERROR" }),
+    ).toEqual({ icon: "rocket", tone: "danger", label: "Deployment" });
+    expect(
+      objectPresentation({ objectType: "item", facts: { type: "deployment" } })
+        .label,
+    ).toBe("Deployment");
+    expect(
+      objectPresentation({ objectType: "automation", status: "blocked" }),
+    ).toEqual({ icon: "workflow", tone: "warning", label: "Automation" });
+    expect(objectPresentation({ objectType: "item" }).icon).toBe("package");
+  });
+
   it("bounds typed object facts without rejecting old cards or accepting arbitrary provider JSON", () => {
     const card = {
       kind: "object",
@@ -37,6 +66,15 @@ describe("conversation annotations", () => {
       url: null,
     };
     expect(objectAnnotationSchema.parse(card)).toEqual(card);
+    for (const objectType of ["deployment", "item"]) {
+      expect(
+        objectAnnotationSchema.parse({
+          ...card,
+          objectType,
+          facts: { type: "deployment" },
+        }).facts?.type,
+      ).toBe("deployment");
+    }
     const parse = (facts: unknown) =>
       objectAnnotationSchema.parse({ ...card, facts });
     expect(parse({ type: "task", assignees: [] }).facts).toEqual({

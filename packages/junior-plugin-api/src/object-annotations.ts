@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { objectFactsSchema } from "./object-facts";
+import { objectTypeSchema } from "./object-presentation";
 
 /**
  * Verified facts shared by Conversation annotations and Message cards.
@@ -19,7 +20,7 @@ export const objectAnnotationSchema = z
     kind: z.literal("object"),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
-    objectType: z.enum(["task", "code_change", "automation", "item"]),
+    objectType: objectTypeSchema,
     title: z.string().trim().min(1).max(512),
     url: z
       .url()
@@ -45,7 +46,8 @@ export const objectAnnotationSchema = z
     (annotation) =>
       !annotation.facts ||
       (annotation.facts.type === "deployment"
-        ? annotation.objectType === "item"
+        ? annotation.objectType === "deployment" ||
+          annotation.objectType === "item"
         : annotation.facts.type === annotation.objectType),
     "Object facts must match the object type",
   );

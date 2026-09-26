@@ -50,7 +50,7 @@ export function createLinearWebhookRoute(args: {
       }
       const events = normalizeLinearEvents({ body, linearEvent });
       for (const event of events) {
-        await args.events.publish(event);
+        await args.events.publish({ ...event, objectType: "task" });
       }
       return new Response(events.length ? "Accepted" : "Ignored", {
         status: 200,

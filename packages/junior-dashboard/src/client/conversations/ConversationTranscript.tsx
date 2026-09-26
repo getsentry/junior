@@ -193,7 +193,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="event">
+          <TranscriptRailEvent
+            kind="event"
+            objectType={entry.message.eventObjectType}
+          >
             <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
@@ -406,7 +409,10 @@ function RedactedTranscriptView(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="event">
+          <TranscriptRailEvent
+            kind="event"
+            objectType={entry.message.eventObjectType}
+          >
             <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (

@@ -1,3 +1,4 @@
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCards } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -329,6 +330,8 @@ function reportEventData(args: {
           ? { source: data.meta.source }
           : undefined),
         ...(actorIdentity ? { actorIdentity } : undefined),
+        eventObjectType: objectTypeSchema.safeParse(data.meta?.eventObjectType)
+          .data,
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : undefined),
