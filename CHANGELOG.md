@@ -1,4 +1,26 @@
 # Changelog
+## 0.230.0
+
+### New Features ✨
+
+- (cards) Show PR descriptions with branch and status by @sentry-junior in [#1950](https://github.com/getsentry/junior/pull/1950)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Align transcript cells and wrap attachments by @sentry-junior in [#1953](https://github.com/getsentry/junior/pull/1953)
+- Use a button surface for the Sentry link by @sentry-junior in [#1951](https://github.com/getsentry/junior/pull/1951)
+
+#### Other
+
+- (cards) Resolve Message cards from saved annotations by @sentry-junior in [#1955](https://github.com/getsentry/junior/pull/1955)
+
+### Internal Changes 🔧
+
+- (dashboard) Reduce transcript work and downloads by @sentry-junior in [#1954](https://github.com/getsentry/junior/pull/1954)
+- (guardian) Cover historical clone approval requests by @sentry-junior in [#1952](https://github.com/getsentry/junior/pull/1952)
+
 ## 0.229.0
 
 ### Bug Fixes 🐛
