@@ -229,8 +229,10 @@ delegation without becoming the execution actor or a general task owner.
   that context message is evidence only; only `<current-instruction>` authorizes
   work. Active compaction and handoff keep the latest committed instruction
   verbatim, with its author and source event. The generated summary follows it
-  as context, not as a new instruction. Steering messages are drained after
-  handoff and pass through the normal capacity check.
+  as escaped text inside `<thread-context authority="evidence-only">`, not as a
+  new instruction. Runtime-owned open plan state and completed handoff facts
+  stay outside that block. Steering messages are drained after handoff and pass
+  through the normal capacity check.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt

@@ -222,6 +222,34 @@ continuation as runtime-owned context. This fact becomes visible only after the
 handoff commits. It does not change the summarizer prompt or grant instruction
 authority to the summary. Keep the live pair unchanged and run it once.
 
+### Control result: completed handoff fact
+
+Commit: `58705c4dd`.
+[CI run](https://github.com/getsentry/junior/actions/runs/36186459947/job/108240999742).
+Both cases handed off, removed the wrappers, and delivered a reply. The terse
+case passed in 62.8 seconds including setup; the explicit control passed in
+46.9 seconds. The summaries can still omit cleanup. Retaining the authored
+instruction lets the continuation finish it.
+
+### Follow-up: bound generated summary text
+
+The later silent reply in the Slack thread received the summary inside
+`<current-instruction>`. That is the old replacement shape. It does not show
+that the branch's retained-instruction fix failed.
+
+Source review found a separate gap: the generated summary still entered the
+next model's context as raw text. A summary could copy instruction tags from
+history. Keep generated text escaped inside the existing evidence-only thread
+context boundary. Keep the runtime's open plan and completed handoff fact
+outside that block.
+
+The existing component regression now includes copied instruction tags and a
+closing context tag in its wrong summary. Before this change, it failed because
+the continuation contained two instruction boundaries. It passes with the new
+boundary. This proves prompt structure, not live task completion. Keep the live
+pair unchanged for the next control. Do not count the earlier live pass as
+verification of this follow-up.
+
 ## Limits
 
 This is a reduced coding task, not an exact replay. Prior maintenance text uses
