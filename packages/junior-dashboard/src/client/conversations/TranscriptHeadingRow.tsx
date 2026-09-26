@@ -42,18 +42,18 @@ export function TranscriptHeadingRow(props: {
   );
 }
 
-/** Keep message authors and timestamps on one baseline beside a fixed action slot. */
+/** Keep message authors, timestamps, and actions together at the text edge. */
 export function TranscriptMessageHeading(props: {
   children: ReactNode;
   action?: ReactNode;
 }) {
   return (
-    <div className="grid min-h-6 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
-        {props.children}
-      </div>
+    <div className="flex min-h-6 min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-6">
+      {props.children}
       {props.action ? (
-        <div className="flex h-6 items-center">{props.action}</div>
+        <div className="flex h-6 shrink-0 items-center self-center">
+          {props.action}
+        </div>
       ) : null}
     </div>
   );
