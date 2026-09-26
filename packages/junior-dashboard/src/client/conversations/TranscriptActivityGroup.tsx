@@ -7,6 +7,7 @@ import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
@@ -148,7 +149,6 @@ export function activityGroupOpen(userOpen: boolean | null): boolean {
 
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
-  separateFromPrevious?: boolean;
   entries: RenderedTranscriptEntry[];
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
@@ -168,17 +168,11 @@ export function TranscriptActivityGroup(props: {
   const open = activityGroupOpen(userOpen);
 
   return (
-    <details
-      className={cn(
-        "group/activity-run min-w-0",
-        props.separateFromPrevious &&
-          "border-t border-dashboard-border/70 pt-2",
-      )}
-      open={open}
-    >
-      <summary
+    <details className="group/activity-run min-w-0 py-0.5" open={open}>
+      <TranscriptSummary
+        flush
         className={cn(
-          "flex w-fit max-w-full cursor-pointer list-none items-center gap-1 py-0.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
+          "flex items-center gap-1 text-left text-xs leading-tight text-dashboard-text-muted",
           live && "text-cyan-100/80",
         )}
         onClick={(event) => {
@@ -201,7 +195,7 @@ export function TranscriptActivityGroup(props: {
             />
           </span>
         </Tooltip>
-      </summary>
+      </TranscriptSummary>
       <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
     </details>
   );
