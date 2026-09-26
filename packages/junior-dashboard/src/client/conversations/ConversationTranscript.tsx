@@ -1,6 +1,7 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 
 import { Card } from "../components/layout/Card";
+import { cn } from "../styles";
 import { unavailableTranscriptLabel } from "../format";
 import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
@@ -291,6 +292,12 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (isCollapsibleActivityEntry(entry)) {
+      const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
+      const followsVisibleEvent =
+        previousEntry?.kind === "message" &&
+        Boolean(previousEntry.message.eventType) &&
+        (!search.active ||
+          entryMatchesSearch(previousEntry, search.normalizedQuery));
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
@@ -313,7 +320,12 @@ function TranscriptEntryList(props: {
         });
         rows.push(
           <div
-            className="mobile-transcript-row pl-11 md:pl-[3.125rem]"
+            className={cn(
+              "mobile-transcript-row",
+              followsVisibleEvent
+                ? "-mt-3 pl-[1.875rem]"
+                : "pl-11 md:pl-[3.125rem]",
+            )}
             key={activityKey}
           >
             <TranscriptActivityGroup

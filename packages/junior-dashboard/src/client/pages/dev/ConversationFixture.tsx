@@ -4,6 +4,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { ChatLayout } from "../../conversations/ChatLayout";
+import { TranscriptMessageView } from "../../conversations/TranscriptMessageView";
 import { ConversationTranscriptView } from "../../conversations/ConversationTranscript";
 
 const TIMESTAMP = "2026-08-07T12:00:00.000Z";
@@ -93,6 +94,45 @@ const CONVERSATION: ConversationDetailReport = {
     data,
   })),
 };
+
+/** Use the local mock reporting attachment route to review wrapping and previews. */
+export function MessageAttachmentsFixture() {
+  return (
+    <div className="min-w-0 max-w-[52.5rem] bg-dashboard-bg p-3">
+      <TranscriptMessageView
+        conversation={{
+          ...CONVERSATION,
+          conversationId: "internal:dashboard-qa",
+        }}
+        message={{
+          sourceSeq: 0,
+          role: "assistant",
+          parts: [{ type: "text", text: "Two charts and the review notes." }],
+          attachments: [
+            {
+              id: "qa-chart-png",
+              filename: "before.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+            {
+              id: "qa-chart-png",
+              filename: "after.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+            {
+              id: "qa-notes-txt",
+              filename: "review-notes.txt",
+              contentType: "text/plain",
+              bytes: 42,
+            },
+          ],
+        }}
+      />
+    </div>
+  );
+}
 
 /** Show messages, cards, and activity after an event in the real scroll frame. */
 export function ConversationFixture() {

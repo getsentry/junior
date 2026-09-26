@@ -1,4 +1,4 @@
-import { TranscriptAttachment } from "./TranscriptAttachment";
+import { TranscriptAttachments } from "./TranscriptAttachment";
 
 import { getDashboardAgentName } from "../agentName";
 import { formatMessageTimestamp } from "../format";
@@ -37,15 +37,10 @@ export function TranscriptAttachmentsDeliveredView(props: {
           ) : undefined
         }
       />
-      <div className="grid min-w-0 w-full max-w-full gap-2">
-        {props.part.attachments.map((attachment) => (
-          <TranscriptAttachment
-            attachment={attachment}
-            conversationId={props.conversation.conversationId}
-            key={attachment.id}
-          />
-        ))}
-      </div>
+      <TranscriptAttachments
+        attachments={props.part.attachments}
+        conversationId={props.conversation.conversationId}
+      />
     </TranscriptMessageShell>
   );
 }

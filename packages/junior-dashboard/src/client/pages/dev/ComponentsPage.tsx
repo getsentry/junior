@@ -1,6 +1,9 @@
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
-import { ConversationFixture } from "./ConversationFixture";
+import {
+  ConversationFixture,
+  MessageAttachmentsFixture,
+} from "./ConversationFixture";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
@@ -685,6 +688,9 @@ function TranscriptsGalleryPage() {
     >
       <Fixture title="Conversation spacing">
         <ConversationFixture />
+      </Fixture>
+      <Fixture title="Message attachments (mock reporting)">
+        <MessageAttachmentsFixture />
       </Fixture>
       <Fixture title="Object visual language">
         <ObjectFixtures />

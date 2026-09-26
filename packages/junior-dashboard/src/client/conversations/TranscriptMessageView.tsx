@@ -1,4 +1,4 @@
-import { TranscriptAttachment } from "./TranscriptAttachment";
+import { TranscriptAttachments } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
@@ -69,13 +69,12 @@ export const TranscriptMessageView = memo(
             ) : null,
           )}
         </div>
-        {props.message.attachments?.map((attachment, index) => (
-          <TranscriptAttachment
-            key={`${attachment.id}:${index}`}
-            attachment={attachment}
+        {props.message.attachments?.length ? (
+          <TranscriptAttachments
+            attachments={props.message.attachments}
             conversationId={props.conversation.conversationId}
           />
-        ))}
+        ) : null}
         {props.message.cards?.map((card) => {
           switch (card.kind) {
             case "object":
