@@ -193,8 +193,8 @@ it("saves plugin object results once per reply, leaves background updates silent
               "status",
               "review",
               "author",
-              "mergeable",
               "sourceBranch",
+              "targetBranch",
             ],
             custom_fields: [
               {
@@ -211,16 +211,16 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
               { key: "author", label: "Author", type: "string", value: "alex" },
               {
-                key: "mergeable",
-                label: "Conflicts",
-                type: "string",
-                value: "No conflicts",
-              },
-              {
                 key: "sourceBranch",
                 label: "From",
                 type: "string",
                 value: "feature/parser",
+              },
+              {
+                key: "targetBranch",
+                label: "Into",
+                type: "string",
+                value: "main",
               },
             ],
           },

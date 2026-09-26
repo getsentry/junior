@@ -75,15 +75,7 @@ export function objectFactFields(
       );
       add("author", "Author", facts.author);
       add("reviewers", "Requested reviewers", list(facts.reviewers));
-      add(
-        "mergeable",
-        "Conflicts",
-        facts.mergeable === undefined
-          ? undefined
-          : facts.mergeable
-            ? "No conflicts"
-            : "Has conflicts",
-      );
+      // Conflict status can change without a card update. Do not display it.
       add("sourceBranch", "From", facts.sourceBranch);
       add("targetBranch", "Into", facts.targetBranch);
       break;
