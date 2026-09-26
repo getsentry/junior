@@ -24,13 +24,15 @@ const short = (value: string | undefined) => {
 };
 
 function description(body: string | null | undefined): string | undefined {
-  const text = body
-    ?.replace(
-      /<!-- junior-(session-footer|request-attribution):start -->[\s\S]*?<!-- junior-\1:end -->/g,
-      "",
-    )
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
+  let text = (body ?? "").replace(
+    /<!-- junior-(session-footer|request-attribution):start -->[\s\S]*?<!-- junior-\1:end -->/g,
+    "",
+  );
+  // Removal can join text into another opener. Repeat and drop unclosed comments.
+  while (text.includes("<!--")) {
+    text = text.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+  }
+  text = text.trim();
   if (!text) return undefined;
   return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
 }

@@ -16,7 +16,7 @@ function toolContext(
         number: 691,
         state: "open",
         title: "Add events",
-        body: `Add **events**.<!-- Internal template note -->
+        body: `Add **events**.<!-- Internal template note --><<!-- nested -->!-- hidden -->
 
 <!-- junior-request-attribution:start -->
 via **Alex**.
@@ -24,7 +24,8 @@ via **Alex**.
 
 <!-- junior-session-footer:start -->
 [View Junior Session](https://example.com/session)
-<!-- junior-session-footer:end -->`,
+<!-- junior-session-footer:end -->
+<!-- unfinished comment`,
         user: { login: "alex" },
         requested_reviewers: [{ login: "sam" }],
         mergeable: null,
