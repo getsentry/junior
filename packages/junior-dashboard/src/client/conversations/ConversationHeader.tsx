@@ -111,6 +111,7 @@ export function ConversationHeader(props: {
         <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-white/[0.08] bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={menuCopyAction}
             detailsOpen={detailsOpen}
             layout="menu"
@@ -185,6 +186,7 @@ export function ConversationHeader(props: {
           </div>
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={props.copyAction}
             detailsOpen={detailsOpen}
             onDetailsClick={() => setDetailsOpen(true)}

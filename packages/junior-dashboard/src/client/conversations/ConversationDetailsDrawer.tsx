@@ -6,6 +6,7 @@ import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import { ConversationMemories } from "./ConversationMemories";
+import { ShareConversationButton } from "./ShareConversationButton";
 
 const tabs = [
   { label: "Details", value: "details" },
@@ -48,6 +49,15 @@ export function ConversationDetailsDrawer(props: {
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {props.privacy}
+          </div>
+          <div className="mt-3 grid justify-items-start gap-2">
+            <ShareConversationButton
+              key={props.conversationId}
+              conversationId={props.conversationId}
+            />
+            <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
+              Sharing a link does not change who can access this conversation.
+            </p>
           </div>
         </>
       }
