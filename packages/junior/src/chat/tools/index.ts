@@ -41,6 +41,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createSelfDiagnosticTool } from "@/chat/tools/runtime/self-diagnostic";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
@@ -192,6 +193,13 @@ export function createTools(
       conversationId: context.conversationId,
       db: getSqlExecutor(),
     });
+  }
+
+  if (context.readSelfDiagnostic) {
+    tools.self_diagnostic = createSelfDiagnosticTool(
+      context.conversationId,
+      context.readSelfDiagnostic,
+    );
   }
 
   if (context.handoff) {

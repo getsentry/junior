@@ -279,6 +279,28 @@ before skill selection; it does not repeat the task-fit descriptions.
 The system prompt owns when a plan helps. The `updatePlan` tool owns plan input
 and status rules.
 
+## Self diagnostic
+
+`self_diagnostic` reads an allowlist of live execution facts. The agent supplies
+model ID, profile, reasoning level, image-input support, and Conversation, Turn,
+and Run IDs. The callback reads these values when the tool runs, including after
+handoff or resume. It does not reconstruct active settings from memory, stored
+routes, or repository defaults.
+
+The result also lists configured profiles. `configuredReasoningLevel` is null
+when a profile has no fixed level. `reasoningLevel` is the level that handoff
+would use now: the profile override, or the active level. `handoffAvailable`
+excludes the active profile and is false when this Run disables handoff. The
+active configuration stays separate because Run overrides can differ from a
+profile's configured level. Missing Run IDs are null, not invented.
+
+The tool saves a Message card through the existing Item annotation path. Each
+observation has its own key and time. Later reads cannot rewrite an earlier
+card's facts. The structured result includes all profiles; the card description
+is a bounded preview. This is a read-only diagnostic, not a settings editor.
+It does not return secrets, environment variables, prompts, or credential state.
+Usage and cost totals are outside this first contract.
+
 ## Task agent input
 
 `task-input.ts` owns agent input for every task run (schedule, event, or

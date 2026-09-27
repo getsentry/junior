@@ -107,6 +107,7 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
+  readSelfDiagnostic: NonNullable<ToolRuntimeContext["readSelfDiagnostic"]>;
   resume: ResumeState;
   run: AgentRun;
   skillSandbox: SkillSandbox;
@@ -380,6 +381,7 @@ export async function wireAgentTools(
     mcpToolManager,
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
+    readSelfDiagnostic: args.readSelfDiagnostic,
     surface: args.surface,
     ...(args.currentActor
       ? {

@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { observations } from "./agent-run-model-handoff-state";
 
 export { observations } from "./agent-run-model-handoff-state";
@@ -60,7 +61,9 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
 
 vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn:
-    () => async (model: any, context: any, options: any) => {
+    ({ base }: { base?: StreamFn } = {}) =>
+    async (model: any, context: any, options: any) => {
+      if (base) return base(model, context, options);
       observations.providerCalls += 1;
       observations.handoffDescriptions.push(
         (context.tools ?? []).find(

@@ -22,6 +22,9 @@ import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 import { MODEL_HANDOFF_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
+import { createModelStream } from "../../fixtures/model-stream";
+import { selfDiagnosticSchema } from "@/chat/self-diagnostic";
+import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import {
   handoffMaintenanceTranscript,
   maintenanceHandoffSummary,
@@ -216,6 +219,89 @@ describe("model handoff execution", () => {
         (description) => description.match(/Active profile: "([^"]+)"/)?.[1],
       ),
     ).toEqual(["standard", "handoff", "standard"]);
+  });
+
+  it("reads fresh diagnostics after handoff without replacing the earlier card", async () => {
+    observations.routedReasoningLevel = "low";
+    const conversationId = "local:test:handoff-diagnostic";
+    const outcome = await executeAgentRun(
+      {
+        conversationId,
+        turnId: "turn-handoff-diagnostic",
+        instruction: { text: "Inspect settings before and after handoff." },
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      createModelStream([
+        { type: "toolCall", name: "self_diagnostic", arguments: {} },
+        { type: "toolCall", name: "handoff", arguments: { profile: "coding" } },
+        { type: "toolCall", name: "self_diagnostic", arguments: {} },
+        { type: "text", text: "Inspected both configurations." },
+      ]),
+    );
+    expect(outcome.status).toBe("completed");
+    const results = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).flatMap(({ data }) =>
+      data.type === "tool_result" && data.toolName === "self_diagnostic"
+        ? [data]
+        : [],
+    );
+    expect(results).toHaveLength(2);
+    const diagnostics = results.map((result) => {
+      expect(result.isError).toBe(false);
+      const {
+        observedAt: _observedAt,
+        objectCards: _cards,
+        ...facts
+      } = result.details as Record<string, unknown>;
+      return selfDiagnosticSchema.parse(facts);
+    });
+    expect(diagnostics.map((value) => value.active)).toEqual([
+      {
+        modelProfile: "standard",
+        modelId: "xai/grok-4.5",
+        reasoningLevel: "low",
+      },
+      {
+        modelProfile: "coding",
+        modelId: "openai/gpt-5.4",
+        reasoningLevel: "low",
+      },
+    ]);
+    expect(
+      diagnostics[0]?.profiles.find(
+        (profile) => profile.modelProfile === "coding",
+      ),
+    ).toMatchObject({
+      configuredReasoningLevel: null,
+      reasoningLevel: "low",
+      handoffAvailable: true,
+    });
+    expect(
+      diagnostics[1]?.profiles.find(
+        (profile) => profile.modelProfile === "coding",
+      ),
+    ).toMatchObject({ handoffAvailable: false });
+    expect(
+      diagnostics[1]?.profiles.find(
+        (profile) => profile.modelProfile === "standard",
+      ),
+    ).toMatchObject({ handoffAvailable: true });
+    const cards = await loadPendingMessageCards(conversationId);
+    expect(cards).toHaveLength(2);
+    expect(
+      cards.map((card) =>
+        card.kind === "object" ? card.description : undefined,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "Active: standard · xai/grok-4.5 · reasoning low",
+      ),
+      expect.stringContaining(
+        "Active: coding · openai/gpt-5.4 · reasoning low",
+      ),
+    ]);
   });
 
   it("keeps a new human request when the handoff summary selects an old maintenance task", async () => {
@@ -670,19 +756,39 @@ describe("model handoff execution", () => {
       },
     });
 
-    const resumed = await executeAgentRun({
-      conversationId,
-      runId: "run-model-handoff-default-resume",
-      turnId,
-      instruction: { text: "Implement the risky refactor." },
-      destination: { platform: "local", conversationId },
-      source: createLocalSource(conversationId),
-    });
+    const resumed = await executeAgentRun(
+      {
+        conversationId,
+        runId: "run-model-handoff-default-resume",
+        turnId,
+        instruction: { text: "Implement the risky refactor." },
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+      },
+      createModelStream([
+        { type: "toolCall", name: "self_diagnostic", arguments: {} },
+        { type: "text", text: "Resumed after handoff." },
+      ]),
+    );
 
     expect(resumed.status).toBe("completed");
     if (resumed.status !== "completed") return;
     expect(resumed.result.diagnostics.modelId).toBe("xai/grok-4.5");
-    expect(observations.initialModelId).toBe("xai/grok-4.5");
+    const result = resumed.result.piMessages?.find(
+      (message) =>
+        message.role === "toolResult" && message.toolName === "self_diagnostic",
+    );
+    expect(result).toMatchObject({
+      isError: false,
+      details: {
+        active: {
+          modelProfile: "standard",
+          modelId: "xai/grok-4.5",
+          reasoningLevel: "high",
+        },
+        runId: "run-model-handoff-default-resume",
+      },
+    });
     expect(observations.routerCalls).toBe(0);
   });
 });

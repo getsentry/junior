@@ -25,6 +25,7 @@ import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
+import type { SelfDiagnostic } from "@/chat/self-diagnostic";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -89,6 +90,8 @@ export interface ToolHooks {
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
   handoff?: HandoffControl;
+  /** Read the current execution state again after routing, handoff, or resume. */
+  readSelfDiagnostic?: () => SelfDiagnostic;
   spawnAgent?: SpawnAgent;
   /**
    * Opaque Junior conversation/session identity for this turn.

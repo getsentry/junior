@@ -794,6 +794,26 @@ async function executeAgentRunInPrivacyContext(
       preAgentPromptMessages,
       recordConnectedMcpProvider,
       requestHandoff,
+      readSelfDiagnostic: () => ({
+        conversationId,
+        turnId,
+        runId: runId ?? null,
+        supportsImageInput:
+          resolveGatewayModel(activeModelId).input.includes("image"),
+        active: {
+          modelProfile: activeModelProfile,
+          modelId: activeModelId,
+          reasoningLevel: turnRoute!.reasoningLevel,
+        },
+        defaultProfile: botConfig.defaultProfile,
+        profiles: Object.entries(botConfig.profiles).map(([name, profile]) => ({
+          modelProfile: name,
+          modelId: profile.modelId,
+          configuredReasoningLevel: profile.reasoningLevel ?? null,
+          reasoningLevel: profile.reasoningLevel ?? turnRoute!.reasoningLevel,
+          handoffAvailable: handoffEnabled && name !== activeModelProfile,
+        })),
+      }),
       resume: runResume,
       run,
       skillSandbox,
