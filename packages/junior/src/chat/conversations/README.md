@@ -82,42 +82,34 @@ narrow by destination channel id.
 
 ## Web Conversation Forks
 
-`fork.ts` copies the full event prefix through a selected assistant Message.
-A selected user Message uses the preceding assistant Message as the boundary.
-The user Message text becomes an unsent composer draft. The first user Message
-can start a fork with no history. Selecting an assistant Message leaves the
-composer empty. Both paths create the same history at the same reply boundary.
+`fork.ts` copies events through a selected assistant Message into a new web
+Conversation. A selected user Message copies through the preceding assistant
+Message and puts the selected text in the composer. The first user Message
+creates an empty fork. Neither action starts a Turn.
 
-A fork is a new web root, not a child. It has no Location. The signed-in viewer
-must have access to the source history and becomes the fork's participant.
-Private history stays private. Historical authors keep their attribution, but
-do not gain membership or credential authority in the fork. The request key
-makes retries reuse the same fork.
+The fork is a root with no Location. The viewer must have access to the source
+and becomes the fork's participant. Private history stays private. Copied authors
+do not gain membership or credential authority. The request key makes retries
+reuse the same fork.
 
-The copy keeps event sequence numbers, timestamps, history versions, and model
-messages. Only the active history version at the boundary is used for replay.
-Assistant boundaries need saved agent history with no unfinished tool calls.
-Only annotations referenced by retained Messages are copied. Cards resolve to
-the latest saved facts for those identities. An empty fork has no annotations.
-Retained attachments get separate bytes and ids. The attachment row keeps
-`history_ids` so references in unchanged history resolve within the new
-Conversation. No text or agent history item is rewritten.
+Events keep their sequence numbers, timestamps, history versions, and model
+messages. Replay uses the active history version at the selected reply. The reply
+must have completed agent history with no unfinished tool calls. Only annotations
+referenced by copied Messages are copied, with their latest saved facts.
 
-File copying runs before the publish transaction, without a source write lock.
-`fork.ts` owns that transaction. It locks the source, checks viewer access and
-retention again, and copies events with SQL. Unpublished file copies are deleted
-on failure or a concurrent retry. As with normal attachment writes, a process
-crash before cleanup can leave an object without a SQL row.
+Attachments get separate bytes and ids. `history_ids` lets unchanged references
+resolve within the fork. Files are copied without a source write lock. One
+transaction then locks the source, checks access and retention again, and copies
+events with SQL. Failure or a concurrent retry removes unused file copies. A
+process crash can leave an object without a SQL row, as with normal file writes.
 
-`inherited_through_seq` marks copied events. Model usage and auxiliary cost
-reports count only events after this boundary. Replay still uses the exact saved
-model messages, including their usage fields. Transcript purge clears the
-boundary so new events can start at sequence zero.
+`inherited_through_seq` excludes copied events from model usage and auxiliary
+cost reports. It does not change replay. Purge clears this boundary when it
+removes the events.
 
-Forking does not start a Turn. It does not copy mailbox work, execution leases,
-watches, automations, agent bindings, or Sandbox files. Historical child
-Conversation references remain links to the original child. The normal web
-composer starts the next Turn after the user sends a Message.
+Mailbox work, execution leases, watches, automations, agent bindings, and Sandbox
+files are not copied. Child Conversation references still link to the original
+child. The normal composer starts a Turn when the user sends a Message.
 
 ## Agent History Replacement
 

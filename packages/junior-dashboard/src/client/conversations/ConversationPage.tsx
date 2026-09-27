@@ -67,15 +67,6 @@ export function ConversationPage(props: {
   onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
-  const location = useLocation();
-  const state: unknown = location.state;
-  const initialMessage =
-    state &&
-    typeof state === "object" &&
-    "forkPrefill" in state &&
-    typeof state.forkPrefill === "string"
-      ? state.forkPrefill
-      : undefined;
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [view, setView] = useState<TranscriptViewMode>("rich");
@@ -286,7 +277,6 @@ export function ConversationPage(props: {
         dock={
           view === "rich" && detail.data?.isParticipant ? (
             <ConversationReplyFooter
-              initialMessage={initialMessage}
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
               // too large to re-enter the footer on every live poll while typing.
@@ -319,7 +309,6 @@ export function ConversationPage(props: {
 const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   committedMessageIds: readonly string[];
   conversationId: string;
-  initialMessage?: string;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
@@ -327,12 +316,20 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const state: unknown = location.state;
+  const initialMessage =
+    state &&
+    typeof state === "object" &&
+    "forkPrefill" in state &&
+    typeof state.forkPrefill === "string"
+      ? state.forkPrefill
+      : undefined;
   useEffect(() => {
     // Consume navigation state only after the composer has mounted. Reopening
     // the composer must restore its current draft, not the original fork input.
-    if (props.initialMessage !== undefined)
+    if (initialMessage !== undefined)
       navigate(location.pathname, { replace: true, state: null });
-  }, [props.initialMessage, location.pathname, navigate]);
+  }, [initialMessage, location.pathname, navigate]);
   const appendMessage = useAppendConversationMessage(props.conversationId);
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
@@ -443,7 +440,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       }
     >
       <ConversationComposer
-        initialMessage={props.initialMessage}
+        initialMessage={initialMessage}
         draftId={props.conversationId}
         label="Continue this conversation"
         submitLabel="Send"

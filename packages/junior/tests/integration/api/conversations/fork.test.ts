@@ -1,12 +1,16 @@
 import { Hono } from "hono";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { getDb, getSqlExecutor } from "@/chat/db";
 import { purgeConversationTree } from "@/chat/conversations/sql/purge";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { forkConversationResponseSchema } from "@/api/schema";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
 import { loadProjection } from "@/chat/conversations/projection";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
@@ -41,6 +45,16 @@ function requestFork(
       body: JSON.stringify({ messageSeq, idempotencyKey: key }),
     },
   );
+}
+
+async function createFork(
+  app: ReturnType<typeof api>,
+  conversationId: string,
+  messageSeq: number,
+) {
+  const response = await requestFork(app, conversationId, messageSeq);
+  expect(response.status).toBe(200);
+  return forkConversationResponseSchema.parse(await response.json());
 }
 
 describe("conversation fork API", () => {
@@ -81,25 +95,13 @@ describe("conversation fork API", () => {
         event.data.text === "Try a different approach.",
     )!;
     const app = api();
-    const assistantResponse = await requestFork(
+    const assistantFork = await createFork(
       app,
       source.conversationId,
       reply.seq,
     );
-    expect(assistantResponse.status).toBe(200);
-    const assistantFork = forkConversationResponseSchema.parse(
-      await assistantResponse.json(),
-    );
     expect(assistantFork.prefill).toBe("");
-    const userResponse = await requestFork(
-      app,
-      source.conversationId,
-      user.seq,
-    );
-    expect(userResponse.status).toBe(200);
-    const userFork = forkConversationResponseSchema.parse(
-      await userResponse.json(),
-    );
+    const userFork = await createFork(app, source.conversationId, user.seq);
     expect(userFork.prefill).toBe("Try a different approach.");
     expect(userFork.conversationId).not.toBe(assistantFork.conversationId);
     const prefix = sourceHistory.filter((event) => event.seq <= reply.seq);
@@ -134,15 +136,12 @@ describe("conversation fork API", () => {
     expect(harness.queue.hasQueuedMessages()).toBe(false);
     const retry = await requestFork(app, source.conversationId, user.seq);
     expect(await retry.json()).toEqual(userFork);
-    const emptyResponse = await requestFork(
+    const emptyFork = await createFork(
       app,
       source.conversationId,
       sourceHistory.find(
         (event) => event.data.type === "message" && event.data.role === "user",
       )!.seq,
-    );
-    const emptyFork = forkConversationResponseSchema.parse(
-      await emptyResponse.json(),
     );
     expect(emptyFork.prefill).toBe("Remember the first request.");
     expect(
@@ -164,7 +163,6 @@ describe("conversation fork API", () => {
     const newCall = continuedHistory
       .filter((event) => event.data.type === "assistant_message")
       .at(-1)!;
-    expect(newCall.data.type).toBe("assistant_message");
     if (newCall.data.type !== "assistant_message")
       throw new Error("Missing model call");
     expect(newCall.data.usage).toMatchObject({
@@ -185,7 +183,7 @@ describe("conversation fork API", () => {
     ).toEqual(firstProjection);
   });
 
-  it("copies history replacements without replaying older model history or accepting an open tool call", async () => {
+  it("keeps replaced history and referenced cards without counting inherited costs", async () => {
     const conversationId = "local:web:compacted-source";
     const store = getConversationEventStore();
     await getConversationStore().recordActivity({
@@ -199,15 +197,15 @@ describe("conversation fork API", () => {
       db: getDb(),
       plugin: "test",
     });
-    await annotations.upsert({
-      kind: "object",
+    const retained = {
+      kind: "object" as const,
       key: "retained",
-      objectType: "item",
+      objectType: "item" as const,
       title: "Retained",
       label: "Retained",
       url: null,
-      status: "open",
-    });
+    };
+    await annotations.upsert({ ...retained, status: "open" });
     await store.append(conversationId, [
       {
         createdAtMs: 0,
@@ -302,15 +300,7 @@ describe("conversation fork API", () => {
     ]);
     const history = await store.loadHistory(conversationId);
     const guardianBefore = (await readConversationStatsFromSql()).guardian;
-    await annotations.upsert({
-      kind: "object",
-      key: "retained",
-      objectType: "item",
-      title: "Retained",
-      label: "Retained",
-      url: null,
-      status: "closed",
-    });
+    await annotations.upsert({ ...retained, status: "closed" });
     await annotations.upsert({
       kind: "object",
       key: "later",
@@ -319,13 +309,7 @@ describe("conversation fork API", () => {
       label: "Later work",
       url: null,
     });
-    const response = await requestFork(
-      api(),
-      conversationId,
-      history.at(-1)!.seq,
-    );
-    expect(response.status).toBe(200);
-    const fork = forkConversationResponseSchema.parse(await response.json());
+    const fork = await createFork(api(), conversationId, history.at(-1)!.seq);
     expect(await store.loadHistory(fork.conversationId)).toEqual(history);
     expect(await loadProjection(fork)).toEqual(
       await loadProjection({ conversationId }),
@@ -340,15 +324,11 @@ describe("conversation fork API", () => {
     ]);
     expect(forkDetail?.auxiliaryCosts).toBeUndefined();
     expect(forkDetail?.modelUsage).toBeUndefined();
-    expect(
-      (await readConversationDetail(conversationId))?.modelUsage,
-    ).toMatchObject([{ usage: { cost: { total: 0.3 } } }]);
-    expect(
-      (await readConversationDetail(conversationId))?.auxiliaryCosts?.costUsd,
-    ).toBe(0.11);
-    const empty = forkConversationResponseSchema.parse(
-      await (await requestFork(api(), conversationId, 0)).json(),
-    );
+    expect(await readConversationDetail(conversationId)).toMatchObject({
+      modelUsage: [{ usage: { cost: { total: 0.3 } } }],
+      auxiliaryCosts: { costUsd: 0.11 },
+    });
+    const empty = await createFork(api(), conversationId, 0);
     expect(
       (await readConversationDetail(empty.conversationId))?.annotations,
     ).toEqual([]);
@@ -448,9 +428,7 @@ describe("conversation fork API", () => {
     ).toBe(401);
     expect((await requestFork(api(), conversationId, 1)).status).toBe(409);
     expect((await requestFork(api(), conversationId, 999)).status).toBe(409);
-    const response = await requestFork(api(), conversationId, 0);
-    expect(response.status).toBe(200);
-    const fork = forkConversationResponseSchema.parse(await response.json());
+    const fork = await createFork(api(), conversationId, 0);
     expect(await getConversationStore().get(fork)).toMatchObject({
       visibility: "private",
     });

@@ -20,17 +20,17 @@ import {
   recordWebConversationActivity,
 } from "./web-input";
 
-/** An expected request cannot produce a usable Conversation fork. */
+/** The selected history cannot be forked. */
 export class ConversationForkError extends Error {}
 
-/** Copy a reply boundary without starting work or holding source locks during file I/O. */
+/** Copy history into a new Conversation without starting a Turn. */
 export async function forkConversation(args: {
   actor: WebActor;
   attachmentStorage: AttachmentStorage;
   conversationId: string;
   messageSeq: number;
   idempotencyKey: string;
-  /** The API checks viewer access before reading and again inside the publish transaction. */
+  /** Check access before copying files and again before saving the fork. */
   authorize(): Promise<"private" | "public">;
 }): Promise<{ conversationId: string; prefill: string }> {
   if (!args.actor.email) throw new Error("Web Actor requires a verified email");
@@ -66,19 +66,15 @@ export async function forkConversation(args: {
   if (
     selected?.seq !== args.messageSeq ||
     selected.type !== "message" ||
-    !["assistant", "user"].includes(String(selected.payload.role))
+    (selected.payload.role !== "assistant" && selected.payload.role !== "user")
   )
     throw new ConversationForkError("Select a user or assistant message.");
   const prefill =
     selected.payload.role === "user" ? String(selected.payload.text) : "";
-  const boundary =
-    selected.payload.role === "assistant"
-      ? selected
-      : sourceRows
-          .filter(
-            (row) => row.type === "message" && row.payload.role === "assistant",
-          )
-          .at(-1);
+  const replies = sourceRows.filter(
+    (row) => row.type === "message" && row.payload.role === "assistant",
+  );
+  const boundary = replies.at(-1);
   const throughSeq = boundary?.seq ?? -1;
   const rows = sourceRows.filter((row) => row.seq <= throughSeq);
   if (boundary) {
@@ -98,15 +94,7 @@ export async function forkConversation(args: {
     const { messages, seqs } = projectConversationEvents(events, {
       defaultProfile: botConfig.defaultProfile,
     });
-    const previousReplySeq =
-      rows
-        .filter(
-          (row) =>
-            row.seq < boundary.seq &&
-            row.type === "message" &&
-            row.payload.role === "assistant",
-        )
-        .at(-1)?.seq ?? -1;
+    const previousReplySeq = replies.at(-2)?.seq ?? -1;
     const tail = messages.at(-1);
     const pending = new Set<string>();
     for (const message of messages) {
@@ -119,8 +107,7 @@ export async function forkConversation(args: {
     if (
       (seqs.at(-1) ?? -1) <= previousReplySeq ||
       tail?.role !== "assistant" ||
-      tail.content.some((part) => part.type === "toolCall") ||
-      pending.size ||
+      pending.size > 0 ||
       tail.stopReason === "error" ||
       tail.stopReason === "aborted"
     )
@@ -133,7 +120,10 @@ export async function forkConversation(args: {
   const refs = rows.flatMap((row) =>
     row.type === "message" || row.type === "message_updated"
       ? readMessageCardRefs(
-          (row.payload.meta ?? {}) as Parameters<typeof readMessageCardRefs>[0],
+          (row.payload.meta ?? {}) as {
+            cards?: unknown;
+            objectCards?: unknown;
+          },
         )
       : [],
   );
@@ -172,7 +162,7 @@ export async function forkConversation(args: {
           throw new ConversationForkError(
             "Conversation history changed. Try again.",
           );
-        // Source locking also serializes retries for the same deterministic fork id.
+        // The source lock also prevents retries from creating the fork twice.
         if (await getConversationStore().get({ conversationId })) return false;
         await recordWebConversationActivity({
           actor: args.actor,

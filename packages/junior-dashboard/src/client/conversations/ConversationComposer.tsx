@@ -123,13 +123,10 @@ export const ConversationComposer = memo(function ConversationComposer(
   const sendLocked =
     Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
 
-  // Persist a fork prefill before navigation state is consumed or the page reloads.
   useEffect(() => {
+    // Save the initial draft before the fork navigation state is cleared.
     storeDraft(storageKey, draftRef.current);
-  }, [storageKey]);
-
-  // Flush the latest draft if the reader leaves before the debounce lands.
-  useEffect(() => {
+    // Flush edits if the reader leaves before the debounce lands.
     return () => {
       if (storageTimerRef.current !== undefined) {
         window.clearTimeout(storageTimerRef.current);

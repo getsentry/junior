@@ -5,8 +5,7 @@ import { testViewer } from "../../fixtures/user";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversationTree } from "@/chat/conversations/sql/purge";
-import { juniorDestinations } from "@/db/schema";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { juniorAttachments, juniorDestinations } from "@/db/schema";
 import { storeAttachment, readLiveAttachment } from "@/chat/attachments/store";
 import {
   getConversationStore,
@@ -15,17 +14,16 @@ import {
   getDb,
   closeDb,
 } from "@/chat/db";
-import { juniorAttachments } from "@/db/schema";
 import { memoryAttachmentStorage } from "../../fixtures/attachment-storage";
 
 const conversationId = "local:web:attachment-source";
-const actor = webActorFromEmail("alice@example.com");
+const viewer = testViewer("alice@example.com");
 
 async function seed() {
   const storage = memoryAttachmentStorage();
   await getConversationStore().recordActivity({
     conversationId,
-    actor: { email: actor.email },
+    actor: { email: viewer.email },
     destination: { platform: "local", conversationId },
     visibility: "private",
     source: "web",
@@ -117,7 +115,7 @@ describe("fork attachment ownership", () => {
         await storage.put(input);
         // A retry wins publication while this request is still copying bytes.
         await forkConversationForViewer(
-          testViewer(actor.email!),
+          viewer,
           conversationId,
           { messageSeq: 2, idempotencyKey: "fork" },
           storage,
@@ -125,7 +123,7 @@ describe("fork attachment ownership", () => {
       },
     };
     const fork = await forkConversationForViewer(
-      testViewer(actor.email!),
+      viewer,
       conversationId,
       { messageSeq: 2, idempotencyKey: "fork" },
       copying,
@@ -154,7 +152,7 @@ describe("fork attachment ownership", () => {
       await getConversationEventStore().loadHistory(fork.conversationId),
     ).toEqual(historyBefore);
     const nested = await forkConversationForViewer(
-      testViewer(actor.email!),
+      viewer,
       fork.conversationId,
       { messageSeq: 2, idempotencyKey: "nested" },
       storage,
@@ -178,7 +176,7 @@ describe("fork attachment ownership", () => {
     ).toEqual(historyBefore);
   });
 
-  it("rolls back the fork and cleans up its objects when the copy fails", async () => {
+  it("removes unfinished copies when file storage fails", async () => {
     const { storage } = await seed();
     const before = await getConversationStore().listByActivity();
     const failingStorage = {
@@ -190,7 +188,7 @@ describe("fork attachment ownership", () => {
     };
     await expect(
       forkConversationForViewer(
-        testViewer(actor.email!),
+        viewer,
         conversationId,
         { messageSeq: 2, idempotencyKey: "failure" },
         failingStorage,
@@ -200,7 +198,7 @@ describe("fork attachment ownership", () => {
     expect(storage.objects.size).toBe(1);
     expect(await getDb().select().from(juniorAttachments)).toHaveLength(1);
   });
-  it("rechecks retention and cleans up unpublished bytes after a purge during copying", async () => {
+  it("rejects a source purged during file copying", async () => {
     const { storage } = await seed();
     const copying = {
       ...storage,
@@ -214,7 +212,7 @@ describe("fork attachment ownership", () => {
     };
     await expect(
       forkConversationForViewer(
-        testViewer(actor.email!),
+        viewer,
         conversationId,
         { messageSeq: 2, idempotencyKey: "purged" },
         copying,
