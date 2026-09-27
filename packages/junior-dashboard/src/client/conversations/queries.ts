@@ -189,7 +189,7 @@ function outboxActorIdentity(
   if (!user?.email) return undefined;
   return {
     email: user.email,
-    ...(user.name ? { fullName: user.name } : undefined),
+    fullName: user.name || undefined,
   };
 }
 

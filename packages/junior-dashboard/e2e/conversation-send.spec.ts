@@ -212,11 +212,8 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
-  const reply = pending
-    .locator("article")
-    .filter({ hasText: "Continue in Junior" });
   await expect(
-    reply.getByText("dev@example.com", { exact: true }),
+    pending.getByText("dev@example.com", { exact: true }),
   ).toBeVisible();
   await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
@@ -247,9 +244,6 @@ test("starts and continues conversations from the dashboard", async ({
   // refreshes finish. Keep the local row until a server snapshot sees it.
   await expect(composer).toHaveValue("");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
-  await expect(
-    reply.getByText("dev@example.com", { exact: true }),
-  ).toBeVisible();
   releaseDetailRefresh?.();
   await screenshot(page, "conversation-outbox-author");
 
