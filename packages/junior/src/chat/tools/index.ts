@@ -168,9 +168,11 @@ export function createTools(
         state,
         (input) => readSandboxFileUpload(context.workspace, input),
         {
-          conversationId: context.conversationId,
-          db: getSqlExecutor(),
-          storage: context.attachmentStorage,
+          attachments: {
+            conversationId: context.conversationId,
+            db: getSqlExecutor(),
+            storage: context.attachmentStorage,
+          },
         },
       );
     }

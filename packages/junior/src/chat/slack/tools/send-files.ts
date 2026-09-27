@@ -21,19 +21,22 @@ export function createSlackSendFilesTool(
 ) {
   const channelId = context.locationChannelId;
   const threadTs = context.threadTs ?? context.messageTs;
-  return createSendFilesTool(state, materializeFile, attachments, {
-    key: `${channelId}:${threadTs ?? ""}`,
-    description:
-      "Send one or more sandbox files into the active Slack conversation.",
-    async send(files) {
-      await uploadFilesToConversation({
-        channelId,
-        files: files.map((file) => ({
-          data: file.data,
-          filename: file.filename,
-        })),
-        ...(threadTs ? { threadTs } : undefined),
-      });
+  return createSendFilesTool(state, materializeFile, {
+    attachments,
+    delivery: {
+      key: `${channelId}:${threadTs ?? ""}`,
+      description:
+        "Send one or more sandbox files into the active Slack conversation.",
+      async send(files) {
+        await uploadFilesToConversation({
+          channelId,
+          files: files.map((file) => ({
+            data: file.data,
+            filename: file.filename,
+          })),
+          ...(threadTs ? { threadTs } : undefined),
+        });
+      },
     },
   });
 }

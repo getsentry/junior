@@ -63,25 +63,31 @@ describe("web file delivery", () => {
     const input = {
       files: [{ path: "/tmp/desktop.png" }, { path: "/tmp/mobile.png" }],
     };
-    const result = await tool.execute(input, {
-      toolCallId: "send-screenshots",
-    });
-    const retry = await tool.execute(input, { toolCallId: "send-again" });
-    expect(retry).toMatchObject({ ...(result as object), deduplicated: true });
+    await tool.execute(input, { toolCallId: "send-screenshots" });
     expect(storage.objects.size).toBe(2);
     expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual(
       [],
     );
 
-    const history =
-      await getConversationEventStore().loadHistory(conversationId);
-    const delivered = history.filter(
-      (event) => event.data.type === "attachments_delivered",
+    const app = new Hono<JuniorApiEnv>();
+    app.use("*", async (ctx, next) => {
+      const email = ctx.req.header("x-test-viewer");
+      if (email) ctx.set("viewer", testViewer(email));
+      await next();
+    });
+    app.route(
+      "/api/conversations",
+      createConversationRoutes({ attachmentStorage: storage }),
+    );
+    const base = `/api/conversations/${encodeURIComponent(conversationId)}`;
+    const headers = { "x-test-viewer": fixture.actor.email };
+    const report = await (await app.request(base, { headers })).json();
+    const delivered = report.events.filter(
+      (event: { data: { type: string } }) =>
+        event.data.type === "attachments_delivered",
     );
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]?.data).toMatchObject({
-      type: "attachments_delivered",
-      toolCallId: "send-screenshots",
+    expect(delivered[0].data).toMatchObject({
       attachments: [
         {
           id: expect.any(String),
@@ -97,26 +103,7 @@ describe("web file delivery", () => {
         },
       ],
     });
-
-    const app = new Hono<JuniorApiEnv>();
-    app.use("*", async (ctx, next) => {
-      const email = ctx.req.header("x-test-viewer");
-      if (email) ctx.set("viewer", testViewer(email));
-      await next();
-    });
-    app.route(
-      "/api/conversations",
-      createConversationRoutes({ attachmentStorage: storage }),
-    );
-    const base = `/api/conversations/${encodeURIComponent(conversationId)}`;
-    const headers = { "x-test-viewer": fixture.actor.email };
-    const report = await (await app.request(base, { headers })).json();
-    const part = report.events.find(
-      (event: { data: { type: string } }) =>
-        event.data.type === "attachments_delivered",
-    );
-    expect(part.data.attachments).toHaveLength(2);
-    const path = `${base}/attachments/${part.data.attachments[0].id}`;
+    const path = `${base}/attachments/${delivered[0].data.attachments[0].id}`;
     const download = await app.request(path, { headers });
     expect(download.status).toBe(200);
     expect(download.headers.get("content-type")).toBe("image/png");

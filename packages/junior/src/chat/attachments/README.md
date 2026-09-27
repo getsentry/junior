@@ -30,14 +30,10 @@ This module owns durable files linked to a conversation.
 
 ## File output
 
-`tools/send-files.ts` stores sandbox files and records attachment delivery in
-the Conversation transcript. Without a Location, attachment storage is required
-for `sendFiles`. Files keep the Conversation's access and retention rules;
-this path does not create public artifacts.
-
-`slack/tools/send-files.ts` adds delivery to the active Slack Location. It uses
-the same storage and transcript path. A cached retry keeps the first delivery
-identity so it does not add another transcript item or upload to Slack again.
+`sendFiles` requires attachment storage for web-only Conversations. It stores
+sandbox files and adds them to the transcript under the Conversation's access
+and retention rules. It does not create public URLs. Slack adds an upload to
+the active Location through `slack/tools/send-files.ts`.
 
 ## Web image input
 

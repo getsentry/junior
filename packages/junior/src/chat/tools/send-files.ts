@@ -25,13 +25,10 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
   attachment_refs: z.array(
     z.object({
       id: z.string().min(1),
-      // Same noun as storage, delivery events, and the report API.
       filename: z.string().min(1),
     }),
   ),
 });
-
-type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
 type DeliveredAttachment = {
   bytes: number;
@@ -40,11 +37,9 @@ type DeliveredAttachment = {
   id: string;
 };
 
-/** Operation cache keeps delivery metadata so retries can re-record safely. */
+/** Keep the first delivery identity when a tool call is retried. */
 type CachedSendFiles = {
   delivered: DeliveredAttachment[];
-  result: SendFilesResult;
-  /** Identity used for the first delivery event; retries must reuse it. */
   toolCallId?: string;
 };
 
@@ -58,10 +53,6 @@ function normalizeFiles(
   }));
 }
 
-function fileContentDigest(data: Buffer): string {
-  return createHash("sha256").update(data).digest("hex");
-}
-
 /** Include file bytes in idempotency so rewritten paths can be sent again. */
 function fileOperationInput(files: SandboxFileUpload[]) {
   return files.map((file) => ({
@@ -69,7 +60,7 @@ function fileOperationInput(files: SandboxFileUpload[]) {
     filename: file.filename,
     mimeType: file.mimeType,
     path: file.path,
-    sha256: fileContentDigest(file.data),
+    sha256: createHash("sha256").update(file.data).digest("hex"),
   }));
 }
 
@@ -89,10 +80,11 @@ type FileDelivery = {
 export function createSendFilesTool(
   state: ToolState,
   materializeFile: MaterializeFile,
-  ...[attachments, delivery]:
-    | [attachments: FileAttachments, delivery?: FileDelivery]
-    | [attachments: FileAttachments | undefined, delivery: FileDelivery]
+  output:
+    | { attachments: FileAttachments; delivery?: FileDelivery }
+    | { attachments?: FileAttachments; delivery: FileDelivery },
 ) {
+  const { attachments, delivery } = output;
   return zodTool({
     annotations: {
       destructiveHint: false,
@@ -122,72 +114,55 @@ export function createSendFilesTool(
         delivery: delivery?.key,
         files: fileOperationInput(materializedFiles),
       });
-      const cached = state.getOperationResult<CachedSendFiles>(operationKey);
-      if (cached) {
-        // A prior attempt may have delivered files and cached before the
-        // transcript event landed. Re-record with the original delivery identity
-        // so a later toolCallId cannot mint a second transcript row.
-        if (attachments && cached.delivered.length > 0) {
-          await recordAttachmentsDelivered({
-            attachments: cached.delivered,
-            conversationId: attachments.conversationId,
-            ...(cached.toolCallId
-              ? { toolCallId: cached.toolCallId }
-              : undefined),
-          });
-        }
-        return sendFilesResultSchema.parse({
-          ...cached.result,
-          deduplicated: true,
-        });
-      }
-
-      const stored = attachments
-        ? await storeAttachments({
-            conversationId: attachments.conversationId,
-            db: attachments.db,
-            files: materializedFiles,
-            storage: attachments.storage,
-          })
-        : [];
-      await delivery?.send(materializedFiles);
-      const delivered: DeliveredAttachment[] = stored.map(
-        (attachment, index) => {
-          const file = materializedFiles[index]!;
-          return {
-            id: attachment.id,
-            filename: file.filename,
-            contentType: file.mimeType,
-            bytes: file.bytes,
-          };
-        },
-      );
-      const response: SendFilesResult = {
-        // Tool result stays minimal; transcript/report carries full metadata.
-        attachment_refs: delivered.map((attachment) => ({
-          id: attachment.id,
-          filename: attachment.filename,
-        })),
-      };
-      // Cache before host bookkeeping so a later event-write failure cannot
-      // cause another delivery on retry.
-      state.setOperationResult(operationKey, {
-        delivered,
-        result: response,
-        ...(options.toolCallId
-          ? { toolCallId: options.toolCallId }
-          : undefined),
-      } satisfies CachedSendFiles);
-      if (attachments && delivered.length > 0) {
-        await recordAttachmentsDelivered({
-          attachments: delivered,
-          conversationId: attachments.conversationId,
+      let cached = state.getOperationResult<CachedSendFiles>(operationKey);
+      const deduplicated = Boolean(cached);
+      if (!cached) {
+        const stored = attachments
+          ? await storeAttachments({
+              conversationId: attachments.conversationId,
+              db: attachments.db,
+              files: materializedFiles,
+              storage: attachments.storage,
+            })
+          : [];
+        await delivery?.send(materializedFiles);
+        const delivered: DeliveredAttachment[] = stored.map(
+          (attachment, index) => {
+            const file = materializedFiles[index]!;
+            return {
+              id: attachment.id,
+              filename: file.filename,
+              contentType: file.mimeType,
+              bytes: file.bytes,
+            };
+          },
+        );
+        // Cache before recording the event so a retry cannot send files twice.
+        cached = {
+          delivered,
           ...(options.toolCallId
             ? { toolCallId: options.toolCallId }
             : undefined),
+        };
+        state.setOperationResult(operationKey, cached);
+      }
+      if (attachments && cached.delivered.length > 0) {
+        await recordAttachmentsDelivered({
+          attachments: cached.delivered,
+          conversationId: attachments.conversationId,
+          ...(cached.toolCallId
+            ? { toolCallId: cached.toolCallId }
+            : undefined),
         });
       }
-      return response;
+      const result: z.output<typeof sendFilesResultSchema> = {
+        attachment_refs: cached.delivered.map(({ id, filename }) => ({
+          id,
+          filename,
+        })),
+      };
+      if (deduplicated) result.deduplicated = true;
+      return result;
     },
   });
 }
