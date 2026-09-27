@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
+  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useMutationState,
@@ -8,6 +9,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
+  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -25,6 +27,7 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
+import type { DashboardCoreData } from "../types";
 import {
   DashboardApiError,
   del,
@@ -176,6 +179,20 @@ export function conversationDetailQueryOptions(
   });
 }
 
+function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
+
 /** Create one dashboard conversation and refresh the personal feed. */
 export function useCreateConversation() {
   const queryClient = useQueryClient();
@@ -193,6 +210,7 @@ export function useCreateConversation() {
           upsertConversationOutboxMessage(current, {
             ...conversationOutboxMessageForSubmit({
               ...args,
+              actorIdentity: outboxActorIdentity(queryClient),
               messageId: accepted.messageId,
             }),
             status: "accepted",
@@ -233,6 +251,7 @@ export function useAppendConversationMessage(conversationId: string) {
       });
       const optimistic = conversationOutboxMessageForSubmit({
         ...args,
+        actorIdentity: outboxActorIdentity(queryClient),
         messageId,
       });
       queryClient.setQueryData<ConversationOutboxMessage[]>(

@@ -212,6 +212,9 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
+  await expect(
+    pending.getByText("dev@example.com", { exact: true }),
+  ).toBeVisible();
   await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
   // Distinct messages can queue while an earlier accept is still open.
@@ -242,6 +245,7 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(composer).toHaveValue("");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   releaseDetailRefresh?.();
+  await screenshot(page, "conversation-outbox-author");
 
   await page.reload();
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
