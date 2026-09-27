@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useHref } from "react-router";
 import { Check, Share2 } from "lucide-react";
 
 import { Button } from "../components/Button";
@@ -9,6 +10,7 @@ export function ShareConversationButton(props: {
   conversationId: string;
   layout?: "button" | "menu";
 }) {
+  const href = useHref(conversationPath(props.conversationId));
   const [status, setStatus] = useState<
     "idle" | "copying" | "copied" | "failed"
   >("idle");
@@ -29,10 +31,7 @@ export function ShareConversationButton(props: {
   async function copyLink() {
     setStatus("copying");
     try {
-      const url = new URL(
-        conversationPath(props.conversationId),
-        window.location.origin,
-      );
+      const url = new URL(href, window.location.origin);
       await navigator.clipboard.writeText(url.href);
       setStatus("copied");
     } catch {

@@ -1,5 +1,6 @@
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
+import { startDashboardE2eServer } from "./harness";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -340,6 +341,38 @@ test("opens a conversation in the built dashboard", async ({
   );
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
+});
+
+test("shares a conversation hosted under a dashboard base path", async ({
+  context,
+  page,
+}) => {
+  const dashboard = await startDashboardE2eServer({ basePath: "/ops" });
+  try {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: dashboard.baseURL,
+    });
+    const url = `${dashboard.baseURL}/ops/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`;
+    await page.goto(`${url}?view=raw#event-0`);
+    await page
+      .getByRole("button", { name: "Conversation details", exact: true })
+      .click();
+    const details = page.getByRole("dialog", {
+      name: "Investigate checkout latency",
+    });
+    await details.getByRole("button", { name: "Share", exact: true }).click();
+    await expect(
+      details.getByRole("button", { name: "Link copied" }),
+    ).toBeVisible();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toBe(url);
+    await page.goto(copied);
+    await expect(
+      page.getByRole("heading", { name: "Investigate checkout latency" }),
+    ).toBeVisible();
+  } finally {
+    await dashboard.close();
+  }
 });
 
 test("collapses long pending message stacks", async ({ page, dashboard }) => {
