@@ -1,10 +1,12 @@
 import type {
+  ActorIdentity,
   ConversationPendingMessage,
   InputImage,
 } from "@sentry/junior/api/schema";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
+  actorIdentity?: ActorIdentity;
   createdAt: string;
   idempotencyKey: string;
   message: string;
@@ -27,6 +29,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 
 /** Build one optimistic outbox row for a composer submit. */
 export function conversationOutboxMessageForSubmit(input: {
+  actorIdentity?: ActorIdentity;
   idempotencyKey: string;
   message: string;
   images?: InputImage[];
@@ -35,6 +38,7 @@ export function conversationOutboxMessageForSubmit(input: {
 }): ConversationOutboxMessage {
   const createdAt = input.now ?? new Date().toISOString();
   return {
+    actorIdentity: input.actorIdentity,
     createdAt,
     idempotencyKey: input.idempotencyKey,
     message: input.message,
@@ -49,6 +53,7 @@ export function mailboxMessageFromOutbox(
   message: ConversationOutboxMessage,
 ): ConversationMailboxMessage {
   return {
+    actorIdentity: message.actorIdentity,
     clientStatus: message.status,
     createdAt: message.createdAt,
     delivery: "defer",
