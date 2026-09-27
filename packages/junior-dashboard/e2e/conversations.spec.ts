@@ -261,11 +261,6 @@ test("opens a conversation in the built dashboard", async ({
     origin: dashboard.baseURL,
   });
   const conversationUrl = page.url();
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    conversationUrl,
-  );
 
   const detailsButton = page.getByRole("button", {
     name: "Conversation details",
@@ -322,9 +317,7 @@ test("opens a conversation in the built dashboard", async ({
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await screenshot(page, "conversation-share-menu", { view: "mobile" });
   await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Link copied" }).last(),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );

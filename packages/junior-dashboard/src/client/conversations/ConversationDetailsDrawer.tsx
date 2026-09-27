@@ -50,15 +50,6 @@ export function ConversationDetailsDrawer(props: {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {props.privacy}
           </div>
-          <div className="mt-3 grid justify-items-start gap-2">
-            <ShareConversationButton
-              key={props.conversationId}
-              conversationId={props.conversationId}
-            />
-            <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
-              Sharing a link does not change who can access this conversation.
-            </p>
-          </div>
         </>
       }
       onClose={props.onClose}
@@ -95,8 +86,7 @@ export function ConversationDetailsDrawer(props: {
             No additional conversation details.
           </p>
         )}
-        {tab === "details" &&
-        (props.lastActivityAt || props.sentryConversationUrl) ? (
+        {tab === "details" ? (
           <footer className="mt-5 grid gap-3 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
             {props.lastActivityAt ? (
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -112,20 +102,29 @@ export function ConversationDetailsDrawer(props: {
                 </time>
               </div>
             ) : null}
-            {props.sentryConversationUrl ? (
-              <ButtonLink
-                className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                to={props.sentryConversationUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Open in Sentry
-                <ExternalLink
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0"
-                />
-              </ButtonLink>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareConversationButton
+                key={props.conversationId}
+                conversationId={props.conversationId}
+              />
+              {props.sentryConversationUrl ? (
+                <ButtonLink
+                  className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                  to={props.sentryConversationUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open in Sentry
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0"
+                  />
+                </ButtonLink>
+              ) : null}
+            </div>
+            <p className="m-0 leading-relaxed">
+              Sharing a link does not change who can access this conversation.
+            </p>
           </footer>
         ) : null}
       </SegmentedTabs>

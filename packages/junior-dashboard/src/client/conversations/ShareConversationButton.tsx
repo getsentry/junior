@@ -2,13 +2,12 @@ import { useState } from "react";
 import { Check, Share2 } from "lucide-react";
 
 import { Button } from "../components/Button";
-import { IconButtonTooltip } from "../components/Tooltip";
 import { conversationPath } from "./conversationRoutes";
 
 /** Copy a conversation link without changing who can access it. */
 export function ShareConversationButton(props: {
   conversationId: string;
-  layout?: "icon" | "menu";
+  layout?: "button" | "menu";
 }) {
   const [status, setStatus] = useState<
     "idle" | "copying" | "copied" | "failed"
@@ -44,7 +43,7 @@ export function ShareConversationButton(props: {
   const content = (
     <>
       <Icon aria-hidden="true" size={16} strokeWidth={2} />
-      {props.layout !== "icon" ? <span>{label}</span> : null}
+      <span>{label}</span>
     </>
   );
   const button =
@@ -63,7 +62,6 @@ export function ShareConversationButton(props: {
         aria-label={label}
         disabled={status === "copying"}
         onClick={() => void copyLink()}
-        size={props.layout === "icon" ? "icon" : "default"}
       >
         {content}
       </Button>
@@ -71,13 +69,7 @@ export function ShareConversationButton(props: {
 
   return (
     <>
-      {props.layout === "icon" ? (
-        <IconButtonTooltip label={feedback || "Share conversation link"}>
-          {button}
-        </IconButtonTooltip>
-      ) : (
-        button
-      )}
+      {button}
       <span className="sr-only" role="status">
         {feedback}
       </span>

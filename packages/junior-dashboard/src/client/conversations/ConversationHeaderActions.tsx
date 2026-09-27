@@ -91,11 +91,6 @@ export function ConversationHeaderActions(props: {
         onClick={props.onSearchClick}
         open={props.searchOpen}
       />
-      <ShareConversationButton
-        key={props.conversationId}
-        conversationId={props.conversationId}
-        layout="icon"
-      />
       {props.copyAction}
       <ArchiveConversationButton {...props.archive} layout="bar" />
       <Button
