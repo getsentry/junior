@@ -14,6 +14,7 @@ import { Button, ToggleButton } from "../components/Button";
 import { IconButtonTooltip } from "../components/Tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { ShareConversationButton } from "./ShareConversationButton";
 
 export type ConversationArchiveAction = {
   archived: boolean;
@@ -26,6 +27,7 @@ export type ConversationArchiveAction = {
 /** Show conversation actions in the header or mobile menu. */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
+  conversationId: string;
   copyAction?: ReactNode;
   detailsOpen: boolean;
   /** `bar` is the desktop icon row. `menu` stacks actions for mobile overflow. */
@@ -65,6 +67,11 @@ export function ConversationHeaderActions(props: {
         >
           <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
+        <ShareConversationButton
+          key={props.conversationId}
+          conversationId={props.conversationId}
+          layout="menu"
+        />
         {props.copyAction}
         <ArchiveConversationButton {...props.archive} layout="menu" />
         <MenuActionButton

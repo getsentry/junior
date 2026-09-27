@@ -6,6 +6,7 @@ import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SegmentedTabs } from "../components/SegmentedTabs";
 import { ConversationMemories } from "./ConversationMemories";
+import { ShareConversationButton } from "./ShareConversationButton";
 
 const tabs = [
   { label: "Details", value: "details" },
@@ -85,9 +86,8 @@ export function ConversationDetailsDrawer(props: {
             No additional conversation details.
           </p>
         )}
-        {tab === "details" &&
-        (props.lastActivityAt || props.sentryConversationUrl) ? (
-          <footer className="mt-5 grid gap-3 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
+        {tab === "details" ? (
+          <footer className="mt-5 grid gap-6 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
             {props.lastActivityAt ? (
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span>Last activity</span>
@@ -102,20 +102,26 @@ export function ConversationDetailsDrawer(props: {
                 </time>
               </div>
             ) : null}
-            {props.sentryConversationUrl ? (
-              <ButtonLink
-                className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                to={props.sentryConversationUrl}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                Open in Sentry
-                <ExternalLink
-                  aria-hidden="true"
-                  className="size-3.5 shrink-0"
-                />
-              </ButtonLink>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareConversationButton
+                key={props.conversationId}
+                conversationId={props.conversationId}
+              />
+              {props.sentryConversationUrl ? (
+                <ButtonLink
+                  className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                  to={props.sentryConversationUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open in Sentry
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0"
+                  />
+                </ButtonLink>
+              ) : null}
+            </div>
           </footer>
         ) : null}
       </SegmentedTabs>
