@@ -17,10 +17,11 @@ function descriptionPreview(value: string | undefined): string {
     : preview;
 }
 
-/** Render verified annotation facts as a native Task or Item preview. */
+/** Render a compact Task or Item preview, or the saved facts for its detail panel. */
 export function renderSlackObjectCard(
   card: OwnedObjectAnnotation,
   conversationId: string,
+  surface: "preview" | "details" = "preview",
 ): SlackCard {
   if (card.objectType === "automation" && card.plugin === "junior") {
     return renderSlackAutomationCard({
@@ -29,24 +30,32 @@ export function renderSlackObjectCard(
       url: card.url,
       trigger: card.trigger ?? "",
       warning: card.warning ?? null,
-      status: card.status,
     });
   }
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
   const iconUrl = getDashboardObjectIconLink(presentation.icon);
   const title = card.title.slice(0, 160);
-  const facts = objectFactFields(card.facts);
-  const description = descriptionPreview(card.description);
+  const details = surface === "details";
+  // Deployment state is the result. Other previews show content, not bookkeeping.
+  const deployment =
+    card.objectType === "deployment" ||
+    (card.objectType === "item" && card.facts?.type === "deployment");
+  const status = details || deployment ? card.status : undefined;
+  const warning = details || deployment ? card.warning : undefined;
+  const facts = objectFactFields(card.facts).filter(
+    (field) => details || (deployment && field.key === "environment"),
+  );
+  const description = details
+    ? (card.description?.trim() ?? "")
+    : descriptionPreview(card.description);
   const text = [
     escapeSlackMrkdwnText(type),
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     escapeSlackMrkdwnText(card.label),
-    card.status ? escapeSlackMrkdwnText(card.status) : null,
+    status ? escapeSlackMrkdwnText(status) : null,
     description ? escapeSlackMrkdwnText(description) : null,
-    card.warning
-      ? escapeSlackMrkdwnText(`Needs attention: ${card.warning}`)
-      : null,
+    warning ? escapeSlackMrkdwnText(`Needs attention: ${warning}`) : null,
     ...facts.map((field) =>
       escapeSlackMrkdwnText(`${field.label}: ${field.value}`),
     ),
@@ -62,7 +71,7 @@ export function renderSlackObjectCard(
     product_icon: iconUrl
       ? {
           url: iconUrl,
-          alt_text: `${type}${card.status ? `: ${card.status}` : ""}`,
+          alt_text: `${type}${status ? `: ${status}` : ""}`,
         }
       : undefined,
     product_name: card.plugin,
@@ -81,13 +90,13 @@ export function renderSlackObjectCard(
         ]
       : []),
     ...facts.map((field) => ({ ...field, type: "string" as const })),
-    ...(card.warning
+    ...(warning
       ? [
           {
             key: "warning",
             label: "Needs attention",
             type: "string" as const,
-            value: card.warning,
+            value: warning,
           },
         ]
       : []),
@@ -99,12 +108,10 @@ export function renderSlackObjectCard(
           entity_payload: {
             attributes,
             display_order: [
-              ...(card.status ? ["status"] : []),
+              ...(status ? ["status"] : []),
               ...customFields.map((field) => field.key),
             ],
-            fields: card.status
-              ? { status: { value: card.status } }
-              : undefined,
+            fields: status ? { status: { value: status } } : undefined,
             custom_fields: customFields,
           },
         }
@@ -113,17 +120,17 @@ export function renderSlackObjectCard(
           entity_payload: {
             attributes,
             display_order: [
-              ...(card.status ? ["status"] : []),
+              ...(status ? ["status"] : []),
               ...customFields.map((field) => field.key),
             ],
             custom_fields: [
-              ...(card.status
+              ...(status
                 ? [
                     {
                       key: "status",
                       label: "Status",
                       type: "string" as const,
-                      value: card.status,
+                      value: status,
                     },
                   ]
                 : []),

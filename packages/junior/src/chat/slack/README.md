@@ -73,8 +73,16 @@ line breaks; timestamps use Slack's local time display. Item entities use
 New message previews stay compact. Slack can refresh them from detail metadata,
 so do not send viewer-specific labels such as "you" or credential data.
 Object annotation previews use Task for tasks and Item for code changes and
-other objects. Their `external_ref` identifies the Conversation, plugin, and
-object key, not a Message snapshot. The ID is a UTF-8 JSON tuple encoded as
+other objects. Keep the title and source link. Code changes, tickets, and other
+Items show only a description preview, when present. Deployments also show
+status, environment, and any warning; omit project, revision, and branch.
+Automations show the trigger and any warning, not a separate status field.
+Apply the same selection to fallback text. The annotation detail response keeps
+status and fact fields and uses the full saved description. Do not change saved
+facts or dashboard cards to make Slack previews smaller.
+
+Their `external_ref` identifies the Conversation, plugin, and object key, not a
+Message snapshot. The ID is a UTF-8 JSON tuple encoded as
 base64url without padding; the detail handler decodes it. Slack rejects raw JSON
 IDs. Encoding does not grant access or hide the reference. Details show the
 latest saved annotation, not a live provider lookup. Opening or refreshing details can update an earlier

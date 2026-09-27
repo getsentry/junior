@@ -200,7 +200,13 @@ describe("Linear MCP create annotations", () => {
         entities: [
           {
             entity_type: "slack#/entities/task",
-            entity_payload: { fields: { status: { value: "Todo" } } },
+            url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+            entity_payload: {
+              attributes: {
+                display_id: "ENG-123",
+                title: { text: "Linear MCP create issue" },
+              },
+            },
           },
         ],
       });

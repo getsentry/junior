@@ -240,20 +240,23 @@ the web card use these facts. The Slack detail panel reads the latest saved
 annotation, not a new provider response. The web transcript labels cards as
 latest saved state, not live provider state.
 
-- Code changes show the source branch and lifecycle status. They omit author,
-  reviewers, review and check summaries, conflicts, target branch, and change size.
-  GitHub also saves up to 4,000 characters of the PR description, without runtime
-  attribution, session footers, or HTML comments. Slack shows a Markdown preview
-  of at most 500 characters and six source lines, with an ellipsis when shortened.
-  Slack's `long` field option controls width, not automatic collapse. The source
-  link opens the full description. The web card uses its existing details toggle.
-- Tasks show assignees and priority, then project, cycle, due date, and labels.
-  An empty assignee list means unassigned. An absent list means unknown.
+- Code change details and web cards show the source branch and lifecycle status.
+  Slack previews omit both. GitHub also saves up to 4,000 characters of the PR
+  description, without runtime attribution, session footers, or HTML comments.
+  Slack previews show only this description, with at most 500 characters and six
+  source lines, and an ellipsis when shortened. Slack's `long` field option
+  controls width, not automatic collapse. The Slack detail panel shows the full
+  saved description. The source link opens the original description. The web
+  card uses its existing details toggle.
+- Task details show assignees and priority, then project, cycle, due date, and
+  labels. Slack previews show only a description, when present. An empty assignee
+  list means unassigned. An absent list means unknown.
 - Deployments use the `deployment` object type. Vercel selects project, target, revision, and
   branch from its existing deployment response. It never copies environment
   values. A missing target stays unknown.
-- Automations use the existing card and detail page. Cards show state, trigger,
-  and warning. The existing Automation record owns full details and actions.
+- Automations use the existing card and detail page. Slack previews show only
+  the trigger and warning. The existing Automation record owns full details
+  and actions.
 - Other Items remain useful with just a title and source link.
 
 The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have

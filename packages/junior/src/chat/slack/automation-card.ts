@@ -10,9 +10,7 @@ function preview(text: string, length: number): string {
 
 /** Show an Automation as a native Work Object, not an operation receipt. */
 export function renderSlackAutomationCard(
-  card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning"> & {
-    status?: string;
-  },
+  card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning">,
 ): SlackCard {
   const title = preview(card.title, 160);
   const iconUrl = getDashboardObjectIconLink("workflow");
@@ -22,7 +20,6 @@ export function renderSlackAutomationCard(
   const text = [
     "Automation",
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
-    card.status ? escapeSlackMrkdwnText(card.status) : null,
     escapeSlackMrkdwnText(trigger),
     warning ? escapeSlackMrkdwnText(warning) : null,
   ]
@@ -47,16 +44,6 @@ export function renderSlackAutomationCard(
             : undefined,
         },
         custom_fields: [
-          ...(card.status
-            ? [
-                {
-                  key: "status",
-                  label: "Status",
-                  type: "string" as const,
-                  value: card.status,
-                },
-              ]
-            : []),
           {
             key: "trigger",
             label: "When",
