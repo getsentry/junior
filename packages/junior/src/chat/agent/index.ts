@@ -64,6 +64,10 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
+import {
+  readSelfDiagnosticMetrics,
+  type SelfDiagnosticCall,
+} from "@/chat/self-diagnostic";
 import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
@@ -694,6 +698,9 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // This slice's completed main-model calls survive history replacement, but
+    // do not claim to cover earlier slices or auxiliary model requests.
+    const diagnosticCalls: SelfDiagnosticCall[] = [];
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
     const usageSinceCurrentBoundary = (
@@ -795,6 +802,11 @@ async function executeAgentRunInPrivacyContext(
       recordConnectedMcpProvider,
       requestHandoff,
       readSelfDiagnostic: () => ({
+        ...readSelfDiagnosticMetrics(
+          activeModelId,
+          currentAgentMessages(),
+          diagnosticCalls,
+        ),
         conversationId,
         turnId,
         runId: runId ?? null,
@@ -1194,6 +1206,12 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return;
         }
+        const usage = extractGenAiUsageSummary(event.message);
+        diagnosticCalls.push({
+          modelId: activeModelId,
+          completedAt: new Date().toISOString(),
+          usage: hasAgentTurnUsage(usage) ? usage : null,
+        });
         if (
           event.message.content.some(
             (part) =>

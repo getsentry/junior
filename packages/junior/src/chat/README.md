@@ -299,7 +299,20 @@ observation has its own key and time. Later reads cannot rewrite an earlier
 card's facts. The structured result includes all profiles; the card description
 is a bounded preview. This is a read-only diagnostic, not a settings editor.
 It does not return secrets, environment variables, prompts, or credential state.
-Usage and cost totals are outside this first contract.
+Context uses the same active-history estimate and input limits as compaction.
+It shows the model window separately from the effective input budget. The
+estimate can include reported usage plus estimated history growth. It is not
+an exact count of the next request or its system and tool overhead.
+
+Usage covers completed main-model calls in the current execution slice. It
+includes the call that asks for the diagnostic. The counters survive handoff
+and compaction, but reset on resume. Earlier slices, failed calls, routing,
+and summary calls are not included. These are not full Turn or Conversation
+totals. The last call includes its model and completion time. Cached input share
+is cached input divided by uncached, cached, and written input combined. A
+missing counter or zero denominator gives no percentage. A total is absent if
+any included call lacks that counter. Costs are estimates in USD. The tool
+cannot inspect provider cache contents or predict whether the next call hits.
 
 ## Task agent input
 

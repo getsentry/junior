@@ -257,6 +257,13 @@ describe("model handoff execution", () => {
       } = result.details as Record<string, unknown>;
       return selfDiagnosticSchema.parse(facts);
     });
+    expect(diagnostics.map((value) => value.usage.completedCalls)).toEqual([
+      1, 3,
+    ]);
+    expect(diagnostics.map((value) => value.usage.lastCall?.modelId)).toEqual([
+      "xai/grok-4.5",
+      "openai/gpt-5.4",
+    ]);
     expect(diagnostics.map((value) => value.active)).toEqual([
       {
         modelProfile: "standard",
@@ -787,6 +794,10 @@ describe("model handoff execution", () => {
           reasoningLevel: "high",
         },
         runId: "run-model-handoff-default-resume",
+        usage: {
+          scope: "completed_main_model_calls_in_current_slice",
+          completedCalls: 1,
+        },
       },
     });
     expect(observations.routerCalls).toBe(0);
