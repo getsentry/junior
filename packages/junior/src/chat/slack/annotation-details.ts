@@ -107,6 +107,7 @@ export async function presentSlackAnnotationDetails(
   const entity = renderSlackObjectCard(
     annotationCard(annotation),
     conversationId,
+    "details",
   ).entity;
   if (!entity) {
     await missing();

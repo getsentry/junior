@@ -212,6 +212,37 @@ describe("Slack Work Object details", () => {
         },
       },
     });
+    // Detail responses retain the fields omitted from compact code change cards.
+    const description = "Full description. ".repeat(100);
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: 'repo/修正#1:"quoted"',
+      label: "repo#1",
+      title: "Saved code change",
+      objectType: "code_change",
+      description,
+      status: "draft",
+      facts: { type: "code_change", sourceBranch: "feature/parser" },
+      url: "https://example.com/pull/1",
+    });
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        entity_payload: {
+          display_order: ["status", "description", "sourceBranch"],
+          custom_fields: [
+            { key: "status", value: "draft" },
+            { key: "description", value: description.trim() },
+            { key: "sourceBranch", value: "feature/parser" },
+          ],
+        },
+      },
+    });
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");

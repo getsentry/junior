@@ -189,18 +189,12 @@ it("saves plugin object results once per reply, leaves background updates silent
               display_type: "Code change",
               product_icon: {
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-draft.png",
-                alt_text: "Code change: draft",
+                alt_text: "Code change",
               },
               product_name: "objects",
             },
-            display_order: ["status", "description", "sourceBranch"],
+            display_order: ["description"],
             custom_fields: [
-              {
-                key: "status",
-                label: "Status",
-                type: "string",
-                value: "draft",
-              },
               {
                 key: "description",
                 label: "Description",
@@ -208,12 +202,6 @@ it("saves plugin object results once per reply, leaves background updates silent
                 value: `${annotation.description!.slice(0, 499).trimEnd()}…`,
                 long: true,
                 format: "markdown",
-              },
-              {
-                key: "sourceBranch",
-                label: "Branch",
-                type: "string",
-                value: "feature/parser",
               },
             ],
           },
@@ -236,7 +224,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         description: undefined,
         objectType: "task" as const,
         status: "closed",
-        facts: undefined,
+        facts: { type: "task" as const, assignees: ["Sam"], priority: "High" },
       },
       {
         ...annotation,
@@ -245,7 +233,13 @@ it("saves plugin object results once per reply, leaves background updates silent
         description: "  ",
         objectType: "deployment" as const,
         status: "ERROR",
-        facts: { type: "deployment" as const, environment: "production" },
+        facts: {
+          type: "deployment" as const,
+          environment: "production",
+          project: "app",
+          revision: "abc123",
+          branch: "main",
+        },
       },
       {
         ...annotation,
@@ -278,7 +272,6 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
             },
             custom_fields: [
-              { key: "status", value: "closed" },
               {
                 key: "description",
                 value: "One\nTwo\nThree\nFour\nFive\nSix…",
@@ -295,7 +288,6 @@ it("saves plugin object results once per reply, leaves background updates silent
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/issue-closed.png",
               },
             },
-            fields: { status: { value: "closed" } },
             custom_fields: [],
           },
         },
@@ -323,16 +315,23 @@ it("saves plugin object results once per reply, leaves background updates silent
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
               },
             },
-            custom_fields: expect.arrayContaining([
-              expect.objectContaining({
-                key: "warning",
-                value: "Reconnect provider",
-              }),
-            ]),
+            custom_fields: [
+              { key: "trigger", value: "Every day" },
+              { key: "warning", value: "Reconnect provider" },
+            ],
           },
         },
       ],
     });
+    expect(JSON.stringify(mixedPost)).not.toContain('"fields"');
+    for (const hidden of [
+      "Assignees:",
+      "Priority:",
+      "Revision:",
+      "Branch:",
+      "blocked",
+    ])
+      expect(mixedPost?.text).not.toContain(hidden);
     for (const type of ["Code change", "Ticket", "Deployment", "Automation"])
       expect(mixedPost?.text).toContain(type);
     setDashboardConversationLinkOptions(undefined);

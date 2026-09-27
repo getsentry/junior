@@ -190,12 +190,6 @@ describe("event automations", () => {
               },
               custom_fields: [
                 {
-                  key: "status",
-                  label: "Status",
-                  type: "string",
-                  value: "ready",
-                },
-                {
                   key: "trigger",
                   label: "When",
                   type: "string",
