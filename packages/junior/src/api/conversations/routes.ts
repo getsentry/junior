@@ -5,6 +5,8 @@ import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
@@ -25,6 +27,7 @@ import {
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { forkConversationForViewer } from "./fork";
 import {
   conversationAttachmentHeaders,
   requireConversationAttachment,
@@ -129,6 +132,31 @@ export function createConversationRoutes(options: {
         ),
       );
     },
+  );
+
+  app.post(
+    "/:conversationId/fork",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      forkConversationBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        forkConversationResponseSchema,
+        await forkConversationForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+          options.attachmentStorage,
+        ),
+      ),
   );
 
   app.patch(

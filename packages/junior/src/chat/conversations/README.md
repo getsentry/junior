@@ -80,6 +80,31 @@ event table. There is no message projection table. Cross-thread search stays
 inside one Slack workspace and only public destinations. An optional filter may
 narrow by destination channel id.
 
+## Web Conversation Forks
+
+`fork.ts` copies the full event prefix through a selected assistant Message.
+A selected user Message uses the preceding assistant Message as the boundary.
+The user Message text becomes an unsent composer draft. The first user Message
+can start a fork with no history. Selecting an assistant Message leaves the
+composer empty. Both paths create the same history at the same reply boundary.
+
+A fork is a new web root, not a child. It has no Location. The signed-in viewer
+must have access to the source history and becomes the fork's participant.
+Private history stays private. Historical authors keep their attribution, but
+do not gain membership or credential authority in the fork. The request key
+makes retries reuse the same fork.
+
+The copy keeps event sequence numbers, timestamps, history versions, and model
+messages. Only the active history version at the boundary is used for replay.
+Assistant boundaries need saved agent history with no unfinished tool calls.
+Saved annotations are copied so Message cards can resolve. Retained attachments
+get separate bytes and ids; their references in copied events use the new ids.
+
+Forking does not start a Turn. It does not copy mailbox work, execution leases,
+watches, automations, agent bindings, or Sandbox files. Historical child
+Conversation references remain links to the original child. The normal web
+composer starts the next Turn after the user sends a Message.
+
 ## Agent History Replacement
 
 Normal execution appends native agent-history events. `compaction` and

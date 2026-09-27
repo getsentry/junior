@@ -56,6 +56,7 @@ export function conversationAttemptForSubmit(
 type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
+  initialMessage?: string;
   error?: string;
   /**
    * Optional chrome to the left of the send row (create-mode visibility,
@@ -86,7 +87,9 @@ export const ConversationComposer = memo(function ConversationComposer(
 ) {
   const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
   const [initialDraft] = useState<ConversationDraft>(() =>
-    readStoredDraft(storageKey),
+    props.initialMessage !== undefined
+      ? { ...emptyDraft(), text: props.initialMessage }
+      : readStoredDraft(storageKey),
   );
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
@@ -119,6 +122,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submitTokenRef = useRef(0);
   const sendLocked =
     Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
+
+  // Persist a fork prefill before navigation state is consumed or the page reloads.
+  useEffect(() => {
+    storeDraft(storageKey, draftRef.current);
+  }, [storageKey]);
 
   // Flush the latest draft if the reader leaves before the debounce lands.
   useEffect(() => {

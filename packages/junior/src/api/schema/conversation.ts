@@ -110,6 +110,22 @@ export const createConversationBodySchema =
     visibility: z.enum(["private", "public"]).optional(),
   });
 
+export const forkConversationBodySchema = z
+  .object({
+    messageSeq: z.number().int().nonnegative(),
+    idempotencyKey: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const forkConversationResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    prefill: z.string(),
+  })
+  .strict();
+
+export type ForkConversationBody = z.output<typeof forkConversationBodySchema>;
+
 export const acceptedConversationMessageSchema = z
   .object({
     conversationId: z.string().min(1),

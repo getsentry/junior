@@ -1,4 +1,5 @@
 import { TranscriptAttachments } from "./TranscriptAttachment";
+import { ConversationForkButton } from "./ConversationFork";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
@@ -47,9 +48,13 @@ export const TranscriptMessageView = memo(
       >
         <TranscriptMessageHeader
           contextAction={
-            props.message.role === "user" && props.message.contexts?.length ? (
-              <TranscriptTurnContextView contexts={props.message.contexts} />
-            ) : undefined
+            <>
+              {props.message.role === "user" &&
+              props.message.contexts?.length ? (
+                <TranscriptTurnContextView contexts={props.message.contexts} />
+              ) : null}
+              <ConversationForkButton message={props.message} />
+            </>
           }
           message={props.message}
           conversation={props.conversation}
