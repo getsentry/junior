@@ -28,6 +28,17 @@ This module owns durable files linked to a conversation.
   by purged conversations, then removes those SQL rows. A failed blob delete
   leaves the eligible row for the next run.
 
+## File output
+
+`tools/send-files.ts` stores sandbox files and records attachment delivery in
+the Conversation transcript. Without a Location, attachment storage is required
+for `sendFiles`. Files keep the Conversation's access and retention rules;
+this path does not create public artifacts.
+
+`slack/tools/send-files.ts` adds delivery to the active Slack Location. It uses
+the same storage and transcript path. A cached retry keeps the first delivery
+identity so it does not add another transcript item or upload to Slack again.
+
 ## Web image input
 
 Web input stores image bytes before it enqueues the Message. Mailbox rows and
