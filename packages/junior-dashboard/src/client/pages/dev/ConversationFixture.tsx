@@ -13,6 +13,7 @@ const EVENTS: ConversationReportEventData[] = [
     type: "message",
     messageId: "gallery-user",
     role: "user",
+    source: "slack",
     actorIdentity: { fullName: "Alex Rivera" },
     text: "Show me the visual QA.",
   },
@@ -39,6 +40,7 @@ const EVENTS: ConversationReportEventData[] = [
     type: "message",
     messageId: "gallery-reply",
     role: "assistant",
+    source: "slack",
     text: "The change is ready for review.\n\nI tightened the conversation layout and kept the event details available below.",
     cards: [
       {
@@ -117,7 +119,7 @@ const CONVERSATION: ConversationDetailReport = {
   lastSeenAt: TIMESTAMP,
   lastProgressAt: TIMESTAMP,
   generatedAt: TIMESTAMP,
-  surface: "internal",
+  surface: "slack",
   eventHistory: { status: "available" },
   annotations: [
     {
