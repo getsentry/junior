@@ -87,7 +87,7 @@ export function ConversationDetailsDrawer(props: {
           </p>
         )}
         {tab === "details" ? (
-          <footer className="mt-5 grid gap-3 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
+          <footer className="mt-5 grid gap-6 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
             {props.lastActivityAt ? (
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span>Last activity</span>
@@ -122,9 +122,6 @@ export function ConversationDetailsDrawer(props: {
                 </ButtonLink>
               ) : null}
             </div>
-            <p className="m-0 leading-relaxed">
-              Sharing a link does not change who can access this conversation.
-            </p>
           </footer>
         ) : null}
       </SegmentedTabs>
