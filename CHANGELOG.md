@@ -1,4 +1,19 @@
 # Changelog
+## 0.231.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Preserve mobile scroll position on live updates by @sentry-junior in [#1961](https://github.com/getsentry/junior/pull/1961)
+- Preserve the author on queued web messages by @sentry-junior in [#1957](https://github.com/getsentry/junior/pull/1957)
+- Correct Slack mark geometry by @sentry-junior in [#1959](https://github.com/getsentry/junior/pull/1959)
+
+#### Other
+
+- (agent) Reduce prompt cache writes by @sentry-junior in [#1956](https://github.com/getsentry/junior/pull/1956)
+- (chat) Attach files in web conversations by @sentry-junior in [#1960](https://github.com/getsentry/junior/pull/1960)
+
 ## 0.230.0
 
 ### New Features ✨
