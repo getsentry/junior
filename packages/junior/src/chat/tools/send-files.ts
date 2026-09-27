@@ -73,26 +73,26 @@ function fileOperationInput(files: SandboxFileUpload[]) {
   }));
 }
 
+type FileAttachments = {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  storage: AttachmentStorage;
+};
+
+type FileDelivery = {
+  key: string;
+  description: string;
+  send: (files: SandboxFileUpload[]) => Promise<void>;
+};
+
 /** Store files in the active Conversation and optionally deliver them to its Location. */
 export function createSendFilesTool(
   state: ToolState,
   materializeFile: MaterializeFile,
-  attachments:
-    | {
-        conversationId: string;
-        db: JuniorSqlDatabase;
-        storage: AttachmentStorage;
-      }
-    | undefined,
-  delivery?: {
-    key: string;
-    description: string;
-    send: (files: SandboxFileUpload[]) => Promise<void>;
-  },
+  ...[attachments, delivery]:
+    | [attachments: FileAttachments, delivery?: FileDelivery]
+    | [attachments: FileAttachments | undefined, delivery: FileDelivery]
 ) {
-  if (!attachments && !delivery) {
-    throw new Error("sendFiles requires attachment storage or delivery");
-  }
   return zodTool({
     annotations: {
       destructiveHint: false,
