@@ -357,6 +357,8 @@ async function summarizeContext(
   );
   const result = await deps.completeText({
     modelId: botConfig.fastModelId,
+    // Compaction replaces this history, so later calls cannot reuse its cache.
+    cacheRetention: "none",
     messageAttributeMode: "metadata",
     temperature: 0,
     signal: args.signal,

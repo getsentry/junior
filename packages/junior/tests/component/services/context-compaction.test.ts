@@ -212,6 +212,9 @@ describe("context compaction projection reset", () => {
     expect(textOf(result.piMessages!.at(-1)!)).toContain(
       '<open-plan>\n[{"step":"Run focused tests","status":"in_progress"}]\n</open-plan>',
     );
+    expect(completeText).toHaveBeenCalledWith(
+      expect.objectContaining({ cacheRetention: "none" }),
+    );
     const summaryInput = completeText.mock.calls[0]?.[0] as
       | { messages: PiMessage[] }
       | undefined;
