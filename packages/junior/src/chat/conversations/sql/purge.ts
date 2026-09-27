@@ -312,6 +312,7 @@ export async function purgeConversationTree(
             .update(juniorConversations)
             .set({
               transcriptPurgedAt: new Date(args.nowMs),
+              inheritedThroughSeq: -1,
               ...(scrubMetadata
                 ? { title: null, channelName: null, actor: null }
                 : undefined),

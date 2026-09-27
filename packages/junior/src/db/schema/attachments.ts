@@ -7,6 +7,8 @@ export const juniorAttachments = pgTable(
   "junior_attachments",
   {
     id: text("id").primaryKey(),
+    /** Original id retained in immutable fork history; scoped to this Conversation. */
+    historyIds: text("history_ids").array(),
     conversationId: text("conversation_id")
       .notNull()
       .references(() => juniorConversations.conversationId, {

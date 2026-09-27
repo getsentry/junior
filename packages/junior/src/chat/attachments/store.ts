@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
@@ -426,7 +436,10 @@ export async function readLiveAttachment(args: {
     .from(juniorAttachments)
     .where(
       and(
-        eq(juniorAttachments.id, args.attachmentId),
+        or(
+          eq(juniorAttachments.id, args.attachmentId),
+          sql`${juniorAttachments.historyIds} @> ARRAY[${args.attachmentId}]::text[]`,
+        ),
         eq(juniorAttachments.conversationId, args.conversationId),
         isNull(juniorAttachments.deleteRequestedAt),
       ),

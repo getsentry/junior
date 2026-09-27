@@ -6,15 +6,15 @@ import { juniorAttachments, juniorConversationEvents } from "@/db/schema";
 
 type EventRow = typeof juniorConversationEvents.$inferSelect;
 
-/** Copy retained attachment bytes and replace their ids in the copied events. */
+/** Copy bytes outside SQL locks; publish metadata only with the completed fork. */
 export async function copyForkAttachments(args: {
   sourceConversationId: string;
   conversationId: string;
   rows: EventRow[];
   storage: AttachmentStorage;
   writtenKeys: string[];
-}): Promise<EventRow[]> {
-  if (!args.rows.length) return args.rows;
+}): Promise<Array<typeof juniorAttachments.$inferInsert>> {
+  if (!args.rows.length) return [];
   const attachments = await getDb()
     .select()
     .from(juniorAttachments)
@@ -24,21 +24,21 @@ export async function copyForkAttachments(args: {
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-  // The encoded agent history can contain attachment ids in text and tool
-  // results as well as structured metadata. Replace only known stored ids.
+  // Inspect opaque history only to find referenced files. Never rewrite it.
   const payloads = args.rows.map((row) => JSON.stringify(row.payload));
+  const copies: Array<typeof juniorAttachments.$inferInsert> = [];
   for (const attachment of attachments) {
+    const historyIds = [...(attachment.historyIds ?? []), attachment.id];
     if (
       !payloads.some(
         (payload) =>
-          payload.includes(attachment.id) ||
+          historyIds.some((id) => payload.includes(id)) ||
           (attachment.providerId && payload.includes(attachment.providerId)),
       )
     )
       continue;
-    if (attachment.storageProvider !== args.storage.provider) {
+    if (attachment.storageProvider !== args.storage.provider)
       throw new Error("Attachment storage is unavailable for this fork.");
-    }
     const body = await args.storage.get(attachment.storageKey);
     if (!body)
       throw new Error("An attachment is no longer available for this fork.");
@@ -50,20 +50,14 @@ export async function copyForkAttachments(args: {
       contentType: attachment.contentType,
       body: Buffer.from(await new Response(body).arrayBuffer()),
     });
-    await getDb()
-      .insert(juniorAttachments)
-      .values({
-        ...attachment,
-        id,
-        conversationId: args.conversationId,
-        storageKey,
-        createdAt: new Date(),
-      });
-    for (let i = 0; i < payloads.length; i++)
-      payloads[i] = payloads[i]!.replaceAll(attachment.id, id);
+    copies.push({
+      ...attachment,
+      id,
+      historyIds,
+      conversationId: args.conversationId,
+      storageKey,
+      createdAt: new Date(),
+    });
   }
-  return args.rows.map((row, index) => ({
-    ...row,
-    payload: JSON.parse(payloads[index]!) as EventRow["payload"],
-  }));
+  return copies;
 }

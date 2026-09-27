@@ -97,8 +97,22 @@ makes retries reuse the same fork.
 The copy keeps event sequence numbers, timestamps, history versions, and model
 messages. Only the active history version at the boundary is used for replay.
 Assistant boundaries need saved agent history with no unfinished tool calls.
-Saved annotations are copied so Message cards can resolve. Retained attachments
-get separate bytes and ids; their references in copied events use the new ids.
+Only annotations referenced by retained Messages are copied. Cards resolve to
+the latest saved facts for those identities. An empty fork has no annotations.
+Retained attachments get separate bytes and ids. The attachment row keeps
+`history_ids` so references in unchanged history resolve within the new
+Conversation. No text or agent history item is rewritten.
+
+File copying runs before the publish transaction, without a source write lock.
+`fork.ts` owns that transaction. It locks the source, checks viewer access and
+retention again, and copies events with SQL. Unpublished file copies are deleted
+on failure or a concurrent retry. As with normal attachment writes, a process
+crash before cleanup can leave an object without a SQL row.
+
+`inherited_through_seq` marks copied events. Model usage and auxiliary cost
+reports count only events after this boundary. Replay still uses the exact saved
+model messages, including their usage fields. Transcript purge clears the
+boundary so new events can start at sequence zero.
 
 Forking does not start a Turn. It does not copy mailbox work, execution leases,
 watches, automations, agent bindings, or Sandbox files. Historical child

@@ -1,20 +1,19 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
+import { and, asc, eq, getTableColumns, lte, or, sql } from "drizzle-orm";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { copyForkAttachments } from "./fork-attachments";
 import type { WebActor } from "@/chat/actor";
 import { botConfig } from "@/chat/config";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getDb,
-  getSqlExecutor,
-} from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import {
+  juniorAttachments,
   juniorConversationAnnotations,
   juniorConversationEvents,
   juniorConversations,
 } from "@/db/schema";
+import { readMessageCardRefs } from "./cards";
+import { decodeStoredConversationEvent } from "./history";
+import { copyForkAttachments } from "./fork-attachments";
 import { withConversationMutationLock } from "./sql/store";
 import {
   createConversationId,
@@ -24,16 +23,18 @@ import {
 /** An expected request cannot produce a usable Conversation fork. */
 export class ConversationForkError extends Error {}
 
-/** Copy a completed reply's event prefix into an idle, independent web Conversation. */
+/** Copy a reply boundary without starting work or holding source locks during file I/O. */
 export async function forkConversation(args: {
   actor: WebActor;
   attachmentStorage: AttachmentStorage;
   conversationId: string;
   messageSeq: number;
   idempotencyKey: string;
-  visibility: "private" | "public";
+  /** The API checks viewer access before reading and again inside the publish transaction. */
+  authorize(): Promise<"private" | "public">;
 }): Promise<{ conversationId: string; prefill: string }> {
   if (!args.actor.email) throw new Error("Web Actor requires a verified email");
+  await args.authorize();
   const executor = getSqlExecutor();
   const conversationId = createConversationId({
     actorEmail: args.actor.email,
@@ -44,105 +45,155 @@ export async function forkConversation(args: {
       args.idempotencyKey,
     ]),
   }).replace("local:web:", "local:web:fork-");
+  const source = await getConversationStore().get({
+    conversationId: args.conversationId,
+  });
+  if (!source || source.transcriptPurgedAtMs !== undefined)
+    throw new ConversationForkError(
+      "Conversation history is no longer available.",
+    );
+  const sourceRows = await getDb()
+    .select()
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, args.conversationId),
+        lte(juniorConversationEvents.seq, args.messageSeq),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+  const selected = sourceRows.at(-1);
+  if (
+    selected?.seq !== args.messageSeq ||
+    selected.type !== "message" ||
+    !["assistant", "user"].includes(String(selected.payload.role))
+  )
+    throw new ConversationForkError("Select a user or assistant message.");
+  const prefill =
+    selected.payload.role === "user" ? String(selected.payload.text) : "";
+  const boundary =
+    selected.payload.role === "assistant"
+      ? selected
+      : sourceRows
+          .filter(
+            (row) => row.type === "message" && row.payload.role === "assistant",
+          )
+          .at(-1);
+  const throughSeq = boundary?.seq ?? -1;
+  const rows = sourceRows.filter((row) => row.seq <= throughSeq);
+  if (boundary) {
+    const events = rows
+      .filter((row) => row.historyVersion === boundary.historyVersion)
+      .map((row) =>
+        decodeStoredConversationEvent({
+          schemaVersion: row.schemaVersion,
+          seq: row.seq,
+          historyVersion: row.historyVersion,
+          type: row.type,
+          payload: row.payload,
+          createdAtMs: row.createdAt.getTime(),
+          idempotencyKey: row.idempotencyKey ?? undefined,
+        }),
+      );
+    const { messages, seqs } = projectConversationEvents(events, {
+      defaultProfile: botConfig.defaultProfile,
+    });
+    const previousReplySeq =
+      rows
+        .filter(
+          (row) =>
+            row.seq < boundary.seq &&
+            row.type === "message" &&
+            row.payload.role === "assistant",
+        )
+        .at(-1)?.seq ?? -1;
+    const tail = messages.at(-1);
+    const pending = new Set<string>();
+    for (const message of messages) {
+      if (message.role === "assistant") {
+        for (const part of message.content)
+          if (part.type === "toolCall") pending.add(part.id);
+      } else if (message.role === "toolResult")
+        pending.delete(message.toolCallId);
+    }
+    if (
+      (seqs.at(-1) ?? -1) <= previousReplySeq ||
+      tail?.role !== "assistant" ||
+      tail.content.some((part) => part.type === "toolCall") ||
+      pending.size ||
+      tail.stopReason === "error" ||
+      tail.stopReason === "aborted"
+    )
+      throw new ConversationForkError(
+        "This reply has no completed agent history to fork.",
+      );
+  }
+  if (await getConversationStore().get({ conversationId }))
+    return { conversationId, prefill };
+  const refs = rows.flatMap((row) =>
+    row.type === "message" || row.type === "message_updated"
+      ? readMessageCardRefs(
+          (row.payload.meta ?? {}) as Parameters<typeof readMessageCardRefs>[0],
+        )
+      : [],
+  );
   const writtenKeys: string[] = [];
+  let published = false;
   try {
-    return await withConversationMutationLock(
+    const attachments = await copyForkAttachments({
+      sourceConversationId: args.conversationId,
+      conversationId,
+      rows,
+      storage: args.attachmentStorage,
+      writtenKeys,
+    });
+    published = await withConversationMutationLock(
       executor,
       args.conversationId,
       async () => {
-        const source = await getConversationStore().get({
+        const visibility = await args.authorize();
+        const current = await getConversationStore().get({
           conversationId: args.conversationId,
         });
-        if (!source || source.transcriptPurgedAtMs !== undefined) {
-          throw new ConversationForkError(
-            "Conversation history is no longer available.",
+        const [currentSelected] = await getDb()
+          .select()
+          .from(juniorConversationEvents)
+          .where(
+            and(
+              eq(juniorConversationEvents.conversationId, args.conversationId),
+              eq(juniorConversationEvents.seq, args.messageSeq),
+            ),
           );
-        }
-        const events = await getConversationEventStore().loadHistory(
-          args.conversationId,
-        );
-        const selected = events.find((event) => event.seq === args.messageSeq);
         if (
-          selected?.data.type !== "message" ||
-          !["assistant", "user"].includes(selected.data.role)
-        ) {
+          !current ||
+          current.transcriptPurgedAtMs !== undefined ||
+          !isDeepStrictEqual(currentSelected, selected)
+        )
           throw new ConversationForkError(
-            "Select a user or assistant message.",
+            "Conversation history changed. Try again.",
           );
-        }
-        const prefill = selected.data.role === "user" ? selected.data.text : "";
-        const boundary =
-          selected.data.role === "assistant"
-            ? selected
-            : events
-                .filter(
-                  (event) =>
-                    event.seq < selected.seq &&
-                    event.data.type === "message" &&
-                    event.data.role === "assistant",
-                )
-                .at(-1);
-        // A first user message forks an empty history and stays in the composer.
-        const throughSeq = boundary?.seq ?? -1;
-        const prefix = events.filter((event) => event.seq <= throughSeq);
-        if (boundary) {
-          const activeHistory = prefix.filter(
-            (event) => event.historyVersion === boundary.historyVersion,
-          );
-          const { messages, seqs } = projectConversationEvents(activeHistory, {
-            defaultProfile: botConfig.defaultProfile,
-          });
-          const previousReplySeq =
-            prefix
-              .filter(
-                (event) =>
-                  event.seq < boundary.seq &&
-                  event.data.type === "message" &&
-                  event.data.role === "assistant",
-              )
-              .at(-1)?.seq ?? -1;
-          const tail = messages.at(-1);
-          const pending = new Set<string>();
-          for (const message of messages) {
-            if (message.role === "assistant") {
-              for (const part of message.content) {
-                if (part.type === "toolCall") pending.add(part.id);
-              }
-            } else if (message.role === "toolResult") {
-              pending.delete(message.toolCallId);
-            }
-          }
-          if (
-            (seqs.at(-1) ?? -1) <= previousReplySeq ||
-            tail?.role !== "assistant" ||
-            tail.content.some((part) => part.type === "toolCall") ||
-            pending.size > 0 ||
-            tail.stopReason === "error" ||
-            tail.stopReason === "aborted"
-          ) {
-            throw new ConversationForkError(
-              "This reply has no completed agent history to fork.",
-            );
-          }
-        }
-        return withConversationMutationLock(
-          executor,
+        // Source locking also serializes retries for the same deterministic fork id.
+        if (await getConversationStore().get({ conversationId })) return false;
+        await recordWebConversationActivity({
+          actor: args.actor,
           conversationId,
-          async () => {
-            if (await getConversationStore().get({ conversationId }))
-              return { conversationId, prefill };
-            await recordWebConversationActivity({
-              actor: args.actor,
-              conversationId,
-              nowMs: Date.now(),
-              rootVisibility: args.visibility,
-            });
-            await getDb()
-              .update(juniorConversations)
-              .set({ title: source.title ?? null })
-              .where(eq(juniorConversations.conversationId, conversationId));
-            const sourceRows = await getDb()
-              .select()
+          nowMs: Date.now(),
+          rootVisibility: visibility,
+        });
+        await getDb()
+          .update(juniorConversations)
+          .set({ title: source.title ?? null, inheritedThroughSeq: throughSeq })
+          .where(eq(juniorConversations.conversationId, conversationId));
+        await getDb()
+          .insert(juniorConversationEvents)
+          .select(
+            getDb()
+              .select({
+                ...getTableColumns(juniorConversationEvents),
+                conversationId: sql<string>`${conversationId}`.as(
+                  "conversation_id",
+                ),
+              })
               .from(juniorConversationEvents)
               .where(
                 and(
@@ -152,47 +203,47 @@ export async function forkConversation(args: {
                   ),
                   lte(juniorConversationEvents.seq, throughSeq),
                 ),
-              )
-              .orderBy(asc(juniorConversationEvents.seq));
-            const rows = await copyForkAttachments({
-              sourceConversationId: args.conversationId,
-              conversationId,
-              rows: sourceRows,
-              storage: args.attachmentStorage,
-              writtenKeys,
-            });
-            // Preserve sequence, history versions, timestamps, provenance, and encoded
-            // model messages. No mailbox, lease, watch, or credential authority is copied.
-            for (let offset = 0; offset < rows.length; offset += 100) {
-              await getDb()
-                .insert(juniorConversationEvents)
-                .values(
-                  rows
-                    .slice(offset, offset + 100)
-                    .map((row) => ({ ...row, conversationId })),
-                );
-            }
-            const annotations = await getDb()
-              .select()
-              .from(juniorConversationAnnotations)
-              .where(
-                eq(
-                  juniorConversationAnnotations.conversationId,
-                  args.conversationId,
+              ),
+          );
+        if (attachments.length)
+          await getDb().insert(juniorAttachments).values(attachments);
+        if (refs.length) {
+          await getDb()
+            .insert(juniorConversationAnnotations)
+            .select(
+              getDb()
+                .select({
+                  ...getTableColumns(juniorConversationAnnotations),
+                  conversationId: sql<string>`${conversationId}`.as(
+                    "conversation_id",
+                  ),
+                })
+                .from(juniorConversationAnnotations)
+                .where(
+                  and(
+                    eq(
+                      juniorConversationAnnotations.conversationId,
+                      args.conversationId,
+                    ),
+                    or(
+                      ...refs.map((ref) =>
+                        and(
+                          eq(juniorConversationAnnotations.plugin, ref.plugin),
+                          eq(juniorConversationAnnotations.kind, ref.kind),
+                          eq(juniorConversationAnnotations.key, ref.key),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              );
-            if (annotations.length) {
-              await getDb()
-                .insert(juniorConversationAnnotations)
-                .values(annotations.map((row) => ({ ...row, conversationId })));
-            }
-            return { conversationId, prefill };
-          },
-        );
+            );
+        }
+        return true;
       },
     );
-  } catch (error) {
-    if (writtenKeys.length) await args.attachmentStorage.delete(writtenKeys);
-    throw error;
+    return { conversationId, prefill };
+  } finally {
+    if (!published && writtenKeys.length)
+      await args.attachmentStorage.delete(writtenKeys);
   }
 }

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { forkConversation } from "@/chat/conversations/fork";
+import { forkConversationForViewer } from "@/api/conversations/fork";
+import { testViewer } from "../../fixtures/user";
+import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { purgeConversationTree } from "@/chat/conversations/sql/purge";
+import { juniorDestinations } from "@/db/schema";
 import { webActorFromEmail } from "@/chat/conversations/web-input";
 import { storeAttachment, readLiveAttachment } from "@/chat/attachments/store";
 import {
@@ -44,7 +49,7 @@ async function seed() {
         type: "message",
         messageId: "user",
         role: "user",
-        text: "Read this",
+        text: `Read this literal id: ${attachment.id}`,
         meta: {
           attachments: [
             {
@@ -81,16 +86,50 @@ async function seed() {
 
 describe("fork attachment ownership", () => {
   afterEach(closeDb);
-  it("copies attachment bytes and references so deleting the source does not remove the fork file", async () => {
+  it("copies files without blocking source writes or changing history, including nested forks", async () => {
     const { storage, attachment } = await seed();
-    const fork = await forkConversation({
-      actor,
-      attachmentStorage: storage,
-      conversationId,
-      messageSeq: 2,
-      idempotencyKey: "fork",
-      visibility: "private",
+    const historyBefore =
+      await getConversationEventStore().loadHistory(conversationId);
+    const concurrent = createPostgresJuniorSqlExecutor({
+      connectionString: process.env.DATABASE_URL!,
+      statementTimeoutMs: 1000,
     });
+    const copying = {
+      ...storage,
+      get: async (key: string) => {
+        await createSqlConversationEventStore(concurrent).append(
+          conversationId,
+          [
+            {
+              createdAtMs: 4,
+              data: {
+                type: "message",
+                messageId: "concurrent",
+                role: "user",
+                text: "Source continues during copying",
+              },
+            },
+          ],
+        );
+        return storage.get(key);
+      },
+      put: async (input: Parameters<typeof storage.put>[0]) => {
+        await storage.put(input);
+        // A retry wins publication while this request is still copying bytes.
+        await forkConversationForViewer(
+          testViewer(actor.email!),
+          conversationId,
+          { messageSeq: 2, idempotencyKey: "fork" },
+          storage,
+        );
+      },
+    };
+    const fork = await forkConversationForViewer(
+      testViewer(actor.email!),
+      conversationId,
+      { messageSeq: 2, idempotencyKey: "fork" },
+      copying,
+    ).finally(() => concurrent.close());
     const [copy] = await getDb()
       .select()
       .from(juniorAttachments)
@@ -105,17 +144,38 @@ describe("fork attachment ownership", () => {
     await storage.delete([sourceFile!.storageKey]);
     const copiedFile = await readLiveAttachment({
       conversationId: fork.conversationId,
-      attachmentId: copy!.id,
+      attachmentId: attachment.id,
       db: getSqlExecutor(),
     });
     expect(
       await new Response(await storage.get(copiedFile!.storageKey)).text(),
     ).toBe("hello");
-    const history = JSON.stringify(
+    expect(
       await getConversationEventStore().loadHistory(fork.conversationId),
+    ).toEqual(historyBefore);
+    const nested = await forkConversationForViewer(
+      testViewer(actor.email!),
+      fork.conversationId,
+      { messageSeq: 2, idempotencyKey: "nested" },
+      storage,
     );
-    expect(history).toContain(copy!.id);
-    expect(history).not.toContain(attachment.id);
+    expect(
+      await readLiveAttachment({
+        conversationId: nested.conversationId,
+        attachmentId: attachment.id,
+        db: getSqlExecutor(),
+      }),
+    ).not.toBeNull();
+    expect(
+      await readLiveAttachment({
+        conversationId: nested.conversationId,
+        attachmentId: copy!.id,
+        db: getSqlExecutor(),
+      }),
+    ).not.toBeNull();
+    expect(
+      await getConversationEventStore().loadHistory(nested.conversationId),
+    ).toEqual(historyBefore);
   });
 
   it("rolls back the fork and cleans up its objects when the copy fails", async () => {
@@ -129,17 +189,60 @@ describe("fork attachment ownership", () => {
       },
     };
     await expect(
-      forkConversation({
-        actor,
-        attachmentStorage: failingStorage,
+      forkConversationForViewer(
+        testViewer(actor.email!),
         conversationId,
-        messageSeq: 2,
-        idempotencyKey: "failure",
-        visibility: "private",
-      }),
+        { messageSeq: 2, idempotencyKey: "failure" },
+        failingStorage,
+      ),
     ).rejects.toThrow("Storage failed");
     expect(await getConversationStore().listByActivity()).toEqual(before);
     expect(storage.objects.size).toBe(1);
     expect(await getDb().select().from(juniorAttachments)).toHaveLength(1);
+  });
+  it("rechecks retention and cleans up unpublished bytes after a purge during copying", async () => {
+    const { storage } = await seed();
+    const copying = {
+      ...storage,
+      put: async (input: Parameters<typeof storage.put>[0]) => {
+        await storage.put(input);
+        await purgeConversationTree(getSqlExecutor(), {
+          rootConversationId: conversationId,
+          nowMs: Date.now(),
+        });
+      },
+    };
+    await expect(
+      forkConversationForViewer(
+        testViewer(actor.email!),
+        conversationId,
+        { messageSeq: 2, idempotencyKey: "purged" },
+        copying,
+      ),
+    ).rejects.toThrow("Conversation history changed");
+    expect(await getConversationStore().listByActivity()).toHaveLength(1);
+    expect(storage.objects.size).toBe(1);
+  });
+
+  it("rechecks viewer access after file copying", async () => {
+    const { storage } = await seed();
+    await getDb().update(juniorDestinations).set({ visibility: "public" });
+    const copying = {
+      ...storage,
+      put: async (input: Parameters<typeof storage.put>[0]) => {
+        await storage.put(input);
+        await getDb().update(juniorDestinations).set({ visibility: "private" });
+      },
+    };
+    await expect(
+      forkConversationForViewer(
+        testViewer("other@example.com"),
+        conversationId,
+        { messageSeq: 2, idempotencyKey: "revoked" },
+        copying,
+      ),
+    ).rejects.toThrow("Conversation not found");
+    expect(await getConversationStore().listByActivity()).toHaveLength(1);
+    expect(storage.objects.size).toBe(1);
   });
 });

@@ -25,6 +25,8 @@ export const juniorConversations = pgTable(
   {
     conversationId: text("conversation_id").primaryKey(),
     schemaVersion: integer("schema_version").notNull().default(1),
+    /** Copied events are history, not new model calls or other spending. */
+    inheritedThroughSeq: integer("inherited_through_seq").notNull().default(-1),
     source: text("source").$type<ConversationSource>(),
     /** Structured session Source locator; set-once on the conversation root. */
     // TODO(dcramer): Remove source_json after resume reads the saved Turn Source

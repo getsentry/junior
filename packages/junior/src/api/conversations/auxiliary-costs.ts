@@ -100,6 +100,7 @@ export async function readConversationAuxiliaryCostsFromSql(
     .where(
       and(
         selectedConversation,
+        sql`${juniorConversationEvents.seq} > ${juniorConversations.inheritedThroughSeq}`,
         or(
           eq(juniorConversationEvents.type, "structured_event"),
           inArray(juniorConversationEvents.type, [

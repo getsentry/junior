@@ -567,6 +567,7 @@ async function aggregateGuardianStats(
   };
   const where = and(
     eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+    sql`${juniorConversationEvents.seq} > ${juniorConversations.inheritedThroughSeq}`,
     gte(juniorConversationEvents.createdAt, start),
     lte(juniorConversationEvents.createdAt, end),
   );
@@ -574,11 +575,25 @@ async function aggregateGuardianStats(
     db
       .select({ ...selectColumns, date: day })
       .from(juniorConversationEvents)
+      .innerJoin(
+        juniorConversations,
+        eq(
+          juniorConversations.conversationId,
+          juniorConversationEvents.conversationId,
+        ),
+      )
       .where(where)
       .groupBy(day),
     db
       .select({ ...selectColumns, date: hour })
       .from(juniorConversationEvents)
+      .innerJoin(
+        juniorConversations,
+        eq(
+          juniorConversations.conversationId,
+          juniorConversationEvents.conversationId,
+        ),
+      )
       .where(where)
       .groupBy(hour),
   ]);

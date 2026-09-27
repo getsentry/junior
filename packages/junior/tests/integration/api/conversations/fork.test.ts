@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { purgeConversationTree } from "@/chat/conversations/sql/purge";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -6,6 +9,7 @@ import { forkConversationResponseSchema } from "@/api/schema";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { loadProjection } from "@/chat/conversations/projection";
 import { readConversationDetail } from "@/api/conversations/detail";
+import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import {
   createConversationWebHarness,
   closeConversationFixture,
@@ -122,6 +126,11 @@ describe("conversation fork API", () => {
         }),
       ).toMatchObject({ isParticipant: true });
     }
+    const sourceDetail = await readConversationDetail(source.conversationId);
+    expect(sourceDetail?.modelUsage?.[0]?.usage.totalTokens).toBeGreaterThan(0);
+    expect(
+      (await readConversationDetail(userFork.conversationId))?.modelUsage,
+    ).toBeUndefined();
     expect(harness.queue.hasQueuedMessages()).toBe(false);
     const retry = await requestFork(app, source.conversationId, user.seq);
     expect(await retry.json()).toEqual(userFork);
@@ -149,6 +158,19 @@ describe("conversation fork API", () => {
       message: "Use the copied context.",
     });
     await harness.drain();
+    const continuedHistory = await getConversationEventStore().loadHistory(
+      userFork.conversationId,
+    );
+    const newCall = continuedHistory
+      .filter((event) => event.data.type === "assistant_message")
+      .at(-1)!;
+    expect(newCall.data.type).toBe("assistant_message");
+    if (newCall.data.type !== "assistant_message")
+      throw new Error("Missing model call");
+    expect(newCall.data.usage).toMatchObject({
+      totalTokens: (await readConversationDetail(userFork.conversationId))
+        ?.modelUsage?.[0]?.usage.totalTokens,
+    });
     expect(await harness.historyTexts(userFork.conversationId)).toEqual([
       "Remember the first request.",
       "First answer.",
@@ -172,7 +194,30 @@ describe("conversation fork API", () => {
       source: "web",
       visibility: "public",
     });
+    const annotations = createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "test",
+    });
+    await annotations.upsert({
+      kind: "object",
+      key: "retained",
+      objectType: "item",
+      title: "Retained",
+      label: "Retained",
+      url: null,
+      status: "open",
+    });
     await store.append(conversationId, [
+      {
+        createdAtMs: 0,
+        data: {
+          type: "message",
+          messageId: "first-user",
+          role: "user",
+          text: "First request",
+        },
+      },
       {
         createdAtMs: 1,
         data: {
@@ -203,10 +248,41 @@ describe("conversation fork API", () => {
     });
     await store.append(conversationId, [
       {
+        createdAtMs: Date.now(),
+        data: {
+          type: "guardian_action_reviewed",
+          turnId: "turn",
+          toolCallId: "tool",
+          toolName: "write",
+          costUsd: 0.01,
+          decision: "allow",
+          riskLevel: "low",
+          userAuthorization: "high",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
+          type: "structured_event",
+          namespace: "test",
+          name: "operation",
+          version: 1,
+          content: { costUsd: 0.1 },
+        },
+      },
+      {
         createdAtMs: 3,
         data: {
           type: "assistant_message",
           content: [{ type: "text", text: "Answer after compaction" }],
+          provider: "test",
+          model: "test-model",
+          usage: {
+            input: 10,
+            output: 5,
+            totalTokens: 15,
+            cost: { total: 0.3 },
+          },
           stopReason: "stop",
           timestamp: 3,
         },
@@ -218,10 +294,31 @@ describe("conversation fork API", () => {
           role: "assistant",
           messageId: "reply",
           text: "Answer after compaction",
+          meta: {
+            objectCards: [{ plugin: "test", kind: "object", key: "retained" }],
+          },
         },
       },
     ]);
     const history = await store.loadHistory(conversationId);
+    const guardianBefore = (await readConversationStatsFromSql()).guardian;
+    await annotations.upsert({
+      kind: "object",
+      key: "retained",
+      objectType: "item",
+      title: "Retained",
+      label: "Retained",
+      url: null,
+      status: "closed",
+    });
+    await annotations.upsert({
+      kind: "object",
+      key: "later",
+      objectType: "item",
+      title: "Later work",
+      label: "Later work",
+      url: null,
+    });
     const response = await requestFork(
       api(),
       conversationId,
@@ -234,6 +331,58 @@ describe("conversation fork API", () => {
       await loadProjection({ conversationId }),
     );
     expect(await loadProjection(fork)).toHaveLength(2);
+    expect((await readConversationStatsFromSql()).guardian).toEqual(
+      guardianBefore,
+    );
+    const forkDetail = await readConversationDetail(fork.conversationId);
+    expect(forkDetail?.annotations).toMatchObject([
+      { key: "retained", status: "closed" },
+    ]);
+    expect(forkDetail?.auxiliaryCosts).toBeUndefined();
+    expect(forkDetail?.modelUsage).toBeUndefined();
+    expect(
+      (await readConversationDetail(conversationId))?.modelUsage,
+    ).toMatchObject([{ usage: { cost: { total: 0.3 } } }]);
+    expect(
+      (await readConversationDetail(conversationId))?.auxiliaryCosts?.costUsd,
+    ).toBe(0.11);
+    const empty = forkConversationResponseSchema.parse(
+      await (await requestFork(api(), conversationId, 0)).json(),
+    );
+    expect(
+      (await readConversationDetail(empty.conversationId))?.annotations,
+    ).toEqual([]);
+    await store.append(fork.conversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          type: "structured_event",
+          namespace: "test",
+          name: "operation",
+          version: 1,
+          content: { costUsd: 0.2 },
+        },
+      },
+    ]);
+    expect(
+      (await readConversationDetail(fork.conversationId))?.auxiliaryCosts,
+    ).toMatchObject({ costUsd: 0.2, operations: [{ events: 1 }] });
+    // Purge resets sequence numbers. New calls must not fall below an old boundary.
+    await purgeConversationTree(getSqlExecutor(), {
+      rootConversationId: fork.conversationId,
+      nowMs: Date.now(),
+    });
+    const newCall = history.find(
+      (event) => event.data.type === "assistant_message",
+    )!.data;
+    if (newCall.type !== "assistant_message")
+      throw new Error("Missing model call");
+    await store.append(fork.conversationId, [
+      { createdAtMs: Date.now(), data: newCall },
+    ]);
+    expect(
+      (await readConversationDetail(fork.conversationId))?.modelUsage,
+    ).toMatchObject([{ usage: { cost: { total: 0.3 } } }]);
     await store.append(conversationId, [
       {
         createdAtMs: 5,
