@@ -38,7 +38,9 @@ export function renderSlackObjectCard(
   const title = card.title.slice(0, 160);
   const details = surface === "details";
   // Deployment state is the result. Other previews show content, not bookkeeping.
-  const deployment = card.objectType === "deployment";
+  const deployment =
+    card.objectType === "deployment" ||
+    (card.objectType === "item" && card.facts?.type === "deployment");
   const status = details || deployment ? card.status : undefined;
   const warning = details || deployment ? card.warning : undefined;
   const facts = objectFactFields(card.facts).filter(

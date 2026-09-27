@@ -231,8 +231,10 @@ it("saves plugin object results once per reply, leaves background updates silent
         plugin: "objects",
         key: "deploy-1",
         description: "  ",
-        objectType: "deployment" as const,
+        // Saved deployments used Item before Deployment became a native type.
+        objectType: "item" as const,
         status: "ERROR",
+        warning: "Deployment failed",
         facts: {
           type: "deployment" as const,
           environment: "production",
@@ -303,6 +305,7 @@ it("saves plugin object results once per reply, leaves background updates silent
             custom_fields: [
               { key: "status", value: "ERROR" },
               { key: "environment", value: "production" },
+              { key: "warning", value: "Deployment failed" },
             ],
           },
         },
