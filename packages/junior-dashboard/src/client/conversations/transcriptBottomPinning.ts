@@ -15,7 +15,6 @@ import type { ConversationTranscript } from "../types";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 const BOTTOM_PROXIMITY_PX = 96;
-const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 const USER_SCROLL_DELTA_PX = 2;
 
 type ScrollRoot = HTMLElement | Window;
@@ -528,16 +527,8 @@ export function usePinnedTranscriptBottom(input: {
       }
     }
 
-    // Mobile follows new tail content, but switching views is not new activity.
-    if (
-      tailChanged &&
-      input.enabled &&
-      typeof window !== "undefined" &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches
-    ) {
-      setFollowingIntent(true);
-    }
-
+    // New activity must preserve scroll-away intent on mobile and desktop.
+    // The reader can resume following with the jump control or by scrolling down.
     if (
       shouldAutoPinTranscriptBottom({
         enabled: input.enabled,

@@ -173,11 +173,12 @@ for (const width of [1440, 390]) {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
-    await expect(page.getByText("Message 39", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Message 39", { exact: true }),
+    ).toBeInViewport();
     const scroll = page.locator("[data-chat-scroll]");
-    await scroll.evaluate((node) => {
-      node.scrollTop = 0;
-    });
+    await scroll.hover();
+    await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
 
     for (const view of ["Event log", "Conversation"]) {
@@ -211,9 +212,8 @@ for (const width of [1440, 390]) {
     await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
       timeout: 15_000,
     });
-    await scroll.evaluate((node) => {
-      node.scrollTop = 0;
-    });
+    await scroll.hover();
+    await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     report.status = "active";
     report.events.push({
@@ -228,18 +228,31 @@ for (const width of [1440, 390]) {
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
     await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
-    if (width < 768) {
-      await expect(liveUpdate).toBeInViewport();
-    } else {
-      await expect(
-        page.getByText("Message 0", { exact: true }),
-      ).toBeInViewport();
-      await expect(
-        page.getByRole("button", {
-          name: "Jump to latest update",
-          exact: true,
-        }),
-      ).toBeVisible();
-    }
+    // New activity must not move a reader who scrolled into history, on either
+    // mobile or desktop. Following resumes only when the reader requests it.
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
+    const jump = page.getByRole("button", {
+      name: "Jump to latest update",
+      exact: true,
+    });
+    await expect(jump).toBeVisible();
+    await jump.click();
+    await expect(liveUpdate).toBeInViewport();
+    await expect(jump).toBeHidden();
+
+    report.events.push({
+      seq: 43,
+      createdAt: report.lastSeenAt,
+      data: {
+        type: "message",
+        messageId: "next-live-message",
+        role: "assistant",
+        text: "Next live update",
+      },
+    });
+    await expect(
+      page.getByText("Next live update", { exact: true }),
+    ).toBeInViewport({ timeout: 15_000 });
+    await expect(jump).toBeHidden();
   });
 }
