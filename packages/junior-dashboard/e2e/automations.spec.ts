@@ -1,3 +1,5 @@
+import { automationReport } from "./automation-fixture";
+import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -72,6 +74,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   ).toBeVisible();
   await expect(page.getByLabel("Search automations")).toBeVisible();
   await screenshot(page, "automations-list");
+  await page.getByRole("button", { name: /^Mine/ }).click();
   await expect(page.getByLabel("Reporting period")).toHaveCount(0);
   await expect(page.getByText("2 automations")).toBeVisible();
   await expect(weeklySummary).toBeVisible();
@@ -91,7 +94,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   });
   await automationDetailsTrigger.click();
   await expect(page).toHaveURL(
-    `${dashboard.baseURL}/automations/scheduled-1?range=7`,
+    `${dashboard.baseURL}/automations/scheduled-1?range=7&scope=mine`,
   );
   const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
@@ -116,7 +119,9 @@ test("opens scheduled and event automations in the native Automations view", asy
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/list?range=7`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/list?range=7&scope=mine`,
+  );
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
@@ -179,6 +184,86 @@ test("opens scheduled and event automations in the native Automations view", asy
   await creatorLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
+
+  // A shared, paged URL and direct details must not depend on the current page.
+  const collection = {
+    ...automationReport,
+    automations: [
+      ...automationReport.automations,
+      ...Array.from({ length: 30 }, (_, index) => ({
+        ...automationReport.automations[0]!,
+        id: `scheduled-extra-${index}`,
+        title: `Weekly summary ${String(index).padStart(2, "0")}`,
+      })),
+    ],
+  };
+  let failList = false;
+  let delayList = false;
+  const pendingList = Promise.withResolvers<void>();
+  await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
+    if (delayList) await pendingList.promise;
+    await route.fulfill(
+      failList
+        ? { status: 500, json: { error: "List unavailable" } }
+        : {
+            json: mockAutomationCollection(
+              collection,
+              new URL(route.request().url()).searchParams,
+            ),
+          },
+    );
+  });
+  const listUrl = `${dashboard.baseURL}/automations/list?scope=mine&type=scheduled&sort=title&page=2`;
+  await page.goto(listUrl);
+  await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
+  await page
+    .getByLabel("Automations navigation")
+    .getByRole("link", { name: "Overview" })
+    .click();
+  await expect(page.getByText("Total automations")).toBeVisible();
+  await page
+    .getByLabel("Automations navigation")
+    .getByRole("link", { name: "Automations", exact: true })
+    .click();
+  await expect(page).toHaveURL(listUrl);
+  await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
+  await page.goto(listUrl.replace("/list?", "/scheduled-1?"));
+  await expect(
+    page.getByRole("dialog", { name: "Weekly project summary" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close automation details" }).click();
+  await expect(page).toHaveURL(listUrl);
+  await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expect(page.getByText("Showing 1-25 of 31")).toBeVisible();
+  await page.getByLabel("Filter by creator").selectOption("dev@example.com");
+  await page.getByLabel("Filter by destination").selectOption("T123:C123");
+  await page.getByLabel("Filter by state").selectOption("active");
+  await expect(page).toHaveURL(/state=active/);
+  await page.reload();
+  await expect(page.getByLabel("Filter by creator")).toHaveValue(
+    "dev@example.com",
+  );
+  await expect(page.getByLabel("Sort automations")).toHaveValue("title");
+  delayList = true;
+  await page.getByLabel("Search automations").fill("no match");
+  await expect(page.getByText("Updating results…")).toBeVisible();
+  await expect(weeklySummary).toBeVisible();
+  delayList = false;
+  pendingList.resolve();
+  await expect(
+    page.getByText("No automations matched these filters."),
+  ).toBeVisible();
+  failList = true;
+  await page.getByLabel("Search automations").fill("weekly");
+  await expect(
+    page.getByText("Automations could not be loaded."),
+  ).toBeVisible();
+  failList = false;
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(weeklySummary).toBeVisible();
 });
 
 test("lists runs across automations", async ({ page, dashboard }) => {

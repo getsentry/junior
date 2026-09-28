@@ -1,11 +1,10 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import {
   slackDestinationSchema,
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorDestinations } from "@/db/schema/destinations";
 import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
@@ -362,50 +361,4 @@ export async function saveScheduledAutomationInLock(
   current: ScheduledAutomation | undefined,
 ): Promise<void> {
   await writeScheduledAutomation(db, requireStoredTask(task), current);
-}
-
-/** List scheduled automations whose current Slack destination is public. */
-export async function listPublicScheduledAutomationsForTeams(
-  db: JuniorDatabase,
-  teamIds: string[],
-  input: { limit: number; query?: string },
-): Promise<ScheduledAutomation[]> {
-  if (teamIds.length === 0) return [];
-  const rows = await db
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
-    .innerJoin(
-      juniorDestinations,
-      and(
-        eq(juniorDestinations.provider, "slack"),
-        eq(juniorDestinations.providerTenantId, juniorSchedulerTasks.teamId),
-        sql`${juniorDestinations.providerDestinationId} = ${juniorSchedulerTasks.record}->'destination'->>'channelId'`,
-      ),
-    )
-    .where(
-      and(
-        inArray(juniorSchedulerTasks.teamId, teamIds),
-        notInArray(juniorSchedulerTasks.status, [
-          "completed",
-          "deleted",
-          "paused",
-        ]),
-        input.query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${input.query}) > 0`
-          : undefined,
-        eq(juniorDestinations.visibility, "public"),
-      ),
-    )
-    .orderBy(
-      desc(juniorSchedulerTasks.createdAtMs),
-      desc(juniorSchedulerTasks.id),
-    )
-    .limit(input.limit);
-  return rows
-    .map(parseScheduledAutomationRow)
-    .filter(isListedScheduledAutomation);
 }

@@ -16,6 +16,7 @@ import {
   personalSpendReportSchema,
   automationExecutionListSchema,
   automationListSchema,
+  automationSummarySchema,
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -122,10 +123,25 @@ export function useAutomationsData(enabled: boolean, search: string) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
-        `/api/automations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/automations${search ? `?${search}` : ""}`,
         signal,
       ),
     placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Load details by ID, independent of list filters and pagination. */
+export function useAutomationData(enabled: boolean, id: string | undefined) {
+  return useQuery({
+    enabled: enabled && Boolean(id),
+    queryKey: ["dashboard", "automations", "detail", id],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationSummarySchema,
+        `/api/automations/${encodeURIComponent(id!)}`,
+        signal,
+      ),
     retry: false,
   });
 }

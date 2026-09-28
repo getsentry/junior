@@ -83,6 +83,21 @@ export const automationExecutionDaySchema = z
 export const automationListQuerySchema = z
   .object({
     q: z.string().trim().max(200).optional(),
+    scope: z.enum(["all", "mine", "public"]).default("all"),
+    type: z.enum(["all", "scheduled", "event"]).default("all"),
+    state: z.enum(["all", "active", "blocked", "completed"]).default("all"),
+    creator: z.string().max(300).optional(),
+    destination: z.string().max(300).optional(),
+    sort: z.enum(["newest", "oldest", "title"]).default("newest"),
+    page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict();
+
+const automationFilterOptionSchema = z
+  .object({
+    value: z.string(),
+    label: z.string(),
   })
   .strict();
 
@@ -92,7 +107,19 @@ export const automationListSchema = z
     executionHours: z.array(automationExecutionDaySchema).optional(),
     executionSixHours: z.array(automationExecutionDaySchema).optional(),
     automations: z.array(automationSummarySchema),
-    truncated: z.boolean(),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    counts: z
+      .object({
+        all: z.number().int().nonnegative(),
+        mine: z.number().int().nonnegative(),
+        public: z.number().int().nonnegative(),
+        private: z.number().int().nonnegative(),
+      })
+      .strict(),
+    creators: z.array(automationFilterOptionSchema),
+    destinations: z.array(automationFilterOptionSchema),
   })
   .strict();
 
@@ -176,3 +203,5 @@ export type AutomationRunList = z.output<typeof automationRunListSchema>;
 export type AutomationRunWindows = z.output<typeof automationRunWindowsSchema>;
 export type AutomationSummary = z.output<typeof automationSummarySchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
+
+export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
