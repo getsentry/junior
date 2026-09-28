@@ -7,6 +7,10 @@ import { renderPluginConversationEvent } from "@/chat/plugins/conversation-event
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
+  conversationEventModel,
+  conversationEventModelCall,
+} from "./event-model";
+import {
   conversationReportEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
@@ -195,7 +199,8 @@ function reportAssistantMessage(args: {
       reasoning.data.thinking.trim().length > 0
     );
   });
-  if (!hasReasoning) return reportToolCalls(args);
+  if (!hasReasoning)
+    return reportToolCalls(args) ?? { type: "assistant_message", parts: [] };
 
   const reasoningParts: Extract<
     ConversationReportEventData,
@@ -463,6 +468,7 @@ export function projectConversationReportEventPage(args: {
   events: ConversationEvent[];
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
+  modelContextEvents?: ConversationEvent[];
 }): ConversationReportEvent[] {
   const subagentStarts = new Map<
     string,
@@ -495,8 +501,25 @@ export function projectConversationReportEventPage(args: {
     }
   }
   const projected: ConversationReportEvent[] = [];
+  let model: ConversationReportEvent["model"];
+  for (const event of args.modelContextEvents ?? []) {
+    model = conversationEventModel(event.data, model);
+    if (
+      event.data.type === "turn_completed" ||
+      event.data.type === "turn_failed"
+    )
+      model = undefined;
+  }
 
   for (const event of args.events) {
+    model = conversationEventModel(event.data, model);
+    const eventModel = model;
+    const modelCall = conversationEventModelCall(event.data);
+    if (
+      event.data.type === "turn_completed" ||
+      event.data.type === "turn_failed"
+    )
+      model = undefined;
     let data: ConversationReportEventData | undefined;
     if (
       event.data.type === "assistant_message" ||
@@ -599,6 +622,8 @@ export function projectConversationReportEventPage(args: {
         seq: event.seq,
         createdAt: new Date(event.createdAtMs).toISOString(),
         data,
+        ...(eventModel ? { model: eventModel } : undefined),
+        ...(modelCall ? { modelCall } : undefined),
       }),
     );
   }

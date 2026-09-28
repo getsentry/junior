@@ -162,8 +162,9 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
+  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...metadata };
 }
 
 type DetailOptions = Omit<
@@ -453,38 +454,81 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         reasoningLevel: "high",
         confidence: 0.93,
         source: "router",
+        costUsd: 0.0012,
       }),
-      reportEvent(4, iso(Date.parse(startedAt), 10_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "running",
+      reportEvent(
+        4,
+        iso(Date.parse(startedAt), 10_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "running",
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
           },
-        ],
-      }),
-      reportEvent(5, iso(Date.parse(startedAt), 14_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "completed",
-            startedSeq: 4,
-            startedAt: iso(Date.parse(startedAt), 10_000),
-            input: { query: "checkout latency last deployment" },
-            output: {
-              results: [
-                {
-                  title: "payments-v42 deploy notes",
-                  url: "https://docs.sentry.io",
-                },
-              ],
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+            usage: {
+              inputTokens: 12500,
+              outputTokens: 800,
+              cachedInputTokens: 32000,
+              cacheCreationTokens: 2000,
+              reasoningTokens: 600,
+              totalTokens: 47300,
+              cost: {
+                input: 0.025,
+                output: 0.008,
+                cacheRead: 0.0064,
+                cacheWrite: 0.005,
+                total: 0.0444,
+              },
             },
           },
-        ],
-      }),
+        },
+      ),
+      reportEvent(
+        5,
+        iso(Date.parse(startedAt), 14_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "completed",
+              startedSeq: 4,
+              startedAt: iso(Date.parse(startedAt), 10_000),
+              input: { query: "checkout latency last deployment" },
+              output: {
+                results: [
+                  {
+                    title: "payments-v42 deploy notes",
+                    url: "https://docs.sentry.io",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
+          },
+        },
+      ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
       reportEvent(6, iso(Date.parse(startedAt), 22_000), {
         type: "message",

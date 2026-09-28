@@ -118,6 +118,36 @@ async function projectConversationEventRows(
   const events = args.rows
     .map(decodeConversationEventRow)
     .sort((left, right) => left.seq - right.seq);
+  // Resolve context before the scanned page, not from today's model config.
+  // Keep the last route boundary and actual call so pages have the same model.
+  const modelContextRows = events[0]
+    ? (
+        await Promise.all([
+          readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            beforeSeq: events[0].seq,
+            direction: "backward",
+            limit: 1,
+            types: [
+              "turn_started",
+              "turn_routed",
+              "handoff",
+              "turn_completed",
+              "turn_failed",
+            ],
+          }),
+          readConversationEventRows(executor, {
+            conversationId: args.conversationId,
+            beforeSeq: events[0].seq,
+            direction: "backward",
+            limit: 1,
+            types: ["assistant_message"],
+          }),
+        ])
+      )
+        .flat()
+        .sort((left, right) => left.seq - right.seq)
+    : [];
   const endedInvocationIds = [
     ...new Set(
       events.flatMap((event) =>
@@ -158,6 +188,7 @@ async function projectConversationEventRows(
     events,
     subagentStartEvents: subagentStartRows.map(decodeConversationEventRow),
     toolStartEvents: toolStartRows.map(decodeConversationEventRow),
+    modelContextEvents: modelContextRows.map(decodeConversationEventRow),
   });
 }
 

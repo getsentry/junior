@@ -58,6 +58,10 @@ describe("canonical event transcript reduction", () => {
           role: "assistant",
           text: "second by sequence",
         }),
+        event(5, "2026-01-01T00:00:02.000Z", {
+          type: "assistant_message",
+          parts: [],
+        }),
       ]),
     );
 
