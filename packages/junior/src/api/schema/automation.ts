@@ -1,4 +1,4 @@
-import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
+import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 const automationDestinationSchema = z
@@ -23,6 +23,7 @@ export const automationRunWindowsSchema = z
 const automationSummaryBaseSchema = z.object({
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
+  createdByAvatarUrl: z.string().url().optional(),
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
@@ -42,6 +43,7 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
     kind: z.literal("scheduled"),
     nextRunAt: z.string().datetime().optional(),
     schedule: z.string().min(1),
+    timezone: z.string().min(1),
     status: z.enum(["active", "blocked", "completed"]),
   })
   .strict();
@@ -49,6 +51,7 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
 export const eventAutomationSummarySchema = automationSummaryBaseSchema
   .extend({
     events: z.array(z.string().min(1)).min(1),
+    match: eventMatchSchema.optional(),
     kind: z.literal("event"),
     resource: z.string().min(1),
     source: z.string().min(1),

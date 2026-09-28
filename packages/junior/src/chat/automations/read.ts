@@ -90,9 +90,11 @@ function creatorKey(teamId: string, slackUserId: string): string {
   return `${teamId}:${slackUserId}`;
 }
 
-async function creatorProfileEmails(
+type CreatorProfile = { email?: string; avatarUrl?: string };
+
+async function creatorProfiles(
   candidates: TaskCandidate[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, CreatorProfile>> {
   const selectors = new Map(
     candidates.map(({ task }) => {
       const teamId = task.destination.teamId;
@@ -106,17 +108,18 @@ async function creatorProfileEmails(
   if (selectors.size === 0) return new Map();
   const rows = await getDb()
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       email: juniorUsers.primaryEmailNormalized,
+      emailVerified: juniorIdentities.emailVerified,
       slackUserId: juniorIdentities.providerSubjectId,
       teamId: juniorIdentities.providerTenantId,
     })
     .from(juniorIdentities)
-    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.emailVerified, true),
         or(
           ...[...selectors.values()].map((selector) =>
             and(
@@ -128,7 +131,13 @@ async function creatorProfileEmails(
       ),
     );
   return new Map(
-    rows.map((row) => [creatorKey(row.teamId, row.slackUserId), row.email]),
+    rows.map((row) => [
+      creatorKey(row.teamId, row.slackUserId),
+      {
+        email: row.emailVerified ? (row.email ?? undefined) : undefined,
+        avatarUrl: row.avatarUrl ?? undefined,
+      },
+    ]),
   );
 }
 
@@ -226,7 +235,7 @@ function scheduledAutomationSummary(
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: AutomationExecutionSummary | undefined,
-  createdByEmail?: string,
+  creator: CreatorProfile | undefined,
 ): AutomationSummary {
   if (task.status === "deleted") {
     throw new Error(
@@ -241,7 +250,8 @@ function scheduledAutomationSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -258,6 +268,7 @@ function scheduledAutomationSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    timezone: task.schedule.timezone,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
@@ -272,13 +283,14 @@ function eventAutomationSummary(
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: AutomationExecutionSummary | undefined,
-  createdByEmail?: string,
+  creator: CreatorProfile | undefined,
 ): AutomationSummary {
   const instruction = task.task.text;
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -286,6 +298,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     events: task.trigger.events,
+    match: task.trigger.match,
     id: task.id,
     instruction,
     kind: "event",
@@ -371,9 +384,9 @@ export async function readViewerAutomationSummary(
 async function automationSummaryForCandidate(
   candidate: TaskCandidate,
 ): Promise<AutomationSummary> {
-  const [destinations, creatorEmails, stats] = await Promise.all([
+  const [destinations, creators, stats] = await Promise.all([
     destinationDetails([candidate.task.destination]),
-    creatorProfileEmails([candidate]),
+    creatorProfiles([candidate]),
     readAutomationExecutionSummaries(candidate.kind, "junior"),
   ]);
   const destination = destinations.get(
@@ -382,7 +395,7 @@ async function automationSummaryForCandidate(
     label: `Channel ${candidate.task.destination.channelId}`,
     visibility: "private" as const,
   };
-  const createdByEmail = creatorEmails.get(
+  const creator = creators.get(
     creatorKey(
       candidate.task.destination.teamId,
       candidate.task.createdBy.slackUserId,
@@ -394,7 +407,7 @@ async function automationSummaryForCandidate(
       candidate.ownedByViewer,
       destination,
       stats.get(candidate.task.id),
-      createdByEmail,
+      creator,
     );
   }
   return eventAutomationSummary(
@@ -402,7 +415,7 @@ async function automationSummaryForCandidate(
     candidate.ownedByViewer,
     destination,
     stats.get(candidate.task.id),
-    createdByEmail,
+    creator,
   );
 }
 
@@ -506,9 +519,9 @@ export async function readViewerAutomations(
   const selected = candidates.filter((candidate) =>
     selectedCandidates.has(candidate),
   );
-  const [destinations, creatorEmails] = await Promise.all([
+  const [destinations, creators] = await Promise.all([
     destinationDetails(selected.map(({ task }) => task.destination)),
-    creatorProfileEmails(selected),
+    creatorProfiles(selected),
   ]);
   const visible = selected.filter(
     (candidate) =>
@@ -530,7 +543,7 @@ export async function readViewerAutomations(
       label: `Channel ${candidate.task.destination.channelId}`,
       visibility: "private" as const,
     };
-    const createdByEmail = creatorEmails.get(
+    const creator = creators.get(
       creatorKey(
         candidate.task.destination.teamId,
         candidate.task.createdBy.slackUserId,
@@ -542,7 +555,7 @@ export async function readViewerAutomations(
         candidate.ownedByViewer,
         destination,
         scheduledStats.get(candidate.task.id),
-        createdByEmail,
+        creator,
       );
     }
     return eventAutomationSummary(
@@ -550,7 +563,7 @@ export async function readViewerAutomations(
       candidate.ownedByViewer,
       destination,
       eventStats.get(candidate.task.id),
-      createdByEmail,
+      creator,
     );
   });
   return {

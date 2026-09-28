@@ -14,7 +14,9 @@ instead of copying Tailwind blocks.
    `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
    styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
    Prefer `StatusDot` for dense table or list status markers and `StatusChip`
-   when the label itself must stay visible. Prefer `PageContentSkeleton`
+   when the label itself must stay visible. `StatusChip` uses a small dot and
+   sentence-case text, without a border, fill, or all-caps styling. It is not
+   an interactive control. Prefer `PageContentSkeleton`
    variants over ad-hoc pulse blocks in route modules. Use `PageRouteLoading`
    when a standard page must keep its real header above a body skeleton. Use a
    feature-owned loading component for distinct geometry, such as conversations.
