@@ -1,3 +1,4 @@
+import { requireAutomationRevision } from "@/chat/automations/revision";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import {
   slackDestinationSchema,
@@ -345,10 +346,13 @@ export async function createScheduledAutomation(
 export async function saveScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
+  expectedRevision?: string,
 ): Promise<ScheduledAutomation> {
   const next = requireStoredTask(task);
   await withScheduledAutomationLock(db, task.id, async (tx) => {
     const current = await readScheduledAutomation(tx, task.id);
+    if (expectedRevision !== undefined)
+      requireAutomationRevision(current, expectedRevision);
     await writeScheduledAutomation(tx, next, current);
   });
   return next;

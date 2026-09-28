@@ -1,3 +1,7 @@
+import {
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes-schema";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -24,11 +28,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import {
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-  type TaskOutcomeInput,
-} from "@/chat/task-outcomes";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 

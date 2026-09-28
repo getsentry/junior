@@ -4,11 +4,20 @@ import { recordDashboardServerVersion } from "./dashboard-version";
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
+  readonly fields?: Record<string, string[]>;
+  readonly code?: string;
   readonly apiError?: string;
 
-  constructor(path: string, status: number, apiError?: string) {
+  constructor(
+    path: string,
+    status: number,
+    apiError?: string,
+    detail?: { fields?: Record<string, string[]>; code?: string },
+  ) {
     super(`${path} returned ${status}`);
     this.status = status;
+    this.fields = detail?.fields;
+    this.code = detail?.code;
     if (apiError?.trim()) this.apiError = apiError.trim();
   }
 }
@@ -18,13 +27,32 @@ async function throwDashboardApiError(
   response: Response,
 ): Promise<never> {
   let apiError: string | undefined;
+  let fields: Record<string, string[]> | undefined;
+  let code: string | undefined;
   try {
-    const body = (await response.json()) as { error?: unknown };
+    const body = (await response.json()) as {
+      error?: unknown;
+      code?: unknown;
+      fields?: unknown;
+    };
     if (typeof body.error === "string") apiError = body.error;
+    if (typeof body.code === "string") code = body.code;
+    if (body.fields && typeof body.fields === "object") {
+      fields = Object.fromEntries(
+        Object.entries(body.fields).filter(
+          (entry): entry is [string, string[]] =>
+            Array.isArray(entry[1]) &&
+            entry[1].every((value) => typeof value === "string"),
+        ),
+      );
+    }
   } catch {
     // Keep the status-only fallback when the body is not JSON.
   }
-  throw new DashboardApiError(path, response.status, apiError);
+  throw new DashboardApiError(path, response.status, apiError, {
+    fields,
+    code,
+  });
 }
 
 function restartDashboardSignIn(): void {

@@ -151,6 +151,12 @@ export type {
   WorkspaceReport,
 } from "./schema/workspace";
 export {
+  automationEventCatalogSchema,
+  automationScheduleIntentSchema,
+  automationSchedulePreviewSchema,
+  automationEditSchema,
+  automationUpdateSchema,
+  automationEditErrorSchema,
   eventAutomationSummarySchema,
   scheduledAutomationSummarySchema,
   automationExecutionListSchema,
@@ -166,6 +172,9 @@ export {
   automationSummarySchema,
 } from "./schema/automation";
 export type {
+  AutomationScheduleIntent,
+  AutomationEdit,
+  AutomationUpdate,
   AutomationExecution,
   AutomationExecutionDay,
   AutomationExecutionList,

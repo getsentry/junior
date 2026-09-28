@@ -1,3 +1,4 @@
+import { automationRevision } from "@/chat/automations/revision";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -50,7 +51,7 @@ export function createSlackScheduleRunAutomationNowTool(
         runNowAtMs: nowMs,
       };
 
-      await saveScheduledAutomation(getDb(), next);
+      await saveScheduledAutomation(getDb(), next, automationRevision(lookup));
       return { automation: compactTask(next, context.actor?.userId) };
     },
   });

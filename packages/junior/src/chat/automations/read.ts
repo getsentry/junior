@@ -270,6 +270,7 @@ function scheduledAutomationSummary(
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
     timezone: task.schedule.timezone,
+    credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
@@ -307,6 +308,7 @@ function eventAutomationSummary(
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
+    credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,

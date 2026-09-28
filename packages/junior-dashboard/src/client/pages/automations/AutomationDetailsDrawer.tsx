@@ -1,5 +1,7 @@
+import { ButtonLink } from "../../components/Button";
+import { automationOutcomeLabel } from "./automationOutcomes";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { MapPin } from "lucide-react";
 import { Detail, DetailList } from "../../components/DetailList";
 import { Drawer } from "../../components/Drawer";
@@ -17,6 +19,7 @@ export function AutomationDetailsDrawer(props: {
   range: TimeRangeDays;
   automation: AutomationSummary | undefined;
 }) {
+  const location = useLocation();
   if (!props.automation) return null;
 
   const { automation } = props;
@@ -79,6 +82,16 @@ export function AutomationDetailsDrawer(props: {
       titleId={titleId}
     >
       <section className="grid gap-5">
+        <ButtonLink
+          to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
+        >
+          {automation.ownedByViewer &&
+          !(
+            automation.kind === "scheduled" && automation.status === "completed"
+          )
+            ? "Edit automation"
+            : "View settings"}
+        </ButtonLink>
         <div>
           <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
             Instruction
@@ -92,9 +105,17 @@ export function AutomationDetailsDrawer(props: {
             </Detail>
           ))}
           <Detail label="Outcomes">
-            {automation.outcomes.length === 0
-              ? "None"
-              : `${automation.outcomes.length} message${automation.outcomes.length === 1 ? "" : "s"}`}
+            {automation.outcomes.length === 0 ? (
+              "No success message"
+            ) : (
+              <ol className="m-0 pl-4">
+                {automation.outcomes.map((outcome, index) => (
+                  <li key={index}>
+                    {automationOutcomeLabel(outcome, automation.destination)}
+                  </li>
+                ))}
+              </ol>
+            )}
           </Detail>
           <Detail label="Destination">
             <span className="inline-flex items-center gap-1.5">
@@ -106,6 +127,16 @@ export function AutomationDetailsDrawer(props: {
               {automation.destination.label} ·{" "}
               {automation.destination.visibility}
             </span>
+          </Detail>
+          <Detail label="Credentials">
+            {automation.credentialMode === "creator" ? (
+              <>
+                Uses accounts connected by{" "}
+                {automation.ownedByViewer ? "you" : automation.createdBy}.
+              </>
+            ) : (
+              "System credentials only"
+            )}
           </Detail>
           <Detail label="Created">
             {createdBy} · {formatDate(automation.createdAt)}

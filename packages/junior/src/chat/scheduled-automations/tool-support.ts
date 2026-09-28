@@ -24,7 +24,6 @@ import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
   ScheduledAutomationPrincipal,
-  ScheduledAutomationStatus,
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
@@ -384,7 +383,7 @@ export function buildTaskId(args: {
 /** Accept only persisted scheduler statuses from model-facing update input. */
 export function normalizeStatus(
   value: string | undefined,
-): ScheduledAutomationStatus | undefined {
+): "active" | "blocked" | undefined {
   if (value === "active" || value === "blocked") {
     return value;
   }
