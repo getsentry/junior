@@ -123,6 +123,7 @@ export function AutomationEventFields(props: {
         <>
           <Field label="Resource name" htmlFor="trigger-label">
             <TextInput
+              size="comfortable"
               id="trigger-label"
               value={props.value.label}
               onChange={(e) =>
@@ -136,6 +137,7 @@ export function AutomationEventFields(props: {
             help="Use the exact provider resource identifier, not its display name."
           >
             <TextInput
+              size="comfortable"
               id="trigger-identifier"
               value={props.value.identifier}
               onChange={(e) =>
@@ -224,6 +226,7 @@ export function AutomationEventFields(props: {
                         </Select>
                       ) : (
                         <TextInput
+                          size="comfortable"
                           id={`match-${key}`}
                           type={field.kind === "number" ? "number" : "text"}
                           step="any"

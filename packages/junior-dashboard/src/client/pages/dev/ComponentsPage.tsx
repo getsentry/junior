@@ -325,6 +325,11 @@ function FoundationsGalleryPage() {
           />
         </Field>
         <Field label="Repeat" htmlFor="gallery-repeat">
+          <TextInput
+            size="comfortable"
+            aria-label="Resource identifier"
+            defaultValue="getsentry/junior#42"
+          />
           <Select id="gallery-repeat">
             <option>Every week</option>
           </Select>

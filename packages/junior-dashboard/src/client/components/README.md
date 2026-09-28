@@ -57,6 +57,7 @@ instead of copying Tailwind blocks.
 
 See `policies/frontend-components.md`.
 
+Use `TextInput size="comfortable"` for larger mobile form controls.
 Form pages use `Button tone="primary"` for their one main save action. Use
 `TextArea prose` for instructions rather than code. `Field error` renders an
 error at `<htmlFor>-error`; the owning control must set `aria-invalid` and

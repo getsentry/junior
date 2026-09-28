@@ -10,18 +10,24 @@ export type TextInputProps = Omit<
   "size"
 > & {
   className?: string;
+  size?: "default" | "comfortable";
 };
 
 /** Render the dashboard's standard single-line text control. */
 export function TextInput({
   className,
   type = "text",
+  size = "default",
   ...props
 }: TextInputProps) {
   return (
     <input
       {...props}
-      className={cn(textControlClassName, className)}
+      className={cn(
+        textControlClassName,
+        size === "comfortable" && "min-h-11 text-base sm:min-h-10 sm:text-sm",
+        className,
+      )}
       type={type}
     />
   );

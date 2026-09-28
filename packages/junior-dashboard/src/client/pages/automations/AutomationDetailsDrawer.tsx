@@ -1,5 +1,5 @@
 import { ButtonLink } from "../../components/Button";
-import { automationOutcomeLabel } from "./AutomationOutcomeFields";
+import { automationOutcomeLabel } from "./automationOutcomes";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Link, useLocation } from "react-router";
 import { MapPin } from "lucide-react";

@@ -287,6 +287,3 @@ export const automationSchedulePreviewSchema = scheduledAutomationSchema
 export type AutomationScheduleIntent = z.output<
   typeof automationScheduleIntentSchema
 >;
-export type AutomationEventCatalog = z.output<
-  typeof automationEventCatalogSchema
->;

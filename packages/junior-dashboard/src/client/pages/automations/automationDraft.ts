@@ -13,12 +13,20 @@ export const weekdays = [
   "friday",
   "saturday",
 ] as const;
+export type AutomationScheduleDraft =
+  | Extract<AutomationScheduleIntent, { kind: "recurring" }>
+  | {
+      kind: "one_off";
+      timezone: string;
+      timing: { type: "at"; date: string; time: string };
+    };
+
 export type AutomationDraft = {
   title: string;
   instruction: string;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
-  schedule?: AutomationScheduleIntent;
+  schedule?: AutomationScheduleDraft;
   trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"];
 };
 
@@ -33,10 +41,10 @@ export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
   };
 }
 
-/** Convert only a selected schedule into structured controls; retain its anchor date. */
+/** Populate calendar controls without changing the saved start date. */
 export function scheduleDraft(
   value: Extract<AutomationEdit, { kind: "scheduled" }>,
-): AutomationScheduleIntent {
+): AutomationScheduleDraft {
   const recurrence = value.schedule.recurrence;
   if (value.schedule.kind === "recurring" && recurrence) {
     const { time, weekdays: days, ...fields } = recurrence;
@@ -78,30 +86,25 @@ export function scheduleDraft(
   };
 }
 
-/** Send changed fields only so metadata edits cannot reset execution state. */
-export function automationDraftUpdate(
-  value: AutomationEdit,
+/** Keep metadata edits from replacing unchanged triggers or outcomes. */
+export function automationDraftChanges(
+  original: AutomationEdit,
   draft: AutomationDraft,
-): AutomationUpdate {
-  const initial = createAutomationDraft(value);
-  const changes = Object.fromEntries(
-    Object.entries(draft).filter(
-      ([key, field]) =>
-        JSON.stringify(field) !==
-        JSON.stringify(initial[key as keyof AutomationDraft]),
-    ),
-  );
-  return {
-    kind: value.kind,
-    revision: value.revision,
-    ...changes,
-  } as AutomationUpdate;
-}
-
-/** Report dirty state from the actual partial update, not from focus or keystrokes. */
-export function automationDraftChanged(
-  value: AutomationEdit,
-  draft: AutomationDraft,
-): boolean {
-  return Object.keys(automationDraftUpdate(value, draft)).length > 2;
+): Partial<AutomationDraft> {
+  const changes: Partial<AutomationDraft> = {};
+  if (draft.title !== (original.title ?? "")) changes.title = draft.title;
+  if (draft.instruction !== original.instruction)
+    changes.instruction = draft.instruction;
+  if (draft.credentialMode !== original.credentialMode)
+    changes.credentialMode = draft.credentialMode;
+  if (JSON.stringify(draft.outcomes) !== JSON.stringify(original.outcomes))
+    changes.outcomes = draft.outcomes;
+  if (original.kind === "scheduled" && draft.schedule)
+    changes.schedule = draft.schedule;
+  if (
+    original.kind === "event" &&
+    JSON.stringify(draft.trigger) !== JSON.stringify(original.trigger)
+  )
+    changes.trigger = draft.trigger;
+  return changes;
 }

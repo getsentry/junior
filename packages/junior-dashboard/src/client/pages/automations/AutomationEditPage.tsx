@@ -10,11 +10,11 @@ import { fetchDashboardJson } from "../../http";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
-import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
+import { AutomationsNavigation } from "./AutomationsPageLayout";
 import { AutomationEditor } from "./AutomationEditor";
 import { AutomationEditorLoading } from "./AutomationEditorLoading";
 import { AutomationFormSection } from "./AutomationFormSection";
-import { automationOutcomeLabel } from "./AutomationOutcomeFields";
+import { automationOutcomeLabel } from "./automationOutcomes";
 
 /** Load a linkable editor, with readable public values for non-creators. */
 export function AutomationEditPage(props: { enabled: boolean }) {
@@ -37,20 +37,21 @@ export function AutomationEditPage(props: { enabled: boolean }) {
   });
   const returnPath = `/automations/list${location.search}`;
   const value = summary.data;
+  const status =
+    value?.kind === "event"
+      ? value.triggerAvailable
+        ? "active"
+        : "unavailable"
+      : value?.status;
+  const statusTone =
+    status === "active"
+      ? "success"
+      : status === "blocked" || status === "unavailable"
+        ? "warning"
+        : "neutral";
   return (
     <>
-      <SecondaryNavigation
-        ariaLabel="Automations navigation"
-        items={[
-          { label: "Overview", to: "/automations", end: true },
-          {
-            label: "Automations",
-            to: "/automations/list",
-            isActive: () => true,
-          },
-          { label: "Runs", to: "/automations/runs" },
-        ]}
-      />
+      <AutomationsNavigation />
       <div className="mx-auto w-full min-w-0 max-w-5xl px-5 pt-7 sm:px-8 sm:pt-9">
         <Link
           to={returnPath}
@@ -72,24 +73,8 @@ export function AutomationEditPage(props: { enabled: boolean }) {
             ) : null}
           </div>
           {value ? (
-            <StatusChip
-              tone={
-                value.kind === "event"
-                  ? value.triggerAvailable
-                    ? "success"
-                    : "warning"
-                  : value.status === "active"
-                    ? "success"
-                    : value.status === "blocked"
-                      ? "warning"
-                      : "neutral"
-              }
-            >
-              {value.kind === "event"
-                ? value.triggerAvailable
-                  ? "Active"
-                  : "Trigger unavailable"
-                : value.status}
+            <StatusChip tone={statusTone}>
+              {status === "unavailable" ? "Trigger unavailable" : status}
             </StatusChip>
           ) : null}
         </div>

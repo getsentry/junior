@@ -172,7 +172,6 @@ export {
   automationSummarySchema,
 } from "./schema/automation";
 export type {
-  AutomationEventCatalog,
   AutomationScheduleIntent,
   AutomationEdit,
   AutomationUpdate,

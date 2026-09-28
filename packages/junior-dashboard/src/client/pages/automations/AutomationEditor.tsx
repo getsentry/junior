@@ -18,13 +18,13 @@ import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
 import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
 import {
-  automationDraftChanged,
-  automationDraftUpdate,
+  automationDraftChanges,
   createAutomationDraft,
+  scheduleDraft,
   type AutomationDraft,
 } from "./automationDraft";
 
-/** Compose native editing with explicit save, discard, and stale-edit recovery. */
+/** Keep edits until the user saves or discards them. */
 export function AutomationEditor(props: {
   automation: AutomationEdit;
   summary: AutomationSummary;
@@ -40,7 +40,13 @@ export function AutomationEditor(props: {
   const allowLeave = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const dirty = automationDraftChanged(original, draft);
+  const changes = automationDraftChanges(original, draft);
+  const dirty = Object.keys(changes).length > 0;
+  const update = {
+    kind: original.kind,
+    revision: original.revision,
+    ...changes,
+  };
   const blocker = useBlocker(() => dirty && !allowLeave.current);
   const discardNotice = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -65,8 +71,7 @@ export function AutomationEditor(props: {
       )?.focus(),
     );
   const save = useMutation({
-    mutationFn: () =>
-      patch(automationEditSchema, url, automationDraftUpdate(original, draft)),
+    mutationFn: () => patch(automationEditSchema, url, update),
     onSuccess: async () => {
       allowLeave.current = true;
       await queryClient.invalidateQueries({
@@ -79,6 +84,18 @@ export function AutomationEditor(props: {
       focusError();
     },
   });
+  function acceptLatest(keepChanges: boolean) {
+    if (!latest) return;
+    setDraft(
+      keepChanges
+        ? { ...createAutomationDraft(latest), ...changes }
+        : createAutomationDraft(latest),
+    );
+    setOriginal(latest);
+    setLatest(undefined);
+    save.reset();
+    setFields({});
+  }
   const review = useMutation({
     mutationFn: () => fetchDashboardJson(automationEditSchema, `${url}/edit`),
     onSuccess: setLatest,
@@ -92,21 +109,20 @@ export function AutomationEditor(props: {
       .filter(([name]) => name === key || name.startsWith(`${key}.`))
       .flatMap(([, messages]) => messages)
       .join(" ") || undefined;
+  const triggerField = original.kind === "scheduled" ? "schedule" : "trigger";
+  const triggerError = fieldError(triggerField);
   const inputState = (key: string) => ({
     "aria-invalid": Boolean(fieldError(key)) || undefined,
     "aria-describedby": fieldError(key) ? `${key}-error` : undefined,
   });
   return (
     <form
-      className="[&_input:not([type=radio]):not([type=checkbox])]:min-h-11 [&_input:not([type=radio]):not([type=checkbox])]:text-base [&_input:not([type=radio]):not([type=checkbox])]:sm:min-h-10 [&_input:not([type=radio]):not([type=checkbox])]:sm:text-sm [&_textarea]:text-base [&_textarea]:sm:text-sm [scroll-padding-bottom:6rem]"
       ref={form}
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         if (save.isPending || conflict || !dirty) return;
-        const parsed = automationUpdateSchema.safeParse(
-          automationDraftUpdate(original, draft),
-        );
+        const parsed = automationUpdateSchema.safeParse(update);
         if (!parsed.success) {
           const errors: Record<string, string[]> = {};
           for (const issue of parsed.error.issues)
@@ -171,57 +187,36 @@ export function AutomationEditor(props: {
               Only the fields you changed are shown. Keeping your edits will
               replace these fields. Other saved fields stay unchanged.
             </p>
-            {Object.entries(automationDraftUpdate(original, draft))
-              .filter(([key]) => key !== "kind" && key !== "revision")
-              .map(([key, value]) => (
-                <section key={key} className="my-4">
-                  <h3 className="text-sm font-semibold capitalize">{key}</h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p>Latest saved</p>
-                      <pre className="whitespace-pre-wrap break-words text-xs">
-                        {JSON.stringify(
-                          latest[key as keyof AutomationEdit],
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </div>
-                    <div>
-                      <p>Your edit</p>
-                      <pre className="whitespace-pre-wrap break-words text-xs">
-                        {JSON.stringify(value, null, 2)}
-                      </pre>
-                    </div>
+            {Object.entries(changes).map(([key, value]) => (
+              <section key={key} className="my-4">
+                <h3 className="text-sm font-semibold capitalize">
+                  {key === "credentialMode" ? "Credentials" : key}
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p>Latest saved</p>
+                    <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+                      {formatEditValue(
+                        key === "schedule" && latest.kind === "scheduled"
+                          ? scheduleDraft(latest)
+                          : latest[key as keyof AutomationEdit],
+                      )}
+                    </pre>
                   </div>
-                </section>
-              ))}
+                  <div>
+                    <p>Your edit</p>
+                    <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+                      {formatEditValue(value)}
+                    </pre>
+                  </div>
+                </div>
+              </section>
+            ))}
             <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => {
-                  const {
-                    kind: _kind,
-                    revision: _revision,
-                    ...changes
-                  } = automationDraftUpdate(original, draft);
-                  setDraft({ ...createAutomationDraft(latest), ...changes });
-                  setOriginal(latest);
-                  setLatest(undefined);
-                  save.reset();
-                  setFields({});
-                }}
-              >
+              <Button onClick={() => acceptLatest(true)}>
                 Keep my changed fields
               </Button>
-              <Button
-                onClick={() => {
-                  setOriginal(latest);
-                  setDraft(createAutomationDraft(latest));
-                  setLatest(undefined);
-                  save.reset();
-                  setFields({});
-                }}
-              >
+              <Button onClick={() => acceptLatest(false)}>
                 Use latest saved version
               </Button>
             </div>
@@ -235,12 +230,12 @@ export function AutomationEditor(props: {
         >
           <Field label="Title" htmlFor="title" error={fieldError("title")}>
             <TextInput
+              size="comfortable"
               id="title"
               value={draft.title}
               placeholder={props.summary.title}
               onChange={(e) => change({ title: e.target.value })}
               {...inputState("title")}
-              className="min-h-11 text-base sm:min-h-10 sm:text-sm"
             />
           </Field>
           <Field
@@ -271,24 +266,14 @@ export function AutomationEditor(props: {
           }
         >
           <div
-            id={`${original.kind === "scheduled" ? "schedule" : "trigger"}-error`}
+            id={`${triggerField}-error`}
             tabIndex={-1}
-            aria-invalid={
-              Boolean(
-                fieldError(
-                  original.kind === "scheduled" ? "schedule" : "trigger",
-                ),
-              ) || undefined
-            }
+            aria-invalid={Boolean(triggerError) || undefined}
             className="grid min-w-0 gap-5 outline-none"
           >
-            {fieldError(
-              original.kind === "scheduled" ? "schedule" : "trigger",
-            ) ? (
+            {triggerError ? (
               <p role="alert" className="m-0 text-sm text-rose-300">
-                {fieldError(
-                  original.kind === "scheduled" ? "schedule" : "trigger",
-                )}
+                {triggerError}
               </p>
             ) : null}
             {original.kind === "scheduled" ? (
@@ -299,7 +284,7 @@ export function AutomationEditor(props: {
               />
             ) : (
               <AutomationEventFields
-                value={draft.trigger!}
+                value={draft.trigger ?? original.trigger}
                 original={original.trigger}
                 onChange={(trigger) => change({ trigger })}
               />
@@ -404,4 +389,9 @@ export function AutomationEditor(props: {
       </div>
     </form>
   );
+}
+
+function formatEditValue(value: unknown): string {
+  if (value == null) return "Not set";
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }

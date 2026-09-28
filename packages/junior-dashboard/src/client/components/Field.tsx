@@ -34,7 +34,7 @@ export function Field(props: {
       {props.children}
       {props.error ? (
         <p
-          id={`${props.htmlFor}-error`}
+          id={props.htmlFor ? `${props.htmlFor}-error` : undefined}
           role="alert"
           className="m-0 text-xs leading-relaxed text-rose-300"
         >

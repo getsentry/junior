@@ -7,33 +7,44 @@ import { Button } from "../../components/Button";
 import { Select } from "../../components/Select";
 import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
+import { automationOutcomeLabel } from "./automationOutcomes";
 
-type Outcome = AutomationDraft["outcomes"][number];
-
-/** Describe a retained Destination without guessing a recipient from a private id. */
-export function automationOutcomeLabel(
-  outcome: Outcome,
-  destination: AutomationSummary["destination"],
-): string {
-  if (typeof outcome.destination === "string")
-    return outcome.destination === "task_creator"
-      ? "You · Direct message"
-      : `${destination.label} · ${destination.visibility}`;
-  if (
-    outcome.destination.channelId === destination.channelId &&
-    outcome.destination.teamId === destination.teamId
-  )
-    return `${destination.label} · ${destination.visibility}`;
-  return `Saved destination · ${outcome.destination.channelId}`;
-}
-
-/** Preserve ordered stored outcomes and allow only the two supported new targets. */
+/** Keep outcome order and offer only supported message Destinations. */
 export function AutomationOutcomeFields(props: {
   value: AutomationDraft["outcomes"];
   original: AutomationEdit["outcomes"];
   destination: AutomationSummary["destination"];
   onChange(value: AutomationDraft["outcomes"]): void;
 }) {
+  const defaultOutcomes: AutomationDraft["outcomes"] = props.original.length
+    ? props.original
+    : [{ action: "send_message", destination: "current_conversation" }];
+  const options = [
+    ...props.original.flatMap((outcome, index) =>
+      typeof outcome.destination === "string"
+        ? []
+        : [
+            {
+              value: `saved:${index}`,
+              label: automationOutcomeLabel(outcome, props.destination),
+              outcome,
+            },
+          ],
+    ),
+    {
+      value: "current_conversation",
+      label: `${props.destination.label} · ${props.destination.visibility}`,
+      outcome: {
+        action: "send_message",
+        destination: "current_conversation",
+      } as const,
+    },
+    {
+      value: "task_creator",
+      label: "Creator · Direct message",
+      outcome: { action: "send_message", destination: "task_creator" } as const,
+    },
+  ];
   return (
     <>
       <fieldset>
@@ -49,20 +60,7 @@ export function AutomationOutcomeFields(props: {
                 name="messages"
                 className="size-4 accent-dashboard-focus"
                 checked={Boolean(props.value.length) === send}
-                onChange={() =>
-                  props.onChange(
-                    send
-                      ? props.original.length
-                        ? props.original
-                        : [
-                            {
-                              action: "send_message",
-                              destination: "current_conversation",
-                            },
-                          ]
-                      : [],
-                  )
-                }
+                onChange={() => props.onChange(send ? defaultOutcomes : [])}
               />
               {send ? "Send a message" : "No success message"}
             </label>
@@ -97,32 +95,23 @@ export function AutomationOutcomeFields(props: {
                         ? outcome.destination
                         : `saved:${retainedIndex}`
                     }
-                    onChange={(e) =>
-                      props.onChange(
-                        props.value.map((item, i) =>
-                          i !== index
-                            ? item
-                            : e.target.value.startsWith("saved:")
-                              ? props.original[Number(e.target.value.slice(6))]
-                              : {
-                                  action: "send_message",
-                                  destination: e.target.value as
-                                    | "task_creator"
-                                    | "current_conversation",
-                                },
-                        ),
-                      )
-                    }
+                    onChange={(e) => {
+                      const selected = options.find(
+                        (option) => option.value === e.target.value,
+                      );
+                      if (selected)
+                        props.onChange(
+                          props.value.map((item, i) =>
+                            i === index ? selected.outcome : item,
+                          ),
+                        );
+                    }}
                   >
-                    {props.original.map((saved, i) => (
-                      <option key={i} value={`saved:${i}`}>
-                        {automationOutcomeLabel(saved, props.destination)}
+                    {options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
-                    <option value="current_conversation">
-                      {props.destination.label} · {props.destination.visibility}
-                    </option>
-                    <option value="task_creator">You · Direct message</option>
                   </Select>
                 </div>
                 {props.value.length > 1 ? (

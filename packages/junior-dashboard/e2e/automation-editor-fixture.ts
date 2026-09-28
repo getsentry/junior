@@ -69,17 +69,16 @@ export async function mockAutomationEditor(
   await page.route(`${url}/edit`, (route) =>
     route.fulfill({ json: state.value }),
   );
-  await page.route(`${url}/preview`, (route) =>
-    route.fulfill({
-      json: {
-        nextRunAtMs: Date.parse("2026-08-11T16:00:00Z"),
-        schedule:
-          kind === "scheduled" && value.kind === "scheduled"
-            ? value.schedule
-            : {},
-      },
-    }),
-  );
+  if (value.kind === "scheduled") {
+    await page.route(`${url}/preview`, (route) =>
+      route.fulfill({
+        json: {
+          nextRunAtMs: Date.parse("2026-08-11T16:00:00Z"),
+          schedule: value.schedule,
+        },
+      }),
+    );
+  }
   await page.route("**/api/automations/event-catalog", (route) =>
     route.fulfill({
       json: [

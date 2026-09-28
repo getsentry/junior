@@ -5,7 +5,6 @@ import {
   automationScheduleIntentSchema,
   automationSchedulePreviewSchema,
   type AutomationEdit,
-  type AutomationScheduleIntent,
 } from "@sentry/junior/api/schema";
 import { Field } from "../../components/Field";
 import { Select } from "../../components/Select";
@@ -13,13 +12,17 @@ import { TextInput } from "../../components/TextInput";
 import { Button } from "../../components/Button";
 import { post, DashboardApiError } from "../../http";
 import { cn } from "../../styles";
-import { scheduleDraft, weekdays } from "./automationDraft";
+import {
+  scheduleDraft,
+  weekdays,
+  type AutomationScheduleDraft,
+} from "./automationDraft";
 
-/** Edit calendar fields and ask core for a non-mutating next-run preview. */
+/** Edit calendar fields and preview the next run without saving. */
 export function AutomationScheduleFields(props: {
   automation: Extract<AutomationEdit, { kind: "scheduled" }>;
-  value?: AutomationScheduleIntent;
-  onChange(value: AutomationScheduleIntent | undefined): void;
+  value?: AutomationScheduleDraft;
+  onChange(value: AutomationScheduleDraft | undefined): void;
 }) {
   const value = props.value ?? scheduleDraft(props.automation);
   const [previewValue, setPreviewValue] = useState(props.value);
@@ -45,12 +48,7 @@ export function AutomationScheduleFields(props: {
       ),
   });
   const frequency = value.kind === "recurring" ? value.frequency : "once";
-  const time =
-    value.kind === "recurring"
-      ? value.time
-      : value.timing.type === "at"
-        ? value.timing.time
-        : "09:00";
+  const time = value.kind === "recurring" ? value.time : value.timing.time;
   const nextRun = props.value
     ? preview.data?.nextRunAtMs
     : props.automation.nextRunAtMs;
@@ -72,18 +70,27 @@ export function AutomationScheduleFields(props: {
             value={frequency}
             onChange={(e) => {
               const frequency = e.target.value;
+              if (
+                frequency !== "once" &&
+                frequency !== "daily" &&
+                frequency !== "weekly" &&
+                frequency !== "monthly" &&
+                frequency !== "yearly"
+              )
+                return;
               props.onChange(
                 frequency === "once"
                   ? {
                       kind: "one_off",
-                      timezone: value.timezone,
+                      timezone:
+                        value.timezone ?? props.automation.schedule.timezone,
                       timing: { type: "at", date: "", time },
                     }
                   : {
                       kind: "recurring",
                       timezone: value.timezone,
                       time,
-                      frequency: frequency as "daily",
+                      frequency,
                       interval: 1,
                       weekdays: frequency === "weekly" ? ["monday"] : undefined,
                       dayOfMonth: ["monthly", "yearly"].includes(frequency)
@@ -103,7 +110,7 @@ export function AutomationScheduleFields(props: {
         </Field>
         <Field label="Time" htmlFor="schedule-time">
           <TextInput
-            className="min-h-11 text-base sm:min-h-10 sm:text-sm"
+            size="comfortable"
             id="schedule-time"
             type="time"
             value={time}
@@ -115,8 +122,7 @@ export function AutomationScheduleFields(props: {
                       ...value,
                       timing: {
                         type: "at",
-                        date:
-                          value.timing.type === "at" ? value.timing.date : "",
+                        date: value.timing.date,
                         time: e.target.value,
                       },
                     },
@@ -165,6 +171,7 @@ export function AutomationScheduleFields(props: {
               help="Number of calendar periods between runs."
             >
               <TextInput
+                size="comfortable"
                 id="schedule-interval"
                 type="number"
                 min={1}
@@ -177,6 +184,7 @@ export function AutomationScheduleFields(props: {
             </Field>
             <Field label="Start date" htmlFor="schedule-start">
               <TextInput
+                size="comfortable"
                 id="schedule-start"
                 type="date"
                 value={value.startDate ?? ""}
@@ -193,6 +201,7 @@ export function AutomationScheduleFields(props: {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Day of month" htmlFor="schedule-day">
                 <TextInput
+                  size="comfortable"
                   id="schedule-day"
                   type="number"
                   min={1}
@@ -235,9 +244,10 @@ export function AutomationScheduleFields(props: {
       ) : (
         <Field label="Date" htmlFor="schedule-date">
           <TextInput
+            size="comfortable"
             id="schedule-date"
             type="date"
-            value={value.timing.type === "at" ? value.timing.date : ""}
+            value={value.timing.date}
             onChange={(e) =>
               props.onChange({
                 ...value,
@@ -253,6 +263,7 @@ export function AutomationScheduleFields(props: {
         help="Use an IANA timezone. The schedule follows local time, including daylight saving time."
       >
         <TextInput
+          size="comfortable"
           id="schedule-timezone"
           list="automation-timezones"
           value={value.timezone ?? ""}

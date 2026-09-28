@@ -46,6 +46,19 @@ test("edits an Automation from its drawer, preserves list state, and protects th
   await expect(page.getByLabel("Instruction", { exact: true })).toHaveValue(
     "Review the weekly changes and link the relevant issues.",
   );
+  await page.getByRole("button", { name: "Add message", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Move message 2 up", exact: true })
+    .click();
+  await expect(page.getByLabel("Message 1 destination")).toHaveValue(
+    "task_creator",
+  );
+  await page
+    .getByRole("button", { name: "Move message 2 up", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Remove message 2", exact: true })
+    .click();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/list?scope=mine&q=weekly`,
