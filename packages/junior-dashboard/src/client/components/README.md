@@ -6,7 +6,7 @@ instead of copying Tailwind blocks.
 ## Layers
 
 1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
-   `StatusChip`, `StatusDot`, `Notice`, `Drawer`, `Tooltip`, `Skeleton`,
+   `StatusChip`, `StatusDot`, `Notice`, `FormNotice`, `Select`, `Drawer`, `Tooltip`, `Skeleton`,
    `PageContentSkeleton`, `SegmentedTabs`, and other small reusable controls.
    Use `SegmentedTabs` for equal-width panel navigation. Pass the selected value,
    items, change handler, and selected panel content. It owns tab/panel labels
@@ -56,3 +56,9 @@ instead of copying Tailwind blocks.
 - One-off page glue may stay inline when extraction only adds indirection.
 
 See `policies/frontend-components.md`.
+
+Form pages use `Button tone="primary"` for their one main save action. Use
+`TextArea prose` for instructions rather than code. `Field error` renders an
+error at `<htmlFor>-error`; the owning control must set `aria-invalid` and
+`aria-describedby`. `Select` matches native text controls. Use `FormNotice` for
+wrapping form recovery text; use `Notice` for compact transient messages.

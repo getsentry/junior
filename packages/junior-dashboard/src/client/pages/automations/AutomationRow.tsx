@@ -7,7 +7,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
@@ -46,6 +46,7 @@ export function AutomationRow(props: {
   automation: AutomationSummary;
 }) {
   const { automation } = props;
+  const location = useLocation();
   const creator = (
     <>
       <ActorAvatar
@@ -143,6 +144,7 @@ export function AutomationRow(props: {
         <div className="absolute right-3 top-3 xl:static">
           {automation.ownedByViewer ? (
             <AutomationActions
+              editPath={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
               deleting={props.deleting}
               onDelete={props.onDelete}
               title={automation.title}
@@ -231,6 +233,7 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
 }
 
 function AutomationActions(props: {
+  editPath: string;
   deleting: boolean;
   onDelete(): void;
   title: string;
@@ -271,7 +274,19 @@ function AutomationActions(props: {
         ) {
           event.preventDefault();
           setOpen(true);
-          item.current?.focus();
+          const items = Array.from(
+            root.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ??
+              [],
+          );
+          const index = items.indexOf(document.activeElement as HTMLElement);
+          const next =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? items.length - 1
+                : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) %
+                  items.length;
+          items[next]?.focus();
         }
       }}
       ref={root}
@@ -297,6 +312,13 @@ function AutomationActions(props: {
           onClick={(event) => event.stopPropagation()}
           role="menu"
         >
+          <Link
+            role="menuitem"
+            to={props.editPath}
+            className="flex min-h-11 items-center rounded px-3 text-sm text-dashboard-text no-underline hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-dashboard-focus"
+          >
+            Edit automation
+          </Link>
           <button
             className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded border-0 bg-transparent px-3 text-sm text-rose-300 hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
             onClick={() => {

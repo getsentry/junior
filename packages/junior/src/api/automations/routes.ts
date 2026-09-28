@@ -1,3 +1,7 @@
+import {
+  readAutomationEventCatalog,
+  previewAutomationSchedule,
+} from "@/chat/automations/editor";
 import { AutomationConflictError } from "@/chat/automations/revision";
 import { zValidator } from "@hono/zod-validator";
 import {
@@ -10,6 +14,9 @@ import { emptyResponse, jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
+  automationEventCatalogSchema,
+  automationScheduleIntentSchema,
+  automationSchedulePreviewSchema,
   automationEditSchema,
   automationEditErrorSchema,
   automationUpdateSchema,
@@ -81,6 +88,35 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         automationListSchema,
         await readViewerAutomations(user, query),
       );
+    },
+  );
+  app.get("/event-catalog", requireViewer, () => {
+    return jsonResponse(
+      automationEventCatalogSchema,
+      readAutomationEventCatalog(),
+    );
+  });
+  app.post(
+    "/scheduled/:id/preview",
+    requireViewer,
+    validateRequest(
+      "json",
+      automationScheduleIntentSchema,
+      "Invalid schedule.",
+    ),
+    async (context) => {
+      try {
+        return jsonResponse(
+          automationSchedulePreviewSchema,
+          await previewAutomationSchedule(
+            context.get("viewer"),
+            context.req.param("id"),
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
     },
   );
   app.get("/runs", requireViewer, async (context) => {

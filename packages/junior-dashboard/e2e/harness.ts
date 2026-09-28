@@ -327,6 +327,7 @@ export async function mockDashboardApis(
           ? "Send the weekly project summary"
           : "Summarize the closed issue",
       kind,
+      credentialMode: "creator",
       ownedByViewer: true,
       runs:
         kind === "scheduled"

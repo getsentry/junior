@@ -180,6 +180,11 @@ export function AutomationsPage(props: {
 
   return (
     <>
+      {location.state?.automationSaved ? (
+        <p role="status" className="m-0 text-sm text-emerald-300">
+          Automation saved. Changes apply to future work.
+        </p>
+      ) : null}
       {props.view === "overview" ? (
         <PageHeader
           description="Scheduled and event-driven work created by users."

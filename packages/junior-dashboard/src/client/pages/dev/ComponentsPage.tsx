@@ -1,3 +1,5 @@
+import { FormNotice } from "../../components/FormNotice";
+import { Select } from "../../components/Select";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
 import {
@@ -309,6 +311,29 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Editor controls">
+        <Field
+          label="Instruction"
+          htmlFor="gallery-instruction"
+          error="Enter an instruction."
+        >
+          <TextArea
+            prose
+            id="gallery-instruction"
+            aria-invalid
+            aria-describedby="gallery-instruction-error"
+          />
+        </Field>
+        <Field label="Repeat" htmlFor="gallery-repeat">
+          <Select id="gallery-repeat">
+            <option>Every week</option>
+          </Select>
+        </Field>
+        <Button tone="primary">Save changes</Button>
+        <FormNotice title="This automation changed while you were editing.">
+          Your edits are still here. Review the latest version before saving.
+        </FormNotice>
+      </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
