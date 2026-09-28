@@ -1,6 +1,6 @@
+/** Creator-only web edits. Public read access never grants write authority. */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError } from "./edit-rules";
-/** Creator-only web edits. Public read access never grants write authority. */
 import type { User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";

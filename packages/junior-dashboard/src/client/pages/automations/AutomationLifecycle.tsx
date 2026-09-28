@@ -23,6 +23,9 @@ export function AutomationLifecycle({
   const blocked = automation.status === "blocked";
   const unavailable =
     automation.kind === "event" && !automation.triggerAvailable;
+  const canEdit = automation.ownedByViewer && !completed;
+  const blockReason =
+    automation.kind === "scheduled" ? automation.statusReason : undefined;
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
     mutationFn: async () => {
@@ -48,15 +51,10 @@ export function AutomationLifecycle({
       });
     },
   });
-  const status = paused
-    ? "Paused"
-    : completed
-      ? "Completed"
-      : blocked
-        ? "Blocked"
-        : unavailable
-          ? "Trigger unavailable"
-          : "Active";
+  const status =
+    automation.status === "active" && unavailable
+      ? "Trigger unavailable"
+      : automation.status;
   const failed =
     automation.lastRunStatus === "failed" ||
     automation.lastRunStatus === "blocked";
@@ -78,11 +76,9 @@ export function AutomationLifecycle({
         </div>
         <div className="flex items-center gap-2">
           <ButtonLink className="min-h-11" to={editPath}>
-            {automation.ownedByViewer && !completed
-              ? "Edit automation"
-              : "View settings"}
+            {canEdit ? "Edit automation" : "View settings"}
           </ButtonLink>
-          {automation.ownedByViewer && !completed ? (
+          {canEdit ? (
             <Button
               className="min-h-11"
               disabled={mutation.isPending}
@@ -97,13 +93,9 @@ export function AutomationLifecycle({
           ) : null}
         </div>
       </div>
-      {blocked ||
-      (automation.kind === "scheduled" && automation.statusReason) ? (
+      {blocked || blockReason ? (
         <p className="m-0 break-words text-dashboard-text-muted">
-          {automation.kind === "scheduled"
-            ? (automation.statusReason ??
-              "Check the last run to see what needs fixing.")
-            : null}{" "}
+          {blockReason ?? "Check the last run to see what needs fixing."}{" "}
           {paused ? "Fix this before resuming." : "Fix this, then resume."}
         </p>
       ) : null}
@@ -116,7 +108,7 @@ export function AutomationLifecycle({
       {failed ? (
         <p className="m-0 text-dashboard-text-muted">
           Last run {automation.lastRunStatus}.
-          {!paused && !completed && !blocked && !unavailable
+          {automation.status === "active" && !unavailable
             ? " Future runs are still on."
             : ""}{" "}
           <Link
@@ -127,7 +119,7 @@ export function AutomationLifecycle({
           </Link>
         </p>
       ) : null}
-      {automation.ownedByViewer && !completed ? (
+      {canEdit ? (
         <details className="text-dashboard-text-muted">
           <summary className="w-fit cursor-pointer py-2 text-xs hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
             About pausing
@@ -136,9 +128,7 @@ export function AutomationLifecycle({
             Pausing stops new runs. Work already queued or running may finish.
             Resuming skips missed runs and waits for the next scheduled time or
             new event.
-            {paused &&
-            automation.kind === "scheduled" &&
-            automation.statusReason
+            {paused && blockReason
               ? " Removing the pause keeps the block until you fix it and resume again."
               : ""}
           </p>

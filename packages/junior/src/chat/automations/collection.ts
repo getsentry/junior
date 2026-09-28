@@ -92,15 +92,19 @@ export function viewerAutomationCollection(user: User) {
   const available =
     or(
       ...Object.entries(pluginEventCatalog(getEventCatalog())).map(
-        ([namespace, registration]) =>
-          and(
+        ([namespace, registration]) => {
+          const events = registration.resourceTypes.flatMap(
+            (resource) => resource.supportedEvents,
+          );
+          return and(
             eq(event.namespace, namespace),
-            sql`${event.task}->'trigger'->'events' <@ ${JSON.stringify([...new Set(registration.resourceTypes.flatMap((resource) => resource.supportedEvents))])}::jsonb`,
-          ),
+            sql`${event.task}->'trigger'->'events' <@ ${JSON.stringify(events)}::jsonb`,
+          );
+        },
       ),
     ) ?? sql`false`;
   const executions = juniorAutomationExecutions;
-  function lastRunFailed(kind: "scheduled" | "event", id: SQLWrapper) {
+  function lastRunNeedsAttention(kind: "scheduled" | "event", id: SQLWrapper) {
     return sql<boolean>`coalesce((select ${executions.status} in ('failed', 'blocked') from ${executions}
       where ${executions.kind} = ${kind} and ${executions.namespace} = 'junior' and ${executions.automationId} = ${id}
       order by ${executions.executedAtMs} desc, ${executions.executionId} desc limit 1), false)`;
@@ -115,7 +119,7 @@ export function viewerAutomationCollection(user: User) {
         state: sql<string>`${scheduled.status}`.as("state"),
         unavailable: sql<boolean>`false`.as("unavailable"),
         attention:
-          sql<boolean>`${scheduled.status} not in ('paused', 'completed') and (${scheduled.status} = 'blocked' or ${lastRunFailed("scheduled", scheduled.id)})`.as(
+          sql<boolean>`${scheduled.status} not in ('paused', 'completed') and (${scheduled.status} = 'blocked' or ${lastRunNeedsAttention("scheduled", scheduled.id)})`.as(
             "attention",
           ),
         owned: sql<boolean>`${scheduledOwned}`.as("owned"),
@@ -147,7 +151,7 @@ export function viewerAutomationCollection(user: User) {
         state: sql<string>`${event.status}`.as("state"),
         unavailable: sql<boolean>`not (${available})`.as("unavailable"),
         attention:
-          sql<boolean>`${event.status} <> 'paused' and (not (${available}) or ${lastRunFailed("event", event.id)})`.as(
+          sql<boolean>`${event.status} <> 'paused' and (not (${available}) or ${lastRunNeedsAttention("event", event.id)})`.as(
             "attention",
           ),
         owned: sql<boolean>`${eventOwned}`.as("owned"),

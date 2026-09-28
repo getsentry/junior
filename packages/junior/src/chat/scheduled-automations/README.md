@@ -38,15 +38,11 @@ Only the creator may change destination. Move preserves task id, instruction, sc
 
 ## Pause and resume
 
-The web lifecycle action uses the task lock and a read revision. Pause stops
-future claims. Work already claimed or dispatched may finish. Its result cannot
-remove a pause. Resume selects the next future calendar occurrence, not missed
-occurrences. A one-off with no future time must get a new Schedule before resume.
-Completed work cannot resume. Pausing blocked work keeps its reason. Removing
-that pause restores the block; a separate Resume retries after the requirement
-is resolved. Credentials, creator, and history stay unchanged.
+Pause stops future claims. Already-claimed work may finish but cannot remove a
+pause. Resume selects the next future Schedule time and skips missed runs.
+A missed one-off needs a new Schedule. Pausing blocked work keeps its reason;
+removing the pause restores the block until the user resolves it and resumes.
 
-Deploy all workers before using pause. Older workers interpret paused scheduled
-rows as deleted. No schema migration is needed: lifecycle uses existing text
-columns. Migration 0017 still removes legacy paused rows on upgrades that have
-not yet applied it; it does not run again on current installations.
+Deploy all workers before using pause. Older workers read paused rows as deleted.
+Pause uses the existing text status column. Migration 0017 removes only legacy
+paused rows on installations that have not yet applied it.

@@ -220,15 +220,15 @@ export type AutomationList = z.output<typeof automationListSchema>;
 
 export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
-/** Explicit lifecycle actions are separate from form edits and never run work. */
+const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+/** Pause and resume do not start work. */
 export const automationLifecycleSchema = z
   .object({
     action: z.enum(["pause", "resume"]),
-    revision: z.string().regex(/^[a-f0-9]{64}$/),
+    revision: automationRevisionSchema,
   })
   .strict();
-
-const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
 const automationEditBaseSchema = scheduledAutomationSchema
   .pick({ destination: true, createdBy: true })

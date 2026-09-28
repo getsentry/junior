@@ -7,7 +7,10 @@ import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
-import { getEventAutomation } from "@/chat/event-automations/store";
+import {
+  getEventAutomation,
+  type StoredEventAutomation,
+} from "@/chat/event-automations/store";
 import {
   EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
   type EventAutomation,
@@ -228,13 +231,13 @@ export function eventAutomationTriggerAvailable(
 
 /** Project an event automation into the bounded tool-result shape. */
 export function compactEventAutomation(
-  task: EventAutomation & { status?: "active" | "paused" | "deleted" },
+  task: StoredEventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
-    status: task.status ?? "active",
+    status: task.status,
     title: task.title?.trim() || null,
     dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,
@@ -268,7 +271,7 @@ export function compactEventAutomation(
 /** Return the standard successful event-automation tool result. */
 export async function eventAutomationToolResult(
   conversationId: string,
-  task: EventAutomation,
+  task: StoredEventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId: string,
 ) {

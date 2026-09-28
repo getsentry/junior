@@ -409,7 +409,9 @@ test("pauses and resumes from details, keeps failures visible, and limits action
   await expect(
     page.getByRole("button", { name: "Resume", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("status")).toHaveText("Paused");
+  await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
+    "paused",
+  );
   await screenshot(page, "automation-paused");
   const pauseHelp = page.getByText("About pausing", { exact: true });
   await pauseHelp.focus();
