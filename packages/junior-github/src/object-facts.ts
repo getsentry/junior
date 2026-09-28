@@ -48,6 +48,7 @@ export function githubObjectFacts(
     "facts" | "sourceUpdatedAt" | "description"
   > = {
     sourceUpdatedAt: data.updated_at,
+    description: description(data.body),
     facts:
       type === "code_change"
         ? {
@@ -79,6 +80,5 @@ export function githubObjectFacts(
               .filter(Boolean),
           },
   };
-  if (type === "code_change") result.description = description(data.body);
   return result;
 }

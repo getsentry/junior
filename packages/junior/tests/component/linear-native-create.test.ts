@@ -51,6 +51,7 @@ describe("Linear MCP create annotations", () => {
           const issue = {
             id: "ENG-123",
             title: input.title ?? "Linear MCP create issue",
+            description: input.id ? null : input.description,
             status: input.state ?? "Todo",
             assignee: "Sam",
             priority: { value: 2, name: "High" },
@@ -192,6 +193,9 @@ describe("Linear MCP create annotations", () => {
                   display_id: "ENG-123",
                   title: { text: "Linear MCP create issue" },
                 },
+                custom_fields: [
+                  { key: "description", value: createInput.description },
+                ],
               },
             },
           ],
@@ -211,6 +215,7 @@ describe("Linear MCP create annotations", () => {
           {
             plugin: "linear",
             key: "ENG-123",
+            description: undefined,
             status: "In Progress",
             sourceUpdatedAt: "2026-09-25T14:00:00Z",
             facts: {

@@ -1018,21 +1018,30 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("returns the stored issue result when a createIssue tool call is retried", async () => {
-    const ctx = githubToolsContext();
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        Response.json({
+          number: 660,
+          html_url: "https://github.com/getsentry/junior/issues/660",
+          body: "Issue summary\n\n<!-- junior-session-footer:start -->\nFooter\n<!-- junior-session-footer:end -->",
+        }),
+    });
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
     const input = {
       repo: "getsentry/junior",
       title: "Typed issue",
     };
-
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
-    ).resolves.toMatchObject({
+    const expected = {
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
-    });
+      objectAnnotations: [{ description: "Issue summary" }],
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
+    ).resolves.toMatchObject(expected);
     await expect(
       tool?.execute?.(
         {
@@ -1042,11 +1051,7 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-idempotent-create" },
       ),
-    ).resolves.toMatchObject({
-      target: "createIssue",
-      number: 660,
-      url: "https://github.com/getsentry/junior/issues/660",
-    });
+    ).resolves.toMatchObject(expected);
 
     expect(ctx.egressRequests()).toHaveLength(1);
   });

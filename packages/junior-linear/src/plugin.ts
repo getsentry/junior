@@ -32,6 +32,7 @@ const savedIssueSchema = z
     id: z.string().optional(),
     url: z.url(),
     title: z.string().optional(),
+    description: z.string().nullish(),
     status: z.string().optional(),
     assignee: namedFact,
     priority: z
@@ -104,6 +105,7 @@ async function annotateSavedIssue(
         key: identifier,
         label: identifier,
         title: (issue.title || identifier).slice(0, 512),
+        description: issue.description?.slice(0, 4000),
         url: issue.url,
         status: issue.status,
         displayType: "Issue",
