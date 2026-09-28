@@ -96,6 +96,7 @@ const createPullRequestStateSchema = Type.Union([
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
       status: Type.Literal("completed"),
+      pendingAssignee: Type.Optional(Type.String()),
       url: Type.String(),
     },
     { additionalProperties: false },
@@ -336,6 +337,59 @@ async function createGitHubPullRequest(
   };
 }
 
+/** Finish assignment after creation is saved, so retries cannot create another PR. */
+async function assignPullRequestRequester(
+  ctx: ToolRegistrationHookContext,
+  key: string,
+  input: CreateGitHubPullRequestInput,
+  state: Extract<CreatePullRequestState, { status: "completed" }>,
+): Promise<void> {
+  const assignee = state.pendingAssignee;
+  if (!assignee) return;
+  const repo = parseRepo(input.repo);
+  const response = await ctx.egress.fetch({
+    provider: "github",
+    operation: "github.pull.assign",
+    request: new Request(
+      `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${state.number}/assignees`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        body: JSON.stringify({ assignees: [assignee] }),
+      },
+    ),
+  });
+  const parsed = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      `GitHub pull request ${state.url} was created, but requester assignment failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`,
+    );
+  }
+  // GitHub can silently ignore users who cannot be assigned to the repository.
+  const assigned = z
+    .object({ assignees: z.array(z.object({ login: z.string() })) })
+    .parse(parsed);
+  if (
+    !assigned.assignees.some(
+      ({ login }) => login.toLowerCase() === assignee.toLowerCase(),
+    )
+  ) {
+    throw new Error(
+      `GitHub pull request ${state.url} was created, but GitHub did not assign requester ${state.pendingAssignee}.`,
+    );
+  }
+  const { pendingAssignee: _, ...completedState } = state;
+  await ctx.state.set(
+    key,
+    completedState,
+    GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
+  );
+}
+
 function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
@@ -435,7 +489,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -457,6 +511,7 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
+            await assignPullRequestRequester(ctx, key, completedInput, state);
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -479,6 +534,13 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
+          const requester =
+            ctx.actor && ctx.actor.platform !== "system"
+              ? await ctx.users.resolveActor()
+              : undefined;
+          const pendingAssignee = requester?.user?.identities
+            .find((identity) => identity.provider === "github")
+            ?.handle?.trim();
           const request = await createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
@@ -495,27 +557,9 @@ export function createGitHubPullRequestTool(
             pendingState,
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
+          let result: GitHubPullRequestResult;
           try {
-            const result = await createGitHubPullRequest(ctx, request);
-            Object.assign(pendingState, { status: "completed", ...result });
-            try {
-              await ctx.state.set(
-                key,
-                pendingState,
-                GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
-              );
-            } catch (error) {
-              throw new Error(
-                "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
-                { cause: error },
-              );
-            }
-            return await gitHubPullRequestStructuredResult(
-              ctx,
-              parsedInput,
-              result,
-              subscriptionConfig,
-            );
+            result = await createGitHubPullRequest(ctx, request);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -525,6 +569,39 @@ export function createGitHubPullRequestTool(
             }
             throw error;
           }
+          const completedState: Extract<
+            CreatePullRequestState,
+            { status: "completed" }
+          > = {
+            ...pendingState,
+            status: "completed",
+            ...result,
+            ...(pendingAssignee ? { pendingAssignee } : undefined),
+          };
+          try {
+            await ctx.state.set(
+              key,
+              completedState,
+              GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
+            );
+          } catch (error) {
+            throw new Error(
+              "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
+              { cause: error },
+            );
+          }
+          await assignPullRequestRequester(
+            ctx,
+            key,
+            parsedInput,
+            completedState,
+          );
+          return await gitHubPullRequestStructuredResult(
+            ctx,
+            parsedInput,
+            result,
+            subscriptionConfig,
+          );
         },
       );
     },

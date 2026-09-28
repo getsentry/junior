@@ -1470,7 +1470,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("prefers stored identity names for requester attribution", async () => {
+  it("assigns pull requests to the linked requester and preserves attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
@@ -1490,17 +1490,26 @@ Conversation: \`local:test:old-conversation\`
           displayName: "David Cramer",
           email: "david@example.com",
           id: "user-1",
-          identities: [],
+          identities: [
+            {
+              id: "github-identity",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
         },
       }),
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 692,
-            html_url: "https://github.com/getsentry/junior/pull/692",
-          }),
-          { status: 201 },
-        ),
+      egressFetch: async ({ operation }) =>
+        operation === "github.pull.assign"
+          ? Response.json({ assignees: [{ login: "dcramer" }] })
+          : new Response(
+              JSON.stringify({
+                number: 692,
+                html_url: "https://github.com/getsentry/junior/pull/692",
+              }),
+              { status: 201 },
+            ),
     });
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
 
@@ -1516,6 +1525,19 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-identity-pull-request" },
     );
 
+    expect(ctx.egressRequests()).toHaveLength(2);
+    const assignment = ctx.egressRequests()[1];
+    expect(assignment).toMatchObject({
+      provider: "github",
+      operation: "github.pull.assign",
+    });
+    expect(assignment.request.method).toBe("POST");
+    expect(assignment.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
+    );
+    await expect(assignment.request.json()).resolves.toEqual({
+      assignees: ["dcramer"],
+    });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
@@ -1568,7 +1590,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("keeps GitHub writes when identity lookup fails", async () => {
+  it("stops before creating a pull request when requester lookup fails", async () => {
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -1580,33 +1602,24 @@ Conversation: \`local:test:old-conversation\`
       resolveActor: async () => {
         throw new Error("identity storage unavailable");
       },
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 694,
-            html_url: "https://github.com/getsentry/junior/pull/694",
-          }),
-          { status: 201 },
-        ),
     });
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
 
-    await tool?.execute?.(
-      {
-        repo: "getsentry/junior",
-        title: "Typed PR",
-        head: "dcramer/gh-660-pr-create",
-        base: "main",
-        body: "PR body",
-        draft: true,
-      },
-      { toolCallId: "call-create-identity-lookup-failed" },
-    );
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+          draft: true,
+        },
+        { toolCallId: "call-create-identity-lookup-failed" },
+      ),
+    ).rejects.toThrow("identity storage unavailable");
 
-    const request = ctx.egressRequests()[0];
-    await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
-    });
+    expect(ctx.egressRequests()).toHaveLength(0);
   });
 
   it("keeps pull request annotation labels compact for long titles", async () => {
@@ -1712,80 +1725,138 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("returns the stored pull request result when a createPullRequest tool call is retried", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-    const ctx = githubToolsContext({
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            body: "A".repeat(4001),
-            user: { login: "alex" },
-            head: { ref: "feature/cards" },
-            base: { ref: "main" },
-            number: 691,
-            html_url: "https://github.com/getsentry/junior/pull/691",
-          }),
-          { status: 201 },
+  it.each(["rejected", "ignored"])(
+    "retries %s assignment without creating another pull request",
+    async (failure) => {
+      process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+      let assignmentAttempts = 0;
+      let handle = "dcramer";
+      const ctx = githubToolsContext({
+        actor: { platform: "slack", teamId: "T1", userId: "U1" },
+        resolveActor: async () => ({
+          identity: {
+            id: "slack-id",
+            provider: "slack",
+            providerSubjectId: "U1",
+          },
+          user: {
+            id: "user-1",
+            email: "david@example.com",
+            identities: [
+              {
+                id: "github-id",
+                provider: "github",
+                providerSubjectId: "1473041",
+                handle,
+              },
+            ],
+          },
+        }),
+        egressFetch: async ({ operation }) => {
+          if (operation === "github.pull.assign") {
+            assignmentAttempts += 1;
+            if (assignmentAttempts === 1) {
+              return failure === "rejected"
+                ? Response.json(
+                    { message: "Validation Failed" },
+                    { status: 422 },
+                  )
+                : Response.json({ assignees: [] });
+            }
+            return Response.json({ assignees: [{ login: "dcramer" }] });
+          }
+          return new Response(
+            JSON.stringify({
+              body: "A".repeat(4001),
+              user: { login: "alex" },
+              head: { ref: "feature/cards" },
+              base: { ref: "main" },
+              number: 691,
+              html_url: "https://github.com/getsentry/junior/pull/691",
+            }),
+            { status: 201 },
+          );
+        },
+      });
+      const plugin = githubPlugin();
+      const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+      const input = {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+      };
+
+      await expect(
+        tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
+      ).rejects.toThrow("was created, but");
+      // Resume with changed actor data and input; use the saved requester and repo.
+      handle = "someone-else";
+      await expect(
+        tool?.execute?.(
+          { ...input, repo: "getsentry/other" },
+          { toolCallId: "call-idempotent-pr-create" },
         ),
-    });
-    const plugin = githubPlugin();
-    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
-    const input = {
-      repo: "getsentry/junior",
-      title: "Typed PR",
-      head: "dcramer/gh-660-pr-create",
-      base: "main",
-    };
-
-    await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
-    ).resolves.toMatchObject({
-      objectAnnotations: [
-        {
-          description: `${"A".repeat(3999)}…`,
-          facts: {
-            type: "code_change",
-            author: "alex",
-            sourceBranch: "feature/cards",
-            targetBranch: "main",
+      ).resolves.toMatchObject({
+        objectAnnotations: [
+          {
+            description: `${"A".repeat(3999)}…`,
+            facts: {
+              type: "code_change",
+              author: "alex",
+              sourceBranch: "feature/cards",
+              targetBranch: "main",
+            },
           },
+        ],
+        number: 691,
+        subscribable: {
+          identifier: "getsentry/junior#691",
         },
-      ],
-      number: 691,
-      subscribable: {
-        identifier: "getsentry/junior#691",
-      },
-      url: "https://github.com/getsentry/junior/pull/691",
-    });
-    await expect(
-      tool?.execute?.(
-        {
-          ...input,
-          repo: "getsentry/other",
-        },
-        { toolCallId: "call-idempotent-pr-create" },
-      ),
-    ).resolves.toMatchObject({
-      objectAnnotations: [
-        {
-          description: `${"A".repeat(3999)}…`,
-          facts: {
-            type: "code_change",
-            author: "alex",
-            sourceBranch: "feature/cards",
-            targetBranch: "main",
+        url: "https://github.com/getsentry/junior/pull/691",
+      });
+      await expect(
+        tool?.execute?.(
+          {
+            ...input,
+            repo: "getsentry/other",
           },
+          { toolCallId: "call-idempotent-pr-create" },
+        ),
+      ).resolves.toMatchObject({
+        objectAnnotations: [
+          {
+            description: `${"A".repeat(3999)}…`,
+            facts: {
+              type: "code_change",
+              author: "alex",
+              sourceBranch: "feature/cards",
+              targetBranch: "main",
+            },
+          },
+        ],
+        number: 691,
+        subscribable: {
+          identifier: "getsentry/junior#691",
         },
-      ],
-      number: 691,
-      subscribable: {
-        identifier: "getsentry/junior#691",
-      },
-      url: "https://github.com/getsentry/junior/pull/691",
-    });
+        url: "https://github.com/getsentry/junior/pull/691",
+      });
 
-    expect(ctx.egressRequests()).toHaveLength(1);
-  });
+      expect(ctx.egressRequests()).toHaveLength(3);
+      expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
+        "github.pull.create",
+        "github.pull.assign",
+        "github.pull.assign",
+      ]);
+      const assignment = ctx.egressRequests()[2].request;
+      expect(assignment.url).toBe(
+        "https://api.github.com/repos/getsentry/junior/issues/691/assignees",
+      );
+      await expect(assignment.json()).resolves.toEqual({
+        assignees: ["dcramer"],
+      });
+    },
+  );
 
   it("returns legacy stored pull request results without stored input", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";

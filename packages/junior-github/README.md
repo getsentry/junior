@@ -25,6 +25,16 @@ export const plugins = defineJuniorPlugins([
 
 Full setup guide: https://junior.sentry.dev/extend/github-plugin/
 
+Pull requests created by the plugin are assigned to the current requester's
+linked GitHub account. If there is no linked GitHub handle, the plugin leaves
+the pull request unassigned. System actors do not receive assignments. A failed
+identity lookup stops creation rather than silently skipping assignment.
+
+The plugin saves the created pull request before it adds the assignee. If
+assignment fails, the tool reports the failure. Retrying the same tool call
+retries assignment on the saved pull request with the saved requester. It does
+not create another pull request or replace existing assignees.
+
 The plugin owns its signed webhook route, deployment, pull request, and release
 events, and normalized pull request and issue outcome projections.
 Those projections also feed native code-change records used by the dashboard
