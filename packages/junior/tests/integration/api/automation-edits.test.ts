@@ -138,6 +138,70 @@ describe("Automation edit API", () => {
     vi.unstubAllEnvs();
   });
 
+  test("previews schedules without saving and exposes only durable Event choices", async () => {
+    const { app, fixture, url, read } = await setup("scheduled");
+    try {
+      const initial = await read();
+      const preview = (timezone: string, viewer = "creator@example.com") =>
+        app.request(`${url}/preview`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "test-viewer": viewer,
+          },
+          body: JSON.stringify({
+            kind: "recurring",
+            frequency: "weekly",
+            weekdays: ["monday"],
+            time: "09:00",
+            timezone,
+          }),
+        });
+      const result = await preview("Europe/Vienna");
+      expect(result.status).toBe(200);
+      expect(await result.json()).toMatchObject({
+        nextRunAtMs: expect.any(Number),
+        schedule: {
+          timezone: "Europe/Vienna",
+          recurrence: { weekdays: [1], time: { hour: 9, minute: 0 } },
+        },
+      });
+      expect(
+        (await preview("Europe/Vienna", "reader@example.com")).status,
+      ).toBe(404);
+      expect((await preview("Not/AZone")).status).toBe(400);
+      expect(await read()).toEqual(initial);
+      vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+      setPlugins([githubPlugin()]);
+      const catalog = await app.request("/api/automations/event-catalog");
+      expect(catalog.status).toBe(200);
+      const choices = await catalog.json();
+      expect(choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            namespace: "github",
+            type: "issue",
+            supportedEvents: expect.arrayContaining(["issue.closed"]),
+          }),
+        ]),
+      );
+      expect(
+        choices.some(
+          (choice: { namespace: string }) => choice.namespace === "junior",
+        ),
+      ).toBe(false);
+      const summary = await app.request(`/api/automations/${initial.id}`, {
+        headers: { "test-viewer": "reader@example.com" },
+      });
+      expect(await summary.json()).toMatchObject({
+        credentialMode: "creator",
+        ownedByViewer: false,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test.each(["scheduled", "event"] as const)(
     "edits %s Automations without losing fields, titles, authority, or history",
     async (kind) => {

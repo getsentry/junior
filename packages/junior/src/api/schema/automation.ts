@@ -1,3 +1,5 @@
+import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
+import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
 import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import {
@@ -27,6 +29,7 @@ export const automationRunWindowsSchema = z
   .strict();
 
 const automationSummaryBaseSchema = z.object({
+  credentialMode: z.enum(["creator", "system"]),
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
   createdByAvatarUrl: z.string().url().optional(),
@@ -271,3 +274,16 @@ export const automationEditErrorSchema = z
 
 export type AutomationEdit = z.output<typeof automationEditSchema>;
 export type AutomationUpdate = z.output<typeof automationUpdateSchema>;
+
+/** Catalog metadata only; callbacks and provider connections stay on the server. */
+export const automationEventCatalogSchema = z.array(
+  pluginEventTypeSchema.safeExtend({ namespace: z.string() }),
+);
+export const automationScheduleIntentSchema = scheduleIntentSchema;
+export const automationSchedulePreviewSchema = scheduledAutomationSchema
+  .pick({ schedule: true })
+  .extend({ nextRunAtMs: z.number() })
+  .strict();
+export type AutomationScheduleIntent = z.output<
+  typeof automationScheduleIntentSchema
+>;
