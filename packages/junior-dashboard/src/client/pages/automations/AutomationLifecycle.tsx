@@ -4,15 +4,18 @@ import {
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
-import { Button } from "../../components/Button";
+import { Button, ButtonLink } from "../../components/Button";
+import { StatusChip } from "../../components/StatusChip";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
 /** Explain lifecycle separately from the last execution and offer creator-only actions. */
 export function AutomationLifecycle({
   automation,
+  editPath,
 }: {
   automation: AutomationSummary;
+  editPath: string;
 }) {
   const queryClient = useQueryClient();
   const completed = automation.status === "completed";
@@ -45,81 +48,104 @@ export function AutomationLifecycle({
       });
     },
   });
+  const status = paused
+    ? "Paused"
+    : completed
+      ? "Completed"
+      : blocked
+        ? "Blocked"
+        : unavailable
+          ? "Trigger unavailable"
+          : "Active";
+  const failed =
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked";
   return (
     <div className="grid gap-3 text-sm">
-      <p className="m-0 text-dashboard-text-muted">
-        {completed
-          ? "Completed. This automation will not run again."
-          : paused
-            ? "Paused by a person. Future triggers will not start work."
-            : blocked
-              ? "Future runs are blocked. Resolve the requirement below before resuming."
-              : unavailable
-                ? "The trigger is unavailable. Enable its plugin or edit the trigger to receive events."
-                : "Future triggers can start work."}
-      </p>
-      {automation.kind === "scheduled" && automation.statusReason ? (
-        <p className="m-0 break-words text-amber-300">
-          {automation.statusReason}
-        </p>
-      ) : null}
-      {paused && unavailable ? (
-        <p className="m-0 text-dashboard-text-muted">
-          The trigger is also unavailable. Resuming will not enable its plugin.
-        </p>
-      ) : null}
-      {automation.lastRunStatus === "failed" ||
-      automation.lastRunStatus === "blocked" ? (
-        <p className="m-0 text-dashboard-text-muted">
-          Last run {automation.lastRunStatus}. This does not by itself stop
-          future work.{" "}
-          <Link
-            className="text-dashboard-text underline"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="status" aria-live="polite">
+          <StatusChip
+            tone={
+              paused || completed
+                ? "neutral"
+                : blocked || unavailable
+                  ? "warning"
+                  : "success"
+            }
           >
-            Inspect executions
-          </Link>
-        </p>
-      ) : null}
-      {automation.ownedByViewer && !completed ? (
-        <>
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            Pause does not cancel work already claimed or started. Resume uses
-            future schedule times and newly received events. Missed triggers are
-            not replayed.
-          </p>
-          {paused &&
-          automation.kind === "scheduled" &&
-          automation.statusReason ? (
-            <p className="m-0 text-xs text-dashboard-text-muted">
-              Resuming removes the pause but keeps the unresolved block.
-            </p>
-          ) : null}
-          <div>
+            {status}
+          </StatusChip>
+        </div>
+        <div className="flex items-center gap-2">
+          <ButtonLink className="min-h-11" to={editPath}>
+            {automation.ownedByViewer && !completed
+              ? "Edit automation"
+              : "View settings"}
+          </ButtonLink>
+          {automation.ownedByViewer && !completed ? (
             <Button
+              className="min-h-11"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
               {mutation.isPending
                 ? "Updating…"
                 : action === "pause"
-                  ? "Pause automation"
-                  : "Resume automation"}
+                  ? "Pause"
+                  : "Resume"}
             </Button>
-          </div>
-        </>
-      ) : null}
-      {mutation.isSuccess ? (
-        <p role="status" className="m-0 text-dashboard-text-muted">
-          {mutation.data.status === "paused"
-            ? "Automation paused."
-            : mutation.data.status === "blocked"
-              ? "Pause removed. The automation is still blocked."
-              : "Automation resumed. Missed triggers will not be replayed."}
+          ) : null}
+        </div>
+      </div>
+      {blocked ||
+      (automation.kind === "scheduled" && automation.statusReason) ? (
+        <p className="m-0 break-words text-dashboard-text-muted">
+          {automation.kind === "scheduled"
+            ? (automation.statusReason ??
+              "Check the last run to see what needs fixing.")
+            : null}{" "}
+          {paused ? "Fix this before resuming." : "Fix this, then resume."}
         </p>
       ) : null}
+      {unavailable ? (
+        <p className="m-0 text-dashboard-text-muted">
+          This event source is unavailable. Enable its plugin or choose another
+          event.
+        </p>
+      ) : null}
+      {failed ? (
+        <p className="m-0 text-dashboard-text-muted">
+          Last run {automation.lastRunStatus}.
+          {!paused && !completed && !blocked && !unavailable
+            ? " Future runs are still on."
+            : ""}{" "}
+          <Link
+            className="text-dashboard-text underline underline-offset-2"
+            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+          >
+            View run history
+          </Link>
+        </p>
+      ) : null}
+      {automation.ownedByViewer && !completed ? (
+        <details className="text-dashboard-text-muted">
+          <summary className="w-fit cursor-pointer py-2 text-xs hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
+            About pausing
+          </summary>
+          <p className="mt-1 mb-0 leading-relaxed">
+            Pausing stops new runs. Work already queued or running may finish.
+            Resuming skips missed runs and waits for the next scheduled time or
+            new event.
+            {paused &&
+            automation.kind === "scheduled" &&
+            automation.statusReason
+              ? " Removing the pause keeps the block until you fix it and resume again."
+              : ""}
+          </p>
+        </details>
+      ) : null}
       {mutation.error ? (
-        <FormNotice tone="error" title="Automation could not be updated.">
+        <FormNotice tone="error" title="Could not update this automation.">
           {mutation.error instanceof DashboardApiError
             ? (mutation.error.apiError ?? "Try again.")
             : mutation.error.message}

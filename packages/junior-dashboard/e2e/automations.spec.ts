@@ -110,7 +110,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(closeAutomationDetails).not.toBeFocused();
   await page.keyboard.press("Tab");
   await expect(closeAutomationDetails).toBeFocused();
-  await expect(details.getByText("Instruction")).toBeVisible();
+  await expect(details.getByText("What to do")).toBeVisible();
   await expect(
     details.getByText("Send the weekly project summary"),
   ).toBeVisible();
@@ -159,6 +159,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   ).toBeVisible();
   await expect(actions).toBeEnabled();
   await expect(page.getByText("Incident change alerts")).not.toBeVisible();
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await page.getByRole("button", { name: "event", exact: true }).click();
   await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
@@ -242,6 +243,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
   await page.getByRole("button", { name: "Previous page" }).click();
   await expect(page.getByText("Showing 1-25 of 31")).toBeVisible();
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await page.getByLabel("Filter by creator").selectOption("dev@example.com");
   await page.getByLabel("Filter by destination").selectOption("T123:C123");
   await page.getByLabel("Filter by state").selectOption("active");
@@ -399,24 +401,34 @@ test("pauses and resumes from details, keeps failures visible, and limits action
       name: "View automation details: Weekly project summary",
     })
     .click();
-  await page.getByRole("button", { name: "Pause automation" }).click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(
     page.getByText("The Automation changed. Try again."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Pause automation" }).click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Resume automation" }),
+    page.getByRole("button", { name: "Resume", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Paused by a person. Future triggers will not start work."),
-  ).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("status")).toHaveText("Paused");
   await screenshot(page, "automation-paused");
-  await page.getByRole("button", { name: "Resume automation" }).click();
+  const pauseHelp = page.getByText("About pausing", { exact: true });
+  await pauseHelp.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Pausing stops new runs/)).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/Pausing stops new runs/)).not.toBeVisible();
+  const moreDetails = page.getByText("More details", { exact: true });
+  await moreDetails.click();
   await expect(
-    page.getByRole("button", { name: "Pause automation" }),
+    page.getByText("Connected accounts", { exact: true }),
+  ).toBeVisible();
+  await moreDetails.click();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Inspect executions" }),
+    page.getByRole("link", { name: "View run history" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close automation details" }).click();
   await expect(page).toHaveURL(/list\?scope=attention/);
@@ -426,11 +438,11 @@ test("pauses and resumes from details, keeps failures visible, and limits action
     })
     .click();
   await expect(
-    page.getByRole("button", { name: /Pause automation|Resume automation/ }),
+    page.getByRole("button", { name: /^(Pause|Resume)$/ }),
   ).toHaveCount(0);
   await expect(
     page.getByText(
-      "The trigger is unavailable. Enable its plugin or edit the trigger to receive events.",
+      "This event source is unavailable. Enable its plugin or choose another event.",
     ),
   ).toBeVisible();
 });
