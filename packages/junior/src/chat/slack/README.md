@@ -18,6 +18,27 @@ formatting, and Slack API error mapping. The Slack provider layer in
   must not reject the input. The worker retries and owns completion. Passive
   messages wait for the reply decision. Thread stops clear queued reactions.
 
+## One-on-one Thread Replies
+
+With `passive-routing` off, a subscribed channel thread can accept replies
+without a new mention. `../ingress/one-on-one-thread.ts` owns this exception.
+It reads Slack history from the root and requires Junior to have posted. Every
+author and user mention must refer to Junior or the current user. Another author,
+another user mention, or a group notification makes the thread mention-only.
+This includes invitations in Junior's replies. Explicit mentions still work.
+
+The check uses up to ten pages of 100 messages. Missing or incomplete history
+stays quiet. Slack API failures reach the retryable webhook boundary. A blocked
+thread stays blocked in runtime state for seven days, even if the message is
+deleted. After expiry, the next check reads full history again. Edits do not
+start turns; later checks see the current Slack text. DMs, thread stops, and
+experimental passive routing keep their existing behavior.
+
+Eligible replies use the same direct-input route as DMs. They do not set
+`message.isMention` and do not call the passive reply classifier. This exception
+accepts new input; it does not cancel work that was already accepted before
+another participant arrived.
+
 ## Messages
 
 `message/` is the isolated Slack message projection module. It converts typed

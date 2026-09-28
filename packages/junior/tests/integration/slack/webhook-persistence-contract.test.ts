@@ -8,7 +8,10 @@ import {
 } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import { authTestOk } from "../../fixtures/slack/factories/api";
+import {
+  authTestOk,
+  conversationsRepliesPage,
+} from "../../fixtures/slack/factories/api";
 import {
   queueSlackApiError,
   queueSlackApiResponse,
@@ -187,6 +190,178 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("replies to one-on-one follow-ups, then stays quiet after another user is invited", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const harness = await createConversationWorkSlackHarness();
+      const threadTs = "1712345.0001";
+      const history = [
+        { user: "U123", ts: threadTs, text: "<@U0BOT> help me" },
+        {
+          user: SLACK_BOT_USER_ID,
+          ts: "1712345.0002",
+          text: "How can I help?",
+        },
+      ];
+      await harness.send({ user: "U123", text: "<@U0BOT> help me" });
+      await harness.drain();
+      expect(harness.replies()).toHaveLength(1);
+
+      for (const ts of ["1712345.0003", "1712345.0004"]) {
+        queueSlackApiResponse("conversations.replies", {
+          body: conversationsRepliesPage({ messages: history }),
+        });
+        const response = await harness.send({
+          eventType: "message",
+          user: "U123",
+          text: "please continue",
+          threadTs,
+          ts,
+        });
+        expect(response.status).toBe(200);
+        await harness.drain();
+      }
+      expect(harness.replies()).toHaveLength(3);
+
+      for (const [ts, text] of [
+        ["1712345.0005", "<@UOTHER> what do you think?"],
+        ["1712345.0006", "please continue"],
+      ]) {
+        const response = await harness.send({
+          eventType: "message",
+          user: "U123",
+          text,
+          threadTs,
+          ts,
+        });
+        expect(response.status).toBe(200);
+        expect(harness.wakes.queuedMessages()).toEqual([]);
+      }
+      // An explicit mention still works, but does not restore automatic replies.
+      await harness.send({
+        user: "U123",
+        text: "<@U0BOT> help again",
+        threadTs,
+        ts: "1712345.0007",
+      });
+      await harness.drain();
+      expect(harness.replies()).toHaveLength(4);
+      await harness.send({
+        eventType: "message",
+        user: "U123",
+        text: "continue",
+        threadTs,
+        ts: "1712345.0008",
+      });
+      expect(harness.wakes.queuedMessages()).toEqual([]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it.each([
+    {
+      label: "another author on a later page",
+      extra: { user: "UOTHER", text: "joining in" },
+    },
+    {
+      label: "an invitation from Junior",
+      extra: { user: SLACK_BOT_USER_ID, text: "Ask <@UOTHER>." },
+    },
+    {
+      label: "a rich-text invitation",
+      extra: {
+        user: "U123",
+        blocks: [
+          {
+            type: "rich_text",
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [{ type: "user", user_id: "UOTHER" }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ])("keeps a thread quiet after $label", async ({ extra }) => {
+    setExperimentalFeatures(undefined);
+    try {
+      const harness = await createConversationWorkSlackHarness();
+      const threadTs = "1712345.0001";
+      await harness.state.subscribe(`slack:C123:${threadTs}`);
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          messages: [
+            { user: "U123", ts: threadTs, text: "<@U0BOT> help" },
+            { user: SLACK_BOT_USER_ID, ts: "1712345.0002", text: "ready" },
+          ],
+          nextCursor: "older-participant",
+        }),
+      });
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          messages: [{ ts: "1712345.0003", ...extra }],
+        }),
+      });
+      const response = await harness.send({
+        eventType: "message",
+        user: "U123",
+        text: "continue",
+        threadTs,
+        ts: "1712345.0004",
+      });
+      expect(response.status).toBe(200);
+      expect(harness.wakes.queuedMessages()).toEqual([]);
+      // The decision survives even if Slack later omits the third-party message.
+      await harness.send({
+        eventType: "message",
+        user: "U123",
+        text: "continue",
+        threadTs,
+        ts: "1712345.0005",
+      });
+      expect(harness.wakes.queuedMessages()).toEqual([]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it("requires complete history and retries a failed one-on-one history read", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const harness = await createConversationWorkSlackHarness();
+      const threadTs = "1712345.0001";
+      await harness.state.subscribe(`slack:C123:${threadTs}`);
+      const input = {
+        eventType: "message" as const,
+        user: "U123",
+        text: "continue",
+        threadTs,
+        ts: "1712345.0004",
+      };
+      queueSlackApiError("conversations.replies", { error: "internal_error" });
+      expect((await harness.send(input)).status).toBe(503);
+      expect(harness.wakes.queuedMessages()).toEqual([]);
+      queueSlackApiResponse("conversations.replies", {
+        body: {
+          ...conversationsRepliesPage({
+            messages: [
+              { user: "U123", ts: threadTs, text: "help" },
+              { user: SLACK_BOT_USER_ID, ts: "1712345.0002", text: "ready" },
+            ],
+          }),
+          has_more: true,
+        },
+      });
+      expect((await harness.send(input)).status).toBe(200);
+      expect(harness.wakes.queuedMessages()).toEqual([]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
 
   it("stores subscribed non-mention messages as history without worker work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);

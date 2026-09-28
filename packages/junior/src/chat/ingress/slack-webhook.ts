@@ -39,6 +39,7 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { isOneOnOneThreadReply } from "@/chat/ingress/one-on-one-thread";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
@@ -424,7 +425,7 @@ async function routeParsedMessage(args: {
     !isDirectMessage &&
     !isMention &&
     (await args.state.isSubscribed(canonicalThreadId));
-  const route: SlackConversationRoute | undefined =
+  let route: SlackConversationRoute | undefined =
     isDirectMessage || isMention
       ? "mention"
       : isSubscribed
@@ -455,11 +456,30 @@ async function routeParsedMessage(args: {
     return;
   }
 
+  if (
+    isSubscribed &&
+    !isExperimentalFeatureEnabled("passive-routing") &&
+    botUserId &&
+    (await isOneOnOneThreadReply({
+      botUserId,
+      event: args.event,
+      state: args.state,
+      threadId: canonicalThreadId,
+    }))
+  ) {
+    // Like DMs, one-on-one follow-ups use the direct-input route without
+    // changing message.isMention or enabling the passive reply classifier.
+    route = "mention";
+  }
+
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
   // Write against the Slack thread id, not a bound mailbox Conversation id, so
   // mention turns that hydrate from thread.id see the same history.
-  if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
+  if (
+    route === "subscribed" &&
+    !isExperimentalFeatureEnabled("passive-routing")
+  ) {
     const content = parseContent(message);
     const conversation = coerceThreadConversationState(undefined);
     recordSkippedConversationMessage({
