@@ -20,7 +20,7 @@ The agent input uses shared framing from `task-input.ts`. See `chat/README.md`
 
 The heartbeat bounds claims per invocation, reconciles incomplete dispatches before claiming new work, and advances recurring tasks only after their current run reaches a terminal outcome.
 
-Task status is `active`, `blocked`, `completed`, or `deleted`. There is no pause state: stop a task by deleting it, or leave it blocked when authorization/config prevents dispatch. A successful terminal run with no future occurrence becomes `completed` so creators can still find one-off reminders. Failed/skipped terminal work without a future occurrence is tombstoned as `deleted`. Listings and tool lookups hide `deleted` rows while retaining the record as a tombstone. Public workspace listings also omit `completed` rows; the creator-owned Tasks view keeps them.
+Task status is `active`, `paused`, `blocked`, `completed`, or `deleted`. A person can pause future claims without deleting history. A block means a requirement prevents dispatch. A successful terminal run with no future occurrence becomes `completed` so creators can still find one-off reminders. Failed/skipped terminal work without a future occurrence is tombstoned as `deleted`. Listings and tool lookups hide `deleted` rows while retaining the record as a tombstone. Public workspace listings also omit `completed` rows; the creator-owned Tasks view keeps them.
 
 ## Destination moves
 
@@ -35,3 +35,18 @@ Cross-channel rehomes stay destination-first and reuse the existing tools:
 3. `slackScheduleUpdateAutomation` with `destination: "here"` rehomes that existing task row into the active channel.
 
 Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
+
+## Pause and resume
+
+The web lifecycle action uses the task lock and a read revision. Pause stops
+future claims. Work already claimed or dispatched may finish. Its result cannot
+remove a pause. Resume selects the next future calendar occurrence, not missed
+occurrences. A one-off with no future time must get a new Schedule before resume.
+Completed work cannot resume. Pausing blocked work keeps its reason. Removing
+that pause restores the block; a separate Resume retries after the requirement
+is resolved. Credentials, creator, and history stay unchanged.
+
+Deploy all workers before using pause. Older workers interpret paused scheduled
+rows as deleted. No schema migration is needed: lifecycle uses existing text
+columns. Migration 0017 still removes legacy paused rows on upgrades that have
+not yet applied it; it does not run again on current installations.

@@ -8,6 +8,7 @@ import { z } from "zod";
 const scheduledAutomationStatusSchema = z.enum([
   "active",
   "blocked",
+  "paused",
   "completed",
   "deleted",
 ]);

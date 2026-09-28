@@ -51,6 +51,7 @@ export type AutomationRunWindows = {
 };
 
 export type AutomationExecutionSummary = {
+  lastRunStatus?: AutomationExecutionStatus;
   lastConversationId?: string;
   lastExecutedAtMs?: number;
   runs: AutomationRunWindows;
@@ -161,6 +162,7 @@ export async function readAutomationExecutionSummaries(
   const db = getDb();
   const latest = db
     .selectDistinctOn([juniorAutomationExecutions.automationId], {
+      status: juniorAutomationExecutions.status,
       conversationId: juniorAutomationExecutions.conversationId,
       automationId: juniorAutomationExecutions.automationId,
     })
@@ -185,6 +187,7 @@ export async function readAutomationExecutionSummaries(
     .as("latest_task_execution");
   const rows = await db
     .select({
+      lastRunStatus: latest.status,
       lastConversationId: latest.conversationId,
       lastExecutedAtMs: max(juniorAutomationExecutions.executedAtMs),
       runsLast1Day: sql<number>`count(*) filter (where ${juniorAutomationExecutions.executedAtMs} >= ${oneDayAgoMs})::int`,
@@ -211,11 +214,16 @@ export async function readAutomationExecutionSummaries(
           : undefined,
       ),
     )
-    .groupBy(juniorAutomationExecutions.automationId, latest.conversationId);
+    .groupBy(
+      juniorAutomationExecutions.automationId,
+      latest.conversationId,
+      latest.status,
+    );
   return new Map(
     rows.map((row) => [
       row.automationId,
       {
+        lastRunStatus: row.lastRunStatus,
         ...(row.lastConversationId
           ? { lastConversationId: row.lastConversationId }
           : undefined),

@@ -1,3 +1,9 @@
+import {
+  claimDueScheduledRun,
+  advanceScheduledAutomationAfterRun,
+} from "@/chat/scheduled-automations/runs";
+import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { Hono } from "hono";
@@ -136,6 +142,194 @@ describe("Automation edit API", () => {
   afterEach(() => {
     setPlugins([]);
     vi.unstubAllEnvs();
+  });
+
+  // Both trigger types are always run by this table; branches exercise their distinct dispatch boundaries.
+  /* oxlint-disable vitest/no-conditional-expect */
+  test.each(["scheduled", "event"] as const)(
+    "pauses and resumes %s work without changing authority or history",
+    async (kind) => {
+      const { app, fixture, id, url, read, patch } = await setup(kind);
+      try {
+        if (kind === "scheduled") {
+          const task = (await readScheduledAutomation(getDb(), id))!;
+          await saveScheduledAutomation(getDb(), {
+            ...task,
+            status: "active",
+            statusReason: undefined,
+            nextRunAtMs: Date.now() - 1000,
+          });
+        }
+        await recordAutomationExecution(kind, id, {
+          executionId: "past-failure",
+          status: "failed",
+          nowMs: Date.now() - 5000,
+        });
+        const initial = await read();
+        const lifecycle = (
+          action: string,
+          revision: string,
+          viewer = "creator@example.com",
+        ) =>
+          app.request(`${url}/lifecycle`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "test-viewer": viewer,
+            },
+            body: JSON.stringify({ action, revision }),
+          });
+        expect(
+          (await lifecycle("pause", initial.revision, "reader@example.com"))
+            .status,
+        ).toBe(404);
+        expect(
+          (await lifecycle("pause", initial.revision, "foreign@example.com"))
+            .status,
+        ).toBe(404);
+        expect((await lifecycle("pause", initial.revision)).status).toBe(200);
+        const paused = await read();
+        expect(paused).toMatchObject({
+          status: "paused",
+          credentialMode: "creator",
+          outcomes: initial.outcomes,
+        });
+        expect(
+          (
+            await patch({
+              kind,
+              revision: initial.revision,
+              instruction: "Stale edit",
+            })
+          ).status,
+        ).toBe(409);
+        const listed = await app.request("/api/automations?state=paused");
+        expect(await listed.json()).toMatchObject({
+          total: 1,
+          automations: [{ id, status: "paused" }],
+        });
+        expect(
+          await (await app.request("/api/automations?scope=attention")).json(),
+        ).toMatchObject({ total: 0 });
+        expect(
+          await (await app.request(`${url}/executions`)).json(),
+        ).toMatchObject({
+          executions: [{ executionId: "past-failure", status: "failed" }],
+        });
+        const queue = createConversationWorkQueueTestAdapter();
+        const event = {
+          namespace: "unavailable",
+          identifier: "issue-42",
+          eventType: "issue.closed",
+          eventKey: "paused-event",
+          trustedSummary: "Issue closed",
+          occurredAtMs: Date.now(),
+          data: { retainedCondition: "one" },
+        };
+        if (kind === "scheduled") {
+          expect(
+            await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+          ).toBeUndefined();
+          // Completion of work claimed before pause cannot silently reactivate it.
+          await advanceScheduledAutomationAfterRun(getDb(), {
+            nowMs: Date.now(),
+            status: "completed",
+            run: {
+              id: "already-started",
+              taskId: id,
+              status: "running",
+              attempt: 1,
+              claimedAtMs: Date.now() - 2000,
+              scheduledForMs: Date.now() - 1000,
+            },
+          });
+          expect((await read()).status).toBe("paused");
+        } else {
+          expect(
+            await ingestEventAutomations(event, { queue, teamId: "T123" }),
+          ).toEqual({ dispatched: 0 });
+        }
+        expect(
+          (await lifecycle("resume", (await read()).revision)).status,
+        ).toBe(200);
+        const resumed = await read();
+        expect(resumed).toMatchObject({
+          status: "active",
+          credentialMode: initial.credentialMode,
+          outcomes: initial.outcomes,
+          id,
+        });
+        if (resumed.kind === "scheduled") {
+          expect(resumed.nextRunAtMs).toBeGreaterThan(Date.now());
+          expect(
+            await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+          ).toBeUndefined();
+          expect(
+            await claimDueScheduledRun(getDb(), {
+              nowMs: resumed.nextRunAtMs!,
+            }),
+          ).toMatchObject({ taskId: id });
+          const current = (await readScheduledAutomation(getDb(), id))!;
+          await saveScheduledAutomation(getDb(), {
+            ...current,
+            status: "completed",
+            nextRunAtMs: undefined,
+          });
+          expect(
+            (await lifecycle("resume", (await read()).revision)).status,
+          ).toBe(400);
+        } else {
+          expect(
+            await ingestEventAutomations(
+              { ...event, eventKey: "new-event" },
+              { queue, teamId: "T123" },
+            ),
+          ).toEqual({ dispatched: 1 });
+        }
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  /* oxlint-enable vitest/no-conditional-expect */
+
+  test("keeps blocked requirements through pause and refuses to replay a missed one-off", async () => {
+    const { app, fixture, id, url, read } = await setup("scheduled");
+    try {
+      const lifecycle = async (action: string) =>
+        app.request(`${url}/lifecycle`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action, revision: (await read()).revision }),
+        });
+      expect((await lifecycle("pause")).status).toBe(200);
+      expect((await lifecycle("resume")).status).toBe(200);
+      expect(await readScheduledAutomation(getDb(), id)).toMatchObject({
+        status: "blocked",
+        statusReason: "Missing credentials",
+      });
+      expect((await lifecycle("resume")).status).toBe(200);
+      const task = (await readScheduledAutomation(getDb(), id))!;
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "paused",
+        nextRunAtMs: Date.now() - 1000,
+        schedule: {
+          kind: "one_off",
+          description: "Yesterday",
+          timezone: "UTC",
+        },
+      });
+      const result = await lifecycle("resume");
+      expect(result.status).toBe(400);
+      expect(await result.json()).toMatchObject({
+        fields: { schedule: expect.any(Array) },
+      });
+      expect((await read()).status).toBe("paused");
+    } finally {
+      await fixture.close();
+    }
   });
 
   test("previews schedules without saving and exposes only durable Event choices", async () => {

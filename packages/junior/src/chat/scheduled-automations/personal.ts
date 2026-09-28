@@ -149,7 +149,7 @@ export async function listViewerScheduledAutomations(
       .from(juniorSchedulerTasks)
       .where(
         and(
-          notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+          notInArray(juniorSchedulerTasks.status, ["deleted"]),
           inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
           cursorFilter,
           search,

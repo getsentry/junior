@@ -40,7 +40,6 @@ import {
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
 import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
-import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   deleteViewerScheduledAutomation,
@@ -67,7 +66,7 @@ type TaskCandidate =
   | {
       kind: "event";
       ownedByViewer: boolean;
-      task: EventAutomation;
+      task: StoredEventAutomation;
     }
   | {
       kind: "scheduled";
@@ -220,6 +219,7 @@ async function destinationDetails(
 
 function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
   return {
+    lastRunStatus: stats?.lastRunStatus,
     ...(stats?.lastConversationId
       ? { lastConversationId: stats.lastConversationId }
       : undefined),
@@ -243,7 +243,10 @@ function scheduledAutomationSummary(
       "Deleted scheduled automations cannot enter the Automations view",
     );
   }
-  const nextRunAtMs = task.runNowAtMs ?? task.nextRunAtMs;
+  const nextRunAtMs =
+    task.status === "active"
+      ? (task.runNowAtMs ?? task.nextRunAtMs)
+      : undefined;
   const instruction = displayText(
     task.task.text,
     "Untitled scheduled automation",
@@ -269,6 +272,7 @@ function scheduledAutomationSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    statusReason: task.statusReason,
     timezone: task.schedule.timezone,
     credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
@@ -281,7 +285,7 @@ function scheduledAutomationSummary(
 }
 
 function eventAutomationSummary(
-  task: EventAutomation,
+  task: StoredEventAutomation,
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: AutomationExecutionSummary | undefined,
@@ -315,6 +319,7 @@ function eventAutomationSummary(
       instruction,
       "Untitled event automation",
     ),
+    status: task.status === "paused" ? "paused" : "active",
     triggerAvailable: eventAutomationTriggerAvailable(task, getEventCatalog()),
   };
 }

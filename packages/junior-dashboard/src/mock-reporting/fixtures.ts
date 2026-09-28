@@ -2710,6 +2710,7 @@ function mockTasks(): AutomationSummary[] {
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
+      status: "active",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",
@@ -2739,6 +2740,7 @@ function mockTasks(): AutomationSummary[] {
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
+      status: "active",
     },
   ];
 }

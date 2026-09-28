@@ -1,3 +1,5 @@
+import { pluginEventCatalog } from "@/chat/events/catalog";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   and,
@@ -15,6 +17,7 @@ import { unionAll } from "drizzle-orm/pg-core";
 import type { AutomationListQuery } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
 import {
+  juniorAutomationExecutions,
   juniorDestinations,
   juniorEventAutomations,
   juniorSchedulerTasks,
@@ -85,6 +88,23 @@ export function viewerAutomationCollection(user: User) {
       sql`${destination.providerDestinationId} = ${record}->'destination'->>'channelId'`,
     );
   }
+  // Use the same namespace/event availability rule as the direct reader.
+  const available =
+    or(
+      ...Object.entries(pluginEventCatalog(getEventCatalog())).map(
+        ([namespace, registration]) =>
+          and(
+            eq(event.namespace, namespace),
+            sql`${event.task}->'trigger'->'events' <@ ${JSON.stringify([...new Set(registration.resourceTypes.flatMap((resource) => resource.supportedEvents))])}::jsonb`,
+          ),
+      ),
+    ) ?? sql`false`;
+  const executions = juniorAutomationExecutions;
+  function lastRunFailed(kind: "scheduled" | "event", id: SQLWrapper) {
+    return sql<boolean>`coalesce((select ${executions.status} in ('failed', 'blocked') from ${executions}
+      where ${executions.kind} = ${kind} and ${executions.namespace} = 'junior' and ${executions.automationId} = ${id}
+      order by ${executions.executedAtMs} desc, ${executions.executionId} desc limit 1), false)`;
+  }
   return unionAll(
     db
       .select({
@@ -92,7 +112,12 @@ export function viewerAutomationCollection(user: User) {
         id: scheduled.id,
         title: sql<string | null>`${scheduled.title}`.as("title"),
         createdAtMs: scheduled.createdAtMs,
-        state: scheduled.status,
+        state: sql<string>`${scheduled.status}`.as("state"),
+        unavailable: sql<boolean>`false`.as("unavailable"),
+        attention:
+          sql<boolean>`${scheduled.status} not in ('paused', 'completed') and (${scheduled.status} = 'blocked' or ${lastRunFailed("scheduled", scheduled.id)})`.as(
+            "attention",
+          ),
         owned: sql<boolean>`${scheduledOwned}`.as("owned"),
         resource: sql<string>`''`.as("resource"),
         ...fields(scheduled.record, scheduled.teamId),
@@ -104,7 +129,12 @@ export function viewerAutomationCollection(user: User) {
       )
       .where(
         and(
-          inArray(scheduled.status, ["active", "blocked", "completed"]),
+          inArray(scheduled.status, [
+            "active",
+            "blocked",
+            "paused",
+            "completed",
+          ]),
           or(scheduledOwned, scheduledPublic),
         ),
       ),
@@ -114,7 +144,12 @@ export function viewerAutomationCollection(user: User) {
         id: event.id,
         title: sql<string | null>`${event.title}`.as("title"),
         createdAtMs: event.createdAtMs,
-        state: event.status,
+        state: sql<string>`${event.status}`.as("state"),
+        unavailable: sql<boolean>`not (${available})`.as("unavailable"),
+        attention:
+          sql<boolean>`${event.status} <> 'paused' and (not (${available}) or ${lastRunFailed("event", event.id)})`.as(
+            "attention",
+          ),
         owned: sql<boolean>`${eventOwned}`.as("owned"),
         resource:
           sql<string>`concat_ws(' ', ${event.identifier}, ${event.task}->'trigger'->>'label', ${event.namespace})`.as(
@@ -124,7 +159,7 @@ export function viewerAutomationCollection(user: User) {
       })
       .from(event)
       .leftJoin(destination, destinationJoin(event.task, event.teamId))
-      .where(and(eq(event.status, "active"), or(eventOwned, eventPublic))),
+      .where(and(ne(event.status, "deleted"), or(eventOwned, eventPublic))),
   ).as("accessible_automations");
 }
 
@@ -140,9 +175,15 @@ export async function readAutomationCollection(
       ? eq(collection.owned, true)
       : input.scope === "public"
         ? eq(collection.isPublic, true)
-        : undefined,
+        : input.scope === "attention"
+          ? eq(collection.attention, true)
+          : undefined,
     input.type === "all" ? undefined : eq(collection.kind, input.type),
-    input.state === "all" ? undefined : eq(collection.state, input.state),
+    input.state === "all"
+      ? undefined
+      : input.state === "unavailable"
+        ? eq(collection.unavailable, true)
+        : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
     input.destination
       ? eq(collection.destination, input.destination)

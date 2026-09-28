@@ -151,6 +151,7 @@ export type {
   WorkspaceReport,
 } from "./schema/workspace";
 export {
+  automationLifecycleSchema,
   automationEventCatalogSchema,
   automationScheduleIntentSchema,
   automationSchedulePreviewSchema,

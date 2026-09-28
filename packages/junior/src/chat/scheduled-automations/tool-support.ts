@@ -46,7 +46,7 @@ const compactTaskResultSchema = z
   .object({
     id: z.string(),
     title: z.string().nullable(),
-    status: z.enum(["active", "blocked", "completed", "deleted"]),
+    status: z.enum(["active", "blocked", "paused", "completed", "deleted"]),
     statusReason: z.string().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),

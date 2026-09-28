@@ -34,10 +34,15 @@ automation by id from another destination in the same workspace. Private
 automations stay local to their destination. Watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
-can provide a real provider-to-workspace binding. An automation matched before a concurrent update or deletion runs from that
-snapshot. Later events use the current stored automation. Deletion removes the
-stored automation. Event automations have no separate pause state or run
-history.
+can provide a real provider-to-workspace binding. An Automation matched before a concurrent edit, pause, or deletion runs from
+that snapshot. Later events use the current stored Automation. Paused rows do
+not match. Resume accepts newly received events; it does not replay events
+received during the pause. Provider retries still use their event key for
+deduplication. Deletion keeps a tombstone and execution history.
+
+The web lifecycle action is creator-only and uses a revision under the edit row
+lock. It does not change credentials. Deploy all workers before using pause;
+older workers do not exclude paused event rows from matching.
 
 The dispatched agent input uses shared framing from `task-input.ts`. See
 `chat/README.md` for the input format. The stored automation text remains the

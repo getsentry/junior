@@ -81,7 +81,7 @@ export function parseEventAutomationRow(
       const { threadTs: _threadTs, ...destination } = outcome.destination;
       return { ...outcome, destination };
     }),
-    status: row.status === "deleted" ? "deleted" : "active",
+    status: row.status ?? "active",
     ...(title ? { title } : undefined),
   };
 }
@@ -343,7 +343,7 @@ export async function collectEventAutomationMatchKeys(
         eq(juniorEventAutomations.teamId, input.teamId),
         eq(juniorEventAutomations.namespace, input.namespace),
         inArray(juniorEventAutomations.identifier, identifiers),
-        activeEventAutomationWhere(),
+        eq(juniorEventAutomations.status, "active"),
       ),
     )
     .orderBy(
@@ -381,7 +381,7 @@ export async function findMatchingEventAutomations(
         eq(juniorEventAutomations.teamId, teamId),
         eq(juniorEventAutomations.namespace, event.namespace),
         eq(juniorEventAutomations.identifier, event.identifier),
-        activeEventAutomationWhere(),
+        eq(juniorEventAutomations.status, "active"),
       ),
     )
     .orderBy(
@@ -395,4 +395,29 @@ export async function findMatchingEventAutomations(
         task.trigger.events.includes(event.eventType) &&
         eventMatches(task.trigger.match, event.data),
     );
+}
+
+/** Change lifecycle under the same row lock as edits, without changing credentials. */
+export async function setEventAutomationStatus(
+  db: JuniorDatabase,
+  id: string,
+  status: "active" | "paused",
+  revision: string,
+): Promise<StoredEventAutomation> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(juniorEventAutomations)
+      .where(eq(juniorEventAutomations.id, id))
+      .for("update");
+    const current = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    requireAutomationRevision(current, revision);
+    if (!current || current.status === "deleted")
+      throw new Error("Automation no longer exists.");
+    await tx
+      .update(juniorEventAutomations)
+      .set({ status })
+      .where(eq(juniorEventAutomations.id, id));
+    return { ...current, status };
+  });
 }

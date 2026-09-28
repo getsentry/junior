@@ -159,6 +159,7 @@ export const automationReport: Pick<
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
+      status: "active",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",
@@ -192,6 +193,7 @@ export const automationReport: Pick<
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
+      status: "active",
     },
   ],
 };

@@ -30,12 +30,13 @@ export function AutomationFilters(props: {
   return (
     <div className="grid gap-3">
       <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
-        <div aria-label="Scope" role="group" className="flex gap-2">
+        <div aria-label="Scope" role="group" className="flex flex-wrap gap-2">
           {(
             [
               ["all", "All accessible"],
               ["mine", "Mine"],
               ["public", "Public"],
+              ["attention", "Needs attention"],
             ] as const
           ).map(([value, label]) => (
             <ToggleButton
@@ -53,7 +54,7 @@ export function AutomationFilters(props: {
               ) : (
                 label
               )}
-              {data ? (
+              {data && value !== "attention" ? (
                 <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
               ) : null}
             </ToggleButton>
@@ -123,6 +124,8 @@ export function AutomationFilters(props: {
           options={[
             { value: "active", label: "Active" },
             { value: "blocked", label: "Blocked" },
+            { value: "paused", label: "Paused" },
+            { value: "unavailable", label: "Trigger unavailable" },
             { value: "completed", label: "Completed" },
           ]}
           onChange={(value) => onChange("state", value)}

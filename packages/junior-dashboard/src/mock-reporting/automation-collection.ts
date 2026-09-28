@@ -29,10 +29,18 @@ export function mockAutomationCollection(
         (input.scope !== "mine" || automation.ownedByViewer) &&
         (input.scope !== "public" ||
           automation.destination.visibility === "public") &&
+        (input.scope !== "attention" ||
+          (automation.status !== "paused" &&
+            automation.status !== "completed" &&
+            (automation.status === "blocked" ||
+              (automation.kind === "event" && !automation.triggerAvailable) ||
+              automation.lastRunStatus === "failed" ||
+              automation.lastRunStatus === "blocked"))) &&
         (input.type === "all" || automation.kind === input.type) &&
         (input.state === "all" ||
-          (automation.kind === "event" ? "active" : automation.status) ===
-            input.state) &&
+          (input.state === "unavailable"
+            ? automation.kind === "event" && !automation.triggerAvailable
+            : automation.status === input.state)) &&
         (!input.creator || creator(automation) === input.creator) &&
         (!input.destination || destination(automation) === input.destination) &&
         (!input.q || search.includes(input.q.toLowerCase()))

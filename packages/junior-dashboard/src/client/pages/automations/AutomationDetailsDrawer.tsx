@@ -1,3 +1,4 @@
+import { AutomationLifecycle } from "./AutomationLifecycle";
 import { ButtonLink } from "../../components/Button";
 import { automationOutcomeLabel } from "./automationOutcomes";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
@@ -41,9 +42,10 @@ export function AutomationDetailsDrawer(props: {
           { label: "Schedule", value: automation.schedule },
           {
             label: "Next run",
-            value: automation.nextRunAt
-              ? formatRunDate(automation.nextRunAt)
-              : "None",
+            value:
+              automation.status === "active" && automation.nextRunAt
+                ? formatRunDate(automation.nextRunAt)
+                : "None",
           },
         ]
       : [
@@ -53,9 +55,11 @@ export function AutomationDetailsDrawer(props: {
   const statusLabel =
     automation.kind === "scheduled"
       ? automation.status
-      : automation.triggerAvailable
-        ? "ready"
-        : "unavailable";
+      : automation.status === "paused"
+        ? "paused"
+        : automation.triggerAvailable
+          ? "ready"
+          : "unavailable";
 
   const titleId = "automation-details-drawer-title";
 
@@ -82,6 +86,10 @@ export function AutomationDetailsDrawer(props: {
       titleId={titleId}
     >
       <section className="grid gap-5">
+        <AutomationLifecycle
+          key={`${automation.kind}:${automation.id}`}
+          automation={automation}
+        />
         <ButtonLink
           to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
         >

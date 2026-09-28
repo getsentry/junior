@@ -24,9 +24,6 @@ const retainedScheduledAutomationSchema = scheduledAutomationSchema
     // Retained rows can predate the channel-only Destination invariant.
     destination: slackDestinationSchema,
     outcomes: z.array(taskOutcomeSchema).max(5),
-    // TODO(dcramer): Remove paused decoding and SQL list filtering after
-    // v0.129.x workers are unsupported and cannot overlap an upgrade.
-    status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
     version: z.number().optional(),
   })
   .strict();
@@ -97,19 +94,6 @@ export function parseScheduledAutomationRow(
         ? fallbackTitle.data
         : undefined;
   const title = titleSource?.trim() || undefined;
-  if (status === "paused") {
-    const {
-      nextRunAtMs: _nextRunAtMs,
-      runNowAtMs: _runNowAtMs,
-      ...retained
-    } = task;
-    return {
-      ...retained,
-      creatorIdentityId,
-      status: "deleted",
-      ...(title ? { title } : undefined),
-    } satisfies ScheduledAutomation;
-  }
   return {
     ...task,
     creatorIdentityId,
@@ -231,7 +215,7 @@ async function readListedScheduledAutomations(
     .from(juniorSchedulerTasks)
     .where(
       and(
-        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+        notInArray(juniorSchedulerTasks.status, ["deleted"]),
         teamId === undefined
           ? undefined
           : eq(juniorSchedulerTasks.teamId, teamId),

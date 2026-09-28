@@ -1,3 +1,4 @@
+import { mockAutomationEditor } from "./automation-editor-fixture";
 import { automationReport } from "./automation-fixture";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 import { expect, test } from "./test";
@@ -338,5 +339,98 @@ test("opens one automation's execution history", async ({
   await expect(page.getByText("1.2k").first()).toBeVisible();
   await expect(
     page.getByText("No conversation", { exact: true }),
+  ).toBeVisible();
+});
+
+test("pauses and resumes from details, keeps failures visible, and limits actions to creators", async ({
+  page,
+  dashboard,
+}) => {
+  const editor = await mockAutomationEditor(page, "scheduled");
+  const report = structuredClone(automationReport);
+  const summary = report.automations.find(
+    (automation) => automation.id === "scheduled-1",
+  )!;
+  summary.lastRunStatus = "failed";
+  await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    }),
+  );
+  await page.route("**/api/automations/scheduled-1", (route) =>
+    route.fulfill({ json: summary }),
+  );
+  let fail = true;
+  await page.route(
+    "**/api/automations/scheduled/scheduled-1/lifecycle",
+    (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({
+        revision: editor.value.revision,
+      });
+      if (fail) {
+        fail = false;
+        return route.fulfill({
+          status: 409,
+          json: {
+            error: "The Automation changed. Try again.",
+            code: "conflict",
+          },
+        });
+      }
+      const status =
+        route.request().postDataJSON().action === "pause" ? "paused" : "active";
+      summary.status = status;
+      if (summary.kind === "scheduled" && status === "paused")
+        delete summary.nextRunAt;
+      editor.value = { ...editor.value, status, revision: "b".repeat(64) };
+      return route.fulfill({ json: editor.value });
+    },
+  );
+  await page.goto(`${dashboard.baseURL}/automations/list?scope=attention`);
+  await expect(
+    page.getByRole("button", { name: "Needs attention" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await screenshot(page, "automation-attention");
+  await page
+    .getByRole("button", {
+      name: "View automation details: Weekly project summary",
+    })
+    .click();
+  await page.getByRole("button", { name: "Pause automation" }).click();
+  await expect(
+    page.getByText("The Automation changed. Try again."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Pause automation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Resume automation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Paused by a person. Future triggers will not start work."),
+  ).toBeVisible();
+  await screenshot(page, "automation-paused");
+  await page.getByRole("button", { name: "Resume automation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Pause automation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Inspect executions" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close automation details" }).click();
+  await expect(page).toHaveURL(/list\?scope=attention/);
+  await page
+    .getByRole("button", {
+      name: "View automation details: Incident change alerts",
+    })
+    .click();
+  await expect(
+    page.getByRole("button", { name: /Pause automation|Resume automation/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "The trigger is unavailable. Enable its plugin or edit the trigger to receive events.",
+    ),
   ).toBeVisible();
 });

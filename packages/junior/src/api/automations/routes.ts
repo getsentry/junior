@@ -5,6 +5,7 @@ import {
 import { AutomationConflictError } from "@/chat/automations/revision";
 import { zValidator } from "@hono/zod-validator";
 import {
+  changeViewerAutomationLifecycle,
   readViewerAutomationEdit,
   updateViewerAutomation,
 } from "@/chat/automations/edit";
@@ -14,6 +15,7 @@ import { emptyResponse, jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
+  automationLifecycleSchema,
   automationEventCatalogSchema,
   automationScheduleIntentSchema,
   automationSchedulePreviewSchema,
@@ -160,6 +162,32 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         return jsonResponse(
           automationEditSchema,
           await readViewerAutomationEdit(context.get("viewer"), kind, id),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.post(
+    "/:kind/:id/lifecycle",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    validateRequest(
+      "json",
+      automationLifecycleSchema,
+      "Invalid lifecycle action.",
+    ),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await changeViewerAutomationLifecycle(
+            context.get("viewer"),
+            kind,
+            id,
+            context.req.valid("json"),
+          ),
         );
       } catch (error) {
         return editErrorResponse(error);

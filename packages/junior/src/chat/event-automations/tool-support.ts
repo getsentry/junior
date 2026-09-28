@@ -30,6 +30,7 @@ import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
+    status: z.enum(["active", "paused", "deleted"]),
     title: z.string().min(1).nullable(),
     dashboardUrl: z.string().url().nullable(),
     instruction: z.string().min(1),
@@ -227,12 +228,13 @@ export function eventAutomationTriggerAvailable(
 
 /** Project an event automation into the bounded tool-result shape. */
 export function compactEventAutomation(
-  task: EventAutomation,
+  task: EventAutomation & { status?: "active" | "paused" | "deleted" },
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
+    status: task.status ?? "active",
     title: task.title?.trim() || null,
     dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,

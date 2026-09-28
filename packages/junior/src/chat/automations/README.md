@@ -46,3 +46,16 @@ SQL row lock. Slack edits use the same check. A scheduler state change can also
 invalidate an open edit. The API returns 409 for a stale edit, 400 with field
 paths for input errors, and 404 for a missing or non-owned Automation. The
 editor must keep unsaved input when a save fails.
+
+## Lifecycle and attention
+
+`POST /api/automations/:kind/:id/lifecycle` accepts `action` (`pause` or `resume`)
+and a read revision. Only the creator can use it. It does not dispatch work,
+change credentials, or restart completed work. The details drawer exposes it
+separately from form saves.
+
+`scope=attention` applies before pagination and counts. It includes blocked
+Automations, unavailable event triggers, and Automations whose latest execution
+failed or was blocked. Intentional pauses and completed work are excluded.
+Lifecycle, trigger availability, and last execution status remain separate facts.
+The state filter can select paused work or unavailable triggers directly.
