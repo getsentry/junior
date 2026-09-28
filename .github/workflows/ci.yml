@@ -74,6 +74,7 @@ jobs:
               - packages/junior-amplitude/**
               - packages/junior-cloudflare/**
               - packages/junior-datadog/**
+              - packages/junior-tts/**
               - packages/junior-github/**
               - packages/junior-gocd/**
               - packages/junior-hex/**
@@ -310,6 +311,7 @@ jobs:
       - run: pnpm --filter @sentry/junior-sentry build
       - run: pnpm --filter @sentry/junior-vercel build
       - run: pnpm --filter @sentry/junior-memory test
+      - run: pnpm --filter @sentry/junior-tts test
       - run: pnpm --filter @sentry/junior-github test
       - run: pnpm --filter @sentry/junior-gocd test
       - run: pnpm --filter @sentry/junior-sentry test
@@ -491,6 +493,7 @@ jobs:
           pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
           pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-tts pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
           pnpm --filter @sentry/junior-gocd pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts

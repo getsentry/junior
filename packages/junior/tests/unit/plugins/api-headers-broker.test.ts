@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parsePluginManifest } from "@/chat/plugins/manifest";
 import { createApiHeadersBroker } from "@/chat/plugins/auth/api-headers-broker";
 import type { PluginManifest } from "@/chat/plugins/types";
 
@@ -45,6 +48,40 @@ describe("API headers broker", () => {
         },
       },
     ]);
+  });
+
+  it("keeps the TTS Gateway key on the host and blocks missing credentials", async () => {
+    const manifestPath = path.resolve(
+      process.cwd(),
+      "../junior-tts/plugin.yaml",
+    );
+    const manifest = parsePluginManifest(
+      readFileSync(manifestPath, "utf8"),
+      path.dirname(manifestPath),
+    );
+    const broker = createApiHeadersBroker(manifest);
+    process.env.AI_GATEWAY_API_KEY = "test-tts-key";
+    const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:tts",
+    });
+    expect(lease.env).toEqual({});
+    expect(manifest.commandEnv).toBeUndefined();
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "ai-gateway.vercel.sh",
+        headers: { Authorization: "Bearer test-tts-key" },
+      },
+    ]);
+    delete process.env.AI_GATEWAY_API_KEY;
+    await expect(
+      broker.issue({
+        context: SYSTEM_CREDENTIAL_CONTEXT,
+        reason: "test:missing-tts-key",
+      }),
+    ).rejects.toThrow(
+      'Missing AI_GATEWAY_API_KEY for API header provider "tts"',
+    );
   });
 
   it("includes plugin command env in issued leases", async () => {
