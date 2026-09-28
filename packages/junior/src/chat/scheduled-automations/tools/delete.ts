@@ -1,3 +1,4 @@
+import { automationRevision } from "@/chat/automations/revision";
 import { removedCardSchema } from "@/chat/conversations/cards";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -49,7 +50,7 @@ export function createSlackScheduleDeleteAutomationTool(
         runNowAtMs: undefined,
       };
 
-      await saveScheduledAutomation(getDb(), next);
+      await saveScheduledAutomation(getDb(), next, automationRevision(lookup));
       await createPluginAnnotations({
         conversationId: context.conversationId,
         db: getDb(),

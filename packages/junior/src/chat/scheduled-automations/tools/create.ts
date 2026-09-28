@@ -1,3 +1,7 @@
+import {
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes-schema";
 import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { getDb } from "@/chat/db";
@@ -6,11 +10,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import {
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-  type TaskOutcomeInput,
-} from "@/chat/task-outcomes";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
 import { createScheduledAutomation, readScheduledAutomation } from "../tasks";
 import {

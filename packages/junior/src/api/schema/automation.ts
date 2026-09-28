@@ -1,3 +1,9 @@
+import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
+import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
+import {
+  scheduledAutomationEditSchema,
+  eventAutomationEditSchema,
+} from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -205,3 +211,63 @@ export type AutomationSummary = z.output<typeof automationSummarySchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
 
 export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
+
+const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+const automationEditBaseSchema = scheduledAutomationSchema
+  .pick({ destination: true, createdBy: true })
+  .extend({
+    id: z.string().min(1),
+    revision: automationRevisionSchema,
+    title: z.string().nullable(),
+    instruction: z.string(),
+    credentialMode: z.enum(["system", "creator"]),
+    outcomes: z.array(taskOutcomeSchema).max(5),
+  });
+
+/** Creator-only edit values. Read schemas also retain legacy values. */
+export const automationEditSchema = z.discriminatedUnion("kind", [
+  automationEditBaseSchema
+    .merge(scheduledAutomationSchema.pick({ schedule: true }))
+    .extend({
+      kind: z.literal("scheduled"),
+      nextRunAtMs: z.number().optional(),
+      status: z.enum(["active", "blocked", "completed"]),
+    })
+    .strict(),
+  automationEditBaseSchema
+    .extend({
+      kind: z.literal("event"),
+      trigger: eventAutomationTriggerSchema,
+      triggerAvailable: z.boolean(),
+    })
+    .strict(),
+]);
+
+/** Partial edits require the revision returned by the edit read. */
+export const automationUpdateSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationEditSchema
+    .omit({ status: true })
+    .extend({
+      kind: z.literal("scheduled"),
+      revision: automationRevisionSchema,
+    })
+    .strict(),
+  eventAutomationEditSchema
+    .extend({
+      kind: z.literal("event"),
+      revision: automationRevisionSchema,
+    })
+    .strict(),
+]);
+
+export const automationEditErrorSchema = z
+  .object({
+    error: z.string(),
+    code: z.enum(["invalid_edit", "conflict", "not_found"]),
+    fields: z.record(z.string(), z.array(z.string())).optional(),
+  })
+  .strict();
+
+export type AutomationEdit = z.output<typeof automationEditSchema>;
+export type AutomationUpdate = z.output<typeof automationUpdateSchema>;

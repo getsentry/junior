@@ -1,3 +1,4 @@
+import { requireAutomationRevision } from "@/chat/automations/revision";
 import {
   eventMatches,
   slackDestinationSchema,
@@ -172,7 +173,22 @@ export async function createEventAutomation(
 export async function saveEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
+  expectedRevision?: string,
 ): Promise<StoredEventAutomation | undefined> {
+  if (expectedRevision !== undefined) {
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(juniorEventAutomations)
+        .where(eq(juniorEventAutomations.id, task.id))
+        .for("update");
+      requireAutomationRevision(
+        rows[0] ? parseEventAutomationRow(rows[0]) : undefined,
+        expectedRevision,
+      );
+      return saveEventAutomation(tx, task);
+    });
+  }
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
   const rows = await db
