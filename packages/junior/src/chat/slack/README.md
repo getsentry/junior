@@ -20,24 +20,28 @@ formatting, and Slack API error mapping. The Slack provider layer in
 
 ## One-on-one Thread Replies
 
-With `passive-routing` off, a subscribed channel thread can accept replies
-without a new mention. `../ingress/one-on-one-thread.ts` owns this exception.
-It reads Slack history from the root and requires Junior to have posted. Every
-author and user mention must refer to Junior or the current user. Another author,
-another user mention, or a group notification makes the thread mention-only.
-This includes invitations in Junior's replies. Explicit mentions still work.
+With `passive-routing` off, a new channel thread can accept replies without a
+new mention. The root message must mention Junior and no other user.
+`../ingress/one-on-one-thread.ts` stores the root author or a blocked flag.
+Each delivered message updates that state under the ingress lock. No Slack
+history scan or passive reply classifier is needed.
 
-The check uses up to ten pages of 100 messages. Missing or incomplete history
-stays quiet. Slack API failures reach the retryable webhook boundary. A blocked
-thread stays blocked in runtime state for seven days, even if the message is
-deleted. After expiry, the next check reads full history again. Edits do not
-start turns; later checks see the current Slack text. DMs, thread stops, and
-experimental passive routing keep their existing behavior.
+Another author, another user mention, or a group notification blocks automatic
+replies. This includes external authors, Junior's invitations, and message
+edits. Tracking runs before those messages are filtered out of agent input.
+Unverified authors can only block eligibility, never enable it or start a Turn.
+Edits never start turns. Explicit mentions still work but cannot clear the flag.
 
-Eligible replies use the same direct-input route as DMs. They do not set
-`message.isMention` and do not call the passive reply classifier. This exception
-accepts new input; it does not cancel work that was already accepted before
-another participant arrived.
+Missing state stays mention-only on replies. A reply received before its root
+blocks a late root delivery. State expires seven days after the root timestamp;
+old root retries cannot recreate it. Existing threads are not scanned or enabled.
+State failures reach the retryable webhook boundary before acknowledgement.
+This relies on Slack delivering events: a missing or delayed event cannot revoke
+eligibility before it arrives. Already accepted work is not cancelled.
+
+Eligible replies use the existing direct-input route without setting
+`message.isMention`. The thread must still be subscribed. DMs, thread stops,
+and experimental passive routing keep their existing behavior.
 
 ## Messages
 

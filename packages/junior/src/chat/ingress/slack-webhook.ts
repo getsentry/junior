@@ -2,6 +2,7 @@ import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   slackAssistantThreadSchema,
+  slackEditedMessageSchema,
   slackEventEnvelopeSchema,
   slackInteractivePayloadSchema,
   slackSlashCommandSchema,
@@ -39,7 +40,7 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
-import { isOneOnOneThreadReply } from "@/chat/ingress/one-on-one-thread";
+import { trackOneOnOneThread } from "@/chat/ingress/one-on-one-thread";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
@@ -387,6 +388,7 @@ async function handleSlackThreadStop(args: {
 
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
+  oneOnOneReply: boolean;
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
@@ -459,13 +461,7 @@ async function routeParsedMessage(args: {
   if (
     isSubscribed &&
     !isExperimentalFeatureEnabled("passive-routing") &&
-    botUserId &&
-    (await isOneOnOneThreadReply({
-      botUserId,
-      event: args.event,
-      state: args.state,
-      threadId: canonicalThreadId,
-    }))
+    args.oneOnOneReply
   ) {
     // Like DMs, one-on-one follow-ups use the direct-input route without
     // changing message.isMention or enabling the passive reply classifier.
@@ -596,32 +592,57 @@ async function handleSlackEvent(args: {
           return;
         }
 
+        const trackThread =
+          !isDmEvent(event) && !isExperimentalFeatureEnabled("passive-routing");
         if (
           (event.type === "message" || event.type === "app_mention") &&
-          !shouldIgnoreMessageSubtype(event) &&
+          (!shouldIgnoreMessageSubtype(event) ||
+            (trackThread && event.subtype === "message_changed")) &&
           event.channel &&
-          event.ts
+          (event.ts || event.subtype === "message_changed")
         ) {
           const member = await isSlackWorkspaceMember(event, state);
           setSpanAttributes({
             "app.slack.membership": member ? "verified" : "unverified",
           });
-          if (!member) return;
-          const message = adapter.parseMessage(event);
+          const edit =
+            event.subtype === "message_changed"
+              ? slackEditedMessageSchema.parse(event.message)
+              : undefined;
+          const trackedEvent = edit
+            ? { ...edit, subtype: event.subtype }
+            : event;
+          const threadId = `slack:${event.channel}:${trackedEvent.thread_ts ?? trackedEvent.ts}`;
           const routed = await withLock(
             state,
-            `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
-            () =>
-              routeParsedMessage({
+            `slack:ingress:${threadId}`,
+            async () => {
+              // Observe other authors and Junior's own mentions before dropping
+              // their input. This only revokes eligibility; membership still
+              // gates all Conversation storage, routing, and reactions below.
+              const oneOnOneReply =
+                trackThread &&
+                Boolean(adapter.botUserId) &&
+                (await trackOneOnOneThread({
+                  botUserId: adapter.botUserId!,
+                  event: trackedEvent,
+                  member,
+                  state,
+                  threadId,
+                }));
+              if (!member || shouldIgnoreMessageSubtype(event)) return;
+              await routeParsedMessage({
                 adapter,
+                oneOnOneReply,
                 event,
                 installation,
-                message,
+                message: adapter.parseMessage(event),
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
                 state,
-              }),
+              });
+            },
             { keepAlive: true, waitMs: 10_000 },
           );
           if (!routed.acquired) {

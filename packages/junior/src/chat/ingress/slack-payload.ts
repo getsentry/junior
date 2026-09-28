@@ -134,6 +134,15 @@ const slackEventSchema = z.looseObject({
   user: z.string().optional(),
 }) satisfies z.ZodType<MessageFields & AdapterEvent>;
 
+// Edits can revoke one-on-one tracking, but never enter the mailbox.
+export const slackEditedMessageSchema = z.object({
+  ts: eventTimestampSchema,
+  thread_ts: eventTimestampSchema.optional(),
+  user: z.string().optional(),
+  text: z.string().optional(),
+  blocks: z.array(z.unknown()).optional(),
+});
+
 // @slack/types has event types, but no Events API envelope or interactive payload.
 export const slackEventEnvelopeSchema = z.object({
   // Retain diagnostic fields without making them requirements for ingress.
