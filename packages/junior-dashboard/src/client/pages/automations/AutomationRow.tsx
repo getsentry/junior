@@ -149,11 +149,43 @@ export function AutomationRow(props: {
 function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
   const scheduled = automation.kind === "scheduled";
   const Icon = scheduled ? CalendarClock : Zap;
-  const summary = scheduled
-    ? automation.schedule.includes(automation.timezone)
+  let summary: string;
+  let detail: string;
+  let status: string | undefined;
+  let conditions: string | undefined;
+
+  if (automation.kind === "scheduled") {
+    summary = automation.schedule.includes(automation.timezone)
       ? automation.schedule
-      : `${automation.schedule} (${automation.timezone})`
-    : automation.resource;
+      : `${automation.schedule} (${automation.timezone})`;
+    status = automation.status === "active" ? undefined : automation.status;
+    detail = "No next run";
+    if (automation.status === "blocked") {
+      detail = "Future runs are blocked";
+    } else if (automation.status === "active" && automation.nextRunAt) {
+      const nextRun = new Date(automation.nextRunAt).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: automation.timezone,
+        timeZoneName: "short",
+      });
+      detail = `Next ${nextRun}`;
+    }
+  } else {
+    summary = automation.resource;
+    detail = automation.events
+      .map((event) => event.replaceAll(/[._]/g, " "))
+      .join(", ");
+    status = automation.triggerAvailable ? undefined : "Trigger unavailable";
+    conditions = Object.entries(automation.match ?? {})
+      .map(
+        ([field, value]) =>
+          `${field}: ${Array.isArray(value) ? value.join(" or ") : String(value)}`,
+      )
+      .join(" · ");
+  }
   return (
     <div className="flex items-start gap-2">
       <Icon
@@ -169,39 +201,20 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
       <div className="min-w-0">
         <div className="break-words text-sm text-dashboard-text">{summary}</div>
         <div className="mt-1 break-words text-xs text-dashboard-text-muted">
-          {scheduled
-            ? automation.status === "active" && automation.nextRunAt
-              ? `Next ${new Date(automation.nextRunAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: automation.timezone, timeZoneName: "short" })}`
-              : automation.status === "blocked"
-                ? "Future runs are blocked"
-                : "No next run"
-            : automation.events
-                .map((event) => event.replaceAll(/[._]/g, " "))
-                .join(", ")}
+          {detail}
         </div>
-        {!scheduled &&
-        automation.match &&
-        Object.keys(automation.match).length > 0 ? (
+        {conditions ? (
           <div className="mt-1 break-words text-xs text-dashboard-text-muted">
-            {Object.entries(automation.match)
-              .map(
-                ([field, value]) =>
-                  `${field}: ${Array.isArray(value) ? value.join(" or ") : String(value)}`,
-              )
-              .join(" · ")}
+            {conditions}
           </div>
         ) : null}
-        {scheduled && automation.status !== "active" ? (
+        {status ? (
           <StatusChip
             className="mt-2"
             size="compact"
-            tone={automation.status === "blocked" ? "warning" : "neutral"}
+            tone={status === "completed" ? "neutral" : "warning"}
           >
-            {automation.status}
-          </StatusChip>
-        ) : !scheduled && !automation.triggerAvailable ? (
-          <StatusChip className="mt-2" size="compact" tone="warning">
-            Trigger unavailable
+            {status}
           </StatusChip>
         ) : null}
       </div>

@@ -250,10 +250,8 @@ function scheduledAutomationSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(creator?.email ? { createdByEmail: creator.email } : undefined),
-    ...(creator?.avatarUrl
-      ? { createdByAvatarUrl: creator.avatarUrl }
-      : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -291,10 +289,8 @@ function eventAutomationSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(creator?.email ? { createdByEmail: creator.email } : undefined),
-    ...(creator?.avatarUrl
-      ? { createdByAvatarUrl: creator.avatarUrl }
-      : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -302,7 +298,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     events: task.trigger.events,
-    ...(task.trigger.match ? { match: task.trigger.match } : undefined),
+    match: task.trigger.match,
     id: task.id,
     instruction,
     kind: "event",
