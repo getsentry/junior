@@ -10,6 +10,7 @@ import {
 import type {
   InvocationContext,
   PluginMcp,
+  PluginMcpContent,
   PluginReadState,
   PluginRoute,
   PluginRouteMethod,
@@ -95,6 +96,7 @@ export interface PluginApiRouteRegistration {
 
 export interface AfterMcpToolHookInput {
   arguments: Record<string, unknown>;
+  content?: PluginMcpContent[];
   conversationId?: string;
   provider: string;
   structuredContent?: unknown;
@@ -1535,10 +1537,10 @@ export function createPluginHookRunner(
               ? { conversationId: tool.conversationId }
               : undefined),
             ...(annotations ? { annotations } : undefined),
-            result:
-              tool.structuredContent !== undefined
-                ? { structuredContent: tool.structuredContent }
-                : {},
+            result: {
+              content: tool.content,
+              structuredContent: tool.structuredContent,
+            },
             tool: {
               arguments: tool.arguments,
               name: tool.toolName,

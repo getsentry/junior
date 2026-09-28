@@ -22,27 +22,61 @@ const short = (value: string | undefined) => {
 const factName = (value: z.output<typeof namedFact>) =>
   short(typeof value === "string" ? value : value?.name);
 
-const saveIssueResultSchema = z
+const issueIdentifier = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9]*-\d+$/i);
+const savedIssueSchema = z
   .object({
-    issue: z
-      .object({
-        identifier: z.string().trim().min(1),
-        url: z.url(),
-        title: z.string().optional(),
-        status: z.string().optional(),
-        assignee: namedFact,
-        priority: z
-          .union([z.string(), z.number(), z.object({ name: z.string() })])
-          .nullish(),
-        project: namedFact,
-        cycle: namedFact,
-        labels: z.array(namedFact).nullish(),
-        dueDate: z.iso.date().nullish(),
-        updatedAt: z.iso.datetime({ offset: true }).nullish(),
-      })
-      .passthrough(),
+    identifier: issueIdentifier.optional(),
+    id: z.string().optional(),
+    url: z.url(),
+    title: z.string().optional(),
+    description: z.string().nullish(),
+    status: z.string().optional(),
+    assignee: namedFact,
+    priority: z
+      .union([z.string(), z.number(), z.object({ name: z.string() })])
+      .nullish(),
+    project: namedFact,
+    cycle: namedFact,
+    labels: z.array(namedFact).nullish(),
+    dueDate: z.iso.date().nullish(),
+    updatedAt: z.iso.datetime({ offset: true }).nullish(),
   })
-  .passthrough();
+  .transform((issue, ctx) => {
+    // Hosted MCP uses id for the display identifier; a UUID is not a ticket key.
+    const identifier = issueIdentifier.safeParse(issue.identifier ?? issue.id);
+    if (!identifier.success) {
+      ctx.addIssue({ code: "custom", message: "Missing issue identifier" });
+      return z.NEVER;
+    }
+    return { ...issue, identifier: identifier.data.toUpperCase() };
+  });
+const saveIssueResultSchema = z.union([
+  savedIssueSchema,
+  z.object({ issue: savedIssueSchema }).transform(({ issue }) => issue),
+]);
+
+/** Read Linear's JSON result without inferring issue facts from prose. */
+function readSavedIssue(result: AfterMcpToolHookContext["result"]) {
+  if (result.structuredContent !== undefined) {
+    return saveIssueResultSchema.safeParse(result.structuredContent);
+  }
+  for (const part of result.content ?? []) {
+    if (part.type !== "text") continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(part.text);
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
+    const parsed = saveIssueResultSchema.safeParse(value);
+    if (parsed.success) return parsed;
+  }
+  return saveIssueResultSchema.safeParse(undefined);
+}
 
 /** Link created and updated Linear issues to the current Junior conversation. */
 async function annotateSavedIssue(
@@ -54,15 +88,15 @@ async function annotateSavedIssue(
   if (!ctx.annotations) {
     return;
   }
-  const result = saveIssueResultSchema.safeParse(ctx.result.structuredContent);
+  const result = readSavedIssue(ctx.result);
   if (!result.success) {
     ctx.log.warn("linear.issue_annotation.skipped", {
       "app.reason": "unexpected_save_response",
     });
     return;
   }
-  const identifier = result.data.issue.identifier.toUpperCase();
-  const issue = result.data.issue;
+  const issue = result.data;
+  const identifier = issue.identifier;
   return {
     objectAnnotations: [
       {
@@ -71,6 +105,7 @@ async function annotateSavedIssue(
         key: identifier,
         label: identifier,
         title: (issue.title || identifier).slice(0, 512),
+        description: issue.description?.slice(0, 4000),
         url: issue.url,
         status: issue.status,
         displayType: "Issue",
