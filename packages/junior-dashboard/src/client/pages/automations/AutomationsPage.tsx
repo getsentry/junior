@@ -180,16 +180,18 @@ export function AutomationsPage(props: {
 
   return (
     <>
-      <PageHeader
-        description={
-          props.view === "overview"
-            ? "Scheduled and event-driven work created by users."
-            : "Find and manage automations across your linked workspaces."
-        }
-        onRangeChange={props.view === "overview" ? setRange : undefined}
-        range={props.view === "overview" ? range : undefined}
-        title={props.view === "overview" ? "Automations" : "All automations"}
-      />
+      {props.view === "overview" ? (
+        <PageHeader
+          description="Scheduled and event-driven work created by users."
+          onRangeChange={setRange}
+          range={range}
+          title="Automations"
+        />
+      ) : (
+        <h2 className="m-0 font-display text-2xl font-light tracking-tight text-dashboard-text sm:text-3xl">
+          All automations
+        </h2>
+      )}
       {props.view === "list" ? (
         <AutomationFilters
           filters={filters}
@@ -267,8 +269,8 @@ export function AutomationsPage(props: {
       ) : null}
       {query.data && props.view === "list" ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border pb-3">
-            <p className="m-0 font-display text-lg text-dashboard-text">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+            <p className="m-0 text-xs text-dashboard-text-muted">
               {visibleTaskCount}{" "}
               {visibleTaskCount === 1 ? "automation" : "automations"}
             </p>

@@ -1,5 +1,11 @@
 import type { AutomationSummary } from "@sentry/junior/api/schema";
-import { CalendarClock, MoreHorizontal, Trash2, Zap } from "lucide-react";
+import {
+  CalendarClock,
+  LockKeyhole,
+  MoreHorizontal,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
@@ -45,7 +51,7 @@ export function AutomationRow(props: {
       <ActorAvatar
         imageUrl={automation.createdByAvatarUrl}
         name={automation.createdBy}
-        size="detail"
+        size="list"
       />
       <span className="truncate">{automation.createdBy}</span>
     </>
@@ -54,7 +60,7 @@ export function AutomationRow(props: {
     <article role="listitem">
       <SelectableRow
         className={cn(
-          "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem] items-center gap-x-4 gap-y-3 px-4 py-3",
+          "relative grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 xl:gap-x-4",
           desktopColumns,
         )}
         onSelect={props.onSelect}
@@ -63,7 +69,7 @@ export function AutomationRow(props: {
         <button
           aria-expanded={props.selected}
           aria-label={`View automation details: ${automation.title}`}
-          className="col-span-2 min-w-0 cursor-pointer rounded border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus xl:col-span-1"
+          className="col-span-2 pr-11 xl:pr-0 min-w-0 cursor-pointer rounded border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus xl:col-span-1"
           onClick={props.onSelect}
           type="button"
         >
@@ -80,7 +86,7 @@ export function AutomationRow(props: {
             {automation.instruction}
           </span>
         </button>
-        <div className="col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:row-auto">
+        <div className="row-start-2 min-w-0 xl:row-auto">
           {automation.createdByEmail ? (
             <Link
               className="inline-flex max-w-full items-center gap-2 rounded text-sm text-dashboard-text no-underline hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
@@ -98,26 +104,28 @@ export function AutomationRow(props: {
             </span>
           )}
         </div>
-        <div className="col-span-3 min-w-0 xl:col-span-1">
+        <div className="col-span-2 row-start-3 min-w-0 xl:col-span-1 xl:row-auto">
           <AutomationTrigger automation={automation} />
+        </div>
+        <div className="col-start-2 row-start-2 min-w-0 text-right xl:col-auto xl:row-auto xl:text-left">
+          <span className="inline-flex max-w-full items-center gap-1 text-xs text-dashboard-text-muted xl:text-sm xl:text-dashboard-text">
+            {automation.destination.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private destination"
+                role="img"
+                size={12}
+                className="shrink-0"
+              />
+            ) : null}
+            <span className="truncate">{automation.destination.label}</span>
+          </span>
         </div>
         <div className="col-span-2 min-w-0 xl:col-span-1">
           <span className="text-xs text-dashboard-text-muted xl:hidden">
-            Destination ·{" "}
-          </span>
-          <span className="break-words text-sm text-dashboard-text">
-            {automation.destination.label}
-          </span>
-          <div className="mt-1 text-xs capitalize text-dashboard-text-muted">
-            {automation.destination.visibility}
-          </div>
-        </div>
-        <div className="col-span-3 min-w-0 xl:col-span-1">
-          <span className="text-xs text-dashboard-text-muted xl:hidden">
-            Last run ·{" "}
+            Last run{" "}
           </span>
           <span
-            className="text-sm text-dashboard-text"
+            className="text-xs text-dashboard-text-muted xl:text-sm xl:text-dashboard-text"
             title={
               automation.lastRunAt
                 ? formatTime(automation.lastRunAt, {
@@ -132,7 +140,7 @@ export function AutomationRow(props: {
               : "Never"}
           </span>
         </div>
-        <div className="col-start-3 row-start-1 xl:col-auto xl:row-auto">
+        <div className="absolute right-3 top-3 xl:static">
           {automation.ownedByViewer ? (
             <AutomationActions
               deleting={props.deleting}
@@ -210,7 +218,7 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
         ) : null}
         {status ? (
           <StatusChip
-            className="mt-2"
+            className="mt-1 xl:mt-2"
             size="compact"
             tone={status === "completed" ? "neutral" : "warning"}
           >

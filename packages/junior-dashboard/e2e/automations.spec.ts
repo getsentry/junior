@@ -267,6 +267,22 @@ test("opens scheduled and event automations in the native Automations view", asy
   failList = false;
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(weeklySummary).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileFilters = page.getByRole("button", { name: /^Filters/ });
+  await expect(mobileFilters).toHaveAttribute("aria-expanded", "false");
+  await expect(mobileFilters).toHaveText("Filters (5)");
+  await expect(page.getByLabel("Filter by creator")).not.toBeVisible();
+  await mobileFilters.click();
+  await expect(mobileFilters).toHaveAttribute("aria-expanded", "true");
+  await page.getByLabel("Filter by state").selectOption("blocked");
+  await expect(
+    page.getByText("No automations matched these filters."),
+  ).toBeVisible();
+  await mobileFilters.click();
+  await page.reload();
+  await expect(mobileFilters).toHaveText("Filters (5)");
+  await mobileFilters.click();
+  await expect(page.getByLabel("Filter by state")).toHaveValue("blocked");
 });
 
 test("lists runs across automations", async ({ page, dashboard }) => {

@@ -1,10 +1,12 @@
+import { useId, useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
+import { cn } from "../../styles";
 import type {
   AutomationList,
   AutomationListQuery,
 } from "@sentry/junior/api/schema";
-import { ToggleButton } from "../../components/Button";
+import { Button, ToggleButton } from "../../components/Button";
 import { FilterGroup } from "../../components/FilterBar";
-import { Card } from "../../components/layout/Card";
 import { SearchInput } from "../../components/SearchInput";
 
 /** Keep collection controls visible while a filtered page loads. */
@@ -16,10 +18,19 @@ export function AutomationFilters(props: {
   onSearch(value: string): void;
 }) {
   const { filters, data, onChange } = props;
+  const [expanded, setExpanded] = useState(false);
+  const controlsId = useId();
+  const activeCount = [
+    filters.type !== "all",
+    Boolean(filters.creator),
+    Boolean(filters.destination),
+    filters.state !== "all",
+    filters.sort !== "newest",
+  ].filter(Boolean).length;
   return (
-    <Card className="grid gap-4 p-4">
-      <div className="grid items-end gap-4 lg:grid-cols-[auto_minmax(16rem,1fr)]">
-        <FilterGroup label="Scope">
+    <div className="grid gap-3">
+      <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
+        <div aria-label="Scope" role="group" className="flex gap-2">
           {(
             [
               ["all", "All accessible"],
@@ -28,29 +39,55 @@ export function AutomationFilters(props: {
             ] as const
           ).map(([value, label]) => (
             <ToggleButton
-              className="min-h-9"
+              className="min-h-11 normal-case lg:min-h-9"
               key={value}
               onClick={() => onChange("scope", value)}
               pressed={filters.scope === value}
               variant="pill"
             >
-              {label}
+              {value === "all" ? (
+                <>
+                  <span className="lg:hidden">All</span>
+                  <span className="hidden lg:inline">{label}</span>
+                </>
+              ) : (
+                label
+              )}
               {data ? (
                 <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
               ) : null}
             </ToggleButton>
           ))}
-        </FilterGroup>
-        <SearchInput
-          label="Search automations"
-          placeholder="Title, instruction, or resource"
-          value={props.searchText}
-          onChange={props.onSearch}
-        />
+        </div>
+        <div className="flex items-center gap-2">
+          <SearchInput
+            className="flex-1"
+            size="default"
+            label="Search automations"
+            placeholder="Title, instruction, or resource"
+            value={props.searchText}
+            onChange={props.onSearch}
+          />
+          <Button
+            className="h-11 shrink-0 lg:hidden"
+            aria-expanded={expanded}
+            aria-controls={controlsId}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <SlidersHorizontal aria-hidden="true" size={14} /> Filters
+            {activeCount ? ` (${activeCount})` : ""}
+          </Button>
+        </div>
       </div>
-      <div className="grid grid-cols-2 items-end gap-3 border-t border-dashboard-border-subtle pt-4 sm:grid-cols-4 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))]">
+      <div
+        id={controlsId}
+        className={cn(
+          "grid-cols-2 items-end gap-3 lg:grid lg:grid-cols-4 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))]",
+          expanded ? "grid" : "hidden",
+        )}
+      >
         <FilterGroup
-          className="col-span-2 sm:col-span-4 xl:col-span-1"
+          className="col-span-2 lg:col-span-4 xl:col-span-1"
           label="Type"
         >
           {(["all", "scheduled", "event"] as const).map((value) => (
@@ -102,7 +139,7 @@ export function AutomationFilters(props: {
           ]}
         />
       </div>
-    </Card>
+    </div>
   );
 }
 
