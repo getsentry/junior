@@ -564,16 +564,16 @@ function FoundationsGalleryPage() {
           />
         </div>
       </Fixture>
-      <Fixture title="Status chips">
-        <div className="flex flex-wrap items-center gap-2">
+      <Fixture title="Status labels">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <StatusChip tone="neutral">private</StatusChip>
           <StatusChip tone="success">completed</StatusChip>
           <StatusChip tone="danger">failed</StatusChip>
           <StatusChip tone="warning">blocked</StatusChip>
           <StatusChip tone="info">preference</StatusChip>
           <StatusChip tone="accent">knowledge</StatusChip>
-          <StatusChip size="compact" tone="success">
-            public
+          <StatusChip size="compact" tone="warning">
+            Trigger unavailable
           </StatusChip>
         </div>
       </Fixture>
