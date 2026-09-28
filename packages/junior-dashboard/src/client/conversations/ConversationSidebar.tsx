@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
 import { conversationPath } from "./conversationRoutes";
+import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import {
   conversationDisplayTitle,
   slackLocationLabel,
@@ -228,7 +229,9 @@ function ConversationRowsLoading() {
           <Skeleton
             className={cn("h-4", index % 3 === 0 ? "w-4/5" : "w-3/5")}
           />
-          <Skeleton className="h-3 w-2/5 opacity-70" />
+          <Skeleton className="mt-1 h-3 w-full opacity-70" />
+          <Skeleton className="h-3 w-4/5 opacity-70" />
+          <Skeleton className="mt-1 h-3 w-2/5 opacity-70" />
         </div>
       ))}
     </div>
@@ -309,8 +312,17 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
           <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
+          <p className="col-start-2 row-start-2 m-0 mt-1 line-clamp-2 font-sans text-xs leading-relaxed text-dashboard-text-subtle">
+            {props.conversation.activityPreview
+              ? formatConversationActivityPreview(
+                  props.conversation.activityPreview.text,
+                )
+              : status === "active"
+                ? "Working…"
+                : "No recent message"}
+          </p>
           {hasMeta ? (
-            <div className="col-start-2 row-start-2 mt-1 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
+            <div className="col-start-2 row-start-3 mt-1 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
               {showLocation ? (
                 <span className="truncate">{location}</span>
               ) : null}

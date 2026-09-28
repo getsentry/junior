@@ -44,6 +44,8 @@ function ConversationSidebarLoading() {
             <Skeleton
               className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
             />
+            <Skeleton className="h-3 w-full opacity-70" />
+            <Skeleton className="h-3 w-4/5 opacity-70" />
             <Skeleton className="h-2.5 w-2/5 opacity-70" />
           </div>
         ))}
