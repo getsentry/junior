@@ -12,6 +12,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import {
   missingToolAnnotationKeys,
   type PluginMcpToolResult,
+  type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
@@ -260,6 +261,7 @@ function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
 
 export interface McpToolSuccessHookInput {
   arguments: Record<string, unknown>;
+  content?: PluginMcpContent[];
   provider: string;
   structuredContent?: unknown;
   toolName: string;
@@ -599,6 +601,7 @@ export class McpToolManager {
               };
               const cards = await this.options.onToolSuccess?.({
                 arguments: resolvedArgs,
+                content: toAgentToolContent(result),
                 provider: plugin.manifest.name,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
