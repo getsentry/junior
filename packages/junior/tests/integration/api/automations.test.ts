@@ -21,6 +21,7 @@ import {
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { juniorIdentities } from "@/db/schema/identities";
 import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
@@ -108,6 +109,11 @@ describe("Automations API", () => {
           candidate.providerSubjectId === "U456",
       );
       expect(otherIdentity).toBeDefined();
+      await fixture.sql
+        .db()
+        .update(juniorIdentities)
+        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .where(eq(juniorIdentities.id, otherIdentity!.id));
 
       // Keep fixture times inside the trailing 7-day stats window.
       const nowMs = Date.now();
@@ -188,6 +194,7 @@ describe("Automations API", () => {
         task: { text: "Summarize the closed issue." },
         trigger: {
           events: ["issue.closed"],
+          match: { action: ["closed", "resolved"] },
           identifier: "ACME-42",
           label: "Issue",
           namespace: "linear",
@@ -339,6 +346,7 @@ describe("Automations API", () => {
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
+            createdByAvatarUrl: "https://example.com/aisha.png",
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -351,6 +359,7 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
+            createdByAvatarUrl: "https://example.com/aisha.png",
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -358,12 +367,14 @@ describe("Automations API", () => {
             }),
             id: "sched_public_tasks_api",
             schedule: "Schedule unavailable",
+            timezone: "UTC",
             kind: "scheduled",
             ownedByViewer: false,
           }),
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
             id: "event_automations_api",
+            match: { action: ["closed", "resolved"] },
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
@@ -386,6 +397,7 @@ describe("Automations API", () => {
             ownedByViewer: true,
             runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
+            timezone: "UTC",
             status: "active",
             title: "Untitled scheduled automation",
             totalRuns: 2,
@@ -393,6 +405,25 @@ describe("Automations API", () => {
         ],
         truncated: false,
       });
+
+      // An avatar does not make an unverified email a profile link.
+      await fixture.sql
+        .db()
+        .update(juniorIdentities)
+        .set({ emailVerified: false })
+        .where(eq(juniorIdentities.id, otherIdentity!.id));
+      const unverifiedResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/automations");
+      const unverifiedCreator = automationListSchema
+        .parse(await unverifiedResponse.json())
+        .automations.find(
+          (automation) => automation.id === "event_public_tasks_api",
+        );
+      expect(unverifiedCreator?.createdByAvatarUrl).toBe(
+        "https://example.com/aisha.png",
+      );
+      expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 
       const searchResponse = await authenticatedApi(
         "viewer@example.com",

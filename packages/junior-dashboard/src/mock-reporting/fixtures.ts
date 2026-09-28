@@ -2671,6 +2671,7 @@ function mockTasks(): AutomationSummary[] {
       nextRunAt: "2026-08-10T16:00:00.000Z",
       ownedByViewer: true,
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
+      timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
       status: "active",
       outcomes: [

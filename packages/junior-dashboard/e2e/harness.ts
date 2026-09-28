@@ -412,6 +412,7 @@ export async function mockDashboardApis(
             ownedByViewer: true,
             runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
             schedule: "Every Monday at 9:00 AM",
+            timezone: "America/Los_Angeles",
             status: "active",
             outcomes: [
               {
@@ -543,6 +544,7 @@ export async function mockDashboardApis(
         ? {
             nextRunAt: "2026-08-10T16:00:00.000Z",
             schedule: "Every Monday at 9:00 AM",
+            timezone: "America/Los_Angeles",
             status: "active" as const,
           }
         : {

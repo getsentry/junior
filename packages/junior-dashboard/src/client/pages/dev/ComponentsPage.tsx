@@ -33,6 +33,7 @@ import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { ActorAvatar } from "../../components/ActorAvatar";
 import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
@@ -574,6 +575,21 @@ function FoundationsGalleryPage() {
           <StatusChip size="compact" tone="success">
             public
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Actor avatars">
+        <div className="flex items-center gap-4">
+          <ActorAvatar
+            name="Ada Lovelace"
+            imageUrl="/_junior/dashboard/avatar.png"
+            size="detail"
+          />
+          <ActorAvatar name="Grace Hopper" size="detail" />
+          <ActorAvatar
+            name="Alan Turing"
+            imageUrl="/missing-avatar.png"
+            size="list"
+          />
         </div>
       </Fixture>
       <Fixture title="Participant avatars">

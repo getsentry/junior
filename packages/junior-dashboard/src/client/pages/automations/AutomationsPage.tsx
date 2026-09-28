@@ -2,17 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
-import {
-  CalendarClock,
-  ChevronRight,
-  Globe2,
-  ListChecks,
-  LockKeyhole,
-  Trash2,
-  UserRound,
-} from "lucide-react";
+import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
 import { useAutomationsData } from "../../api";
-import { Button, ToggleButton } from "../../components/Button";
+import { ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
@@ -21,7 +13,6 @@ import {
   pageItems,
   PagePagination,
 } from "../../components/Pagination";
-import { SelectableRow } from "../../components/SelectableRow";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -31,13 +22,13 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
-import { formatRelativeTime, formatTime, automationPath } from "../../format";
+import { automationPath } from "../../format";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { cn } from "../../styles";
+import { AutomationRow, AutomationListHeader } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
@@ -63,24 +54,6 @@ function parseTaskRange(value: string): TimeRangeDays {
   return (
     days === 1 || days === 7 || days === 30 || days === 90 ? days : 30
   ) as TimeRangeDays;
-}
-
-function formatDate(value: string): string {
-  return formatTime(value, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function formatRunDate(value: string): string {
-  return formatTime(value, {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZoneName: "short",
-    year: "numeric",
-  });
 }
 
 const EMPTY_TASKS: AutomationSummary[] = [];
@@ -205,8 +178,8 @@ export function AutomationsPage(props: {
             ? "Scheduled and event-driven work created by users."
             : "Find and manage automations across your linked workspaces."
         }
-        onRangeChange={setRange}
-        range={range}
+        onRangeChange={props.view === "overview" ? setRange : undefined}
+        range={props.view === "overview" ? range : undefined}
         title={props.view === "overview" ? "Automations" : "All automations"}
       />
       {loading ? (
@@ -261,20 +234,6 @@ export function AutomationsPage(props: {
       ) : null}
       {!loading && props.view === "list" ? (
         <>
-          {showExecutionCharts ? (
-            <section className="grid gap-4 xl:grid-cols-2">
-              <AutomationExecutionChart
-                bucketUnit={timeRangeBucketUnit(range)}
-                days={executionSeries}
-                range={range}
-              />
-              <AutomationCostChart
-                bucketUnit={timeRangeBucketUnit(range)}
-                days={executionSeries}
-                range={range}
-              />
-            </section>
-          ) : null}
           <FilterBar
             search={{
               label: "Search automations",
@@ -340,13 +299,16 @@ export function AutomationsPage(props: {
               </p>
             </Card>
           ) : (
-            <Card>
+            <Card className="overflow-visible">
               <AutomationListHeader />
-              <div className="divide-y divide-white/[0.07]" role="list">
+              <div
+                className="divide-y divide-dashboard-border-subtle"
+                role="list"
+              >
                 {pagedTasks.map((automation) => {
                   const key = `${automation.kind}:${automation.id}`;
                   return (
-                    <TaskRow
+                    <AutomationRow
                       deleting={
                         deletion.isPending &&
                         deletion.variables?.id === automation.id
@@ -368,7 +330,6 @@ export function AutomationsPage(props: {
                             : selectedTaskPath(automation.id),
                         )
                       }
-                      range={range}
                       selected={automationId === automation.id}
                       automation={automation}
                     />
@@ -422,185 +383,4 @@ function emptyText(input: {
     return "No automations are assigned to public destinations in your linked workspaces.";
   }
   return "No automations are available.";
-}
-
-function AutomationListHeader() {
-  return (
-    <div
-      aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
-    >
-      <span>Automation</span>
-      <span>Destination</span>
-      <span>Trigger</span>
-      <span>Runs</span>
-      <span>Last run</span>
-      <span aria-hidden="true" className="size-8" />
-      <span aria-hidden="true" className="size-9" />
-    </div>
-  );
-}
-
-function TaskRow(props: {
-  deleting: boolean;
-  onDelete(): void;
-  onSelect(): void;
-  range: TimeRangeDays;
-  selected: boolean;
-  automation: AutomationSummary;
-}) {
-  const { range, automation } = props;
-  const runCount = automation.runs[range];
-  return (
-    <article role="listitem">
-      <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto]"
-        onSelect={props.onSelect}
-        selected={props.selected}
-      >
-        <button
-          aria-expanded={props.selected}
-          className="flex min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 text-left"
-          onClick={props.onSelect}
-          type="button"
-        >
-          <TaskSourceMark automation={automation} />
-          <span className="min-w-0">
-            <span className="block truncate font-display text-base font-medium text-dashboard-text">
-              {automation.title}
-            </span>
-            <span className="mt-1 block truncate font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-              <span className="md:hidden">{automation.destination.label}</span>
-              <span className="hidden md:inline">
-                {formatDate(automation.createdAt)}
-              </span>
-            </span>
-          </span>
-        </button>
-        <div className="hidden min-w-0 md:block">
-          <div className="truncate text-sm font-medium text-dashboard-text">
-            {automation.destination.label}
-          </div>
-          <div className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-            {automation.destination.visibility}
-          </div>
-        </div>
-        <div className="hidden min-w-0 lg:block">
-          <div className="truncate text-sm text-dashboard-text">
-            {automation.kind === "scheduled"
-              ? automation.schedule
-              : automation.resource}
-          </div>
-          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-            {automation.kind === "scheduled"
-              ? automation.nextRunAt
-                ? `Next ${formatRunDate(automation.nextRunAt)}`
-                : "No next run"
-              : automation.events.join(", ")}
-          </div>
-        </div>
-        <div className="hidden min-w-0 lg:block">
-          <div className="truncate text-sm font-medium text-dashboard-text">
-            {runCount}
-          </div>
-        </div>
-        <div className="hidden min-w-0 lg:block">
-          <div className="truncate text-sm text-dashboard-text">
-            {automation.lastRunAt
-              ? formatRelativeTime(automation.lastRunAt)
-              : "Never"}
-          </div>
-          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-            {automation.lastRunAt
-              ? formatRunDate(automation.lastRunAt)
-              : "No executions"}
-          </div>
-        </div>
-        <button
-          aria-expanded={props.selected}
-          aria-label={`View automation details: ${automation.title}`}
-          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-dashboard-text"
-          onClick={props.onSelect}
-          type="button"
-        >
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "transition-transform",
-              props.selected && "translate-x-0.5 text-cyan-200",
-            )}
-            size={16}
-          />
-        </button>
-        {automation.ownedByViewer ? (
-          <Button
-            aria-label={`Delete: ${automation.title}`}
-            disabled={props.deleting}
-            onClick={props.onDelete}
-            size="icon"
-            title="Delete automation"
-          >
-            <Trash2 aria-hidden="true" size={15} />
-          </Button>
-        ) : (
-          <span aria-hidden="true" className="size-8" />
-        )}
-      </SelectableRow>
-    </article>
-  );
-}
-
-function TaskSourceMark(props: { automation: AutomationSummary }) {
-  const { automation } = props;
-  if (automation.kind === "scheduled") {
-    return (
-      <div
-        aria-label="Scheduled automation"
-        className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
-        role="img"
-        title="Scheduled automation"
-      >
-        <CalendarClock aria-hidden="true" size={16} />
-      </div>
-    );
-  }
-  const source = automation.source.trim();
-  const sourceKey = source.toLowerCase();
-  const isGitHub = sourceKey === "github";
-  const sourceLabel = isGitHub
-    ? "GitHub"
-    : sourceKey === "pagerduty"
-      ? "PagerDuty"
-      : source;
-  const sourceMark =
-    sourceKey === "pagerduty" ? "PD" : source.slice(0, 2).toUpperCase();
-  return (
-    <div
-      aria-label={`${sourceLabel} event automation`}
-      className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
-      role="img"
-      title={`${sourceLabel} event automation`}
-    >
-      {isGitHub ? (
-        <GitHubMark />
-      ) : (
-        <span className="font-mono text-xs font-semibold uppercase tracking-[0.08em]">
-          {sourceMark}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function GitHubMark() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-[18px]"
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.793 1.23 1.1-.306 2.28-.459 3.45-.465 1.17.006 2.35.159 3.45.465 2.79-1.552 3.795-1.23 3.795-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.435.375.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
-    </svg>
-  );
 }
