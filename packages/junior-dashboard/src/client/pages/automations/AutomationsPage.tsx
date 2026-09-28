@@ -37,7 +37,6 @@ import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
-const AUTOMATION_PAGE_SIZE = 25;
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
 
 function parseTaskRange(value: string): TimeRangeDays {
@@ -70,24 +69,19 @@ export function AutomationsPage(props: {
   const [searchText, setSearchText] = useDebouncedSearchParam("q", {
     resetPage: true,
   });
-  const rawFilters = Object.fromEntries(
-    [...searchParams].filter(([key]) =>
-      [
-        "q",
-        "scope",
-        "type",
-        "state",
-        "creator",
-        "destination",
-        "sort",
-        "page",
-      ].includes(key),
+  // Ignore only invalid URL values. One bad field must not reset other filters.
+  const filters = automationListQuerySchema.parse(
+    Object.fromEntries(
+      Object.entries(automationListQuerySchema.shape).flatMap(
+        ([key, schema]) => {
+          const parsed = schema.safeParse(searchParams.get(key) ?? undefined);
+          return parsed.success && parsed.data !== undefined
+            ? [[key, parsed.data]]
+            : [];
+        },
+      ),
     ),
   );
-  const parsed = automationListQuerySchema.safeParse(rawFilters);
-  const filters = parsed.success
-    ? parsed.data
-    : automationListQuerySchema.parse({});
   const request = new URLSearchParams(
     Object.entries(filters).map(([key, value]) => [key, String(value)]),
   );
@@ -123,7 +117,7 @@ export function AutomationsPage(props: {
   const publicCount = query.data?.counts.public ?? 0;
   const privateCount = query.data?.counts.private ?? 0;
   const visibleTaskCount = query.data?.total ?? 0;
-  const totalPages = pageCount(visibleTaskCount, AUTOMATION_PAGE_SIZE);
+  const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
   const selectedTask = detail.data;
   // A deletion or a shared URL can leave the requested page past the last page.
@@ -271,7 +265,7 @@ export function AutomationsPage(props: {
       ) : null}
       {query.data && props.view === "list" ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border pb-3">
             <p className="m-0 font-display text-lg text-dashboard-text">
               {visibleTaskCount}{" "}
               {visibleTaskCount === 1 ? "automation" : "automations"}
@@ -279,9 +273,7 @@ export function AutomationsPage(props: {
             <p className="m-0 text-xs text-dashboard-text-muted">
               {query.isFetching ? (
                 <span role="status">Updating results…</span>
-              ) : (
-                "Only automations you can access are shown."
-              )}
+              ) : null}
             </p>
           </div>
           {!query.error && visibleTaskCount === 0 ? (
@@ -334,7 +326,7 @@ export function AutomationsPage(props: {
             onPageChange={setPage}
             page={page}
             pageCount={totalPages}
-            pageSize={AUTOMATION_PAGE_SIZE}
+            pageSize={filters.pageSize}
             total={visibleTaskCount}
           />
           {deletion.error ? (

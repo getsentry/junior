@@ -214,6 +214,9 @@ test("opens scheduled and event automations in the native Automations view", asy
     );
   });
   const listUrl = `${dashboard.baseURL}/automations/list?scope=mine&type=scheduled&sort=title&page=2`;
+  await page.goto(`${listUrl}&state=invalid`);
+  await expect(page.getByLabel("Filter by state")).toHaveValue("");
+  await expect(page.getByLabel("Sort automations")).toHaveValue("title");
   await page.goto(listUrl);
   await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
   await page.reload();
