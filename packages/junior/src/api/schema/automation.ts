@@ -39,6 +39,7 @@ const automationSummaryBaseSchema = z.object({
   instruction: z.string().min(1),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
+  lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
   ownedByViewer: z.boolean(),
   runs: automationRunWindowsSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
@@ -53,7 +54,8 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
     nextRunAt: z.string().datetime().optional(),
     schedule: z.string().min(1),
     timezone: z.string().min(1),
-    status: z.enum(["active", "blocked", "completed"]),
+    statusReason: z.string().optional(),
+    status: z.enum(["active", "blocked", "paused", "completed"]),
   })
   .strict();
 
@@ -65,6 +67,7 @@ export const eventAutomationSummarySchema = automationSummaryBaseSchema
     resource: z.string().min(1),
     source: z.string().min(1),
     triggerAvailable: z.boolean(),
+    status: z.enum(["active", "paused"]),
   })
   .strict();
 
@@ -92,9 +95,11 @@ export const automationExecutionDaySchema = z
 export const automationListQuerySchema = z
   .object({
     q: z.string().trim().max(200).optional(),
-    scope: z.enum(["all", "mine", "public"]).default("all"),
+    scope: z.enum(["all", "mine", "public", "attention"]).default("all"),
     type: z.enum(["all", "scheduled", "event"]).default("all"),
-    state: z.enum(["all", "active", "blocked", "completed"]).default("all"),
+    state: z
+      .enum(["all", "active", "blocked", "paused", "completed", "unavailable"])
+      .default("all"),
     creator: z.string().max(300).optional(),
     destination: z.string().max(300).optional(),
     sort: z.enum(["newest", "oldest", "title"]).default("newest"),
@@ -217,6 +222,14 @@ export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
 const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
+/** Pause and resume do not start work. */
+export const automationLifecycleSchema = z
+  .object({
+    action: z.enum(["pause", "resume"]),
+    revision: automationRevisionSchema,
+  })
+  .strict();
+
 const automationEditBaseSchema = scheduledAutomationSchema
   .pick({ destination: true, createdBy: true })
   .extend({
@@ -235,7 +248,7 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
     .extend({
       kind: z.literal("scheduled"),
       nextRunAtMs: z.number().optional(),
-      status: z.enum(["active", "blocked", "completed"]),
+      status: z.enum(["active", "blocked", "paused", "completed"]),
     })
     .strict(),
   automationEditBaseSchema
@@ -243,6 +256,7 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
       kind: z.literal("event"),
       trigger: eventAutomationTriggerSchema,
       triggerAvailable: z.boolean(),
+      status: z.enum(["active", "paused"]),
     })
     .strict(),
 ]);

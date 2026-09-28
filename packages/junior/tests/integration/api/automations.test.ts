@@ -582,6 +582,17 @@ describe("Automations API", () => {
         expect(response.status).toBe(200);
         return automationListSchema.parse(await response.json());
       };
+      const attention = await list("scope=attention");
+      expect(attention.total).toBe(3);
+      expect(attention.automations.map((task) => task.id)).toEqual([
+        "event_public_tasks_api",
+        "event_automations_api",
+        "sched_tasks_api",
+      ]);
+      expect(
+        attention.automations.find((task) => task.id === "sched_tasks_api"),
+      ).toMatchObject({ status: "active", lastRunStatus: "failed" });
+      expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");
       expect(lastPage.automations.map((task) => task.id)).toEqual([
         "sched_public_crowding_0",

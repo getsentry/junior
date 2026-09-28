@@ -19,10 +19,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { automationRevision } from "@/chat/automations/revision";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   getEventAutomation,
   saveEventAutomation,
+  setEventAutomationStatus,
 } from "@/chat/event-automations/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
@@ -263,18 +265,39 @@ describe("event automations", () => {
       teamId,
     };
 
+    const db = fixture.sql.db();
+    const firstTask = (await getEventAutomation(db, first.automation.id))!;
+    const paused = await setEventAutomationStatus(
+      db,
+      firstTask.id,
+      "paused",
+      automationRevision(firstTask),
+    );
+    expect(await ingestEventAutomations(event, options)).toEqual({
+      dispatched: 1,
+    });
+    expect(queue.sentRecords()).toHaveLength(1);
+    await setEventAutomationStatus(
+      db,
+      paused.id,
+      "active",
+      automationRevision(paused),
+    );
+
     const concurrent = await Promise.all([
-      ingestEventAutomations(event, options),
-      ingestEventAutomations(event, options),
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
     ]);
     expect(
       concurrent.reduce((total, result) => total + result.dispatched, 0),
     ).toBe(2);
-    await expect(ingestEventAutomations(event, options)).resolves.toEqual({
+    await expect(
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
+    ).resolves.toEqual({
       dispatched: 0,
     });
 
-    expect(queue.sentRecords()).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(3);
     const dispatches = await Promise.all(
       queue.sentRecords().map(async ({ conversationId }) => {
         const id = conversationId.replace(/^agent-dispatch:/, "");

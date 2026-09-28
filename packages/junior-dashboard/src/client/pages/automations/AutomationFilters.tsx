@@ -30,30 +30,24 @@ export function AutomationFilters(props: {
   return (
     <div className="grid gap-3">
       <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
-        <div aria-label="Scope" role="group" className="flex gap-2">
+        <div aria-label="Scope" role="group" className="flex flex-wrap gap-2">
           {(
             [
-              ["all", "All accessible"],
+              ["all", "All"],
               ["mine", "Mine"],
               ["public", "Public"],
+              ["attention", "Needs attention"],
             ] as const
           ).map(([value, label]) => (
             <ToggleButton
-              className="min-h-11 normal-case lg:min-h-9"
+              className="min-h-11 font-sans! normal-case! lg:min-h-9"
               key={value}
               onClick={() => onChange("scope", value)}
               pressed={filters.scope === value}
               variant="pill"
             >
-              {value === "all" ? (
-                <>
-                  <span className="lg:hidden">All</span>
-                  <span className="hidden lg:inline">{label}</span>
-                </>
-              ) : (
-                label
-              )}
-              {data ? (
+              {label}
+              {data && value !== "attention" ? (
                 <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
               ) : null}
             </ToggleButton>
@@ -64,12 +58,12 @@ export function AutomationFilters(props: {
             className="flex-1"
             size="default"
             label="Search automations"
-            placeholder="Title, instruction, or resource"
+            placeholder="Search automations"
             value={props.searchText}
             onChange={props.onSearch}
           />
           <Button
-            className="h-11 shrink-0 lg:hidden"
+            className="h-11 shrink-0"
             aria-expanded={expanded}
             aria-controls={controlsId}
             onClick={() => setExpanded(!expanded)}
@@ -82,7 +76,7 @@ export function AutomationFilters(props: {
       <div
         id={controlsId}
         className={cn(
-          "grid-cols-2 items-end gap-3 lg:grid lg:grid-cols-4 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))]",
+          "grid-cols-2 items-end gap-3 lg:grid-cols-4 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))]",
           expanded ? "grid" : "hidden",
         )}
       >
@@ -123,6 +117,8 @@ export function AutomationFilters(props: {
           options={[
             { value: "active", label: "Active" },
             { value: "blocked", label: "Blocked" },
+            { value: "paused", label: "Paused" },
+            { value: "unavailable", label: "Trigger unavailable" },
             { value: "completed", label: "Completed" },
           ]}
           onChange={(value) => onChange("state", value)}

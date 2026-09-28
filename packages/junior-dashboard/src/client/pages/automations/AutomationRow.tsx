@@ -140,6 +140,15 @@ export function AutomationRow(props: {
               ? formatRelativeTime(automation.lastRunAt)
               : "Never"}
           </span>
+          {automation.lastRunStatus === "failed" ||
+          automation.lastRunStatus === "blocked" ? (
+            <Link
+              className="block text-xs text-amber-300 underline"
+              to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            >
+              Last run {automation.lastRunStatus}
+            </Link>
+          ) : null}
         </div>
         <div className="absolute right-3 top-3 xl:static">
           {automation.ownedByViewer ? (
@@ -172,6 +181,8 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
     detail = "No next run";
     if (automation.status === "blocked") {
       detail = "Future runs are blocked";
+    } else if (automation.status === "paused") {
+      detail = "Future triggers will not start work";
     } else if (automation.status === "active" && automation.nextRunAt) {
       const nextRun = new Date(automation.nextRunAt).toLocaleString(undefined, {
         month: "short",
@@ -188,7 +199,12 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
     detail = automation.events
       .map((event) => event.replaceAll(/[._]/g, " "))
       .join(", ");
-    status = automation.triggerAvailable ? undefined : "Trigger unavailable";
+    status =
+      automation.status === "paused"
+        ? "paused"
+        : automation.triggerAvailable
+          ? undefined
+          : "Trigger unavailable";
     conditions = Object.entries(automation.match ?? {})
       .map(
         ([field, value]) =>
@@ -222,7 +238,11 @@ function AutomationTrigger({ automation }: { automation: AutomationSummary }) {
           <StatusChip
             className="mt-1 xl:mt-2"
             size="compact"
-            tone={status === "completed" ? "neutral" : "warning"}
+            tone={
+              status === "completed" || status === "paused"
+                ? "neutral"
+                : "warning"
+            }
           >
             {status}
           </StatusChip>

@@ -46,3 +46,14 @@ SQL row lock. Slack edits use the same check. A scheduler state change can also
 invalidate an open edit. The API returns 409 for a stale edit, 400 with field
 paths for input errors, and 404 for a missing or non-owned Automation. The
 editor must keep unsaved input when a save fails.
+
+## Pause and attention
+
+Pause and resume are creator-only actions, separate from form saves. Both check
+the read revision under the same lock as edits. They keep credentials and history
+and cannot restart completed work.
+
+`scope=attention` filters the full collection before counting and paging. It
+includes blocked Automations, unavailable event triggers, and failed or blocked
+last runs. It excludes paused and completed work. A failed run does not mean
+future runs are disabled.

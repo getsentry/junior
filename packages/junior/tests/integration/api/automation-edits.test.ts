@@ -1,3 +1,8 @@
+import {
+  claimDueScheduledRun,
+  advanceScheduledAutomationAfterRun,
+  markScheduledRunFailed,
+} from "@/chat/scheduled-automations/runs";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { Hono } from "hono";
@@ -129,13 +134,180 @@ async function setup(kind: "scheduled" | "event") {
       headers: { "content-type": "application/json", "test-viewer": viewer },
       body: JSON.stringify(body),
     });
-  return { app, fixture, id, url, read, patch, user };
+  const lifecycle = async (
+    action: "pause" | "resume",
+    revision?: string,
+    viewer = user.email,
+  ) =>
+    app.request(`${url}/lifecycle`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "test-viewer": viewer },
+      body: JSON.stringify({
+        action,
+        revision: revision ?? (await read()).revision,
+      }),
+    });
+  return { app, fixture, id, url, read, patch, lifecycle, user };
 }
 
 describe("Automation edit API", () => {
   afterEach(() => {
     setPlugins([]);
     vi.unstubAllEnvs();
+  });
+
+  test.each(["scheduled", "event"] as const)(
+    "pauses and resumes %s work without changing authority or history",
+    async (kind) => {
+      const { app, fixture, id, url, read, patch, lifecycle } =
+        await setup(kind);
+      try {
+        if (kind === "scheduled") {
+          const task = (await readScheduledAutomation(getDb(), id))!;
+          await saveScheduledAutomation(getDb(), {
+            ...task,
+            status: "active",
+            statusReason: undefined,
+            nextRunAtMs: Date.now() - 1000,
+          });
+        }
+        await recordAutomationExecution(kind, id, {
+          executionId: "past-failure",
+          status: "failed",
+          nowMs: Date.now() - 5000,
+        });
+        const initial = await read();
+        expect(
+          (await lifecycle("pause", initial.revision, "reader@example.com"))
+            .status,
+        ).toBe(404);
+        expect(
+          (await lifecycle("pause", initial.revision, "foreign@example.com"))
+            .status,
+        ).toBe(404);
+        expect((await lifecycle("pause", initial.revision)).status).toBe(200);
+        const paused = await read();
+        expect(paused).toMatchObject({
+          status: "paused",
+          credentialMode: "creator",
+          outcomes: initial.outcomes,
+        });
+        expect(
+          (
+            await patch({
+              kind,
+              revision: initial.revision,
+              instruction: "Stale edit",
+            })
+          ).status,
+        ).toBe(409);
+        const listed = await app.request("/api/automations?state=paused");
+        expect(await listed.json()).toMatchObject({
+          total: 1,
+          automations: [{ id, status: "paused" }],
+        });
+        expect(
+          await (await app.request("/api/automations?scope=attention")).json(),
+        ).toMatchObject({ total: 0 });
+        expect(
+          await (await app.request(`${url}/executions`)).json(),
+        ).toMatchObject({
+          executions: [{ executionId: "past-failure", status: "failed" }],
+        });
+        expect(
+          (await lifecycle("resume", (await read()).revision)).status,
+        ).toBe(200);
+        const resumed = await read();
+        expect(resumed).toMatchObject({
+          status: "active",
+          credentialMode: initial.credentialMode,
+          outcomes: initial.outcomes,
+          id,
+        });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test("resumes future schedule times without restarting completed work", async () => {
+    const { fixture, id, read, lifecycle } = await setup("scheduled");
+    try {
+      const task = (await readScheduledAutomation(getDb(), id))!;
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "active",
+        statusReason: undefined,
+        nextRunAtMs: Date.now() - 1000,
+      });
+      // Use a real claim to cover work that started before pause.
+      const run = (await claimDueScheduledRun(getDb(), { nowMs: Date.now() }))!;
+      expect(run).toMatchObject({ taskId: id });
+      expect((await lifecycle("pause")).status).toBe(200);
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+      ).toBeUndefined();
+      await markScheduledRunFailed(getDb(), {
+        runId: run.id,
+        completedAtMs: Date.now(),
+        errorMessage: "Run failed after pause",
+      });
+      await advanceScheduledAutomationAfterRun(getDb(), {
+        nowMs: Date.now(),
+        status: "failed",
+        run,
+      });
+      expect((await read()).status).toBe("paused");
+      expect((await lifecycle("resume")).status).toBe(200);
+      const resumed = (await readScheduledAutomation(getDb(), id))!;
+      expect(resumed.nextRunAtMs).toBeGreaterThan(Date.now());
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+      ).toBeUndefined();
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: resumed.nextRunAtMs! }),
+      ).toMatchObject({ taskId: id });
+      await saveScheduledAutomation(getDb(), {
+        ...resumed,
+        status: "completed",
+        nextRunAtMs: undefined,
+      });
+      expect((await lifecycle("resume")).status).toBe(400);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("keeps blocked requirements through pause and refuses to replay a missed one-off", async () => {
+    const { fixture, id, read, lifecycle } = await setup("scheduled");
+    try {
+      expect((await lifecycle("pause")).status).toBe(200);
+      expect((await lifecycle("resume")).status).toBe(200);
+      expect(await readScheduledAutomation(getDb(), id)).toMatchObject({
+        status: "blocked",
+        statusReason: "Missing credentials",
+      });
+      expect((await lifecycle("resume")).status).toBe(200);
+      const task = (await readScheduledAutomation(getDb(), id))!;
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "paused",
+        nextRunAtMs: Date.now() - 1000,
+        schedule: {
+          kind: "one_off",
+          description: "Yesterday",
+          timezone: "UTC",
+        },
+      });
+      const result = await lifecycle("resume");
+      expect(result.status).toBe(400);
+      expect(await result.json()).toMatchObject({
+        fields: { schedule: expect.any(Array) },
+      });
+      expect((await read()).status).toBe("paused");
+    } finally {
+      await fixture.close();
+    }
   });
 
   test("previews schedules without saving and exposes only durable Event choices", async () => {

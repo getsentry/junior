@@ -43,6 +43,12 @@ export async function editScheduledAutomation(
       "schedule",
     );
   }
+  if (current.status === "paused" && input.status !== undefined) {
+    throw new AutomationEditError(
+      "Use Resume in the Automation settings to resume paused work.",
+      "status",
+    );
+  }
   const status = input.status ?? current.status;
   const changesExecution =
     input.instruction !== undefined && input.instruction !== current.task.text;
@@ -62,7 +68,10 @@ export async function editScheduledAutomation(
       ? {
           runNowAtMs:
             status === "active" && !compiled ? current.runNowAtMs : undefined,
-          statusReason: status === "blocked" ? current.statusReason : undefined,
+          statusReason:
+            status === "blocked" || status === "paused"
+              ? current.statusReason
+              : undefined,
         }
       : undefined),
     status,

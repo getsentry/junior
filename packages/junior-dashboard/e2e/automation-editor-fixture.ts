@@ -51,6 +51,7 @@ export async function mockAutomationEditor(
           ...common,
           kind,
           triggerAvailable: true,
+          status: "active",
           trigger: {
             namespace: "github",
             resourceType: "issue",

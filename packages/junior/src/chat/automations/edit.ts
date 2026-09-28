@@ -1,4 +1,6 @@
 /** Creator-only web edits. Public read access never grants write authority. */
+import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
+import { AutomationEditError } from "./edit-rules";
 import type { User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
@@ -6,6 +8,7 @@ import {
   eventAutomationBelongsToUser,
   getEventAutomation,
   saveEventAutomation,
+  setEventAutomationStatus,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
 import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
@@ -77,6 +80,7 @@ function editView(automation: OwnedAutomation): AutomationEdit {
   return {
     ...common,
     kind: "event",
+    status: automation.task.status === "paused" ? "paused" : "active",
     trigger: automation.task.trigger,
     triggerAvailable: eventAutomationTriggerAvailable(
       automation.task,
@@ -124,4 +128,67 @@ export async function updateViewerAutomation(
     return editView({ kind: "event", task });
   }
   throw new ViewerTaskNotFoundError();
+}
+
+/** Pause or resume future triggers. Already-claimed work can finish. */
+export async function changeViewerAutomationLifecycle(
+  user: User,
+  kind: AutomationEdit["kind"],
+  id: string,
+  input: { action: "pause" | "resume"; revision: string },
+): Promise<AutomationEdit> {
+  const current = await requireOwnedAutomation(user, kind, id);
+  requireAutomationRevision(current.task, input.revision);
+  const status = current.task.status;
+  if (status === "completed")
+    throw new AutomationEditError("Completed Automations cannot be restarted.");
+  if (input.action === "pause" && status === "paused") return editView(current);
+  if (
+    input.action === "resume" &&
+    status !== "paused" &&
+    status !== "blocked"
+  ) {
+    throw new AutomationEditError(
+      "Only paused or blocked Automations can be resumed.",
+    );
+  }
+  if (current.kind === "event") {
+    const task = await setEventAutomationStatus(
+      getDb(),
+      id,
+      input.action === "pause" ? "paused" : "active",
+      input.revision,
+    );
+    return editView({ kind: "event", task });
+  }
+  const nowMs = Date.now();
+  const next = { ...current.task, updatedAtMs: nowMs, runNowAtMs: undefined };
+  if (input.action === "pause") {
+    next.status = "paused";
+    if (status === "blocked")
+      next.statusReason ??=
+        "A requirement blocked this Automation. Inspect its executions before resuming.";
+  } else {
+    // A pause must not erase an unresolved block. Resume blocked work explicitly.
+    next.status =
+      status === "paused" && next.statusReason ? "blocked" : "active";
+    if (next.status === "active") {
+      next.nextRunAtMs = next.schedule.recurrence
+        ? getFirstRunAtMs({
+            afterMs: nowMs,
+            recurrence: next.schedule.recurrence,
+            timezone: next.schedule.timezone,
+          })
+        : next.nextRunAtMs;
+      if (!next.nextRunAtMs || next.nextRunAtMs <= nowMs) {
+        throw new AutomationEditError(
+          "This Schedule has no future occurrence. Set a future Schedule before resuming.",
+          "schedule",
+        );
+      }
+      next.statusReason = undefined;
+    }
+  }
+  const task = await saveScheduledAutomation(getDb(), next, input.revision);
+  return editView({ kind: "scheduled", task });
 }

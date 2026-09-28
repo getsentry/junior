@@ -514,6 +514,22 @@ export async function advanceScheduledAutomationAfterRun(
     ) {
       return;
     }
+    if (current.status === "paused") {
+      await saveScheduledAutomationInLock(
+        tx,
+        {
+          ...current,
+          lastRunAtMs: args.run.scheduledForMs,
+          statusReason:
+            args.status === "blocked"
+              ? args.errorMessage
+              : current.statusReason,
+          updatedAtMs: args.nowMs,
+        },
+        current,
+      );
+      return;
+    }
     const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
     if (isRunNow) {
       let nextRunAtMs = current.nextRunAtMs;

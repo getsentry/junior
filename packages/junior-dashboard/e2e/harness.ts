@@ -363,6 +363,7 @@ export async function mockDashboardApis(
             resource: "Issue · ACME-42",
             source: "github",
             triggerAvailable: true,
+            status: "active",
           }),
     };
     const executionDays = Array.from({ length: 90 }, (_, index) => {
