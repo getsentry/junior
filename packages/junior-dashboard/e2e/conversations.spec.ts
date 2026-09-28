@@ -221,18 +221,13 @@ test("opens a conversation in the built dashboard", async ({
     name: "Resize conversations list",
   });
   const initialWidth = Number(await divider.getAttribute("aria-valuenow"));
-  const handle = await divider.boundingBox();
-  if (!handle) throw new Error("Conversation resize handle is not visible");
-  await page.mouse.move(
-    handle.x + handle.width / 2,
-    handle.y + handle.height / 2,
+  await divider.dragTo(
+    page.getByRole("region", { name: "Create conversation" }),
+    {
+      sourcePosition: { x: 4, y: 100 },
+      targetPosition: { x: 160, y: 100 },
+    },
   );
-  await page.mouse.down();
-  await page.mouse.move(
-    handle.x + handle.width / 2 + 160,
-    handle.y + handle.height / 2,
-  );
-  await page.mouse.up();
   await expect(divider).toHaveAttribute(
     "aria-valuenow",
     String(initialWidth + 160),
