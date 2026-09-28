@@ -72,6 +72,8 @@ export function AutomationsPage(props: {
   // Ignore only invalid URL values. One bad field must not reset other filters.
   const filters = automationListQuerySchema.parse(
     Object.fromEntries(
+      // Zod owns this property name; it is not a Junior domain symbol.
+      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names
       Object.entries(automationListQuerySchema.shape).flatMap(
         ([key, schema]) => {
           const parsed = schema.safeParse(searchParams.get(key) ?? undefined);
