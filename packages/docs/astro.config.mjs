@@ -127,6 +127,7 @@ export default defineConfig({
               link: "/extend/cloudflare-plugin/",
             },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
+            { label: "ElevenLabs Plugin", link: "/extend/elevenlabs-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "GoCD Plugin", link: "/extend/gocd-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },

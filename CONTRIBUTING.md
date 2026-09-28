@@ -130,6 +130,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-cloudflare`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
+- `@sentry/junior-elevenlabs`
 - `@sentry/junior-github`
 - `@sentry/junior-gocd`
 - `@sentry/junior-hex`
