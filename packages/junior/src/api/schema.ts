@@ -171,6 +171,7 @@ export type {
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListQuery,
   AutomationRun,
   AutomationRunList,
   AutomationRunWindows,

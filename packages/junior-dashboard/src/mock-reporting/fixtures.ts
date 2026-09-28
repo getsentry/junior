@@ -1,3 +1,4 @@
+import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
@@ -2741,7 +2742,7 @@ function mockTasks(): AutomationSummary[] {
 
 /** Build mock Tasks list for local dashboard development. */
 export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
-  return {
+  return mockAutomationCollection({
     executionDays: mockAutomationExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
       costUsd: 0,
@@ -2760,8 +2761,7 @@ export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
     automations: mockTasks(),
-    truncated: false,
-  };
+  });
 }
 
 function mockStatusDays(

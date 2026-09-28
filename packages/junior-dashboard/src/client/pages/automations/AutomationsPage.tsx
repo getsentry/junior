@@ -1,18 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useEffect } from "react";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import {
+  automationListQuerySchema,
+  type AutomationSummary,
+} from "@sentry/junior/api/schema";
 import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
-import { useAutomationsData } from "../../api";
-import { ToggleButton } from "../../components/Button";
-import { FilterBar, FilterGroup } from "../../components/FilterBar";
+import { useAutomationsData, useAutomationData } from "../../api";
+import { Button } from "../../components/Button";
+import { AutomationFilters } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
-import {
-  pageCount,
-  pageItems,
-  PagePagination,
-} from "../../components/Pagination";
+import { pageCount, PagePagination } from "../../components/Pagination";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -33,21 +37,7 @@ import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
 
-const AUTOMATION_PAGE_SIZE = 25;
 const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
-
-type AutomationFilter = "all" | AutomationSummary["kind"];
-type AutomationScope = "mine" | "public";
-
-const AUTOMATION_FILTERS = [
-  "all",
-  "scheduled",
-  "event",
-] as const satisfies readonly AutomationFilter[];
-const AUTOMATION_SCOPES = [
-  "mine",
-  "public",
-] as const satisfies readonly AutomationScope[];
 
 function parseTaskRange(value: string): TimeRangeDays {
   const days = Number(value);
@@ -75,71 +65,89 @@ export function AutomationsPage(props: {
   const range = parseTaskRange(rangeParam);
   const setRange = (value: TimeRangeDays) =>
     setRangeParam(String(value) as (typeof AUTOMATION_RANGE_OPTIONS)[number]);
-  const [filter, setFilter] = useSearchParamEnum(
-    "type",
-    "all",
-    AUTOMATION_FILTERS,
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchText, setSearchText] = useDebouncedSearchParam("q", {
+    resetPage: true,
+  });
+  // Ignore only invalid URL values. One bad field must not reset other filters.
+  const filters = automationListQuerySchema.parse(
+    Object.fromEntries(
+      // Zod owns this property name; it is not a Junior domain symbol.
+      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names
+      Object.entries(automationListQuerySchema.shape).flatMap(
+        ([key, schema]) => {
+          const parsed = schema.safeParse(searchParams.get(key) ?? undefined);
+          return parsed.success && parsed.data !== undefined
+            ? [[key, parsed.data]]
+            : [];
+        },
+      ),
+    ),
   );
-  const [scope, setScope] = useSearchParamEnum(
-    "scope",
-    "mine",
-    AUTOMATION_SCOPES,
+  const request = new URLSearchParams(
+    Object.entries(filters).map(([key, value]) => [key, String(value)]),
   );
-  const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
-  const query = useAutomationsData(props.enabled, searchQuery);
-  const [page, setPage] = useState(1);
-  const search = searchQuery.toLowerCase();
+  const query = useAutomationsData(
+    props.enabled,
+    props.view === "list" ? request.toString() : "",
+  );
+  const detail = useAutomationData(props.enabled, automationId);
+  const setFilter = (key: string, value: string) =>
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("page");
+        if (value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+  const setPage = (page: number) =>
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (page === 1) next.delete("page");
+      else next.set("page", String(page));
+      return next;
+    });
   const listPath = "/automations/list";
   const tasksPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
   const selectedTaskPath = (id: string) => tasksPath(automationPath(id));
   const automations = query.data?.automations ?? EMPTY_TASKS;
-  const mineCount = automations.filter(
-    (automation) => automation.ownedByViewer,
-  ).length;
-  const publicCount = automations.filter(
-    (automation) => automation.destination.visibility === "public",
-  ).length;
-  const privateCount = automations.filter(
-    (automation) => automation.destination.visibility === "private",
-  ).length;
-  const scopedTasks = useMemo(
-    () =>
-      automations.filter((automation) =>
-        scope === "mine"
-          ? automation.ownedByViewer
-          : automation.destination.visibility === "public",
-      ),
-    [scope, automations],
-  );
-  const visibleTasks = useMemo(
-    () =>
-      scopedTasks.filter(
-        (automation) => filter === "all" || automation.kind === filter,
-      ),
-    [filter, scopedTasks],
-  );
-  const visibleTaskCount = visibleTasks.length;
-  const totalPages = pageCount(visibleTaskCount, AUTOMATION_PAGE_SIZE);
-  const pagedTasks = useMemo(
-    () =>
-      props.view === "list"
-        ? pageItems(visibleTasks, page, AUTOMATION_PAGE_SIZE)
-        : visibleTasks,
-    [page, props.view, visibleTasks],
-  );
-  const selectedTask = useMemo(
-    () => automations.find((automation) => automation.id === automationId),
-    [automationId, automations],
-  );
-
+  const mineCount = query.data?.counts.mine ?? 0;
+  const publicCount = query.data?.counts.public ?? 0;
+  const privateCount = query.data?.counts.private ?? 0;
+  const visibleTaskCount = query.data?.total ?? 0;
+  const totalPages = pageCount(visibleTaskCount, filters.pageSize);
+  const page = query.data?.page ?? filters.page;
+  const selectedTask = detail.data;
+  // A deletion or a shared URL can leave the requested page past the last page.
   useEffect(() => {
-    setPage(1);
-  }, [filter, scope, searchQuery, props.view]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (
+      props.view !== "list" ||
+      !query.data ||
+      query.isPlaceholderData ||
+      query.isFetching ||
+      query.data.page === filters.page
+    )
+      return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("page", String(query.data.page));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    filters.page,
+    props.view,
+    query.data,
+    query.isFetching,
+    query.isPlaceholderData,
+    setSearchParams,
+  ]);
   const deletion = useMutation({
     mutationFn: async (automation: AutomationSummary) => {
       await deleteDashboardResource(
@@ -172,30 +180,57 @@ export function AutomationsPage(props: {
 
   return (
     <>
-      <PageHeader
-        description={
-          props.view === "overview"
-            ? "Scheduled and event-driven work created by users."
-            : "Find and manage automations across your linked workspaces."
-        }
-        onRangeChange={props.view === "overview" ? setRange : undefined}
-        range={props.view === "overview" ? range : undefined}
-        title={props.view === "overview" ? "Automations" : "All automations"}
-      />
+      {props.view === "overview" ? (
+        <PageHeader
+          description="Scheduled and event-driven work created by users."
+          onRangeChange={setRange}
+          range={range}
+          title="Automations"
+        />
+      ) : (
+        <h2 className="m-0 font-display text-2xl font-light tracking-tight text-dashboard-text sm:text-3xl">
+          All automations
+        </h2>
+      )}
+      {props.view === "list" ? (
+        <AutomationFilters
+          filters={filters}
+          data={query.data}
+          onChange={setFilter}
+          searchText={searchText}
+          onSearch={setSearchText}
+        />
+      ) : null}
       {loading ? (
         <PageContentSkeleton
           label="Loading automations"
           variant={props.view === "overview" ? "stats" : "list"}
         />
       ) : null}
-      {!loading && props.view === "overview" ? (
+      {query.error ? (
+        <InlineError>
+          Automations could not be loaded.{" "}
+          <Button onClick={() => void query.refetch()}>Try again</Button>
+        </InlineError>
+      ) : null}
+      {automationId && detail.isPending ? (
+        <p role="status">Loading automation details…</p>
+      ) : null}
+      {automationId && detail.error ? (
+        <InlineError>
+          Automation details could not be loaded. It may be unavailable or you
+          may not have access.{" "}
+          <Button onClick={() => void detail.refetch()}>Try again</Button>
+        </InlineError>
+      ) : null}
+      {query.data && props.view === "overview" ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
               detail="All automations you can access"
               icon={ListChecks}
               label="Total automations"
-              value={automations.length}
+              value={query.data?.counts.all ?? 0}
             />
             <StatCard
               detail="Created by you"
@@ -232,70 +267,23 @@ export function AutomationsPage(props: {
           ) : null}
         </>
       ) : null}
-      {!loading && props.view === "list" ? (
+      {query.data && props.view === "list" ? (
         <>
-          <FilterBar
-            search={{
-              label: "Search automations",
-              onChange: setSearchText,
-              placeholder: "Title",
-              value: searchText,
-            }}
-          >
-            <FilterGroup label="Scope">
-              <ToggleButton
-                className="inline-flex items-center gap-1.5"
-                onClick={() => setScope("mine")}
-                pressed={scope === "mine"}
-                variant="pill"
-              >
-                <UserRound aria-hidden="true" size={13} />
-                Mine <span className="opacity-65">{mineCount}</span>
-              </ToggleButton>
-              <ToggleButton
-                className="inline-flex items-center gap-1.5"
-                onClick={() => setScope("public")}
-                pressed={scope === "public"}
-                variant="pill"
-              >
-                <Globe2 aria-hidden="true" size={13} />
-                Public <span className="opacity-65">{publicCount}</span>
-              </ToggleButton>
-            </FilterGroup>
-            <FilterGroup label="Type">
-              {(["all", "scheduled", "event"] as const).map((kind) => (
-                <ToggleButton
-                  key={kind}
-                  onClick={() => setFilter(kind)}
-                  pressed={filter === kind}
-                  variant="pill"
-                >
-                  {kind}
-                </ToggleButton>
-              ))}
-            </FilterGroup>
-          </FilterBar>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-            <p className="m-0 font-display text-lg text-dashboard-text">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+            <p className="m-0 text-xs text-dashboard-text-muted">
               {visibleTaskCount}{" "}
               {visibleTaskCount === 1 ? "automation" : "automations"}
             </p>
             <p className="m-0 text-xs text-dashboard-text-muted">
-              {scope === "mine"
-                ? "Automations you created, including private destinations."
-                : "All automations assigned to public destinations in your linked workspaces."}
+              {query.isFetching ? (
+                <span role="status">Updating results…</span>
+              ) : null}
             </p>
           </div>
-          {query.error ? (
-            <Card padding="md">
-              <InlineError>
-                Automations could not be loaded. Try again.
-              </InlineError>
-            </Card>
-          ) : visibleTaskCount === 0 ? (
+          {!query.error && visibleTaskCount === 0 ? (
             <Card padding="md">
               <p className="m-0 text-sm text-dashboard-text-muted">
-                {emptyText({ filter, mineCount, publicCount, scope, search })}
+                No automations matched these filters.
               </p>
             </Card>
           ) : (
@@ -305,7 +293,7 @@ export function AutomationsPage(props: {
                 className="divide-y divide-dashboard-border-subtle"
                 role="list"
               >
-                {pagedTasks.map((automation) => {
+                {automations.map((automation) => {
                   const key = `${automation.kind}:${automation.id}`;
                   return (
                     <AutomationRow
@@ -342,45 +330,21 @@ export function AutomationsPage(props: {
             onPageChange={setPage}
             page={page}
             pageCount={totalPages}
-            pageSize={AUTOMATION_PAGE_SIZE}
+            pageSize={filters.pageSize}
             total={visibleTaskCount}
           />
-          {query.data?.truncated ? (
-            <p className="m-0 text-center text-xs text-dashboard-text-muted">
-              Showing up to 100 recent automations in each scope.
-            </p>
-          ) : null}
           {deletion.error ? (
             <InlineError className="text-center">
               The automation could not be deleted. Try again.
             </InlineError>
           ) : null}
-          <AutomationDetailsDrawer
-            onClose={() => navigate(tasksPath(listPath))}
-            range={range}
-            automation={selectedTask}
-          />
         </>
       ) : null}
+      <AutomationDetailsDrawer
+        onClose={() => navigate(tasksPath(listPath))}
+        range={range}
+        automation={selectedTask}
+      />
     </>
   );
-}
-
-function emptyText(input: {
-  filter: AutomationFilter;
-  mineCount: number;
-  publicCount: number;
-  scope: AutomationScope;
-  search: string;
-}): string {
-  if (input.search || input.filter !== "all") {
-    return "No automations matched these filters.";
-  }
-  if (input.scope === "mine" && input.mineCount === 0) {
-    return "You have no active or completed automations.";
-  }
-  if (input.scope === "public" && input.publicCount === 0) {
-    return "No automations are assigned to public destinations in your linked workspaces.";
-  }
-  return "No automations are available.";
 }

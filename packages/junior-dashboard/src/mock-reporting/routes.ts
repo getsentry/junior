@@ -1,3 +1,4 @@
+import { mockAutomationCollection } from "./automation-collection";
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
@@ -26,6 +27,7 @@ import {
   automationExecutionListSchema,
   automationListSchema,
   automationParamsSchema,
+  automationSummarySchema,
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
@@ -253,15 +255,10 @@ export function createMockReportingApi(): Hono<{
   });
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
-    const query = c.req.query("q")?.trim().toLowerCase();
-    return jsonResponse(automationListSchema, {
-      ...report,
-      automations: query
-        ? report.automations.filter((automation) =>
-            automation.title.toLowerCase().includes(query),
-          )
-        : report.automations,
-    });
+    return jsonResponse(
+      automationListSchema,
+      mockAutomationCollection(report, new URL(c.req.url).searchParams),
+    );
   });
   app.get("/automations/runs", () => {
     const automations = readMockAutomationList().automations;
@@ -283,6 +280,14 @@ export function createMockReportingApi(): Hono<{
       ),
       truncated: false,
     });
+  });
+  app.get("/automations/:id", (c) => {
+    const automation = readMockAutomationList().automations.find(
+      (automation) => automation.id === c.req.param("id"),
+    );
+    return automation
+      ? jsonResponse(automationSummarySchema, automation)
+      : errorResponse("Automation not found.", 404);
   });
   app.get("/automations/:kind/:id/executions", (c) => {
     const params = automationParamsSchema.safeParse(c.req.param());

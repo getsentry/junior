@@ -10,6 +10,7 @@ import {
   max,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
@@ -150,7 +151,7 @@ export async function recordAutomationExecution(
 export async function readAutomationExecutionSummaries(
   type: AutomationExecutionType,
   namespace: string,
-  options: { nowMs?: number } = {},
+  options: { nowMs?: number; automationIds?: string[] } = {},
 ): Promise<Map<string, AutomationExecutionSummary>> {
   const nowMs = options.nowMs ?? Date.now();
   const oneDayAgoMs = nowMs - 1 * 24 * 60 * 60 * 1000;
@@ -168,6 +169,12 @@ export async function readAutomationExecutionSummaries(
       and(
         eq(juniorAutomationExecutions.kind, type),
         eq(juniorAutomationExecutions.namespace, namespace),
+        options.automationIds
+          ? inArray(
+              juniorAutomationExecutions.automationId,
+              options.automationIds,
+            )
+          : undefined,
       ),
     )
     .orderBy(
@@ -196,6 +203,12 @@ export async function readAutomationExecutionSummaries(
       and(
         eq(juniorAutomationExecutions.kind, type),
         eq(juniorAutomationExecutions.namespace, namespace),
+        options.automationIds
+          ? inArray(
+              juniorAutomationExecutions.automationId,
+              options.automationIds,
+            )
+          : undefined,
       ),
     )
     .groupBy(juniorAutomationExecutions.automationId, latest.conversationId);
@@ -224,7 +237,7 @@ export async function readAutomationExecutionSummaries(
 /** Load a fixed trailing window of completed executions stacked by task type. */
 export async function readAutomationExecutionDays(
   dayCount = 90,
-  options: { nowMs?: number } = {},
+  options: { nowMs?: number; access?: SQL } = {},
 ): Promise<AutomationExecutionDay[]> {
   const nowMs = options.nowMs ?? Date.now();
   const end = utcDate(nowMs);
@@ -253,6 +266,7 @@ export async function readAutomationExecutionDays(
         gte(juniorAutomationExecutions.executedAtMs, startMs),
         lte(juniorAutomationExecutions.executedAtMs, endMs),
         eq(juniorAutomationExecutions.status, "completed"),
+        options.access,
       ),
     )
     .groupBy(executionDate, juniorAutomationExecutions.kind)
@@ -278,7 +292,7 @@ export async function readAutomationExecutionDays(
 /** Load a fixed trailing window of completed executions stacked by hour. */
 export async function readAutomationExecutionHours(
   hourCount = 7 * 24,
-  options: { nowMs?: number } = {},
+  options: { nowMs?: number; access?: SQL } = {},
 ): Promise<AutomationExecutionDay[]> {
   const nowMs = options.nowMs ?? Date.now();
   const end = new Date(nowMs);
@@ -307,6 +321,7 @@ export async function readAutomationExecutionHours(
         gte(juniorAutomationExecutions.executedAtMs, startMs),
         lte(juniorAutomationExecutions.executedAtMs, endMs),
         eq(juniorAutomationExecutions.status, "completed"),
+        options.access,
       ),
     )
     .groupBy(executionHour, juniorAutomationExecutions.kind)
