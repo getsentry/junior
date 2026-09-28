@@ -1,4 +1,14 @@
 # Changelog
+## 0.233.0
+
+### New Features ✨
+
+- (dashboard) Show event model configuration and call usage by @sentry-junior in [#1946](https://github.com/getsentry/junior/pull/1946)
+
+### Bug Fixes 🐛
+
+- (annotations) Restore Linear cards and ticket descriptions by @sentry-junior in [#1968](https://github.com/getsentry/junior/pull/1968)
+
 ## 0.232.0
 
 ### New Features ✨
