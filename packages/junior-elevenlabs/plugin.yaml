@@ -1,0 +1,12 @@
+name: elevenlabs
+display-name: ElevenLabs
+description: Generate speech and select voices by ID or ElevenLabs voice link
+
+env-vars:
+  ELEVENLABS_API_KEY:
+
+domains:
+  - api.elevenlabs.io
+
+api-headers:
+  xi-api-key: ${ELEVENLABS_API_KEY}

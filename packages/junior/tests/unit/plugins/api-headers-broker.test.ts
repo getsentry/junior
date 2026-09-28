@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parsePluginManifest } from "@/chat/plugins/manifest";
 import { createApiHeadersBroker } from "@/chat/plugins/auth/api-headers-broker";
 import type { PluginManifest } from "@/chat/plugins/types";
 
@@ -45,6 +48,40 @@ describe("API headers broker", () => {
         },
       },
     ]);
+  });
+
+  it("keeps the ElevenLabs key host-side and fails closed when it is missing", async () => {
+    const manifestPath = path.resolve(
+      process.cwd(),
+      "../junior-elevenlabs/plugin.yaml",
+    );
+    const manifest = parsePluginManifest(
+      readFileSync(manifestPath, "utf8"),
+      path.dirname(manifestPath),
+    );
+    const broker = createApiHeadersBroker(manifest);
+    process.env.ELEVENLABS_API_KEY = "test-elevenlabs-key";
+    const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:elevenlabs",
+    });
+    expect(lease.env).toEqual({});
+    expect(manifest.commandEnv).toBeUndefined();
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "api.elevenlabs.io",
+        headers: { "xi-api-key": "test-elevenlabs-key" },
+      },
+    ]);
+    delete process.env.ELEVENLABS_API_KEY;
+    await expect(
+      broker.issue({
+        context: SYSTEM_CREDENTIAL_CONTEXT,
+        reason: "test:missing-elevenlabs-key",
+      }),
+    ).rejects.toThrow(
+      'Missing ELEVENLABS_API_KEY for API header provider "elevenlabs"',
+    );
   });
 
   it("includes plugin command env in issued leases", async () => {

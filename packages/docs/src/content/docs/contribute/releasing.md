@@ -18,6 +18,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-cloudflare`
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
+- `@sentry/junior-elevenlabs`
 - `@sentry/junior-github`
 - `@sentry/junior-gocd`
 - `@sentry/junior-hex`

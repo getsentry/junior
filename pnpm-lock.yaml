@@ -439,6 +439,8 @@ importers:
 
   packages/junior-datadog: {}
 
+  packages/junior-elevenlabs: {}
+
   packages/junior-evals:
     devDependencies:
       '@chat-adapter/slack':
