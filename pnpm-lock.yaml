@@ -712,6 +712,8 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/junior-tts: {}
+
   packages/junior-vercel:
     dependencies:
       '@sentry/junior-plugin-api':
