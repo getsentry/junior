@@ -1,4 +1,14 @@
 # Changelog
+## 0.232.0
+
+### New Features ✨
+
+- (dashboard) Add conversation share actions by @sentry-junior in [#1962](https://github.com/getsentry/junior/pull/1962)
+
+### Bug Fixes 🐛
+
+- (slack) Keep annotation previews compact by @sentry-junior in [#1963](https://github.com/getsentry/junior/pull/1963)
+
 ## 0.231.0
 
 ### Bug Fixes 🐛
