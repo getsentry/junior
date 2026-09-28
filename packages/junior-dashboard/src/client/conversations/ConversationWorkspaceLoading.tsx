@@ -2,6 +2,7 @@ import { Skeleton } from "../components/Skeleton";
 import { cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { ConversationSplitLayout } from "./ConversationSplitLayout";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
@@ -9,25 +10,26 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
     <div
       aria-busy="true"
       aria-live="polite"
-      className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]"
+      className="h-full min-h-0"
       role="status"
     >
       <span className="sr-only">
         {props.detail ? "Loading conversation" : "Loading conversations"}
       </span>
-      <ConversationSidebarLoading />
-      {props.detail ? (
-        <ConversationDetailLoading />
-      ) : (
-        <ConversationHomeLoading />
-      )}
+      <ConversationSplitLayout sidebar={<ConversationSidebarLoading />}>
+        {props.detail ? (
+          <ConversationDetailLoading />
+        ) : (
+          <ConversationHomeLoading />
+        )}
+      </ConversationSplitLayout>
     </div>
   );
 }
 
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel md:grid">
+    <aside className="@container/conversations grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel">
       <div className="flex items-center justify-between gap-2 px-5 py-3">
         <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
           Conversations
@@ -45,7 +47,9 @@ function ConversationSidebarLoading() {
               className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
             />
             <Skeleton className="h-3 w-full opacity-70" />
-            <Skeleton className="h-3 w-4/5 opacity-70" />
+            <Skeleton className="hidden h-3 w-4/5 opacity-70 @min-[18rem]/conversations:block" />
+            <Skeleton className="hidden h-3 w-full opacity-70 @min-[28rem]/conversations:block" />
+            <Skeleton className="hidden h-3 w-3/5 opacity-70 @min-[28rem]/conversations:block" />
             <Skeleton className="h-2.5 w-2/5 opacity-70" />
           </div>
         ))}

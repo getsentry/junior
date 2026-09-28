@@ -217,6 +217,57 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
+  const divider = page.getByRole("separator", {
+    name: "Resize conversations list",
+  });
+  const initialWidth = Number(await divider.getAttribute("aria-valuenow"));
+  const handle = await divider.boundingBox();
+  if (!handle) throw new Error("Conversation resize handle is not visible");
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + handle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handle.x + handle.width / 2 + 160,
+    handle.y + handle.height / 2,
+  );
+  await page.mouse.up();
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    String(initialWidth + 160),
+  );
+  await divider.press("ArrowLeft");
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    String(initialWidth + 144),
+  );
+  await divider.press("End");
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    (await divider.getAttribute("aria-valuemax"))!,
+  );
+  await divider.press("ArrowRight");
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    (await divider.getAttribute("aria-valuemax"))!,
+  );
+  const expandedWidth = await divider.getAttribute("aria-valuenow");
+  await page.setViewportSize({ height: 900, width: 768 });
+  await expect
+    .poll(async () => Number(await divider.getAttribute("aria-valuenow")))
+    .toBeLessThan(Number(expandedWidth));
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await expect(divider).toHaveAttribute("aria-valuenow", expandedWidth!);
+  await divider.press("Home");
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    (await divider.getAttribute("aria-valuemin"))!,
+  );
+  await divider.dblclick();
+  await expect(divider).toHaveAttribute("aria-valuenow", String(initialWidth));
+  await divider.press("ArrowRight");
+
   const privateConversation = page.getByRole("link", {
     name: /Direct Message/,
   });
@@ -231,12 +282,20 @@ test("opens a conversation in the built dashboard", async ({
   ).toHaveCount(0);
   await publicConversation.click();
   await expect(publicConversation).toHaveAttribute("aria-current", "page");
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    String(initialWidth + 16),
+  );
 
   await page
     .getByRole("button", { name: "New conversation", exact: true })
     .click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(page.getByLabel("Start a conversation")).toBeVisible();
+  await expect(divider).toHaveAttribute(
+    "aria-valuenow",
+    String(initialWidth + 16),
+  );
   await expect(publicConversation).not.toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
   await publicConversation.click();

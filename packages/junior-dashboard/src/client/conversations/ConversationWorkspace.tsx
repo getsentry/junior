@@ -5,6 +5,7 @@ import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
+import { ConversationSplitLayout } from "./ConversationSplitLayout";
 import { ToggleButton } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
@@ -119,11 +120,8 @@ export function ConversationWorkspace() {
   );
 
   return (
-    <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]">
-      <section
-        aria-label="Conversations"
-        className="hidden h-full min-h-0 overflow-hidden md:block"
-      >
+    <ConversationSplitLayout
+      sidebar={
         <ConversationSidebar
           conversations={conversations}
           error={feed.error?.message}
@@ -135,7 +133,8 @@ export function ConversationWorkspace() {
           selectedId={selectedId}
           timeZone={getDashboardTimeZone()}
         />
-      </section>
+      }
+    >
       <section
         aria-label={
           selectedId ? "Selected conversation" : "Create conversation"
@@ -162,7 +161,7 @@ export function ConversationWorkspace() {
           homeView
         )}
       </section>
-    </div>
+    </ConversationSplitLayout>
   );
 }
 

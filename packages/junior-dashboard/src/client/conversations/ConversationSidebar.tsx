@@ -87,7 +87,7 @@ export function ConversationSidebar(props: {
   return (
     <aside
       className={cn(
-        "relative min-w-0",
+        "@container/conversations relative min-w-0",
         isLanding
           ? "border-t border-white/[0.07] bg-transparent"
           : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel",
@@ -230,7 +230,9 @@ function ConversationRowsLoading() {
             className={cn("h-4", index % 3 === 0 ? "w-4/5" : "w-3/5")}
           />
           <Skeleton className="mt-1 h-3 w-full opacity-70" />
-          <Skeleton className="h-3 w-4/5 opacity-70" />
+          <Skeleton className="hidden h-3 w-4/5 opacity-70 @min-[18rem]/conversations:block" />
+          <Skeleton className="hidden h-3 w-full opacity-70 @min-[28rem]/conversations:block" />
+          <Skeleton className="hidden h-3 w-3/5 opacity-70 @min-[28rem]/conversations:block" />
           <Skeleton className="mt-1 h-3 w-2/5 opacity-70" />
         </div>
       ))}
@@ -309,10 +311,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
               status={status}
             />
           </div>
-          <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text">
+          <div className="col-start-2 row-start-1 min-w-0 truncate font-sans text-sm font-medium leading-snug text-dashboard-text @min-[28rem]/conversations:whitespace-normal">
             {title}
           </div>
-          <p className="col-start-2 row-start-2 m-0 mt-1 line-clamp-2 font-sans text-xs leading-relaxed text-dashboard-text-subtle">
+          <p className="col-start-2 row-start-2 m-0 mt-1 line-clamp-1 break-words font-sans text-xs leading-relaxed text-dashboard-text-subtle @min-[18rem]/conversations:line-clamp-2 @min-[28rem]/conversations:line-clamp-4 @min-[28rem]/conversations:text-sm">
             {props.conversation.activityPreview
               ? formatConversationActivityPreview(
                   props.conversation.activityPreview.text,
