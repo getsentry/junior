@@ -18,7 +18,6 @@ import {
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import type { Conversation } from "../types";
-import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 
@@ -32,7 +31,6 @@ export function ConversationWorkspace() {
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -88,48 +86,44 @@ export function ConversationWorkspace() {
     />
   );
 
-  if (home) {
-    return (
-      <main
-        className={cn(
-          dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
-        )}
-      >
-        <div className="mx-auto grid w-full max-w-6xl gap-8">
-          {createView}
-          <section aria-label="Conversations" className="grid gap-3">
-            <SearchInput
-              className="w-full sm:ml-auto sm:w-72"
-              label="Search your conversations"
-              onChange={setQuery}
-              placeholder="Search conversations…"
-              value={query}
-            />
-            <ConversationHomeList
-              conversations={pagedConversations}
-              emptyLabel={feed.error?.message}
-              finishedConversationIds={finishedConversationIds}
-              loading={feed.isPending}
-              timeZone={getDashboardTimeZone()}
-            />
-            <PagePagination
-              className="pt-1"
-              onPageChange={setPage}
-              page={page}
-              pageCount={totalPages}
-              pageSize={CONVERSATION_PAGE_SIZE}
-              total={conversations.length}
-            />
-          </section>
-        </div>
-      </main>
-    );
-  }
+  const homeView = (
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 md:p-8">
+      <div className="mx-auto grid w-full max-w-6xl gap-8 md:my-auto">
+        {createView}
+        <section aria-label="Conversations" className="grid gap-3 md:hidden">
+          <SearchInput
+            className="w-full sm:ml-auto sm:w-72"
+            label="Search your conversations"
+            onChange={setQuery}
+            placeholder="Search conversations…"
+            value={query}
+          />
+          <ConversationHomeList
+            conversations={pagedConversations}
+            emptyLabel={feed.error?.message}
+            finishedConversationIds={finishedConversationIds}
+            loading={feed.isPending}
+            timeZone={getDashboardTimeZone()}
+          />
+          <PagePagination
+            className="pt-1"
+            onPageChange={setPage}
+            page={page}
+            pageCount={totalPages}
+            pageSize={CONVERSATION_PAGE_SIZE}
+            total={conversations.length}
+          />
+        </section>
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]">
-      <div className="hidden h-full min-h-0 overflow-hidden md:block">
+      <section
+        aria-label="Conversations"
+        className="hidden h-full min-h-0 overflow-hidden md:block"
+      >
         <ConversationSidebar
           conversations={conversations}
           error={feed.error?.message}
@@ -141,26 +135,32 @@ export function ConversationWorkspace() {
           selectedId={selectedId}
           timeZone={getDashboardTimeZone()}
         />
-      </div>
+      </section>
       <section
-        aria-label="Selected conversation"
+        aria-label={
+          selectedId ? "Selected conversation" : "Create conversation"
+        }
         className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
       >
-        <ConversationPage
-          key={selectedId}
-          conversationId={selectedId}
-          data={
-            feed.data
-              ? {
-                  conversations: feed.data,
-                }
-              : undefined
-          }
-          onRead={markRead}
-          pendingArchiveUpdate={pendingArchiveUpdates.find(
-            (update) => update.conversationId === selectedId,
-          )}
-        />
+        {selectedId ? (
+          <ConversationPage
+            key={selectedId}
+            conversationId={selectedId}
+            data={
+              feed.data
+                ? {
+                    conversations: feed.data,
+                  }
+                : undefined
+            }
+            onRead={markRead}
+            pendingArchiveUpdate={pendingArchiveUpdates.find(
+              (update) => update.conversationId === selectedId,
+            )}
+          />
+        ) : (
+          homeView
+        )}
       </section>
     </div>
   );
