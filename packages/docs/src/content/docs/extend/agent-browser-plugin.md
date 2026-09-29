@@ -37,10 +37,11 @@ No plugin config is required.
 
 ## Plugin-specific setup
 
-This plugin adds two skills and installs a browser runtime into the sandbox snapshot:
+This plugin adds three skills and installs a browser runtime into the sandbox snapshot:
 
 - `/agent-browser` for general browser interaction
 - `/visual-web-qa` for evidence-driven visual checks
+- `/demo-video` for edited product demo videos with Remotion
 
 Rebuild the sandbox snapshot after you enable the plugin so browser commands work in new sandboxes.
 
@@ -55,6 +56,14 @@ Use `/visual-web-qa` when a frontend or docs change needs scoped browser evidenc
 ```text
 /visual-web-qa Verify the updated docs navigation in light and dark themes, then share the evidence.
 ```
+
+Use `/demo-video` for a product presentation rather than a raw browser recording:
+
+```text
+/demo-video Make a 90-second walkthrough of this app with UI captures and narration. Keep the story about what users can do.
+```
+
+The demo workflow reuses captures and unchanged narration during revisions. It checks the rendered export before delivery. It does not install Remotion or FFmpeg. Use compatible dependencies in a separate artifact project and check the applicable Remotion license. Generated narration needs an enabled [TTS plugin](/extend/tts-plugin/) or another available speech workflow; supplied audio also works. No production changes are needed to make a video.
 
 ## Verify
 
