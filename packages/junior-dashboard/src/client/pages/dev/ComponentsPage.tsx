@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link, Navigate, Route, Routes, useLocation } from "react-router";
+import { Link, Navigate, Route, Routes } from "react-router";
 
 import { Button, ToggleButton } from "../../components/Button";
 import {
@@ -265,52 +265,17 @@ export function ComponentsPage() {
   );
 }
 
-/** Show page links as label-width, fill, and overflowing tracks. */
-function SegmentedNavFixture() {
-  const { pathname } = useLocation();
-  const galleryItems = GALLERY_SECTIONS.map((section) => ({
-    label: section.title,
-    to: `/dev/${section.id}`,
-  }));
-  // Only the first page resolves here, so the rest never match as current.
-  const systemItems = [
-    "Locations",
-    "Workspaces",
-    "Plugins",
-    "Deployments",
-    "Settings",
-  ].map((label, index) => ({
-    isActive: (current: string) => index === 0 && current === pathname,
-    label,
-    to: "/dev/foundations",
-  }));
-
-  return (
-    <div className="grid gap-4">
-      <SegmentedNav
-        ariaLabel="Gallery sections"
-        items={galleryItems}
-        pathname={pathname}
-      />
-      <div className="max-w-md">
-        <SegmentedNav
-          ariaLabel="Gallery sections, fill"
-          fill
-          items={galleryItems}
-          pathname={pathname}
-        />
-      </div>
-      <div className="max-w-xs">
-        <SegmentedNav
-          ariaLabel="System pages, overflowing"
-          fill
-          items={systemItems}
-          pathname={pathname}
-        />
-      </div>
-    </div>
-  );
-}
+const GALLERY_PAGE_LINKS = [
+  "Overview",
+  "People",
+  "Locations",
+  "Workspaces",
+  "Plugins",
+].map((label) => ({
+  isActive: () => label === "Overview",
+  label,
+  to: `#${label.toLowerCase()}`,
+}));
 
 function GalleryIndexPage() {
   return (
@@ -424,7 +389,23 @@ function FoundationsGalleryPage() {
         </div>
       </Fixture>
       <Fixture title="Segmented page links">
-        <SegmentedNavFixture />
+        <div className="grid gap-4">
+          <SegmentedNav ariaLabel="Label width" items={GALLERY_PAGE_LINKS} />
+          <div className="max-w-md">
+            <SegmentedNav
+              ariaLabel="Fill"
+              fill
+              items={GALLERY_PAGE_LINKS.slice(0, 2)}
+            />
+          </div>
+          <div className="max-w-xs">
+            <SegmentedNav
+              ariaLabel="Overflow"
+              fill
+              items={GALLERY_PAGE_LINKS}
+            />
+          </div>
+        </div>
       </Fixture>
       <Fixture title="Narrow details drawer">
         <Button onClick={() => setDrawerOpen(true)}>Open details</Button>

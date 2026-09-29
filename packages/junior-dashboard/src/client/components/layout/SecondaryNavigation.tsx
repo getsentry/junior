@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
-import { Link, NavLink, useLocation } from "react-router";
 
-import { pathWithSearch } from "../../searchParams";
-import { SegmentedNav, type SegmentedNavItem } from "../SegmentedNav";
+import {
+  SegmentedNav,
+  SiblingPageLink,
+  type SegmentedNavItem,
+} from "../SegmentedNav";
 import {
   cn,
   dashboardContainerClass,
@@ -12,51 +14,18 @@ import { SecondaryNavigationPortal } from "./DashboardChrome";
 
 export type SecondaryNavigationItem = SegmentedNavItem;
 
-type LinkClassState = { isActive: boolean };
-
-function DrawerNavItem(props: {
-  className: (state: LinkClassState) => string;
-  item: SecondaryNavigationItem;
-  pathname: string;
-  search: string;
-}) {
-  const { className, item, pathname, search } = props;
-  // Keep page filters (range, scope, q) when moving across secondary sections.
-  const to = pathWithSearch(item.to, search);
-  if (item.isActive) {
-    const isActive = item.isActive(pathname);
-    return (
-      <Link
-        aria-current={isActive ? "page" : undefined}
-        className={className({ isActive })}
-        to={to}
-      >
-        {item.label}
-      </Link>
-    );
-  }
-
-  return (
-    <NavLink className={className} end={item.end} to={to}>
-      {item.label}
-    </NavLink>
-  );
-}
-
 /**
- * Render page navigation in the desktop chrome, mobile page, and mobile drawer.
- * Desktop and mobile pages both use `SegmentedNav`, so each breakpoint shows
- * the same links the same way. Pass the page as children. The mobile tabs and
- * the page then share one shell grid row, so the tabs cannot take the row that
- * fills the screen.
+ * Render page navigation above the page, in the desktop chrome, and in the
+ * mobile menu. On mobile the links sit at the top of the page and scroll with
+ * it. Pass the page as children so the links and the page share one layout
+ * row.
  */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
   children: ReactNode;
   items: SecondaryNavigationItem[];
 }) {
-  const location = useLocation();
-  const drawerLinkClass = ({ isActive }: LinkClassState) =>
+  const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 pl-6 font-mono text-sm font-medium no-underline transition-colors",
       isActive
@@ -75,24 +44,8 @@ export function SecondaryNavigation(props: {
                 "min-w-0 px-4 py-2 md:px-8",
               )}
             >
-              <SegmentedNav
-                ariaLabel={props.ariaLabel}
-                items={props.items}
-                pathname={location.pathname}
-                search={location.search}
-              />
+              <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
             </div>
-          </div>
-        }
-        mobilePage={
-          <div className="min-w-0 px-4 pt-4 sm:px-8 md:hidden">
-            <SegmentedNav
-              ariaLabel={props.ariaLabel}
-              fill
-              items={props.items}
-              pathname={location.pathname}
-              search={location.search}
-            />
           </div>
         }
         mobile={
@@ -101,17 +54,18 @@ export function SecondaryNavigation(props: {
             className="mt-3 grid gap-1 border-t border-white/[0.07] pt-3"
           >
             {props.items.map((item) => (
-              <DrawerNavItem
-                className={drawerLinkClass}
+              <SiblingPageLink
+                className={menuLinkClass}
                 item={item}
                 key={item.to}
-                pathname={location.pathname}
-                search={location.search}
               />
             ))}
           </nav>
         }
       />
+      <div className="px-4 pt-4 sm:px-8 md:hidden">
+        <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
+      </div>
       {props.children}
     </div>
   );

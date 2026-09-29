@@ -197,23 +197,19 @@ export function useRegisterOpenMobileNavigation(open?: () => void): void {
   }, [chrome, open]);
 }
 
-/** Mount page navigation into the desktop chrome, mobile page, and mobile drawer. */
+/** Mount page navigation into the desktop chrome and mobile drawer. */
 export function SecondaryNavigationPortal(props: {
   desktop: ReactNode;
   mobile: ReactNode;
-  mobilePage: ReactNode;
 }) {
   const chrome = useContext(DashboardChromeContext);
   // Partial/static mounts have no shell provider. Keep desktop nav inline.
+  // When the provider exists, wait for the sticky slot before mounting.
   if (!chrome) return props.desktop;
-  // The mobile page tabs stay in place above the page content. They scroll
-  // with the page, so mobile chrome keeps one sticky row.
+  if (!chrome.secondarySlot) return null;
   return (
     <>
-      {props.mobilePage}
-      {chrome.secondarySlot
-        ? createPortal(props.desktop, chrome.secondarySlot)
-        : null}
+      {createPortal(props.desktop, chrome.secondarySlot)}
       {chrome.mobileSecondarySlot
         ? createPortal(props.mobile, chrome.mobileSecondarySlot)
         : null}
