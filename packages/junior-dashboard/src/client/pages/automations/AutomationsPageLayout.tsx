@@ -27,22 +27,23 @@ const taskNavigationItems = [
 ];
 
 /** Keep Automation navigation consistent across lists, details, and editing. */
-export function AutomationsNavigation() {
+export function AutomationsNavigation(props: { children: ReactNode }) {
   return (
     <SecondaryNavigation
       ariaLabel="Automations navigation"
       items={taskNavigationItems}
-    />
+    >
+      {props.children}
+    </SecondaryNavigation>
   );
 }
 
 /** Place the shared secondary navigation above one Automations page. */
 export function AutomationsPageLayout(props: { children: ReactNode }) {
   return (
-    <>
-      <AutomationsNavigation />
+    <AutomationsNavigation>
       <PageLayout>{props.children}</PageLayout>
-    </>
+    </AutomationsNavigation>
   );
 }
 

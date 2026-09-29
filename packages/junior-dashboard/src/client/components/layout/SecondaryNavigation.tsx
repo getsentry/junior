@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 
 import { pathWithSearch } from "../../searchParams";
@@ -67,9 +67,14 @@ function useScrollCurrentLinkIntoView(pathname: string) {
   return navRef;
 }
 
-/** Render page navigation in the desktop chrome, mobile page, and mobile drawer. */
+/**
+ * Render page navigation in the desktop chrome, mobile page, and mobile drawer.
+ * Pass the page as children. The mobile tabs and the page then share one shell
+ * grid row, so the tabs cannot take the row that fills the screen.
+ */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
+  children: ReactNode;
   items: SecondaryNavigationItem[];
 }) {
   const location = useLocation();
@@ -100,19 +105,59 @@ export function SecondaryNavigation(props: {
     );
 
   return (
-    <SecondaryNavigationPortal
-      desktop={
-        <div className="border-b border-white/[0.06] bg-white/[0.018]">
+    <div className="min-w-0">
+      <SecondaryNavigationPortal
+        desktop={
+          <div className="border-b border-white/[0.06] bg-white/[0.018]">
+            <nav
+              aria-label={props.ariaLabel}
+              className={cn(
+                dashboardContainerClass,
+                "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
+              )}
+            >
+              {props.items.map((item) => (
+                <SecondaryNavItem
+                  className={desktopLinkClass}
+                  item={item}
+                  key={item.to}
+                  pathname={location.pathname}
+                  search={location.search}
+                />
+              ))}
+            </nav>
+          </div>
+        }
+        mobilePage={
+          <div className="min-w-0 px-4 pt-4 sm:px-8 md:hidden">
+            <nav
+              aria-label={props.ariaLabel}
+              className={cn(
+                segmentedTabsTrackClass,
+                "relative flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              )}
+              ref={mobilePageNavRef}
+            >
+              {props.items.map((item) => (
+                <SecondaryNavItem
+                  className={mobilePageLinkClass}
+                  item={item}
+                  key={item.to}
+                  pathname={location.pathname}
+                  search={location.search}
+                />
+              ))}
+            </nav>
+          </div>
+        }
+        mobile={
           <nav
             aria-label={props.ariaLabel}
-            className={cn(
-              dashboardContainerClass,
-              "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
-            )}
+            className="mt-3 grid gap-1 border-t border-white/[0.07] pt-3"
           >
             {props.items.map((item) => (
               <SecondaryNavItem
-                className={desktopLinkClass}
+                className={mobileLinkClass}
                 item={item}
                 key={item.to}
                 pathname={location.pathname}
@@ -120,46 +165,9 @@ export function SecondaryNavigation(props: {
               />
             ))}
           </nav>
-        </div>
-      }
-      mobilePage={
-        <div className="min-w-0 px-4 pt-4 sm:px-8 md:hidden">
-          <nav
-            aria-label={props.ariaLabel}
-            className={cn(
-              segmentedTabsTrackClass,
-              "relative flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            )}
-            ref={mobilePageNavRef}
-          >
-            {props.items.map((item) => (
-              <SecondaryNavItem
-                className={mobilePageLinkClass}
-                item={item}
-                key={item.to}
-                pathname={location.pathname}
-                search={location.search}
-              />
-            ))}
-          </nav>
-        </div>
-      }
-      mobile={
-        <nav
-          aria-label={props.ariaLabel}
-          className="mt-3 grid gap-1 border-t border-white/[0.07] pt-3"
-        >
-          {props.items.map((item) => (
-            <SecondaryNavItem
-              className={mobileLinkClass}
-              item={item}
-              key={item.to}
-              pathname={location.pathname}
-              search={location.search}
-            />
-          ))}
-        </nav>
-      }
-    />
+        }
+      />
+      {props.children}
+    </div>
   );
 }
