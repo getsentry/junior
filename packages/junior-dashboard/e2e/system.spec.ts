@@ -241,9 +241,11 @@ test("keeps System navigation usable on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
-  await expect(page.getByLabel("System navigation")).not.toBeVisible();
-  await page.getByRole("button", { name: "Open navigation" }).click();
-  const systemNavigation = page.getByLabel("System navigation");
+  // Page tabs stay on the page, so moving between System pages does not need
+  // the navigation menu.
+  const systemNavigation = page.getByRole("navigation", {
+    name: "System navigation",
+  });
   await expect(systemNavigation.getByRole("link")).toHaveText([
     "Overview",
     "People",
@@ -251,11 +253,15 @@ test("keeps System navigation usable on mobile", async ({
     "Workspaces",
     "Plugins",
   ]);
-  await systemNavigation.getByRole("link", { name: "Plugins" }).click();
+  const pluginsLink = systemNavigation.getByRole("link", { name: "Plugins" });
+  await pluginsLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/plugins`);
   await expect(
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
+  // The current page tab scrolls into view when the row is wider than the screen.
+  await expect(pluginsLink).toHaveAttribute("aria-current", "page");
+  await expect(pluginsLink).toBeInViewport({ ratio: 1 });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);

@@ -33,7 +33,9 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page.getByRole("link", { name: "Automations" }).click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
-  await expect(page.getByLabel("Automations navigation")).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Automations navigation" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Automations" }),
   ).toBeVisible();

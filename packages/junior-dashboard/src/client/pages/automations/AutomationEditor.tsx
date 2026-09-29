@@ -355,7 +355,7 @@ export function AutomationEditor(props: {
       <p className="mb-5 text-xs leading-relaxed text-dashboard-text-muted sm:hidden">
         Changes apply to future work. Saving does not run this automation.
       </p>
-      <div className="sticky bottom-0 z-20 -mx-5 border-t border-dashboard-border-emphasis bg-dashboard-bg px-5 py-4 sm:-mx-8 sm:px-8">
+      <div className="sticky bottom-0 z-20 -mx-4 border-t border-dashboard-border-emphasis bg-dashboard-bg px-4 py-4 sm:-mx-8 sm:px-8">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1" role="status">
             <p className="m-0 text-xs font-medium sm:text-sm">

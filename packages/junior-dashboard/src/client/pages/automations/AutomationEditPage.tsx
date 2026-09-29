@@ -52,9 +52,8 @@ export function AutomationEditPage(props: { enabled: boolean }) {
         ? "warning"
         : "neutral";
   return (
-    <>
-      <AutomationsNavigation />
-      <div className="mx-auto w-full min-w-0 max-w-5xl px-5 pt-7 sm:px-8 sm:pt-9">
+    <AutomationsNavigation>
+      <div className="mx-auto w-full min-w-0 max-w-5xl px-4 pt-7 sm:px-8 sm:pt-9">
         <Link
           to={returnPath}
           className="inline-flex min-h-8 items-center gap-2 text-sm text-dashboard-text-muted no-underline hover:text-dashboard-text"
@@ -107,7 +106,7 @@ export function AutomationEditPage(props: { enabled: boolean }) {
           <AutomationReadOnly automation={value} />
         )}
       </div>
-    </>
+    </AutomationsNavigation>
   );
 }
 

@@ -7,10 +7,14 @@ instead of copying Tailwind blocks.
 
 1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
    `StatusChip`, `StatusDot`, `Notice`, `FormNotice`, `Select`, `Drawer`, `Tooltip`, `Skeleton`,
-   `PageContentSkeleton`, `SegmentedTabs`, and other small reusable controls.
-   Use `SegmentedTabs` for equal-width panel navigation. Pass the selected value,
-   items, change handler, and selected panel content. It owns tab/panel labels
-   and keyboard focus. Keep collection filters in `FilterTabList`. Prefer
+   `PageContentSkeleton`, `SegmentedTabs`, `SegmentedNav`, and other small reusable controls.
+   Use the segmented pill track to pick one of a few siblings. Use
+   `SegmentedTabs` to switch panels in place. Pass the selected value, items,
+   change handler, and selected panel content. It owns tab/panel labels and
+   keyboard focus. Use `SegmentedNav` for links between sibling pages. With
+   `fill`, links share the row width equally while their labels fit. Otherwise
+   each link keeps its label width. Rows that do not fit scroll sideways. Keep
+   collection filters in `FilterTabList`. Prefer
    `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
    styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
    Prefer `StatusDot` for dense table or list status markers and `StatusChip`

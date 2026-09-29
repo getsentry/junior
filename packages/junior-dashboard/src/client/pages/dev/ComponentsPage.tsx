@@ -2,6 +2,7 @@ import { FormNotice } from "../../components/FormNotice";
 import { Select } from "../../components/Select";
 import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
+import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
 import {
   ConversationFixture,
   MessageAttachmentsFixture,
@@ -40,7 +41,6 @@ import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack"
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
-import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -303,7 +303,6 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
-  const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
 
   return (
     <GalleryShell
@@ -354,26 +353,10 @@ function FoundationsGalleryPage() {
         </DashboardChromeProvider>
       </Fixture>
       <Fixture title="Segmented tabs">
-        <div className="max-w-md">
-          <SegmentedTabs
-            items={[
-              { label: "Details", value: "details" },
-              { label: "Memories", value: "memories" },
-              { label: "Usage", value: "usage" },
-            ]}
-            label="Conversation panels"
-            onChange={setTab}
-            value={tab}
-          >
-            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              {tab === "details"
-                ? "Conversation summary and linked work."
-                : tab === "memories"
-                  ? "What Junior learned from this conversation."
-                  : "Time, tokens, and cost for this conversation."}
-            </p>
-          </SegmentedTabs>
-        </div>
+        <SegmentedTabsFixture />
+      </Fixture>
+      <Fixture title="Segmented page links">
+        <SegmentedNavFixture />
       </Fixture>
       <Fixture title="Narrow details drawer">
         <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
