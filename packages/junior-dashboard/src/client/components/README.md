@@ -10,7 +10,9 @@ instead of copying Tailwind blocks.
    `PageContentSkeleton`, `SegmentedTabs`, and other small reusable controls.
    Use `SegmentedTabs` for equal-width panel navigation. Pass the selected value,
    items, change handler, and selected panel content. It owns tab/panel labels
-   and keyboard focus. Keep collection filters in `FilterTabList`. Prefer
+   and keyboard focus. `SecondaryNavigation` reuses its styles for mobile page
+   links, so page links and panel tabs look the same. Keep collection filters
+   in `FilterTabList`. Prefer
    `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
    styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
    Prefer `StatusDot` for dense table or list status markers and `StatusChip`

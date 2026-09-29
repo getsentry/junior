@@ -1,6 +1,8 @@
+import { useLayoutEffect, useRef } from "react";
 import { Link, NavLink, useLocation } from "react-router";
 
 import { pathWithSearch } from "../../searchParams";
+import { segmentedTabClass, segmentedTabsTrackClass } from "../SegmentedTabs";
 import {
   cn,
   dashboardContainerClass,
@@ -47,12 +49,31 @@ function SecondaryNavItem(props: {
   );
 }
 
-/** Render page navigation in the desktop chrome and mobile drawer. */
+/** Keep the current page link visible in a horizontally scrolled nav. */
+function useScrollCurrentLinkIntoView(pathname: string) {
+  const navRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const link = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !link) return;
+    const start = link.offsetLeft;
+    const end = start + link.offsetWidth;
+    if (start >= nav.scrollLeft && end <= nav.scrollLeft + nav.clientWidth) {
+      return;
+    }
+    // Set scrollLeft directly. scrollIntoView can also scroll the page.
+    nav.scrollLeft = start - (nav.clientWidth - link.offsetWidth) / 2;
+  }, [pathname]);
+  return navRef;
+}
+
+/** Render page navigation in the desktop chrome, mobile page, and mobile drawer. */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
   items: SecondaryNavigationItem[];
 }) {
   const location = useLocation();
+  const mobilePageNavRef = useScrollCurrentLinkIntoView(location.pathname);
   const desktopLinkClass = ({ isActive }: LinkClassState) =>
     cn(
       "relative flex h-12 shrink-0 items-center px-3 font-display text-xs font-medium no-underline transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:transition-colors sm:text-sm",
@@ -62,6 +83,13 @@ export function SecondaryNavigation(props: {
             "after:bg-transparent hover:bg-white/[0.025]",
             dashboardInteractiveTextClass,
           ),
+    );
+  // Segmented tabs share space equally. With many pages, each tab keeps its
+  // label width and the row scrolls sideways.
+  const mobilePageLinkClass = ({ isActive }: LinkClassState) =>
+    cn(
+      segmentedTabClass(isActive),
+      "flex flex-1 items-center justify-center whitespace-nowrap no-underline",
     );
   const mobileLinkClass = ({ isActive }: LinkClassState) =>
     cn(
@@ -85,6 +113,28 @@ export function SecondaryNavigation(props: {
             {props.items.map((item) => (
               <SecondaryNavItem
                 className={desktopLinkClass}
+                item={item}
+                key={item.to}
+                pathname={location.pathname}
+                search={location.search}
+              />
+            ))}
+          </nav>
+        </div>
+      }
+      mobilePage={
+        <div className="min-w-0 px-4 pt-4 sm:px-8 md:hidden">
+          <nav
+            aria-label={props.ariaLabel}
+            className={cn(
+              segmentedTabsTrackClass,
+              "relative flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            )}
+            ref={mobilePageNavRef}
+          >
+            {props.items.map((item) => (
+              <SecondaryNavItem
+                className={mobilePageLinkClass}
                 item={item}
                 key={item.to}
                 pathname={location.pathname}
