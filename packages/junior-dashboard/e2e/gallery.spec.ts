@@ -17,6 +17,31 @@ test("shows gallery foundations", async ({ page, dashboard }) => {
   await screenshot(page, "gallery-foundations", { view: "desktop" });
 });
 
+test("fades segmented page links that overflow", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/dev/foundations`);
+  const overflowing = page.getByRole("navigation", {
+    name: "System pages, overflowing",
+  });
+  const scroller = overflowing.locator(":scope > div");
+  // More links sit past the right edge, so only that edge fades.
+  await expect(scroller).toHaveAttribute("data-overflow-end", "true");
+  await expect(scroller).not.toHaveAttribute("data-overflow-start");
+  await scroller.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  await expect(scroller).toHaveAttribute("data-overflow-start", "true");
+  await expect(scroller).not.toHaveAttribute("data-overflow-end");
+  // Links that fit do not fade.
+  await expect(
+    page
+      .getByRole("navigation", { name: "Gallery sections", exact: true })
+      .locator("[data-overflow-start], [data-overflow-end]"),
+  ).toHaveCount(0);
+});
+
 test("shows gallery charts", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/dev/charts`);
   await expect(

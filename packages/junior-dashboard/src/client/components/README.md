@@ -7,12 +7,19 @@ instead of copying Tailwind blocks.
 
 1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
    `StatusChip`, `StatusDot`, `Notice`, `FormNotice`, `Select`, `Drawer`, `Tooltip`, `Skeleton`,
-   `PageContentSkeleton`, `SegmentedTabs`, and other small reusable controls.
-   Use `SegmentedTabs` for equal-width panel navigation. Pass the selected value,
-   items, change handler, and selected panel content. It owns tab/panel labels
-   and keyboard focus. `SecondaryNavigation` reuses its styles for mobile page
-   links, so page links and panel tabs look the same. Keep collection filters
-   in `FilterTabList`. Prefer
+   `PageContentSkeleton`, `SegmentedTabs`, `SegmentedNav`, and other small reusable controls.
+   Picking one of a few siblings uses the segmented pill track. Use
+   `SegmentedTabs` to switch panels in place. Pass the selected value, items,
+   change handler, and selected panel content. It owns tab/panel labels and
+   keyboard focus. Use `SegmentedNav` for links between sibling pages. It shares
+   the `SegmentedTabs` track and tab styles, but renders links with
+   `aria-current` instead of a tablist. `SecondaryNavigation` uses it on desktop
+   and mobile pages; the mobile drawer stays a list because it is a menu.
+   Width rule: pass `fill` where the row should span its container. Links then
+   share the width equally while their labels fit. Without `fill`, or once
+   labels no longer fit, each link keeps its label width and the row scrolls
+   sideways with a fade on the edge that hides more links. Keep collection
+   filters in `FilterTabList`. Prefer
    `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
    styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
    Prefer `StatusDot` for dense table or list status markers and `StatusChip`

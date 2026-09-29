@@ -2,9 +2,15 @@ import { useId, type ReactNode } from "react";
 
 import { cn } from "../styles";
 
-/** Style the track shared by segmented tabs and segmented page links. */
-export const segmentedTabsTrackClass =
-  "gap-1 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-1";
+/** Style the outer frame shared by segmented tabs and segmented page links. */
+export const segmentedTabsFrameClass =
+  "rounded-lg border border-dashboard-border bg-dashboard-surface-panel";
+
+/** Style the spacing inside a segmented track. */
+export const segmentedTabsInsetClass = "gap-1 p-1";
+
+/** Style the full track: frame plus inner spacing. */
+export const segmentedTabsTrackClass = `${segmentedTabsFrameClass} ${segmentedTabsInsetClass}`;
 
 /** Style one segmented tab or segmented page link. */
 export function segmentedTabClass(selected: boolean): string {
@@ -16,7 +22,10 @@ export function segmentedTabClass(selected: boolean): string {
   );
 }
 
-/** Switch between related panels with equal-width tabs and keyboard navigation. */
+/**
+ * Switch between related panels with equal-width tabs and keyboard navigation.
+ * Use `SegmentedNav` for links between pages; it shares these styles.
+ */
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
