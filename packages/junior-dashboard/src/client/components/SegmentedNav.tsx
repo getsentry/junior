@@ -45,26 +45,40 @@ export function SiblingPageLink(props: {
   );
 }
 
-/** Scroll the current page link into view when the row clips it. */
+/** Width of the fade on an edge that hides more links. */
+const EDGE_FADE_PX = 24;
+
+type HiddenEdges = { end: boolean; start: boolean };
+
+function hiddenEdges(row: HTMLElement): HiddenEdges {
+  const maxScroll = row.scrollWidth - row.clientWidth;
+  return {
+    end: row.scrollLeft < maxScroll - 1,
+    start: row.scrollLeft > 1,
+  };
+}
+
+/** Scroll the current page link into view when the row or a fade covers it. */
 function revealCurrentLink(row: HTMLElement) {
   const link = row.querySelector<HTMLElement>('[aria-current="page"]');
   if (!link || row.clientWidth === 0) return;
+  const edges = hiddenEdges(row);
+  const visibleStart = row.scrollLeft + (edges.start ? EDGE_FADE_PX : 0);
+  const visibleEnd =
+    row.scrollLeft + row.clientWidth - (edges.end ? EDGE_FADE_PX : 0);
   const start = link.offsetLeft;
   const end = start + link.offsetWidth;
-  if (start >= row.scrollLeft && end <= row.scrollLeft + row.clientWidth) {
-    return;
-  }
+  if (start >= visibleStart && end <= visibleEnd) return;
   // scrollIntoView can also scroll the page, so set scrollLeft on the row.
   row.scrollLeft = start - (row.clientWidth - link.offsetWidth) / 2;
 }
 
-type HiddenEdges = { end: boolean; start: boolean };
-
 /** Fade each edge of the row that hides more links. */
 function edgeFade(edges: HiddenEdges): CSSProperties | undefined {
   if (!edges.start && !edges.end) return undefined;
-  const start = edges.start ? "transparent, black 1.5rem" : "black";
-  const end = edges.end ? "black calc(100% - 1.5rem), transparent" : "black";
+  const fade = `${EDGE_FADE_PX}px`;
+  const start = edges.start ? `transparent, black ${fade}` : "black";
+  const end = edges.end ? `black calc(100% - ${fade}), transparent` : "black";
   const mask = `linear-gradient(to right, ${start}, ${end})`;
   return { maskImage: mask, WebkitMaskImage: mask };
 }
@@ -92,9 +106,7 @@ export function SegmentedNav(props: {
     const row = rowRef.current;
     if (!row) return;
     const updateEdges = () => {
-      const maxScroll = row.scrollWidth - row.clientWidth;
-      const start = row.scrollLeft > 1;
-      const end = row.scrollLeft < maxScroll - 1;
+      const { end, start } = hiddenEdges(row);
       setEdges((previous) =>
         previous.start === start && previous.end === end
           ? previous
