@@ -1590,7 +1590,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("stops before creating a pull request when requester lookup fails", async () => {
+  it("returns the created pull request when requester lookup fails", async () => {
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -1617,9 +1617,14 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-create-identity-lookup-failed" },
       ),
-    ).rejects.toThrow("identity storage unavailable");
+    ).resolves.toMatchObject({ number: 660 });
 
-    expect(ctx.egressRequests()).toHaveLength(0);
+    expect(ctx.egressRequests()).toHaveLength(1);
+    await expect(ctx.egressRequests()[0].request.json()).resolves.toMatchObject(
+      {
+        body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      },
+    );
   });
 
   it("keeps pull request annotation labels compact for long titles", async () => {
@@ -1725,11 +1730,10 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it.each(["rejected", "ignored"])(
-    "retries %s assignment without creating another pull request",
+  it.each(["rejected", "ignored", "network", "auth"])(
+    "returns and replays the created pull request after %s assignment",
     async (failure) => {
       process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
-      let assignmentAttempts = 0;
       let handle = "dcramer";
       const ctx = githubToolsContext({
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
@@ -1754,16 +1758,18 @@ Conversation: \`local:test:old-conversation\`
         }),
         egressFetch: async ({ operation }) => {
           if (operation === "github.pull.assign") {
-            assignmentAttempts += 1;
-            if (assignmentAttempts === 1) {
-              return failure === "rejected"
-                ? Response.json(
-                    { message: "Validation Failed" },
-                    { status: 422 },
-                  )
-                : Response.json({ assignees: [] });
-            }
-            return Response.json({ assignees: [{ login: "dcramer" }] });
+            if (failure === "network") throw new Error("network unavailable");
+            if (failure === "auth")
+              throw new EgressAuthRequired("GitHub authorization required.", {
+                authorization: {
+                  provider: "github",
+                  scope: "repo",
+                  type: "oauth",
+                },
+              });
+            return failure === "rejected"
+              ? Response.json({ message: "Validation Failed" }, { status: 422 })
+              : Response.json({ assignees: [] });
           }
           return new Response(
             JSON.stringify({
@@ -1789,14 +1795,6 @@ Conversation: \`local:test:old-conversation\`
 
       await expect(
         tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
-      ).rejects.toThrow("was created, but");
-      // Resume with changed actor data and input; use the saved requester and repo.
-      handle = "someone-else";
-      await expect(
-        tool?.execute?.(
-          { ...input, repo: "getsentry/other" },
-          { toolCallId: "call-idempotent-pr-create" },
-        ),
       ).resolves.toMatchObject({
         objectAnnotations: [
           {
@@ -1815,6 +1813,8 @@ Conversation: \`local:test:old-conversation\`
         },
         url: "https://github.com/getsentry/junior/pull/691",
       });
+      // A replay must not try assignment again, even if the requester changes.
+      handle = "someone-else";
       await expect(
         tool?.execute?.(
           {
@@ -1842,13 +1842,12 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior/pull/691",
       });
 
-      expect(ctx.egressRequests()).toHaveLength(3);
+      expect(ctx.egressRequests()).toHaveLength(2);
       expect(ctx.egressRequests().map(({ operation }) => operation)).toEqual([
         "github.pull.create",
         "github.pull.assign",
-        "github.pull.assign",
       ]);
-      const assignment = ctx.egressRequests()[2].request;
+      const assignment = ctx.egressRequests()[1].request;
       expect(assignment.url).toBe(
         "https://api.github.com/repos/getsentry/junior/issues/691/assignees",
       );

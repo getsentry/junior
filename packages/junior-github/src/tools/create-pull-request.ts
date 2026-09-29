@@ -96,7 +96,6 @@ const createPullRequestStateSchema = Type.Union([
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
       status: Type.Literal("completed"),
-      pendingAssignee: Type.Optional(Type.String()),
       url: Type.String(),
     },
     { additionalProperties: false },
@@ -337,57 +336,51 @@ async function createGitHubPullRequest(
   };
 }
 
-/** Finish assignment after creation is saved, so retries cannot create another PR. */
+/** Assignment is optional: lookup or provider failures must not fail PR creation. */
 async function assignPullRequestRequester(
   ctx: ToolRegistrationHookContext,
-  key: string,
   input: CreateGitHubPullRequestInput,
-  state: Extract<CreatePullRequestState, { status: "completed" }>,
+  result: GitHubPullRequestResult,
 ): Promise<void> {
-  const assignee = state.pendingAssignee;
-  if (!assignee) return;
-  const repo = parseRepo(input.repo);
-  const response = await ctx.egress.fetch({
-    provider: "github",
-    operation: "github.pull.assign",
-    request: new Request(
-      `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${state.number}/assignees`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
+  if (!ctx.actor || ctx.actor.platform === "system") return;
+  try {
+    const requester = await ctx.users.resolveActor();
+    const assignee = requester?.user?.identities
+      .find((identity) => identity.provider === "github")
+      ?.handle?.trim();
+    if (!assignee) return;
+    const repo = parseRepo(input.repo);
+    const response = await ctx.egress.fetch({
+      provider: "github",
+      operation: "github.pull.assign",
+      request: new Request(
+        `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${result.number}/assignees`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          body: JSON.stringify({ assignees: [assignee] }),
         },
-        body: JSON.stringify({ assignees: [assignee] }),
-      },
-    ),
-  });
-  const parsed = await readJsonResponse(response);
-  if (!response.ok) {
-    throw new Error(
-      `GitHub pull request ${state.url} was created, but requester assignment failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`,
-    );
+      ),
+    });
+    if (!response.ok) {
+      ctx.log.warn("github.pull_request.assign_after_create.rejected", {
+        number: result.number,
+        repo: input.repo,
+        status: response.status,
+      });
+    }
+    // GitHub may ignore an ineligible assignee. An unassigned PR is acceptable.
+  } catch (error) {
+    ctx.log.warn("github.pull_request.assign_after_create.failed", {
+      error: error instanceof Error ? error.message : String(error),
+      number: result.number,
+      repo: input.repo,
+    });
   }
-  // GitHub can silently ignore users who cannot be assigned to the repository.
-  const assigned = z
-    .object({ assignees: z.array(z.object({ login: z.string() })) })
-    .parse(parsed);
-  if (
-    !assigned.assignees.some(
-      ({ login }) => login.toLowerCase() === assignee.toLowerCase(),
-    )
-  ) {
-    throw new Error(
-      `GitHub pull request ${state.url} was created, but GitHub did not assign requester ${state.pendingAssignee}.`,
-    );
-  }
-  const { pendingAssignee: _, ...completedState } = state;
-  await ctx.state.set(
-    key,
-    completedState,
-    GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
-  );
 }
 
 function gitHubPullRequestToolResult(
@@ -511,7 +504,6 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
-            await assignPullRequestRequester(ctx, key, completedInput, state);
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -534,13 +526,6 @@ export function createGitHubPullRequestTool(
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          const requester =
-            ctx.actor && ctx.actor.platform !== "system"
-              ? await ctx.users.resolveActor()
-              : undefined;
-          const pendingAssignee = requester?.user?.identities
-            .find((identity) => identity.provider === "github")
-            ?.handle?.trim();
           const request = await createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
@@ -576,7 +561,6 @@ export function createGitHubPullRequestTool(
             ...pendingState,
             status: "completed",
             ...result,
-            ...(pendingAssignee ? { pendingAssignee } : undefined),
           };
           try {
             await ctx.state.set(
@@ -590,12 +574,7 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
-          await assignPullRequestRequester(
-            ctx,
-            key,
-            parsedInput,
-            completedState,
-          );
+          await assignPullRequestRequester(ctx, parsedInput, result);
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,

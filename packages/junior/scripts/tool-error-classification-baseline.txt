@@ -9,9 +9,6 @@ packages/junior-github/src/tools/create-issue.ts	throw new Error("Invalid GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation returned an invalid response.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but the runtime could not persist the completed pull request state.", { cause: error }, );
-# Assignment uses the saved runtime identity, not model input. Provider access and assignment failures remain system errors.
-packages/junior-github/src/tools/create-pull-request.ts	throw new Error( `GitHub pull request ${state.url} was created, but GitHub did not assign requester ${state.pendingAssignee}.`, );
-packages/junior-github/src/tools/create-pull-request.ts	throw new Error( `GitHub pull request ${state.url} was created, but requester assignment failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
