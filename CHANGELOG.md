@@ -1,4 +1,19 @@
 # Changelog
+## 0.234.0
+
+### New Features ✨
+
+#### Automations
+
+- Add pause controls and attention view by @sentry-junior in [#1982](https://github.com/getsentry/junior/pull/1982)
+- Add safe creator-only edit API by @sentry-junior in [#1980](https://github.com/getsentry/junior/pull/1980)
+- Search and page the full accessible collection by @sentry-junior in [#1978](https://github.com/getsentry/junior/pull/1978)
+
+#### Other
+
+- (dashboard) Make automation rows easy to scan by @sentry-junior in [#1976](https://github.com/getsentry/junior/pull/1976)
+- (tts) Add Gemini narration through Vercel AI Gateway by @sentry-junior in [#1969](https://github.com/getsentry/junior/pull/1969)
+
 ## 0.233.0
 
 ### New Features ✨
