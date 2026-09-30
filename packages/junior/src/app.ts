@@ -467,6 +467,7 @@ function dashboardHostRoutePaths(
   const pagePaths = [
     basePath,
     pagePath("code"),
+    `${pagePath("code")}/*`,
     conversationsPath,
     `${conversationsPath}/*`,
     pagePath("locations"),
