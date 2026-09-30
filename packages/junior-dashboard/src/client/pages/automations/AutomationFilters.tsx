@@ -6,6 +6,7 @@ import type {
   AutomationListQuery,
 } from "@sentry/junior/api/schema";
 import { Button, ToggleButton } from "../../components/Button";
+import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
 
@@ -25,7 +26,6 @@ export function AutomationFilters(props: {
     Boolean(filters.creator),
     Boolean(filters.destination),
     filters.state !== "all",
-    filters.sort !== "newest",
   ].filter(Boolean).length;
   return (
     <div className="grid gap-3">
@@ -76,12 +76,12 @@ export function AutomationFilters(props: {
       <div
         id={controlsId}
         className={cn(
-          "grid-cols-2 items-end gap-3 lg:grid-cols-4 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))]",
+          "grid-cols-2 items-end gap-3 lg:grid-cols-3 xl:grid-cols-[auto_repeat(3,minmax(0,1fr))]",
           expanded ? "grid" : "hidden",
         )}
       >
         <FilterGroup
-          className="col-span-2 lg:col-span-4 xl:col-span-1"
+          className="col-span-2 lg:col-span-3 xl:col-span-1"
           label="Type"
         >
           {(["all", "scheduled", "event"] as const).map((value) => (
@@ -123,19 +123,27 @@ export function AutomationFilters(props: {
           ]}
           onChange={(value) => onChange("state", value)}
         />
-        <AutomationFilterSelect
-          label="Sort"
-          ariaLabel="Sort automations"
-          value={filters.sort}
-          onChange={(value) => onChange("sort", value)}
-          options={[
-            { value: "newest", label: "Newest first" },
-            { value: "oldest", label: "Oldest first" },
-            { value: "title", label: "Title" },
-          ]}
-        />
       </div>
     </div>
+  );
+}
+
+/** Keep list order visible beside the result count instead of inside Filters. */
+export function AutomationSort(props: {
+  value: AutomationListQuery["sort"];
+  onChange(value: string): void;
+}) {
+  return (
+    <DirectorySortSelect
+      ariaLabel="Sort automations"
+      onChange={props.onChange}
+      options={[
+        { value: "newest", label: "Recently created" },
+        { value: "oldest", label: "Oldest created" },
+        { value: "title", label: "Title A–Z" },
+      ]}
+      value={props.value}
+    />
   );
 }
 

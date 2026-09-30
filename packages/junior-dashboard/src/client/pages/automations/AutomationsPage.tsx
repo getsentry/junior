@@ -13,7 +13,7 @@ import {
 import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
 import { useAutomationsData, useAutomationData } from "../../api";
 import { Button } from "../../components/Button";
-import { AutomationFilters } from "./AutomationFilters";
+import { AutomationFilters, AutomationSort } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { pageCount, PagePagination } from "../../components/Pagination";
@@ -32,7 +32,7 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { AutomationRow, AutomationListHeader } from "./AutomationRow";
+import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
@@ -274,16 +274,20 @@ export function AutomationsPage(props: {
       ) : null}
       {query.data && props.view === "list" ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
             <p className="m-0 text-xs text-dashboard-text-muted">
               {visibleTaskCount}{" "}
               {visibleTaskCount === 1 ? "automation" : "automations"}
-            </p>
-            <p className="m-0 text-xs text-dashboard-text-muted">
               {query.isFetching ? (
-                <span role="status">Updating results…</span>
+                <span className="ml-3" role="status">
+                  Updating results…
+                </span>
               ) : null}
             </p>
+            <AutomationSort
+              value={filters.sort}
+              onChange={(value) => setFilter("sort", value)}
+            />
           </div>
           {!query.error && visibleTaskCount === 0 ? (
             <Card padding="md">
@@ -292,44 +296,38 @@ export function AutomationsPage(props: {
               </p>
             </Card>
           ) : (
-            <Card className="overflow-visible">
-              <AutomationListHeader />
-              <div
-                className="divide-y divide-dashboard-border-subtle"
-                role="list"
-              >
-                {automations.map((automation) => {
-                  const key = `${automation.kind}:${automation.id}`;
-                  return (
-                    <AutomationRow
-                      deleting={
-                        deletion.isPending &&
-                        deletion.variables?.id === automation.id
-                      }
-                      key={key}
-                      onDelete={() => {
-                        if (
-                          window.confirm(
-                            `Delete this ${automation.kind} automation?`,
-                          )
-                        ) {
-                          deletion.mutate(automation);
-                        }
-                      }}
-                      onSelect={() =>
-                        navigate(
-                          automationId === automation.id
-                            ? tasksPath(listPath)
-                            : selectedTaskPath(automation.id),
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-2" role="list">
+              {automations.map((automation) => {
+                const key = `${automation.kind}:${automation.id}`;
+                return (
+                  <AutomationRow
+                    deleting={
+                      deletion.isPending &&
+                      deletion.variables?.id === automation.id
+                    }
+                    key={key}
+                    onDelete={() => {
+                      if (
+                        window.confirm(
+                          `Delete this ${automation.kind} automation?`,
                         )
+                      ) {
+                        deletion.mutate(automation);
                       }
-                      selected={automationId === automation.id}
-                      automation={automation}
-                    />
-                  );
-                })}
-              </div>
-            </Card>
+                    }}
+                    onSelect={() =>
+                      navigate(
+                        automationId === automation.id
+                          ? tasksPath(listPath)
+                          : selectedTaskPath(automation.id),
+                      )
+                    }
+                    selected={automationId === automation.id}
+                    automation={automation}
+                  />
+                );
+              })}
+            </div>
           )}
           <PagePagination
             onPageChange={setPage}

@@ -220,6 +220,8 @@ test("opens scheduled and event automations in the native Automations view", asy
   const listUrl = `${dashboard.baseURL}/automations/list?scope=mine&type=scheduled&sort=title&page=2`;
   await page.goto(`${listUrl}&state=invalid`);
   await expect(page.getByLabel("Filter by state")).toHaveValue("");
+  // List order stays visible without opening Filters.
+  await expect(page.getByLabel("Sort automations")).toBeVisible();
   await expect(page.getByLabel("Sort automations")).toHaveValue("title");
   await page.goto(listUrl);
   await expect(page.getByText("Showing 26-31 of 31")).toBeVisible();
@@ -275,7 +277,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });
   await expect(mobileFilters).toHaveAttribute("aria-expanded", "false");
-  await expect(mobileFilters).toHaveText("Filters (5)");
+  await expect(mobileFilters).toHaveText("Filters (4)");
   await expect(page.getByLabel("Filter by creator")).not.toBeVisible();
   await mobileFilters.click();
   await expect(mobileFilters).toHaveAttribute("aria-expanded", "true");
@@ -285,7 +287,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   ).toBeVisible();
   await mobileFilters.click();
   await page.reload();
-  await expect(mobileFilters).toHaveText("Filters (5)");
+  await expect(mobileFilters).toHaveText("Filters (4)");
   await mobileFilters.click();
   await expect(page.getByLabel("Filter by state")).toHaveValue("blocked");
 });
