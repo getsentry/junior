@@ -41,6 +41,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
@@ -126,6 +127,7 @@ export function createTools(
     ...createEventAutomationTools(context, eventCatalog),
     ...createScheduledAutomationTools(context),
     ...createWorkspaceTools(context),
+    ...createOperatorTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   if (context.conversationPrivacy === "public") {

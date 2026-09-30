@@ -41,6 +41,11 @@ async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
     migrate: (config) => migrate(fixture.db(), config),
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
       fixture.query<T>(statement, params),
+    // PGlite has one session, so a transaction stands in for a discarded connection.
+    queryIsolated: <T = unknown>(
+      statement: string,
+      params?: readonly unknown[],
+    ) => fixture.transaction(() => fixture.query<T>(statement, params)),
     transaction: (callback) => fixture.transaction(callback),
     withLock: (lockName, callback) => fixture.withLock(lockName, callback),
     withMigrationLock: (_migrationTable, callback) => callback(),

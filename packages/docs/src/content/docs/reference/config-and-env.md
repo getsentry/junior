@@ -162,6 +162,10 @@ const app = await createApp({
     // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
     // unless you are testing the #879 runtime.
     subagents: true,
+    // Operator tools such as runOperatorSql. They read and write the app
+    // database directly and skip Conversation privacy checks. Enable them only
+    // on isolated deployments, such as Previews behind deployment protection.
+    "operator-tools": true,
   },
 });
 ```
@@ -187,6 +191,25 @@ pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
+
+`operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
+runs one SQL statement against the app database and returns up to 200 rows.
+Each call uses its own database connection, which is closed afterwards, so
+session commands such as `BEGIN` or `SET` do not affect the app.
+It can write data and it skips every Conversation privacy check, so the Agent
+can read private Conversations with it. Never enable it in production. Use it
+on an isolated deployment whose database is a disposable copy, and choose that
+deployment in app code, for example:
+
+```ts
+const app = await createApp({
+  experimental: {
+    "operator-tools":
+      process.env.VERCEL_ENV === "preview" &&
+      process.env.JUNIOR_PREVIEW_OPERATOR === "true",
+  },
+});
+```
 
 ## Profiles
 
