@@ -32,7 +32,7 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { AutomationRow, AutomationListHeader } from "./AutomationRow";
+import { AutomationRow } from "./AutomationRow";
 import { AutomationCostChart } from "./AutomationCostChart";
 import { AutomationDetailsDrawer } from "./AutomationDetailsDrawer";
 import { AutomationExecutionChart } from "./AutomationExecutionChart";
@@ -296,44 +296,38 @@ export function AutomationsPage(props: {
               </p>
             </Card>
           ) : (
-            <Card className="overflow-visible">
-              <AutomationListHeader />
-              <div
-                className="divide-y divide-dashboard-border-subtle"
-                role="list"
-              >
-                {automations.map((automation) => {
-                  const key = `${automation.kind}:${automation.id}`;
-                  return (
-                    <AutomationRow
-                      deleting={
-                        deletion.isPending &&
-                        deletion.variables?.id === automation.id
-                      }
-                      key={key}
-                      onDelete={() => {
-                        if (
-                          window.confirm(
-                            `Delete this ${automation.kind} automation?`,
-                          )
-                        ) {
-                          deletion.mutate(automation);
-                        }
-                      }}
-                      onSelect={() =>
-                        navigate(
-                          automationId === automation.id
-                            ? tasksPath(listPath)
-                            : selectedTaskPath(automation.id),
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-2" role="list">
+              {automations.map((automation) => {
+                const key = `${automation.kind}:${automation.id}`;
+                return (
+                  <AutomationRow
+                    deleting={
+                      deletion.isPending &&
+                      deletion.variables?.id === automation.id
+                    }
+                    key={key}
+                    onDelete={() => {
+                      if (
+                        window.confirm(
+                          `Delete this ${automation.kind} automation?`,
                         )
+                      ) {
+                        deletion.mutate(automation);
                       }
-                      selected={automationId === automation.id}
-                      automation={automation}
-                    />
-                  );
-                })}
-              </div>
-            </Card>
+                    }}
+                    onSelect={() =>
+                      navigate(
+                        automationId === automation.id
+                          ? tasksPath(listPath)
+                          : selectedTaskPath(automation.id),
+                      )
+                    }
+                    selected={automationId === automation.id}
+                    automation={automation}
+                  />
+                );
+              })}
+            </div>
           )}
           <PagePagination
             onPageChange={setPage}
