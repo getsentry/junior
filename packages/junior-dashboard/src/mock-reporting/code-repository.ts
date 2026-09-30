@@ -40,7 +40,14 @@ export function readMockCodeRepository(
         : { mergeRate: repository.mergeRate }),
       ...(repository.medianCostUsd === undefined
         ? undefined
-        : { medianCostUsd: repository.medianCostUsd }),
+        : {
+            // Mock rows have no total cost; estimate it from the median.
+            costUsd: repository.medianCostUsd * repository.created,
+            medianCostUsd: repository.medianCostUsd,
+          }),
+      ...(overview.summary.medianMergeTimeMs === undefined
+        ? undefined
+        : { medianMergeTimeMs: overview.summary.medianMergeTimeMs }),
     },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
