@@ -1,4 +1,20 @@
 # Changelog
+## 0.235.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add repository pages to Code by @sentry-junior in [#1991](https://github.com/getsentry/junior/pull/1991)
+- Show Automations as cards instead of table rows by @sentry-junior in [#1990](https://github.com/getsentry/junior/pull/1990)
+- Use segmented pill links for page navigation by @sentry-junior in [#1986](https://github.com/getsentry/junior/pull/1986)
+
+#### Other
+
+- (brand) Replace Junior logo and mascot with new illustration by @sentry-junior in [#1992](https://github.com/getsentry/junior/pull/1992)
+- (operator) Add opt-in runOperatorSql tool by @sentry-junior in [#1989](https://github.com/getsentry/junior/pull/1989)
+- (skills) Add reusable demo video workflow by @sentry-junior in [#1985](https://github.com/getsentry/junior/pull/1985)
+
 ## 0.234.0
 
 ### New Features ✨
