@@ -129,13 +129,6 @@ describe("spaces API", () => {
     ]);
     expect(detail.privateConversationCount).toBe(1);
     // Facts come only from public Conversations, one count per Conversation.
-    expect(detail.facts.repositories).toEqual([
-      {
-        name: "getsentry/sentry-javascript",
-        url: "https://github.com/getsentry/sentry-javascript",
-        conversationCount: 1,
-      },
-    ]);
     expect(detail.facts.kinds).toEqual([{ kind: "bug", conversationCount: 1 }]);
 
     // A Conversation links back to its Space path.

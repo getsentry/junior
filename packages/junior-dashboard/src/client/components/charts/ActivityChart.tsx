@@ -65,9 +65,7 @@ export function isActivityHourBucket(date: string): boolean {
 /** UTC start of a day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) bucket key. */
 export function activityBucketStartMs(date: string): number {
   return Date.parse(
-    isActivityHourBucket(date)
-      ? `${date}:00:00.000Z`
-      : `${date}T00:00:00.000Z`,
+    isActivityHourBucket(date) ? `${date}:00:00.000Z` : `${date}T00:00:00.000Z`,
   );
 }
 

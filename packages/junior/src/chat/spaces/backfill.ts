@@ -24,6 +24,7 @@ import {
 } from "@/db/schema";
 import { applySpaceClassification } from "./assign";
 import { classifyConversationSpace } from "./classify";
+import { getSpacesGuidance } from "./registration";
 import { readSpaceTree } from "./store";
 import { buildSpaceTree, topLevelSpaceIds } from "./tree";
 import type { ConversationKind, Space, SpaceNode } from "./types";
@@ -195,6 +196,7 @@ export async function runSpaceBackfill(
         brief: candidate.brief,
       },
       tree,
+      guidance: getSpacesGuidance(),
       allowCreate: candidate.isPublic,
     });
     costUsd += result.costUsd ?? 0;

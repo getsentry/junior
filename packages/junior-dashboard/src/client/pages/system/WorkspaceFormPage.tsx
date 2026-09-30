@@ -16,10 +16,7 @@ import { fetchDashboardJson, post, put } from "../../http";
 import { SystemPageLayout } from "./SystemPageLayout";
 import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceEditor } from "./WorkspaceEditor";
-import {
-  readWorkspaceApiError,
-  workspacesQueryKey,
-} from "./WorkspacesPage";
+import { readWorkspaceApiError, workspacesQueryKey } from "./WorkspacesPage";
 import {
   canSaveWorkspaceDraft,
   createWorkspaceDraft,

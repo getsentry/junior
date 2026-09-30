@@ -26,7 +26,7 @@ test("browses nested Spaces like a forum", async ({ page, dashboard }) => {
   ).toBeVisible();
   await screenshot(page, "spaces-detail");
 
-  // Kind and channel chips filter the list.
+  // Kind chips filter the list.
   const conversations = page.getByRole("list").filter({
     has: page.getByRole("link", { name: /Cloudflare SDK release/ }),
   });
@@ -37,13 +37,16 @@ test("browses nested Spaces like a forum", async ({ page, dashboard }) => {
   await expect(conversations.getByRole("listitem")).toHaveCount(1);
   await bugFilter.click();
   await expect(conversations.getByRole("listitem")).toHaveCount(3);
-  const channelFilter = page.getByRole("button", {
-    name: /^#proj-sdk-javascript/,
-  });
-  await channelFilter.click();
-  await expect(channelFilter).toHaveAttribute("aria-pressed", "true");
+  // Clicking a channel in a row filters by it; the filter chip clears it.
+  await conversations
+    .getByRole("button", { name: "Show only #proj-sdk-javascript" })
+    .first()
+    .click();
   await expect(conversations.getByRole("listitem")).toHaveCount(2);
-  await channelFilter.click();
+  await page
+    .getByRole("button", { name: "Clear #proj-sdk-javascript filter" })
+    .click();
+  await expect(conversations.getByRole("listitem")).toHaveCount(3);
 
   await path.getByRole("link", { name: "Spaces" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/spaces`);

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { briefRepositories } from "@/chat/spaces/classify";
 import {
   listSpaceConversations,
   readSpaceTree,
@@ -26,8 +25,6 @@ import {
 import { validateRequest } from "../validation";
 
 const SPACE_CONVERSATION_LIMIT = 100;
-const MAX_FACT_REPOSITORIES = 6;
-const MAX_FACT_CHANNELS = 8;
 const MAX_FACT_PARTICIPANTS = 12;
 
 function countBy<T>(items: Iterable<T>): Array<[T, number]> {
@@ -46,8 +43,8 @@ function participantKey(participant: ActorIdentity): string | undefined {
 }
 
 /**
- * Collect hard facts about a Space from its listed public Conversations,
- * newest first: repositories, channels, people, and kinds.
+ * Collect Space stats from its listed public Conversations, newest first:
+ * people and kinds of work.
  */
 function spaceFacts(
   listed: readonly SpaceConversation[],
@@ -65,22 +62,6 @@ function spaceFacts(
     }
   }
   return {
-    repositories: countBy(
-      listed.flatMap((conversation) => briefRepositories(conversation.links)),
-    )
-      .slice(0, MAX_FACT_REPOSITORIES)
-      .map(([name, conversationCount]) => ({
-        name,
-        url: `https://github.com/${name}`,
-        conversationCount,
-      })),
-    channels: countBy(
-      listed.flatMap((conversation) =>
-        conversation.channelName ? [conversation.channelName] : [],
-      ),
-    )
-      .slice(0, MAX_FACT_CHANNELS)
-      .map(([name, conversationCount]) => ({ name, conversationCount })),
     participants: [...people.values()]
       .sort((left, right) => right.count - left.count)
       .slice(0, MAX_FACT_PARTICIPANTS)

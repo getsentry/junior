@@ -59,7 +59,15 @@ already exists under that parent is reused.
 The prompt groups by repository or product first. GitHub repositories come
 from the Brief links. Incidents are the exception: they always go in one
 top-level Incidents Space. Child Spaces are features or components, never
-kinds of work, because the kind is a separate label. Space descriptions are short keyword lists.
+kinds of work, because the kind is a separate label.
+The prompt never makes a Space for the whole organization or its main
+product, because every Conversation is about them.
+
+The app can add its own rules with `spaces.guidance`. They come after the core
+rules and win when the two conflict. Keep organization-specific steering, such
+as SDK Spaces, there and keep the core prompt general. The `junior spaces
+backfill` CLI does not load app settings, so it runs without guidance; the
+`runSpaceBackfill` tool uses it. Space descriptions are short keyword lists.
 `normalizeSpaceDescription` removes lead-ins such as "Conversations about".
 
 ## Privacy
@@ -75,7 +83,7 @@ kinds of work, because the kind is a separate label. Space descriptions are shor
 - Browsing shows public Conversations with their title and kind. It only
   counts private Conversations. Tree counts include
   private Conversations.
-- Space facts (repositories, channels, people, and kinds) come only from the
+- Space facts (people and kinds) come only from the
   listed public Conversations.
 - A Conversation detail includes its Space path only when the viewer can see
   the Conversation content.

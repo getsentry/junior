@@ -41,29 +41,9 @@ export const spaceConversationSchema = conversationSummaryReportSchema
   })
   .strict();
 
-/**
- * Hard facts about a Space, from its public Conversations: repositories,
- * channels, people, and kinds of work.
- */
+/** Stats about a Space from its public Conversations: people and kinds. */
 export const spaceFactsSchema = z
   .object({
-    repositories: z.array(
-      z
-        .object({
-          name: z.string().min(1),
-          url: z.string().min(1),
-          conversationCount: z.number().int().positive(),
-        })
-        .strict(),
-    ),
-    channels: z.array(
-      z
-        .object({
-          name: z.string().min(1),
-          conversationCount: z.number().int().positive(),
-        })
-        .strict(),
-    ),
     participants: z.array(actorIdentitySchema),
     kinds: z.array(
       z

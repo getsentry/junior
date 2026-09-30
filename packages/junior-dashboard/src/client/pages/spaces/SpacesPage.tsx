@@ -4,13 +4,7 @@ import type {
   SpaceFacts,
   SpaceSummary,
 } from "@sentry/junior/api/schema";
-import {
-  ChevronRight,
-  FolderTree,
-  GitBranch,
-  Hash,
-  MessageSquarePlus,
-} from "lucide-react";
+import { ChevronRight, FolderTree, MessageSquarePlus, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useSpaceDetailData, useSpaceTreeData } from "../../api";
@@ -31,6 +25,7 @@ import {
   buildConversations,
   formatCompactNumber,
   formatRelativeTime,
+  slackLocationLabel,
 } from "../../format";
 import { cn } from "../../styles";
 import { SpaceKindTag, SpacePill, spaceKindAccentClass } from "./SpaceKindTag";
@@ -114,7 +109,8 @@ function SpaceDetail(props: { spaceId: string }) {
   const conversations = data.conversations.filter(
     (conversation) =>
       (!filter.kind || conversation.kind === filter.kind) &&
-      (!filter.channel || conversation.channelName === filter.channel),
+      (!filter.channel ||
+        channelKey(conversation.channelName) === filter.channel),
   );
   return (
     <PageLayout>
@@ -142,7 +138,6 @@ function SpaceDetail(props: { spaceId: string }) {
         description={
           <SpaceStats
             participants={data.facts.participants}
-            repositories={data.facts.repositories}
             privateCount={data.privateConversationCount}
             space={data.space}
           />
@@ -155,13 +150,14 @@ function SpaceDetail(props: { spaceId: string }) {
           spaceName={data.space.name}
         />
       ) : null}
-      <SpaceFilters facts={data.facts} filter={filter} onChange={setFilter} />
       {data.children.length > 0 ? (
         <SpaceList emptyText="" spaces={data.children} title="Spaces" />
       ) : null}
       <SpaceConversationList
         conversations={conversations}
-        filtered={Boolean(filter.kind || filter.channel)}
+        filter={filter}
+        kinds={data.facts.kinds}
+        onFilterChange={setFilter}
         privateCount={data.privateConversationCount}
       />
     </PageLayout>
@@ -242,13 +238,9 @@ type SpaceFilter = {
   channel?: string;
 };
 
-/**
- * One quiet line of Space numbers, with its repositories and the people who
- * took part.
- */
+/** One quiet line of Space stats, with the people who took part. */
 function SpaceStats(props: {
   participants: SpaceFacts["participants"];
-  repositories: SpaceFacts["repositories"];
   privateCount: number;
   space: SpaceSummary;
 }) {
@@ -258,9 +250,6 @@ function SpaceStats(props: {
       space.totalConversationCount === 1 ? "conversation" : "conversations"
     }`,
     props.privateCount > 0 ? `${props.privateCount} private` : undefined,
-    space.childCount > 0
-      ? `${space.childCount} ${space.childCount === 1 ? "space" : "spaces"}`
-      : undefined,
     space.lastActivityAt
       ? `active ${formatRelativeTime(space.lastActivityAt)}`
       : undefined,
@@ -268,23 +257,6 @@ function SpaceStats(props: {
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-dashboard-text-muted">
       <span>{parts.join(" · ")}</span>
-      {props.repositories.map((repository) => (
-        <span
-          className="inline-flex items-center gap-1.5"
-          key={repository.name}
-        >
-          <span aria-hidden="true">·</span>
-          <a
-            className="inline-flex items-center gap-1 text-inherit no-underline hover:text-cyan-100"
-            href={repository.url}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <GitBranch aria-hidden="true" className="size-3" />
-            {repository.name}
-          </a>
-        </span>
-      ))}
       {props.participants.length > 0 ? (
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden="true">·</span>
@@ -327,25 +299,23 @@ function FilterChip(props: {
 }
 
 /**
- * Kinds and channels as filter chips. They combine, so a person can show
- * only bugs in one channel.
+ * Kind-of-work chips filter the list. A channel filter is set from a
+ * Conversation row and shows here so a person can clear it.
  */
 function SpaceFilters(props: {
-  facts: SpaceFacts;
   filter: SpaceFilter;
+  kinds: SpaceFacts["kinds"];
   onChange(filter: SpaceFilter): void;
 }) {
-  const { facts, filter } = props;
-  if (facts.kinds.length === 0 && facts.channels.length === 0) {
-    return null;
-  }
+  const { filter } = props;
+  if (props.kinds.length === 0 && !filter.channel) return null;
   return (
     <div
       aria-label="Filter conversations"
       className="flex min-w-0 flex-wrap items-center gap-1.5"
       role="group"
     >
-      {facts.kinds.map((kind) => {
+      {props.kinds.map((kind) => {
         const active = filter.kind === kind.kind;
         return (
           <FilterChip
@@ -364,41 +334,26 @@ function SpaceFilters(props: {
           </FilterChip>
         );
       })}
-      {facts.kinds.length > 0 && facts.channels.length > 0 ? (
-        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+      {filter.channel ? (
+        <FilterChip
+          active
+          dimmed={false}
+          label={`Clear #${filter.channel} filter`}
+          onClick={() => props.onChange({ ...filter, channel: undefined })}
+        >
+          <SpacePill className="border-cyan-300/40 text-cyan-100 hover:border-cyan-300/60">
+            #{filter.channel}
+            <X aria-hidden="true" className="size-3" />
+          </SpacePill>
+        </FilterChip>
       ) : null}
-      {facts.channels.map((channel) => {
-        const active = filter.channel === channel.name;
-        return (
-          <FilterChip
-            active={active}
-            dimmed={Boolean(filter.channel) && !active}
-            key={channel.name}
-            label={`#${channel.name} (${channel.conversationCount})`}
-            onClick={() =>
-              props.onChange({
-                ...filter,
-                channel: active ? undefined : channel.name,
-              })
-            }
-          >
-            <SpacePill
-              className={cn(
-                "hover:border-white/25",
-                active && "border-cyan-300/40 text-cyan-100",
-              )}
-            >
-              <Hash aria-hidden="true" className="size-3" />
-              {channel.name}
-              <span className="font-mono opacity-60">
-                {channel.conversationCount}
-              </span>
-            </SpacePill>
-          </FilterChip>
-        );
-      })}
     </div>
   );
+}
+
+/** Compare channel names with and without a leading `#`. */
+function channelKey(name: string | undefined): string | undefined {
+  return name?.replace(/^#/, "") || undefined;
 }
 
 function SpaceList(props: {
@@ -460,18 +415,28 @@ function SpaceList(props: {
 
 function SpaceConversationList(props: {
   conversations: SpaceDetailReport["conversations"];
-  filtered: boolean;
+  filter: SpaceFilter;
+  kinds: SpaceFacts["kinds"];
+  onFilterChange(filter: SpaceFilter): void;
   privateCount: number;
 }) {
+  const filtered = Boolean(props.filter.kind || props.filter.channel);
   return (
     <section aria-label="Conversations" className="grid gap-2">
-      <h3 className="m-0 px-1 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted">
-        Conversations
-      </h3>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-1">
+        <h3 className="m-0 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted">
+          Conversations
+        </h3>
+        <SpaceFilters
+          filter={props.filter}
+          kinds={props.kinds}
+          onChange={props.onFilterChange}
+        />
+      </div>
       {props.conversations.length === 0 ? (
         <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
           <EmptyTelemetry>
-            {props.filtered
+            {filtered
               ? "No public Conversations match these filters."
               : "No public Conversations in this Space yet."}
           </EmptyTelemetry>
@@ -482,6 +447,9 @@ function SpaceConversationList(props: {
             <SpaceConversationCard
               conversation={conversation}
               key={conversation.conversationId}
+              onChannelClick={(channel) =>
+                props.onFilterChange({ ...props.filter, channel })
+              }
             />
           ))}
         </div>
@@ -499,15 +467,18 @@ function SpaceConversationList(props: {
 
 /**
  * One Conversation in a Space, on one line: kind of work, title, channel,
- * people, and last activity. Linked work stays on the Conversation page.
+ * people, and last activity. Clicking the channel filters the list by it.
+ * Linked work stays on the Conversation page.
  */
 function SpaceConversationCard(props: {
   conversation: SpaceDetailReport["conversations"][number];
+  onChannelClick(channel: string): void;
 }) {
   const report = props.conversation;
   const conversation = buildConversations([report])[0]!;
   const participants = conversationParticipants(conversation);
-  const channel = conversation.channelName;
+  const channel = channelKey(conversation.channelName);
+  const location = slackLocationLabel(conversation, { includeId: false });
   return (
     <article
       className={cn(
@@ -530,11 +501,15 @@ function SpaceConversationCard(props: {
         </h4>
       </div>
       <div className="pointer-events-none relative z-[1] flex shrink-0 items-center gap-2 font-mono text-xs text-dashboard-text-muted">
-        {channel ? (
-          <span className="hidden items-center gap-0.5 sm:inline-flex">
-            <Hash aria-hidden="true" className="size-3" />
-            {channel}
-          </span>
+        {channel && location ? (
+          <button
+            aria-label={`Show only ${location}`}
+            className="pointer-events-auto hidden cursor-pointer border-0 bg-transparent p-0 font-mono text-xs text-inherit hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:inline"
+            onClick={() => props.onChannelClick(channel)}
+            type="button"
+          >
+            {location}
+          </button>
         ) : null}
         {participants.length > 0 ? (
           <span className="pointer-events-auto inline-flex">

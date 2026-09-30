@@ -97,9 +97,10 @@ Pick the one Space where a person would look for this Conversation later.
 Rules:
 - Prefer an existing Space. Pick the most specific Space that fits the whole Conversation, not one detail of it.
 - Top-level Spaces are code repositories, products, or broad areas of the organization. When the Conversation is about the code, tools, data, or operations of one repository or product, it belongs inside that repository's Space. For example, a backfill of Junior data goes under Junior, not in a top-level Backfills Space.
+- Never create a Space for the whole organization or for its main product. Every Conversation is about them, so such a Space groups nothing. Use the product's areas instead.
 - Incidents, outages, and on-call response always go in one top-level Incidents Space, even when they involve one repository. People look for incidents together.
 - Inside a repository or product Space, child Spaces are its features or components, such as Slack, Dashboard, or Briefs for Junior. A child Space is never a kind of work such as Bugs, Questions, or Backfills, because the kind is a separate label.
-- Name a repository Space after the repository or product, such as Junior, Sentry, or Relay. Do not add the organization name.
+- Name a repository Space after the repository or product, such as Junior or Relay. Do not add the organization name.
 - The Repositories line is the strongest hint for the top-level Space. The channel name is a strong hint for the area. The content decides.
 - Create a Space only when no existing Space fits and the topic will likely come up again. Never create a Space for one question, one bug, one person, or one date.
 - Create the new Space under the closest existing Space. When the right repository or product Space does not exist yet, create it at the top level first.
@@ -215,7 +216,8 @@ export async function classifyConversationSpace(args: {
   conversation: SpaceClassificationInput;
   tree: ReadonlyMap<string, SpaceNode>;
   allowCreate: boolean;
-  prompt?: string;
+  /** The app's own rules. They come after the core rules and win on conflict. */
+  guidance?: string;
 }): Promise<{
   classification?: SpaceClassification;
   costUsd?: number;
@@ -235,7 +237,9 @@ export async function classifyConversationSpace(args: {
   ].join("\n");
   const result = await args.completeObject({
     schema: spaceClassificationSchema,
-    system: args.prompt ?? SPACE_CLASSIFIER_PROMPT,
+    system: args.guidance
+      ? `${SPACE_CLASSIFIER_PROMPT}\n\nOrganization rules. Follow them when they conflict with the rules above:\n${args.guidance}`
+      : SPACE_CLASSIFIER_PROMPT,
     prompt,
     temperature: 0,
   });

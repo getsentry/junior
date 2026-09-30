@@ -12,6 +12,7 @@ import {
   readSpaceTree,
   setConversationKind,
 } from "./store";
+import { getSpacesGuidance } from "./registration";
 import { findSiblingByName } from "./tree";
 import type { SpaceActor, SpaceNode } from "./types";
 
@@ -116,6 +117,7 @@ export async function assignSpaceFromBrief(
     completeObject: args.completeObject,
     conversation: { ...args.conversation, brief: args.brief },
     tree,
+    guidance: getSpacesGuidance(),
     allowCreate: args.isPublic,
   });
   if (!result.classification) {

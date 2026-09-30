@@ -143,6 +143,26 @@ const app = await createApp({
 This option costs one default-model call per completed Turn. The example app and
 `junior chat` enable it.
 
+## Spaces
+
+Spaces are nested forum categories of Conversations. They need Briefs and are
+off by default. Junior files each new root Conversation into one Space after its
+first Brief. This costs one default-model call per Conversation.
+
+`guidance` adds your organization's own rules to the Space classifier. Use it to
+name the top-level Spaces you want. The classifier follows it when it conflicts
+with the built-in rules.
+
+```ts
+const app = await createApp({
+  briefs: { enabled: true },
+  spaces: {
+    enabled: true,
+    guidance: "All SDK work goes in SDKs, with one child Space per platform.",
+  },
+});
+```
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same
@@ -197,7 +217,7 @@ runs one SQL statement against the app database and returns up to 200 rows.
 Each call uses its own database connection, which is closed afterwards, so
 session commands such as `BEGIN` or `SET` do not affect the app.
 When Spaces are on, it also adds `runSpaceBackfill`, which runs
-`junior spaces backfill` inside the deployment, 50 Conversations at most per
+`junior spaces backfill` inside the deployment, 200 Conversations at most per
 call.
 These tools can write data and skip every Conversation privacy check, so the Agent
 can read private Conversations with it. Never enable it in production. Use it

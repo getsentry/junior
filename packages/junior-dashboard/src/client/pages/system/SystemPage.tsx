@@ -13,10 +13,7 @@ import { PluginPanels } from "./PluginPanels";
 import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
-import {
-  SystemPageLayout,
-  SystemRouteLoading,
-} from "./SystemPageLayout";
+import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
 import {
   buildSystemPlugins,
   normalizeSystemPath,

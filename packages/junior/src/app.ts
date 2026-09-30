@@ -126,9 +126,10 @@ export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Assign each root Conversation to a Space from its first Brief. Requires
    * Briefs. Costs one default-model call per newly assigned Conversation.
-   * Disabled by default.
+   * Disabled by default. `guidance` adds the organization's own rules to the
+   * Space classifier, such as which top-level Spaces to use.
    */
-  spaces?: { enabled?: boolean };
+  spaces?: { enabled?: boolean; guidance?: string };
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**

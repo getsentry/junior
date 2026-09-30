@@ -75,7 +75,9 @@ function actorFromRow(
   const actor = {
     ...(row.email ? { email: row.email } : undefined),
     ...(row.fullName ? { fullName: row.fullName } : undefined),
-    ...(row.providerSubjectId ? { slackUserId: row.providerSubjectId } : undefined),
+    ...(row.providerSubjectId
+      ? { slackUserId: row.providerSubjectId }
+      : undefined),
     ...(row.handle ? { slackUserName: row.handle } : undefined),
   };
   return Object.keys(actor).length ? actor : undefined;

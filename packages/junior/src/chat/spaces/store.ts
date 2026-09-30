@@ -30,7 +30,6 @@ import {
   subtreeHeight,
   subtreeSpaceIds,
 } from "./tree";
-import type { ConversationBrief } from "@/chat/briefs/schema";
 import type {
   ConversationKind,
   Space,
@@ -549,7 +548,6 @@ export interface SpaceConversation {
   channelName?: string;
   summary?: string;
   kind?: ConversationKind;
-  links: ConversationBrief["links"];
   lastActivityAtMs: number;
 }
 
@@ -589,9 +587,6 @@ export async function listSpaceConversations(
         channelName: juniorConversations.channelName,
         lastActivityAt: juniorConversations.lastActivityAt,
         summary: sql<string | null>`${briefs.content}->>'summary'`,
-        links: sql<
-          ConversationBrief["links"] | null
-        >`${briefs.content}->'links'`,
         kind: juniorConversationSpaces.kind,
       })
       .from(juniorConversationSpaces)
@@ -664,7 +659,6 @@ export async function listSpaceConversations(
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       ...(row.summary ? { summary: row.summary } : undefined),
       ...(row.kind ? { kind: row.kind } : undefined),
-      links: Array.isArray(row.links) ? row.links : [],
       lastActivityAtMs: row.lastActivityAt.getTime(),
     })),
     privateCount: Number(privateRows[0]?.total ?? 0),

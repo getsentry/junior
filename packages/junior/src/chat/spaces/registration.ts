@@ -8,12 +8,12 @@ import { spaceAssignedEvent } from "./events";
 import { readConversationSpace, readSpaceTree } from "./store";
 import { formatSpacePath } from "./tree";
 
-type SpacesConfig = Readonly<{ enabled?: boolean }>;
+type SpacesConfig = Readonly<{ enabled?: boolean; guidance?: string }>;
 
 let configuredSpaces: SpacesConfig = {};
 
 /** Replace app-level Space settings and return the previous setting. */
-export function setSpacesConfig(config?: { enabled?: boolean }): SpacesConfig {
+export function setSpacesConfig(config?: SpacesConfig): SpacesConfig {
   const previous = { ...configuredSpaces };
   configuredSpaces = config ? { ...config } : {};
   return previous;
@@ -22,6 +22,11 @@ export function setSpacesConfig(config?: { enabled?: boolean }): SpacesConfig {
 /** Return whether automatic Space assignment is enabled. */
 export function isSpacesEnabled(): boolean {
   return configuredSpaces.enabled === true;
+}
+
+/** Return the app's own rules for the Space classifier, if any. */
+export function getSpacesGuidance(): string | undefined {
+  return configuredSpaces.guidance?.trim() || undefined;
 }
 
 const spaceContext = definePromptContext({

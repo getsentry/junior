@@ -137,6 +137,7 @@ function spaceConversation(
     lastSeenAt: iso(input.hoursAgo),
     lastProgressAt: iso(input.hoursAgo),
     surface: "slack",
+    channel: input.conversationId.split(":")[1],
     channelName: input.channelName,
     actorIdentity: input.participants[0],
     participants: input.participants,
@@ -163,7 +164,7 @@ export function readMockSpaceDetail(
         spaceConversation(spaceId, {
           conversationId: "slack:CQA123:1770003600.000200",
           title: "Cloudflare SDK release is blocked on a flaky test",
-          channelName: "proj-sdk-javascript",
+          channelName: "#proj-sdk-javascript",
           kind: "bug",
           hoursAgo: 1,
           participants: [MORGAN, AVERY, RILEY],
@@ -197,23 +198,10 @@ export function readMockSpaceDetail(
     children: SPACES.filter((candidate) => candidate.parentSpaceId === spaceId),
     facts: empty
       ? {
-          repositories: [],
-          channels: [],
           participants: [],
           kinds: [],
         }
       : {
-          repositories: [
-            {
-              name: "getsentry/sentry-javascript",
-              url: "https://github.com/getsentry/sentry-javascript",
-              conversationCount: 2,
-            },
-          ],
-          channels: [
-            { name: "proj-sdk-javascript", conversationCount: 2 },
-            { name: "discuss-sdks", conversationCount: 1 },
-          ],
           participants: [MORGAN, AVERY, RILEY],
           kinds: [
             { kind: "bug", conversationCount: 1 },

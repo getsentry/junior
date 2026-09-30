@@ -7,6 +7,7 @@ import {
   runSpaceBackfill,
 } from "@/chat/spaces/backfill";
 import type { SpaceClassificationOutput } from "@/chat/spaces/classify";
+import { setSpacesConfig } from "@/chat/spaces/registration";
 import {
   juniorConversationSpaces,
   juniorSpaceChanges,
@@ -39,9 +40,10 @@ async function recordConversation(
 }
 
 /** Fake classifier: SDK work goes under SDKs, everything else to Replay. */
-function classifier(prompts: string[]) {
-  return async (request: { prompt: string }) => {
+function classifier(prompts: string[], systems: string[] = []) {
+  return async (request: { prompt: string; system: string }) => {
     prompts.push(request.prompt);
+    systems.push(request.system);
     const has = (name: string) =>
       new RegExp(`- (S\\d+) ${name} `).exec(request.prompt)?.[1] ?? null;
     const isSdk = request.prompt.includes("Summary: SDK");
@@ -100,12 +102,23 @@ describe("Space backfill", () => {
       "local:backfill:four",
     ]);
 
+    // The app's Space guidance reaches every classifier call.
     const dryPrompts: string[] = [];
+    const drySystems: string[] = [];
+    const previousConfig = setSpacesConfig({
+      enabled: true,
+      guidance: "SDK work goes in SDKs.",
+    });
     const preview = await runSpaceBackfill(getDb(), {
       candidates,
       apply: false,
-      completeObject: classifier(dryPrompts),
-    });
+      completeObject: classifier(dryPrompts, drySystems),
+    }).finally(() => setSpacesConfig(previousConfig));
+    expect(drySystems).toHaveLength(4);
+    for (const system of drySystems) {
+      expect(system).toContain("Organization rules.");
+      expect(system).toContain("SDK work goes in SDKs.");
+    }
     expect(await getDb().select().from(juniorSpaces)).toEqual([]);
     // The private Conversation could not create Replay, so it joined SDKs.
     expect(dryPrompts[1]).toContain("Do not create one.");
