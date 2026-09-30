@@ -171,7 +171,8 @@ body:has(.jr-home) main {
   letter-spacing: -0.09em;
   line-height: 0.72;
   margin-inline: auto;
-  text-shadow: clamp(8px, 1.5vw, 22px) clamp(8px, 1.5vw, 22px) 0 var(--jr-violet);
+  text-shadow: clamp(8px, 1.5vw, 22px) clamp(8px, 1.5vw, 22px) 0
+    var(--jr-violet);
   transform: scaleX(1.08);
   transform-origin: center;
   width: max-content;
