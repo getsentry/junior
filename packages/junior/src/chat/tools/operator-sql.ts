@@ -96,12 +96,10 @@ export function createOperatorTools(context: ToolRuntimeContext): ToolRegistry {
       async execute(input) {
         let rows: unknown[];
         try {
-          const result = await getSqlExecutor().query(
+          rows = await getSqlExecutor().queryIsolated(
             input.statement,
             input.params ?? [],
           );
-          // A statement list without params returns no single row array.
-          rows = Array.isArray(result) ? result : [];
         } catch (error) {
           const sqlState = findSqlState(error);
           if (!sqlState) throw error;

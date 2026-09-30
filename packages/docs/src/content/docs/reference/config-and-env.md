@@ -194,6 +194,8 @@ already joined. Leave it unset in production unless you are testing that path.
 
 `operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
 runs one SQL statement against the app database and returns up to 200 rows.
+Each call uses its own database connection, which is closed afterwards, so
+session commands such as `BEGIN` or `SET` do not affect the app.
 It can write data and it skips every Conversation privacy check, so the Agent
 can read private Conversations with it. Never enable it in production. Use it
 on an isolated deployment whose database is a disposable copy, and choose that

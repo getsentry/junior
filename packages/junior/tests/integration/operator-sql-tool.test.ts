@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -84,5 +84,21 @@ describe("operator SQL tool", () => {
     const mistake = runSql({ statement: "SELECT * FROM missing_table" });
     await expect(mistake).rejects.toBeInstanceOf(ToolInputError);
     await expect(mistake).rejects.toThrow("SQL error 42P01");
+
+    const statementList = runSql({
+      statement: "UPDATE junior_conversations SET title = 'Twice'; SELECT 1",
+    });
+    await expect(statementList).rejects.toThrow("SQL error 42601");
+
+    await runSql({ statement: "SET application_name = 'operator_leak'" });
+    const [session] = await getSqlExecutor().query<{ name: string }>(
+      "SELECT current_setting('application_name') AS name",
+    );
+    expect(session?.name).not.toBe("operator_leak");
+    const [conversation] = await getSqlExecutor().query<{ title: string }>(
+      "SELECT title FROM junior_conversations WHERE conversation_id = $1",
+      [CONVERSATION_ID],
+    );
+    expect(conversation?.title).toBe("After");
   });
 });

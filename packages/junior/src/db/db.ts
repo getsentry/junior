@@ -37,4 +37,13 @@ export interface JuniorSqlMigrationExecutor extends JuniorSqlDatabase {
 
 export interface JuniorSqlExecutor extends JuniorSqlMigrationExecutor {
   close(): Promise<void>;
+  /**
+   * Run exactly one caller-written statement on its own connection, then
+   * discard that connection. Session state such as `BEGIN` or `SET` cannot
+   * reach later pool queries, and statement lists fail instead of running.
+   */
+  queryIsolated<T = unknown>(
+    statement: string,
+    params?: readonly unknown[],
+  ): Promise<T[]>;
 }
