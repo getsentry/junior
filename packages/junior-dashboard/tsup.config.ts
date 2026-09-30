@@ -31,6 +31,12 @@ const dashboardColorIconPath = path.join(
   "assets",
   "junior-avatar.png",
 );
+const dashboardFaviconPath = path.join(
+  packageRoot,
+  "src",
+  "assets",
+  "junior-favicon.png",
+);
 
 /** Read client build output that must be embedded in dashboard routes. */
 function readBuiltAsset(fileName: string): string {
@@ -71,6 +77,7 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,
             `export const dashboardInstallIconAsset = ${JSON.stringify(colorIconBase64)};`,
+            `export const dashboardFaviconAsset = ${JSON.stringify(readFileSync(dashboardFaviconPath).toString("base64"))};`,
           ].join("\n"),
           loader: "ts",
         };

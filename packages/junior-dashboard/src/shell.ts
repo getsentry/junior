@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   dashboardAvatarHeaderAsset,
+  dashboardFaviconAsset,
   dashboardClientAsset,
   dashboardClientChunks,
   dashboardInstallIconAsset,
@@ -298,9 +299,21 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   );
 }
 
-/** Serve the dashboard favicon from Junior's color icon. */
+function readDashboardFavicon(): ArrayBuffer {
+  if (dashboardFaviconAsset) {
+    return Uint8Array.from(Buffer.from(dashboardFaviconAsset, "base64")).buffer;
+  }
+
+  const assetUrl = new URL("./assets/junior-favicon.png", import.meta.url);
+  if (!existsSync(assetUrl)) {
+    throw new Error("Junior dashboard favicon was not found");
+  }
+  return Uint8Array.from(readFileSync(assetUrl)).buffer;
+}
+
+/** Serve the head-only dashboard favicon, which stays readable at 16px. */
 export function renderFavicon(): Response {
-  return new Response(readDashboardColorIcon(), {
+  return new Response(readDashboardFavicon(), {
     headers: {
       "cache-control": "public, max-age=0, must-revalidate",
       "content-type": "image/png",
