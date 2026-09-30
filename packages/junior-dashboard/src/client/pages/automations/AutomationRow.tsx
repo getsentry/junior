@@ -11,37 +11,13 @@ import { Link, useLocation } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
-import { formatRelativeTime, formatTime, peoplePath } from "../../format";
-
-/** Show the schedule with its timezone unless the schedule text already names it. */
-export function automationScheduleLabel(
-  automation: Extract<AutomationSummary, { kind: "scheduled" }>,
-): string {
-  return automation.schedule.includes(automation.timezone)
-    ? automation.schedule
-    : `${automation.schedule} (${automation.timezone})`;
-}
-
-/** Name event triggers in readable words. */
-export function automationEventNames(
-  automation: Extract<AutomationSummary, { kind: "event" }>,
-): string {
-  return automation.events
-    .map((event) => event.replaceAll(/[._]/g, " "))
-    .join(", ");
-}
-
-/** Summarize event match conditions as one readable line. */
-export function automationEventConditions(
-  automation: Extract<AutomationSummary, { kind: "event" }>,
-): string {
-  return Object.entries(automation.match ?? {})
-    .map(
-      ([field, value]) =>
-        `${field}: ${Array.isArray(value) ? value.join(" or ") : String(value)}`,
-    )
-    .join(" · ");
-}
+import { formatRelativeTime, peoplePath } from "../../format";
+import {
+  automationEventConditions,
+  automationEventNames,
+  automationScheduleLabel,
+  formatAutomationRunTime,
+} from "./automationFormat";
 
 /**
  * Show one automation as a compact card: what it is, where it posts, who owns
@@ -165,12 +141,14 @@ function AutomationSummaryLine({
     automation.kind === "scheduled"
       ? automation.schedule
       : `${automation.resource} · ${automationEventNames(automation)}`;
+  const conditions =
+    automation.kind === "event" ? automationEventConditions(automation) : "";
   const triggerDetail =
     automation.kind === "scheduled"
       ? automationScheduleLabel(automation)
-      : [trigger, automationEventConditions(automation)]
-          .filter(Boolean)
-          .join(" · ");
+      : conditions
+        ? `${trigger} · ${conditions}`
+        : trigger;
   return (
     <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
       <Icon
@@ -214,7 +192,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
       ? automation.nextRunAt
       : undefined;
   const lastRunTitle = automation.lastRunAt
-    ? formatFullTime(automation.lastRunAt)
+    ? formatAutomationRunTime(automation.lastRunAt)
     : undefined;
   const lastRunFailed =
     automation.lastRunStatus === "failed" ||
@@ -222,7 +200,7 @@ function AutomationTiming({ automation }: { automation: AutomationSummary }) {
   return (
     <>
       {nextRunAt ? (
-        <MetaItem title={formatFullTime(nextRunAt)}>
+        <MetaItem title={formatAutomationRunTime(nextRunAt)}>
           Next run {formatRelativeTime(nextRunAt)}
         </MetaItem>
       ) : null}
@@ -257,17 +235,6 @@ function MetaItem(props: { children: ReactNode; title?: string }) {
       {props.children}
     </span>
   );
-}
-
-function formatFullTime(value: string): string {
-  return formatTime(value, {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZoneName: "short",
-    year: "numeric",
-  });
 }
 
 function AutomationActions(props: {

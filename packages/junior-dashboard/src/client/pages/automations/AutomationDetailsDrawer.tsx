@@ -4,7 +4,8 @@ import {
   automationEventConditions,
   automationEventNames,
   automationScheduleLabel,
-} from "./AutomationRow";
+  formatAutomationRunTime,
+} from "./automationFormat";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Link, useLocation } from "react-router";
 import { Detail, DetailList } from "../../components/DetailList";
@@ -39,6 +40,8 @@ export function AutomationDetailsDrawer(props: {
   ) : (
     automation.createdBy
   );
+  const conditions =
+    automation.kind === "event" ? automationEventConditions(automation) : "";
   const details =
     automation.kind === "scheduled"
       ? [
@@ -47,21 +50,14 @@ export function AutomationDetailsDrawer(props: {
             label: "Next run",
             value:
               automation.status === "active" && automation.nextRunAt
-                ? formatRunDate(automation.nextRunAt)
+                ? formatAutomationRunTime(automation.nextRunAt)
                 : "None",
           },
         ]
       : [
           { label: "Watching", value: automation.resource },
           { label: "Events", value: automationEventNames(automation) },
-          ...(automationEventConditions(automation)
-            ? [
-                {
-                  label: "Conditions",
-                  value: automationEventConditions(automation),
-                },
-              ]
-            : []),
+          ...(conditions ? [{ label: "Conditions", value: conditions }] : []),
         ];
   const titleId = "automation-details-drawer-title";
 
@@ -200,10 +196,10 @@ function AutomationExecutionSummary(props: {
             className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
             to={conversationPath(automation.lastConversationId)}
           >
-            {formatRunDate(automation.lastRunAt)}
+            {formatAutomationRunTime(automation.lastRunAt)}
           </Link>
         ) : automation.lastRunAt ? (
-          formatRunDate(automation.lastRunAt)
+          formatAutomationRunTime(automation.lastRunAt)
         ) : null}
       </span>
     </div>
@@ -214,16 +210,5 @@ function formatDate(value: string): string {
   return formatTime(value, {
     dateStyle: "medium",
     timeStyle: "short",
-  });
-}
-
-function formatRunDate(value: string): string {
-  return formatTime(value, {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZoneName: "short",
-    year: "numeric",
   });
 }
