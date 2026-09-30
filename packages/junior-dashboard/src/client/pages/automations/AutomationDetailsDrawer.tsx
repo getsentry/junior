@@ -1,5 +1,10 @@
 import { AutomationLifecycle } from "./AutomationLifecycle";
 import { automationOutcomeLabel } from "./automationOutcomes";
+import {
+  automationEventConditions,
+  automationEventNames,
+  automationScheduleLabel,
+} from "./AutomationRow";
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import { Link, useLocation } from "react-router";
 import { Detail, DetailList } from "../../components/DetailList";
@@ -37,7 +42,7 @@ export function AutomationDetailsDrawer(props: {
   const details =
     automation.kind === "scheduled"
       ? [
-          { label: "Schedule", value: automation.schedule },
+          { label: "Schedule", value: automationScheduleLabel(automation) },
           {
             label: "Next run",
             value:
@@ -48,12 +53,15 @@ export function AutomationDetailsDrawer(props: {
         ]
       : [
           { label: "Watching", value: automation.resource },
-          {
-            label: "Events",
-            value: automation.events
-              .map((event) => event.replaceAll(/[._]/g, " "))
-              .join(", "),
-          },
+          { label: "Events", value: automationEventNames(automation) },
+          ...(automationEventConditions(automation)
+            ? [
+                {
+                  label: "Conditions",
+                  value: automationEventConditions(automation),
+                },
+              ]
+            : []),
         ];
   const titleId = "automation-details-drawer-title";
 
