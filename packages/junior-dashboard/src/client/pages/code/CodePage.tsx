@@ -5,7 +5,6 @@ import { useCodeOverviewData } from "../../api";
 import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
-import { StatusChip } from "../../components/StatusChip";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -17,6 +16,7 @@ import { PageLayout } from "../../components/layout/PageLayout";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
+import { CodeChangeRow } from "./CodeChangeRow";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;
@@ -30,12 +30,6 @@ function costUsd(value: number | undefined): string {
   return (
     formatCostSummary(value === undefined ? undefined : { total: value }) || "—"
   );
-}
-
-function stateTone(state: "closed" | "merged" | "open") {
-  if (state === "merged") return "success" as const;
-  if (state === "open") return "info" as const;
-  return "neutral" as const;
 }
 
 /** Render code analytics and recent code changes. */
@@ -200,34 +194,7 @@ function CodeOverview(props: {
           </div>
           <div>
             {data.changes.map((change) => (
-              <div
-                className="flex min-w-0 items-center justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-3 last:border-b-0"
-                key={change.id}
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-display text-sm text-dashboard-text">
-                    {change.url ? (
-                      <a
-                        className="text-inherit no-underline hover:text-cyan-100"
-                        href={change.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {change.title ??
-                          `${change.repository} #${change.number}`}
-                      </a>
-                    ) : (
-                      (change.title ?? `${change.repository} #${change.number}`)
-                    )}
-                  </div>
-                  <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-                    {change.repository} #{change.number} · {change.provider}
-                  </div>
-                </div>
-                <StatusChip size="compact" tone={stateTone(change.state)}>
-                  {change.state}
-                </StatusChip>
-              </div>
+              <CodeChangeRow change={change} key={change.id} />
             ))}
           </div>
         </Card>

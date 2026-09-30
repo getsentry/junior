@@ -97,6 +97,7 @@ describe("dashboard shell routes", () => {
 
     for (const path of [
       "/code",
+      "/code/getsentry/junior/changes",
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/locations",
