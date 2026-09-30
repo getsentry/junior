@@ -196,7 +196,10 @@ already joined. Leave it unset in production unless you are testing that path.
 runs one SQL statement against the app database and returns up to 200 rows.
 Each call uses its own database connection, which is closed afterwards, so
 session commands such as `BEGIN` or `SET` do not affect the app.
-It can write data and it skips every Conversation privacy check, so the Agent
+When Spaces are on, it also adds `runSpaceBackfill`, which runs
+`junior spaces backfill` inside the deployment, 50 Conversations at most per
+call.
+These tools can write data and skip every Conversation privacy check, so the Agent
 can read private Conversations with it. Never enable it in production. Use it
 on an isolated deployment whose database is a disposable copy, and choose that
 deployment in app code, for example:

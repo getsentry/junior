@@ -87,6 +87,12 @@ have grown at runtime.
 - `--limit`, `--since`, `--model`, and `--out` narrow the run, pick the
   model, and write the outline to a file.
 
+Apps that enable the `operator-tools` experimental feature also get the
+`runSpaceBackfill` operator tool in non-public Conversations. It runs the same
+backfill inside the deployment, with the default model, at most 50
+Conversations per call. Use it on a Preview to try the backfill against the
+Preview's copy of the database. `backfill-tool.ts` owns it.
+
 ## Layout
 
 `types.ts` owns the shared types. `tree.ts` builds the tree and owns name,

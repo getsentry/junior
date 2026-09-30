@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { setExperimentalFeatures } from "@/chat/experimental";
+import { createSpaceBackfillTools } from "@/chat/spaces/backfill-tool";
 import { setSpacesConfig } from "@/chat/spaces/registration";
 import { createSpaceTools } from "@/chat/spaces/tools";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorSpaceChanges, juniorSpaces } from "@/db/schema";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
+import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
 const CURRENT = "local:spaces:current";
 const PUBLIC_OTHER = "local:spaces:public-other";
@@ -82,8 +85,18 @@ describe("Space tools", () => {
     expect(privateTools).toContain("assignConversationSpace");
     expect(privateTools).not.toContain("createSpace");
     expect(privateTools).not.toContain("updateSpace");
+
+    // The backfill runs only for operators, and never in public Conversations.
+    expect(createSpaceBackfillTools(context("private"))).toEqual({});
+    setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "operator-tools": true });
+    expect(Object.keys(createSpaceBackfillTools(context("private")))).toEqual([
+      "runSpaceBackfill",
+    ]);
+    expect(createSpaceBackfillTools(context("public"))).toEqual({});
+
     setSpacesConfig(undefined);
     expect(createSpaceTools(context())).toEqual({});
+    expect(createSpaceBackfillTools(context("private"))).toEqual({});
   });
 
   it("build, reorganize, and browse a nested Space tree", async () => {
