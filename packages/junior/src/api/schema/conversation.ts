@@ -73,6 +73,7 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    codeRepositoryId: z.string().uuid().optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })

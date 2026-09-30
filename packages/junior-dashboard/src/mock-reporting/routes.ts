@@ -18,6 +18,8 @@ import {
   conversationStatsReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryParamsSchema,
+  codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
@@ -31,6 +33,10 @@ import {
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import {
+  filterMockConversationsByRepository,
+  readMockCodeRepository,
+} from "./code-repository";
 import {
   readMockConversationDetail,
   readMockConversationEvents,
@@ -64,6 +70,16 @@ export function createMockReportingApi(): Hono<{
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
+  app.get("/code/repositories/:repositoryId", (c) => {
+    const params = codeRepositoryParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockCodeRepository(params.data.repositoryId);
+    return report
+      ? jsonResponse(codeRepositoryReportSchema, report)
+      : errorResponse("Repository not found.", 404);
+  });
   app.get("/plugin-reports", () =>
     jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
   );
@@ -128,17 +144,18 @@ export function createMockReportingApi(): Hono<{
     if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
-    const report = readMockConversationFeed(
-      query.data.actorEmail,
-      query.data.status,
-    );
+    const repositoryId = query.data.codeRepositoryId;
+    const readFeed = (status: "active" | "archived") => {
+      const feed = readMockConversationFeed(query.data.actorEmail, status);
+      return repositoryId
+        ? filterMockConversationsByRepository(feed, repositoryId)
+        : feed;
+    };
+    const report = readFeed(query.data.status);
     if (!query.data.q) {
       return jsonResponse(conversationFeedSchema, report);
     }
-    const archived = readMockConversationFeed(
-      query.data.actorEmail,
-      "archived",
-    );
+    const archived = readFeed("archived");
     const search = query.data.q.toLowerCase();
     const conversations = new Map(
       [...report.conversations, ...archived.conversations].map(
