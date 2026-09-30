@@ -458,11 +458,9 @@ export async function scheduleSessionCompletedPluginTasks(
   options: ScheduleSessionCompletedPluginTasksOptions = {},
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = [
-    ...getPlugins(),
-    ...coreRegistrations(),
-  ].flatMap((plugin) =>
-    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
+  const taskRegistrations = [...getPlugins(), ...coreRegistrations()].flatMap(
+    (plugin) =>
+      Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
   if (taskRegistrations.length === 0) {
     return;

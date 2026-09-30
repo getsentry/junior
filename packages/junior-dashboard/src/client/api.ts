@@ -6,6 +6,8 @@ import {
   conversationStatsReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  spaceDetailReportSchema,
+  spaceTreeReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -111,6 +113,31 @@ export function useCodeOverviewData() {
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
+    retry: false,
+  });
+}
+
+/** Fetch every active Space for the forum landing page. */
+export function useSpaceTreeData() {
+  return useQuery({
+    queryKey: ["dashboard", "spaces"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(spaceTreeReportSchema, "/api/spaces", signal),
+    retry: false,
+  });
+}
+
+/** Fetch one Space with its child Spaces and recent Conversations. */
+export function useSpaceDetailData(spaceId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(spaceId),
+    queryKey: ["dashboard", "spaces", spaceId],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        spaceDetailReportSchema,
+        `/api/spaces/${encodeURIComponent(spaceId!)}`,
+        signal,
+      ),
     retry: false,
   });
 }

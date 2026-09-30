@@ -17,6 +17,8 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
+  spaceDetailReportSchema,
+  spaceTreeReportSchema,
   codePersonReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
@@ -31,6 +33,7 @@ import {
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import { readMockSpaceDetail, readMockSpaceTree } from "./spaces";
 import {
   readMockConversationDetail,
   readMockConversationEvents,
@@ -64,6 +67,19 @@ export function createMockReportingApi(): Hono<{
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
+  app.get("/spaces", () =>
+    jsonResponse(spaceTreeReportSchema, readMockSpaceTree()),
+  );
+  app.get("/spaces/:spaceId", (context) => {
+    const detail = readMockSpaceDetail(context.req.param("spaceId"));
+    return detail
+      ? jsonResponse(spaceDetailReportSchema, detail)
+      : jsonResponse(
+          apiErrorSchema,
+          { error: "Space not found." },
+          { status: 404 },
+        );
+  });
   app.get("/plugin-reports", () =>
     jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
   );

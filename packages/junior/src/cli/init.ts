@@ -19,6 +19,7 @@ const [
 
 const app = await createApp({
   briefs: { enabled: true },
+  spaces: { enabled: true },
   plugins,
 });
 

@@ -212,3 +212,16 @@ export type {
   SkillReport,
   SkillReports,
 } from "../reporting-schema";
+export {
+  spaceConversationSchema,
+  spaceDetailReportSchema,
+  spaceParamsSchema,
+  spaceSummarySchema,
+  spaceTreeReportSchema,
+} from "./schema/space";
+export type {
+  SpaceConversation,
+  SpaceDetailReport,
+  SpaceSummary,
+  SpaceTreeReport,
+} from "./schema/space";

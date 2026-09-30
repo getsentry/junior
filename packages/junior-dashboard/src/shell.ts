@@ -124,6 +124,10 @@ export function dashboardPagePaths(
     },
     {
       nested: true,
+      path: basePath === "/" ? "/spaces" : `${basePath}/spaces`,
+    },
+    {
+      nested: true,
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
     {

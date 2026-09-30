@@ -104,21 +104,11 @@ async function requireActiveSpaceId(spaceId: string): Promise<string> {
   return resolved;
 }
 
-const WRITE_ANNOTATIONS = {
-  destructiveHint: false,
-  idempotentHint: false,
-  openWorldHint: false,
-  readOnlyHint: false,
-} as const;
-
-const READ_ANNOTATIONS = {
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-  readOnlyHint: true,
-} as const;
-
-/** Build the Space tools when Spaces are enabled. */
+/**
+ * Build the Space tools when Spaces are enabled. A non-public Conversation
+ * cannot write Space names or descriptions, so its content never names a
+ * Space. It can still browse, reorganize, and assign.
+ */
 export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
   if (!isSpacesEnabled()) return {};
   const actor: SpaceActor = {
@@ -129,11 +119,16 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
   const loggedReason = (reason: string | null | undefined) =>
     context.conversationPrivacy === "public" && reason ? { reason } : undefined;
 
-  return {
+  const tools: ToolRegistry = {
     listSpaces: zodTool({
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
-      annotations: READ_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
       description:
         "List Spaces as a tree with ids, paths, descriptions, and Conversation counts. Also returns the Space of the current Conversation. Use this before you assign, create, move, or merge Spaces.",
       inputSchema: z
@@ -172,7 +167,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
     getSpace: zodTool({
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
-      annotations: READ_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
       description:
         "Show one Space: its path, child Spaces, and recent public Conversations with Brief summaries. Private Conversations are only counted.",
       inputSchema: z
@@ -264,7 +264,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description:
         "Create a Space. Name it like a forum category (1 to 4 words). Put it under the closest existing Space unless it is a broad area.",
       inputSchema: z
@@ -305,7 +310,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description: "Rename a Space or replace its description.",
       inputSchema: z
         .object({
@@ -349,7 +359,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description:
         "Move a Space, with all its child Spaces and Conversations, under another parent or to the top level.",
       inputSchema: z
@@ -384,7 +399,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description:
         "Merge a Space into another Space. Its child Spaces and Conversations move to the target. The old id keeps resolving to the target.",
       inputSchema: z
@@ -419,7 +439,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description:
         "Archive an empty Space. Move or merge its child Spaces and Conversations first.",
       inputSchema: z
@@ -444,7 +469,12 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       exposure: "deferred",
       source: SPACES_TOOL_SOURCE,
       executionMode: "sequential",
-      annotations: WRITE_ANNOTATIONS,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
       description:
         "Move Conversations to a Space. Defaults to the current Conversation. The automatic classifier never overrides this choice.",
       inputSchema: z
@@ -486,4 +516,9 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       },
     }),
   };
+  if (context.conversationPrivacy !== "public") {
+    delete tools.createSpace;
+    delete tools.updateSpace;
+  }
+  return tools;
 }

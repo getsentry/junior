@@ -43,6 +43,7 @@ export function buildPrimaryNavItems(input: {
 
   return [
     { key: "code", label: "Code", to: "/code" },
+    { key: "spaces", label: "Spaces", to: "/spaces" },
     ...(showTasksNav
       ? [{ key: "automations", label: "Automations", to: "/automations" }]
       : []),

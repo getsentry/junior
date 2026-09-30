@@ -32,6 +32,7 @@ import { ConversationWorkspaceLoading } from "./conversations/ConversationWorksp
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { CodePage } from "./pages/code/CodePage";
+import { SpacesPage } from "./pages/spaces/SpacesPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
@@ -372,6 +373,8 @@ export function DashboardShell() {
             path="/"
           />
           <Route element={<CodePage />} path="/code" />
+          <Route element={<SpacesPage />} path="/spaces" />
+          <Route element={<SpacesPage />} path="/spaces/:spaceId" />
           <Route
             element={<Navigate replace to="/" />}
             path="/conversations/new"

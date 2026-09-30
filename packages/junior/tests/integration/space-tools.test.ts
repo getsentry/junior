@@ -13,10 +13,12 @@ const CURRENT = "local:spaces:current";
 const PUBLIC_OTHER = "local:spaces:public-other";
 const PRIVATE_OTHER = "local:spaces:private-other";
 
-function context(): ToolRuntimeContext {
+function context(
+  conversationPrivacy: ToolRuntimeContext["conversationPrivacy"] = "public",
+): ToolRuntimeContext {
   return {
     conversationId: CURRENT,
-    conversationPrivacy: "public",
+    conversationPrivacy,
     destination: { platform: "local", conversationId: CURRENT },
     source: createLocalSource(CURRENT),
     egress: {
@@ -75,7 +77,11 @@ describe("Space tools", () => {
     await closeDb();
   });
 
-  it("are absent while Spaces are disabled", () => {
+  it("hide name writes from private Conversations and vanish when disabled", () => {
+    const privateTools = Object.keys(createSpaceTools(context("private")));
+    expect(privateTools).toContain("assignConversationSpace");
+    expect(privateTools).not.toContain("createSpace");
+    expect(privateTools).not.toContain("updateSpace");
     setSpacesConfig(undefined);
     expect(createSpaceTools(context())).toEqual({});
   });

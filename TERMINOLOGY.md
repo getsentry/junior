@@ -19,6 +19,9 @@ Canonical words used across Junior's code and documentation.
 - **Brief**: the durable, versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence links. A public Brief stays available after
   the transcript expires.
+- **Space**: a nested forum category of root Conversations, such as a
+  product area, team, or process. A Space may have one parent Space. Each
+  root Conversation has at most one Space. Space and Location are independent.
 - **Source**: the input that caused work, such as a Slack message, local CLI
   input, dashboard input, event, scheduled automation, plugin dispatch, or
   Agent invocation. Every Inbound message has one Source. A Turn stores the
