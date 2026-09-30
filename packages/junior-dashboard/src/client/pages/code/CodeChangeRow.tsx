@@ -30,7 +30,7 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
           )}
         </div>
         <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-          {change.repository} #{change.number} · {change.provider}
+          {change.repository} #{change.number}
         </div>
       </div>
       <StatusChip size="compact" tone={stateTone(change.state)}>
