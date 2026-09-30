@@ -559,7 +559,12 @@ export interface SpaceConversation {
  */
 export async function listSpaceConversations(
   db: Db,
-  input: { spaceIds: readonly string[]; limit: number },
+  input: {
+    spaceIds: readonly string[];
+    limit: number;
+    /** Keep Conversations whose title or Brief contains this text. */
+    query?: string;
+  },
 ): Promise<{ conversations: SpaceConversation[]; privateCount: number }> {
   if (input.spaceIds.length === 0) {
     return { conversations: [], privateCount: 0 };
@@ -569,6 +574,12 @@ export async function listSpaceConversations(
   const inSpaces = inArray(juniorConversationSpaces.spaceId, [
     ...input.spaceIds,
   ]);
+  const pattern = input.query?.trim()
+    ? `%${input.query.trim().replace(/[\\%_]/g, (match) => `\\${match}`)}%`
+    : undefined;
+  const matchesQuery = pattern
+    ? sql`(${juniorConversations.title} ilike ${pattern} or ${briefs.content}->>'summary' ilike ${pattern} or ${briefs.content}->>'intent' ilike ${pattern} or (${briefs.content}->'keywords')::text ilike ${pattern})`
+    : undefined;
   const [rows, privateRows] = await Promise.all([
     db
       .select({
@@ -612,7 +623,13 @@ export async function listSpaceConversations(
           ),
         ),
       )
-      .where(and(inSpaces, eq(juniorDestinations.visibility, "public")))
+      .where(
+        and(
+          inSpaces,
+          eq(juniorDestinations.visibility, "public"),
+          matchesQuery,
+        ),
+      )
       .orderBy(
         desc(juniorConversations.lastActivityAt),
         desc(juniorConversations.conversationId),

@@ -124,7 +124,6 @@ describe("spaces API", () => {
       expect.objectContaining({
         conversationId: "local:api-spaces:public",
         displayTitle: "Title local:api-spaces:public",
-        summary: "Summary local:api-spaces:public",
         kind: "bug",
       }),
     ]);

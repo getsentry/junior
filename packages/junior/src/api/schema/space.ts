@@ -32,20 +32,18 @@ export const spaceTreeReportSchema = z
 
 /**
  * One public Conversation listed in a Space. It is a normal Conversation
- * summary, plus its Space, Brief summary, and kind of work.
+ * summary, plus its Space and kind of work.
  */
 export const spaceConversationSchema = conversationSummaryReportSchema
   .extend({
     spaceId: z.string().min(1),
-    summary: z.string().nullable(),
     kind: conversationKindSchema.nullable(),
   })
   .strict();
 
 /**
  * Hard facts about a Space, from its public Conversations: repositories,
- * channels, people, and kinds of work. Linked work comes from each
- * Conversation's annotations.
+ * channels, people, and kinds of work.
  */
 export const spaceFactsSchema = z
   .object({

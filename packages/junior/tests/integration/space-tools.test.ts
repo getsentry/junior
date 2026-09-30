@@ -80,11 +80,18 @@ describe("Space tools", () => {
     await closeDb();
   });
 
-  it("hide name writes from private Conversations and vanish when disabled", () => {
+  it("exist in every Conversation and vanish when disabled", () => {
+    // A person can reorganize Spaces from a private Conversation too.
     const privateTools = Object.keys(createSpaceTools(context("private")));
-    expect(privateTools).toContain("assignConversationSpace");
-    expect(privateTools).not.toContain("createSpace");
-    expect(privateTools).not.toContain("updateSpace");
+    expect(privateTools).toEqual(Object.keys(createSpaceTools(context())));
+    expect(privateTools).toEqual(
+      expect.arrayContaining([
+        "createSpace",
+        "updateSpace",
+        "findSpaceConversations",
+        "assignConversationSpace",
+      ]),
+    );
 
     // The backfill runs only for operators, and never in public Conversations.
     expect(createSpaceBackfillTools(context("private"))).toEqual({});
@@ -160,6 +167,21 @@ describe("Space tools", () => {
         parent_space_id: cloudflare.space_id,
       }),
     ).rejects.toThrow("cannot move under itself");
+
+    // Finding Conversations to move searches public Conversations only.
+    const found = await run(tools, "findSpaceConversations", {
+      query: "public-other",
+    });
+    expect(
+      found.conversations.map((row: any) => [
+        row.conversation_id,
+        row.space_path,
+      ]),
+    ).toEqual([[PUBLIC_OTHER, "SDKs › JavaScript › Cloudflare"]]);
+    expect(
+      (await run(tools, "findSpaceConversations", { query: "private-other" }))
+        .conversations,
+    ).toEqual([]);
 
     // Browsing lists public Conversations and only counts private ones.
     const shown = await run(tools, "getSpace", { space_id: sdks.space_id });

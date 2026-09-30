@@ -1,6 +1,5 @@
 import type {
   ConversationKindReport,
-  ConversationSummaryReport,
   SpaceDetailReport,
   SpaceFacts,
   SpaceSummary,
@@ -12,7 +11,7 @@ import {
   Hash,
   MessageSquarePlus,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useSpaceDetailData, useSpaceTreeData } from "../../api";
 import { Button } from "../../components/Button";
@@ -25,7 +24,6 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
-import { ConversationAnnotations } from "../../conversations/ConversationMeta";
 import { NewConversationView } from "../../conversations/NewConversationView";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { useCreateConversation } from "../../conversations/queries";
@@ -88,7 +86,7 @@ function SpaceLanding() {
 function SpaceDetail(props: { spaceId: string }) {
   const query = useSpaceDetailData(props.spaceId);
   const [composing, setComposing] = useState(false);
-  const [kindFilter, setKindFilter] = useState<ConversationKindReport>();
+  const [filter, setFilter] = useState<SpaceFilter>({});
   if (!query.data && !query.error) {
     return (
       <PageRouteLoading
@@ -113,6 +111,11 @@ function SpaceDetail(props: { spaceId: string }) {
     );
   }
   const data = query.data;
+  const conversations = data.conversations.filter(
+    (conversation) =>
+      (!filter.kind || conversation.kind === filter.kind) &&
+      (!filter.channel || conversation.channelName === filter.channel),
+  );
   return (
     <PageLayout>
       <Breadcrumbs
@@ -136,7 +139,14 @@ function SpaceDetail(props: { spaceId: string }) {
             {composing ? "Cancel" : "New conversation"}
           </Button>
         }
-        description={<SpaceKeywords description={data.space.description} />}
+        description={
+          <SpaceStats
+            participants={data.facts.participants}
+            repositories={data.facts.repositories}
+            privateCount={data.privateConversationCount}
+            space={data.space}
+          />
+        }
         title={data.space.name}
       />
       {composing ? (
@@ -145,23 +155,13 @@ function SpaceDetail(props: { spaceId: string }) {
           spaceName={data.space.name}
         />
       ) : null}
-      <SpaceFactsCard
-        facts={data.facts}
-        kindFilter={kindFilter}
-        linkedWork={spaceLinkedWork(data.conversations)}
-        onKindFilter={setKindFilter}
-      />
+      <SpaceFilters facts={data.facts} filter={filter} onChange={setFilter} />
       {data.children.length > 0 ? (
         <SpaceList emptyText="" spaces={data.children} title="Spaces" />
       ) : null}
       <SpaceConversationList
-        conversations={
-          kindFilter
-            ? data.conversations.filter(
-                (conversation) => conversation.kind === kindFilter,
-              )
-            : data.conversations
-        }
+        conversations={conversations}
+        filtered={Boolean(filter.kind || filter.channel)}
         privateCount={data.privateConversationCount}
       />
     </PageLayout>
@@ -202,24 +202,6 @@ function SpaceComposer(props: { spaceId: string; spaceName: string }) {
   );
 }
 
-/** Show a Space description as keyword pills when it is a keyword list. */
-function SpaceKeywords(props: { description: string }) {
-  const keywords = props.description
-    .split(",")
-    .map((keyword) => keyword.trim())
-    .filter(Boolean);
-  if (keywords.length < 2) {
-    return <>{props.description || "No description yet."}</>;
-  }
-  return (
-    <span className="flex flex-wrap gap-1.5">
-      {keywords.map((keyword) => (
-        <SpacePill key={keyword}>{keyword}</SpacePill>
-      ))}
-    </span>
-  );
-}
-
 function Breadcrumbs(props: {
   crumbs: Array<{ label: string; to: string }>;
   current: string;
@@ -255,151 +237,167 @@ function SectionTitle(props: { children: string }) {
   );
 }
 
-function FactRow(props: { children: React.ReactNode; label: string }) {
+type SpaceFilter = {
+  kind?: ConversationKindReport;
+  channel?: string;
+};
+
+/**
+ * One quiet line of Space numbers, with its repositories and the people who
+ * took part.
+ */
+function SpaceStats(props: {
+  participants: SpaceFacts["participants"];
+  repositories: SpaceFacts["repositories"];
+  privateCount: number;
+  space: SpaceSummary;
+}) {
+  const { space } = props;
+  const parts = [
+    `${formatCompactNumber(space.totalConversationCount)} ${
+      space.totalConversationCount === 1 ? "conversation" : "conversations"
+    }`,
+    props.privateCount > 0 ? `${props.privateCount} private` : undefined,
+    space.childCount > 0
+      ? `${space.childCount} ${space.childCount === 1 ? "space" : "spaces"}`
+      : undefined,
+    space.lastActivityAt
+      ? `active ${formatRelativeTime(space.lastActivityAt)}`
+      : undefined,
+  ].filter(Boolean);
   return (
-    <div className="grid min-w-0 gap-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-start">
-      <div className="pt-0.5 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-        {props.label}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {props.children}
-      </div>
-    </div>
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-dashboard-text-muted">
+      <span>{parts.join(" · ")}</span>
+      {props.repositories.map((repository) => (
+        <span
+          className="inline-flex items-center gap-1.5"
+          key={repository.name}
+        >
+          <span aria-hidden="true">·</span>
+          <a
+            className="inline-flex items-center gap-1 text-inherit no-underline hover:text-cyan-100"
+            href={repository.url}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <GitBranch aria-hidden="true" className="size-3" />
+            {repository.name}
+          </a>
+        </span>
+      ))}
+      {props.participants.length > 0 ? (
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true">·</span>
+          <ParticipantAvatarStack
+            participants={props.participants}
+            size="list"
+          />
+          <span>
+            {props.participants.length}{" "}
+            {props.participants.length === 1 ? "person" : "people"}
+          </span>
+        </span>
+      ) : null}
+    </span>
   );
 }
 
-const MAX_LINKED_WORK = 8;
-
-/**
- * Collect the linked work of a Space, newest Conversation first, so pull
- * requests and issues show the same way as on the conversation page.
- */
-function spaceLinkedWork(
-  conversations: SpaceDetailReport["conversations"],
-): Pick<ConversationSummaryReport, "annotations" | "sidebarAnnotations"> {
-  const seen = new Set<string>();
-  const annotations: NonNullable<ConversationSummaryReport["annotations"]> = [];
-  const sidebarAnnotations: NonNullable<
-    ConversationSummaryReport["sidebarAnnotations"]
-  > = [];
-  for (const conversation of conversations) {
-    for (const annotation of conversation.annotations ?? []) {
-      const key = `${annotation.plugin}:${annotation.key}`;
-      if (!annotation.url || seen.has(key)) continue;
-      if (annotations.length >= MAX_LINKED_WORK) break;
-      seen.add(key);
-      annotations.push(annotation);
-    }
-    sidebarAnnotations.push(...(conversation.sidebarAnnotations ?? []));
-  }
-  return { annotations, sidebarAnnotations };
+/** Toggle chip that filters the Conversation list. */
+function FilterChip(props: {
+  active: boolean;
+  children: ReactNode;
+  dimmed: boolean;
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <button
+      aria-label={props.label}
+      aria-pressed={props.active}
+      className={cn(
+        "cursor-pointer rounded-full border-0 bg-transparent p-0 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+        props.dimmed && "opacity-40 hover:opacity-80",
+      )}
+      onClick={props.onClick}
+      type="button"
+    >
+      {props.children}
+    </button>
+  );
 }
 
-/** Hard facts about the Space: repositories, work, channels, and people. */
-function SpaceFactsCard(props: {
+/**
+ * Kinds and channels as filter chips. They combine, so a person can show
+ * only bugs in one channel.
+ */
+function SpaceFilters(props: {
   facts: SpaceFacts;
-  kindFilter: ConversationKindReport | undefined;
-  linkedWork: Pick<
-    ConversationSummaryReport,
-    "annotations" | "sidebarAnnotations"
-  >;
-  onKindFilter: (kind: ConversationKindReport | undefined) => void;
+  filter: SpaceFilter;
+  onChange(filter: SpaceFilter): void;
 }) {
-  const { facts } = props;
-  const hasLinkedWork = Boolean(props.linkedWork.annotations?.length);
-  const empty =
-    facts.repositories.length === 0 &&
-    !hasLinkedWork &&
-    facts.channels.length === 0 &&
-    facts.participants.length === 0 &&
-    facts.kinds.length === 0;
-  if (empty) return null;
+  const { facts, filter } = props;
+  if (facts.kinds.length === 0 && facts.channels.length === 0) {
+    return null;
+  }
   return (
-    <Card as="section">
-      <SectionTitle>Facts</SectionTitle>
-      <div className="grid gap-4 p-4">
-        {facts.repositories.length > 0 ? (
-          <FactRow label="Repositories">
-            {facts.repositories.map((repository) => (
-              <a
-                className="no-underline"
-                href={repository.url}
-                key={repository.name}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <SpacePill className="text-dashboard-text hover:border-white/25">
-                  <GitBranch aria-hidden="true" className="size-3" />
-                  {repository.name}
-                  <span className="font-mono opacity-60">
-                    {repository.conversationCount}
-                  </span>
-                </SpacePill>
-              </a>
-            ))}
-          </FactRow>
-        ) : null}
-        {facts.kinds.length > 0 ? (
-          <FactRow label="Kinds">
-            {facts.kinds.map((kind) => {
-              const active = props.kindFilter === kind.kind;
-              return (
-                <button
-                  aria-pressed={active}
-                  className={cn(
-                    "cursor-pointer rounded-full border-0 bg-transparent p-0 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-                    props.kindFilter && !active && "opacity-40",
-                  )}
-                  key={kind.kind}
-                  onClick={() =>
-                    props.onKindFilter(active ? undefined : kind.kind)
-                  }
-                  title={
-                    active ? "Show all conversations" : "Show only this kind"
-                  }
-                  type="button"
-                >
-                  <SpaceKindTag
-                    count={kind.conversationCount}
-                    kind={kind.kind}
-                  />
-                </button>
-              );
-            })}
-          </FactRow>
-        ) : null}
-        {facts.channels.length > 0 ? (
-          <FactRow label="Channels">
-            {facts.channels.map((channel) => (
-              <SpacePill key={channel.name}>
-                <Hash aria-hidden="true" className="size-3" />
-                {channel.name}
-                <span className="font-mono opacity-60">
-                  {channel.conversationCount}
-                </span>
-              </SpacePill>
-            ))}
-          </FactRow>
-        ) : null}
-        {facts.participants.length > 0 ? (
-          <FactRow label="People">
-            <ParticipantAvatarStack
-              participants={facts.participants}
-              size="detail"
-            />
-            <span className="font-mono text-xs text-dashboard-text-muted">
-              {facts.participants.length}{" "}
-              {facts.participants.length === 1 ? "person" : "people"}
-            </span>
-          </FactRow>
-        ) : null}
-        {hasLinkedWork ? (
-          <FactRow label="Linked work">
-            <ConversationAnnotations detail={props.linkedWork} />
-          </FactRow>
-        ) : null}
-      </div>
-    </Card>
+    <div
+      aria-label="Filter conversations"
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
+      role="group"
+    >
+      {facts.kinds.map((kind) => {
+        const active = filter.kind === kind.kind;
+        return (
+          <FilterChip
+            active={active}
+            dimmed={Boolean(filter.kind) && !active}
+            key={kind.kind}
+            label={`${kind.kind} (${kind.conversationCount})`}
+            onClick={() =>
+              props.onChange({
+                ...filter,
+                kind: active ? undefined : kind.kind,
+              })
+            }
+          >
+            <SpaceKindTag count={kind.conversationCount} kind={kind.kind} />
+          </FilterChip>
+        );
+      })}
+      {facts.kinds.length > 0 && facts.channels.length > 0 ? (
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+      ) : null}
+      {facts.channels.map((channel) => {
+        const active = filter.channel === channel.name;
+        return (
+          <FilterChip
+            active={active}
+            dimmed={Boolean(filter.channel) && !active}
+            key={channel.name}
+            label={`#${channel.name} (${channel.conversationCount})`}
+            onClick={() =>
+              props.onChange({
+                ...filter,
+                channel: active ? undefined : channel.name,
+              })
+            }
+          >
+            <SpacePill
+              className={cn(
+                "hover:border-white/25",
+                active && "border-cyan-300/40 text-cyan-100",
+              )}
+            >
+              <Hash aria-hidden="true" className="size-3" />
+              {channel.name}
+              <span className="font-mono opacity-60">
+                {channel.conversationCount}
+              </span>
+            </SpacePill>
+          </FilterChip>
+        );
+      })}
+    </div>
   );
 }
 
@@ -434,11 +432,6 @@ function SpaceList(props: {
                   <div className="truncate font-display text-base text-dashboard-text">
                     {space.name}
                   </div>
-                  {space.description ? (
-                    <div className="mt-1 line-clamp-1 text-sm text-dashboard-text-muted">
-                      {space.description}
-                    </div>
-                  ) : null}
                 </div>
                 <div className="shrink-0 text-right font-mono text-xs text-dashboard-text-muted">
                   <div className="text-sm text-dashboard-text">
@@ -467,6 +460,7 @@ function SpaceList(props: {
 
 function SpaceConversationList(props: {
   conversations: SpaceDetailReport["conversations"];
+  filtered: boolean;
   privateCount: number;
 }) {
   return (
@@ -477,7 +471,9 @@ function SpaceConversationList(props: {
       {props.conversations.length === 0 ? (
         <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
           <EmptyTelemetry>
-            No public Conversations in this Space yet.
+            {props.filtered
+              ? "No public Conversations match these filters."
+              : "No public Conversations in this Space yet."}
           </EmptyTelemetry>
         </div>
       ) : (
@@ -502,8 +498,8 @@ function SpaceConversationList(props: {
 }
 
 /**
- * One Conversation in a Space. It follows the home page card: title, Brief
- * summary, channel, people, and linked work, plus a kind-of-work tag.
+ * One Conversation in a Space, on one line: kind of work, title, channel,
+ * people, and last activity. Linked work stays on the Conversation page.
  */
 function SpaceConversationCard(props: {
   conversation: SpaceDetailReport["conversations"][number];
@@ -515,7 +511,7 @@ function SpaceConversationCard(props: {
   return (
     <article
       className={cn(
-        "group relative grid min-w-0 gap-2 overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-3.5 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5",
+        "group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-2.5 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5",
         report.kind &&
           "before:absolute before:inset-y-0 before:left-0 before:w-0.5",
         spaceKindAccentClass(report.kind),
@@ -527,43 +523,28 @@ function SpaceConversationCard(props: {
         className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
         to={conversationPath(conversation.id)}
       />
-      <div className="pointer-events-none relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {report.kind ? <SpaceKindTag kind={report.kind} /> : null}
-          <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
-            {conversation.displayTitle}
-          </h4>
-        </div>
-        <span className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
-          {formatRelativeTime(conversation.lastSeenAt)}
-        </span>
+      <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-2">
+        {report.kind ? <SpaceKindTag kind={report.kind} /> : null}
+        <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+          {conversation.displayTitle}
+        </h4>
       </div>
-      {report.summary ? (
-        <p className="pointer-events-none relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle">
-          {report.summary}
-        </p>
-      ) : null}
-      <div className="pointer-events-none relative z-[1] flex min-w-0 flex-wrap items-center gap-1.5 font-mono text-xs text-dashboard-text-muted">
+      <div className="pointer-events-none relative z-[1] flex shrink-0 items-center gap-2 font-mono text-xs text-dashboard-text-muted">
         {channel ? (
-          <SpacePill>
+          <span className="hidden items-center gap-0.5 sm:inline-flex">
             <Hash aria-hidden="true" className="size-3" />
             {channel}
-          </SpacePill>
+          </span>
         ) : null}
         {participants.length > 0 ? (
           <span className="pointer-events-auto inline-flex">
             <ParticipantAvatarStack participants={participants} size="list" />
           </span>
         ) : null}
-        {participants.length > 1 ? (
-          <span>{participants.length} people</span>
-        ) : null}
+        <span className="whitespace-nowrap">
+          {formatRelativeTime(conversation.lastSeenAt)}
+        </span>
       </div>
-      {report.annotations?.some((annotation) => annotation.url) ? (
-        <div className="relative z-[1] -mx-1 min-w-0">
-          <ConversationAnnotations detail={report} layout="strip" />
-        </div>
-      ) : null}
     </article>
   );
 }

@@ -57,18 +57,23 @@ Space or proposes a new Space under an existing parent. A proposed Space that
 already exists under that parent is reused.
 
 The prompt groups by repository or product first. GitHub repositories come
-from the Brief links. Space descriptions are short keyword lists.
+from the Brief links. Incidents are the exception: they always go in one
+top-level Incidents Space. Child Spaces are features or components, never
+kinds of work, because the kind is a separate label. Space descriptions are short keyword lists.
 `normalizeSpaceDescription` removes lead-ins such as "Conversations about".
 
 ## Privacy
 
-- Private content never names a Space. A non-public Conversation can join an
-  existing Space, but the classifier cannot create a Space for it. The agent
-  tools for create and update are absent in a non-public Conversation.
+- The classifier never names a Space from private content. A non-public
+  Conversation can join an existing Space, but the classifier cannot create a
+  Space for it.
+- A person can ask Junior to create or rename a Space from any Conversation.
+  The `createSpace` and `updateSpace` descriptions say that names are public,
+  so Junior uses the name the person asked for and no private details.
 - The change log keeps a reason only when the requesting Conversation is
   public. It keeps Conversation ids for every assignment.
-- Browsing shows public Conversations with their latest Brief summary, kind,
-  and linked work. It only counts private Conversations. Tree counts include
+- Browsing shows public Conversations with their title and kind. It only
+  counts private Conversations. Tree counts include
   private Conversations.
 - Space facts (repositories, channels, people, and kinds) come only from the
   listed public Conversations.
@@ -78,8 +83,10 @@ from the Brief links. Space descriptions are short keyword lists.
 ## Tools and prompt context
 
 The deferred `spaces` tool source has `listSpaces`, `getSpace`,
-`createSpace`, `updateSpace`, `moveSpace`, `mergeSpace`, `archiveSpace`, and
-`assignConversationSpace`. A tool assignment is pinned. A Conversation that a
+`findSpaceConversations`, `createSpace`, `updateSpace`, `moveSpace`,
+`mergeSpace`, `archiveSpace`, and `assignConversationSpace`.
+`findSpaceConversations` searches public Conversation titles and Briefs, so
+Junior can find Conversations to move, such as every incident. A tool assignment is pinned. A Conversation that a
 person starts from a Space in the dashboard is also pinned to that Space.
 
 When the current Conversation has a Space, the `userPrompt` hook adds the

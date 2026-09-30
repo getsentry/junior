@@ -120,7 +120,6 @@ function spaceConversation(
     conversationId: string;
     title: string;
     channelName: string;
-    summary: string;
     kind: SpaceConversation["kind"];
     hoursAgo: number;
     participants: ActorIdentity[];
@@ -143,7 +142,6 @@ function spaceConversation(
     participants: input.participants,
     ...(input.annotations ? { annotations: input.annotations } : undefined),
     spaceId,
-    summary: input.summary,
     kind: input.kind,
   };
 }
@@ -166,8 +164,6 @@ export function readMockSpaceDetail(
           conversationId: "slack:CQA123:1770003600.000200",
           title: "Cloudflare SDK release is blocked on a flaky test",
           channelName: "proj-sdk-javascript",
-          summary:
-            "The team traced the flaky Workers test to a timer mock and chose to release after the fix merged.",
           kind: "bug",
           hoursAgo: 1,
           participants: [MORGAN, AVERY, RILEY],
@@ -179,8 +175,6 @@ export function readMockSpaceDetail(
           conversationId: "slack:CQA123:1770001800.000150",
           title: "Add a D1 query integration for Workers",
           channelName: "proj-sdk-javascript",
-          summary:
-            "Junior drafted the D1 integration behind an option and opened a draft PR for review.",
           kind: "feature",
           hoursAgo: 6,
           participants: [AVERY, MORGAN],
@@ -192,8 +186,6 @@ export function readMockSpaceDetail(
           conversationId: "slack:CQA123:1770000000.000100",
           title: "Why are source maps missing for Pages deployments?",
           channelName: "discuss-sdks",
-          summary:
-            "Source maps upload before the Pages build writes them. The fix moves the upload to a post-build step.",
           kind: "question",
           hoursAgo: 26,
           participants: [RILEY],

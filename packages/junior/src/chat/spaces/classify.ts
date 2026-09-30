@@ -97,6 +97,8 @@ Pick the one Space where a person would look for this Conversation later.
 Rules:
 - Prefer an existing Space. Pick the most specific Space that fits the whole Conversation, not one detail of it.
 - Top-level Spaces are code repositories, products, or broad areas of the organization. When the Conversation is about the code, tools, data, or operations of one repository or product, it belongs inside that repository's Space. For example, a backfill of Junior data goes under Junior, not in a top-level Backfills Space.
+- Incidents, outages, and on-call response always go in one top-level Incidents Space, even when they involve one repository. People look for incidents together.
+- Inside a repository or product Space, child Spaces are its features or components, such as Slack, Dashboard, or Briefs for Junior. A child Space is never a kind of work such as Bugs, Questions, or Backfills, because the kind is a separate label.
 - Name a repository Space after the repository or product, such as Junior, Sentry, or Relay. Do not add the organization name.
 - The Repositories line is the strongest hint for the top-level Space. The channel name is a strong hint for the area. The content decides.
 - Create a Space only when no existing Space fits and the topic will likely come up again. Never create a Space for one question, one bug, one person, or one date.

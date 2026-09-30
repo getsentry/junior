@@ -171,7 +171,6 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
                 {
                   ...summary,
                   spaceId: conversation.spaceId,
-                  summary: conversation.summary ?? null,
                   kind: conversation.kind ?? null,
                 },
               ]

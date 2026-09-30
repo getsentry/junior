@@ -17,6 +17,7 @@ import {
   readConversationSpace,
   readSpaceTree,
   resolveSpaceId,
+  type SpaceConversation,
   updateSpace,
 } from "./store";
 import {
@@ -33,7 +34,7 @@ import type { SpaceActor, SpaceNode } from "./types";
 export const SPACES_TOOL_SOURCE = {
   id: "spaces",
   description:
-    "Browse and reorganize Spaces: nested forum categories that group Conversations.",
+    "Browse, find, create, rename, move, merge, and archive Spaces (nested forum categories that group Conversations), and move Conversations between them.",
 } as const;
 
 const MAX_LIST_SPACES = 300;
@@ -82,6 +83,41 @@ function spaceView(node: SpaceNode): z.output<typeof spaceOutputSchema> {
   };
 }
 
+const conversationOutputSchema = z
+  .object({
+    conversation_id: z.string(),
+    space_id: z.string(),
+    space_path: z.string(),
+    title: z.string().optional(),
+    channel_name: z.string().optional(),
+    summary: z.string().optional(),
+    last_activity_at: z.string(),
+    dashboard_url: z.string().optional(),
+  })
+  .strict();
+
+function conversationView(
+  conversation: SpaceConversation,
+  tree: ReadonlyMap<string, SpaceNode>,
+): z.output<typeof conversationOutputSchema> {
+  const dashboardUrl = getDashboardConversationLink(
+    conversation.conversationId,
+  );
+  const space = tree.get(conversation.spaceId);
+  return {
+    conversation_id: conversation.conversationId,
+    space_id: conversation.spaceId,
+    space_path: space ? formatSpacePath(space.path) : "",
+    ...(conversation.title ? { title: conversation.title } : undefined),
+    ...(conversation.channelName
+      ? { channel_name: conversation.channelName }
+      : undefined),
+    ...(conversation.summary ? { summary: conversation.summary } : undefined),
+    last_activity_at: new Date(conversation.lastActivityAtMs).toISOString(),
+    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+  };
+}
+
 /** Map tree rule failures to input errors the model can repair. */
 async function spaceWrite<T>(write: () => Promise<T>): Promise<T> {
   try {
@@ -105,9 +141,10 @@ async function requireActiveSpaceId(spaceId: string): Promise<string> {
 }
 
 /**
- * Build the Space tools when Spaces are enabled. A non-public Conversation
- * cannot write Space names or descriptions, so its content never names a
- * Space. It can still browse, reorganize, and assign.
+ * Build the Space tools when Spaces are enabled. Every Conversation gets
+ * them, because a person may ask to create or reorganize Spaces from a
+ * private Conversation. Tool descriptions keep private details out of Space
+ * names; only the automatic classifier is barred from naming Spaces there.
  */
 export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
   if (!isSpacesEnabled()) return {};
@@ -198,19 +235,7 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       outputSchema: juniorToolOutputSchema.extend({
         space: spaceOutputSchema,
         children: z.array(spaceOutputSchema),
-        conversations: z.array(
-          z
-            .object({
-              conversation_id: z.string(),
-              space_path: z.string(),
-              title: z.string().optional(),
-              channel_name: z.string().optional(),
-              summary: z.string().optional(),
-              last_activity_at: z.string(),
-              dashboard_url: z.string().optional(),
-            })
-            .strict(),
-        ),
+        conversations: z.array(conversationOutputSchema),
         private_conversation_count: z.number().int(),
       }),
       async execute(input) {
@@ -231,32 +256,63 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
           children: space.childSpaceIds.map((childId) =>
             spaceView(tree.get(childId)!),
           ),
-          conversations: listed.conversations.map((conversation) => {
-            const dashboardUrl = getDashboardConversationLink(
-              conversation.conversationId,
-            );
-            const conversationSpace = tree.get(conversation.spaceId);
-            return {
-              conversation_id: conversation.conversationId,
-              space_path: conversationSpace
-                ? formatSpacePath(conversationSpace.path)
-                : "",
-              ...(conversation.title
-                ? { title: conversation.title }
-                : undefined),
-              ...(conversation.channelName
-                ? { channel_name: conversation.channelName }
-                : undefined),
-              ...(conversation.summary
-                ? { summary: conversation.summary }
-                : undefined),
-              last_activity_at: new Date(
-                conversation.lastActivityAtMs,
-              ).toISOString(),
-              ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-            };
-          }),
+          conversations: listed.conversations.map((conversation) =>
+            conversationView(conversation, tree),
+          ),
           private_conversation_count: listed.privateCount,
+        };
+      },
+    }),
+    findSpaceConversations: zodTool({
+      exposure: "deferred",
+      source: SPACES_TOOL_SOURCE,
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
+      description:
+        "Find public Conversations in Spaces by text in their title or Brief, such as incident or outage. Returns ids and current Spaces, so you can move them with assignConversationSpace.",
+      inputSchema: z
+        .object({
+          query: z.string().trim().min(2).max(200),
+          space_id: spaceIdSchema
+            .nullable()
+            .optional()
+            .describe("Search only this Space's subtree. Omit for all Spaces."),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_CONVERSATION_LIMIT)
+            .nullable()
+            .optional()
+            .describe(
+              `Maximum Conversations. Default ${DEFAULT_CONVERSATION_LIMIT}.`,
+            ),
+        })
+        .strict(),
+      outputSchema: juniorToolOutputSchema.extend({
+        conversations: z.array(conversationOutputSchema),
+      }),
+      async execute(input) {
+        const db = getDb();
+        const tree = await readSpaceTree(db);
+        const rootIds = input.space_id
+          ? [await requireActiveSpaceId(input.space_id)]
+          : topLevelSpaceIds(tree);
+        const listed = await listSpaceConversations(db, {
+          spaceIds: rootIds.flatMap((spaceId) =>
+            subtreeSpaceIds(tree, spaceId),
+          ),
+          limit: input.limit ?? DEFAULT_CONVERSATION_LIMIT,
+          query: input.query,
+        });
+        return {
+          conversations: listed.conversations.map((conversation) =>
+            conversationView(conversation, tree),
+          ),
         };
       },
     }),
@@ -271,7 +327,7 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
         readOnlyHint: false,
       },
       description:
-        "Create a Space. Name it like a forum category (1 to 4 words). Put it under the closest existing Space unless it is a broad area.",
+        "Create a Space. Name it like a forum category (1 to 4 words). Put it under the closest existing Space unless it is a broad area. Everyone can see Space names and descriptions, so use the name the person asked for and never private details.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).max(MAX_SPACE_NAME_CHARS),
@@ -316,7 +372,8 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
         openWorldHint: false,
         readOnlyHint: false,
       },
-      description: "Rename a Space or replace its description.",
+      description:
+        "Rename a Space or replace its description. Everyone can see them, so never use private details.",
       inputSchema: z
         .object({
           space_id: spaceIdSchema,
@@ -516,9 +573,5 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
       },
     }),
   };
-  if (context.conversationPrivacy !== "public") {
-    delete tools.createSpace;
-    delete tools.updateSpace;
-  }
   return tools;
 }
