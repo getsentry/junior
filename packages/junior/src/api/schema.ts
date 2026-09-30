@@ -213,15 +213,19 @@ export type {
   SkillReports,
 } from "../reporting-schema";
 export {
+  conversationKindSchema,
   spaceConversationSchema,
   spaceDetailReportSchema,
+  spaceFactsSchema,
   spaceParamsSchema,
   spaceSummarySchema,
   spaceTreeReportSchema,
 } from "./schema/space";
 export type {
+  ConversationKindReport,
   SpaceConversation,
   SpaceDetailReport,
+  SpaceFacts,
   SpaceSummary,
   SpaceTreeReport,
 } from "./schema/space";

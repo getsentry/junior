@@ -333,6 +333,11 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Investigate checkout latency",
     brief: mockBrief(nowMs, "live"),
+    space: {
+      spaceId: "space-incidents",
+      name: "Incidents",
+      path: [{ spaceId: "space-incidents", name: "Incidents" }],
+    },
     // Visual QA needs the composer + pending mailbox stack attached above it.
     isParticipant: true,
     startedAt,
@@ -1460,6 +1465,7 @@ function summaryFromConversation(
     previousCursor: _previousCursor,
     sentryConversationUrl: _sentryConversationUrl,
     sourceTask: _sourceTask,
+    space: _space,
     ...summary
   } = conversation;
   const summaryWithActivity = {

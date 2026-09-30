@@ -18,8 +18,12 @@ import {
 import { isSpacesEnabled } from "./registration";
 
 const DEFAULT_BACKFILL_LIMIT = 10;
-// One classifier call per Conversation must fit in one Turn.
-const MAX_BACKFILL_LIMIT = 50;
+const MAX_BACKFILL_LIMIT = 200;
+/**
+ * Share of the Turn timeout the backfill may use. Classifier calls run one
+ * after another, so a large batch stops early and leaves time to reply.
+ */
+const BACKFILL_TURN_BUDGET_SHARE = 0.6;
 
 /**
  * Build the operator tool that runs the Space backfill inside the deployment.
@@ -45,8 +49,7 @@ export function createSpaceBackfillTools(
         openWorldHint: true,
         readOnlyHint: false,
       },
-      description:
-        "Run the Space backfill, the same as `junior spaces backfill`. It classifies unassigned root Conversations that have a Brief, oldest first, with one model call each. Without apply it is a dry run that writes nothing and returns the proposed Space outline and model cost. Start with a small dry run and show the report before you apply or raise the limit.",
+      description: `Run the Space backfill, the same as \`junior spaces backfill\`. It classifies unassigned root Conversations that have a Brief, oldest first, with one model call each, up to ${MAX_BACKFILL_LIMIT} per call. It stops early when the Turn runs low on time and reports how many it skipped. Without apply it is a dry run that writes nothing and returns the proposed Space outline and model cost. With apply, run it again to continue with the next unassigned Conversations.`,
       inputSchema: z
         .object({
           apply: z
@@ -78,6 +81,8 @@ export function createSpaceBackfillTools(
       outputSchema: juniorToolOutputSchema.extend({
         applied: z.boolean(),
         candidates: z.number().int(),
+        processed: z.number().int(),
+        stopped_early: z.boolean(),
         assigned: z.number().int(),
         unassigned: z.number().int(),
         created_spaces: z.number().int(),
@@ -85,7 +90,9 @@ export function createSpaceBackfillTools(
         model_id: z.string(),
         report: z.string(),
       }),
-      async execute(input) {
+      async execute(input, options) {
+        const startedAtMs = Date.now();
+        const budgetMs = botConfig.turnTimeoutMs * BACKFILL_TURN_BUDGET_SHARE;
         const apply = input.apply === true;
         const sinceMs = input.since ? Date.parse(input.since) : undefined;
         if (sinceMs !== undefined && !Number.isFinite(sinceMs)) {
@@ -100,6 +107,9 @@ export function createSpaceBackfillTools(
         const result = await runSpaceBackfill(db, {
           candidates,
           apply,
+          shouldStop: () =>
+            options.signal?.aborted === true ||
+            Date.now() - startedAtMs > budgetMs,
           completeObject: (request) =>
             completeObject({
               ...request,
@@ -110,6 +120,8 @@ export function createSpaceBackfillTools(
         return {
           applied: apply,
           candidates: candidates.length,
+          processed: result.processed,
+          stopped_early: result.processed < candidates.length,
           assigned: result.assigned,
           unassigned: result.unassigned,
           created_spaces: result.createdSpaces,

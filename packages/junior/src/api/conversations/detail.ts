@@ -25,6 +25,8 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 import { readConversationParticipants } from "./participants";
+import { isSpacesEnabled } from "@/chat/spaces/registration";
+import { readConversationSpaceLocation } from "@/chat/spaces/store";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -42,6 +44,7 @@ function projectConversationDetail(args: {
   participants: NonNullable<ConversationDetailReport["participants"]>;
   previousSeq?: number;
   sourceTask?: ConversationDetailReport["sourceTask"];
+  space?: ConversationDetailReport["space"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
@@ -92,6 +95,8 @@ function projectConversationDetail(args: {
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
     ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
+    // The Space says what a Conversation is about, so it follows payload access.
+    ...(canExposePayload && args.space ? { space: args.space } : undefined),
   };
 }
 
@@ -119,6 +124,7 @@ async function readConversationDetailFromSql(
     metricsByRoot,
     participantsByConversation,
     sourceTask,
+    space,
     teamDomainByTeamId,
   ] = await Promise.all([
     readConversationAccessFromSql(getDb(), [conversationId], options.viewer),
@@ -142,6 +148,12 @@ async function readConversationDetailFromSql(
       conversationId,
       ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
+    isSpacesEnabled()
+      ? readConversationSpaceLocation(
+          getDb(),
+          record.rootConversationId ?? conversationId,
+        )
+      : Promise.resolve(undefined),
     resolveSlackTeamDomains(
       record.conversation.location?.provider === "slack"
         ? [record.conversation.location.teamId]
@@ -187,6 +199,7 @@ async function readConversationDetailFromSql(
     modelUsage,
     participants: participantsByConversation.get(conversationId) ?? [],
     ...(sourceTask ? { sourceTask } : undefined),
+    ...(space ? { space } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? undefined

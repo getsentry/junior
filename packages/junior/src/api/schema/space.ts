@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { CONVERSATION_KINDS } from "@/chat/spaces/types";
+import {
+  actorIdentitySchema,
+  conversationSummaryReportSchema,
+} from "./conversation";
+
+/** Kind of work of one Conversation in a Space. */
+export const conversationKindSchema = z.enum(CONVERSATION_KINDS);
 
 /** One active Space in dashboard reports. */
 export const spaceSummarySchema = z
@@ -22,15 +30,51 @@ export const spaceTreeReportSchema = z
   })
   .strict();
 
-/** One public Conversation listed in a Space. */
-export const spaceConversationSchema = z
-  .object({
-    conversationId: z.string().min(1),
+/**
+ * One public Conversation listed in a Space. It is a normal Conversation
+ * summary, plus its Space, Brief summary, and kind of work.
+ */
+export const spaceConversationSchema = conversationSummaryReportSchema
+  .extend({
     spaceId: z.string().min(1),
-    title: z.string().nullable(),
-    channelName: z.string().nullable(),
     summary: z.string().nullable(),
-    lastActivityAt: z.iso.datetime(),
+    kind: conversationKindSchema.nullable(),
+  })
+  .strict();
+
+/**
+ * Hard facts about a Space, from its public Conversations: repositories,
+ * channels, people, and kinds of work. Linked work comes from each
+ * Conversation's annotations.
+ */
+export const spaceFactsSchema = z
+  .object({
+    repositories: z.array(
+      z
+        .object({
+          name: z.string().min(1),
+          url: z.string().min(1),
+          conversationCount: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+    channels: z.array(
+      z
+        .object({
+          name: z.string().min(1),
+          conversationCount: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+    participants: z.array(actorIdentitySchema),
+    kinds: z.array(
+      z
+        .object({
+          kind: conversationKindSchema,
+          conversationCount: z.number().int().positive(),
+        })
+        .strict(),
+    ),
   })
   .strict();
 
@@ -44,6 +88,7 @@ export const spaceDetailReportSchema = z
         .strict(),
     ),
     children: z.array(spaceSummarySchema),
+    facts: spaceFactsSchema,
     conversations: z.array(spaceConversationSchema),
     /** Private Conversations in this subtree. They are counted, never listed. */
     privateConversationCount: z.number().int().nonnegative(),
@@ -57,4 +102,6 @@ export const spaceParamsSchema = z
 export type SpaceSummary = z.output<typeof spaceSummarySchema>;
 export type SpaceTreeReport = z.output<typeof spaceTreeReportSchema>;
 export type SpaceConversation = z.output<typeof spaceConversationSchema>;
+export type SpaceFacts = z.output<typeof spaceFactsSchema>;
+export type ConversationKindReport = z.output<typeof conversationKindSchema>;
 export type SpaceDetailReport = z.output<typeof spaceDetailReportSchema>;

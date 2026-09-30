@@ -3,6 +3,7 @@ CREATE TABLE "junior_conversation_spaces" (
 	"space_id" text NOT NULL,
 	"assigned_by" text NOT NULL,
 	"confidence" double precision,
+	"kind" text,
 	"pinned" boolean DEFAULT false NOT NULL,
 	"turn_id" text,
 	"assigned_at" timestamp with time zone DEFAULT now() NOT NULL

@@ -108,6 +108,8 @@ export const createConversationBodySchema =
   createConversationMessageBodySchema.safeExtend({
     /** New roots default public. Private roots stay participant-only. */
     visibility: z.enum(["private", "public"]).optional(),
+    /** Start the Conversation in this Space. The assignment is pinned. */
+    spaceId: z.string().trim().min(1).max(64).optional(),
   });
 
 export const acceptedConversationMessageSchema = z
@@ -767,6 +769,21 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
     sourceTask: conversationSourceTaskSchema.optional(),
+    /** Space of the root Conversation, from the top-level Space down. */
+    space: z
+      .object({
+        spaceId: z.string().min(1),
+        name: z.string().min(1),
+        path: z
+          .array(
+            z
+              .object({ spaceId: z.string().min(1), name: z.string().min(1) })
+              .strict(),
+          )
+          .min(1),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine(validateConversationEvents);

@@ -10,6 +10,8 @@ import {
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { isSpacesEnabled } from "@/chat/spaces/registration";
+import { assignConversations, resolveSpaceId } from "@/chat/spaces/store";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
@@ -45,8 +47,10 @@ export async function createConversationForViewer(
   attachmentStorage: AttachmentStorage,
 ): Promise<AcceptedConversationMessage> {
   const images = parseImages(body.images);
+  const spaceId = body.spaceId ? await requireSpaceId(body.spaceId) : undefined;
+  let accepted: AcceptedConversationMessage;
   try {
-    return await createAndEnqueueConversation(
+    accepted = await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
@@ -63,6 +67,24 @@ export async function createConversationForViewer(
   } catch (error) {
     throwApiError(500, "Unable to create conversation.", error);
   }
+  if (spaceId) {
+    // A person chose the Space, so the classifier must not move it.
+    await assignConversations(getDb(), {
+      conversationIds: [accepted.conversationId],
+      spaceId,
+      actor: { kind: "person", conversationId: accepted.conversationId },
+      pinned: true,
+    });
+  }
+  return accepted;
+}
+
+/** Resolve the requested Space before any Conversation is created. */
+async function requireSpaceId(requestedId: string): Promise<string> {
+  if (!isSpacesEnabled()) throwApiError(400, "Spaces are not enabled.");
+  const spaceId = await resolveSpaceId(getDb(), requestedId);
+  if (!spaceId) throwApiError(400, "Space not found.");
+  return spaceId;
 }
 
 /** Append one dashboard message to an existing conversation. */

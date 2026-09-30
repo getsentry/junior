@@ -549,7 +549,8 @@ describe("Conversation Brief task", () => {
       spaceHandle: null,
       parentHandle: null,
       name: "  SDKs ",
-      description: "Work on the client SDKs.",
+      description: "Conversations about client SDKs, releases.",
+      kind: "feature",
       confidence: 0.9,
       reason: "The Conversation is about an SDK release.",
     });
@@ -569,7 +570,7 @@ describe("Conversation Brief task", () => {
     expect(spaces).toEqual([
       expect.objectContaining({
         name: "SDKs",
-        description: "Work on the client SDKs.",
+        description: "client SDKs, releases",
         createdBy: "classifier",
         parentSpaceId: null,
       }),
@@ -619,6 +620,7 @@ describe("Conversation Brief task", () => {
       parentHandle: "S1",
       name: "Secret Launch",
       description: "Private plans.",
+      kind: "task",
       confidence: 0.6,
       reason: "Private reason text.",
     });

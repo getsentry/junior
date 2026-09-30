@@ -30,7 +30,9 @@ import {
   subtreeHeight,
   subtreeSpaceIds,
 } from "./tree";
+import type { ConversationBrief } from "@/chat/briefs/schema";
 import type {
+  ConversationKind,
   Space,
   SpaceActor,
   SpaceActorKind,
@@ -395,6 +397,7 @@ export interface ConversationSpaceAssignment {
   spaceId: string;
   assignedBy: SpaceActorKind;
   confidence?: number;
+  kind?: ConversationKind;
   pinned: boolean;
   assignedAtMs: number;
 }
@@ -416,6 +419,7 @@ export async function readConversationSpace(
     spaceId: row.spaceId,
     assignedBy: row.assignedBy,
     ...(row.confidence !== null ? { confidence: row.confidence } : undefined),
+    ...(row.kind ? { kind: row.kind } : undefined),
     pinned: row.pinned,
     assignedAtMs: row.assignedAt.getTime(),
   };
@@ -432,6 +436,8 @@ export async function assignConversations(
     spaceId: string;
     actor: SpaceActor;
     confidence?: number;
+    /** Kind of work from the classifier. Omit to keep the current kind. */
+    kind?: ConversationKind;
     pinned: boolean;
     turnId?: string;
     /** Store only for public Conversations. */
@@ -488,6 +494,7 @@ export async function assignConversations(
         spaceId: input.spaceId,
         assignedBy: input.actor.kind,
         confidence: input.confidence ?? null,
+        ...(input.kind ? { kind: input.kind } : undefined),
         pinned: input.pinned,
         turnId: input.turnId ?? null,
         assignedAt: new Date(),
@@ -520,6 +527,20 @@ export async function assignConversations(
   });
 }
 
+/**
+ * Record the kind of work of an assigned Conversation. A pinned assignment
+ * keeps its Space, but the classifier can still say what kind of work it is.
+ */
+export async function setConversationKind(
+  db: Db,
+  input: { conversationId: string; kind: ConversationKind },
+): Promise<void> {
+  await db
+    .update(juniorConversationSpaces)
+    .set({ kind: input.kind })
+    .where(eq(juniorConversationSpaces.conversationId, input.conversationId));
+}
+
 /** One Conversation shown in a Space. */
 export interface SpaceConversation {
   conversationId: string;
@@ -527,6 +548,8 @@ export interface SpaceConversation {
   title?: string;
   channelName?: string;
   summary?: string;
+  kind?: ConversationKind;
+  links: ConversationBrief["links"];
   lastActivityAtMs: number;
 }
 
@@ -555,6 +578,10 @@ export async function listSpaceConversations(
         channelName: juniorConversations.channelName,
         lastActivityAt: juniorConversations.lastActivityAt,
         summary: sql<string | null>`${briefs.content}->>'summary'`,
+        links: sql<
+          ConversationBrief["links"] | null
+        >`${briefs.content}->'links'`,
+        kind: juniorConversationSpaces.kind,
       })
       .from(juniorConversationSpaces)
       .innerJoin(
@@ -619,10 +646,41 @@ export async function listSpaceConversations(
       ...(row.title ? { title: row.title } : undefined),
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       ...(row.summary ? { summary: row.summary } : undefined),
+      ...(row.kind ? { kind: row.kind } : undefined),
+      links: Array.isArray(row.links) ? row.links : [],
       lastActivityAtMs: row.lastActivityAt.getTime(),
     })),
     privateCount: Number(privateRows[0]?.total ?? 0),
   };
+}
+
+/** Space of one root Conversation, with the path from the top level. */
+export interface ConversationSpaceLocation {
+  spaceId: string;
+  name: string;
+  path: Array<{ spaceId: string; name: string }>;
+}
+
+/** Read where one root Conversation sits in the Space tree, if anywhere. */
+export async function readConversationSpaceLocation(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<ConversationSpaceLocation | undefined> {
+  const assignment = await readConversationSpace(db, conversationId);
+  if (!assignment) return undefined;
+  const spaceId = await resolveSpaceId(db, assignment.spaceId);
+  if (!spaceId) return undefined;
+  const tree = await readSpaceTree(db);
+  const path: ConversationSpaceLocation["path"] = [];
+  for (
+    let node = tree.get(spaceId);
+    node;
+    node = node.parentSpaceId ? tree.get(node.parentSpaceId) : undefined
+  ) {
+    path.unshift({ spaceId: node.spaceId, name: node.name });
+  }
+  const space = path.at(-1);
+  return space ? { ...space, path } : undefined;
 }
 
 /** Resolve a merged Space id to the active Space that absorbed it. */

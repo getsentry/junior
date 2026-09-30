@@ -10,6 +10,7 @@ import {
   createSpace,
   readConversationSpace,
   readSpaceTree,
+  setConversationKind,
 } from "./store";
 import { findSiblingByName } from "./tree";
 import type { SpaceActor, SpaceNode } from "./types";
@@ -73,6 +74,7 @@ export async function applySpaceClassification(
     spaceId,
     actor: args.actor,
     confidence: classification.confidence,
+    kind: classification.conversationKind,
     pinned: false,
     ...(args.turnId ? { turnId: args.turnId } : undefined),
     ...(reason ? { reason } : undefined),
@@ -86,9 +88,10 @@ export async function applySpaceClassification(
 
 /**
  * Classify one root Conversation from its latest Brief and assign it. The
- * classifier runs only while the Conversation has no Space. Private
- * Conversations can only join existing Spaces, so their content never
- * names a public Space.
+ * classifier runs only while the Conversation has no Space, or has a pinned
+ * Space with no kind yet. A pinned Space stays; only the kind is recorded.
+ * Private Conversations can only join existing Spaces, so their content
+ * never names a public Space.
  */
 export async function assignSpaceFromBrief(
   db: JuniorDatabase,
@@ -101,7 +104,8 @@ export async function assignSpaceFromBrief(
     completeObject: ClassifierCompleteObject;
   },
 ): Promise<SpaceAssignmentResult | undefined> {
-  if (await readConversationSpace(db, args.conversationId)) {
+  const current = await readConversationSpace(db, args.conversationId);
+  if (current && (current.kind || !current.pinned)) {
     return undefined;
   }
   const tree = await readSpaceTree(db);
@@ -115,6 +119,13 @@ export async function assignSpaceFromBrief(
     allowCreate: args.isPublic,
   });
   if (!result.classification) {
+    return undefined;
+  }
+  if (current) {
+    await setConversationKind(db, {
+      conversationId: args.conversationId,
+      kind: result.classification.conversationKind,
+    });
     return undefined;
   }
   const applied = await applySpaceClassification(db, {

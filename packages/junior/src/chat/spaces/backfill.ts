@@ -26,7 +26,7 @@ import { applySpaceClassification } from "./assign";
 import { classifyConversationSpace } from "./classify";
 import { readSpaceTree } from "./store";
 import { buildSpaceTree, topLevelSpaceIds } from "./tree";
-import type { Space, SpaceNode } from "./types";
+import type { ConversationKind, Space, SpaceNode } from "./types";
 
 type ClassifierCompleteObject = Parameters<
   typeof classifyConversationSpace
@@ -120,12 +120,18 @@ export async function readSpaceBackfillCandidates(
 /** Outcome of one backfill run. */
 export interface SpaceBackfillResult {
   tree: Map<string, SpaceNode>;
+  /** Candidates handled before the run finished or stopped. */
+  processed: number;
+  /** Candidates the run was given. */
+  total: number;
   assigned: number;
   unassigned: number;
   createdSpaces: number;
   costUsd: number;
   /** Up to three public titles per Space, for review. */
   samples: Map<string, string[]>;
+  /** Classified Conversations per kind of work. */
+  kinds: Map<ConversationKind, number>;
 }
 
 /**
@@ -142,6 +148,8 @@ export async function runSpaceBackfill(
     completeObject: ClassifierCompleteObject;
     apply: boolean;
     onProgress?: (done: number, total: number) => void;
+    /** Checked before each candidate. True stops the run early. */
+    shouldStop?: () => boolean;
   },
 ): Promise<SpaceBackfillResult> {
   const initial = await readSpaceTree(db);
@@ -166,8 +174,12 @@ export async function runSpaceBackfill(
   let unassigned = 0;
   let createdSpaces = 0;
   let costUsd = 0;
+  let processed = 0;
+  const kinds = new Map<ConversationKind, number>();
 
   for (const [index, candidate] of args.candidates.entries()) {
+    if (args.shouldStop?.()) break;
+    processed = index + 1;
     if (!candidate.isPublic && tree.size === 0) {
       unassigned += 1;
       args.onProgress?.(index + 1, args.candidates.length);
@@ -192,6 +204,10 @@ export async function runSpaceBackfill(
       args.onProgress?.(index + 1, args.candidates.length);
       continue;
     }
+    kinds.set(
+      classification.conversationKind,
+      (kinds.get(classification.conversationKind) ?? 0) + 1,
+    );
 
     let spaceId: string;
     if (args.apply) {
@@ -234,7 +250,17 @@ export async function runSpaceBackfill(
     }
     args.onProgress?.(index + 1, args.candidates.length);
   }
-  return { tree, assigned, unassigned, createdSpaces, costUsd, samples };
+  return {
+    tree,
+    processed,
+    total: args.candidates.length,
+    assigned,
+    unassigned,
+    createdSpaces,
+    costUsd,
+    samples,
+    kinds,
+  };
 }
 
 /** Render a backfill result as a Markdown outline for review. */
@@ -245,10 +271,23 @@ export function renderSpaceBackfillMarkdown(
   const lines = [
     `# Space backfill (${options.apply ? "applied" : "dry run"})`,
     "",
+    ...(result.processed < result.total
+      ? [
+          `- Stopped early after ${result.processed} of ${result.total} Conversations to stay inside the Turn time limit. Run again to continue.`,
+        ]
+      : []),
     `- Conversations assigned: ${result.assigned}`,
     `- Conversations left unassigned: ${result.unassigned}`,
     `- Spaces created: ${result.createdSpaces}`,
     `- Spaces in tree: ${result.tree.size}`,
+    ...(result.kinds.size > 0
+      ? [
+          `- Kinds: ${[...result.kinds.entries()]
+            .sort((left, right) => right[1] - left[1])
+            .map(([kind, total]) => `${total} ${kind}`)
+            .join(", ")}`,
+        ]
+      : []),
     `- Model cost: $${result.costUsd.toFixed(4)}`,
     "",
   ];

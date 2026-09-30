@@ -11,6 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
+  ConversationKind,
   SpaceActorKind,
   SpaceChangeKind,
   SpaceStatus,
@@ -57,6 +58,8 @@ export const juniorConversationSpaces = pgTable(
       .references(() => juniorSpaces.spaceId),
     assignedBy: text("assigned_by").$type<SpaceActorKind>().notNull(),
     confidence: doublePrecision("confidence"),
+    /** Kind of work, set by the classifier. Null until it runs. */
+    kind: text("kind").$type<ConversationKind>(),
     /** A pinned assignment came from a request. The classifier never replaces it. */
     pinned: boolean("pinned").notNull().default(false),
     turnId: text("turn_id"),

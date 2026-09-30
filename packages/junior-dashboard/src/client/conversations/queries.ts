@@ -202,6 +202,7 @@ export function useCreateConversation() {
       message: string;
       images?: InputImage[];
       visibility?: "private" | "public";
+      spaceId?: string;
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
@@ -219,6 +220,11 @@ export function useCreateConversation() {
       void queryClient.invalidateQueries({
         queryKey: ["dashboard", "conversations"],
       });
+      if (args.spaceId) {
+        void queryClient.invalidateQueries({
+          queryKey: ["dashboard", "spaces"],
+        });
+      }
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(accepted.conversationId),

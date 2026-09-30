@@ -21,6 +21,7 @@ import { ConversationBrief } from "./ConversationBrief";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
+import { ConversationSpaceLink } from "./ConversationSpaceLink";
 import {
   ConversationAnnotations,
   ConversationPrivacyChip,
@@ -213,6 +214,11 @@ export function ConversationPage(props: {
                 />
               }
               search={search}
+              space={
+                detail.data?.space ? (
+                  <ConversationSpaceLink space={detail.data.space} />
+                ) : null
+              }
               stats={
                 hasConversationStats({
                   conversation,

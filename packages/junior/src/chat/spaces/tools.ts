@@ -279,7 +279,7 @@ export function createSpaceTools(context: ToolRuntimeContext): ToolRegistry {
             .string()
             .trim()
             .max(MAX_SPACE_DESCRIPTION_CHARS)
-            .describe("One sentence: which Conversations belong here."),
+            .describe("3 to 8 comma-separated keywords, not a sentence."),
           parent_space_id: spaceIdSchema
             .nullable()
             .optional()

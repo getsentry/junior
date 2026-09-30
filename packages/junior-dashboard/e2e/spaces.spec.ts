@@ -26,6 +26,18 @@ test("browses nested Spaces like a forum", async ({ page, dashboard }) => {
   ).toBeVisible();
   await screenshot(page, "spaces-detail");
 
+  // Kind tags filter the list to one kind of work.
+  const conversations = page.getByRole("list").filter({
+    has: page.getByRole("link", { name: /Cloudflare SDK release/ }),
+  });
+  await expect(conversations.getByRole("listitem")).toHaveCount(3);
+  const bugFilter = page.getByRole("button", { name: /Bug/ });
+  await bugFilter.click();
+  await expect(bugFilter).toHaveAttribute("aria-pressed", "true");
+  await expect(conversations.getByRole("listitem")).toHaveCount(1);
+  await bugFilter.click();
+  await expect(conversations.getByRole("listitem")).toHaveCount(3);
+
   await path.getByRole("link", { name: "Spaces" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/spaces`);
 });

@@ -35,9 +35,20 @@ export function normalizeSpaceName(name: string): string {
   return normalized;
 }
 
-/** Collapse whitespace and cap one Space description. */
+/** Lead-in phrases that add nothing to a Space description. */
+const DESCRIPTION_FILLER =
+  /^(?:all\s+)?(?:conversations|discussions|questions|threads|work)\s+(?:about|on|regarding|related to|covering|for|around)\s+/i;
+
+/**
+ * Collapse whitespace, drop lead-ins such as "Conversations about", and cap
+ * one Space description. Descriptions are terse keywords, not sentences.
+ */
 export function normalizeSpaceDescription(description: string): string {
-  const normalized = description.replace(/\s+/g, " ").trim();
+  const normalized = description
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(DESCRIPTION_FILLER, "")
+    .replace(/\.$/, "");
   if (normalized.length > MAX_SPACE_DESCRIPTION_CHARS) {
     throw new SpaceInputError(
       `Space description must be at most ${MAX_SPACE_DESCRIPTION_CHARS} characters`,

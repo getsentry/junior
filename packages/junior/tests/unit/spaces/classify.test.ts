@@ -1,6 +1,7 @@
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { describe, expect, it } from "vitest";
 import {
+  briefRepositories,
   interpretClassification,
   renderSpaceOutline,
   spaceClassificationSchema,
@@ -43,6 +44,7 @@ function output(
     parentHandle: null,
     name: null,
     description: null,
+    kind: "question",
     confidence: 0.8,
     reason: "Fits.",
     ...overrides,
@@ -87,14 +89,15 @@ describe("Space classification", () => {
         decision: "create",
         parentHandle: "S2",
         name: " Cloudflare  Workers ",
-        description: "Cloudflare Workers support.",
+        description: "Conversations about Cloudflare Workers, edge runtime.",
         confidence: 4,
       }),
     ).toEqual({
       kind: "create",
       parentSpaceId: "js",
       name: "Cloudflare Workers",
-      description: "Cloudflare Workers support.",
+      description: "Cloudflare Workers, edge runtime",
+      conversationKind: "question",
       confidence: 1,
       reason: "Fits.",
     });
@@ -115,5 +118,16 @@ describe("Space classification", () => {
     expect(
       interpret({ decision: "create", parentHandle: null, name: "Top" }, false),
     ).toBeUndefined();
+  });
+
+  it("reads repositories from Brief links, most linked first", () => {
+    expect(
+      briefRepositories([
+        { url: "https://github.com/getsentry/sentry/issues/1" },
+        { url: "https://github.com/getsentry/junior/pull/1988" },
+        { url: "https://github.com/getsentry/junior.git" },
+        { url: "https://docs.sentry.io/" },
+      ]),
+    ).toEqual(["getsentry/junior", "getsentry/sentry"]);
   });
 });

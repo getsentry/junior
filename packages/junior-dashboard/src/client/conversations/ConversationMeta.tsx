@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { Link } from "react-router";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationSummaryReport,
+} from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
@@ -393,9 +396,14 @@ function SidebarAnnotationIcon(props: {
   );
 }
 
-/** Render resource-link annotations under the conversation title. */
+/**
+ * Render resource-link annotations, such as pull requests, for one
+ * conversation or for a group of conversations.
+ */
 export function ConversationAnnotations(props: {
-  detail: ConversationDetailReport | undefined;
+  detail:
+    | Pick<ConversationSummaryReport, "annotations" | "sidebarAnnotations">
+    | undefined;
   layout?: "list" | "strip";
 }) {
   const links =

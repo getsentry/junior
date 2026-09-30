@@ -2,7 +2,19 @@
 export type SpaceStatus = "active" | "merged" | "archived";
 
 /** Who changed the Space tree or an assignment. */
-export type SpaceActorKind = "classifier" | "agent" | "backfill";
+export type SpaceActorKind = "classifier" | "agent" | "backfill" | "person";
+
+/** What kind of work a Conversation was, for quick scanning in a Space. */
+export const CONVERSATION_KINDS = [
+  "question",
+  "investigation",
+  "bug",
+  "feature",
+  "task",
+] as const;
+
+/** One kind of work a Conversation was. */
+export type ConversationKind = (typeof CONVERSATION_KINDS)[number];
 
 /** One kind of append-only Space change. */
 export type SpaceChangeKind =

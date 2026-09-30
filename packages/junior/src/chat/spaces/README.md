@@ -33,8 +33,9 @@ The example app and the `junior init` scaffold enable both.
   resolves to the surviving Space.
 - `junior_conversation_spaces` stores the current Space of one root
   Conversation. A pinned assignment came from a request. The classifier never
-  replaces a pinned assignment. Rows cascade when their Conversation is
-  deleted.
+  replaces a pinned assignment. The row also stores the kind of work:
+  `question`, `investigation`, `bug`, `feature`, or `task`. Rows cascade when
+  their Conversation is deleted.
 - `junior_space_changes` is the append-only log. It records each create,
   update, move, merge, archive, and assignment with the actor, the
   Conversation where the change was requested, and before and after values.
@@ -43,8 +44,9 @@ The example app and the `junior init` scaffold enable both.
 ## Classification
 
 `briefs.updateBrief` calls `assignSpaceFromBrief` after it stores a Brief.
-The classifier runs only while the root Conversation has no Space, so each
-Conversation costs at most one classifier call. The call uses the default
+The classifier runs only while the root Conversation has no Space, or has a
+pinned Space with no kind yet. A pinned Space stays, and only the kind is
+stored. So each Conversation costs at most one classifier call. The call uses the default
 model with the `junior.space_assign` prompt name. The task emits a
 `spaces/space_assigned` event with the path, confidence, model id, and cost.
 
@@ -54,6 +56,10 @@ listed Space always has its parent listed. The model either picks an existing
 Space or proposes a new Space under an existing parent. A proposed Space that
 already exists under that parent is reused.
 
+The prompt groups by repository or product first. GitHub repositories come
+from the Brief links. Space descriptions are short keyword lists.
+`normalizeSpaceDescription` removes lead-ins such as "Conversations about".
+
 ## Privacy
 
 - Private content never names a Space. A non-public Conversation can join an
@@ -61,14 +67,20 @@ already exists under that parent is reused.
   tools for create and update are absent in a non-public Conversation.
 - The change log keeps a reason only when the requesting Conversation is
   public. It keeps Conversation ids for every assignment.
-- Browsing shows public Conversations with their latest Brief summary. It only
-  counts private Conversations. Tree counts include private Conversations.
+- Browsing shows public Conversations with their latest Brief summary, kind,
+  and linked work. It only counts private Conversations. Tree counts include
+  private Conversations.
+- Space facts (repositories, channels, people, and kinds) come only from the
+  listed public Conversations.
+- A Conversation detail includes its Space path only when the viewer can see
+  the Conversation content.
 
 ## Tools and prompt context
 
 The deferred `spaces` tool source has `listSpaces`, `getSpace`,
 `createSpace`, `updateSpace`, `moveSpace`, `mergeSpace`, `archiveSpace`, and
-`assignConversationSpace`. A tool assignment is pinned.
+`assignConversationSpace`. A tool assignment is pinned. A Conversation that a
+person starts from a Space in the dashboard is also pinned to that Space.
 
 When the current Conversation has a Space, the `userPrompt` hook adds the
 Space path and the descriptions of the Space and its ancestors.
@@ -89,8 +101,9 @@ have grown at runtime.
 
 Apps that enable the `operator-tools` experimental feature also get the
 `runSpaceBackfill` operator tool in non-public Conversations. It runs the same
-backfill inside the deployment, with the default model, at most 50
-Conversations per call. Use it on a Preview to try the backfill against the
+backfill inside the deployment, with the default model, at most 200
+Conversations per call. It stops before each next Conversation when it has
+used 60% of the Turn timeout, and reports how many it handled. Use it on a Preview to try the backfill against the
 Preview's copy of the database. `backfill-tool.ts` owns it.
 
 ## Layout

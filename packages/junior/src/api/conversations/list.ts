@@ -1,5 +1,15 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -82,6 +92,7 @@ async function conversationRows(
   filter: ConversationFeedMembership | undefined,
   query?: string,
   includePrivateBriefs = false,
+  conversationIds?: readonly string[],
 ) {
   return db
     .select({
@@ -108,6 +119,9 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
+        conversationIds
+          ? inArray(juniorConversations.conversationId, [...conversationIds])
+          : undefined,
         conversationFeedMembershipFilter(status, filter),
         query
           ? or(
@@ -275,10 +289,13 @@ function conversationFeedFilter(options: {
  * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
  * keep only roots linked to actorEmail before applying the limit. Membership is
  * root-actor ownership or a materialized participant row for that person.
+ * With `conversationIds`, the feed lists exactly those roots for any viewer,
+ * and the viewer only decides access to private content.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
+    conversationIds?: readonly string[];
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -287,8 +304,17 @@ export async function readConversationFeedFromSql(
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const db = getDb();
-  const filter = conversationFeedFilter(options);
+  const filter = options.conversationIds
+    ? undefined
+    : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
+  if (options.conversationIds?.length === 0) {
+    return {
+      conversations: [],
+      generatedAt: new Date(nowMs).toISOString(),
+      source: "conversation_index",
+    };
+  }
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
@@ -296,6 +322,7 @@ export async function readConversationFeedFromSql(
     filter,
     query,
     filter?.kind === "viewer",
+    options.conversationIds,
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(

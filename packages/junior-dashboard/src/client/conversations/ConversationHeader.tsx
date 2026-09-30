@@ -36,6 +36,8 @@ export function ConversationHeader(props: {
   linkedWork?: ReactNode;
   lastActivityAt?: string;
   sentryConversationUrl?: string;
+  /** Space path of the conversation, from the top-level Space down. */
+  space?: ReactNode;
   live: boolean;
   meta?: ReactNode;
   onSearchChange(value: string): void;
@@ -171,6 +173,7 @@ export function ConversationHeader(props: {
       >
         <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
           <div className="min-w-0">
+            {props.space ? <div className="mb-1.5">{props.space}</div> : null}
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
                 {props.title}

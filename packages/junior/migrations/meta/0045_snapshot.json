@@ -1,5 +1,5 @@
 {
-  "id": "29a8b244-9593-4003-b338-d8a19608f342",
+  "id": "eb959817-4376-4783-bd6c-34cc7f27f07e",
   "prevId": "b83d9902-a77d-4fbc-8c38-d38d3d472201",
   "version": "7",
   "dialect": "postgresql",
@@ -1865,6 +1865,12 @@
         "confidence": {
           "name": "confidence",
           "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
