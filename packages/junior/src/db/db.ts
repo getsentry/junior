@@ -2,8 +2,8 @@
  * Shared Junior SQL boundary.
  *
  * Feature schemas compose into `juniorSqlSchema`, and feature stores should use
- * Drizzle through `db()`. Raw SQL exists on this executor for schema migration
- * and catalog checks only.
+ * Drizzle through `db()`. Raw SQL exists on this executor for schema migration,
+ * catalog checks, and the opt-in `runOperatorSql` tool only.
  */
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
