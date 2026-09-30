@@ -298,12 +298,14 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   );
 }
 
-/** Serve the dashboard favicon. */
+/** Serve the dashboard favicon from Junior's color icon. */
 export function renderFavicon(): Response {
-  return new Response(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#000000"/><text x="16" y="20.5" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
-    { headers: { "content-type": "image/svg+xml" } },
-  );
+  return new Response(readDashboardColorIcon(), {
+    headers: {
+      "cache-control": "public, max-age=0, must-revalidate",
+      "content-type": "image/png",
+    },
+  });
 }
 
 /** Render a browser-readable access denied page for blocked dashboard users. */

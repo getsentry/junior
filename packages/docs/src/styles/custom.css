@@ -55,7 +55,7 @@ html:root[data-theme="light"] {
 
 .site-title::before {
   aspect-ratio: 1;
-  background: url("/junior-mark.svg") center / contain no-repeat;
+  background: url("/junior-mark.png") center / contain no-repeat;
   content: "";
   display: inline-block;
   flex: 0 0 auto;
@@ -346,13 +346,14 @@ body:has(.jr-home) main {
 .jr-mascot {
   filter: drop-shadow(10px 10px 0 var(--jr-black));
   margin: 0 auto;
-  max-width: 18rem;
+  max-width: 16rem;
   position: relative;
   transform: rotate(3deg);
 }
 
 .jr-mascot img {
   display: block;
+  height: auto;
   margin: 0;
   width: 100%;
 }
@@ -365,9 +366,9 @@ body:has(.jr-home) main {
   font-weight: 900;
   padding: 0.45rem 0.6rem;
   position: absolute;
-  right: -1.5rem;
+  right: -2.5rem;
   text-transform: uppercase;
-  top: 1rem;
+  top: 58%;
   transform: rotate(9deg);
   z-index: 2;
 }
