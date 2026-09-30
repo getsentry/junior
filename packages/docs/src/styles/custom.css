@@ -1,44 +1,44 @@
+/* Colors come from the mascot in brand/junior-fullbody.png. */
 :root {
-  --jr-acid: #ccff00;
-  --jr-blue: #0033ff;
-  --jr-pink: #ff3cac;
+  --jr-yellow: #fcb818;
+  --jr-violet: #6c4c9c;
+  --jr-pink: #ec4c98;
   --jr-cream: #fff7df;
-  --jr-black: #000;
-  --jr-purple: #695cff;
-  --ve-accent-soft: rgba(204, 255, 0, 0.16);
-  --ve-heading-accent: rgba(204, 255, 0, 0.42);
+  --jr-black: #181024;
+  --ve-accent-soft: rgba(252, 184, 24, 0.14);
+  --ve-heading-accent: rgba(108, 76, 156, 0.7);
 }
 
 html:root,
 html:root[data-theme="dark"],
 html:root[data-theme="light"] {
-  --ve-accent-soft: rgba(204, 255, 0, 0.16);
-  --ve-heading-accent: rgba(204, 255, 0, 0.42);
+  --ve-accent-soft: rgba(252, 184, 24, 0.14);
+  --ve-heading-accent: rgba(108, 76, 156, 0.7);
 }
 
 ::selection {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   color: var(--jr-black);
 }
 
 :focus-visible {
-  outline-color: var(--jr-acid);
+  outline-color: var(--jr-yellow);
 }
 
 .sidebar [aria-current="page"],
 .sidebar [aria-current="page"]:hover,
 .sidebar [aria-current="page"]:focus {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   color: var(--jr-black);
 }
 
 .sl-markdown-content a:not(:where(.not-content *)) {
-  text-decoration-color: rgba(204, 255, 0, 0.65);
+  text-decoration-color: rgba(252, 184, 24, 0.65);
 }
 
 .sl-markdown-content a:hover:not(:where(.not-content *)) {
-  color: var(--jr-acid);
-  text-decoration-color: var(--jr-acid);
+  color: var(--jr-yellow);
+  text-decoration-color: var(--jr-yellow);
 }
 
 .sl-markdown-content details.event,
@@ -67,9 +67,14 @@ body:has(.jr-home) {
   color: var(--jr-cream);
 }
 
-body:has(.jr-home) .header {
+body:has(.jr-home) header.header {
   background: var(--ve-bg-soft);
-  border-bottom: 4px solid var(--jr-acid);
+  border-bottom: 1px solid var(--ve-line);
+}
+
+/* The docs heading marker is for article pages, not the homepage. */
+body:has(.jr-home) .sl-markdown-content h2::before {
+  content: none;
 }
 
 body:has(.jr-home) .site-title,
@@ -157,7 +162,7 @@ body:has(.jr-home) main {
 }
 
 .jr-home-mega {
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   display: block;
   font-family: "Arial Black", Impact, Haettenschweiler, sans-serif;
   font-size: clamp(5.2rem, 18vw, 16rem);
@@ -166,7 +171,7 @@ body:has(.jr-home) main {
   letter-spacing: -0.09em;
   line-height: 0.72;
   margin-inline: auto;
-  text-shadow: clamp(8px, 1.5vw, 22px) clamp(8px, 1.5vw, 22px) 0 var(--jr-blue);
+  text-shadow: clamp(8px, 1.5vw, 22px) clamp(8px, 1.5vw, 22px) 0 var(--jr-violet);
   transform: scaleX(1.08);
   transform-origin: center;
   width: max-content;
@@ -250,7 +255,7 @@ body:has(.jr-home) main {
 }
 
 .jr-scribble-arrow {
-  color: var(--jr-blue);
+  color: var(--jr-violet);
   font-size: clamp(5rem, 10vw, 9rem);
   left: 8%;
   top: -3rem;
@@ -310,7 +315,7 @@ body:has(.jr-home) main {
 }
 
 .jr-sticker-kicker {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   border: 3px solid var(--jr-black);
   color: #fff;
   font-size: 0.72rem;
@@ -322,7 +327,7 @@ body:has(.jr-home) main {
 }
 
 .jr-flow-arrow {
-  color: var(--jr-blue);
+  color: var(--jr-violet);
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.75rem;
   font-weight: 900;
@@ -338,8 +343,12 @@ body:has(.jr-home) main {
   width: 100%;
 }
 
-.jr-flow-arrow-green {
-  color: var(--jr-acid);
+.jr-flow-arrow-pink {
+  color: var(--jr-pink);
+}
+
+.jr-flow-arrow-yellow {
+  color: var(--jr-yellow);
   transform: rotate(6deg);
 }
 
@@ -426,7 +435,7 @@ body:has(.jr-home) main {
 .jr-ticker {
   background: var(--jr-black);
   border-block: 5px solid var(--jr-black);
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   display: flex;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: clamp(1.15rem, 2.5vw, 2rem);
@@ -455,7 +464,7 @@ body:has(.jr-home) main {
 }
 
 .jr-section-number {
-  color: var(--jr-acid) !important;
+  color: var(--jr-yellow) !important;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
@@ -534,7 +543,7 @@ body:has(.jr-home) main {
   background: #1a1d21;
   border: 5px solid var(--jr-black);
   border-radius: 0;
-  box-shadow: 14px 14px 0 var(--jr-blue);
+  box-shadow: 14px 14px 0 var(--jr-violet);
   color: #c9cdd1;
   font-size: 0.9375rem;
   line-height: 1.46668;
@@ -591,7 +600,7 @@ body:has(.jr-home) main {
 }
 
 .slk-msg-junior {
-  background: rgba(105, 92, 255, 0.13);
+  background: rgba(108, 76, 156, 0.13);
   border-left: 6px solid var(--jr-pink);
 }
 
@@ -638,7 +647,7 @@ body:has(.jr-home) main {
 }
 
 .slk-app-badge {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   color: #fff;
   font-size: 0.65rem;
   font-weight: 800;
@@ -662,19 +671,19 @@ body:has(.jr-home) main {
 }
 
 .slk-mention {
-  background: rgba(0, 51, 255, 0.24);
-  color: #8e9fff;
+  background: rgba(108, 76, 156, 0.3);
+  color: #c9b6ee;
   font-weight: 700;
   padding: 0 0.12em;
 }
 
 .slk-mention-user {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
   color: #000;
 }
 
 .slk-tool-call {
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   font-size: 0.78rem;
   font-weight: 700;
   margin-top: 0.45rem;
@@ -710,8 +719,8 @@ body:has(.jr-home) main {
   transform: rotate(-1deg);
 }
 
-.jr-card-blue {
-  background: var(--jr-blue);
+.jr-card-violet {
+  background: var(--jr-violet);
   color: #fff;
 }
 
@@ -725,7 +734,7 @@ body:has(.jr-home) main {
 
 .jr-card > span {
   background: var(--jr-black);
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   display: inline-block;
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 1.3rem;
@@ -742,8 +751,8 @@ body:has(.jr-home) main {
   word-break: normal;
 }
 
-.jr-card-blue h2,
-.jr-card-blue p {
+.jr-card-violet h2,
+.jr-card-violet p {
   color: #fff !important;
 }
 
@@ -756,7 +765,7 @@ body:has(.jr-home) main {
 }
 
 .jr-integrations {
-  background: var(--jr-blue);
+  background: var(--jr-violet);
   border-block: 5px solid var(--jr-black);
   box-sizing: border-box;
   margin: 0 calc(50% - 50vw) clamp(5rem, 9vw, 9rem);
@@ -779,7 +788,7 @@ body:has(.jr-home) main {
 }
 
 .jr-integrations-heading > div > span {
-  color: var(--jr-acid);
+  color: var(--jr-yellow);
   font-family: "Arial Black", Impact, sans-serif;
   font-size: 0.8rem;
   font-weight: 900;
@@ -840,7 +849,7 @@ body:has(.jr-home) main {
 }
 
 .jr-integration-card:nth-child(3n + 2) {
-  background: var(--jr-acid);
+  background: var(--jr-yellow);
 }
 
 .jr-integration-card:nth-child(4n) {
@@ -1004,7 +1013,7 @@ body:has(.jr-home) footer {
   .jr-home-mega {
     font-size: clamp(4rem, 22vw, 8rem);
     letter-spacing: -0.1em;
-    text-shadow: 8px 8px 0 var(--jr-blue);
+    text-shadow: 8px 8px 0 var(--jr-violet);
   }
 
   :root:not([data-has-sidebar]) .hero .tagline {
