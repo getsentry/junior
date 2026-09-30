@@ -1,5 +1,6 @@
-import { desc, eq, gte, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
@@ -128,12 +129,27 @@ function ownedByUserSql(conversationIds: SQL, userId: string): SQL {
   )`;
 }
 
-function ownershipFilter(userId: string | undefined): SQL | undefined {
-  if (!userId) return undefined;
-  return ownedByUserSql(sql`${juniorCodeChanges.conversationIds}`, userId);
+/** Limit code changes to one person's conversations or one repository. */
+function changeScopeFilter(args: {
+  repositoryId?: string;
+  userId?: string;
+}): SQL | undefined {
+  return and(
+    args.userId
+      ? ownedByUserSql(sql`${juniorCodeChanges.conversationIds}`, args.userId)
+      : undefined,
+    args.repositoryId
+      ? eq(juniorCodeChanges.repositoryId, args.repositoryId)
+      : undefined,
+  );
 }
 
-async function readCodeWindows(args: { nowMs: number; userId?: string }) {
+/** Read windowed code summary and activity buckets for an optional scope. */
+export async function readCodeWindows(args: {
+  nowMs: number;
+  repositoryId?: string;
+  userId?: string;
+}) {
   const db = getDb();
   const windowEnd = new Date(args.nowMs);
   const windowStart = new Date(args.nowMs - WINDOW_DAYS * DAY_MS);
@@ -141,7 +157,7 @@ async function readCodeWindows(args: { nowMs: number; userId?: string }) {
     args.nowMs - (ACTIVITY_DAYS - 1) * DAY_MS,
   );
   const changes = juniorCodeChanges;
-  const ownership = ownershipFilter(args.userId);
+  const scope = changeScopeFilter(args);
   const conversationTreeCost = conversationTreeCostExpr();
   const activityHourEnd = new Date(args.nowMs);
   activityHourEnd.setUTCMinutes(0, 0, 0);
@@ -160,7 +176,7 @@ async function readCodeWindows(args: { nowMs: number; userId?: string }) {
           ${changes.state},
           ${changes.conversationIds} AS conversation_ids
         FROM ${changes}
-        ${ownership ? sql`WHERE ${ownership}` : sql``}
+        ${scope ? sql`WHERE ${scope}` : sql``}
       ), change_costs AS (
         SELECT
           recent_changes.id,
@@ -226,18 +242,18 @@ async function readCodeWindows(args: { nowMs: number; userId?: string }) {
           SELECT ${changes.openedAt} AS event_at, 'created'::text AS kind
           FROM ${changes}
           WHERE ${changes.openedAt} >= ${activityStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
           UNION ALL
           SELECT ${changes.mergedAt} AS event_at, 'merged'::text AS kind
           FROM ${changes}
           WHERE ${changes.mergedAt} >= ${activityStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
           UNION ALL
           SELECT ${changes.closedAt} AS event_at, 'closed'::text AS kind
           FROM ${changes}
           WHERE ${changes.state} = 'closed'
             AND ${changes.closedAt} >= ${activityStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
         ) AS events
         GROUP BY date_trunc('day', event_at AT TIME ZONE 'UTC')
       )
@@ -267,18 +283,18 @@ async function readCodeWindows(args: { nowMs: number; userId?: string }) {
           SELECT ${changes.openedAt} AS event_at, 'created'::text AS kind
           FROM ${changes}
           WHERE ${changes.openedAt} >= ${activityHourStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
           UNION ALL
           SELECT ${changes.mergedAt} AS event_at, 'merged'::text AS kind
           FROM ${changes}
           WHERE ${changes.mergedAt} >= ${activityHourStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
           UNION ALL
           SELECT ${changes.closedAt} AS event_at, 'closed'::text AS kind
           FROM ${changes}
           WHERE ${changes.state} = 'closed'
             AND ${changes.closedAt} >= ${activityHourStart}
-            ${ownership ? sql`AND ${ownership}` : sql``}
+            ${scope ? sql`AND ${scope}` : sql``}
         ) AS events
         GROUP BY date_trunc('hour', event_at AT TIME ZONE 'UTC')
       )
@@ -321,6 +337,43 @@ async function readCodeWindows(args: { nowMs: number; userId?: string }) {
     },
     windowEnd,
     windowStart,
+  };
+}
+
+/** Columns read for one code change report row. */
+export const codeChangeReportColumns = {
+  closedAt: juniorCodeChanges.closedAt,
+  id: juniorCodeChanges.id,
+  mergedAt: juniorCodeChanges.mergedAt,
+  number: juniorCodeChanges.number,
+  openedAt: juniorCodeChanges.openedAt,
+  provider: juniorCodeChanges.provider,
+  repository: juniorCodeRepositories.name,
+  state: juniorCodeChanges.state,
+  title: juniorCodeChanges.title,
+  url: juniorCodeChanges.url,
+};
+
+/** Convert one code change row to its report shape. */
+export function codeChangeReport(change: {
+  closedAt: Date | null;
+  id: string;
+  mergedAt: Date | null;
+  number: number;
+  openedAt: Date;
+  provider: string;
+  repository: string;
+  state: CodeChangeState;
+  title: string | null;
+  url: string | null;
+}) {
+  return {
+    ...change,
+    closedAt: change.closedAt?.toISOString(),
+    mergedAt: change.mergedAt?.toISOString(),
+    openedAt: change.openedAt.toISOString(),
+    title: change.title ?? undefined,
+    url: change.url ?? undefined,
   };
 }
 
@@ -392,18 +445,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
       LIMIT 25
     `),
     db
-      .select({
-        closedAt: changes.closedAt,
-        id: changes.id,
-        mergedAt: changes.mergedAt,
-        number: changes.number,
-        openedAt: changes.openedAt,
-        provider: changes.provider,
-        repository: repositories.name,
-        state: changes.state,
-        title: changes.title,
-        url: changes.url,
-      })
+      .select(codeChangeReportColumns)
       .from(changes)
       .innerJoin(repositories, eq(changes.repositoryId, repositories.id))
       .where(
@@ -421,14 +463,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
     activitySixHours: windows.activitySixHours,
-    changes: recentChanges.map((change) => ({
-      ...change,
-      closedAt: change.closedAt?.toISOString(),
-      mergedAt: change.mergedAt?.toISOString(),
-      openedAt: change.openedAt.toISOString(),
-      title: change.title ?? undefined,
-      url: change.url ?? undefined,
-    })),
+    changes: recentChanges.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),
     repositories: z
       .array(repositoryRowSchema)

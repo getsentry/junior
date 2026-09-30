@@ -6,6 +6,7 @@ import {
   conversationStatsReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -111,6 +112,48 @@ export function useCodeOverviewData() {
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
+    retry: false,
+  });
+}
+
+/** Fetch code activity, recent changes, and Workspaces for one repository. */
+export function useCodeRepositoryData(repositoryId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(repositoryId),
+    queryKey: ["dashboard", "code", "repositories", repositoryId],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codeRepositoryReportSchema,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch conversations linked to one repository through its code changes. */
+export function useCodeRepositoryConversationsData(
+  repositoryId: string | undefined,
+  search = "",
+) {
+  return useQuery({
+    enabled: Boolean(repositoryId),
+    queryKey: [
+      "dashboard",
+      "conversations",
+      "code-repository",
+      { repositoryId, search },
+    ],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ codeRepositoryId: repositoryId! });
+      if (search) params.set("q", search);
+      return fetchDashboardJson(
+        conversationFeedSchema,
+        `/api/conversations?${params.toString()}`,
+        signal,
+      );
+    },
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }

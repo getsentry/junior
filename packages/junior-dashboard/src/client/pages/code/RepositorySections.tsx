@@ -1,7 +1,11 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
 import type { ReactNode } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 
+import {
+  selectTimeSeries,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionTitle } from "../../components/layout/SectionTitle";
@@ -9,14 +13,12 @@ import { ConversationSidebarAnnotations } from "../../conversations/Conversation
 import { ConversationListStatusIcon } from "../../conversations/ConversationListStatusIcon";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
-  automationPath,
   conversationDisplayTitle,
   formatRelativeTime,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../../format";
 import type { Conversation } from "../../types";
-import { AutomationRow } from "../automations/AutomationRow";
 
 /** Titled repository card with an optional "View all" link to its tab. */
 export function RepositorySection(props: {
@@ -91,26 +93,16 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
   );
 }
 
-/**
- * Automation cards that open the automation, where its runs live. Delete is
- * not offered here, so the row delete action is a no-op.
- */
-export function RepositoryAutomationList(props: {
-  automations: AutomationSummary[];
-}) {
-  const navigate = useNavigate();
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-2" role="list">
-      {props.automations.map((automation) => (
-        <AutomationRow
-          automation={automation}
-          deleting={false}
-          key={`${automation.kind}:${automation.id}`}
-          onDelete={() => undefined}
-          onSelect={() => navigate(automationPath(automation.id))}
-          selected={false}
-        />
-      ))}
-    </div>
-  );
+/** Chart buckets for the selected range from a repository report. */
+export function repositoryActivity(
+  data: CodeRepositoryReport,
+  range: TimeRangeDays,
+) {
+  return selectTimeSeries({
+    days: data.activityDays,
+    hours: data.activityHours,
+    sixHours: data.activitySixHours,
+    range,
+    emptySixHour: (date) => ({ closed: 0, created: 0, date, merged: 0 }),
+  });
 }

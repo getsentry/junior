@@ -31,7 +31,8 @@ import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
-import { RepositoryPage, repositoryTabs } from "./pages/code/RepositoryPage";
+import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
+import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -373,14 +374,14 @@ export function DashboardShell() {
             path="/"
           />
           <Route element={<CodePage />} path="/code" />
-          {repositoryTabs.map((tab) => (
+          {codeRepositoryTabs.map((tab) => (
             <Route
               element={<RepositoryPage tab={tab} />}
               key={tab}
               path={
                 tab === "overview"
-                  ? "/code/:owner/:repo"
-                  : `/code/:owner/:repo/${tab}`
+                  ? "/code/:repositoryId"
+                  : `/code/:repositoryId/${tab}`
               }
             />
           ))}

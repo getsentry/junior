@@ -1,8 +1,7 @@
 import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
+import { Link } from "react-router";
 import { useCodeOverviewData } from "../../api";
-import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageRouteLoading } from "../../components/PageRouteLoading";
 import {
@@ -13,24 +12,14 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
-import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
-
-function mergeRate(value: number | undefined): string {
-  return value === undefined ? "—" : `${Math.round(value * 100)}%`;
-}
-
-function medianMergeTime(value: number | undefined): string {
-  return formatDuration(value) || "—";
-}
-
-function costUsd(value: number | undefined): string {
-  return (
-    formatCostSummary(value === undefined ? undefined : { total: value }) || "—"
-  );
-}
+import {
+  CodeSummaryCards,
+  formatCodeCost,
+  formatMergeRate,
+} from "./CodeSummaryCards";
+import { codeRepositoryPath } from "./codeRepositoryRoutes";
 
 /** Render code analytics and recent code changes. */
 export function CodePage() {
@@ -71,32 +60,7 @@ function CodeOverview(props: {
   const data = props.data;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          detail="In the last 30 days"
-          icon={GitPullRequest}
-          label="Created"
-          value={formatCompactNumber(data.summary.created)}
-        />
-        <StatCard
-          detail="Share of completed changes that merged"
-          icon={LibraryBig}
-          label="Merge rate"
-          value={mergeRate(data.summary.mergeRate)}
-        />
-        <StatCard
-          detail="Median time from open to merge in the last 30 days"
-          icon={Timer}
-          label="Median merge time"
-          value={medianMergeTime(data.summary.medianMergeTimeMs)}
-        />
-        <StatCard
-          detail="Conversation cost for changes opened in the last 30 days"
-          icon={Coins}
-          label="Cost"
-          value={costUsd(data.summary.costUsd)}
-        />
-      </div>
+      <CodeSummaryCards summary={data.summary} />
       <CodeActivityChart
         bucketUnit={timeRangeBucketUnit(props.range)}
         days={selectTimeSeries({
@@ -154,18 +118,12 @@ function CodeOverview(props: {
                   >
                     <td className="min-w-0 px-4 py-3">
                       <div className="truncate font-display text-sm text-dashboard-text">
-                        {repository.url ? (
-                          <a
-                            className="text-inherit no-underline hover:text-cyan-100"
-                            href={repository.url}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            {repository.name}
-                          </a>
-                        ) : (
-                          repository.name
-                        )}
+                        <Link
+                          className="text-inherit no-underline hover:text-cyan-100"
+                          to={codeRepositoryPath(repository.id)}
+                        >
+                          {repository.name}
+                        </Link>
                       </div>
                       <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
                         {repository.provider}
@@ -175,10 +133,10 @@ function CodeOverview(props: {
                       {repository.created}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
-                      {mergeRate(repository.mergeRate)}
+                      {formatMergeRate(repository.mergeRate)}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
-                      {costUsd(repository.medianCostUsd)}
+                      {formatCodeCost(repository.medianCostUsd)}
                     </td>
                   </tr>
                 ))}

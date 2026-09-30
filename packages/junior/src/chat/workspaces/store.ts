@@ -156,10 +156,19 @@ export async function listWorkspaceNamesByRepository(
   db: JuniorDatabase,
   input: { provider: string; repo: string },
 ): Promise<string[]> {
+  const workspaces = await listWorkspacesByRepository(db, input);
+  return workspaces.map((workspace) => workspace.name);
+}
+
+/** Find the Workspaces, by id and name, that include one provider repository. */
+export async function listWorkspacesByRepository(
+  db: JuniorDatabase,
+  input: { provider: string; repo: string },
+): Promise<Array<{ id: string; name: string }>> {
   const provider = input.provider.trim().toLowerCase();
   const repo = input.repo.trim();
-  const rows = await db
-    .select({ name: juniorWorkspaces.name })
+  return await db
+    .select({ id: juniorWorkspaces.id, name: juniorWorkspaces.name })
     .from(juniorWorkspaceRepos)
     .innerJoin(
       juniorWorkspaces,
@@ -173,7 +182,6 @@ export async function listWorkspaceNamesByRepository(
       ),
     )
     .orderBy(asc(juniorWorkspaces.name));
-  return rows.map((row) => row.name);
 }
 
 /** Resolve one Workspace recipe by name. */
