@@ -717,7 +717,6 @@ async function executeAgentRunInPrivacyContext(
     };
     const scheduleHandoff = async (args: {
       profile: ModelProfile;
-      runtimeContextSourceMessages?: PiMessage[];
       signal?: AbortSignal;
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
@@ -730,10 +729,10 @@ async function executeAgentRunInPrivacyContext(
         metadata: handoffMetadata,
         onStatus: observers.onStatus,
         profile: args.profile,
-        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
         signal: args.signal,
         sourceMessages: args.sourceMessages,
         triggeringToolCallId: args.triggeringToolCallId,
+        turnId,
         turnRoute: turnRoute!,
       });
       if (!pending) {
@@ -1359,32 +1358,6 @@ async function executeAgentRunInPrivacyContext(
           };
 
           let run: Promise<unknown>;
-          let handoffApplied = false;
-          const requestedProfile =
-            activeModelProfile === botConfig.defaultProfile
-              ? turnRoute!.profile
-              : undefined;
-          if (
-            requestedProfile &&
-            requestedProfile !== botConfig.defaultProfile
-          ) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              scheduleHandoff({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [
-                      ...(contextMessage ? [contextMessage] : []),
-                      freshPromptMessage,
-                    ]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            handoffApplied = Boolean(applyPendingHandoff());
-          }
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(
             applyActiveContextCompaction(
@@ -1403,12 +1376,6 @@ async function executeAgentRunInPrivacyContext(
             ),
             () => compactionAbortController.abort(),
           );
-          if (shouldPromptAgent && handoffApplied && !capacityUpdate) {
-            await runResume.requireDurableInputCheckpoint([
-              ...agent!.state.messages,
-              freshPromptMessage,
-            ]);
-          }
           run =
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)

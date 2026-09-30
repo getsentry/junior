@@ -777,20 +777,36 @@ export async function recordSubscribedReplyRoute(args: {
   ]);
 }
 
-/** Load a previously selected model profile for a resumed turn. */
+type TurnRoutedEventData = Extract<
+  ConversationEvent["data"],
+  { type: "turn_routed" }
+>;
+
+function turnRouteIdempotencyKey(
+  turnId: string,
+  source: TurnRoutedEventData["source"],
+): string {
+  // A model may replace the router's choice once, before any model work.
+  return source === "model"
+    ? `turn:${turnId}:routed:model`
+    : `turn:${turnId}:routed`;
+}
+
+/** Load the latest model profile selected for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
   turnId: string;
-}): Promise<
-  | (Extract<ConversationEvent["data"], { type: "turn_routed" }> & {
-      seq: number;
-    })
-  | undefined
-> {
-  const event = await getConversationEventStore().loadByIdempotencyKey(
-    args.conversationId,
-    `turn:${args.turnId}:routed`,
-  );
+}): Promise<(TurnRoutedEventData & { seq: number }) | undefined> {
+  const eventStore = getConversationEventStore();
+  const event =
+    (await eventStore.loadByIdempotencyKey(
+      args.conversationId,
+      turnRouteIdempotencyKey(args.turnId, "model"),
+    )) ??
+    (await eventStore.loadByIdempotencyKey(
+      args.conversationId,
+      turnRouteIdempotencyKey(args.turnId, "router"),
+    ));
   if (!event) {
     return undefined;
   }
@@ -809,11 +825,11 @@ export async function recordTurnRoute(args: {
   costUsd?: number;
   reasoningLevel: TurnReasoningLevel;
   confidence?: number;
-  source: "configured" | "inherited" | "router";
+  source: TurnRoutedEventData["source"];
 }): Promise<void> {
   await getConversationEventStore().append(args.conversationId, [
     {
-      idempotencyKey: `turn:${args.turnId}:routed`,
+      idempotencyKey: turnRouteIdempotencyKey(args.turnId, args.source),
       createdAtMs: Date.now(),
       data: {
         type: "turn_routed",

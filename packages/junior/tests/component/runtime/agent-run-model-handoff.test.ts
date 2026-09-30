@@ -7,6 +7,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AgentRun } from "@/chat/agent/types";
 import { RetryableDeliveryError } from "@/chat/agent/types";
@@ -14,6 +15,7 @@ import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import {
   loadConversationProjection,
   loadProjection,
+  loadTurnRoute,
   recordTurnRoute,
 } from "@/chat/conversations/projection";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
@@ -69,11 +71,23 @@ function expectedHandoffReplacementHistory(instruction: string) {
   ];
 }
 
+/** A completed earlier turn, so a later switch must carry that work. */
+const priorTurn = [
+  {
+    role: "user" as const,
+    content: [
+      { type: "text" as const, text: renderCurrentInstruction("Plan it.") },
+    ],
+    timestamp: 1,
+  },
+  fauxAssistantMessage("Here is the plan.", { timestamp: 2 }),
+];
+
 describe("model handoff execution", () => {
   beforeEach(resetHandoffTestState);
   afterEach(restoreHandoffTestState);
 
-  it("compacts and upgrades the same conversation before continuing the turn", async () => {
+  it("selects the model without a handoff when the first model output is a handoff call", async () => {
     observations.requestedProfile = "handoff";
     const conversationId = "local:test:model-handoff";
     const outcome = await executeAgentRun({
@@ -101,40 +115,69 @@ describe("model handoff execution", () => {
       (outcome.result.diagnostics.usage?.inputTokens ?? 0) +
         (outcome.result.diagnostics.usage?.outputTokens ?? 0),
     ).toBe(10);
-    expect(observations.initialModelId).not.toBe(
-      observations.afterHandoffModelId,
-    );
+    expect(observations.initialModelId).toBe("xai/grok-4.5");
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "high"]);
-    expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames,
     );
     expect(observations.initialHandoffProfiles).toEqual(["coding", "handoff"]);
     expect(observations.afterHandoffProfiles).toEqual(["standard", "coding"]);
-    expect(observations.summaryCalls).toBe(1);
-    expect(observations.handoffStatusBeforeSummary).toBe(true);
+    // No model work happened yet, so there is nothing to summarize or replace.
+    expect(observations.summaryCalls).toBe(0);
+    expect(observations.statuses).not.toContain("Switching models");
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-    const handoffs = (
+    ).toBe("standard");
+    const events = (
       await getConversationEventStore().loadHistory(conversationId)
-    )
-      .map((event) => event.data)
-      .filter((entry) => entry.type === "handoff");
-    expect(handoffs).toEqual([
+    ).map((event) => event.data);
+    expect(events.filter((entry) => entry.type === "handoff")).toEqual([]);
+    expect(events.filter((entry) => entry.type === "turn_routed")).toEqual([
       {
-        type: "handoff",
+        type: "turn_routed",
+        turnId: "turn-model-handoff",
+        modelProfile: "standard",
+        modelId: "xai/grok-4.5",
+        reasoningLevel: "high",
+        confidence: 0.99,
+        source: "router",
+      },
+      {
+        type: "turn_routed",
+        turnId: "turn-model-handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
-        triggeringToolCallId: "handoff-call-1",
-        summary: "Implement the requested change and verify it.",
-        replacementHistory: expectedHandoffReplacementHistory(
-          "Implement the multi-file refactor.",
-        ),
+        source: "model",
       },
     ]);
+    // A resumed slice keeps the model's choice instead of the router's.
+    expect(
+      await loadTurnRoute({ conversationId, turnId: "turn-model-handoff" }),
+    ).toMatchObject({ modelProfile: "handoff", source: "model" });
+    // The selected model sees the original request, not the discarded call.
+    expect(observations.afterHandoffMessages).toHaveLength(2);
+    expect(observations.afterHandoffMessages[0]?.content).toEqual([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("<runtime-turn-context>"),
+      }),
+    ]);
+    expect(observations.afterHandoffMessages[1]?.content).toEqual([
+      {
+        type: "text",
+        text: renderCurrentInstruction("Implement the multi-file refactor."),
+      },
+    ]);
+    expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
+      "user",
+      "user",
+      "assistant",
+    ]);
+    expect(JSON.stringify(outcome.result.piMessages)).not.toContain(
+      "handoff-call-1",
+    );
     await expect(
       saveTurnCheckpoint({
         mode: "completed",
@@ -144,38 +187,9 @@ describe("model handoff execution", () => {
         messages: outcome.result.piMessages ?? [],
       }),
     ).resolves.toBeUndefined();
-    const projection = await loadProjection({ conversationId });
-    expect(projection).toEqual(outcome.result.piMessages);
-    expect(JSON.stringify(projection)).toContain(
-      "Implement the requested change and verify it.",
+    expect(await loadProjection({ conversationId })).toEqual(
+      outcome.result.piMessages,
     );
-    expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
-      "user",
-      "user",
-      "user",
-      "assistant",
-    ]);
-    expect(observations.afterHandoffMessages).toHaveLength(3);
-    expect(observations.afterHandoffMessages[0]?.role).toBe("user");
-    expect(observations.afterHandoffMessages[0]?.content).toEqual([
-      expect.objectContaining({
-        type: "text",
-        text: expect.stringContaining("<runtime-turn-context>"),
-      }),
-    ]);
-    expect(observations.afterHandoffMessages[1]?.role).toBe("user");
-    expect(observations.afterHandoffMessages[1]?.content).toEqual([
-      {
-        type: "text",
-        text: renderCurrentInstruction("Implement the multi-file refactor."),
-      },
-    ]);
-    expect(observations.afterHandoffMessages[2]?.content).toEqual([
-      {
-        type: "text",
-        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\n<thread-context authority="evidence-only">\nImplement the requested change and verify it.\n</thread-context>\n\nModel handoff completed: {"modelId":"openai/gpt-5.6-sol","modelProfile":"handoff","reasoningLevel":"high"}.`,
-      },
-    ]);
 
     const followUp = await executeAgentRun({
       conversationId,
@@ -190,27 +204,7 @@ describe("model handoff execution", () => {
     expect(followUp.result.diagnostics.modelId).toBe("xai/grok-4.5");
     expect(observations.providerCalls).toBe(3);
     expect(observations.routerCalls).toBe(2);
-    expect(
-      (await getConversationEventStore().loadHistory(conversationId))
-        .map((event) => event.data)
-        .find(
-          (event) =>
-            event.type === "turn_routed" &&
-            event.turnId === "turn-model-handoff-follow-up",
-        ),
-    ).toEqual({
-      type: "turn_routed",
-      turnId: "turn-model-handoff-follow-up",
-      modelProfile: "standard",
-      modelId: "xai/grok-4.5",
-      reasoningLevel: "high",
-      source: "router",
-      confidence: 0.99,
-    });
-    expect(observations.afterHandoffModelId).toBe("xai/grok-4.5");
-    expect(observations.afterHandoffToolNames).toContain("handoff");
-    expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
-    expect(observations.summaryCalls).toBe(1);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       observations.handoffDescriptions.map(
         (description) => description.match(/Active profile: "([^"]+)"/)?.[1],
@@ -478,6 +472,7 @@ describe("model handoff execution", () => {
     const outcome = await executeAgentRun({
       conversationId,
       turnId: "turn-model-handoff-status-failure",
+      history: priorTurn,
       instruction: { text: "Implement the multi-file refactor." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
@@ -500,6 +495,7 @@ describe("model handoff execution", () => {
       conversationId,
       runId: "run-named-model-handoff",
       turnId: "turn-named-model-handoff",
+      history: priorTurn,
       instruction: { text: "Implement the focused code change." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
@@ -577,6 +573,7 @@ describe("model handoff execution", () => {
       conversationId,
       runId: "run-model-handoff-without-turn-record",
       turnId: "turn-model-handoff-without-turn-record",
+      history: priorTurn,
       instruction: { text: "Implement the refactor." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),

@@ -68,7 +68,7 @@ export interface TurnRoute {
   profile: ModelProfile;
   reasoningLevel: TurnReasoningLevel;
   reason: string;
-  source?: "configured" | "inherited" | "router";
+  source?: "configured" | "inherited" | "router" | "model";
 }
 
 const CLASSIFIER_FALLBACK_REASONING_LEVEL: TurnRoute["reasoningLevel"] =
