@@ -1,17 +1,20 @@
 import type { AutomationSummary } from "@sentry/junior/api/schema";
 import {
+  ArrowRight,
   CalendarClock,
   LockKeyhole,
   MoreHorizontal,
   Trash2,
   Zap,
 } from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { ActorAvatar } from "../../components/ActorAvatar";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
+import { StatusDot } from "../../components/StatusDot";
 import { formatRelativeTime, peoplePath } from "../../format";
+import { cn } from "../../styles";
 import {
   automationEventConditions,
   automationEventNames,
@@ -20,9 +23,23 @@ import {
 } from "./automationFormat";
 
 /**
- * Show one automation as a compact card: what it is, where it posts, who owns
- * it, and when it runs. Instructions, timezones, and event conditions stay in
- * the details drawer.
+ * How an automation is doing, shown by the kind tile: live work is accented,
+ * work that needs a person is amber, and work that will not run again is dim.
+ */
+type AutomationHealth = "live" | "attention" | "dormant";
+
+const healthTile: Record<AutomationHealth, string> = {
+  live: "border-dashboard-border bg-dashboard-fill-soft text-cyan-100",
+  attention: "border-amber-300/25 bg-amber-300/[0.07] text-amber-300",
+  dormant:
+    "border-dashboard-border-subtle bg-transparent text-dashboard-text-faint",
+};
+
+/**
+ * Show one automation as a card that answers, in reading order: what is it,
+ * is it healthy, when does it run and where does it post, who owns it, and
+ * when it runs next and last. Instructions, timezones, and event conditions
+ * stay in the details drawer.
  */
 export function AutomationRow(props: {
   deleting: boolean;
@@ -34,6 +51,8 @@ export function AutomationRow(props: {
   const { automation } = props;
   const location = useLocation();
   const status = automationStatus(automation);
+  const health = automationHealth(automation);
+  const Icon = automation.kind === "scheduled" ? CalendarClock : Zap;
   const creator = (
     <>
       <ActorAvatar
@@ -46,25 +65,52 @@ export function AutomationRow(props: {
   );
   return (
     <article
-      className="min-w-0 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint"
+      className={cn(
+        "min-w-0 rounded-lg border transition-colors",
+        props.selected
+          ? "border-cyan-300/25"
+          : "border-dashboard-border-subtle hover:border-dashboard-border-strong",
+      )}
       role="listitem"
     >
       <SelectableRow
-        className="flex items-start gap-3 rounded-lg px-4 py-3.5"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3.5 gap-y-2.5 rounded-lg p-4 sm:grid-cols-[auto_minmax(0,1fr)_10.5rem_auto] sm:gap-x-6"
         onSelect={props.onSelect}
         selected={props.selected}
       >
-        <div className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "row-span-2 grid size-10 place-items-center rounded-lg border transition-colors",
+            healthTile[health],
+          )}
+        >
+          <Icon
+            aria-label={
+              automation.kind === "scheduled"
+                ? "Scheduled automation"
+                : `${automation.source} event automation`
+            }
+            role="img"
+            size={18}
+            strokeWidth={1.75}
+          />
+        </span>
+        <div className="col-start-2 row-start-1 min-w-0">
           <button
             aria-expanded={props.selected}
             aria-label={`View automation details: ${automation.title}`}
-            className="block w-full min-w-0 cursor-pointer rounded border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            className="block w-full min-w-0 cursor-pointer rounded border-0 bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
             onClick={props.onSelect}
             type="button"
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
               <span
-                className="truncate font-display text-base font-medium text-dashboard-text"
+                className={cn(
+                  "line-clamp-2 min-w-0 break-words font-display text-base font-medium",
+                  health === "dormant"
+                    ? "text-dashboard-text-muted"
+                    : "text-dashboard-text",
+                )}
                 title={automation.title}
               >
                 {automation.title}
@@ -73,54 +119,53 @@ export function AutomationRow(props: {
                 <StatusChip
                   className="shrink-0"
                   size="compact"
-                  tone={
-                    status === "completed" || status === "paused"
-                      ? "neutral"
-                      : "warning"
-                  }
+                  tone={health === "attention" ? "warning" : "neutral"}
                 >
                   {status}
                 </StatusChip>
               ) : null}
             </span>
-            <AutomationSummaryLine automation={automation} />
+            <AutomationRoute automation={automation} />
           </button>
-          <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-dashboard-text-muted">
+        </div>
+        {/* One footer row on narrow cards; separate grid cells on wider ones. */}
+        <div className="col-span-2 col-start-2 row-start-2 flex min-w-0 items-center justify-between gap-4 sm:contents">
+          <div className="flex min-w-0 text-xs text-dashboard-text-muted sm:col-start-2 sm:row-start-2">
             {automation.createdByEmail ? (
               <Link
-                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded text-dashboard-text no-underline hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-                title={automation.createdBy}
+                className="inline-flex min-w-0 max-w-full items-center gap-2 rounded no-underline transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                title={`Created by ${automation.createdBy}`}
                 to={peoplePath(automation.createdByEmail)}
               >
                 {creator}
               </Link>
             ) : (
               <span
-                className="inline-flex min-w-0 max-w-full items-center gap-2 text-dashboard-text"
-                title={automation.createdBy}
+                className="inline-flex min-w-0 max-w-full items-center gap-2"
+                title={`Created by ${automation.createdBy}`}
               >
                 {creator}
               </span>
             )}
-            <AutomationTiming automation={automation} />
           </div>
+          <AutomationRuns automation={automation} />
         </div>
-        {automation.ownedByViewer ? (
-          <div className="-mr-2 -mt-1.5 shrink-0">
+        <div className="col-start-3 row-start-1 -mr-2 -mt-1.5 w-11 sm:col-start-4 xl:w-9">
+          {automation.ownedByViewer ? (
             <AutomationActions
               editPath={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/edit${location.search}`}
               deleting={props.deleting}
               onDelete={props.onDelete}
               title={automation.title}
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </SelectableRow>
     </article>
   );
 }
 
-/** Return the one state worth flagging in the list, if the automation is not simply active. */
+/** Name the one state worth flagging in the list, if the automation is not simply active. */
 function automationStatus(automation: AutomationSummary): string | undefined {
   if (automation.kind === "scheduled") {
     return automation.status === "active" ? undefined : automation.status;
@@ -129,14 +174,20 @@ function automationStatus(automation: AutomationSummary): string | undefined {
   return automation.triggerAvailable ? undefined : "Trigger unavailable";
 }
 
-/** Combine the trigger and Destination into one muted line under the title. */
-function AutomationSummaryLine({
-  automation,
-}: {
-  automation: AutomationSummary;
-}) {
-  const scheduled = automation.kind === "scheduled";
-  const Icon = scheduled ? CalendarClock : Zap;
+function automationHealth(automation: AutomationSummary): AutomationHealth {
+  if (
+    automation.lastRunStatus === "failed" ||
+    automation.lastRunStatus === "blocked" ||
+    automation.status === "blocked" ||
+    (automation.kind === "event" && !automation.triggerAvailable)
+  ) {
+    return "attention";
+  }
+  return automation.status === "active" ? "live" : "dormant";
+}
+
+/** Read as a sentence: this trigger sends work to this Destination. */
+function AutomationRoute({ automation }: { automation: AutomationSummary }) {
   const trigger =
     automation.kind === "scheduled"
       ? automation.schedule
@@ -150,90 +201,112 @@ function AutomationSummaryLine({
         ? `${trigger} · ${conditions}`
         : trigger;
   return (
-    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-dashboard-text-muted">
-      <Icon
-        aria-label={
-          scheduled
-            ? "Scheduled automation"
-            : `${automation.source} event automation`
-        }
-        className="shrink-0"
-        role="img"
-        size={13}
-      />
-      <span className="min-w-0 truncate" title={triggerDetail}>
+    <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-dashboard-text-subtle">
+      <span className="min-w-0 max-w-full truncate" title={triggerDetail}>
         {trigger}
       </span>
-      <span aria-hidden="true" className="shrink-0 opacity-45">
-        ·
-      </span>
-      {automation.destination.visibility === "private" ? (
-        <LockKeyhole
-          aria-label="Private destination"
-          className="shrink-0"
-          role="img"
-          size={12}
-        />
-      ) : null}
       <span
-        className="min-w-0 max-w-[45%] truncate"
+        className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-dashboard-text-muted"
         title={automation.destination.label}
       >
-        {automation.destination.label}
+        <ArrowRight
+          aria-hidden="true"
+          className="shrink-0 text-dashboard-text-faint"
+          size={13}
+        />
+        <span className="sr-only">in</span>
+        {automation.destination.visibility === "private" ? (
+          <LockKeyhole
+            aria-label="Private destination"
+            className="shrink-0"
+            role="img"
+            size={12}
+          />
+        ) : null}
+        <span className="truncate">{automation.destination.label}</span>
       </span>
     </span>
   );
 }
 
-/** Show next and last run as short relative times after the creator. */
-function AutomationTiming({ automation }: { automation: AutomationSummary }) {
+/**
+ * Show when the automation runs next and how the last run went. Next run
+ * appears only when one is scheduled; the title chip already explains why a
+ * paused, blocked, or completed automation has none.
+ */
+function AutomationRuns({ automation }: { automation: AutomationSummary }) {
   const nextRunAt =
     automation.kind === "scheduled" && automation.status === "active"
       ? automation.nextRunAt
       : undefined;
-  const lastRunTitle = automation.lastRunAt
-    ? formatAutomationRunTime(automation.lastRunAt)
-    : undefined;
   const lastRunFailed =
     automation.lastRunStatus === "failed" ||
     automation.lastRunStatus === "blocked";
+  const lastRunLabel = !automation.lastRunAt
+    ? "Never run"
+    : lastRunFailed
+      ? `Last run ${automation.lastRunStatus}`
+      : "Last run completed";
+  const lastRunTime = automation.lastRunAt
+    ? formatRelativeTime(automation.lastRunAt)
+    : "Never";
   return (
-    <>
+    <dl className="m-0 grid shrink-0 grid-cols-[auto_auto] items-center gap-x-2 gap-y-1.5 text-xs sm:col-start-3 sm:row-span-2 sm:row-start-1 sm:grid-cols-[auto_minmax(0,1fr)] sm:self-center">
       {nextRunAt ? (
-        <MetaItem title={formatAutomationRunTime(nextRunAt)}>
-          Next run {formatRelativeTime(nextRunAt)}
-        </MetaItem>
-      ) : null}
-      <MetaItem title={lastRunTitle}>
-        {lastRunFailed ? (
-          <Link
-            className="text-amber-300 underline"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+        <div className="contents">
+          <dt className="text-dashboard-text-faint">Next</dt>
+          <dd
+            className="m-0 flex min-w-0 items-center gap-2 text-dashboard-text"
+            title={formatAutomationRunTime(nextRunAt)}
           >
-            Last run {automation.lastRunStatus}
-            {automation.lastRunAt
-              ? ` ${formatRelativeTime(automation.lastRunAt)}`
-              : null}
-          </Link>
-        ) : automation.lastRunAt ? (
-          `Last run ${formatRelativeTime(automation.lastRunAt)}`
-        ) : (
-          "Never run"
-        )}
-      </MetaItem>
-    </>
-  );
-}
-
-/** Keep each separator with the item after it so wrapped lines never end in a dot. */
-function MetaItem(props: { children: ReactNode; title?: string }) {
-  return (
-    <span className="whitespace-nowrap" title={props.title}>
-      <span aria-hidden="true" className="mr-2 opacity-45">
-        ·
-      </span>
-      {props.children}
-    </span>
+            {/* Keeps Next and Last values on the same left edge. */}
+            <span aria-hidden="true" className="w-1.5 shrink-0" />
+            <span className="truncate">{formatRelativeTime(nextRunAt)}</span>
+          </dd>
+        </div>
+      ) : null}
+      <div className="contents">
+        <dt className="text-dashboard-text-faint">Last</dt>
+        <dd
+          className="m-0 flex min-w-0 items-center gap-2"
+          title={
+            automation.lastRunAt
+              ? `${lastRunLabel} · ${formatAutomationRunTime(automation.lastRunAt)}`
+              : undefined
+          }
+        >
+          <StatusDot
+            label={lastRunLabel}
+            tone={
+              !automation.lastRunAt
+                ? "neutral"
+                : lastRunFailed
+                  ? "warning"
+                  : "success"
+            }
+          />
+          {lastRunFailed ? (
+            <Link
+              className="text-amber-300 underline decoration-amber-300/40 underline-offset-2 hover:decoration-amber-300"
+              to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            >
+              {automation.lastRunStatus === "failed" ? "Failed" : "Blocked"}{" "}
+              {lastRunTime}
+            </Link>
+          ) : (
+            <span
+              className={
+                automation.lastRunAt
+                  ? "text-dashboard-text"
+                  : "text-dashboard-text-muted"
+              }
+            >
+              {lastRunTime}
+            </span>
+          )}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
