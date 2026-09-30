@@ -47,7 +47,7 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { coreRegistrations } from "@/chat/core-registrations";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
@@ -442,7 +442,7 @@ function taskPluginContext(
 }
 
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
+  const plugin = [...coreRegistrations(), ...getPlugins()].find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -460,7 +460,7 @@ export async function scheduleSessionCompletedPluginTasks(
   const coreParams = pluginTaskParamsSchema.parse(params);
   const taskRegistrations = [
     ...getPlugins(),
-    ...coreTaskRegistrations(),
+    ...coreRegistrations(),
   ].flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );

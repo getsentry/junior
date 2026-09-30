@@ -12,6 +12,13 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
 import { defaultModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
+import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { assignSpaceFromBrief } from "@/chat/spaces/assign";
+import { spaceAssignedEvent } from "@/chat/spaces/events";
+import {
+  isSpacesEnabled,
+  spacesRegistration,
+} from "@/chat/spaces/registration";
 import { briefUpdatedEvent } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
@@ -87,6 +94,64 @@ async function emitBriefUpdated(
   );
 }
 
+/**
+ * Assign a still unassigned root Conversation to a Space from its Brief.
+ * Retries reuse the stored Brief and the stable task operation id.
+ */
+async function assignSpaceAfterBrief(
+  context: PluginTaskContext,
+  args: {
+    brief: ConversationBriefVersion;
+    channelName?: string;
+    title?: string;
+    turnId: string;
+  },
+): Promise<void> {
+  if (!isSpacesEnabled()) return;
+  const conversationId = args.brief.conversationId;
+  const root = await resolveRootVisibility(getSqlExecutor(), conversationId);
+  const modelId = defaultModelId(botConfig);
+  const result = await assignSpaceFromBrief(context.db as JuniorDatabase, {
+    conversationId,
+    turnId: args.turnId,
+    brief: args.brief.content,
+    conversation: {
+      ...(args.title ? { title: args.title } : undefined),
+      ...(args.channelName ? { channelName: args.channelName } : undefined),
+    },
+    isPublic: root.visibility === "public",
+    completeObject: (request) =>
+      completeObject({
+        ...request,
+        modelId,
+        promptName: "junior.space_assign",
+      }),
+  });
+  if (!result) return;
+  context.log.info("Space assigned", {
+    conversationId,
+    spaceId: result.space.spaceId,
+    created: result.created,
+  });
+  await createPluginConversationEvents({
+    conversationId,
+    operationId: context.id,
+    plugin: spacesRegistration,
+    turnId: args.turnId,
+  }).emit(
+    spaceAssignedEvent({
+      spaceId: result.space.spaceId,
+      path: result.space.path,
+      created: result.created,
+      confidence: result.confidence,
+      modelId,
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
+    }),
+  );
+}
+
 /** Generate and store the next Brief after one completed Turn. */
 export async function updateConversationBrief(
   context: PluginTaskContext,
@@ -135,6 +200,12 @@ export async function updateConversationBrief(
         // failed first emission without adding a second event on normal retries.
         await emitBriefUpdated(context, existing);
         logSkip(context, run.conversationId, "turn_already_stored");
+        await assignSpaceAfterBrief(context, {
+          brief: existing,
+          channelName: conversation?.channelName,
+          title: conversation?.title,
+          turnId: run.runId,
+        });
         return;
       }
       const terminalSeq = await readTurnCompletedSeq(
@@ -185,6 +256,12 @@ export async function updateConversationBrief(
       if (!stored.inserted) {
         logSkip(context, run.conversationId, "turn_already_stored");
       }
+      await assignSpaceAfterBrief(context, {
+        brief: stored.value,
+        channelName: conversation?.channelName,
+        title: conversation?.title,
+        turnId: run.runId,
+      });
     },
   );
 }

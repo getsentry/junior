@@ -14,11 +14,15 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setSpacesConfig } from "@/chat/spaces/registration";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
   juniorConversationEvents,
+  juniorConversationSpaces,
   juniorConversations,
+  juniorSpaceChanges,
+  juniorSpaces,
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import {
@@ -28,6 +32,8 @@ import {
 
 const TEST = vi.hoisted(() => ({
   calls: [] as Array<{ modelId: string; prompt: string }>,
+  spaceCalls: [] as Array<{ prompt: string }>,
+  spaceOutputs: [] as Array<Record<string, unknown>>,
   sql: undefined as LocalJuniorSqlFixture["sql"] | undefined,
   originalDatabaseUrl: process.env.DATABASE_URL,
 }));
@@ -54,31 +60,39 @@ vi.mock("@/db/executor", () => ({
 
 vi.mock("@/chat/pi/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/pi/client")>()),
-  completeObject: vi.fn(async (input: { modelId: string; prompt: string }) => {
-    TEST.calls.push(input);
-    return {
-      costUsd: 0.0042,
-      object: {
-        summary: `Brief summary ${TEST.calls.length}.`,
-        intent: "Record the completed implementation.",
-        outcome: { status: "done", text: "The implementation is complete." },
-        decisions: [
-          {
-            text: "Use durable Brief versions.",
-            by: "Local CLI",
-            kind: "stated",
-          },
-        ],
-        openDecisions: [],
-        facts: ["The task stores one version per Turn."],
-        keywords: ["briefs", "storage"],
-        urls: [
-          { label: "Runbook", url: "https://docs.example.com/runbook" },
-          { label: "Invented", url: "https://invented.example.com" },
-        ],
-      },
-    };
-  }),
+  completeObject: vi.fn(
+    async (input: { modelId: string; prompt: string; promptName?: string }) => {
+      if (input.promptName === "junior.space_assign") {
+        TEST.spaceCalls.push(input);
+        const object = TEST.spaceOutputs.shift();
+        if (!object) throw new Error("Missing Space classifier output");
+        return { costUsd: 0.001, object };
+      }
+      TEST.calls.push(input);
+      return {
+        costUsd: 0.0042,
+        object: {
+          summary: `Brief summary ${TEST.calls.length}.`,
+          intent: "Record the completed implementation.",
+          outcome: { status: "done", text: "The implementation is complete." },
+          decisions: [
+            {
+              text: "Use durable Brief versions.",
+              by: "Local CLI",
+              kind: "stated",
+            },
+          ],
+          openDecisions: [],
+          facts: ["The task stores one version per Turn."],
+          keywords: ["briefs", "storage"],
+          urls: [
+            { label: "Runbook", url: "https://docs.example.com/runbook" },
+            { label: "Invented", url: "https://invented.example.com" },
+          ],
+        },
+      };
+    },
+  ),
   embedTexts: vi.fn(),
 }));
 
@@ -199,11 +213,14 @@ describe("Conversation Brief task", () => {
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
     TEST.calls.length = 0;
+    TEST.spaceCalls.length = 0;
+    TEST.spaceOutputs.length = 0;
     await migrateSchema(fixture.sql);
   });
 
   afterEach(async () => {
     setBriefsConfig(undefined);
+    setSpacesConfig(undefined);
     const { closeDb } = await import("@/chat/db");
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -500,5 +517,161 @@ describe("Conversation Brief task", () => {
           eq(juniorConversationBriefs.conversationId, childConversationId),
         ),
     ).toEqual([]);
+  }, 30_000);
+  it("assigns root Conversations to Spaces from their first Brief", async () => {
+    setSpacesConfig({ enabled: true });
+    const idSuffix = randomUUID();
+    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    const publicId = `local:spaces-public:${idSuffix}`;
+    const privateId = `local:spaces-private:${idSuffix}`;
+    await getConversationStore().recordActivity({
+      conversationId: publicId,
+      channelName: "proj-sdk",
+      destination: { platform: "local", conversationId: publicId },
+      nowMs: 1,
+      source: "slack",
+      title: "Cloudflare SDK release",
+      visibility: "public",
+    });
+    await getConversationStore().recordActivity({
+      conversationId: privateId,
+      destination: { platform: "local", conversationId: privateId },
+      nowMs: 2,
+      source: "local",
+      title: "Private SDK question",
+      visibility: "private",
+    });
+
+    // A public Conversation may create the first Space.
+    TEST.spaceOutputs.push({
+      decision: "create",
+      spaceHandle: null,
+      parentHandle: null,
+      name: "  SDKs ",
+      description: "Work on the client SDKs.",
+      confidence: 0.9,
+      reason: "The Conversation is about an SDK release.",
+    });
+    const publicTurn = await recordCompletedTurn({
+      conversationId: publicId,
+      instruction: "Release the Cloudflare SDK.",
+      turnId: "public-turn-1",
+    });
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId: publicId, sessionId: "public-turn-1" },
+    });
+    expect(TEST.spaceCalls[0]?.prompt).toContain("(no Spaces yet)");
+    expect(TEST.spaceCalls[0]?.prompt).toContain("Channel: proj-sdk");
+    const spaces = await getDb().select().from(juniorSpaces);
+    expect(spaces).toEqual([
+      expect.objectContaining({
+        name: "SDKs",
+        description: "Work on the client SDKs.",
+        createdBy: "classifier",
+        parentSpaceId: null,
+      }),
+    ]);
+    const sdkSpaceId = spaces[0]!.spaceId;
+    const events = await getDb()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, publicId),
+          eq(juniorConversationEvents.type, "structured_event"),
+        ),
+      );
+    expect(events.map((event) => event.payload)).toContainEqual(
+      expect.objectContaining({
+        namespace: "spaces",
+        name: "space_assigned",
+        content: expect.objectContaining({
+          spaceId: sdkSpaceId,
+          path: ["SDKs"],
+          created: true,
+          costUsd: 0.001,
+        }),
+      }),
+    );
+
+    // Later Turns keep the assignment without another classifier call.
+    await recordCompletedTurn({
+      conversationId: publicId,
+      instruction: "Also update the changelog.",
+      previousPiMessages: publicTurn.piMessages,
+      turnId: "public-turn-2",
+    });
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId: publicId, sessionId: "public-turn-2" },
+    });
+    expect(TEST.spaceCalls).toHaveLength(1);
+
+    // A private Conversation cannot name a new Space. Its create proposal
+    // falls back to the parent, and its reason stays out of the change log.
+    TEST.spaceOutputs.push({
+      decision: "create",
+      spaceHandle: null,
+      parentHandle: "S1",
+      name: "Secret Launch",
+      description: "Private plans.",
+      confidence: 0.6,
+      reason: "Private reason text.",
+    });
+    await recordCompletedTurn({
+      conversationId: privateId,
+      instruction: "How do I test the SDK locally?",
+      turnId: "private-turn-1",
+    });
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId: privateId, sessionId: "private-turn-1" },
+    });
+    expect(TEST.spaceCalls[1]?.prompt).toContain("- S1 SDKs (1)");
+    expect(TEST.spaceCalls[1]?.prompt).toContain("Do not create one.");
+    expect(await getDb().select().from(juniorSpaces)).toHaveLength(1);
+    const assignments = await getDb()
+      .select()
+      .from(juniorConversationSpaces)
+      .orderBy(juniorConversationSpaces.conversationId);
+    expect(
+      assignments.map((row) => [row.conversationId, row.spaceId, row.pinned]),
+    ).toEqual(
+      [
+        [privateId, sdkSpaceId, false],
+        [publicId, sdkSpaceId, false],
+      ].sort((left, right) => String(left[0]).localeCompare(String(right[0]))),
+    );
+    const changes = await getDb().select().from(juniorSpaceChanges);
+    expect(
+      changes.find((change) => change.conversationId === privateId),
+    ).toMatchObject({ kind: "assign", reason: null });
+    expect(
+      changes.find((change) => change.conversationId === publicId),
+    ).toMatchObject({
+      kind: "assign",
+      reason: "The Conversation is about an SDK release.",
+    });
+
+    // The next Turn sees its Space in the prompt context.
+    const { getPluginUserPromptContributions } =
+      await import("@/chat/plugins/agent-hooks");
+    const contributions = await getPluginUserPromptContributions({
+      context: {
+        conversationId: publicId,
+        destination: { platform: "local", conversationId: publicId },
+        source: createLocalSource(publicId),
+        userText: "What changed?",
+      },
+    });
+    expect(
+      contributions.find((contribution) => contribution.pluginName === "spaces")
+        ?.text,
+    ).toContain("This Conversation is in the Space SDKs");
   }, 30_000);
 });

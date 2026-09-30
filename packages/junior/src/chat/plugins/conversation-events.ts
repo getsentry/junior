@@ -5,7 +5,7 @@ import type {
   PluginConversationEventValue,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { briefsTaskRegistration } from "@/chat/briefs/task";
+import { coreEventRegistrations } from "@/chat/core-registrations";
 import { getConversationEventStore } from "@/chat/db";
 import { getPlugins } from "./agent-hooks";
 
@@ -80,7 +80,7 @@ export function renderPluginConversationEvent(args: {
   namespace: string;
   version: number;
 }): ConversationEventPresentation | undefined {
-  const plugin = [briefsTaskRegistration, ...getPlugins()].find(
+  const plugin = [...coreEventRegistrations(), ...getPlugins()].find(
     (candidate) => candidate.manifest.name === args.namespace,
   );
   const definition = plugin?.conversationEvents?.find(

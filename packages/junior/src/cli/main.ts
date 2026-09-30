@@ -48,6 +48,11 @@ async function runBriefs(argv: string[]): Promise<number> {
   return await mod.runBriefs(argv);
 }
 
+async function runSpaces(argv: string[]): Promise<number> {
+  const mod = await import("./spaces");
+  return await mod.runSpaces(argv);
+}
+
 function topLevelCommand(argv: string[]): string | undefined {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0];
@@ -64,10 +69,13 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  // `briefs pull` must work with only an API token, so it skips app plugin
-  // loading like `init` does.
+  // `briefs pull` must work with only an API token, and `spaces backfill`
+  // needs only the database, so both skip app plugin loading like `init`.
   const cliPluginsModule =
-    command && command !== "init" && command !== "briefs"
+    command &&
+    command !== "init" &&
+    command !== "briefs" &&
+    command !== "spaces"
       ? await import("./plugins")
       : undefined;
   const pluginSet = cliPluginsModule
@@ -78,6 +86,7 @@ export async function runMain(
     : undefined;
   const exitCode = await runCli(argv, {
     runBriefs,
+    runSpaces,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
     runSnapshotCreate,

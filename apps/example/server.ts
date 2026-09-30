@@ -18,6 +18,7 @@ const [
 
 const app = await createApp({
   briefs: { enabled: true },
+  spaces: { enabled: true },
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],

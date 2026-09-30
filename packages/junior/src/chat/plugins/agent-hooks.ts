@@ -63,7 +63,7 @@ import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { coreRegistrations } from "@/chat/core-registrations";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -539,7 +539,7 @@ export async function getPluginUserPromptContributions(args: {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  for (const plugin of getPlugins()) {
+  for (const plugin of [...coreRegistrations(), ...getPlugins()]) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.userPrompt;
     if (!hook) {
@@ -1370,7 +1370,7 @@ export async function getPluginOperationalReports(
   nowMs: number,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
-  for (const plugin of [...coreTaskRegistrations(), ...getPlugins()]) {
+  for (const plugin of [...coreRegistrations(), ...getPlugins()]) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.operationalReport;
     if (!hook) {

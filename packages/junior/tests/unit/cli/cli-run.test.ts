@@ -5,6 +5,7 @@ describe("cli command dispatch", () => {
   function handlers() {
     return {
       runBriefs: vi.fn(async () => 0),
+      runSpaces: vi.fn(async () => 0),
       runChat: vi.fn(async () => 0),
       runInit: vi.fn(async () => undefined),
       runSnapshotCreate: vi.fn(async () => undefined),

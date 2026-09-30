@@ -28,6 +28,7 @@ import {
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
 import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setSpacesConfig } from "@/chat/spaces/registration";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -122,6 +123,12 @@ export interface JuniorAppOptions extends BotModelConfig {
    * default-model call per completed Turn. Disabled by default.
    */
   briefs?: { enabled?: boolean };
+  /**
+   * Assign each root Conversation to a Space from its first Brief. Requires
+   * Briefs. Costs one default-model call per newly assigned Conversation.
+   * Disabled by default.
+   */
+  spaces?: { enabled?: boolean };
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -710,6 +717,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousSpacesConfig = setSpacesConfig(options?.spaces);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   const restoreRuntimeConfig = (): void => {
@@ -721,6 +729,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
     setBriefsConfig(previousBriefsConfig);
+    setSpacesConfig(previousSpacesConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

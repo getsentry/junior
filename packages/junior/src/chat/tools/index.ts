@@ -61,6 +61,7 @@ import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
+import { createSpaceTools } from "@/chat/spaces/tools";
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -128,6 +129,7 @@ export function createTools(
     ...createScheduledAutomationTools(context),
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
+    ...createSpaceTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   if (context.conversationPrivacy === "public") {
