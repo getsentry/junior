@@ -34,6 +34,9 @@ if (harnessConfig) {
     connectionString: process.env.DATABASE_URL,
     max: 1,
   });
+  resetPool.on("error", (error) => {
+    console.warn(`Postgres reset pool client failed: ${error.message}`);
+  });
 }
 
 function isRetryableResetError(error: unknown): boolean {

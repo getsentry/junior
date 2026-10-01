@@ -22,6 +22,7 @@ import {
   type ConversationWorkerContext,
 } from "./worker";
 import { verifyConversationQueueMessage } from "./queue-signing";
+import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
 export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
@@ -35,6 +36,8 @@ export interface ProcessConversationQueueMessageOptions {
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
   softYieldAfterMs?: number;
   state?: StateAdapter;
+  /** Keep background work started by a turn, such as titles, alive. */
+  waitUntil?: (task: Promise<unknown>) => void;
 }
 
 export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
@@ -69,15 +72,20 @@ export async function processConversationQueueMessage(
   options: ProcessConversationQueueMessageOptions,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
-  return await processConversationWork(parsed, {
-    checkInIntervalMs: options.checkInIntervalMs,
-    conversationStore: options.conversationStore,
-    nowMs: options.nowMs,
-    queue: options.queue ?? getVercelConversationWorkQueue(),
-    run: options.run,
-    softYieldAfterMs: options.softYieldAfterMs,
-    state: options.state,
-  });
+  try {
+    return await processConversationWork(parsed, {
+      checkInIntervalMs: options.checkInIntervalMs,
+      conversationStore: options.conversationStore,
+      nowMs: options.nowMs,
+      queue: options.queue ?? getVercelConversationWorkQueue(),
+      run: options.run,
+      softYieldAfterMs: options.softYieldAfterMs,
+      state: options.state,
+    });
+  } finally {
+    // Turns start title work in the background. The worker owns it.
+    options.waitUntil?.(settleConversationTitleWork(parsed.conversationId));
+  }
 }
 
 function logConversationQueueMessageRejected(

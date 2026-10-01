@@ -89,7 +89,7 @@ import {
   createSlackAdapterAssistantStatusSession,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
-import { resolveConversationTitle } from "@/chat/services/conversation-title";
+import { scheduleConversationTitleProjection } from "@/chat/services/conversation-title";
 import { maybeSyncAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
   conversationVisibilityFromSlackChannelType,
@@ -1029,21 +1029,16 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           status.update();
           // Title generation is automatic on transcript persist. DM threads only
           // project the stored/in-flight title to Slack once it settles.
-          void resolveConversationTitle({ conversationId })
-            .then(async (title) => {
-              if (!title) {
-                return;
-              }
-              await maybeSyncAssistantTitle({
+          scheduleConversationTitleProjection({
+            conversationId,
+            project: (title) =>
+              maybeSyncAssistantTitle({
                 channelId: assistantThreadContext?.channelId,
                 getSlackAdapter: deps.getSlackAdapter,
                 threadTs: assistantThreadContext?.threadTs,
                 title,
-              });
-            })
-            .catch((error) => {
-              logException(error, "conversation.title.task.failed");
-            });
+              }),
+          });
           const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);
