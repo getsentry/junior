@@ -1,3 +1,4 @@
+import { ForkConversationButton } from "./ForkConversationButton";
 import { TranscriptAttachments } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
@@ -46,11 +47,7 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          contextAction={
-            props.message.role === "user" && props.message.contexts?.length ? (
-              <TranscriptTurnContextView contexts={props.message.contexts} />
-            ) : undefined
-          }
+          action={messageAction(props.message, props.conversation)}
           message={props.message}
           conversation={props.conversation}
         />
@@ -86,6 +83,7 @@ export const TranscriptMessageView = memo(
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
+    previous.conversation.canFork === next.conversation.canFork &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,
 );
 
@@ -114,8 +112,31 @@ export function RedactedMessageView(props: {
   );
 }
 
+function messageAction(
+  message: TranscriptViewMessage,
+  conversation: ConversationTranscript,
+): ReactNode {
+  if (message.role === "user" && message.contexts?.length) {
+    return <TranscriptTurnContextView contexts={message.contexts} />;
+  }
+  if (
+    conversation.canFork &&
+    message.role === "assistant" &&
+    message.messageId &&
+    !message.pending
+  ) {
+    return (
+      <ForkConversationButton
+        conversationId={conversation.conversationId}
+        messageId={message.messageId}
+      />
+    );
+  }
+  return undefined;
+}
+
 function TranscriptMessageHeader(props: {
-  contextAction?: ReactNode;
+  action?: ReactNode;
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
@@ -127,7 +148,7 @@ function TranscriptMessageHeader(props: {
   );
 
   return (
-    <TranscriptMessageHeading action={props.contextAction}>
+    <TranscriptMessageHeading action={props.action}>
       <span className={transcriptRoleLabelClass(props.message.role)}>
         {roleLabel}
       </span>

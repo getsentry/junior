@@ -1825,8 +1825,14 @@ export function readMockConversationDetail(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  const { parentConversationId: _parentConversationId, ...detail } =
-    conversation;
+  const { parentConversationId, ...conversationDetail } = conversation;
+  // Match the API: only readable root Conversations can be forked.
+  const detail = {
+    ...conversationDetail,
+    canFork:
+      !parentConversationId &&
+      conversationDetail.eventHistory.status !== "redacted",
+  };
   const withArchiveState = mockArchivedConversationIds.has(conversationId)
     ? {
         ...detail,

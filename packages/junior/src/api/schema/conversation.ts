@@ -751,8 +751,26 @@ function validateConversationEvents(
   }
 }
 
+export const forkConversationBodySchema = z
+  .object({
+    /** Assistant reply that ends the copied history. */
+    messageId: z.string().min(1).max(500),
+    idempotencyKey: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const forkConversationResponseSchema = z
+  .object({ conversationId: z.string() })
+  .strict();
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    /** The viewer can fork this conversation from an assistant reply. */
+    canFork: z.boolean().optional(),
+    forkedFromConversationId: z.string().optional(),
+    /** Title of the fork source, when the viewer can open it. */
+    forkedFromTitle: z.string().optional(),
+    forks: z.array(z.string()).optional(),
     brief: z
       .object({
         content: conversationBriefSchema,
@@ -924,6 +942,7 @@ export type ArchiveConversationBody = z.infer<
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
 >;
+export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
 >;

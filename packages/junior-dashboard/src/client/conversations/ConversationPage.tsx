@@ -20,6 +20,7 @@ import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationBrief } from "./ConversationBrief";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
@@ -137,6 +138,18 @@ export function ConversationPage(props: {
           <section className="min-w-0">
             <ConversationHeader
               conversationId={conversationId}
+              forks={
+                detail.data?.forkedFromConversationId ||
+                detail.data?.forks?.length ? (
+                  <ConversationForkLinks
+                    forkedFromConversationId={
+                      detail.data.forkedFromConversationId
+                    }
+                    forkedFromTitle={detail.data.forkedFromTitle}
+                    forks={detail.data.forks}
+                  />
+                ) : null
+              }
               lastActivityAt={conversation?.lastSeenAt}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={

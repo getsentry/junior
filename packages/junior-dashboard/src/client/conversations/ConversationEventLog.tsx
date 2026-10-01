@@ -12,6 +12,7 @@ import {
   eventLogUsage,
 } from "./eventLog";
 import { EventDetails } from "./EventDetails";
+import { ForkConversationButton } from "./ForkConversationButton";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 const rowClass =
@@ -191,6 +192,18 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               titleId={titleId}
               width="wide"
             >
+              {conversation.canFork &&
+              selected.data.type === "message" &&
+              selected.data.role === "assistant" &&
+              !selected.data.redacted ? (
+                <div className="mb-3 flex items-center gap-2 text-sm">
+                  <ForkConversationButton
+                    conversationId={conversation.conversationId}
+                    messageId={selected.data.messageId}
+                  />
+                  <span>Fork after this reply</span>
+                </div>
+              ) : null}
               <EventDetails key={selected.seq} event={selected} />
             </Drawer>,
             document.body,

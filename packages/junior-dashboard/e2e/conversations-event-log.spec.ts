@@ -108,6 +108,122 @@ test("inspects all reporting events and searches full event data", async ({
       { exact: true },
     ),
   ).toBeVisible();
+
+  // Both views fork and send the first message with retry-safe requests.
+  const forkAction = page
+    .getByRole("button", { name: "Fork after this message" })
+    .last();
+  await forkAction.click();
+  const forkDialog = page.getByRole("dialog", {
+    name: "Fork Conversation",
+    exact: true,
+  });
+  await expect(
+    forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
+  ).toBeDisabled();
+  await screenshot(page, "conversation-fork-dialog");
+  await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
+  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  const reply = report.events.findLast(
+    (event: { data: { type: string; role?: string } }) =>
+      event.data.type === "message" && event.data.role === "assistant",
+  );
+  await log
+    .getByRole("button", { name: `Event ${reply.seq}: message`, exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "message", exact: true })
+    .getByRole("button", { name: "Fork after this message" })
+    .click();
+  const requests: Array<{ messageId: string; idempotencyKey: string }> = [];
+  const messages: Array<{ message: string; idempotencyKey: string }> = [];
+  const forkId = "local:web:fork-browser-test";
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}/messages`,
+    async (route) => {
+      messages.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          conversationId: forkId,
+          messageId: "fork-first-message",
+          status: "accepted",
+        },
+      });
+    },
+  );
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
+    async (route) => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill(
+        requests.length === 1
+          ? {
+              status: 503,
+              json: { error: "Could not create the fork. Try again." },
+            }
+          : { json: { conversationId: forkId } },
+      );
+    },
+  );
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}`,
+    (route) =>
+      route.fulfill({
+        json: {
+          ...report,
+          conversationId: forkId,
+          forkedFromConversationId: conversationId,
+          forkedFromTitle: report.displayTitle,
+          events: [],
+          isParticipant: true,
+          status: "completed",
+          forks: [],
+        },
+      }),
+  );
+  const pendingResponse = await page.request.get(
+    `${dashboard.baseURL}/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+  );
+  const pending = await pendingResponse.json();
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}/pending-messages`,
+    (route) =>
+      route.fulfill({
+        json: { ...pending, conversationId: forkId, messages: [] },
+      }),
+  );
+  await forkDialog
+    .getByRole("textbox", { name: "Message" })
+    .fill("Try the other region.");
+  const forkAndSend = forkDialog.getByRole("button", {
+    name: "Fork and send",
+    exact: true,
+  });
+  await forkAndSend.click();
+  await expect(forkDialog.getByRole("alert")).toHaveText(
+    "Could not create the fork. Try again.",
+  );
+  expect(messages).toHaveLength(0);
+  await forkAndSend.click();
+  await expect(page).toHaveURL(new RegExp(encodeURIComponent(forkId)));
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]?.messageId).toBe(reply.data.messageId);
+  expect(messages).toEqual([
+    {
+      idempotencyKey: requests[0]?.idempotencyKey,
+      message: "Try the other region.",
+    },
+  ]);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Conversation forks" })
+      .getByRole("link", { name: report.displayTitle, exact: true }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  await screenshot(page, "conversation-fork-links");
 });
 
 test("loads earlier events without merging tool starts and results", async ({

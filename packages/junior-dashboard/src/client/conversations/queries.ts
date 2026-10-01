@@ -25,6 +25,7 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  forkConversationResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import type { DashboardCoreData } from "../types";
@@ -222,6 +223,50 @@ export function useCreateConversation() {
       void queryClient.invalidateQueries({
         exact: true,
         queryKey: conversationDetailQueryKey(accepted.conversationId),
+      });
+    },
+  });
+}
+
+/**
+ * Fork a conversation at one assistant reply and send the first message to
+ * the fork. A retry with the same key returns the same fork and message.
+ */
+export function useForkConversation(sourceConversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (args: {
+      idempotencyKey: string;
+      message: string;
+      messageId: string;
+    }) => {
+      const fork = await post(
+        forkConversationResponseSchema,
+        `/api/conversations/${encodeURIComponent(sourceConversationId)}/forks`,
+        { messageId: args.messageId, idempotencyKey: args.idempotencyKey },
+      );
+      return post(
+        acceptedConversationMessageSchema,
+        `/api/conversations/${encodeURIComponent(fork.conversationId)}/messages`,
+        { idempotencyKey: args.idempotencyKey, message: args.message },
+      );
+    },
+    onSuccess: (accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(accepted.conversationId),
+        (current) =>
+          upsertConversationOutboxMessage(current, {
+            ...conversationOutboxMessageForSubmit({
+              idempotencyKey: args.idempotencyKey,
+              message: args.message,
+              actorIdentity: outboxActorIdentity(queryClient),
+              messageId: accepted.messageId,
+            }),
+            status: "accepted",
+          }),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
       });
     },
   });

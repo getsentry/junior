@@ -590,6 +590,13 @@ test("inspects and copies an advisor transcript", async ({
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
+  // Child Conversations cannot be forked, so their replies offer no action.
+  await expect(
+    drawer.getByText("Review complete; no blocking issues found."),
+  ).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: "Fork after this message" }),
+  ).toHaveCount(0);
 
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
