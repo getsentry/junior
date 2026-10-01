@@ -62,6 +62,18 @@ export interface PluginMcpAuthConfig {
   privateKeyEnv: string;
 }
 
+/** Pre-registered OAuth client for per-actor MCP OAuth without dynamic client registration. */
+export interface PluginMcpOAuthClientConfig {
+  /** Extra authorization request parameters, such as `access_type: offline`. */
+  authorizeParams?: Record<string, string>;
+  /** Env var holding the OAuth client id. */
+  clientIdEnv: string;
+  /** Env var holding the OAuth client secret. */
+  clientSecretEnv: string;
+  /** Space-delimited scope requested instead of the scopes the MCP server advertises. */
+  scope?: string;
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
@@ -69,6 +81,8 @@ export interface PluginMcpConfig {
   auth?: PluginMcpAuthConfig;
   /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */
   headers?: Record<string, string>;
+  /** Per-actor OAuth with a pre-registered client instead of dynamic client registration. */
+  oauthClient?: PluginMcpOAuthClientConfig;
   transport: "http";
   url: string;
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */

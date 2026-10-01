@@ -81,6 +81,34 @@ This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
 
+### Pre-registered MCP OAuth clients
+
+Junior registers itself as an OAuth client when an MCP server asks a user to
+authorize. Some authorization servers do not support dynamic client
+registration. For these servers, declare `mcp.oauth-client` with the client
+that you registered:
+
+```yaml title="plugin.yaml"
+env-vars:
+  MY_PROVIDER_MCP_CLIENT_ID:
+  MY_PROVIDER_MCP_CLIENT_SECRET:
+
+mcp:
+  url: https://api.my-provider.example/mcp
+  oauth-client:
+    client-id-env: MY_PROVIDER_MCP_CLIENT_ID
+    client-secret-env: MY_PROVIDER_MCP_CLIENT_SECRET
+    scope: my-provider.readonly
+    authorize-params:
+      access_type: offline
+```
+
+Set the client redirect URI to
+`<JUNIOR_BASE_URL>/api/oauth/callback/mcp/<plugin-name>`. Junior requests
+`scope` instead of the scopes that the MCP server advertises. Use it to keep a
+plugin read-only. `authorize-params` adds provider-specific parameters to the
+authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
+
 ## Runtime dependencies
 
 If a skill needs a CLI or system package inside the sandbox, declare that in `plugin.yaml`:
