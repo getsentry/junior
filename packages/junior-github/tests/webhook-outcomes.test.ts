@@ -1819,6 +1819,66 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("ignores comments and reviews written by the Junior bot", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {});
+    const bot = { login: "Sentry-Junior[bot]" };
+    const deliveries = [
+      {
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 946,
+            pull_request: { url: "https://api.github.com/pulls/946" },
+          },
+          comment: { body: "fixed", id: 101, user: bot },
+        },
+      },
+      {
+        eventName: "pull_request_review_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          comment: { body: "nit", id: 202, user: bot },
+        },
+      },
+      {
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          review: { body: "looks good", state: "COMMENTED", user: bot },
+        },
+      },
+    ];
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+      );
+      for (const delivery of deliveries) {
+        const response = await route.handler(
+          signedRequest(delivery.body, delivery.eventName),
+        );
+        expect(await response.text()).toBe("Ignored");
+      }
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
+      expect(published).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("publishes comment events when the reviewing reaction fails", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];

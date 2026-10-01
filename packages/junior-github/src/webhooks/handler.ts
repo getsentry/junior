@@ -329,6 +329,7 @@ export function createGitHubWebhookRoute(args: {
           : undefined;
       const events = normalizeGitHubEvents({
         body,
+        botEmail,
         ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
         eventName,
