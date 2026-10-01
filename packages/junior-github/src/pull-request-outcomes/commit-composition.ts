@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import { botLoginFromEmail } from "../webhooks/ownership.js";
+import { botLoginFromEmail, isBotLogin } from "../webhooks/ownership.js";
 
 const canonicalCommitSchema = z
   .object({
@@ -38,8 +38,7 @@ export async function classifyGitHubPullRequestCommitComposition(args: {
   loadPage(page: number, perPage: number): Promise<unknown>;
 }): Promise<GitHubPullRequestCommitComposition | undefined> {
   const botEmail = args.botEmail.trim().toLowerCase();
-  const botLogin = botLoginFromEmail(botEmail)?.toLowerCase();
-  if (!botEmail || !botLogin) {
+  if (!botEmail || !botLoginFromEmail(botEmail)) {
     throw new Error(
       "The configured GitHub App bot email cannot classify pull request commits",
     );
@@ -54,9 +53,11 @@ export async function classifyGitHubPullRequestCommitComposition(args: {
     inspectedCommits += commits.length;
     for (const commit of commits) {
       foundCommit = true;
-      const authorLogin = commit.authorLogin?.trim().toLowerCase();
       const authorEmail = commit.authorEmail?.trim().toLowerCase();
-      if (authorLogin !== botLogin && authorEmail !== botEmail) {
+      if (
+        !isBotLogin(commit.authorLogin, botEmail) &&
+        authorEmail !== botEmail
+      ) {
         return "mixed";
       }
     }
