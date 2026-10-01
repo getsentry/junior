@@ -336,6 +336,53 @@ async function createGitHubPullRequest(
   };
 }
 
+/** Assignment is optional: lookup or provider failures must not fail PR creation. */
+async function assignPullRequestRequester(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+): Promise<void> {
+  if (!ctx.actor || ctx.actor.platform === "system") return;
+  try {
+    const requester = await ctx.users.resolveActor();
+    const assignee = requester?.user?.identities
+      .find((identity) => identity.provider === "github")
+      ?.handle?.trim();
+    if (!assignee) return;
+    const repo = parseRepo(input.repo);
+    const response = await ctx.egress.fetch({
+      provider: "github",
+      operation: "github.pull.assign",
+      request: new Request(
+        `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${result.number}/assignees`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          body: JSON.stringify({ assignees: [assignee] }),
+        },
+      ),
+    });
+    if (!response.ok) {
+      ctx.log.warn("github.pull_request.assign_after_create.rejected", {
+        number: result.number,
+        repo: input.repo,
+        status: response.status,
+      });
+    }
+    // GitHub may ignore an ineligible assignee. An unassigned PR is acceptable.
+  } catch (error) {
+    ctx.log.warn("github.pull_request.assign_after_create.failed", {
+      error: error instanceof Error ? error.message : String(error),
+      number: result.number,
+      repo: input.repo,
+    });
+  }
+}
+
 function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
@@ -435,7 +482,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -495,27 +542,9 @@ export function createGitHubPullRequestTool(
             pendingState,
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
+          let result: GitHubPullRequestResult;
           try {
-            const result = await createGitHubPullRequest(ctx, request);
-            Object.assign(pendingState, { status: "completed", ...result });
-            try {
-              await ctx.state.set(
-                key,
-                pendingState,
-                GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
-              );
-            } catch (error) {
-              throw new Error(
-                "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
-                { cause: error },
-              );
-            }
-            return await gitHubPullRequestStructuredResult(
-              ctx,
-              parsedInput,
-              result,
-              subscriptionConfig,
-            );
+            result = await createGitHubPullRequest(ctx, request);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -525,6 +554,33 @@ export function createGitHubPullRequestTool(
             }
             throw error;
           }
+          const completedState: Extract<
+            CreatePullRequestState,
+            { status: "completed" }
+          > = {
+            ...pendingState,
+            status: "completed",
+            ...result,
+          };
+          try {
+            await ctx.state.set(
+              key,
+              completedState,
+              GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
+            );
+          } catch (error) {
+            throw new Error(
+              "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
+              { cause: error },
+            );
+          }
+          await assignPullRequestRequester(ctx, parsedInput, result);
+          return await gitHubPullRequestStructuredResult(
+            ctx,
+            parsedInput,
+            result,
+            subscriptionConfig,
+          );
         },
       );
     },
