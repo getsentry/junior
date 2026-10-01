@@ -8,6 +8,7 @@ import {
   type StateAdapter,
 } from "chat";
 import { z } from "zod";
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { logException } from "@/chat/logging";
 import type {
   SlackTurnOptions,
@@ -414,6 +415,7 @@ const slackConversationMessageMetadataSchema = z.union([
           identifier: z.string(),
           subscriptionId: z.string(),
           trustedSummary: z.string().optional(),
+          objectType: objectTypeSchema.optional(),
         })
         .strict(),
     })

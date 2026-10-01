@@ -7,7 +7,10 @@ export type { InputImage, MessageAttachment } from "../chat/attachments/input";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
-export { messageCardText } from "../chat/conversations/cards";
+export {
+  messageCardText,
+  resolveMessageCards,
+} from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
@@ -17,6 +20,8 @@ export {
   codeChangeSummarySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryParamsSchema,
+  codeRepositoryReportSchema,
   codeRepositorySummarySchema,
 } from "./schema/code";
 export type {
@@ -24,6 +29,7 @@ export type {
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
+  CodeRepositoryReport,
   CodeRepositorySummary,
 } from "./schema/code";
 export {
@@ -150,6 +156,12 @@ export type {
   WorkspaceReport,
 } from "./schema/workspace";
 export {
+  automationEventCatalogSchema,
+  automationScheduleIntentSchema,
+  automationSchedulePreviewSchema,
+  automationEditSchema,
+  automationUpdateSchema,
+  automationEditErrorSchema,
   eventAutomationSummarySchema,
   scheduledAutomationSummarySchema,
   automationExecutionListSchema,
@@ -165,11 +177,15 @@ export {
   automationSummarySchema,
 } from "./schema/automation";
 export type {
+  AutomationScheduleIntent,
+  AutomationEdit,
+  AutomationUpdate,
   AutomationExecution,
   AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListQuery,
   AutomationRun,
   AutomationRunList,
   AutomationRunWindows,

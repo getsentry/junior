@@ -1,4 +1,12 @@
+import { FormNotice } from "../../components/FormNotice";
+import { Select } from "../../components/Select";
+import { ObjectFixtures } from "./ObjectFixtures";
 import { ChartFixtures } from "./ChartFixtures";
+import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
+import {
+  ConversationFixture,
+  MessageAttachmentsFixture,
+} from "./ConversationFixture";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
@@ -28,11 +36,11 @@ import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { ActorAvatar } from "../../components/ActorAvatar";
 import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
-import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -295,7 +303,6 @@ function FoundationsGalleryPage() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
-  const [tab, setTab] = useState<"details" | "memories" | "usage">("details");
 
   return (
     <GalleryShell
@@ -303,6 +310,34 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Editor controls">
+        <Field
+          label="Instruction"
+          htmlFor="gallery-instruction"
+          error="Enter an instruction."
+        >
+          <TextArea
+            prose
+            id="gallery-instruction"
+            aria-invalid
+            aria-describedby="gallery-instruction-error"
+          />
+        </Field>
+        <Field label="Repeat" htmlFor="gallery-repeat">
+          <TextInput
+            size="comfortable"
+            aria-label="Resource identifier"
+            defaultValue="getsentry/junior#42"
+          />
+          <Select id="gallery-repeat">
+            <option>Every week</option>
+          </Select>
+        </Field>
+        <Button tone="primary">Save changes</Button>
+        <FormNotice title="This automation changed while you were editing.">
+          Your edits are still here. Review the latest version before saving.
+        </FormNotice>
+      </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
@@ -318,26 +353,10 @@ function FoundationsGalleryPage() {
         </DashboardChromeProvider>
       </Fixture>
       <Fixture title="Segmented tabs">
-        <div className="max-w-md">
-          <SegmentedTabs
-            items={[
-              { label: "Details", value: "details" },
-              { label: "Memories", value: "memories" },
-              { label: "Usage", value: "usage" },
-            ]}
-            label="Conversation panels"
-            onChange={setTab}
-            value={tab}
-          >
-            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              {tab === "details"
-                ? "Conversation summary and linked work."
-                : tab === "memories"
-                  ? "What Junior learned from this conversation."
-                  : "Time, tokens, and cost for this conversation."}
-            </p>
-          </SegmentedTabs>
-        </div>
+        <SegmentedTabsFixture />
+      </Fixture>
+      <Fixture title="Segmented page links">
+        <SegmentedNavFixture />
       </Fixture>
       <Fixture title="Narrow details drawer">
         <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
@@ -558,17 +577,32 @@ function FoundationsGalleryPage() {
           />
         </div>
       </Fixture>
-      <Fixture title="Status chips">
-        <div className="flex flex-wrap items-center gap-2">
+      <Fixture title="Status labels">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <StatusChip tone="neutral">private</StatusChip>
           <StatusChip tone="success">completed</StatusChip>
           <StatusChip tone="danger">failed</StatusChip>
           <StatusChip tone="warning">blocked</StatusChip>
           <StatusChip tone="info">preference</StatusChip>
           <StatusChip tone="accent">knowledge</StatusChip>
-          <StatusChip size="compact" tone="success">
-            public
+          <StatusChip size="compact" tone="warning">
+            Trigger unavailable
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Actor avatars">
+        <div className="flex items-center gap-4">
+          <ActorAvatar
+            name="Ada Lovelace"
+            imageUrl="/_junior/dashboard/avatar.png"
+            size="detail"
+          />
+          <ActorAvatar name="Grace Hopper" size="detail" />
+          <ActorAvatar
+            name="Alan Turing"
+            imageUrl="/missing-avatar.png"
+            size="list"
+          />
         </div>
       </Fixture>
       <Fixture title="Participant avatars">
@@ -681,6 +715,15 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Conversation spacing">
+        <ConversationFixture />
+      </Fixture>
+      <Fixture title="Message attachments (mock reporting)">
+        <MessageAttachmentsFixture />
+      </Fixture>
+      <Fixture title="Object visual language">
+        <ObjectFixtures />
+      </Fixture>
       <Fixture title="Object annotations">
         <ObjectCard
           card={{
@@ -733,7 +776,7 @@ function TranscriptsGalleryPage() {
         <ObjectCard
           card={{
             kind: "object",
-            objectType: "item",
+            objectType: "deployment",
             displayType: "Deployment",
             plugin: "vercel",
             key: "dpl_example",

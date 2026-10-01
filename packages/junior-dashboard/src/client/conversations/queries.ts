@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
+  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useMutationState,
@@ -8,6 +9,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
+  ActorIdentity,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -25,12 +27,14 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
+import type { DashboardCoreData } from "../types";
 import {
   DashboardApiError,
   del,
   fetchDashboardJson,
   patch,
   post,
+  readDashboardResponse,
 } from "../http";
 import {
   conversationOutboxMessageForSubmit,
@@ -126,15 +130,17 @@ export function usePendingArchiveConversationUpdates() {
 
 type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
+  detailEtag?: string;
 };
 
 /** Read the mailbox before history so acknowledged input is already committed. */
 async function readConversationSnapshot(
   conversationId: string,
   signal?: AbortSignal,
+  previous?: ConversationSnapshot,
 ): Promise<ConversationSnapshot> {
   const mailbox = await readConversationPendingMessages(conversationId, signal);
-  const detail = await readConversationData(conversationId, signal);
+  const detail = await readConversationData(conversationId, signal, previous);
   return { ...detail, mailbox };
 }
 
@@ -146,7 +152,14 @@ export function conversationDetailQueryOptions(
   return queryOptions({
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
-    queryFn: ({ signal }) => readConversationSnapshot(conversationId!, signal),
+    queryFn: ({ signal, client }) =>
+      readConversationSnapshot(
+        conversationId!,
+        signal,
+        client.getQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+        ),
+      ),
     structuralSharing: (previous, next) => {
       if (!next || typeof next !== "object") return next;
       if (!previous || typeof previous !== "object") return next;
@@ -166,6 +179,20 @@ export function conversationDetailQueryOptions(
   });
 }
 
+function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
+
 /** Create one dashboard conversation and refresh the personal feed. */
 export function useCreateConversation() {
   const queryClient = useQueryClient();
@@ -183,6 +210,7 @@ export function useCreateConversation() {
           upsertConversationOutboxMessage(current, {
             ...conversationOutboxMessageForSubmit({
               ...args,
+              actorIdentity: outboxActorIdentity(queryClient),
               messageId: accepted.messageId,
             }),
             status: "accepted",
@@ -223,6 +251,7 @@ export function useAppendConversationMessage(conversationId: string) {
       });
       const optimistic = conversationOutboxMessageForSubmit({
         ...args,
+        actorIdentity: outboxActorIdentity(queryClient),
         messageId,
       });
       queryClient.setQueryData<ConversationOutboxMessage[]>(
@@ -387,9 +416,10 @@ export function useArchiveConversation(
           conversations,
         });
       });
-      queryClient.setQueryData<ConversationDetailReport>(
+      queryClient.setQueryData<ConversationSnapshot>(
         detailQueryKey,
-        (detail) => (detail ? { ...detail, archivedAt } : detail),
+        (detail) =>
+          detail ? { ...detail, archivedAt, detailEtag: undefined } : detail,
       );
       if (archivedSnapshot) {
         queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
@@ -427,10 +457,16 @@ export function useArchiveConversation(
       options?.onError?.();
     },
     onSuccess: (result, args) => {
-      queryClient.setQueryData<ConversationDetailReport>(
+      queryClient.setQueryData<ConversationSnapshot>(
         conversationDetailQueryKey(conversationId),
         (detail) =>
-          detail ? { ...detail, archivedAt: result.archivedAt } : detail,
+          detail
+            ? {
+                ...detail,
+                archivedAt: result.archivedAt,
+                detailEtag: undefined,
+              }
+            : detail,
       );
       if (!args.archived) {
         queryClient.removeQueries({
@@ -644,16 +680,20 @@ export function useConversationData(conversationId: string | undefined) {
   };
 }
 
-/** Read one bounded conversation-detail resource. */
-export function readConversationData(
+/** Reuse the cached detail when the server reports no change. */
+export async function readConversationData(
   conversationId: string,
   signal?: AbortSignal,
-): Promise<ConversationDetailReport> {
-  return fetchDashboardJson(
-    conversationDetailReportSchema,
+  previous?: ConversationSnapshot,
+): Promise<ConversationSnapshot> {
+  const response = await readDashboardResponse(
     `/api/conversations/${encodeURIComponent(conversationId)}`,
     signal,
+    previous?.detailEtag,
   );
+  if (response.status === 304 && previous) return previous;
+  const report = conversationDetailReportSchema.parse(await response.json());
+  return { ...report, detailEtag: response.headers.get("etag") ?? undefined };
 }
 
 /** Read accepted mailbox messages that have not reached durable history yet. */

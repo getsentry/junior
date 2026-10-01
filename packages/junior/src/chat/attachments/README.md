@@ -28,6 +28,13 @@ This module owns durable files linked to a conversation.
   by purged conversations, then removes those SQL rows. A failed blob delete
   leaves the eligible row for the next run.
 
+## File output
+
+`sendFiles` requires attachment storage for web-only Conversations. It stores
+sandbox files and adds them to the transcript under the Conversation's access
+and retention rules. It does not create public URLs. Slack adds an upload to
+the active Location through `slack/tools/send-files.ts`.
+
 ## Web image input
 
 Web input stores image bytes before it enqueues the Message. Mailbox rows and

@@ -164,5 +164,6 @@ and source update times without removing them from saved annotations.
 The `afterMcpTool` hook can return `{ objectAnnotations }` after a successful
 hosted tool call. Use `ctx.annotations.upsert` instead when facts must change
 without selecting a reply card, such as a background webhook update. Only return
-facts that can be shared with the current Conversation. Message snapshots remain
-separate from the latest annotation and do not grant access to the provider.
+facts that can be shared with the current Conversation. Message cards reference
+the latest saved annotation. Tool results remain immutable for agent history.
+Neither cards nor annotations grant access to the provider.

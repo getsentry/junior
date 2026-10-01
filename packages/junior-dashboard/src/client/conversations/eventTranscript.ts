@@ -1,3 +1,4 @@
+import { resolveMessageCards } from "@sentry/junior/api/schema";
 import type {
   ConversationPendingMessage,
   ConversationReportEvent,
@@ -124,12 +125,17 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
-  return transcriptMessagesFromEvents(conversation.events, pendingMessages);
+  return transcriptMessagesFromEvents(
+    conversation.events,
+    conversation.annotations,
+    pendingMessages,
+  );
 }
 
-/** Reduce ordered reporting events without subscribing to detail metadata. */
+/** Reduce ordered events and resolve cards from the latest saved annotations. */
 export function transcriptMessagesFromEvents(
   events: ConversationReportEvent[],
+  annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(events);
@@ -201,11 +207,14 @@ export function transcriptMessagesFromEvents(
         ]),
         messageId: data.messageId,
         ...(data.attachments ? { attachments: data.attachments } : undefined),
-        ...(data.cards ? { cards: data.cards } : undefined),
+        ...(data.cards
+          ? { cards: resolveMessageCards(data.cards, annotations ?? []) }
+          : undefined),
         ...(data.actorIdentity
           ? { actorIdentity: data.actorIdentity }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
           : undefined),
@@ -233,6 +242,8 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "assistant_message") {
+      // Calls with no reasoning still carry usage in the event log, not a chat bubble.
+      if (data.parts.length === 0) continue;
       messages.push(
         eventMessage(
           event,

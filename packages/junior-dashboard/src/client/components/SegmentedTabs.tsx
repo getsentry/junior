@@ -2,6 +2,23 @@ import { useId, type ReactNode } from "react";
 
 import { cn } from "../styles";
 
+/** Style the border and fill of the segmented pill track. */
+export const segmentedTabsFrameClass =
+  "rounded-lg border border-dashboard-border bg-dashboard-surface-panel";
+
+/** Style the spacing inside the segmented pill track. */
+export const segmentedTabsInsetClass = "gap-1 p-1";
+
+/** Style one tab or link in the segmented pill track. */
+export function segmentedTabClass(selected: boolean): string {
+  return cn(
+    "min-h-9 cursor-pointer rounded-md border-0 px-3 py-2 font-sans text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+    selected
+      ? "bg-dashboard-fill-strong text-dashboard-text"
+      : "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-faint hover:text-dashboard-text",
+  );
+}
+
 /** Switch between related panels with equal-width tabs and keyboard navigation. */
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
@@ -16,7 +33,11 @@ export function SegmentedTabs<const Value extends string>(props: {
     <div className="grid min-w-0 gap-4">
       <div
         aria-label={props.label}
-        className="grid auto-cols-fr grid-flow-col gap-1 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-1"
+        className={cn(
+          "grid auto-cols-fr grid-flow-col",
+          segmentedTabsFrameClass,
+          segmentedTabsInsetClass,
+        )}
         role="tablist"
       >
         {props.items.map((item, index) => (
@@ -24,10 +45,8 @@ export function SegmentedTabs<const Value extends string>(props: {
             aria-controls={`${id}-panel`}
             aria-selected={props.value === item.value}
             className={cn(
-              "min-h-9 min-w-0 cursor-pointer rounded-md border-0 px-3 py-2 font-sans text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
-              props.value === item.value
-                ? "bg-dashboard-fill-strong text-dashboard-text"
-                : "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-faint hover:text-dashboard-text",
+              "min-w-0",
+              segmentedTabClass(props.value === item.value),
             )}
             id={`${id}-${item.value}`}
             key={item.value}

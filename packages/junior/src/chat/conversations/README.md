@@ -231,8 +231,8 @@ Conversation. The provider owns its key, type, title, status, and optional field
 It is not the authoritative object store.
 
 Successful plugin tools return `objectAnnotations`. Core assigns the plugin
-owner, saves the annotations, and includes their snapshots in the tool result's
-`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+owner, saves the annotations, and replaces them with owned `objectCards` in the
+tool result. Hosted MCP hooks can return the same annotations. Raw MCP responses
 cannot set cards. Automation tools use the same saved object contract.
 
 `annotations.upsert` is storage-only. Webhook updates do not queue a card or
@@ -243,10 +243,20 @@ Pending cards come from committed successful tool results, not a scan of changed
 annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
 A visible Message consumes its cards. A new Turn does not inherit cards from a
-silent Turn. Store each delivered snapshot in the Message so background updates
-do not rewrite stored history. The web transcript shows this snapshot. Slack can
-refresh its preview from newer detail responses; it does not change the stored
-Message. Existing Automation cards remain readable.
+silent Turn. Delivery resolves the selected objects from saved annotations.
+Store only `{ kind, plugin, key }` references in Message `objectCards` metadata
+and report those references in transcript events. The Conversation supplies the
+scope; references cannot select another Conversation.
+
+The web transcript resolves each reference from the latest annotations in
+Conversation detail. Annotation changes refresh cards even when Message events
+and older history pages do not change. Copy, search, and export use the same
+resolved facts. If an annotation is missing, show its key and an unavailable
+notice, not stale facts. Slack detail requests also read saved annotations;
+Slack controls when a posted preview refreshes.
+
+Tool results and assistant text stay immutable. Message cards do not keep a
+second copy of those historical facts.
 
 Plugins must return only facts appropriate to disclose in the current
 Conversation. This contract does not expand provider permissions or make a
@@ -260,20 +270,26 @@ Plugins select facts from the successful provider response, before core saves
 an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
 and field order. It contains no provider fields or Slack layout. Both Slack and
 the web card use these facts. The Slack detail panel reads the latest saved
-annotation, not a new provider response. The web transcript shows the Message
-snapshot and labels it as saved.
+annotation, not a new provider response. The web transcript labels cards as
+latest saved state, not live provider state.
 
-- Code changes show review and check summaries when known, then author,
-  requested reviewers, conflicts, branches, and change size. GitHub REST PR
-  responses do not include review decisions or check totals. The producer must
-  not invent these from requested reviewers, mergeability, or lifecycle state.
-- Tasks show assignees and priority, then project, cycle, due date, and labels.
-  An empty assignee list means unassigned. An absent list means unknown.
-- Deployments use Item cards. Vercel selects project, target, revision, and
+- Code change details and web cards show the source branch and lifecycle status.
+  Slack previews omit both. GitHub also saves up to 4,000 characters of the PR
+  description, without runtime attribution, session footers, or HTML comments.
+  Slack previews show only this description, with at most 500 characters and six
+  source lines, and an ellipsis when shortened. Slack's `long` field option
+  controls width, not automatic collapse. The Slack detail panel shows the full
+  saved description. The source link opens the original description. The web
+  card uses its existing details toggle.
+- Task details show assignees and priority, then project, cycle, due date, and
+  labels. Slack previews show only a description, when present. An empty assignee
+  list means unassigned. An absent list means unknown.
+- Deployments use the `deployment` object type. Vercel selects project, target, revision, and
   branch from its existing deployment response. It never copies environment
   values. A missing target stays unknown.
-- Automations use the existing card and detail page. Cards show state, trigger,
-  and warning. The existing Automation record owns full details and actions.
+- Automations use the existing card and detail page. Slack previews show only
+  the trigger and warning. The existing Automation record owns full details
+  and actions.
 - Other Items remain useful with just a title and source link.
 
 The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have
@@ -281,11 +297,6 @@ schema bounds. Producers select at most five entries per list and shorten
 optional display text. They do not shorten object keys or source URLs. This
 limit applies to new facts, not to the entire annotation, which also contains
 identity and existing bounded fields. No new table or cache is needed.
-
-Core replaces `objectAnnotations` with owned `objectCards` in successful tool
-results. This avoids two copies in the same tool result. Delivery still saves
-an independent Message snapshot. Background annotation updates stay silent and
-must not change that snapshot, start Watches, or send new Messages.
 
 `sourceUpdatedAt` is the provider's update time, not the database write time.
 A silent status-only update does not claim to refresh every other fact. New
@@ -298,9 +309,38 @@ check access to larger details.
 
 #### Release safety
 
-Old annotations remain valid because the new fields are optional. The previous
-strict reader does not accept enriched annotations or Message snapshots. Drain
-workers and deploy the API, plugins, and dashboard together before writing new
-facts. Reload old dashboard tabs. Do not roll back to a reader that rejects
-these fields after enriched cards have been written. A rollback needs a reader
-that accepts the new fields, even if it does not display them.
+New Messages store references, not card snapshots. Readers reduce older object
+and Automation cards to references without rewriting stored history. An older
+Automation without a saved annotation shows the unavailable notice. No database
+migration or new table is needed.
+
+Drain workers and deploy the API and dashboard together. Reload old dashboard
+tabs. Old strict readers cannot read reference-only cards. Rollback requires a
+reader that accepts references after new Messages have been saved. Tool-result
+facts keep their existing format for agent replay.
+
+### Object visual language
+
+`object-presentation.ts` in the plugin API owns native type labels, lifecycle
+icons, and semantic tones. Tickets keep the stored type `task`. Code changes,
+Automations, Deployments, and Items each have a distinct icon. Warnings change
+the tone, not the object identity. Provider plugins supply types; core and the
+web do not parse provider URLs to guess a type. The GitHub sidebar hook handles
+old untyped links. Stored deployment Items remain readable as Deployments.
+
+`ObjectIcon` renders the shared Octicons paths in the web. Cards, conversation
+links, sidebar badges, and typed event rows use this component. A plugin's
+sidebar hook can choose compact labels. Other typed annotations use the default
+projection, including core Automations. Unknown event types keep the event icon.
+
+Slack uses the same paths as fixed PNG assets through `product_icon`. The
+versioned dashboard route is public and serves only this fixed icon set. It
+contains no object facts. Local or headless installs omit image URLs. Type
+labels remain in Work Objects and fallback text. Slack owns the card layout;
+a successful post does not prove that its client rendered a Work Object.
+
+Run `node scripts/generate-object-icons.mjs` to rebuild SVG paths and PNGs from
+the pinned Octicons package. It needs the Playwright Chromium browser. Format
+the generated TypeScript files after generation. Keep the Octicons license with
+the paths. Change the asset path version if an existing image changes. Review
+`/dev/transcripts` at desktop and mobile widths after icon changes.

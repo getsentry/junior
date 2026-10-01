@@ -1,4 +1,108 @@
 # Changelog
+## 0.235.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add repository pages to Code by @sentry-junior in [#1991](https://github.com/getsentry/junior/pull/1991)
+- Show Automations as cards instead of table rows by @sentry-junior in [#1990](https://github.com/getsentry/junior/pull/1990)
+- Use segmented pill links for page navigation by @sentry-junior in [#1986](https://github.com/getsentry/junior/pull/1986)
+
+#### Other
+
+- (brand) Replace Junior logo and mascot with new illustration by @sentry-junior in [#1992](https://github.com/getsentry/junior/pull/1992)
+- (operator) Add opt-in runOperatorSql tool by @sentry-junior in [#1989](https://github.com/getsentry/junior/pull/1989)
+- (skills) Add reusable demo video workflow by @sentry-junior in [#1985](https://github.com/getsentry/junior/pull/1985)
+
+## 0.234.0
+
+### New Features ✨
+
+#### Automations
+
+- Add pause controls and attention view by @sentry-junior in [#1982](https://github.com/getsentry/junior/pull/1982)
+- Add safe creator-only edit API by @sentry-junior in [#1980](https://github.com/getsentry/junior/pull/1980)
+- Search and page the full accessible collection by @sentry-junior in [#1978](https://github.com/getsentry/junior/pull/1978)
+
+#### Other
+
+- (dashboard) Make automation rows easy to scan by @sentry-junior in [#1976](https://github.com/getsentry/junior/pull/1976)
+- (tts) Add Gemini narration through Vercel AI Gateway by @sentry-junior in [#1969](https://github.com/getsentry/junior/pull/1969)
+
+## 0.233.0
+
+### New Features ✨
+
+- (dashboard) Show event model configuration and call usage by @sentry-junior in [#1946](https://github.com/getsentry/junior/pull/1946)
+
+### Bug Fixes 🐛
+
+- (annotations) Restore Linear cards and ticket descriptions by @sentry-junior in [#1968](https://github.com/getsentry/junior/pull/1968)
+
+## 0.232.0
+
+### New Features ✨
+
+- (dashboard) Add conversation share actions by @sentry-junior in [#1962](https://github.com/getsentry/junior/pull/1962)
+
+### Bug Fixes 🐛
+
+- (slack) Keep annotation previews compact by @sentry-junior in [#1963](https://github.com/getsentry/junior/pull/1963)
+
+## 0.231.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Preserve mobile scroll position on live updates by @sentry-junior in [#1961](https://github.com/getsentry/junior/pull/1961)
+- Preserve the author on queued web messages by @sentry-junior in [#1957](https://github.com/getsentry/junior/pull/1957)
+- Correct Slack mark geometry by @sentry-junior in [#1959](https://github.com/getsentry/junior/pull/1959)
+
+#### Other
+
+- (agent) Reduce prompt cache writes by @sentry-junior in [#1956](https://github.com/getsentry/junior/pull/1956)
+- (chat) Attach files in web conversations by @sentry-junior in [#1960](https://github.com/getsentry/junior/pull/1960)
+
+## 0.230.0
+
+### New Features ✨
+
+- (cards) Show PR descriptions with branch and status by @sentry-junior in [#1950](https://github.com/getsentry/junior/pull/1950)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Align transcript cells and wrap attachments by @sentry-junior in [#1953](https://github.com/getsentry/junior/pull/1953)
+- Use a button surface for the Sentry link by @sentry-junior in [#1951](https://github.com/getsentry/junior/pull/1951)
+
+#### Other
+
+- (cards) Resolve Message cards from saved annotations by @sentry-junior in [#1955](https://github.com/getsentry/junior/pull/1955)
+
+### Internal Changes 🔧
+
+- (dashboard) Reduce transcript work and downloads by @sentry-junior in [#1954](https://github.com/getsentry/junior/pull/1954)
+- (guardian) Cover historical clone approval requests by @sentry-junior in [#1952](https://github.com/getsentry/junior/pull/1952)
+
+## 0.229.0
+
+### Bug Fixes 🐛
+
+- (chat) Preserve the active request through handoff by @sentry-junior in [#1938](https://github.com/getsentry/junior/pull/1938)
+
+## 0.228.0
+
+### New Features ✨
+
+- (objects) Distinguish native object types across web and Slack by @sentry-junior in [#1949](https://github.com/getsentry/junior/pull/1949)
+
+### Bug Fixes 🐛
+
+- (slack) Verify message authors with payload fields and a lookup fallback by @sentry-junior in [#1948](https://github.com/getsentry/junior/pull/1948)
+
 ## 0.227.0
 
 ### New Features ✨

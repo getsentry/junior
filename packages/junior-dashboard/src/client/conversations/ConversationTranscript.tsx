@@ -37,6 +37,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
@@ -71,12 +72,11 @@ export const ConversationTranscriptView = memo(
     conversation: ConversationTranscript;
     responding?: boolean;
   }) {
-    // Event arrays stay stable across metadata-only polls. Project the transcript
-    // only when event content changes, not when timing metadata refreshes.
-    const events = props.conversation.events;
+    // Cards can change while their Message events stay unchanged.
+    const { events, annotations } = props.conversation;
     const messages = useMemo(
-      () => transcriptMessagesFromEvents(events),
-      [events],
+      () => transcriptMessagesFromEvents(events, annotations),
+      [events, annotations],
     );
 
     return (
@@ -104,7 +104,7 @@ function SegmentEvents(props: {
   responding?: boolean;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 md:gap-7">
+    <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
         <ExpiredTranscriptView conversation={props.conversation} />
       ) : props.conversation.eventHistory.status === "available" ? (
@@ -131,8 +131,12 @@ function SegmentEvents(props: {
           {unavailableTranscriptLabel(props.conversation)}
         </div>
       )}
-      {props.responding ? <TranscriptTypingIndicator /> : null}
-    </div>
+      {props.responding ? (
+        <TranscriptRow indent>
+          <TranscriptTypingIndicator />
+        </TranscriptRow>
+      ) : null}
+    </TranscriptRows>
   );
 }
 
@@ -193,7 +197,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="event">
+          <TranscriptRailEvent
+            kind="event"
+            objectType={entry.message.eventObjectType}
+          >
             <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
@@ -288,10 +295,6 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (isCollapsibleActivityEntry(entry)) {
-      const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
-      const followsEvent =
-        previousEntry?.kind === "message" &&
-        Boolean(previousEntry.message.eventType);
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
@@ -313,16 +316,12 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <div
-            className="mobile-transcript-row pl-11 md:pl-[3.125rem]"
-            key={activityKey}
-          >
+          <TranscriptRow indent key={activityKey}>
             <TranscriptActivityGroup
-              separateFromPrevious={followsEvent}
               entries={visibleEntries}
               renderEntry={renderEntry}
             />
-          </div>,
+          </TranscriptRow>,
         );
       }
       continue;
@@ -330,12 +329,9 @@ function TranscriptEntryList(props: {
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
-        <div
-          className="mobile-transcript-row"
-          key={`${props.keyPrefix}:${entry.key}`}
-        >
+        <TranscriptRow key={`${props.keyPrefix}:${entry.key}`}>
           {renderEntry(entry)}
-        </div>,
+        </TranscriptRow>,
       );
     }
     index += 1;
@@ -406,7 +402,10 @@ function RedactedTranscriptView(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="event">
+          <TranscriptRailEvent
+            kind="event"
+            objectType={entry.message.eventObjectType}
+          >
             <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (

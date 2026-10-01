@@ -70,7 +70,7 @@ function deploymentResult(data: unknown) {
     objectAnnotations: [
       {
         kind: "object",
-        objectType: "item",
+        objectType: "deployment",
         displayType: "Deployment",
         key: value.id,
         label: value.id,

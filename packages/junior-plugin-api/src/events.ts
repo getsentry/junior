@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { objectTypeSchema } from "./object-presentation";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;
 export const EVENT_TEXT_MAX_LENGTH = 8_000;
@@ -269,6 +270,7 @@ export type WatchResult = z.output<typeof watchResultSchema>;
 
 export const eventInputSchema = z
   .object({
+    objectType: objectTypeSchema.optional(),
     eventKey: z.string().min(1),
     eventType: eventTypeSchema,
     identifier: z.string().min(1),

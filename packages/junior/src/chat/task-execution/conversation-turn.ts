@@ -388,6 +388,7 @@ export function createConversationTurnWorker(
               ...(event
                 ? {
                     eventType: event.eventType,
+                    eventObjectType: event.objectType,
                     ...(event.trustedSummary
                       ? { trustedSummary: event.trustedSummary }
                       : undefined),

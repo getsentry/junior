@@ -1,4 +1,4 @@
-import type { SlackEventsApiEnvelope } from "./slack/factories/events";
+import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
@@ -315,7 +315,7 @@ export function slackWebhookRequest(body: unknown): Request {
   }).event(body);
 }
 
-/** Build the minimal Slack Events API envelope used by durable ingress tests. */
+/** Build the canonical Slack envelope with durable ingress test defaults. */
 export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
@@ -323,25 +323,14 @@ export function slackEnvelope(input: {
   threadTs?: string;
   ts?: string;
   user?: string;
-}): Pick<SlackEventsApiEnvelope, "team_id" | "type" | "event"> {
-  const channel = input.channel ?? "C123";
-  const ts = input.ts ?? "1712345.0001";
-  return {
-    team_id: "T123",
-    type: "event_callback",
-    event: {
-      type: input.eventType ?? "app_mention",
-      subtype: undefined,
-      user: input.user ?? "U123",
-      user_team: "T123",
-      text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
-      channel,
-      ts,
-      event_ts: ts,
-      channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
-    },
-  };
+}) {
+  return slackEventsApiEnvelope({
+    ...input,
+    channel: input.channel ?? "C123",
+    ts: input.ts ?? "1712345.0001",
+    user: input.user ?? "U123",
+    text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
+  });
 }
 
 /** Create a manually-resolved promise for coordinating async worker tests. */

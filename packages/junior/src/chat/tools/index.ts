@@ -27,7 +27,8 @@ import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/con
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
@@ -40,6 +41,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
@@ -91,7 +93,9 @@ export function createTools(
     ? resolveChannelCapabilities(slackContext.locationChannelId)
     : undefined;
   const canSendFilesToActiveConversation = Boolean(
-    slackContext && slackLocationCapabilities?.canSendFiles,
+    slackContext
+      ? slackLocationCapabilities?.canSendFiles
+      : context.attachmentStorage,
   );
   const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
@@ -123,6 +127,7 @@ export function createTools(
     ...createEventAutomationTools(context, eventCatalog),
     ...createScheduledAutomationTools(context),
     ...createWorkspaceTools(context),
+    ...createOperatorTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   if (context.conversationPrivacy === "public") {
@@ -160,6 +165,19 @@ export function createTools(
     );
   }
   if (context.attachmentStorage) {
+    if (!slackContext) {
+      tools.sendFiles = createSendFilesTool(
+        state,
+        (input) => readSandboxFileUpload(context.workspace, input),
+        {
+          attachments: {
+            conversationId: context.conversationId,
+            db: getSqlExecutor(),
+            storage: context.attachmentStorage,
+          },
+        },
+      );
+    }
     tools.loadAttachment = createLoadAttachmentTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
@@ -246,7 +264,7 @@ export function createTools(
     }
 
     if (locationCapabilities.canSendFiles) {
-      tools.sendFiles = createSendFilesTool(
+      tools.sendFiles = createSlackSendFilesTool(
         slackContext,
         state,
         (input) => readSandboxFileUpload(context.workspace, input),

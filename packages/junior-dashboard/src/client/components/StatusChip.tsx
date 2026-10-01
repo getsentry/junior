@@ -13,21 +13,20 @@ export type StatusChipTone =
 export type StatusChipSize = "default" | "compact";
 
 const toneClass: Record<StatusChipTone, string> = {
-  accent: "border-violet-300/20 bg-violet-300/[0.07] text-violet-100",
-  danger: "border-rose-400/25 bg-rose-400/10 text-rose-200",
-  info: "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100",
-  neutral: "border-dashboard-border bg-dashboard-fill-faint text-dashboard-text-muted",
-  success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-  warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
+  accent: "text-violet-300",
+  danger: "text-rose-300",
+  info: "text-cyan-300",
+  neutral: "text-dashboard-text-muted",
+  success: "text-emerald-300",
+  warning: "text-amber-300",
 };
 
 const sizeClass: Record<StatusChipSize, string> = {
-  compact:
-    "gap-1.5 px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em]",
-  default: "px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
+  compact: "text-xs",
+  default: "text-sm",
 };
 
-/** Render a compact status or kind label with shared tone and size contracts. */
+/** Show status as quiet text, not a button-shaped badge. */
 export function StatusChip(props: {
   children: ReactNode;
   className?: string;
@@ -37,13 +36,17 @@ export function StatusChip(props: {
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center rounded border",
+        "inline-flex w-fit items-center gap-1.5 font-sans font-medium normal-case leading-snug tracking-normal",
         sizeClass[props.size ?? "default"],
         toneClass[props.tone ?? "neutral"],
         props.className,
       )}
     >
-      {props.children}
+      <span
+        aria-hidden="true"
+        className="size-1.5 shrink-0 rounded-full bg-current"
+      />
+      <span className="block first-letter:uppercase">{props.children}</span>
     </span>
   );
 }

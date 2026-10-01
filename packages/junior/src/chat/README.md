@@ -160,11 +160,16 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
-- Slack messages require an author team that matches the installation workspace.
-  Use `user_team`, or `source_team` when `user_team` is absent. Missing workspace
-  or author team data blocks the message before routing, storage, or reactions.
-  The event's `team` and envelope's `team_id` do not prove author membership.
-  Do not query Slack for missing membership data.
+- Verify Slack authors before storage, routing, or reactions. Require a user ID
+  and a matching workspace-valued `user_team`, or verify membership through
+  `users.info`. Event delivery and message origin do not prove membership.
+  Cache lookups by workspace and user for five minutes (members) or 30 seconds
+  (non-members). Reads do not extend expiry. An explicit external `user_team`
+  overrides cached membership. Lookup and state errors reach the retryable
+  webhook boundary. See `ingress/workspace-membership.ts` for field rules and
+  Slack references.
+- Keep documented minimal Slack message fixtures unchanged. Add optional fields
+  only in targeted cases with an upstream payload or fixture reference.
 - Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
   Local schemas cover upstream omissions and validate fields read by ingress
   and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
@@ -236,7 +241,12 @@ delegation without becoming the execution actor or a general task owner.
   remains context-authority on resume, and may be replaced before a later model
   sample without replaying the actor's instruction. Ambient thread history in
   that context message is evidence only; only `<current-instruction>` authorizes
-  work.
+  work. Active compaction and handoff keep the latest committed instruction
+  verbatim, with its author and source event. The generated summary follows it
+  as escaped text inside `<thread-context authority="evidence-only">`, not as a
+  new instruction. Runtime-owned open plan state and completed handoff facts
+  stay outside that block. Steering messages are drained after handoff and pass
+  through the normal capacity check.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
@@ -367,27 +377,8 @@ this directory.
 
 ## Message cards
 
-Object annotations hold the latest saved facts for a Conversation. Message cards
-hold the facts selected for one reply. Delivery saves each card in Message
-metadata. The web transcript renders that saved snapshot. Slack previews can
-refresh from detail responses without changing the stored Message. Each surface
-owns its layout and uses the same privacy rules as message text.
+Message cards reference the latest saved annotations in their Conversation.
+They do not fetch provider state or change agent history. Each surface owns its
+layout and uses the same privacy rules as Message text.
 
-See `conversations/README.md` for annotation storage, card selection, and silent
-updates. `conversations/cards.ts` also reads older Automation cards so stored
-Messages remain usable.
-
-### Deployment and recovery
-
-New object cards use `objectCards` in Message metadata and tool results. The
-legacy `cards` field stays Automation-only. The reader combines both formats;
-the transcript API and renderers still use one `cards` list.
-
-Enriched cards add optional facts to the existing object shape. Old saved cards
-remain valid, but old strict readers reject enriched cards. No database
-migration is required. See `conversations/README.md` for the release boundary.
-
-Drain active workers and deploy the API, plugins, and dashboard together.
-Reload old dashboard tabs. After enriched cards have been saved, rollback needs
-a reader that accepts the new fields. Rollback does not undo provider changes
-or remove Slack messages already posted.
+See `conversations/README.md` for storage, card selection, and release safety.

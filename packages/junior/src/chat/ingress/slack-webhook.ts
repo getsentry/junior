@@ -57,6 +57,7 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { slackMessageAttributes } from "./slack-message-telemetry";
 import {
   getWorkspaceTeamId,
   runWithWorkspaceTeamId,
@@ -73,6 +74,7 @@ import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
   logException,
+  setSpanAttributes,
   withLogContext,
   withSpan,
   type LogContext,
@@ -580,7 +582,11 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
-          if (!isSlackWorkspaceMember(event)) return;
+          const member = await isSlackWorkspaceMember(event, state);
+          setSpanAttributes({
+            "app.slack.membership": member ? "verified" : "unverified",
+          });
+          if (!member) return;
           const message = adapter.parseMessage(event);
           const routed = await withLock(
             state,
@@ -829,10 +835,20 @@ export async function handleSlackWebhook(args: {
         eventLogContext,
         async () => {
           try {
-            await handleSlackEvent({
-              body: parsed,
-              services: args.services,
-            });
+            await withSpan(
+              "slack.message.ingress",
+              "slack.message.ingress",
+              eventLogContext,
+              () =>
+                handleSlackEvent({
+                  body: parsed,
+                  services: args.services,
+                }),
+              {
+                ...slackMessageAttributes(parsed),
+                "app.slack.membership": "not_checked",
+              },
+            );
           } catch (error) {
             // Any failure before durable mailbox append — installation/token
             // resolution, routing-state reads, persistence — must be retryable.

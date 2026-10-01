@@ -16,8 +16,27 @@ function formatAttachmentBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Keep message attachments at their own size and wrap them when the row is full. */
+export function TranscriptAttachments(props: {
+  attachments: MessageAttachment[];
+  conversationId: string;
+}) {
+  if (props.attachments.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-start gap-2">
+      {props.attachments.map((attachment, index) => (
+        <TranscriptAttachment
+          attachment={attachment}
+          conversationId={props.conversationId}
+          key={`${attachment.id}:${index}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 /** Render one stored user or assistant attachment using the private read route. */
-export function TranscriptAttachment(props: {
+function TranscriptAttachment(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
@@ -34,17 +53,17 @@ export function TranscriptAttachment(props: {
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
-        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-md object-contain"
+        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-lg object-contain"
         loading="lazy"
         src={href}
-        triggerClassName="block min-w-0 max-w-full"
+        triggerClassName="block min-w-0 max-w-full flex-none rounded-lg border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       />
     );
   }
 
   return (
     <a
-      className="grid min-w-0 w-full max-w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
+      className="grid min-w-0 max-w-full flex-none grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"

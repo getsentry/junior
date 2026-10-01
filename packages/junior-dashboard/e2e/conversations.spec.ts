@@ -39,6 +39,36 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
+  const contextAction = page.getByRole("button", { name: "View turn context" });
+  await contextAction.scrollIntoViewIfNeeded();
+  await contextAction.focus();
+  await page.keyboard.press("Enter");
+  const contextPanel = page.getByRole("dialog", {
+    name: "Turn context",
+    exact: true,
+  });
+  await expect(
+    contextPanel.getByRole("heading", { name: "Recalled memories" }),
+  ).toBeVisible();
+  const closeContext = contextPanel.getByRole("button", {
+    name: "Close turn context",
+    exact: true,
+  });
+  await expect(closeContext).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(contextPanel.locator("summary").last()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeContext).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(contextPanel).toBeHidden();
+  await expect(contextAction).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await contextAction.click();
+  await expect(contextPanel).toBeVisible();
+  await contextPanel
+    .getByRole("button", { name: "Close turn context", exact: true })
+    .click();
+  await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
 
   await page.goto(
@@ -175,6 +205,7 @@ test("shows the repo name for one annotation scope on mobile", async ({
 });
 
 test("opens a conversation in the built dashboard", async ({
+  context,
   page,
   dashboard,
 }) => {
@@ -226,6 +257,11 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByLabel("Linked work", { exact: true }).getByRole("link").first(),
   ).toBeVisible();
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: dashboard.baseURL,
+  });
+  const conversationUrl = page.url();
+
   const detailsButton = page.getByRole("button", {
     name: "Conversation details",
   });
@@ -237,6 +273,30 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     details.getByRole("link", { name: /getsentry\/payments#77/ }),
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+  await screenshot(page, "conversation-share-details");
+  // Clipboard denial must show a failure and allow another attempt.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", {
+      configurable: true,
+      value: () =>
+        Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
+    });
+  });
+  await details.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(details.getByRole("status")).toContainText(
+    "Could not copy the link",
+  );
+  await page.evaluate(() =>
+    Reflect.deleteProperty(navigator.clipboard, "writeText"),
+  );
+  await details.getByRole("button", { name: "Copy failed — retry" }).click();
+  await expect(
+    details.getByRole("button", { name: "Link copied" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    conversationUrl,
+  );
+
   const detailsTab = details.getByRole("tab", { name: "Details", exact: true });
   const memoriesTab = details.getByRole("tab", { name: "Memories" });
   await detailsTab.focus();
@@ -252,6 +312,17 @@ test("opens a conversation in the built dashboard", async ({
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await screenshot(page, "conversation-share-menu", { view: "mobile" });
+  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    conversationUrl,
+  );
+  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  await page.setViewportSize({ width: 1600, height: 900 });
 
   // The full durable Brief stays available after the transcript expires.
   await page.getByText("Facts, links & keywords", { exact: true }).click();

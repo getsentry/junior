@@ -1,27 +1,22 @@
-import { logInfo } from "@/chat/logging";
-import { completeText } from "@/chat/pi/client";
-import { generateShortTitle } from "@/chat/services/short-title";
-import { zodTool } from "@/chat/tool-support/zod-tool";
+import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import {
-  moveTaskOutcomes,
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-} from "@/chat/task-outcomes";
+  automationTitleSchema,
+  automationInstructionSchema,
+} from "@/chat/automations/edit-schema";
+import { logInfo } from "@/chat/logging";
+import { automationRevision } from "@/chat/automations/revision";
+import { editScheduledAutomation } from "../edit";
+import { zodTool } from "@/chat/tool-support/zod-tool";
+import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import { readScheduledAutomation, saveScheduledAutomation } from "../tasks";
-import {
-  compileScheduleIntent,
-  ScheduleIntentError,
-  scheduleIntentSchema,
-} from "../schedule-intent";
+import { scheduleIntentSchema } from "../schedule-intent";
 import { scheduledAutomationAttributes } from "../telemetry";
-import type { ScheduledAutomation } from "../types";
 import {
   getConversationAccess,
-  getDefaultScheduleTimezone,
   normalizeStatus,
   requireActiveChannel,
   requireActor,
@@ -55,7 +50,8 @@ export function createSlackScheduleUpdateAutomationTool(
           .describe(
             "Scheduled automation ID returned by slackScheduleListAutomations.",
           ),
-        instruction: z.string().min(1).max(4000).optional(),
+        title: automationTitleSchema.optional(),
+        instruction: automationInstructionSchema.optional(),
         schedule: scheduleIntentSchema
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
@@ -90,7 +86,7 @@ export function createSlackScheduleUpdateAutomationTool(
       })
       .strict(),
     outputSchema: scheduleAutomationToolResultSchema,
-    execute: async (input, options) => {
+    execute: async (input) => {
       const activeDestination = requireActiveChannel(context);
       const actor = requireActor(context, activeDestination);
       const db = getDb();
@@ -160,95 +156,52 @@ export function createSlackScheduleUpdateAutomationTool(
       }
 
       const nowMs = context.now?.() ?? Date.now();
-      let compiled;
-      if (input.schedule) {
-        try {
-          compiled = compileScheduleIntent({
-            defaultTimezone:
-              lookup.schedule.timezone || getDefaultScheduleTimezone(),
-            intent: input.schedule,
-            nowMs,
-          });
-        } catch (error) {
-          if (error instanceof ScheduleIntentError) {
-            throwToolInputError(error.message);
-          }
-          throw error;
-        }
-      }
-      const nextRunAtMs = compiled?.nextRunAtMs ?? lookup.nextRunAtMs;
-
       const status = normalizeStatus(input.status);
-      if (input.status && !status) {
+      if (input.status && !status)
         throwToolInputError("status must be active or blocked.");
-      }
-      if (status === "active" && !nextRunAtMs) {
-        throwToolInputError(
-          "Active scheduled automations require a schedule with a future occurrence.",
-        );
-      }
-      const nextStatus = status ?? lookup.status;
-      // Another actor changing executable text revokes creator delegation.
-      const credentialMode =
+      const instructionChanged =
         input.instruction !== undefined &&
-        input.instruction !== lookup.task.text &&
-        !isCreator
-          ? "system"
-          : (input.credentialMode ?? lookup.credentialMode);
-
-      const nextInstruction =
-        input.instruction !== undefined ? input.instruction : lookup.task.text;
-      const instructionChanged = nextInstruction !== lookup.task.text;
-      const nextDestination = changingDestination
-        ? requestedDestination
-        : lookup.destination;
-      const next: ScheduledAutomation = {
-        ...lookup,
-        conversationAccess: changingDestination
-          ? getConversationAccess(activeDestination, context.source)
-          : lookup.conversationAccess,
-        credentialMode,
-        destination: nextDestination,
-        updatedAtMs: nowMs,
-        nextRunAtMs,
-        runNowAtMs:
-          nextStatus === "active" && !compiled ? lookup.runNowAtMs : undefined,
-        status: nextStatus,
-        statusReason:
-          nextStatus === "blocked" ? lookup.statusReason : undefined,
-        schedule: compiled?.schedule ?? lookup.schedule,
-        outcomes:
+        input.instruction !== lookup.task.text;
+      const next = await editScheduledAutomation(
+        lookup,
+        {
+          title: input.title,
+          instruction: input.instruction,
+          schedule: input.schedule ?? undefined,
+          status,
+          credentialMode: input.credentialMode ?? undefined,
+          // A move resolves outcomes against the new Destination below.
+          outcomes: changingDestination ? undefined : input.outcomes,
+        },
+        isCreator,
+        nowMs,
+      );
+      if (changingDestination) {
+        next.destination = requestedDestination;
+        next.conversationAccess = getConversationAccess(
+          activeDestination,
+          context.source,
+        );
+        next.outcomes =
           input.outcomes === undefined
-            ? changingDestination
-              ? moveTaskOutcomes(
-                  lookup.outcomes,
-                  lookup.destination,
-                  nextDestination,
-                )
-              : lookup.outcomes
+            ? moveTaskOutcomes(
+                lookup.outcomes,
+                lookup.destination,
+                requestedDestination,
+              )
             : await resolveTaskOutcomes(
                 input.outcomes,
-                nextDestination,
+                requestedDestination,
                 lookup.createdBy.slackUserId,
-              ),
-        task: { text: nextInstruction },
-      };
-      if (instructionChanged) {
-        const title = await generateShortTitle({
-          signal: options.signal,
-          completeText,
-          kind: "task",
-          sourceText: nextInstruction,
-        });
-        if (title) next.title = title;
-        else delete next.title;
+              );
       }
 
       // A Destination update that already landed is a no-op success.
       if (
         !changingDestination &&
         !instructionChanged &&
-        !compiled &&
+        !input.schedule &&
+        input.title === undefined &&
         status === undefined &&
         (input.credentialMode === undefined ||
           input.credentialMode === null ||
@@ -263,7 +216,11 @@ export function createSlackScheduleUpdateAutomationTool(
         );
       }
 
-      const committed = await saveScheduledAutomation(db, next);
+      const committed = await saveScheduledAutomation(
+        db,
+        next,
+        automationRevision(lookup),
+      );
       if (changingDestination) {
         logInfo(
           "scheduled_automation.move.completed",

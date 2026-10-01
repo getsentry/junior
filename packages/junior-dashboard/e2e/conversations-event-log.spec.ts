@@ -13,6 +13,37 @@ test("inspects all reporting events and searches full event data", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
+  const transcript = page.getByLabel("Conversation transcript", {
+    exact: true,
+  });
+  const toolSummary = transcript
+    .locator("summary")
+    .filter({ hasText: "webSearch" });
+  const activity = transcript
+    .locator("details")
+    .filter({
+      has: page.locator("summary").filter({ hasText: "webSearch" }),
+    })
+    .first();
+  await activity.locator(":scope > summary").click();
+  await toolSummary.focus();
+  await page.keyboard.press("Enter");
+  const toolResult = transcript
+    .locator("pre")
+    .filter({ hasText: "payments-v42 deploy notes" });
+  await expect(toolResult).toBeVisible();
+  await toolSummary.click();
+  await expect(toolResult).toBeHidden();
+
+  // Search must still reveal a result that the reader has closed.
+  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page
+    .getByPlaceholder("Search transcript…")
+    .fill("payments-v42 deploy notes");
+  await expect(toolResult).toBeVisible();
+  await page.getByPlaceholder("Search transcript…").fill("");
+  await expect(toolResult).toBeHidden();
+
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   const log = page.getByRole("region", { name: "Conversation event log" });
   const entries = log.getByRole("button");
@@ -61,7 +92,6 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
 
-  await page.getByRole("button", { name: "Search transcript" }).click();
   const search = page.getByPlaceholder("Search transcript…");
   await search.fill("memory-checkout-runbook");
   await expect(entries).toHaveCount(1);
@@ -242,11 +272,12 @@ for (const width of [1440, 390]) {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
-    await expect(page.getByText("Message 39", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Message 39", { exact: true }),
+    ).toBeInViewport();
     const scroll = page.locator("[data-chat-scroll]");
-    await scroll.evaluate((node) => {
-      node.scrollTop = 0;
-    });
+    await scroll.hover();
+    await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
 
     for (const view of ["Event log", "Conversation"]) {
@@ -280,9 +311,8 @@ for (const width of [1440, 390]) {
     await expect(page.getByText("Idle update", { exact: true })).toBeAttached({
       timeout: 15_000,
     });
-    await scroll.evaluate((node) => {
-      node.scrollTop = 0;
-    });
+    await scroll.hover();
+    await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
     report.status = "active";
     report.events.push({
@@ -297,18 +327,31 @@ for (const width of [1440, 390]) {
     });
     const liveUpdate = page.getByText("First live update", { exact: true });
     await expect(liveUpdate).toBeAttached({ timeout: 15_000 });
-    if (width < 768) {
-      await expect(liveUpdate).toBeInViewport();
-    } else {
-      await expect(
-        page.getByText("Message 0", { exact: true }),
-      ).toBeInViewport();
-      await expect(
-        page.getByRole("button", {
-          name: "Jump to latest update",
-          exact: true,
-        }),
-      ).toBeVisible();
-    }
+    // New activity must not move a reader who scrolled into history, on either
+    // mobile or desktop. Following resumes only when the reader requests it.
+    await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
+    const jump = page.getByRole("button", {
+      name: "Jump to latest update",
+      exact: true,
+    });
+    await expect(jump).toBeVisible();
+    await jump.click();
+    await expect(liveUpdate).toBeInViewport();
+    await expect(jump).toBeHidden();
+
+    report.events.push({
+      seq: 43,
+      createdAt: report.lastSeenAt,
+      data: {
+        type: "message",
+        messageId: "next-live-message",
+        role: "assistant",
+        text: "Next live update",
+      },
+    });
+    await expect(
+      page.getByText("Next live update", { exact: true }),
+    ).toBeInViewport({ timeout: 15_000 });
+    await expect(jump).toBeHidden();
   });
 }

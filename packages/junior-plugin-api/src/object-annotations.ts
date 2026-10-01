@@ -1,15 +1,14 @@
 import { z } from "zod";
 import { objectFactsSchema } from "./object-facts";
+import { objectTypeSchema } from "./object-presentation";
 
 /**
  * Verified facts shared by Conversation annotations and Message cards.
  * Plugins select small facts from responses they already have. Each surface owns
  * its layout. Omit unknown facts; do not infer approval or passing checks.
  *
- * Code changes show merge blockers. Tasks show ownership and planning context.
- * Deployments show the target and revision. Automations show the trigger, state,
- * and warning; their existing detail view owns instructions and run history.
- * Other Items keep a title, source link, and optional status.
+ * These facts support both compact previews and full details. Each surface
+ * selects the fields it needs; preview rules must not remove saved facts.
  *
  * Keep raw responses, diffs, logs, credentials, and comments out of this schema.
  * See "Object facts" in packages/junior/src/chat/conversations/README.md.
@@ -19,7 +18,7 @@ export const objectAnnotationSchema = z
     kind: z.literal("object"),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
-    objectType: z.enum(["task", "code_change", "automation", "item"]),
+    objectType: objectTypeSchema,
     title: z.string().trim().min(1).max(512),
     url: z
       .url()
@@ -45,7 +44,8 @@ export const objectAnnotationSchema = z
     (annotation) =>
       !annotation.facts ||
       (annotation.facts.type === "deployment"
-        ? annotation.objectType === "item"
+        ? annotation.objectType === "deployment" ||
+          annotation.objectType === "item"
         : annotation.facts.type === annotation.objectType),
     "Object facts must match the object type",
   );

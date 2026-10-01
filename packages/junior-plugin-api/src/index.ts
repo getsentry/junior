@@ -1,4 +1,6 @@
 export * from "./object-annotations";
+export * from "./object-presentation";
+export * from "./object-icons";
 export * from "./object-facts";
 export * from "./annotations";
 export * from "./code";

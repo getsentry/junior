@@ -64,7 +64,7 @@ describe("Vercel actions", () => {
         objectAnnotations: [
           {
             kind: "object",
-            objectType: "item",
+            objectType: "deployment",
             displayType: "Deployment",
             facts: {
               type: "deployment",

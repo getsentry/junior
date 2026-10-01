@@ -108,7 +108,29 @@ describe.sequential("dashboard Nitro production output", () => {
       expect(client.headers.get("content-type")).toContain(
         "application/javascript",
       );
-      expect(await client.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+      const clientScript = await client.text();
+      expect(clientScript).not.toMatch(/\bfrom\s*["']lucide-react["']/);
+      const chunkPaths = [
+        ...clientScript.matchAll(/["']\.\/(chunks\/[^"']+\.js)["']/g),
+      ].map((match) => match[1]!);
+      expect(chunkPaths.length).toBeGreaterThan(0);
+      // Production serves embedded chunks even when package files are absent.
+      for (const chunkPath of new Set(chunkPaths)) {
+        const chunk = await app.fetch(
+          new Request(`http://localhost/_junior/dashboard/${chunkPath}`),
+          {},
+        );
+        expect(chunk.status).toBe(200);
+        expect(chunk.headers.get("content-type")).toContain(
+          "application/javascript",
+        );
+        expect(chunk.headers.get("cache-control")).toContain("immutable");
+      }
+      const missing = await app.fetch(
+        new Request("http://localhost/_junior/dashboard/chunks/missing-123.js"),
+        {},
+      );
+      expect(missing.status).toBe(404);
 
       const page = await app.fetch(new Request("http://localhost/"), {});
       expect(page.status).toBe(200);

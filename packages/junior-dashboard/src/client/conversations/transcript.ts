@@ -206,17 +206,25 @@ function withoutModelUsage(
 }
 
 /**
- * Reuse an unchanged event array without holding back fresh detail metadata.
+ * Reuse unchanged events and annotations without holding back fresh metadata.
  * Sequence and timestamp cover immutable event facts. Attachment metadata can
  * arrive after a Slack download, so compare it without walking other payloads.
+ * Annotations can change independently and drive Message card display.
  */
 export function reuseConversationEventReferences(
   previous: ConversationDetailReport | undefined,
   next: ConversationDetailReport,
 ): ConversationDetailReport {
-  if (!previous || previous.events === next.events) return next;
-  if (!sameConversationEventVersion(previous.events, next.events)) return next;
-  return { ...next, events: previous.events };
+  if (!previous) return next;
+  const events = sameConversationEventVersion(previous.events, next.events)
+    ? previous.events
+    : next.events;
+  const annotations =
+    JSON.stringify(previous.annotations) === JSON.stringify(next.annotations)
+      ? previous.annotations
+      : next.annotations;
+  if (events === next.events && annotations === next.annotations) return next;
+  return { ...next, events, annotations };
 }
 
 function sameConversationEventVersion(

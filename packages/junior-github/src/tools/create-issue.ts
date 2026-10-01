@@ -77,6 +77,7 @@ const createIssueStateSchema = Type.Union([
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
       facts: Type.Optional(Type.Unknown()),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
       sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
@@ -101,6 +102,7 @@ type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
   facts?: ObjectAnnotation["facts"];
+  description?: string;
   sourceUpdatedAt?: string;
   number: number;
   url: string;
@@ -147,6 +149,7 @@ function gitHubIssueToolResult(
     objectAnnotations: [
       githubObjectAnnotation({
         facts: result.facts,
+        description: result.description,
         sourceUpdatedAt: result.sourceUpdatedAt,
         repo: input.repo,
         number: result.number,
@@ -348,6 +351,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
                   ? undefined
                   : objectFactsSchema.parse(state.facts),
               sourceUpdatedAt: state.sourceUpdatedAt,
+              description: state.description,
               number: state.number,
               url: state.url,
             };

@@ -24,7 +24,6 @@ import type {
   ScheduledAutomation,
   ScheduledAutomationConversationAccess,
   ScheduledAutomationPrincipal,
-  ScheduledAutomationStatus,
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
@@ -47,7 +46,7 @@ const compactTaskResultSchema = z
   .object({
     id: z.string(),
     title: z.string().nullable(),
-    status: z.enum(["active", "blocked", "completed", "deleted"]),
+    status: z.enum(["active", "blocked", "paused", "completed", "deleted"]),
     statusReason: z.string().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -384,7 +383,7 @@ export function buildTaskId(args: {
 /** Accept only persisted scheduler statuses from model-facing update input. */
 export function normalizeStatus(
   value: string | undefined,
-): ScheduledAutomationStatus | undefined {
+): "active" | "blocked" | undefined {
   if (value === "active" || value === "blocked") {
     return value;
   }

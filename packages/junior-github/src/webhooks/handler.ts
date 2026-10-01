@@ -354,7 +354,16 @@ export function createGitHubWebhookRoute(args: {
         }
       }
       for (const event of events) {
-        await args.events.publish(event);
+        await args.events.publish({
+          ...event,
+          objectType: event.eventType.startsWith("pull_request.")
+            ? "code_change"
+            : event.eventType.startsWith("issue.")
+              ? "task"
+              : event.eventType.startsWith("deployment.")
+                ? "deployment"
+                : "item",
+        });
       }
       if (
         !pullRequestOutcome &&

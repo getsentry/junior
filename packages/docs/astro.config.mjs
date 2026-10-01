@@ -47,7 +47,7 @@ export default defineConfig({
       title: "Junior",
       description:
         "Production docs for Junior, the Slack bot runtime for Hono and Nitro apps.",
-      favicon: "/favicon.svg",
+      favicon: "/favicon.png",
       customCss: ["./src/styles/custom.css", "./src/styles/homepage-mocks.css"],
       social: [
         {
@@ -127,6 +127,7 @@ export default defineConfig({
               link: "/extend/cloudflare-plugin/",
             },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
+            { label: "TTS Plugin", link: "/extend/tts-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "GoCD Plugin", link: "/extend/gocd-plugin/" },
             { label: "Hex Plugin", link: "/extend/hex-plugin/" },

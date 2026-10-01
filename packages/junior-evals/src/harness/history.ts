@@ -90,6 +90,10 @@ export async function preloadHistory(args: {
     for (const [index, event] of events.entries()) {
       const createdAtMs = startedAtMs + index;
       if (event.type === "assistant_reply") {
+        for (const item of event.toolHistory ?? []) {
+          piMessages.push({ ...item, timestamp: createdAtMs });
+          provenance.push(contextProvenance);
+        }
         const message = toSlackMessage(
           {
             type: "subscribed_message",

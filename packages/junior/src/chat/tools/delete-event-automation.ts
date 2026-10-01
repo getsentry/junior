@@ -1,4 +1,4 @@
-import { messageCardRefSchema } from "@/chat/conversations/cards";
+import { removedCardSchema } from "@/chat/conversations/cards";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -32,7 +32,7 @@ export function createDeleteEventAutomationTool(
     inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
     outputSchema: eventAutomationToolResultSchema
       .omit({ objectCards: true })
-      .extend({ removedCards: z.array(messageCardRefSchema) }),
+      .extend({ removedCards: z.array(removedCardSchema) }),
     async execute({ automationId }) {
       const { actor } = requireEventAutomationSlackContext(context);
       const current = await writableEventAutomation(context, automationId);

@@ -195,6 +195,8 @@ export interface AfterMcpToolHookContext extends PluginContext {
   conversationId?: string;
   annotations?: PluginAnnotations;
   result: {
+    /** Provider content before model-facing truncation. */
+    content?: PluginMcpContent[];
     structuredContent?: unknown;
   };
   tool: {

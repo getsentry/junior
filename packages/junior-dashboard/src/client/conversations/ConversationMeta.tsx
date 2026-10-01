@@ -1,3 +1,5 @@
+import { ObjectIcon } from "../components/ObjectIcon";
+import { objectPresentation } from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -136,7 +138,13 @@ export function ConversationSidebarAnnotations(props: {
               className="flex min-w-0 items-center gap-1.5"
               key={`${annotation.key}:${index}`}
             >
-              {annotation.icon ? (
+              {annotation.objectType ? (
+                <ObjectIcon
+                  {...annotation}
+                  objectType={annotation.objectType}
+                  size={14}
+                />
+              ) : annotation.icon ? (
                 <SidebarAnnotationIcon icon={annotation.icon} />
               ) : null}
               <span className="min-w-0 truncate">{details[index]}</span>
@@ -212,9 +220,17 @@ function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-36 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.group.annotations.map((annotation) =>
-        annotation.icon ? (
+        annotation.objectType ? (
+          <ObjectIcon
+            {...annotation}
+            objectType={annotation.objectType}
+            key={annotation.key}
+            decorative
+            size={14}
+          />
+        ) : annotation.icon ? (
           <SidebarAnnotationIcon
             decorative
             icon={annotation.icon}
@@ -249,7 +265,7 @@ function SidebarAnnotationStatusChip(props: {
         // layout at 18px while punching a surface-colored ring through the chip
         // underneath — classic avatar-facepile silhouette.
         "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
-        props.stacked && "-ml-2",
+        props.stacked && "-ml-1",
       )}
       style={{
         boxShadow: `0 0 0 2px ${props.cutoutColor}`,
@@ -257,7 +273,14 @@ function SidebarAnnotationStatusChip(props: {
       }}
       title={tone?.label}
     >
-      {props.annotation.icon ? (
+      {props.annotation.objectType ? (
+        <ObjectIcon
+          {...props.annotation}
+          objectType={props.annotation.objectType}
+          decorative
+          size={12}
+        />
+      ) : props.annotation.icon ? (
         <SidebarAnnotationIcon
           decorative
           icon={props.annotation.icon}
@@ -290,12 +313,24 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
+  objectType?: SidebarAnnotation["objectType"];
+  status?: string;
 }): string {
+  const identity = annotation.objectType
+    ? [
+        objectPresentation({ objectType: annotation.objectType }).label,
+        annotation.status,
+      ]
+        .filter(Boolean)
+        .join(": ")
+    : "";
   // Prefer the plugin key when it carries a fuller resource identity than the
   // compact label (for example owner/repo#123 vs repo).
-  return annotation.key.includes("/") || annotation.key.includes("#")
-    ? annotation.key
-    : annotation.label;
+  const label =
+    annotation.key.includes("/") || annotation.key.includes("#")
+      ? annotation.key
+      : annotation.label;
+  return [identity, label].filter(Boolean).join(" · ");
 }
 
 type SidebarAnnotationIconName = NonNullable<
@@ -389,12 +424,18 @@ export function ConversationAnnotations(props: {
           target="_blank"
           title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
         >
-          {link.status && link.status in RESOURCE_STATUS_ICON ? (
-            <ResourceStatus
-              status={link.status as ResourceLinkStatus}
-              url={link.url ?? ""}
-            />
-          ) : null}
+          <ObjectIcon
+            objectType={
+              link.objectType ??
+              props.detail?.sidebarAnnotations?.find(
+                (annotation) => annotation.key === link.key,
+              )?.objectType ??
+              "item"
+            }
+            status={link.status}
+            facts={link.kind === "object" ? link.facts : undefined}
+            size={16}
+          />
           <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
@@ -420,39 +461,6 @@ function resourceLinkTitle(link: {
   return [link.label, link.plugin, statusLabel, link.description]
     .filter(Boolean)
     .join(" · ");
-}
-
-const RESOURCE_STATUS_ICON = {
-  open: "circle-dot",
-  draft: "circle-dashed",
-  closed: "circle-x",
-  merged: "git-merge",
-  warning: "triangle-alert",
-} as const satisfies Record<ResourceLinkStatus, SidebarAnnotationIconName>;
-
-function isPullRequestUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
-}
-
-function resourceStatusIcon(
-  status: ResourceLinkStatus,
-  url: string,
-): SidebarAnnotationIconName {
-  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
-  return RESOURCE_STATUS_ICON[status];
-}
-
-function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
-  return (
-    <SidebarAnnotationIcon
-      icon={resourceStatusIcon(props.status, props.url)}
-      size={15}
-    />
-  );
 }
 
 function LocationLink(props: { label: string; locationUrl?: string }) {

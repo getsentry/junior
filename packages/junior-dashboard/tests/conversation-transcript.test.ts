@@ -262,9 +262,10 @@ describe("conversation transcript", () => {
   });
 
   it("reuses events while keeping fresh poll metadata", () => {
-    const previous = detail();
+    const previous = { ...detail(), annotations: [] };
     const next = {
       ...previous,
+      annotations: [],
       cumulativeDurationMs: previous.cumulativeDurationMs + 2_000,
       generatedAt: "2026-07-23T00:00:02.000Z",
       lastProgressAt: "2026-07-23T00:00:02.000Z",
@@ -272,7 +273,7 @@ describe("conversation transcript", () => {
     };
 
     const result = reuseConversationEventReferences(previous, next);
-    expect(result).toBe(next);
+    expect(result.annotations).toBe(previous.annotations);
     expect(result.events).toBe(previous.events);
     expect(result.generatedAt).toBe("2026-07-23T00:00:02.000Z");
   });

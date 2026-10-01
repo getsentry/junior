@@ -174,7 +174,10 @@ test("starts and continues conversations from the dashboard", async ({
     `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
     async (route) => {
       if (holdDetailRefresh) await detailRefreshHeld;
-      const response = await route.fetch();
+      // Request the full body because this test changes it.
+      const response = await route.fetch({
+        headers: { ...route.request().headers(), "if-none-match": "" },
+      });
       await route.fulfill({
         response,
         json: { ...(await response.json()), isParticipant: true },
@@ -209,6 +212,9 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Send" }).click();
   const pending = page.getByLabel("Pending messages");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
+  await expect(
+    pending.getByText("dev@example.com", { exact: true }),
+  ).toBeVisible();
   await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
   // Distinct messages can queue while an earlier accept is still open.
@@ -239,6 +245,7 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(composer).toHaveValue("");
   await expect(pending.getByText("Continue in Junior")).toBeVisible();
   releaseDetailRefresh?.();
+  await screenshot(page, "conversation-outbox-author");
 
   await page.reload();
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
@@ -311,7 +318,10 @@ test("hands web and external messages from queue to history without gaps", async
   await page.route(path, async (route) => {
     detailReads += 1;
     await historyHeld;
-    const response = await route.fetch();
+    // Request the full body because this test changes it.
+    const response = await route.fetch({
+      headers: { ...route.request().headers(), "if-none-match": "" },
+    });
     const detail = await response.json();
     await route.fulfill({
       response,

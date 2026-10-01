@@ -2,6 +2,10 @@
  * Scenario, event, override, and result types shared by the eval harness.
  */
 import { type Message } from "chat";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { type JsonValue } from "vitest-evals/harness";
 import type { EmittedLogRecord } from "@/chat/logging";
 import { type ThreadMessageKind } from "@/chat/ingress/message-router";
@@ -124,6 +128,8 @@ export interface GitHubWebhookEvent extends EvalBaseEvent {
 /** A prior Junior reply preloaded into thread and durable history without an agent run. */
 export interface AssistantReplyEvent extends EvalBaseEvent {
   message: { id?: string; text: string };
+  /** Completed tool work before this reply; not visible Slack messages. */
+  toolHistory?: Array<AssistantMessage | ToolResultMessage>;
   type: "assistant_reply";
 }
 

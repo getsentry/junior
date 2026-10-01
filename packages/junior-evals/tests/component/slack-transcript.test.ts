@@ -11,12 +11,17 @@ vi.mock("@/chat/agent", () => ({
       status: "completed",
       result: {
         text: "**6**",
-        diagnostics: { outcome: "success", modelId: "eval-test" },
+        diagnostics: {
+          outcome: "success",
+          modelId: "eval-test",
+          toolCalls: [],
+        },
       },
     };
   }),
 }));
 
+import { getConversationEventStore } from "@/chat/db";
 import { runEvalScenario } from "../../src/behavior-harness";
 import { toEvalHarnessRun } from "../../src/eval-result";
 import {
@@ -33,9 +38,50 @@ it("records preloaded history and each delivered reply once, in turn order", asy
     thread_ts: "17000000.1",
   };
   const result = await runEvalScenario({
-    history: [mention("What is 2+2?", { thread }), reply("**4**", { thread })],
+    history: [
+      mention("What is 2+2?", { thread }),
+      {
+        ...reply("**4**", { thread }),
+        toolHistory: [
+          fauxAssistantMessage({
+            type: "toolCall",
+            id: "prior-calculation",
+            name: "bash",
+            arguments: { command: "echo $((2+2))" },
+          }),
+          {
+            role: "toolResult",
+            toolCallId: "prior-calculation",
+            toolName: "bash",
+            content: [{ type: "text", text: "4" }],
+            isError: false,
+            timestamp: 0,
+          },
+        ],
+      },
+    ],
     initialEvents: [threadMessage("And 3+3?", { thread, is_mention: true })],
   });
+  const history = await getConversationEventStore().loadHistory(thread.id);
+  const priorMessages = history
+    .map((event) => event.data)
+    .filter((data) =>
+      ["user_message", "assistant_message", "tool_result"].includes(data.type),
+    );
+  expect(priorMessages.slice(0, 4)).toMatchObject([
+    { type: "user_message" },
+    {
+      type: "assistant_message",
+      content: [{ type: "toolCall", id: "prior-calculation" }],
+    },
+    {
+      type: "tool_result",
+      toolCallId: "prior-calculation",
+      content: [{ type: "text", text: "4" }],
+    },
+    { type: "assistant_message", content: [{ type: "text", text: "**4**" }] },
+  ]);
+  expect(result.toolInvocations).toEqual([]);
   expect(result.posts.map((post) => post.text)).toEqual(["**6**"]);
   expect(
     JSON.parse(serializeVisibleTranscript(toEvalHarnessRun(result, 0).session)),

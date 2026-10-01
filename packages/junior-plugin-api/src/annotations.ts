@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PluginContext } from "./context";
 import { objectAnnotationSchema } from "./object-annotations";
+import { objectTypeSchema } from "./object-presentation";
 
 function usesHttpProtocol(value: string): boolean {
   try {
@@ -20,6 +21,7 @@ function usesHttpProtocol(value: string): boolean {
 export const resourceLinkAnnotationSchema = z
   .object({
     kind: z.literal("resource_link"),
+    objectType: objectTypeSchema.optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
     url: z
@@ -66,6 +68,8 @@ export const conversationSidebarIconSchema = z.enum([
 export const conversationSidebarAnnotationSchema = z
   .object({
     icon: conversationSidebarIconSchema.optional(),
+    objectType: objectTypeSchema.optional(),
+    status: z.string().trim().min(1).max(100).optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
   })

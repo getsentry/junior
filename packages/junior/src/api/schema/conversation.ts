@@ -4,8 +4,9 @@ import {
   MAX_INPUT_IMAGE_BYTES,
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
-import { messageCardSchema } from "@/chat/conversations/cards";
+import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
@@ -72,6 +73,7 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    codeRepositoryId: z.string().uuid().optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -310,9 +312,10 @@ const conversationReportMessageEventDataSchema = z
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
+    eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    cards: z.array(messageCardSchema).optional(),
+    cards: z.array(messageCardRefSchema).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -441,7 +444,7 @@ const conversationReportToolCallsEventDataSchema = z
 const conversationReportAssistantMessageEventDataSchema = z
   .object({
     type: z.literal("assistant_message"),
-    parts: z.array(conversationReportReasoningPartSchema).min(1),
+    parts: z.array(conversationReportReasoningPartSchema),
   })
   .strict();
 
@@ -602,6 +605,23 @@ export const conversationReportEventSchema = z
     seq: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     data: conversationReportEventDataSchema,
+    model: z
+      .object({
+        modelId: z.string().min(1),
+        modelProfile: z.string().min(1).optional(),
+        reasoningLevel: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    modelCall: z
+      .object({
+        provider: z.string().min(1).optional(),
+        api: z.string().min(1).optional(),
+        stopReason: z.string().min(1).optional(),
+        usage: conversationUsageSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

@@ -136,6 +136,9 @@ const slackEventSchema = z.looseObject({
 
 // @slack/types has event types, but no Events API envelope or interactive payload.
 export const slackEventEnvelopeSchema = z.object({
+  // Retain diagnostic fields without making them requirements for ingress.
+  event_id: z.unknown().optional(),
+  is_ext_shared_channel: z.unknown().optional(),
   enterprise_id: z.string().optional(),
   event: slackEventSchema.optional(),
   is_enterprise_install: z.boolean().optional(),

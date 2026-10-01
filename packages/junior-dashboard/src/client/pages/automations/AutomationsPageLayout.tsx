@@ -11,7 +11,11 @@ import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation
 const RESERVED_TASK_SEGMENTS = new Set(["list", "runs"]);
 
 function isTasksListPath(pathname: string): boolean {
-  if (pathname === "/automations/list") return true;
+  if (
+    pathname === "/automations/list" ||
+    /^\/automations\/(scheduled|event)\/[^/]+\/edit$/.test(pathname)
+  )
+    return true;
   const match = pathname.match(/^\/automations\/([^/]+)$/);
   return Boolean(match?.[1] && !RESERVED_TASK_SEGMENTS.has(match[1]));
 }
@@ -22,16 +26,24 @@ const taskNavigationItems = [
   { label: "Runs", to: "/automations/runs" },
 ];
 
+/** Keep Automation navigation consistent across lists, details, and editing. */
+export function AutomationsNavigation(props: { children: ReactNode }) {
+  return (
+    <SecondaryNavigation
+      ariaLabel="Automations navigation"
+      items={taskNavigationItems}
+    >
+      {props.children}
+    </SecondaryNavigation>
+  );
+}
+
 /** Place the shared secondary navigation above one Automations page. */
 export function AutomationsPageLayout(props: { children: ReactNode }) {
   return (
-    <>
-      <SecondaryNavigation
-        ariaLabel="Automations navigation"
-        items={taskNavigationItems}
-      />
+    <AutomationsNavigation>
       <PageLayout>{props.children}</PageLayout>
-    </>
+    </AutomationsNavigation>
   );
 }
 
