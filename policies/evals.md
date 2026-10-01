@@ -20,7 +20,12 @@ Suite policy:
 
 ## Policy
 
-- Keep prompts realistic. Do not script the user request to make the eval pass.
+- When a judge or rubric scores the outcome, the inputs and loaded history must
+  show real user behavior. Do not script the user request to make the eval
+  pass.
+- When a case only sets up state to assert a deterministic outcome, such as
+  turn routing, delivery, or stored effects, manufactured inputs are fine. Keep
+  them short, so each turn needs as few model calls as possible.
 - Assert behavior rules, not incidental wording or execution sequence.
 - Put never-break full-runtime integration coverage under `evals/integration/**`.
   Put agent-behavior measurement under behavioral domain folders.
@@ -33,8 +38,11 @@ Suite policy:
   See `agent-steering.md`.
 - Product prompt examples must be neutral examples that are not reused from eval
   scenarios.
-- Treat the normalized `vitest-evals` session as the canonical eval surface for
-  judges and assertions.
+- Tests on the agent test fixture assert on its call results: replies, tool
+  calls, reactions, and turn states. These come from Junior's reporting API and
+  the Slack mock. Tests on the older Slack harness treat the normalized
+  `vitest-evals` session as the canonical eval surface for judges and
+  assertions.
 - Limit rubric-judge input to user-visible text from normalized user and
   assistant messages, in session order. Keep tool calls, artifacts, persistence,
   logs, traces, and runtime metadata out of rubric prompts.
@@ -46,14 +54,15 @@ Suite policy:
   multiple assertions behind helpers.
 - Use native `vitest-evals` harness support for ordered full-turn transcripts.
   Do not add repo-local event logs or sequencing layers to simulate them.
-- Use `toolCalls(result.session)` or other `vitest-evals` primitives when tool
-  or provider evidence is part of the behavior.
+- On the older Slack harness, use `toolCalls(result.session)` or other
+  `vitest-evals` primitives when tool or provider evidence is part of the
+  behavior.
 - Use evals to prove model-facing choices such as whether the agent calls the
   right tool, target, and final-reply strategy. Do not use evals to prove fixed
   tool transport details such as Slack API payload fields or file upload
   serialization. Cover those in integration tests.
-- Do not invent parallel transcript, event-log, or tool-call schemas for eval
-  assertions. Improve the harness edge instead.
+- Do not invent transcript, event-log, or tool-call schemas in eval files.
+  Improve the fixture or harness edge instead.
 - A scenario controls three things: the agent config it instantiates, prior
   turns preloaded through the runtime's own stores, and mocked third-party
   APIs. Do not add harness knobs that write runtime state directly, script

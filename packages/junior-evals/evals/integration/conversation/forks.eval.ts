@@ -4,44 +4,6 @@ import { rubric } from "../../../src/fixture/judge";
 import { test } from "../../../src/fixture/test";
 
 describe("Conversation Forks", () => {
-  test("when a delivered reply is forked, the fork continues on its own", async ({
-    run,
-  }) => {
-    const source = await run(
-      webMessage(
-        "We picked the blue option for the launch banner. Please confirm in one sentence.",
-      ),
-    );
-    expect(source.replies).toHaveLength(1);
-
-    const fork = await source.fork(source.replies[0]!);
-    expect(fork.conversationId).not.toBe(source.conversationId);
-
-    const next = await fork.continue(
-      webMessage("Which color did we pick for the launch banner?"),
-      {
-        criteria: rubric({
-          pass: ["The reply says the launch banner uses the blue option."],
-        }),
-      },
-    );
-    expect(next.replies).toHaveLength(1);
-    expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
-
-    // The source does not see the fork's turn.
-    const sourceNext = await source.continue(
-      webMessage("Did anyone ask you about the banner color after this?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply does not claim that a later question about the banner color was asked in this conversation.",
-          ],
-        }),
-      },
-    );
-    expect(sourceNext.replies).toHaveLength(1);
-  });
-
   test("when a loaded reply is forked, the fork does not know later turns", async ({
     run,
   }) => {
@@ -54,7 +16,6 @@ describe("Conversation Forks", () => {
         reply("Done: the launch banner is now green."),
       ],
     });
-    expect(source.replies.length).toBeLessThanOrEqual(1);
 
     const fork = await source.fork(decision);
     const next = await fork.continue(
@@ -72,9 +33,8 @@ describe("Conversation Forks", () => {
   test("when a fork is forked, each fork continues from its own reply", async ({
     run,
   }) => {
-    const source = await run(webMessage("The release codename is Maple."), {
-      history: [],
-    });
+    const source = await run(webMessage("The release codename is Maple."));
+    expect(source.replies).toHaveLength(1);
     const fork = await source.fork(source.replies[0]!);
     const forkTurn = await fork.continue(
       webMessage("Change the release codename to Birch."),

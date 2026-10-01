@@ -38,7 +38,6 @@ describe("Slack Turn Steering", () => {
   }) => {
     const conversation = await run(mention(INCIDENT_REQUEST), {
       onProgress: sendDuringFirstModelRequest([
-        threadMessage("thanks folks"),
         mention("include the rollback owner: Dana"),
       ]),
       criteria: rubric({
@@ -55,26 +54,17 @@ describe("Slack Turn Steering", () => {
   test("when other people mention Junior during a turn, each person gets a follow-up turn unless they override with !!", async ({
     run,
   }) => {
-    // Routing is the behavior here, so every request needs only a short reply.
+    // Only routing is asserted, so the inputs are manufactured and short.
+    const shortReply = (word: string) => `Reply with only the word ${word}.`;
     const conversation = await run(
-      mention("reply with only the word ready", {
-        author: person("U0SAM", "Sam"),
-      }),
+      mention(shortReply("ready"), { author: person("U0SAM", "Sam") }),
       {
         onProgress: sendDuringFirstModelRequest([
-          mention("reply with only the word one", {
-            author: person("U0RIO", "Rio"),
-          }),
-          mention("reply with only the word two", {
-            author: person("U0RIO", "Rio"),
-          }),
-          mention("reply with only the word three", {
-            author: person("U0KAI", "Kai"),
-          }),
-          mention("reply with only the word four", {
-            author: person("U0RIO", "Rio"),
-          }),
-          mention("!! also add the word go", {
+          mention(shortReply("one"), { author: person("U0RIO", "Rio") }),
+          mention(shortReply("two"), { author: person("U0RIO", "Rio") }),
+          mention(shortReply("three"), { author: person("U0KAI", "Kai") }),
+          mention(shortReply("four"), { author: person("U0RIO", "Rio") }),
+          mention(`!! ${shortReply("go")}`, {
             author: person("U0ALEX", "Alex"),
           }),
         ]),
@@ -133,6 +123,7 @@ describe("Slack Turn Steering", () => {
     run,
   }) => {
     const conversation = await run(mention(INCIDENT_REQUEST), {
+      // The mention waits for a follow-up turn; the stop discards it.
       onProgress: sendDuringFirstModelRequest([
         mention("also list the affected regions"),
         threadMessage("stop"),

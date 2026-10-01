@@ -249,8 +249,9 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 
 ## Authoring Rules
 
-- Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
-- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
+- Write new cases with the agent test fixture (see **Agent Test Fixture**). Files that still use `describeEval()` with `slackEvals` move to the fixture over time.
+- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
+- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Put messages that should be pending before processing starts in `initialEvents`.
@@ -270,7 +271,8 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope.
 - Each eval name should only state the specific scenario and outcome.
 - Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
-- Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
+- Keep user prompts natural when a rubric or judge scores the outcome. They should read like plausible user requests, not scripted implementation instructions.
+- A case that only asserts a deterministic outcome, such as turn routing or delivery, may use short manufactured inputs. Fewer model calls keep it fast.
 - Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
 - If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
 
