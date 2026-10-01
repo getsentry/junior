@@ -209,6 +209,17 @@ export function installSlackMock(): SlackMock {
   };
 }
 
+/**
+ * Whether Slack delivers an input as `app_mention`. Direct messages arrive as
+ * `message` events with `channel_type: "im"`, even when they name Junior.
+ */
+export function isAppMention(
+  input: { kind: string },
+  channelType: "channel" | "im",
+): boolean {
+  return input.kind === "mention" && channelType !== "im";
+}
+
 let eventSequence = 0;
 
 /** Post one signed Slack Events API message event to the app route. */
@@ -240,6 +251,7 @@ export async function postSlackMessageEvent(
       ts: event.ts,
       event_ts: event.ts,
       ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+      // Slack sends no channel type with app_mention events.
       ...(event.mention ? undefined : { channel_type: event.channelType }),
     },
   });

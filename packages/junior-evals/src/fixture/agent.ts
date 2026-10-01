@@ -51,6 +51,7 @@ import {
 import {
   DEFAULT_SLACK_AUTHOR,
   installSlackMock,
+  isAppMention,
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
@@ -247,7 +248,7 @@ export async function createFixtureAgent(
     }
     const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
     const ts = started ? slack.nextTs() : record.threadTs;
-    const mention = input.kind === "mention";
+    const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
     slack.addThreadMessage(record.channelId, {
       text,

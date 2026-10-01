@@ -28,6 +28,7 @@ import {
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
+import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -51,6 +52,7 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_TEAM_ID,
   type RequestApp,
+  isAppMention,
   slackAuthorEmail,
   type SlackMock,
 } from "./slack";
@@ -87,7 +89,26 @@ function groupTurns(items: HistoryItem[]): HistoryTurn[] {
   return turns;
 }
 
-async function recordRoot(conversation: LoadedConversation, nowMs: number) {
+/**
+ * The visibility a real Slack turn learns from its input event. An
+ * `app_mention` has no channel type, so the turn learns nothing.
+ */
+function slackInputVisibility(
+  conversation: Extract<LoadedConversation, { surface: "slack" }>,
+  input: Input,
+) {
+  return conversationVisibilityFromSlackChannelType(
+    isAppMention(input, conversation.channelType)
+      ? undefined
+      : conversation.channelType,
+  );
+}
+
+async function recordRoot(
+  conversation: LoadedConversation,
+  nowMs: number,
+  firstInput?: Input,
+) {
   if (conversation.surface === "web") {
     await recordWebConversationActivity({
       actor: webActorFromEmail(WEB_VIEWER_EMAIL),
@@ -100,6 +121,9 @@ async function recordRoot(conversation: LoadedConversation, nowMs: number) {
     channelId: conversation.channelId,
     teamId: SLACK_TEAM_ID,
   });
+  const visibility = firstInput
+    ? slackInputVisibility(conversation, firstInput)
+    : undefined;
   await getConversationStore().recordActivity({
     conversationId: conversation.conversationId,
     destination,
@@ -108,10 +132,10 @@ async function recordRoot(conversation: LoadedConversation, nowMs: number) {
       channelId: conversation.channelId,
       teamId: SLACK_TEAM_ID,
       threadTs: conversation.threadTs,
-      visibility: "public",
+      visibility: visibility ?? "private",
     }),
     source: "slack",
-    visibility: "public",
+    ...(visibility ? { visibility } : undefined),
   });
 }
 
@@ -238,7 +262,7 @@ function historyUserMessage(args: {
   );
   const explicitMention = input.kind === "mention";
   const ts = args.slack.addThreadMessage(conversation.channelId, {
-    text: explicitMention
+    text: isAppMention(input, conversation.channelType)
       ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
       : input.text,
     thread_ts: conversation.threadTs,
@@ -309,7 +333,7 @@ export async function loadHistory(args: {
   // Earlier turns happened before the call, one millisecond apart.
   let clockMs = Date.now() - args.items.length - 1;
   const tick = () => (clockMs += 1);
-  await recordRoot(conversation, tick());
+  await recordRoot(conversation, tick(), turns[0]?.input);
   const lifecycle = getTurnLifecycle();
   const state = coerceThreadConversationState({});
   // Agent history commits take the full history, not only new messages.
@@ -325,6 +349,18 @@ export async function loadHistory(args: {
       slack: args.slack,
     });
     const turnId = buildDeterministicTurnId(message.conversationMessage.id);
+    // Like a real turn, a later input can reveal the channel's visibility.
+    const visibility =
+      conversation.surface === "slack" && index > 0
+        ? slackInputVisibility(conversation, turn.input)
+        : undefined;
+    if (visibility) {
+      await getConversationStore().recordActivity({
+        conversationId,
+        nowMs: message.conversationMessage.createdAtMs,
+        visibility,
+      });
+    }
     // A turn stores its input, then starts.
     state.messages.push(message.conversationMessage);
     await appendConversationMessages(getConversationEventStore(), {

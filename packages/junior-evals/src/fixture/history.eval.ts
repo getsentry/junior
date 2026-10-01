@@ -4,7 +4,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect } from "vitest";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { mention, reply, webMessage, type Input } from "./inputs";
 import { isRecordedConversation } from "./recorded";
 import { test, type Conversation, type RunAgent } from "./test";
@@ -97,6 +97,12 @@ async function compareWithRealTurn(
   const realRows = await comparableRows(real.conversationId);
   const loadedRows = await comparableRows(loaded.conversationId);
   expect(loadedRows.slice(0, realRows.length)).toEqual(realRows);
+  const store = getConversationStore();
+  expect(
+    (await store.get({ conversationId: loaded.conversationId }))?.visibility,
+  ).toBe(
+    (await store.get({ conversationId: real.conversationId }))?.visibility,
+  );
 }
 
 describe("loaded history", () => {
