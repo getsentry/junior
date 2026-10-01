@@ -159,6 +159,7 @@
     "packages/junior-evals/src/behavior-harness.ts": 2,
     "packages/junior/tests/component/app-sandbox-trace-config.test.ts": 1,
     "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts": 1,
+    "packages/junior/tests/component/auth/mcp-oauth-client-auth.test.ts": 1,
     "packages/junior/tests/component/auth/plugin-auth-runtime-slack.test.ts": 1,
     "packages/junior/tests/component/cli/chat-cli.test.ts": 1,
     "packages/junior/tests/component/cli/local-chat-composition.test.ts": 2,
