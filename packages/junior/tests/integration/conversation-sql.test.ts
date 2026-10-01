@@ -19,6 +19,7 @@ import {
   createEmptyJuniorPostgresFixture,
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
+  createUnextendedJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
   applyCoreMigrations as applyCoreMigrationSlice,
@@ -794,6 +795,19 @@ WHERE conversation_id = $1
           teamId: "T123",
         },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stops before migrating when required extensions are unavailable", async () => {
+    const fixture = await createUnextendedJuniorSqlFixture();
+
+    try {
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Junior requires the Postgres extensions btree_gin and vector",
+      );
+      await expectNoDrizzleMigrationState(fixture.sql);
     } finally {
       await fixture.close();
     }

@@ -1,11 +1,7 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { handoffHistory } from "./handoff-history";
-import {
-  clearMemories,
-  memoryPluginOverrides,
-  seedMemory,
-} from "../../memory/helpers";
+import { clearMemories, seedMemory } from "../../memory/helpers";
 import { lastTurnReplies, mention, slackEvals } from "../../../src/helpers";
 
 // Memory defines the terse request. Prior work is complete, so the continuation
@@ -46,7 +42,7 @@ describeEval("Handoff task continuity", slackEvals, (it) => {
           ),
         ],
         overrides: {
-          ...memoryPluginOverrides,
+          memory: true,
           skill_dirs: ["fixtures/coding-skills"],
         },
       });

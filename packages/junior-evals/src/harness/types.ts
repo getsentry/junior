@@ -186,6 +186,8 @@ export interface EvalOverrides {
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
   github_events?: boolean;
+  /** Run core Memory with production settings. Off by default. */
+  memory?: boolean;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];

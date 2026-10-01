@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 /** Show native objects by default and let plugins select compact sidebar labels. */
@@ -15,7 +15,7 @@ export async function listConversationSidebarAnnotations(
 ): Promise<Record<string, ConversationSidebarAnnotation[]>> {
   const candidates = new Set(conversationIds);
   const selected: Record<string, ConversationSidebarAnnotation[]> = {};
-  const plugins = getPlugins();
+  const plugins = getRegistrations();
   const customOwners = new Set(
     plugins
       .filter((plugin) => plugin.hooks?.conversationSidebar)

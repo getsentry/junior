@@ -14,12 +14,13 @@ import {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { isCoreFeatureName } from "@/chat/plugins/core-features";
 
 /** List safe navigation metadata for registered plugin user pages. */
 export function readPluginUserPageLinks(): PluginUserPageLink[] {
   return pluginUserPageLinksSchema.parse(
-    getPlugins().flatMap((plugin) =>
+    getRegistrations().flatMap((plugin) =>
       (plugin.userPages ?? []).map((page) => ({
         description: page.description,
         id: page.id,
@@ -32,12 +33,16 @@ export function readPluginUserPageLinks(): PluginUserPageLink[] {
   );
 }
 
+/** Core features own `/api/<name>/`; plugins own `/api/plugins/<name>/`. */
 function actionBelongsToPlugin(href: string, pluginName: string): boolean {
   const parsed = new URL(href, "http://junior.local");
+  const prefix = isCoreFeatureName(pluginName)
+    ? `/api/${pluginName}/`
+    : `/api/plugins/${pluginName}/`;
   return (
     parsed.origin === "http://junior.local" &&
     parsed.pathname === href &&
-    parsed.pathname.startsWith(`/api/plugins/${pluginName}/`) &&
+    parsed.pathname.startsWith(prefix) &&
     !parsed.search &&
     !parsed.hash
   );
@@ -50,7 +55,7 @@ export async function readPluginUserPage(input: {
   pluginName: string;
   query: PluginUserPageInput;
 }): Promise<PluginUserPageContent | undefined> {
-  const plugin = getPlugins().find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === input.pluginName,
   );
   const page = plugin?.userPages?.find(

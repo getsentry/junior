@@ -11,6 +11,8 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { getConversationStore } from "@/chat/db";
 import type { EmittedLogRecord } from "@/chat/logging";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { createCoreFeatures } from "@/chat/app/core-features";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { FakeSlackAdapter } from "@junior-tests/fixtures/slack-harness";
 import { createConversationWorkQueueTestAdapter } from "@junior-tests/fixtures/conversation-work";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
@@ -93,6 +95,7 @@ export async function runEvalScenario(
   );
   const env = await setupHarnessEnvironment(scenario, runtimePlugins);
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  let previousCoreFeatures: ReturnType<typeof setCoreFeatures> | undefined;
   let runError: unknown;
   let result: EvalResult | undefined;
   const threadRecordsById = new Map<string, EvalThreadRecord>();
@@ -102,6 +105,13 @@ export async function runEvalScenario(
       runtimePlugins.map((plugin) => plugin.manifest.name),
     );
     const currentPlugins = getPlugins();
+    // Memory adds recall and extraction model calls to every turn, so only
+    // scenarios that measure it run it.
+    previousCoreFeatures = setCoreFeatures(
+      createCoreFeatures({
+        memory: scenario.overrides?.memory ? {} : { enabled: false },
+      }),
+    );
     previousPlugins = setPlugins([
       ...runtimePlugins,
       ...currentPlugins.filter(
@@ -261,6 +271,7 @@ export async function runEvalScenario(
       drainPendingEvalPluginTasks,
       async () => {
         if (previousPlugins) setPlugins(previousPlugins);
+        if (previousCoreFeatures) setCoreFeatures(previousCoreFeatures);
         await teardownHarnessEnvironment(scenario, env);
       },
     ]) {

@@ -63,8 +63,8 @@ Success:
 
 ## Phase 3 — HUMAN GATE: storage and Vercel project settings
 
-Junior requires Postgres and Redis. The default memory plugin requires Postgres
-with pgvector support. Snapshot warmup requires REDIS_URL during the build and
+Junior requires Postgres and Redis. Postgres must support the pgvector
+(`vector`) and `btree_gin` extensions. Snapshot warmup requires REDIS_URL during the build and
 Vercel OIDC enabled. Do not guess Marketplace CLI product slugs.
 
 Stop and ask the human to open the linked Vercel project and complete:

@@ -20,6 +20,7 @@ import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { ingestEvent } from "@/chat/events/ingest";
+import { EVENT_MAX_WAIT_MS } from "@/chat/task-execution/conversation-turn";
 import { createWatch } from "@/chat/events/store";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { createEventAutomation } from "@/chat/event-automations/store";
@@ -322,7 +323,9 @@ export async function processEvents(args: {
 
   const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
-    const nowMs = Date.now();
+    // Deliver the event after its burst window closed, so the Turn runs now
+    // instead of waiting out the debounce. Integration tests own the window.
+    const nowMs = Date.now() - EVENT_MAX_WAIT_MS;
     await createWatch(
       {
         conversationId: thread.id,
@@ -356,7 +359,9 @@ export async function processEvents(args: {
 
   const runEvent = async (event: EventFixture): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
-    const nowMs = Date.now();
+    // Deliver the event after its burst window closed, so the Turn runs now
+    // instead of waiting out the debounce. Integration tests own the window.
+    const nowMs = Date.now() - EVENT_MAX_WAIT_MS;
     const destination = createEvalDestination(thread);
     await getConversationStore().recordActivity({
       conversationId: thread.id,

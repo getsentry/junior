@@ -460,6 +460,22 @@ export const slackEvals = {
   judgeThreshold: 0.75,
 } satisfies DescribeEvalOptions<SlackEvalInput>;
 
+/** Slack eval suite options for Memory evals, which run core Memory. */
+export const memoryEvals = {
+  ...slackEvals,
+  harness: {
+    ...slackHarness,
+    run: async (input, context) =>
+      await slackHarness.run(
+        {
+          ...input,
+          overrides: { memory: true, ...input.overrides },
+        },
+        context,
+      ),
+  },
+} satisfies DescribeEvalOptions<SlackEvalInput>;
+
 export interface SlackSideEffects {
   suggestedPromptCalls: number;
   threadTitleCalls: number;

@@ -141,8 +141,8 @@ describe("plugin prompt hook composition", () => {
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
+          name: "recall",
+          displayName: "Recall",
           description: "Memory test plugin",
         },
         hooks: {
@@ -209,8 +209,8 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
+          name: "recall",
+          displayName: "Recall",
           description: "Memory test plugin",
         },
         hooks: {
@@ -239,12 +239,12 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:recall:0`,
     );
     expect(stored?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "recall",
       kind: "recall",
       version: 1,
       content: {
@@ -266,8 +266,8 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
+          name: "recall",
+          displayName: "Recall",
           description: "Memory test plugin",
         },
         hooks: {
@@ -318,7 +318,7 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:recall:0`,
     );
     expect(stored?.data).toMatchObject({
       type: "turn_context",

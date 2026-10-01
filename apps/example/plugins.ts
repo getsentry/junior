@@ -1,7 +1,6 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 import { linearPlugin } from "@sentry/junior-linear";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { vercelPlugin } from "@sentry/junior-vercel";
 
@@ -19,7 +18,6 @@ export const plugins = defineJuniorPlugins([
   }),
   "@sentry/junior-hex",
   linearPlugin(),
-  memoryPlugin(),
   "@sentry/junior-notion",
   sentryPlugin(),
   vercelPlugin(),

@@ -2,15 +2,11 @@ import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { MemoryDb } from "@sentry/junior-memory";
-import {
-  juniorMemoryEmbeddings,
-  juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
+import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import {
   mention,
   rubric,
-  slackEvals,
+  memoryEvals,
   steer,
   threadMessage,
 } from "../../src/helpers";
@@ -23,9 +19,6 @@ import {
  * more than one Actor does not store any preference.
  */
 
-const memoryPluginOverrides = {
-  plugin_packages: ["@sentry/junior-memory"],
-};
 const memoryTeamId = "TEVAL";
 
 const ALICE = {
@@ -53,16 +46,12 @@ interface MemoryThread {
   thread_ts: string;
 }
 
-function memoryDb(): MemoryDb {
-  return getDb() as unknown as MemoryDb;
-}
-
 function memorySourceKey(thread: MemoryThread): string {
   return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
 }
 
 async function readMemories(thread: MemoryThread) {
-  const rows = await memoryDb()
+  const rows = await getDb()
     .select()
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
@@ -70,8 +59,8 @@ async function readMemories(thread: MemoryThread) {
 }
 
 async function clearMemories() {
-  await memoryDb().delete(juniorMemoryEmbeddings);
-  await memoryDb().delete(juniorMemoryMemories);
+  await getDb().delete(juniorMemoryEmbeddings);
+  await getDb().delete(juniorMemoryMemories);
 }
 
 async function memoriesForActor(
@@ -94,7 +83,7 @@ async function memoriesForActor(
   );
 }
 
-describeEval("Memory with Multiple Actors", slackEvals, (it) => {
+describeEval("Memory with Multiple Actors", memoryEvals, (it) => {
   const bystanderPreferenceThread = {
     channel_type: "channel",
     id: "thread-memory-bystander-preference",
@@ -107,7 +96,6 @@ describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "Can you help capture takeaways from this retro discussion as we go?",
@@ -173,7 +161,6 @@ describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "I prefer status updates with risks listed first. Draft a brief update saying the rollout is paused while we validate the rollback and that the next checkpoint is tomorrow.",
@@ -235,7 +222,6 @@ describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("Can you recap what has been asked in this thread so far?", {
           thread: batchedMentionThread,
@@ -292,7 +278,6 @@ describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
           "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
@@ -365,7 +350,6 @@ describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   }) => {
     await clearMemories();
     await run({
-      overrides: memoryPluginOverrides,
       initialEvents: [
         mention("Can you help us plan the deploy for the retention fix?", {
           thread: sharedKnowledgeThread,

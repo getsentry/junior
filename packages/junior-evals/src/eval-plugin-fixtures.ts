@@ -3,7 +3,6 @@ import path from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
 import type { InlinePluginManifestDefinition } from "@/chat/plugins/types";
@@ -26,7 +25,6 @@ export function evalRuntimePlugins(
           }),
         ]
       : []),
-    ...(packages.includes("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.includes("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
 }

@@ -13,7 +13,6 @@
     "paths": {
       "@/*": ["../junior/src/*"],
       "@junior-tests/*": ["../junior/tests/*"],
-      "@sentry/junior-memory": ["../junior-memory/src/index.ts"],
       "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"]
     }
   },

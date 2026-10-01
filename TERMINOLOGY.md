@@ -19,6 +19,11 @@ Canonical words used across Junior's code and documentation.
 - **Brief**: the durable, versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence links. A public Brief stays available after
   the transcript expires.
+- **Memory**: a durable fact that Junior keeps across Conversations. It is
+  private to one User or public. Core owns Memory storage, recall, and learning.
+- **Core feature**: a product capability that core always registers with the
+  plugin hook contract, such as Memory or Brief generation. It is not a plugin,
+  and no plugin can use its name.
 - **Source**: the input that caused work, such as a Slack message, local CLI
   input, dashboard input, event, scheduled automation, plugin dispatch, or
   Agent invocation. Every Inbound message has one Source. A Turn stores the

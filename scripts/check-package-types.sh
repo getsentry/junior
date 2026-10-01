@@ -11,7 +11,6 @@ for package_name in \
   junior-github \
   junior-gocd \
   junior-linear \
-  junior-memory \
   junior-plugin-api \
   junior-sentry \
   junior-vercel

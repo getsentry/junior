@@ -4,17 +4,11 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemoryStore } from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import {
-  juniorMemoryEmbeddings,
-  juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
+import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 
-export const memoryPluginOverrides = {
-  plugin_packages: ["@sentry/junior-memory"],
-};
 const memoryTeamId = "TEVAL";
 const actorUserId = TEST_USER_ID;
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
@@ -48,7 +42,7 @@ export async function seedMemory(args: {
     throw new Error("Eval memory Actor did not resolve to a User");
   }
   const store = createMemoryStore(
-    memoryDb(),
+    getDb(),
     {
       conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
       actor: {
@@ -80,16 +74,12 @@ export async function seedMemory(args: {
   await store.createMemory(input);
 }
 
-function memoryDb(): MemoryDb {
-  return getDb() as unknown as MemoryDb;
-}
-
 function memorySourceKey(thread: MemoryThread): string {
   return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
 }
 
 export async function readMemories(thread: MemoryThread) {
-  const rows = await memoryDb()
+  const rows = await getDb()
     .select()
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
@@ -103,7 +93,7 @@ export async function countMemoryEmbeddings(thread: MemoryThread) {
     return 0;
   }
   const memoryIds = new Set(memories.map((memory) => memory.id));
-  const rows = await memoryDb()
+  const rows = await getDb()
     .select({ memoryId: juniorMemoryEmbeddings.memoryId })
     .from(juniorMemoryEmbeddings);
   return rows.filter((row) => memoryIds.has(row.memoryId)).length;
@@ -124,8 +114,8 @@ export async function readActiveMemories(
 }
 
 export async function clearMemories() {
-  await memoryDb().delete(juniorMemoryEmbeddings);
-  await memoryDb().delete(juniorMemoryMemories);
+  await getDb().delete(juniorMemoryEmbeddings);
+  await getDb().delete(juniorMemoryMemories);
 }
 
 export function visibleAssistantText(result: {

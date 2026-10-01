@@ -16,7 +16,7 @@ import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 function plugin() {
   return defineJuniorPlugin({
     manifest: {
-      name: "memory",
+      name: "notes",
       displayName: "Memory",
       description: "Long-term memory storage and recall.",
     },
@@ -72,7 +72,7 @@ describe("plugin user page API", () => {
         label: "Memories",
         navigation: "profile",
         pluginDisplayName: "Memory",
-        pluginName: "memory",
+        pluginName: "notes",
       },
     ]);
   });
@@ -81,7 +81,7 @@ describe("plugin user page API", () => {
     setPlugins([plugin()]);
 
     const response = await createJuniorApi().request(
-      "http://localhost/api/user-pages/memory/memories",
+      "http://localhost/api/user-pages/notes/memories",
     );
 
     expect(response.status).toBe(401);
@@ -92,7 +92,7 @@ describe("plugin user page API", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Long-term memory storage and recall.",
         },
@@ -114,7 +114,7 @@ describe("plugin user page API", () => {
     ]);
 
     const response = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
+      "http://localhost/api/user-pages/notes/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
     );
 
     expect(response.status).toBe(200);
@@ -126,13 +126,13 @@ describe("plugin user page API", () => {
     });
 
     const emptyLimit = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?limit=",
+      "http://localhost/api/user-pages/notes/memories?limit=",
     );
     expect(emptyLimit.status).toBe(200);
     expect(receivedInput).toEqual({ limit: 20 });
 
     const invalid = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?limit=500",
+      "http://localhost/api/user-pages/notes/memories?limit=500",
     );
     expect(invalid.status).toBe(400);
   });
@@ -177,7 +177,7 @@ describe("plugin user page API", () => {
       setPlugins([plugin()]);
 
       const response = await authenticatedApi("VIEWER@example.com").request(
-        "http://localhost/api/user-pages/memory/memories",
+        "http://localhost/api/user-pages/notes/memories",
       );
 
       expect(response.status).toBe(200);

@@ -27,7 +27,7 @@ export function ConversationMemories(props: { conversationId: string }) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationMemoryListSchema,
-        `/api/plugins/memory/conversations/${encodeURIComponent(props.conversationId)}/memories`,
+        `/api/memory/conversations/${encodeURIComponent(props.conversationId)}/memories`,
         signal,
       ),
     queryKey: ["conversation", props.conversationId, "memories"],

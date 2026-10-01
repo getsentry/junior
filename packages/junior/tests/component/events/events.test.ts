@@ -3,7 +3,8 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createApp, defineJuniorPlugins } from "@/app";
+import { defineJuniorPlugins } from "@/app";
+import { createTestApp } from "../../fixtures/app";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { closeDb, getDb } from "@/chat/db";
 import {
@@ -324,7 +325,7 @@ describe("event delivery", () => {
         .update(body)
         .digest("hex")}`;
 
-      const app = await createApp({
+      const app = await createTestApp({
         conversationWork: {
           queue,
           run: async () => ({ status: "completed" }),

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { pluginOperationalReportFeedSchema } from "@/api/schema";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { briefsFeature } from "@/chat/briefs/task";
+import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationBriefs,
@@ -21,7 +22,9 @@ describe("plugin reports API route", () => {
   test("uses one UTC calendar window for Brief count and cost metrics", async () => {
     vi.useFakeTimers({ now: new Date("2026-07-28T12:00:00.000Z") });
     const fixture = createConfiguredJuniorSqlFixture();
-    const previousBriefsConfig = setBriefsConfig({ enabled: true });
+    const previousCoreFeatures = setCoreFeatures([
+      briefsFeature({ enabled: true }),
+    ]);
     const windowStart = new Date("2026-06-29T00:00:00.000Z");
     const reports = [
       {
@@ -126,7 +129,7 @@ describe("plugin reports API route", () => {
         values: { briefs: 1, costUsd: 0.0042 },
       });
     } finally {
-      setBriefsConfig(previousBriefsConfig);
+      setCoreFeatures(previousCoreFeatures);
       await fixture.close();
     }
   });

@@ -20,6 +20,7 @@ import {
   validatePluginEgressCredentialHooks,
   validatePluginRegistrations,
 } from "@/chat/plugins/validation";
+import { createCoreFeatures } from "@/chat/app/core-features";
 import { loadAppPluginSet } from "@/plugin-module";
 import {
   pluginCliRegistrationsFromPluginSet,
@@ -226,11 +227,18 @@ async function loadPluginRegistrations(args: {
   runtimePlugins: PluginRegistration[];
 }> {
   const pluginSet = args.pluginSet;
+  const coreCliFeatures = createCoreFeatures().filter((feature) =>
+    Boolean(feature.cli),
+  );
   if (!pluginSet) {
-    return { cliPlugins: [], runtimePlugins: [] };
+    args.validateConfiguredCommands?.(coreCliFeatures);
+    return { cliPlugins: coreCliFeatures, runtimePlugins: [] };
   }
 
-  const cliPlugins = pluginCliRegistrationsFromPluginSet(pluginSet);
+  const cliPlugins = [
+    ...coreCliFeatures,
+    ...pluginCliRegistrationsFromPluginSet(pluginSet),
+  ];
   const runtimePlugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginCatalogConfigFromPluginSet(pluginSet);
   validatePlugins(runtimePlugins);
