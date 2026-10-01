@@ -1,11 +1,13 @@
 # Junior brand assets
 
-`junior-fullbody.png` is the original full-body Junior illustration. Keep it unchanged. Make all other Junior images from it.
+`junior-fullbody.png` is the original full-body Junior illustration. Keep it unchanged. The avatars and reactions use the same character with fewer details for small sizes.
+
+`junior-avatar-512-cream.png` is the approved avatar. Use it as the reference for new avatars and reactions.
 
 Use these crops:
 
-- **Avatar crop:** head, cap, antennas, the top of the hoodie, and the phone. It is a square cut from the top of the image to the middle of the hoodie. Use it for the logo and avatar.
-- **Profile avatar:** the avatar crop at 80% size on a solid square. It is centered, and the hoodie touches the bottom edge. The antennas and the phone stay inside a circle, so the image is safe for round and rounded-square avatar frames.
+- **Avatar crop:** a close view of the head, cap, top antenna, and hoodie collar. The eye and smile must be clear at small sizes. Omit the phone, hands, and small side antennas. Use it for the logo and avatar.
+- **Profile avatar:** the avatar crop on a solid square. The face is large and centered, and the hoodie touches the bottom edge. Keep the eye and smile inside a circle for round avatar frames.
 - **Head crop:** head, cap, and antennas only, centered in a transparent square. It stops at the bottom edge of the head. Use it for favicons, because the avatar crop is not readable at 16px.
 
 | Image                                                     | Crop           | Size     |
@@ -26,10 +28,34 @@ Use a profile avatar where a service asks for a square account image, for exampl
 
 | Image                         | Background | Use                                               |
 | ----------------------------- | ---------- | ------------------------------------------------- |
-| `junior-avatar-512-cream.png` | `#fff7df`  | Default. It has the best contrast at small sizes. |
-| `junior-avatar-512-dark.png`  | `#181024`  | Use it when the service has a light background.   |
+| `junior-avatar-512-cream.png` | Cream      | Default. It has the best contrast at small sizes. |
+| `junior-avatar-512-dark.png`  | Ink        | Use it when the service has a light background.   |
 
 Do not put Junior on a yellow, violet, or pink background. The mascot uses these colors, so parts of it disappear.
+
+## Slack reactions
+
+These images have transparent backgrounds. Both exports are 128x128 and under 128 KB.
+
+| Image                       | Emoji name        | Use                                     |
+| --------------------------- | ----------------- | --------------------------------------- |
+| `slack/junior-thinking.gif` | `junior-thinking` | Thinking. The dots in the bubble cycle. |
+| `slack/junior-done.png`     | `junior-done`     | Done. Junior has a large green check.   |
+
+Upload the exports as custom emoji in the Slack workspace. Then set the host's `slack.processingReactionEmoji` to `junior-thinking` and `slack.completedReactionEmoji` to `junior-done`. The runtime defaults stay unchanged until the custom emoji are installed.
+
+`slack/junior-thinking-frames.png` holds four frames in a 2x2 square. Read them left to right, then top to bottom. `slack/junior-done-source.png` holds the 512x512 source for the done icon. Keep these source images when you update the exports.
+
+To export them again with ImageMagick:
+
+```sh
+convert -delay 35 -dispose Background brand/slack/junior-thinking-frames.png \
+  -crop 256x256 +repage -filter Lanczos -resize 128x128 \
+  -channel A -threshold 50% +channel -colors 128 -strip -loop 0 \
+  brand/slack/junior-thinking.gif
+convert brand/slack/junior-done-source.png -filter Lanczos -resize 128x128 \
+  -strip -define png:compression-level=9 brand/slack/junior-done.png
+```
 
 ## Colors
 
