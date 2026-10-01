@@ -7,6 +7,7 @@ import type {
   OAuthClientProvider,
   OAuthDiscoveryState,
 } from "@modelcontextprotocol/sdk/client/auth.js";
+import type { PluginMcpOAuthClientConfig } from "@sentry/junior-plugin-api";
 import {
   deleteMcpServerSessionId,
   getMcpAuthSession,
@@ -41,6 +42,14 @@ function clientAllowsRedirectUri(
   return redirectUris.includes(callbackUrl);
 }
 
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`MCP OAuth client env var ${name} is unset`);
+  }
+  return value;
+}
+
 export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   readonly clientMetadata: OAuthClientMetadata;
 
@@ -59,6 +68,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     private readonly runCredentialMutation?: <T>(
       mutation: () => Promise<T>,
     ) => Promise<T>,
+    private readonly oauthClient?: PluginMcpOAuthClientConfig,
   ) {
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
@@ -72,6 +82,12 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
+    if (this.oauthClient) {
+      return {
+        client_id: requireEnv(this.oauthClient.clientIdEnv),
+        client_secret: requireEnv(this.oauthClient.clientSecretEnv),
+      };
+    }
     const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
@@ -129,6 +145,16 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    // The SDK requests every scope the server advertises. A pre-registered
+    // client may need a narrower scope and provider-specific parameters.
+    if (this.oauthClient?.scope) {
+      authorizationUrl.searchParams.set("scope", this.oauthClient.scope);
+    }
+    for (const [key, value] of Object.entries(
+      this.oauthClient?.authorizeParams ?? {},
+    )) {
+      authorizationUrl.searchParams.set(key, value);
+    }
     const existing = await getMcpAuthSession(this.authSessionId);
     if (
       existing?.authorizationUrl &&

@@ -37,7 +37,7 @@ export async function createMcpOAuthClientProvider(input: {
   configuration?: Record<string, unknown>;
   createAuthorizationState?: () => Promise<string>;
 }): Promise<StateBackedMcpOAuthClientProvider> {
-  requirePluginWithMcp(input.provider);
+  const plugin = requirePluginWithMcp(input.provider);
 
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
@@ -63,9 +63,15 @@ export async function createMcpOAuthClientProvider(input: {
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
-      ...(input.configuration ? { configuration: input.configuration } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
     },
+    undefined,
+    plugin.manifest.mcp?.oauthClient,
   );
 }
 
@@ -104,6 +110,7 @@ export async function finalizeMcpAuthorization(
     callbackUrl,
     undefined,
     runCredentialMutation,
+    mcp.oauthClient,
   );
   const headers = mcp.headers
     ? resolvePluginHeaderEnvRefs(provider, mcp.headers, "MCP header")

@@ -1,0 +1,16 @@
+name: oauth-client-mcp
+display-name: OAuth Client MCP
+description: MCP fixture whose OAuth server requires a pre-registered client
+
+env-vars:
+  OAUTH_CLIENT_MCP_CLIENT_ID:
+  OAUTH_CLIENT_MCP_CLIENT_SECRET:
+
+mcp:
+  url: https://oauth-client-mcp.example.test/mcp
+  oauth-client:
+    client-id-env: OAUTH_CLIENT_MCP_CLIENT_ID
+    client-secret-env: OAUTH_CLIENT_MCP_CLIENT_SECRET
+    scope: docs.readonly
+    authorize-params:
+      access_type: offline

@@ -15,7 +15,11 @@ import type {
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
-import { inlineManifestSource, mcpAuthSource } from "./inline-manifest-source";
+import {
+  inlineManifestSource,
+  mcpAuthSource,
+  mcpOauthClientSource,
+} from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -235,6 +239,15 @@ const mcpAuthSourceSchema = z
   })
   .passthrough();
 
+const mcpOauthClientSourceSchema = z
+  .object({
+    "client-id-env": envVarString,
+    "client-secret-env": envVarString,
+    scope: nonEmptyTrimmedString.optional(),
+    "authorize-params": stringMapSchema.optional(),
+  })
+  .passthrough();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -245,6 +258,7 @@ const mcpSourceSchema = z
     url: httpsUrlString,
     auth: mcpAuthSourceSchema.optional(),
     headers: stringMapSchema.optional(),
+    "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
   })
@@ -373,6 +387,11 @@ function manifestConfigPatch(
         mcp,
         "auth",
         config.mcp.auth && mcpAuthSource(config.mcp.auth),
+      );
+      setDefined(
+        mcp,
+        "oauth-client",
+        config.mcp.oauthClient && mcpOauthClientSource(config.mcp.oauthClient),
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
@@ -632,6 +651,10 @@ function hostOnlyEnvNames(manifest: {
   const names = new Set<string>();
   if (manifest.mcp?.auth) {
     names.add(manifest.mcp.auth.privateKeyEnv);
+  }
+  if (manifest.mcp?.oauthClient) {
+    names.add(manifest.mcp.oauthClient.clientIdEnv);
+    names.add(manifest.mcp.oauthClient.clientSecretEnv);
   }
   for (const value of [
     ...Object.values(manifest.apiHeaders ?? {}),
@@ -1006,6 +1029,31 @@ function normalizeMcp(
       `Plugin ${name} mcp.auth.private-key-env`,
     );
   }
+  const oauthClient = result.data["oauth-client"];
+  if (oauthClient) {
+    if (result.data.auth) {
+      throw new Error(
+        `Plugin ${name} mcp must not declare both auth and oauth-client`,
+      );
+    }
+    assertDeclaredHostSecretEnv(
+      oauthClient["client-id-env"],
+      envVars,
+      `Plugin ${name} mcp.oauth-client.client-id-env`,
+    );
+    assertDeclaredHostSecretEnv(
+      oauthClient["client-secret-env"],
+      envVars,
+      `Plugin ${name} mcp.oauth-client.client-secret-env`,
+    );
+  }
+  const oauthClientAuthorizeParams = oauthClient?.["authorize-params"]
+    ? normalizeStringMap(
+        oauthClient["authorize-params"],
+        `Plugin ${name} mcp.oauth-client.authorize-params`,
+        { reservedKeys: RESERVED_AUTHORIZE_PARAM_KEYS },
+      )
+    : undefined;
 
   return {
     transport: "http",
@@ -1020,6 +1068,18 @@ function normalizeMcp(
         }
       : undefined),
     ...(headers ? { headers } : undefined),
+    ...(oauthClient
+      ? {
+          oauthClient: {
+            clientIdEnv: oauthClient["client-id-env"],
+            clientSecretEnv: oauthClient["client-secret-env"],
+            ...(oauthClient.scope ? { scope: oauthClient.scope } : undefined),
+            ...(oauthClientAuthorizeParams
+              ? { authorizeParams: oauthClientAuthorizeParams }
+              : undefined),
+          },
+        }
+      : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
       : undefined),
