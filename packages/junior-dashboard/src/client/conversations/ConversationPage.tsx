@@ -145,6 +145,7 @@ export function ConversationPage(props: {
                     forkedFromConversationId={
                       detail.data.forkedFromConversationId
                     }
+                    forkedFromTitle={detail.data.forkedFromTitle}
                     forks={detail.data.forks}
                   />
                 ) : null

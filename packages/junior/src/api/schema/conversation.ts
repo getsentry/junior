@@ -768,6 +768,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
     forkedFromConversationId: z.string().optional(),
+    /** Title of the fork source, when the viewer can open it. */
+    forkedFromTitle: z.string().optional(),
     forks: z.array(z.string()).optional(),
     brief: z
       .object({

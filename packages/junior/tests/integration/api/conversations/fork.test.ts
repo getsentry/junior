@@ -101,6 +101,10 @@ describe("conversation forks", () => {
         ],
       },
     });
+    await getDb()
+      .update(juniorConversations)
+      .set({ title: "Blue option plan" })
+      .where(eq(juniorConversations.conversationId, source.conversationId));
     const app = await authenticatedApi(harness.actor.email);
     const url = `/api/conversations/${encodeURIComponent(source.conversationId)}/forks`;
     const responses = await Promise.all([
@@ -140,6 +144,7 @@ describe("conversation forks", () => {
     expect(detail).toMatchObject({
       isParticipant: true,
       forkedFromConversationId: source.conversationId,
+      forkedFromTitle: "Blue option plan",
     });
     expect(detail.modelUsage).toBeUndefined();
     expect((await harness.pendingMessages(forkId)).messages).toEqual([]);

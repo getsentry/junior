@@ -8,6 +8,7 @@ const linkClassName =
 /** Link a conversation to its fork source and to its forks. */
 export function ConversationForkLinks(props: {
   forkedFromConversationId?: string;
+  forkedFromTitle?: string;
   forks?: string[];
 }) {
   return (
@@ -20,11 +21,10 @@ export function ConversationForkLinks(props: {
         <span>
           Forked from{" "}
           <Link
-            aria-label="Forked from source conversation"
             className={linkClassName}
             to={conversationPath(props.forkedFromConversationId)}
           >
-            source conversation
+            {props.forkedFromTitle ?? "source conversation"}
           </Link>
         </span>
       ) : null}

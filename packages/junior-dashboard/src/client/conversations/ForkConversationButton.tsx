@@ -81,9 +81,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
         }}
       >
         <p className="m-0">
-          Copy this conversation through this reply into a new conversation, and
-          continue there. The original conversation does not change. Sandbox
-          files and active work are not copied.
+          Creates a fork of the conversation from this point.
         </p>
         <Field htmlFor={inputId} label="Message">
           <TextArea
@@ -91,7 +89,7 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
             prose
             autoFocus
             className="min-h-28"
-            placeholder="What should Junior do differently?"
+            placeholder="Message Junior…"
             value={message}
             disabled={fork.isPending}
             onChange={(event) => setMessage(event.target.value)}

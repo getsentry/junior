@@ -119,9 +119,6 @@ test("inspects all reporting events and searches full event data", async ({
     exact: true,
   });
   await expect(
-    forkDialog.getByText(/Sandbox files and active work are not copied/),
-  ).toBeVisible();
-  await expect(
     forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
   ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
@@ -176,6 +173,7 @@ test("inspects all reporting events and searches full event data", async ({
           ...report,
           conversationId: forkId,
           forkedFromConversationId: conversationId,
+          forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
           status: "completed",
@@ -218,8 +216,13 @@ test("inspects all reporting events and searches full event data", async ({
     },
   ]);
   await expect(
-    page.getByRole("link", { name: "Forked from source conversation" }),
-  ).toBeVisible();
+    page
+      .getByRole("navigation", { name: "Conversation forks" })
+      .getByRole("link", { name: report.displayTitle, exact: true }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent(conversationId)}`,
+  );
   await screenshot(page, "conversation-fork-links");
 });
 
