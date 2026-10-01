@@ -3,6 +3,7 @@ import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   conversationQueueMessageSchema,
@@ -85,6 +86,34 @@ export async function processConversationQueueMessage(
   } finally {
     // Turns start title work in the background. The worker owns it.
     options.waitUntil?.(settleConversationTitleWork(parsed.conversationId));
+  }
+}
+
+/**
+ * Run one queue message through the worker without a Vercel push callback.
+ * In-process queues use this. It applies the kill switch, request deadline,
+ * and permanent rejection rules of the callback.
+ */
+export async function consumeConversationQueueMessage(
+  message: ConversationQueueMessage,
+  options: ProcessConversationQueueMessageOptions,
+): Promise<void> {
+  if (!getChatConfig().conversationWorkEnabled) {
+    return;
+  }
+  try {
+    await runWithTurnRequestDeadline(() =>
+      processConversationQueueMessage(message, options),
+    );
+  } catch (error) {
+    if (!isConversationQueueMessageRejectedError(error)) {
+      throw error;
+    }
+    withLogContext({ conversationId: error.conversationId }, () => {
+      logWarn("conversation.queue.message.rejected", {
+        "app.queue.reject_reason": error.reason,
+      });
+    });
   }
 }
 

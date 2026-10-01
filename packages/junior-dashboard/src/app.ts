@@ -6,6 +6,7 @@ import {
   jsonResponse,
   resolveViewerUser,
   updateViewerDisplayName,
+  type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -90,6 +91,8 @@ export interface JuniorDashboardOptions {
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
   authenticatedRoutes?: readonly AuthenticatedRoute[];
+  /** The queue `createApp()` uses, so web input reaches the same worker. */
+  conversationWorkQueue?: ConversationWorkQueue;
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -618,7 +621,10 @@ export function createDashboardApp(
   if (options.mockConversations) {
     app.route("/api", createMockReportingApi());
   }
-  app.route("/", createJuniorApi());
+  app.route(
+    "/",
+    createJuniorApi({ conversationWorkQueue: options.conversationWorkQueue }),
+  );
   app.get("/api/config", () => {
     return jsonResponse(dashboardConfigSchema, {
       allowedEmailCount: allowedEmails.length,

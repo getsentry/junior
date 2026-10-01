@@ -460,7 +460,6 @@ function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
 ): BotConfig {
-  warnDeprecatedProfileEnv(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
@@ -569,6 +568,7 @@ export function readChatConfig(
   functionMaxDurationSeconds = DEFAULT_FUNCTION_MAX_DURATION_SECONDS,
 ): ChatConfig {
   const databaseUrl = readDatabaseUrl(env);
+  warnDeprecatedProfileEnv(env);
   const resolvedFunctionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(
     functionMaxDurationSeconds,
   );
@@ -611,20 +611,120 @@ export function readChatConfig(
 /** Chat configuration parsed once at module load from the process environment. */
 const chatConfig: ChatConfig = readChatConfig(process.env);
 
-/** Apply the host execution budget injected by juniorNitro(). */
-export function configureFunctionMaxDurationSeconds(
-  functionMaxDurationSeconds: number,
-): void {
+/** Limits a host can set with `createApp({ limits })`. */
+export interface RuntimeLimits {
+  /** Largest model context window used for compaction, in tokens. */
+  contextWindowTokens?: number;
+  /** Automated turns in a row before Junior stops answering automation. */
+  maxConsecutiveAutomatedTurns?: number;
+  /** Run slices one turn may use. */
+  maxSlicesPerTurn?: number;
+  /** Tool calls one turn may make. */
+  maxToolCallsPerTurn?: number;
+  /** Agent turn deadline in ms. The function duration still caps it. */
+  turnTimeoutMs?: number;
+}
+
+/** Runtime config that one app sets and a later app must not inherit. */
+export interface RuntimeConfigSnapshot {
+  bot: BotConfig;
+  completedReactionEmoji: string;
+  conversationWorkSoftYieldAfterMs: number;
+  functionMaxDurationSeconds: number;
+  processingReactionEmoji: string;
+}
+
+/** Copy the runtime config so a failed app setup can restore it. */
+export function snapshotRuntimeConfig(): RuntimeConfigSnapshot {
+  return {
+    bot: { ...chatConfig.bot },
+    completedReactionEmoji: chatConfig.slack.completedReactionEmoji,
+    conversationWorkSoftYieldAfterMs:
+      chatConfig.conversationWorkSoftYieldAfterMs,
+    functionMaxDurationSeconds: chatConfig.functionMaxDurationSeconds,
+    processingReactionEmoji: chatConfig.slack.processingReactionEmoji,
+  };
+}
+
+/** Replace the runtime config with a snapshot. */
+export function restoreRuntimeConfig(snapshot: RuntimeConfigSnapshot): void {
+  replaceBotConfig(snapshot.bot);
+  chatConfig.functionMaxDurationSeconds = snapshot.functionMaxDurationSeconds;
+  chatConfig.conversationWorkSoftYieldAfterMs =
+    snapshot.conversationWorkSoftYieldAfterMs;
+  chatConfig.slack.completedReactionEmoji = snapshot.completedReactionEmoji;
+  chatConfig.slack.processingReactionEmoji = snapshot.processingReactionEmoji;
+}
+
+/**
+ * Reset bot, limit, and Slack settings to the environment defaults and apply
+ * the host execution budget. Each app calls this before it applies options.
+ */
+export function resetRuntimeConfig(functionMaxDurationSeconds?: number): void {
   const resolved = resolveFunctionMaxDurationSeconds(
     functionMaxDurationSeconds,
   );
   chatConfig.functionMaxDurationSeconds = resolved;
   chatConfig.conversationWorkSoftYieldAfterMs =
     resolveConversationWorkSoftYieldAfterMs(resolved);
-  chatConfig.bot.turnTimeoutMs = parseAgentTurnTimeoutMs(
-    process.env.AGENT_TURN_TIMEOUT_MS,
-    resolveMaxTurnTimeoutMs(resolved),
-  );
+  replaceBotConfig(readBotConfig(process.env, resolved));
+  chatConfig.slack.completedReactionEmoji = DEFAULT_COMPLETED_REACTION_EMOJI;
+  chatConfig.slack.processingReactionEmoji = DEFAULT_PROCESSING_REACTION_EMOJI;
+}
+
+// Readers hold `botConfig`, so replace its fields instead of the object.
+function replaceBotConfig(next: BotConfig): void {
+  for (const key of Object.keys(chatConfig.bot)) {
+    delete (chatConfig.bot as Partial<BotConfig>)[key as keyof BotConfig];
+  }
+  Object.assign(chatConfig.bot, next);
+}
+
+function requirePositiveLimit(name: string, value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`limits.${name} must be a positive integer`);
+  }
+  return value;
+}
+
+/** Apply limits from createApp(). Unset limits keep their defaults. */
+export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
+  const bot = chatConfig.bot;
+  if (limits?.contextWindowTokens !== undefined) {
+    bot.contextWindowTokens = requirePositiveLimit(
+      "contextWindowTokens",
+      limits.contextWindowTokens,
+    );
+  }
+  if (limits?.maxConsecutiveAutomatedTurns !== undefined) {
+    bot.maxConsecutiveAutomatedTurns = requirePositiveLimit(
+      "maxConsecutiveAutomatedTurns",
+      limits.maxConsecutiveAutomatedTurns,
+    );
+  }
+  if (limits?.maxSlicesPerTurn !== undefined) {
+    bot.maxSlicesPerTurn = requirePositiveLimit(
+      "maxSlicesPerTurn",
+      limits.maxSlicesPerTurn,
+    );
+  }
+  if (limits?.maxToolCallsPerTurn !== undefined) {
+    bot.maxToolCallsPerTurn = requirePositiveLimit(
+      "maxToolCallsPerTurn",
+      limits.maxToolCallsPerTurn,
+    );
+  }
+  if (limits?.turnTimeoutMs !== undefined) {
+    bot.turnTimeoutMs = Math.min(
+      requirePositiveLimit("turnTimeoutMs", limits.turnTimeoutMs),
+      resolveMaxTurnTimeoutMs(chatConfig.functionMaxDurationSeconds),
+    );
+  }
+}
+
+/** Apply the Slack cross-actor steering mode from createApp(). */
+export function setCrossActorMidRunMode(mode: CrossActorMidRunMode): void {
+  chatConfig.bot.crossActorMidRunMode = parseCrossActorMidRunMode(mode);
 }
 
 /** Return the chat configuration (parsed once at startup). */

@@ -1,6 +1,5 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -34,6 +33,7 @@ import {
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
+  type WebInputServices,
 } from "./create";
 import { readConversationDetail } from "./detail";
 import { forkConversationForViewer } from "./fork";
@@ -44,9 +44,9 @@ import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 
 /** Create the HTTP routes owned by the conversations API. */
-export function createConversationRoutes(options: {
-  attachmentStorage: AttachmentStorage;
-}): Hono<JuniorApiEnv> {
+export function createConversationRoutes(
+  options: WebInputServices,
+): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
   const messageBodyLimit = bodyLimit({
     maxSize: 4_450_000,
@@ -97,11 +97,7 @@ export function createConversationRoutes(options: {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await createConversationForViewer(
-          viewer,
-          body,
-          options.attachmentStorage,
-        ),
+        await createConversationForViewer(viewer, body, options),
       );
     },
   );
@@ -130,7 +126,7 @@ export function createConversationRoutes(options: {
           viewer,
           conversationId,
           body,
-          options.attachmentStorage,
+          options,
         ),
       );
     },
