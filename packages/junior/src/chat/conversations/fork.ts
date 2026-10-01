@@ -36,9 +36,13 @@ export function notCopiedByFork(): SQL {
   )`;
 }
 
-// These events hold credentials, approvals, provider connections, or plugin
-// state of the source actor. A fork does not copy them.
-const UNCOPIED_EVENT_TYPES = new Set<ConversationEvent["data"]["type"]>([
+/**
+ * Events that hold credentials, approvals, provider connections, or plugin
+ * state of the source actor. A fork does not copy them.
+ */
+export const UNCOPIED_EVENT_TYPES: ReadonlySet<string> = new Set<
+  ConversationEvent["data"]["type"]
+>([
   "authorization_completed",
   "authorization_requested",
   "guardian_action_reviewed",

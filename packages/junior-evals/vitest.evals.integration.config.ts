@@ -57,7 +57,8 @@ export default defineConfig({
     sequence: { setupFiles: "list", hooks: "stack" },
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     // Strict system-correctness cases. Any failure fails the suite hard.
-    include: ["evals/integration/**/*.eval.ts"],
+    // Fixture tests check the agent test fixture against real turns.
+    include: ["evals/integration/**/*.eval.ts", "src/fixture/**/*.eval.ts"],
     maxWorkers: 1,
     setupFiles: [
       path.resolve(__dirname, "src/setup.ts"),

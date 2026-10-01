@@ -21,6 +21,7 @@ import { runEvalWork } from "../eval-work";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type { HistoryItem, HistoryReply, Input, SlackAuthor } from "./inputs";
 import {
+  hasHistory,
   loadHistory,
   WEB_VIEWER_EMAIL,
   type LoadedConversation,
@@ -32,6 +33,7 @@ import {
   type VisibleMessage,
 } from "./judge";
 import { createInProcessQueue } from "./queue";
+import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   lastEventSeq,
@@ -59,7 +61,8 @@ export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
 
 export interface CallOptions {
   criteria?: Rubric;
-  history?: HistoryItem[];
+  /** Earlier turns as items, or a recorded conversation. */
+  history?: HistoryItem[] | RecordedConversation;
   onProgress?: (
     progress: TurnProgress,
     actions: { send(input: Input): Promise<void> },
@@ -452,7 +455,7 @@ export async function createFixtureAgent(
     ...result,
     continue: (input, callOptions = {}) =>
       runEvalWork(async () => {
-        if (callOptions.history?.length) {
+        if (hasHistory(callOptions.history)) {
           record.lastSeq = await loadHistory({
             api,
             conversation: record,
@@ -525,7 +528,7 @@ export async function createFixtureAgent(
     const inputs = Array.isArray(input) ? input : [input];
     const [first, ...rest] = inputs;
     if (!first) throw new Error("run() needs an input");
-    if (callOptions.history?.length && first.kind === "web_message") {
+    if (hasHistory(callOptions.history) && first.kind === "web_message") {
       // Loaded history needs the Conversation before its first input.
       const record = newRecord({
         conversationId: `local:web:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
@@ -545,7 +548,9 @@ export async function createFixtureAgent(
         callOptions,
       );
     }
-    const historyRoot = callOptions.history?.[0];
+    const historyRoot = Array.isArray(callOptions.history)
+      ? callOptions.history[0]
+      : undefined;
     const { record, sent } = await startConversation(
       first,
       historyRoot &&
@@ -554,7 +559,7 @@ export async function createFixtureAgent(
         ? (historyRoot.author ?? DEFAULT_SLACK_AUTHOR)
         : undefined,
     );
-    if (callOptions.history?.length) {
+    if (hasHistory(callOptions.history)) {
       record.lastSeq = await loadHistory({
         api,
         conversation: record,
@@ -568,7 +573,7 @@ export async function createFixtureAgent(
       record,
       async () => {
         if (!sent && record.surface === "slack") {
-          if (callOptions.history?.length) {
+          if (hasHistory(callOptions.history)) {
             await sendInputs(record, inputs);
           } else {
             if (rest.length > 0) queue.hold();

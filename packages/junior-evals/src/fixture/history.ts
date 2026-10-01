@@ -39,12 +39,19 @@ import {
   buildDeterministicTurnId,
 } from "@/chat/state/turn-id";
 import type { HistoryItem, HistoryReply, Input } from "./inputs";
+import {
+  insertRecordedEvents,
+  isRecordedConversation,
+  recordedMessages,
+  type RecordedConversation,
+} from "./recorded";
 import { lastEventSeq, readConversationDetail } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
   SLACK_BOT_USER_ID,
   SLACK_TEAM_ID,
   type RequestApp,
+  slackAuthorEmail,
   type SlackMock,
 } from "./slack";
 
@@ -130,118 +137,124 @@ function assistantPiMessage(text: string, timestamp: number): AssistantMessage {
   };
 }
 
-/** Write `items` as earlier turns. Return the last event sequence. */
-export async function loadHistory(args: {
+/** Return whether a call loads any history. */
+export function hasHistory(
+  history: HistoryItem[] | RecordedConversation | undefined,
+): history is HistoryItem[] | RecordedConversation {
+  return isRecordedConversation(history)
+    ? history.events.length > 0
+    : Boolean(history?.length);
+}
+
+/** Insert a recording as a fork copies rows, then mirror it into Slack. */
+async function loadRecording(args: {
   api: RequestApp;
   conversation: LoadedConversation;
-  items: HistoryItem[];
-  replyMessages: WeakMap<HistoryReply, string>;
+  recording: RecordedConversation;
   slack: SlackMock;
   viewerEmail: string;
 }): Promise<number> {
-  const { conversation } = args;
-  const conversationId = conversation.conversationId;
-  const turns = groupTurns(args.items);
-  // Earlier turns happened before the call, one millisecond apart.
-  let clockMs = Date.now() - args.items.length - 1;
-  const tick = () => (clockMs += 1);
-  await recordRoot(conversation, tick());
-  const lifecycle = getTurnLifecycle();
-  const state = coerceThreadConversationState({});
-  const webActor = webActorFromEmail(WEB_VIEWER_EMAIL);
-  const agentHistory: PiMessage[] = [];
-  const agentProvenance: ConversationMessageProvenance[] = [];
-
-  for (const [index, turn] of turns.entries()) {
-    const input = turn.input;
-    const createdAtMs = tick();
-    const isSlack = conversation.surface === "slack";
-    if (isSlack && input.kind === "web_message") {
-      throw new Error("Slack history needs Slack inputs");
-    }
-    if (!isSlack && input.kind !== "web_message") {
-      throw new Error("Web history needs webMessage() inputs");
-    }
-    const author = args.slack.registerAuthor(
-      input.kind === "web_message"
-        ? DEFAULT_SLACK_AUTHOR
-        : (input.author ?? DEFAULT_SLACK_AUTHOR),
+  const { conversation, recording } = args;
+  if (recording.surface !== conversation.surface) {
+    throw new Error(
+      `A ${recording.surface} recording needs a ${recording.surface} input`,
     );
-    // A Slack thread root uses the thread timestamp.
-    const messageId =
-      conversation.surface === "slack"
-        ? index === 0
-          ? conversation.threadTs
-          : args.slack.nextTs()
-        : `history-${randomUUID()}`;
-    const turnId = buildDeterministicTurnId(messageId);
-    const explicitMention = input.kind === "mention";
-    const text =
-      conversation.surface === "slack" && explicitMention
-        ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
-        : input.text;
-    if (conversation.surface === "slack") {
+  }
+  await recordRoot(conversation, Date.now());
+  await insertRecordedEvents(conversation.conversationId, recording);
+  if (conversation.surface === "slack") {
+    const messages = recordedMessages(recording);
+    for (const [index, message] of messages.entries()) {
       args.slack.addThreadMessage(conversation.channelId, {
-        text,
+        text: message.text,
         thread_ts: conversation.threadTs,
-        ts: messageId,
-        user: author.userId,
+        ...(index === 0 ? { ts: conversation.threadTs } : undefined),
+        user:
+          message.role === "assistant"
+            ? SLACK_BOT_USER_ID
+            : DEFAULT_SLACK_AUTHOR.userId,
       });
     }
+    if (messages.some((message) => message.role === "assistant")) {
+      await getStateAdapter().subscribe(conversation.conversationId);
+    }
+  }
+  return lastEventSeq(
+    await readConversationDetail(
+      args.api,
+      conversation.conversationId,
+      args.viewerEmail,
+    ),
+  );
+}
 
-    await lifecycle.start({
-      conversationId,
-      createdAtMs,
-      inputMessageIds: [messageId],
-      surface: isSlack ? "slack" : "api",
-      turnId,
+/** One user input as a turn stores it: visible message, agent input, actor. */
+function historyUserMessage(args: {
+  conversation: LoadedConversation;
+  createdAtMs: number;
+  /** The first Slack message is the thread root. */
+  first: boolean;
+  input: Input;
+  slack: SlackMock;
+}): {
+  actor: ConversationMessageProvenance["actor"];
+  agentMessage: PiMessage;
+  conversationMessage: ConversationMessage;
+} {
+  const { conversation, input } = args;
+  if (conversation.surface === "web") {
+    if (input.kind !== "web_message") {
+      throw new Error("Web history needs webMessage() inputs");
+    }
+    const actor = webActorFromEmail(WEB_VIEWER_EMAIL, {
+      userName: WEB_VIEWER_EMAIL.split("@")[0],
     });
-    const userMessage: ConversationMessage = isSlack
-      ? {
-          author: {
-            fullName: author.fullName,
-            isBot: false,
-            userId: author.userId,
-            userName: author.userName,
-          },
-          createdAtMs,
-          id: messageId,
-          meta: {
-            explicitMention,
-            replied: turn.replies.length > 0,
-            slackTs: messageId,
-            source: "slack",
-          },
-          role: "user",
-          text: input.text,
-        }
-      : {
-          author: {
-            ...(webActor.fullName ? { fullName: webActor.fullName } : {}),
-            isBot: false,
-            userId: webActor.userId,
-          },
-          createdAtMs,
-          id: messageId,
-          meta: { replied: turn.replies.length > 0, source: "web" },
-          role: "user",
-          text: input.text,
-        };
-    state.messages.push(userMessage);
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation: state,
-      conversationId,
-      repliedAtMs: createdAtMs,
-    });
-    const actor = isSlack
-      ? {
-          platform: "slack" as const,
-          teamId: SLACK_TEAM_ID,
-          userId: author.userId,
-        }
-      : webActor;
-    // Agent history commits take the full history, not only new messages.
-    agentHistory.push({
+    return {
+      actor,
+      agentMessage: {
+        role: "user",
+        content: [{ type: "text", text: renderCurrentInstruction(input.text) }],
+        timestamp: args.createdAtMs,
+      },
+      conversationMessage: {
+        author: {
+          email: actor.email,
+          userId: actor.userId,
+          userName: actor.userName,
+        },
+        createdAtMs: args.createdAtMs,
+        id: `api-msg:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+        meta: { explicitMention: true, source: "web" },
+        role: "user",
+        text: input.text,
+      },
+    };
+  }
+  if (input.kind === "web_message") {
+    throw new Error("Slack history needs Slack inputs");
+  }
+  const author = args.slack.registerAuthor(
+    input.author ?? DEFAULT_SLACK_AUTHOR,
+  );
+  const explicitMention = input.kind === "mention";
+  const ts = args.slack.addThreadMessage(conversation.channelId, {
+    text: explicitMention
+      ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
+      : input.text,
+    thread_ts: conversation.threadTs,
+    ...(args.first ? { ts: conversation.threadTs } : undefined),
+    user: author.userId,
+  });
+  return {
+    actor: {
+      email: slackAuthorEmail(author),
+      fullName: author.fullName,
+      platform: "slack",
+      teamId: SLACK_TEAM_ID,
+      userId: author.userId,
+      userName: author.userName,
+    },
+    agentMessage: {
       role: "user",
       content: [
         {
@@ -249,24 +262,99 @@ export async function loadHistory(args: {
           text: renderCurrentInstruction(input.text, {
             authorId: author.userId,
             authorName: author.fullName,
-            ...(isSlack ? { slackTs: messageId } : undefined),
+            slackTs: ts,
           }),
         },
       ],
-      timestamp: createdAtMs,
-    } satisfies PiMessage);
-    agentProvenance.push({ authority: "instruction", actor });
+      timestamp: args.createdAtMs,
+    },
+    conversationMessage: {
+      author: {
+        fullName: author.fullName,
+        isBot: false,
+        userId: author.userId,
+        userName: author.userName,
+      },
+      createdAtMs: args.createdAtMs,
+      id: ts,
+      meta: {
+        attachmentCount: 0,
+        explicitMention,
+        imagesHydrated: true,
+        slackFileIds: [],
+        slackTs: ts,
+        source: "slack",
+      },
+      role: "user",
+      text: input.text,
+    },
+  };
+}
+
+/** Write `items` as earlier turns. Return the last event sequence. */
+export async function loadHistory(args: {
+  api: RequestApp;
+  conversation: LoadedConversation;
+  items: HistoryItem[] | RecordedConversation;
+  replyMessages: WeakMap<HistoryReply, string>;
+  slack: SlackMock;
+  viewerEmail: string;
+}): Promise<number> {
+  const { conversation } = args;
+  const conversationId = conversation.conversationId;
+  if (isRecordedConversation(args.items)) {
+    return await loadRecording({ ...args, recording: args.items });
+  }
+  const turns = groupTurns(args.items);
+  // Earlier turns happened before the call, one millisecond apart.
+  let clockMs = Date.now() - args.items.length - 1;
+  const tick = () => (clockMs += 1);
+  await recordRoot(conversation, tick());
+  const lifecycle = getTurnLifecycle();
+  const state = coerceThreadConversationState({});
+  // Agent history commits take the full history, not only new messages.
+  const agentHistory: PiMessage[] = [];
+  const agentProvenance: ConversationMessageProvenance[] = [];
+
+  for (const [index, turn] of turns.entries()) {
+    const message = historyUserMessage({
+      conversation,
+      createdAtMs: tick(),
+      first: index === 0,
+      input: turn.input,
+      slack: args.slack,
+    });
+    const turnId = buildDeterministicTurnId(message.conversationMessage.id);
+    // A turn stores its input, then starts.
+    state.messages.push(message.conversationMessage);
+    await appendConversationMessages(getConversationEventStore(), {
+      conversation: state,
+      conversationId,
+    });
+    await lifecycle.start({
+      conversationId,
+      createdAtMs: message.conversationMessage.createdAtMs,
+      inputMessageIds: [message.conversationMessage.id],
+      surface: conversation.surface === "slack" ? "slack" : "api",
+      turnId,
+    });
+    agentHistory.push(message.agentMessage);
+    agentProvenance.push({ authority: "instruction", actor: message.actor });
     await commitMessages({
       conversationId,
       messages: agentHistory,
       provenance: agentProvenance,
     });
+    message.conversationMessage.meta = {
+      ...message.conversationMessage.meta,
+      replied: true,
+    };
 
     for (const [replyIndex, historyReply] of turn.replies.entries()) {
       const repliedAtMs = tick();
       if (historyReply.toolHistory?.length) {
-        for (const message of historyReply.toolHistory) {
-          agentHistory.push({ ...message, timestamp: repliedAtMs });
+        for (const toolMessage of historyReply.toolHistory) {
+          agentHistory.push({ ...toolMessage, timestamp: repliedAtMs });
           agentProvenance.push(contextProvenance);
         }
         await commitMessages({
@@ -279,15 +367,24 @@ export async function loadHistory(args: {
         replyIndex === 0
           ? buildDeterministicAssistantMessageId(turnId)
           : `${turnId}:assistant:${replyIndex + 1}`;
+      const slackTs =
+        conversation.surface === "slack"
+          ? args.slack.addThreadMessage(conversation.channelId, {
+              bot_id: "B_TEST_BOT",
+              text: historyReply.text,
+              thread_ts: conversation.threadTs,
+              user: SLACK_BOT_USER_ID,
+            })
+          : undefined;
       state.messages.push({
-        author: {
-          isBot: true,
-          userId: SLACK_BOT_USER_ID,
-          userName: botConfig.userName,
-        },
+        author: { isBot: true, userName: botConfig.userName },
         createdAtMs: repliedAtMs,
         id: replyId,
-        meta: { source: isSlack ? "slack" : "web" },
+        meta: {
+          replied: true,
+          source: conversation.surface,
+          ...(slackTs ? { slackTs } : undefined),
+        },
         role: "assistant",
         text: historyReply.text,
       });
@@ -302,14 +399,12 @@ export async function loadHistory(args: {
         repliedAtMs,
       });
       args.replyMessages.set(historyReply, replyId);
-      if (conversation.surface === "slack") {
-        args.slack.addThreadMessage(conversation.channelId, {
-          bot_id: "B_TEST_BOT",
-          text: historyReply.text,
-          thread_ts: conversation.threadTs,
-          user: SLACK_BOT_USER_ID,
-        });
-      }
+    }
+    if (turn.replies.length === 0) {
+      await appendConversationMessages(getConversationEventStore(), {
+        conversation: state,
+        conversationId,
+      });
     }
     await lifecycle.complete({
       conversationId,
