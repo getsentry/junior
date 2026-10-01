@@ -109,7 +109,7 @@ test("inspects all reporting events and searches full event data", async ({
     ),
   ).toBeVisible();
 
-  // Both views use the same cutoff and retry-safe create request.
+  // Both views send the same retry-safe fork request.
   const forkAction = page
     .getByRole("button", { name: "Fork after this message" })
     .last();
@@ -135,10 +135,7 @@ test("inspects all reporting events and searches full event data", async ({
     .getByRole("dialog", { name: "message", exact: true })
     .getByRole("button", { name: "Fork after this message" })
     .click();
-  const requests: Array<{
-    cutoff: { kind: string; messageId: string };
-    idempotencyKey: string;
-  }> = [];
+  const requests: Array<{ messageId: string; idempotencyKey: string }> = [];
   const forkId = "local:web:fork-browser-test";
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
@@ -150,15 +147,7 @@ test("inspects all reporting events and searches full event data", async ({
               status: 503,
               json: { error: "Could not create the fork. Try again." },
             }
-          : {
-              json: {
-                conversationId: forkId,
-                sourceConversationId: conversationId,
-                throughSeq: reply.seq,
-                sourceMessageId: reply.data.messageId,
-                status: "created",
-              },
-            },
+          : { json: { conversationId: forkId } },
       );
     },
   );
@@ -200,10 +189,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(forkId)));
   expect(requests).toHaveLength(2);
   expect(requests[0]).toEqual(requests[1]);
-  expect(requests[0]?.cutoff).toEqual({
-    kind: "message",
-    messageId: reply.data.messageId,
-  });
+  expect(requests[0]?.messageId).toBe(reply.data.messageId);
   await expect(
     page.getByRole("link", { name: "Forked from source conversation" }),
   ).toBeVisible();

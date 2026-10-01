@@ -40,10 +40,7 @@ function forkRequest(messageId: string, idempotencyKey = "fork-1") {
   return {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      cutoff: { kind: "message", messageId },
-      idempotencyKey,
-    }),
+    body: JSON.stringify({ messageId, idempotencyKey }),
   };
 }
 
@@ -106,14 +103,8 @@ describe("conversation forks", () => {
         forkConversationResponseSchema.parse(await response.json()),
       ),
     );
-    expect(new Set(results.map((result) => result.conversationId)).size).toBe(
-      1,
-    );
-    expect(results.map((result) => result.status).sort()).toEqual([
-      "created",
-      "duplicate",
-    ]);
     const forkId = results[0]!.conversationId;
+    expect(results[1]!.conversationId).toBe(forkId);
     const projection = await openConversationProjection({
       conversationId: forkId,
     });
@@ -163,8 +154,12 @@ describe("conversation forks", () => {
     expect(await harness.historyTexts(source.conversationId)).not.toContain(
       "Independent answer.",
     );
-    expect(harness.agentRuns.at(-1)?.conversationId).toBe(forkId);
-    expect(harness.agentRuns.at(-1)?.state?.sandboxRef).toBeUndefined();
+    const forkRun = harness.agentRuns.at(-1);
+    expect(forkRun?.conversationId).toBe(forkId);
+    expect(forkRun?.history?.slice(0, original.messages.length)).toEqual(
+      original.messages,
+    );
+    expect(forkRun?.state?.sandboxRef).toBeUndefined();
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {

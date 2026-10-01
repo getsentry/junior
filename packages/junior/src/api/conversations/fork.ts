@@ -1,90 +1,73 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import {
-  forkConversation,
   ConversationForkError,
-  type ForkConversationCutoff,
+  forkConversation,
 } from "@/chat/conversations/fork";
-import { webActorFromEmail } from "@/chat/conversations/web-input";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
+import type { ForkConversationBody } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 import { throwApiError } from "../http";
 
-/** Check source access before copying any retained model history. */
+/** Fork a Conversation that the viewer can read into a new root they own. */
 export async function forkConversationForViewer(
   viewer: User,
   sourceConversationId: string,
-  body: {
-    cutoff: ForkConversationCutoff;
-    idempotencyKey: string;
-  },
-) {
-  return withConversationEventLock(
-    getSqlExecutor(),
-    sourceConversationId,
-    async () => {
-      const access = await readConversationAccessFromSql(
-        getDb(),
-        [sourceConversationId],
-        viewer,
-      );
-      if (!access.get(sourceConversationId)?.canViewPrivateContent) {
-        throwApiError(403, "You do not have access to this conversation.");
-      }
-      try {
-        return await forkConversation({
-          sourceConversationId,
-          ...body,
-          actor: webActorFromEmail(viewer.email, {
-            fullName: viewer.displayName,
-          }),
-        });
-      } catch (error) {
-        if (error instanceof ConversationForkError)
-          throwApiError(409, error.message);
-        throw error;
-      }
-    },
+  body: ForkConversationBody,
+): Promise<{ conversationId: string }> {
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [sourceConversationId],
+    viewer,
   );
+  if (!access.get(sourceConversationId)?.canViewPrivateContent) {
+    throwApiError(403, "You do not have access to this conversation.");
+  }
+  try {
+    return await forkConversation({
+      sourceConversationId,
+      ...body,
+      actorEmail: viewer.email,
+      ...(viewer.displayName ? { actorName: viewer.displayName } : undefined),
+    });
+  } catch (error) {
+    if (error instanceof ConversationForkError) {
+      throwApiError(409, error.message);
+    }
+    throw error;
+  }
 }
 
-/** Show only fork links whose target the viewer can read. */
+/** Read the source and fork links that the viewer can open. */
 export async function readConversationForks(
   conversationId: string,
   viewer?: User,
-): Promise<{
-  forkedFromConversationId?: string;
-  forks: string[];
-}> {
+): Promise<{ forkedFromConversationId?: string; forks: string[] }> {
   const db = getDb();
-  const [source] = await db
+  const [row] = await db
     .select({ forkedFrom: juniorConversations.forkedFromConversationId })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId));
-  const children = await db
+  const forks = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
     .where(eq(juniorConversations.forkedFromConversationId, conversationId))
-    .orderBy(desc(juniorConversations.createdAt))
+    .orderBy(asc(juniorConversations.createdAt))
     .limit(50);
-  const ids = children.map((child) => child.conversationId);
+  const forkedFrom = row?.forkedFrom ?? undefined;
+  const ids = forks.map((fork) => fork.conversationId);
   const access = await readConversationAccessFromSql(
     db,
-    [
-      conversationId,
-      ...ids,
-      ...(source?.forkedFrom ? [source.forkedFrom] : []),
-    ],
+    [conversationId, ...ids, ...(forkedFrom ? [forkedFrom] : [])],
     viewer,
   );
-  if (!access.get(conversationId)?.canViewPrivateContent) return { forks: [] };
+  const canOpen = (id: string) => access.get(id)?.canViewPrivateContent;
+  if (!canOpen(conversationId)) return { forks: [] };
   return {
-    ...(source?.forkedFrom &&
-    access.get(source.forkedFrom)?.canViewPrivateContent
-      ? { forkedFromConversationId: source.forkedFrom }
+    ...(forkedFrom && canOpen(forkedFrom)
+      ? { forkedFromConversationId: forkedFrom }
       : undefined),
-    forks: ids.filter((id) => access.get(id)?.canViewPrivateContent),
+    forks: ids.filter(canOpen),
   };
 }

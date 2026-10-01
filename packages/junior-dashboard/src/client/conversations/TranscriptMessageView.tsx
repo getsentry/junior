@@ -83,7 +83,6 @@ export const TranscriptMessageView = memo(
     previous.message === next.message &&
     previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
-    previous.conversation.isParticipant === next.conversation.isParticipant &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,
 );
 
@@ -120,12 +119,7 @@ function messageAction(
   if (message.role === "user" && message.contexts?.length) {
     return <TranscriptTurnContextView contexts={message.contexts} />;
   }
-  if (
-    message.role === "assistant" &&
-    message.messageId &&
-    !message.pending &&
-    conversation.isParticipant
-  ) {
+  if (message.role === "assistant" && message.messageId && !message.pending) {
     return (
       <ForkConversationButton
         conversationId={conversation.conversationId}

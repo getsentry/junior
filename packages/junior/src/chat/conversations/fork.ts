@@ -1,15 +1,12 @@
-import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { WebActor } from "@/chat/actor";
-import type { ConversationEvent } from "./history";
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
-import {
-  conversationForkedEvent,
-  JUNIOR_NATIVE_EVENT_NAMESPACE,
-} from "./structured-events";
 import { withConversationEventLock } from "./sql/event-lock";
-import { recordWebConversationActivity } from "./web-input";
+import {
+  createConversationId,
+  recordWebConversationActivity,
+  webActorFromEmail,
+} from "./web-input";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -19,241 +16,155 @@ import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
+import type { PiMessage } from "@/chat/pi/messages";
 import { juniorConversations } from "@/db/schema";
 
-export type ForkConversationCutoff =
-  | { kind: "seq"; throughSeq: number }
-  | { kind: "message"; messageId: string };
+/** Event key prefix for copied history. Model usage reports skip these events. */
+export const FORK_HISTORY_KEY_PREFIX = "fork:history:";
 
-export interface ForkConversationInput {
-  sourceConversationId: string;
-  cutoff: ForkConversationCutoff;
-  actor: WebActor;
-  idempotencyKey: string;
-}
+const FORK_NOTE =
+  "This Conversation is a fork. The earlier messages are copied from another Conversation. Sandbox files, active work, approvals, credentials, Watches, Automations, and the delivery location were not copied. Earlier file paths and runtime context belong to the source Conversation. Verify files in the current Sandbox before you use them.";
 
-export interface ForkConversationResult {
-  conversationId: string;
-  sourceConversationId: string;
-  throughSeq: number;
-  sourceMessageId?: string;
-  status: "created" | "duplicate";
-}
-
-/** An unavailable history boundary is an expected fork request failure. */
+/** An expected fork request failure, such as a reply without saved history. */
 export class ConversationForkError extends Error {}
 
-/** Scope retry identity to the source and the requesting actor. */
-function createForkConversationId(args: {
+/**
+ * Create a new web root Conversation from the agent history of a source
+ * Conversation, through one completed assistant reply.
+ *
+ * Retries with the same requester and key return the same Conversation.
+ */
+export async function forkConversation(input: {
   sourceConversationId: string;
+  messageId: string;
   actorEmail: string;
+  actorName?: string;
   idempotencyKey: string;
-}): string {
-  const hash = createHash("sha256")
-    .update(
-      JSON.stringify([
-        args.sourceConversationId,
-        args.actorEmail.trim().toLowerCase(),
-        args.idempotencyKey,
-      ]),
-    )
-    .digest("hex")
-    .slice(0, 24);
-  return `local:web:${hash}`;
-}
-
-/** Resolve only a completed assistant reply, never an unfinished tool batch. */
-async function resolveForkCutoff(input: ForkConversationInput): Promise<{
-  throughSeq: number;
-  sourceMessageId?: string;
-}> {
-  const events = getConversationEventStore();
-  let boundary: ConversationEvent | undefined;
-  let sourceMessageId: string | undefined;
-  if (input.cutoff.kind === "message") {
-    sourceMessageId = input.cutoff.messageId;
-    // Delivery commits this key before its visible Message in one transaction.
-    // Do not guess from timestamps: fallback replies may have no agent history.
-    boundary = await events.loadByIdempotencyKey(
+}): Promise<{ conversationId: string }> {
+  const conversationId = createConversationId({
+    actorEmail: input.actorEmail,
+    idempotencyKey: JSON.stringify([
+      "fork",
       input.sourceConversationId,
-      `message:${sourceMessageId}:agent`,
-    );
-  } else {
-    const throughSeq = input.cutoff.throughSeq;
-    const history = await events.loadHistoryContaining(
-      input.sourceConversationId,
-      throughSeq,
-      throughSeq,
-    );
-    boundary = history?.find((event) => event.seq === throughSeq);
-    if (
-      boundary?.data.type === "message" &&
-      boundary.data.role === "assistant"
-    ) {
-      sourceMessageId = boundary.data.messageId;
-      boundary = await events.loadByIdempotencyKey(
-        input.sourceConversationId,
-        `message:${sourceMessageId}:agent`,
-      );
-    }
-  }
-  const message =
-    boundary?.data.type === "assistant_message"
-      ? piMessageFromHistoryItem(boundary.data)
-      : undefined;
-  if (
-    !boundary ||
-    message?.role !== "assistant" ||
-    message.stopReason !== "stop" ||
-    message.content.some((part) => part.type === "toolCall") ||
-    !message.content.some((part) => part.type === "text" && part.text.trim())
-  ) {
-    throw new ConversationForkError(
-      "Choose a completed assistant reply with saved agent history.",
-    );
-  }
-  return {
-    throughSeq: boundary.seq,
-    ...(sourceMessageId ? { sourceMessageId } : undefined),
-  };
-}
-
-/** Create an independent root from retained history, without copying live work. */
-export async function forkConversation(
-  input: ForkConversationInput,
-): Promise<ForkConversationResult> {
-  if (!input.actor.email || !input.idempotencyKey.trim()) {
-    throw new ConversationForkError(
-      "A verified actor and an idempotency key are required.",
-    );
-  }
-  const conversationId = createForkConversationId({
-    ...input,
-    actorEmail: input.actor.email,
+      input.idempotencyKey,
+    ]),
   });
   const executor = getSqlExecutor();
   const events = getConversationEventStore();
   const store = getConversationStore();
-  // The source lock fixes the cutoff against compaction, appends, and retention.
-  // The new-root lock makes all fork writes one retry-safe transaction.
-  return withConversationEventLock(
-    executor,
-    input.sourceConversationId,
-    async () =>
-      withConversationEventLock(executor, conversationId, async () => {
-        const prior = await events.loadByIdempotencyKey(
-          conversationId,
-          "fork:complete",
+  // The source lock keeps the fork point stable against appends and
+  // compaction. Both locks share one transaction, so a fork row exists only
+  // with its complete history. A retry finds that row and returns it.
+  return withConversationEventLock(executor, input.sourceConversationId, () =>
+    withConversationEventLock(executor, conversationId, async () => {
+      if (await store.get({ conversationId })) return { conversationId };
+
+      const source = await store.get({
+        conversationId: input.sourceConversationId,
+      });
+      if (!source || source.transcriptPurgedAtMs !== undefined) {
+        throw new ConversationForkError(
+          "The source history is no longer available.",
         );
-        if (prior?.data.type === "structured_event") {
-          const content = conversationForkedEvent.parse(
-            prior.data.content,
-          ) as Omit<ForkConversationResult, "conversationId" | "status">;
-          return { conversationId, ...content, status: "duplicate" as const };
-        }
-        const source = await store.get({
-          conversationId: input.sourceConversationId,
-        });
-        if (!source || source.transcriptPurgedAtMs !== undefined) {
-          throw new ConversationForkError(
-            "The source history is no longer available.",
-          );
-        }
-        if (source.parentConversationId) {
-          throw new ConversationForkError(
-            "Forking child conversations is not supported.",
-          );
-        }
-        const cutoff = await resolveForkCutoff(input);
-        const projection = await loadTurnProjection({
-          conversationId: input.sourceConversationId,
-          committedSeq: cutoff.throughSeq,
-          includeTail: false,
-        });
-        if (!projection?.messages.length)
-          throw new ConversationForkError(
-            "The selected history is no longer available.",
-          );
-        const pendingCalls = new Set<string>();
-        for (const message of projection.messages) {
-          if (message.role === "assistant") {
-            for (const part of message.content)
-              if (part.type === "toolCall") pendingCalls.add(part.id);
-          } else if (message.role === "toolResult") {
-            pendingCalls.delete(message.toolCallId);
-          }
-        }
-        if (pendingCalls.size)
-          throw new ConversationForkError(
-            "This history contains unfinished tool calls. Choose another reply.",
-          );
-        const nowMs = Date.now();
-        await recordWebConversationActivity({
-          actor: input.actor,
-          conversationId,
-          nowMs,
-          rootVisibility: source.visibility === "public" ? "public" : "private",
-        });
-        await executor
-          .db()
-          .update(juniorConversations)
-          .set({
-            forkedFromConversationId: source.conversationId,
-            title: source.title
-              ? `Fork: ${source.title}`
-              : "Forked conversation",
-          })
-          .where(eq(juniorConversations.conversationId, conversationId));
-        // Preserve exact model messages and attribution. Do not copy source
-        // Message authors into membership, execution, credentials, or usage.
-        await events.append(
-          conversationId,
-          projection.messages.map((message, index) => ({
-            idempotencyKey: `fork:history:${index}`,
-            createdAtMs: nowMs,
-            data: historyItemFromPiMessage(
-              message,
-              projection.provenance[index] ?? contextProvenance,
-            ),
-          })),
+      }
+      if (source.parentConversationId) {
+        throw new ConversationForkError(
+          "You cannot fork a child conversation.",
         );
-        await events.append(conversationId, [
-          {
-            createdAtMs: nowMs,
-            idempotencyKey: "fork:context",
-            data: {
-              type: "user_message",
-              provenance: contextProvenance,
-              content: [
-                {
-                  type: "text",
-                  text: "This is a new, independent conversation fork. Earlier messages are historical context. No Sandbox files, active work, watches, automations, approvals, credentials, or delivery location were copied. Earlier file paths and runtime context describe the source conversation, not this one. Use the current runtime context and the next user instruction. Verify files in the fresh Sandbox before relying on them.",
-                },
-              ],
-              timestamp: nowMs,
-            },
+      }
+
+      // Delivery saves this key with the reply's agent message. Do not guess
+      // from timestamps: a fallback reply can have no agent history.
+      const boundary = await events.loadByIdempotencyKey(
+        input.sourceConversationId,
+        `message:${input.messageId}:agent`,
+      );
+      const reply =
+        boundary?.data.type === "assistant_message"
+          ? piMessageFromHistoryItem(boundary.data)
+          : undefined;
+      if (
+        !boundary ||
+        reply?.role !== "assistant" ||
+        reply.stopReason !== "stop" ||
+        reply.content.some((part) => part.type === "toolCall")
+      ) {
+        throw new ConversationForkError(
+          "Choose a completed assistant reply with saved agent history.",
+        );
+      }
+
+      // Use the history version at the fork point, also after a later compaction.
+      const projection = await loadTurnProjection({
+        conversationId: input.sourceConversationId,
+        committedSeq: boundary.seq,
+        includeTail: false,
+      });
+      if (!projection?.messages.length) {
+        throw new ConversationForkError(
+          "The selected history is no longer available.",
+        );
+      }
+      if (hasUnfinishedToolCalls(projection.messages)) {
+        throw new ConversationForkError(
+          "This history has unfinished tool calls. Choose another reply.",
+        );
+      }
+
+      const nowMs = Date.now();
+      await recordWebConversationActivity({
+        actor: webActorFromEmail(input.actorEmail, {
+          ...(input.actorName ? { fullName: input.actorName } : undefined),
+        }),
+        conversationId,
+        nowMs,
+        rootVisibility: source.visibility === "public" ? "public" : "private",
+      });
+      await executor
+        .db()
+        .update(juniorConversations)
+        .set({
+          forkedFromConversationId: source.conversationId,
+          title: source.title ? `Fork: ${source.title}` : "Forked conversation",
+        })
+        .where(eq(juniorConversations.conversationId, conversationId));
+      // Copy the model messages exactly, with their attribution. Source
+      // authors do not become participants of the fork.
+      await events.append(conversationId, [
+        ...projection.messages.map((message, index) => ({
+          idempotencyKey: `${FORK_HISTORY_KEY_PREFIX}${index}`,
+          createdAtMs: nowMs,
+          data: historyItemFromPiMessage(
+            message,
+            projection.provenance[index] ?? contextProvenance,
+          ),
+        })),
+        {
+          idempotencyKey: "fork:note",
+          createdAtMs: nowMs,
+          data: {
+            type: "user_message",
+            provenance: contextProvenance,
+            content: [{ type: "text", text: FORK_NOTE }],
+            timestamp: nowMs,
           },
-          {
-            createdAtMs: nowMs,
-            idempotencyKey: "fork:complete",
-            data: {
-              type: "structured_event",
-              namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-              name: conversationForkedEvent.eventName,
-              version: conversationForkedEvent.version,
-              content: {
-                sourceConversationId: input.sourceConversationId,
-                ...cutoff,
-              },
-            },
-          },
-        ]);
-        return {
-          conversationId,
-          sourceConversationId: input.sourceConversationId,
-          ...cutoff,
-          status: "created" as const,
-        };
-      }),
+        },
+      ]);
+      return { conversationId };
+    }),
   );
+}
+
+function hasUnfinishedToolCalls(messages: readonly PiMessage[]): boolean {
+  const pending = new Set<string>();
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      for (const part of message.content) {
+        if (part.type === "toolCall") pending.add(part.id);
+      }
+    } else if (message.role === "toolResult") {
+      pending.delete(message.toolCallId);
+    }
+  }
+  return pending.size > 0;
 }

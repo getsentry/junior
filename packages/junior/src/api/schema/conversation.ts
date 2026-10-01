@@ -753,32 +753,14 @@ function validateConversationEvents(
 
 export const forkConversationBodySchema = z
   .object({
-    cutoff: z.discriminatedUnion("kind", [
-      z
-        .object({
-          kind: z.literal("message"),
-          messageId: z.string().min(1).max(500),
-        })
-        .strict(),
-      z
-        .object({
-          kind: z.literal("seq"),
-          throughSeq: z.number().int().nonnegative(),
-        })
-        .strict(),
-    ]),
+    /** Assistant reply that ends the copied history. */
+    messageId: z.string().min(1).max(500),
     idempotencyKey: z.string().trim().min(1).max(200),
   })
   .strict();
 
 export const forkConversationResponseSchema = z
-  .object({
-    conversationId: z.string(),
-    sourceConversationId: z.string(),
-    throughSeq: z.number().int().nonnegative(),
-    sourceMessageId: z.string().optional(),
-    status: z.enum(["created", "duplicate"]),
-  })
+  .object({ conversationId: z.string() })
   .strict();
 
 export const conversationDetailReportSchema = conversationSummaryReportSchema
@@ -956,6 +938,7 @@ export type ArchiveConversationBody = z.infer<
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
 >;
+export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
 >;

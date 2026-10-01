@@ -1,6 +1,5 @@
-import { Link } from "react-router";
-import { conversationPath } from "./conversationRoutes";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -16,6 +15,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationIsResponding } from "./transcript";
+import { conversationPath } from "./conversationRoutes";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";

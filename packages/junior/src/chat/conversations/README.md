@@ -132,36 +132,32 @@ events through its pagination contract.
 
 ## Conversation Forks
 
-`forkConversation` creates an independent web root through one completed
-assistant reply. A message cutoff uses the exact delivery-to-agent event key;
-unknown or fallback replies cannot select unrelated history. Sequence cutoffs
-must also end with a completed assistant reply and no unfinished tool calls.
-The history version at that cutoff wins, including when the source later
-compacts or hands off.
+`forkConversation` creates a new web root Conversation from the agent history
+of a source Conversation. The copied history ends at one completed assistant
+reply. The reply must have a saved agent message (`message:<id>:agent`).
+Fallback replies and unfinished tool calls cannot be a fork point.
 
-The API checks source access under the source Conversation lock. Creation and
-history seeding share the source and fork locks in one SQL transaction. Retry
-identity includes the source, requester email, and client key. A retry returns
-the first completed fork. Forks retain source visibility; missing visibility
-stays private. The requester owns the new root. Historical authors do not become
-participants. Copied model messages keep their exact fields and attribution.
-The `fork:history:` event keys exclude those copies from model usage reports.
+The fork uses the history version at the fork point. A later compaction in the
+source does not change the fork. Compacted history cannot recover discarded
+context.
 
-The indexed `forked_from_conversation_id` relation is separate from delegation.
-Deleting a source clears this link but does not delete the fork. Detail reads
-filter both source and fork links through the usual access checks.
+Anyone who can read the source content can fork it. The requester owns the new
+root. Source authors do not become participants. The fork keeps the source
+visibility. API retries with the same requester and key return the same
+fork. All fork writes are in one transaction.
 
-The dashboard offers the action on assistant replies in the conversation and
-event log. It opens the new Conversation without starting a Turn. The user then
-sends a new instruction through the normal web composer. The copied history is
-model context, not a duplicate of the source's visible Messages; the source link
-opens that transcript. Compacted history cannot recover discarded context.
+`forked_from_conversation_id` links the fork to its source. This link is not a
+delegation parent. Deleting the source clears the link. Detail reads show only
+the source and fork links that the viewer can read.
 
-Forks do not copy the Sandbox, files, Location, execution state, pending input,
-credentials, approvals, subagents, Watches, Automations, attachments, or mutable
-annotations. An appended context message explains this boundary to the agent.
-A Sandbox is created lazily through the normal runtime. Sandbox file transfer
-and historical snapshots are tracked in #1947.
+Copied events use the `fork:history:` key prefix. Model usage reports skip
+these events. A note after the copied history tells the agent what was not
+copied. The fork does not start a Turn. The user sends the next message through
+the normal web composer.
+
+A fork does not copy the Sandbox, files, attachments, Location, active work,
+pending messages, credentials, approvals, subagents, Watches, or Automations.
+The normal runtime creates a new Sandbox when the fork needs one.
 
 ## Stored Event Compatibility
 
