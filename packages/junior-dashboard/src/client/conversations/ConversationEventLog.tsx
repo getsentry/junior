@@ -192,7 +192,8 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
               titleId={titleId}
               width="wide"
             >
-              {selected.data.type === "message" &&
+              {conversation.canFork &&
+              selected.data.type === "message" &&
               selected.data.role === "assistant" &&
               !selected.data.redacted ? (
                 <div className="mb-3 flex items-center gap-2 text-sm">

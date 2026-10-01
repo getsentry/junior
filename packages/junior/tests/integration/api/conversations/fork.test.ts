@@ -219,6 +219,18 @@ describe("conversation forks", () => {
     );
     expect(hidden.eventHistory.status).toBe("redacted");
     expect(hidden.forkedFromConversationId).toBeUndefined();
+    expect(hidden.canFork).toBe(false);
+    const child = "local:web:private-child";
+    await store.createChild({
+      childConversationId: child,
+      parentConversationId: source,
+    });
+    const readDetail = async (id: string) =>
+      conversationDetailReportSchema.parse(
+        await (await owner.request(`/api/conversations/${id}`)).json(),
+      );
+    expect((await readDetail(source)).canFork).toBe(true);
+    expect((await readDetail(child)).canFork).toBe(false);
     const toolCall = fauxAssistantMessage(
       [
         {

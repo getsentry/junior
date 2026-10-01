@@ -765,6 +765,8 @@ export const forkConversationResponseSchema = z
 
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    /** The viewer can fork this conversation from an assistant reply. */
+    canFork: z.boolean().optional(),
     forkedFromConversationId: z.string().optional(),
     forks: z.array(z.string()).optional(),
     brief: z

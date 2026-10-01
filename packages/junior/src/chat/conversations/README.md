@@ -148,7 +148,9 @@ fork. All fork writes are in one transaction.
 
 `forked_from_conversation_id` links the fork to its source. This link is not a
 delegation parent. Deleting the source clears the link. Detail reads show only
-the source and fork links that the viewer can read.
+the source and fork links that the viewer can read. Detail reads also report
+`canFork`. It is false for child Conversations and for viewers who cannot read
+the content.
 
 Copied events use the `fork:history:` key prefix. Model usage reports skip
 these events. A note after the copied history tells the agent what was not
