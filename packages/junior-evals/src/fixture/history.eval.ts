@@ -89,6 +89,8 @@ async function compareWithRealTurn(
   rest: Input,
 ): Promise<void> {
   const real: Conversation = await run(input);
+  // A failed real turn leaves nothing valid to compare against.
+  expect(real.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
   const replyText = real.turns[0]?.replies[0]?.text;
   expect(replyText).toBeDefined();
   const loaded = await run(rest, {
@@ -119,6 +121,16 @@ describe("loaded history", () => {
       run,
       mention("Reply with exactly: noted"),
       mention("thanks"),
+    );
+  });
+
+  test("matches the rows of a real Slack direct message turn", async ({
+    run,
+  }) => {
+    await compareWithRealTurn(
+      run,
+      mention("Reply with exactly: noted", { channelType: "im" }),
+      mention("thanks", { channelType: "im" }),
     );
   });
 });

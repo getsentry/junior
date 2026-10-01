@@ -260,7 +260,10 @@ function historyUserMessage(args: {
   const author = args.slack.registerAuthor(
     input.author ?? DEFAULT_SLACK_AUTHOR,
   );
-  const explicitMention = input.kind === "mention";
+  // Junior routes every direct message like a mention. Only an app_mention
+  // carries the @Junior token in its text.
+  const explicitMention =
+    input.kind === "mention" || conversation.channelType === "im";
   const ts = args.slack.addThreadMessage(conversation.channelId, {
     text: isAppMention(input, conversation.channelType)
       ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
