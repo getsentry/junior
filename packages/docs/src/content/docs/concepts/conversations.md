@@ -43,7 +43,7 @@ Child work, generated files, and plugin records inherit the conversation's visib
 
 Junior uses the current thread, selected skills and files, and results from the active work. It does not pull private context from unrelated conversations.
 
-An installed Memory plugin may add scoped recall. It does not provide unrestricted access to every conversation.
+[Memory](/concepts/memory/) may add scoped recall. It does not provide unrestricted access to every conversation.
 
 ## Next Step
 

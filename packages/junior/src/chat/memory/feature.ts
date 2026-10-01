@@ -38,8 +38,6 @@ export interface MemoryOptions {
    * routes, and CLI commands while stored memory events keep rendering.
    */
   enabled?: boolean;
-  /** Disable passive memory extraction from completed sessions. */
-  disableExtraction?: boolean;
   /**
    * Structured review model. Defaults to `AI_MEMORY_MODEL`, then the app's
    * default model.
@@ -47,6 +45,8 @@ export interface MemoryOptions {
   modelId?: string;
   /** Disable automatic prompt recall. The explicit memory tools stay available. */
   disableRecall?: boolean;
+  /** Disable passive memory extraction from completed sessions. */
+  disableExtraction?: boolean;
 }
 
 function memoryModelId(options: MemoryOptions): string | undefined {
@@ -107,11 +107,9 @@ function memoryCreateToolContext(ctx: {
  *
  * Memory uses the plugin registration contract so the host serves its tools,
  * recall, extraction task, events, user page, CLI, and operational report
- * through the shared runtime. Core mounts the REST routes in `api.ts`.
+ * through the shared runtime. `api/memory/routes.ts` mounts the REST routes.
  */
-export function createMemoryFeature(
-  options: MemoryOptions = {},
-): PluginRegistration {
+export function memoryFeature(options: MemoryOptions = {}): PluginRegistration {
   const conversationEvents = [
     memoriesCapturedEventV1,
     memoriesCapturedEvent,

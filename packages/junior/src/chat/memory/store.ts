@@ -28,15 +28,17 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
+  memoryRuntimeContextSchema,
+  type MemoryRuntimeContext,
+  type MemorySourcePlatform,
+} from "./types";
+import {
   MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
-  memoryRuntimeContextSchema,
-  type MemoryRuntimeContext,
-  type MemorySourcePlatform,
-} from "./types";
+} from "@/db/schema/memory";
 import {
   deriveMemoryScope,
   deriveMemorySubject,

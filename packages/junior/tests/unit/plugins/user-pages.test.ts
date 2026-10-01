@@ -43,8 +43,8 @@ describe("plugin user pages", () => {
           },
           {
             id: "notes",
-            label: "Other memories",
-            description: "More personal memories.",
+            label: "Other notes",
+            description: "More personal notes.",
             read,
           },
         ],

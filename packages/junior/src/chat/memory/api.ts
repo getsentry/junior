@@ -24,7 +24,7 @@ import {
   type MemoryView,
 } from "./viewer";
 import { parseCapturedMemories } from "./events";
-import { MEMORY_SOURCE_PLATFORMS } from "./types";
+import { MEMORY_SOURCE_PLATFORMS } from "@/db/schema/memory";
 
 export const memoryApiSchema = z
   .object({

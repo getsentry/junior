@@ -1,6 +1,6 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { briefsFeature } from "@/chat/briefs/task";
-import { createMemoryFeature, type MemoryOptions } from "@/chat/memory/feature";
+import { memoryFeature, type MemoryOptions } from "@/chat/memory/feature";
 
 export interface CoreFeatureOptions {
   /** Generate a durable Brief after each completed Turn. Disabled by default. */
@@ -18,5 +18,5 @@ export interface CoreFeatureOptions {
 export function createCoreFeatures(
   options: CoreFeatureOptions = {},
 ): PluginRegistration[] {
-  return [briefsFeature(options.briefs), createMemoryFeature(options.memory)];
+  return [briefsFeature(options.briefs), memoryFeature(options.memory)];
 }

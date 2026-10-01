@@ -18,7 +18,8 @@ import {
   type ExtractedMemory,
   type MemoryExtractionResult,
 } from "./agent";
-import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
+import { memoryRuntimeContextSchema } from "./types";
+import { MEMORY_KINDS } from "@/db/schema/memory";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
 
 const MEMORY_TOOL_NAMES = new Set([

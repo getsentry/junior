@@ -1,6 +1,6 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
+import { MEMORY_KINDS, MEMORY_SCOPES } from "@/db/schema/memory";
 import type { MemoryRecord } from "./store";
 
 const capturedMemoryFields = {

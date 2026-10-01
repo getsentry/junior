@@ -27,5 +27,5 @@ export type {
   MemoryStoreOptions,
   SearchMemoriesInput,
 } from "@/chat/memory/store";
-export { MEMORY_KINDS } from "@/chat/memory/types";
+export { MEMORY_KINDS } from "@/db/schema/memory";
 export type { MemoryKind, MemoryRuntimeContext } from "@/chat/memory/types";

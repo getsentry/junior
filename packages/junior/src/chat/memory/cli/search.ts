@@ -6,7 +6,8 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { juniorMemoryMemories } from "@/db/schema";
 import type { MemoryDb } from "../store";
-import { MEMORY_SCOPES, type MemoryScope } from "../types";
+import { type MemoryScope } from "../types";
+import { MEMORY_SCOPES } from "@/db/schema/memory";
 import { formatMemory } from "./format";
 
 interface SearchOptions {

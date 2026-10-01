@@ -17,12 +17,7 @@ export const MEMORY_API_PREFIX = "/api/memory";
 /** Strip the mount prefix so the Memory REST app sees its own paths. */
 function memoryRequest(request: Request): Request {
   const url = new URL(request.url);
-  const pathname = url.pathname;
-  const nextPath =
-    pathname === MEMORY_API_PREFIX
-      ? "/"
-      : pathname.slice(MEMORY_API_PREFIX.length) || "/";
-  url.pathname = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
+  url.pathname = url.pathname.slice(MEMORY_API_PREFIX.length) || "/";
   return new Request(url, request);
 }
 

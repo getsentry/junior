@@ -10,10 +10,7 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 
 /** Registration names that core features own. */
-export const CORE_FEATURE_NAMES: ReadonlySet<string> = new Set([
-  "briefs",
-  "memory",
-]);
+const CORE_FEATURE_NAMES: ReadonlySet<string> = new Set(["briefs", "memory"]);
 
 let registeredCoreFeatures: PluginRegistration[] = [];
 

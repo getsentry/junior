@@ -20,7 +20,8 @@ import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import { publicMemoryScope } from "./scope";
 import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";
-import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
+import { type MemorySourcePlatform } from "./types";
+import { MEMORY_KINDS } from "@/db/schema/memory";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const nonEmptyStringSchema = z.string().min(1);

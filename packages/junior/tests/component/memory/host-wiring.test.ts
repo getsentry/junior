@@ -4,7 +4,7 @@ import {
   defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
-import { createMemoryFeature } from "@/chat/memory/feature";
+import { memoryFeature } from "@/chat/memory/feature";
 import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { defineJuniorPlugins, pluginCatalogConfigFromEnv } from "@/plugins";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
@@ -180,7 +180,7 @@ describe("memory core feature host wiring", () => {
 
   it("reads public memory everywhere and private memory only for its User", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
-    setCoreFeatures([createMemoryFeature()]);
+    setCoreFeatures([memoryFeature()]);
     NEON.sql = fixture.sql;
 
     try {
@@ -284,7 +284,7 @@ describe("memory core feature host wiring", () => {
 
   it("registers memory tools with runtime-provided core DB access", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
-    setCoreFeatures([createMemoryFeature()]);
+    setCoreFeatures([memoryFeature()]);
     NEON.sql = fixture.sql;
 
     try {

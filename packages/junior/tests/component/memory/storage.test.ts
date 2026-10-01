@@ -30,7 +30,7 @@ import {
   type CreateMemoryRequest,
 } from "@/chat/memory/agent";
 import { createMemoryCliCommand } from "@/chat/memory/cli";
-import { createMemoryFeature } from "@/chat/memory/feature";
+import { memoryFeature } from "@/chat/memory/feature";
 import { processMemorySession } from "@/chat/memory/process-session";
 import {
   createMemoryArchiveTool,
@@ -611,7 +611,7 @@ describe("memory storage", () => {
   });
 
   it("registers explicit model id as memory model configuration", () => {
-    const plugin = createMemoryFeature({
+    const plugin = memoryFeature({
       modelId: "anthropic/claude-sonnet-4.6",
     });
 
@@ -625,7 +625,7 @@ describe("memory storage", () => {
     delete process.env.AI_MEMORY_MODEL;
 
     try {
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       expect(plugin.model).toEqual({
         structuredModel: "default",
       });
@@ -639,19 +639,19 @@ describe("memory storage", () => {
   });
 
   it("configures automatic recall and passive extraction independently", () => {
-    const defaults = createMemoryFeature();
+    const defaults = memoryFeature();
     expect(defaults.hooks?.userPrompt).toBeTypeOf("function");
     expect(defaults.tasks?.processSession).toBeDefined();
 
-    const withoutRecall = createMemoryFeature({ disableRecall: true });
+    const withoutRecall = memoryFeature({ disableRecall: true });
     expect(withoutRecall.hooks?.userPrompt).toBeUndefined();
     expect(withoutRecall.tasks?.processSession).toBeDefined();
 
-    const withoutExtraction = createMemoryFeature({ disableExtraction: true });
+    const withoutExtraction = memoryFeature({ disableExtraction: true });
     expect(withoutExtraction.hooks?.userPrompt).toBeTypeOf("function");
     expect(withoutExtraction.tasks?.processSession).toBeUndefined();
 
-    const withoutEither = createMemoryFeature({
+    const withoutEither = memoryFeature({
       disableExtraction: true,
       disableRecall: true,
     });
@@ -809,7 +809,7 @@ describe("memory storage", () => {
     process.env.AI_MEMORY_MODEL = "anthropic/claude-sonnet-4.6";
 
     try {
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       expect(plugin.model).toEqual({
         structuredModelId: "anthropic/claude-sonnet-4.6",
       });
@@ -3950,7 +3950,7 @@ WHERE id = '${superseded.memory.id}'
       });
 
       const emitted: PluginConversationEventValue[] = [];
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -4042,7 +4042,7 @@ WHERE id = '${superseded.memory.id}'
       }
 
       const emitted: PluginConversationEventValue[] = [];
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -4100,7 +4100,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-conversation-context",
       });
 
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -4172,7 +4172,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-unrelated",
       });
 
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
@@ -4217,7 +4217,7 @@ WHERE id = '${superseded.memory.id}'
       });
 
       const emitted: PluginConversationEventValue[] = [];
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -4257,7 +4257,7 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -4316,7 +4316,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-gate-failure",
       });
 
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -4352,7 +4352,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-blank",
       });
 
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       await expect(
         plugin.hooks?.userPrompt?.({
           ...context,
@@ -4392,7 +4392,7 @@ WHERE id = '${superseded.memory.id}'
         idempotencyKey: "memory-test:recall-semantic",
       });
 
-      const plugin = createMemoryFeature();
+      const plugin = memoryFeature();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),

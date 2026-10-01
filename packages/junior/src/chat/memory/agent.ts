@@ -10,11 +10,8 @@ import {
   type MemorySupersessionDecision,
   type MemorySupersessionInput,
 } from "./store";
-import {
-  MEMORY_KINDS,
-  memoryRuntimeContextSchema,
-  type MemoryKind,
-} from "./types";
+import { memoryRuntimeContextSchema, type MemoryKind } from "./types";
+import { MEMORY_KINDS } from "@/db/schema/memory";
 
 const memoryKindSchema = z.enum(MEMORY_KINDS);
 const memoryRejectReasonSchema = z.enum([

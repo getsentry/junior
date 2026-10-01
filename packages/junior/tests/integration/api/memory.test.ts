@@ -7,7 +7,7 @@ import { getDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { memoryApiSchema, memoryListResponseSchema } from "@/chat/memory/api";
-import { createMemoryFeature } from "@/chat/memory/feature";
+import { memoryFeature } from "@/chat/memory/feature";
 import { createMemoryStore } from "@/chat/memory/store";
 import { setCoreFeatures } from "@/chat/plugins/core-features";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -74,7 +74,7 @@ describe("memory API routes", () => {
 
   test("lists, reads, and forgets memory through the core routes", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
-    setCoreFeatures([createMemoryFeature()]);
+    setCoreFeatures([memoryFeature()]);
     try {
       await migrateSchema(fixture.sql);
       const memory = await seedPrivateMemory(fixture);
@@ -114,7 +114,7 @@ describe("memory API routes", () => {
   });
 
   test("requires an authenticated viewer", async () => {
-    setCoreFeatures([createMemoryFeature()]);
+    setCoreFeatures([memoryFeature()]);
     const response = await createJuniorApi().request(
       "http://localhost/api/memory/memories",
     );
@@ -123,7 +123,7 @@ describe("memory API routes", () => {
 
   test("returns not found when Memory is disabled", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
-    setCoreFeatures([createMemoryFeature({ enabled: false })]);
+    setCoreFeatures([memoryFeature({ enabled: false })]);
     try {
       await migrateSchema(fixture.sql);
       await seedPrivateMemory(fixture);

@@ -2,7 +2,6 @@ import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { MemoryDb } from "@/chat/memory/store";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "@/db/schema";
 import {
   mention,
@@ -47,16 +46,12 @@ interface MemoryThread {
   thread_ts: string;
 }
 
-function memoryDb(): MemoryDb {
-  return getDb() as unknown as MemoryDb;
-}
-
 function memorySourceKey(thread: MemoryThread): string {
   return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
 }
 
 async function readMemories(thread: MemoryThread) {
-  const rows = await memoryDb()
+  const rows = await getDb()
     .select()
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
@@ -64,8 +59,8 @@ async function readMemories(thread: MemoryThread) {
 }
 
 async function clearMemories() {
-  await memoryDb().delete(juniorMemoryEmbeddings);
-  await memoryDb().delete(juniorMemoryMemories);
+  await getDb().delete(juniorMemoryEmbeddings);
+  await getDb().delete(juniorMemoryMemories);
 }
 
 async function memoriesForActor(

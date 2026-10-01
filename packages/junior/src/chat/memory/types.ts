@@ -8,15 +8,6 @@ import {
   MEMORY_SUBJECT_TYPES,
 } from "@/db/schema/memory";
 
-export {
-  MEMORY_EMBEDDING_DIMENSIONS,
-  MEMORY_EMBEDDING_METRICS,
-  MEMORY_KINDS,
-  MEMORY_SCOPES,
-  MEMORY_SOURCE_PLATFORMS,
-  MEMORY_SUBJECT_TYPES,
-} from "@/db/schema/memory";
-
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySubjectType = (typeof MEMORY_SUBJECT_TYPES)[number];
