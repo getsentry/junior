@@ -180,10 +180,12 @@ describe("conversation forks", () => {
     expect(forkRun?.state?.sandboxRef).toBeUndefined();
 
     // A fork of the fork writes its own note after all copied model calls.
-    const forkReply = (await events.loadHistory(forkId)).findLast(
-      (event) =>
-        event.data.type === "message" && event.data.role === "assistant",
-    );
+    const forkReply = [...(await events.loadHistory(forkId))]
+      .reverse()
+      .find(
+        (event) =>
+          event.data.type === "message" && event.data.role === "assistant",
+      );
     if (forkReply?.data.type !== "message")
       throw new Error("Missing fork reply");
     const nested = forkConversationResponseSchema.parse(
