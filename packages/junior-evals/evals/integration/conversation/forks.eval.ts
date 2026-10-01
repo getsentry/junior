@@ -77,7 +77,7 @@ describe("Conversation Forks", () => {
     });
     const fork = await source.fork(source.replies[0]!);
     const forkTurn = await fork.continue(
-      webMessage("For this branch only, rename the codename to Birch."),
+      webMessage("Change the release codename to Birch."),
     );
     expect(forkTurn.replies).toHaveLength(1);
 

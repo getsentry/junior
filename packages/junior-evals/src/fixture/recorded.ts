@@ -65,6 +65,7 @@ function createSanitizer(): (value: unknown) => unknown {
     replacements.set(value, next);
     return next;
   };
+  // Slack ids always contain a digit; capitalized words such as TRACKING do not.
   const sanitizeText = (text: string) =>
     text
       .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, (email) =>
@@ -73,8 +74,8 @@ function createSanitizer(): (value: unknown) => unknown {
       .replace(/\bdashboard:[a-f0-9]+\b/g, (id) =>
         replace(id, "dashboard:", (n) => `dashboard:person${n}`),
       )
-      .replace(/\bT[A-Z0-9]{6,}\b/g, "TEVAL")
-      .replace(/\b[UW][A-Z0-9]{6,}\b/g, (id) =>
+      .replace(/\bT(?=[A-Z]*\d)[A-Z0-9]{6,}\b/g, "TEVAL")
+      .replace(/\b[UW](?=[A-Z]*\d)[A-Z0-9]{6,}\b/g, (id) =>
         replace(id, "U0PERSON", (n) => `U0PERSON${n}`),
       );
   const replaceName = (name: string) =>
@@ -125,22 +126,37 @@ export async function exportRecordedConversation(
     orderBy: (row, { asc }) => [asc(row.seq)],
     where: (row, { eq }) => eq(row.conversationId, conversationId),
   });
-  const sanitize = createSanitizer();
   return {
     version: 1,
     surface: conversation.destination?.platform === "slack" ? "slack" : "web",
-    events: rows
-      .filter((row) => !UNCOPIED_EVENT_TYPES.has(row.type))
-      .map((row) => ({
+    events: sanitizeRecordedEvents(
+      rows.map((row) => ({
         createdAtMs: row.createdAt.getTime(),
         historyVersion: row.historyVersion,
         idempotencyKey: row.idempotencyKey,
-        payload: sanitize(row.payload) as Record<string, unknown>,
+        payload: row.payload,
         schemaVersion: row.schemaVersion,
         seq: row.seq,
         type: row.type,
       })),
+    ),
   };
+}
+
+/**
+ * Drop rows that forks do not copy and replace people and workspace
+ * identifiers with stable placeholders.
+ */
+export function sanitizeRecordedEvents(
+  rows: RecordedEventRow[],
+): RecordedEventRow[] {
+  const sanitize = createSanitizer();
+  return rows
+    .filter((row) => !UNCOPIED_EVENT_TYPES.has(row.type))
+    .map((row) => ({
+      ...row,
+      payload: sanitize(row.payload) as Record<string, unknown>,
+    }));
 }
 
 /** Insert a recording's rows into a Conversation whose root exists. */

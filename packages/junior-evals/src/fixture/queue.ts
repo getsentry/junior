@@ -12,7 +12,10 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 
-type Consume = (message: ConversationQueueMessage) => Promise<void>;
+type Consume = (
+  message: ConversationQueueMessage,
+  delivery: { messageId: string },
+) => Promise<void>;
 
 /** Queue that the fixture gives to `createApp({ conversationWorkQueue })`. */
 export interface InProcessQueue extends ConversationWorkQueue {
@@ -40,14 +43,18 @@ export function createInProcessQueue(): InProcessQueue {
   const pending = new Set<Promise<void>>();
   const errors: unknown[] = [];
 
-  const deliver = (message: ConversationQueueMessage, delayMs: number) => {
+  const deliver = (
+    message: ConversationQueueMessage,
+    messageId: string,
+    delayMs: number,
+  ) => {
     const delivery = new Promise<void>((resolve) => {
       const start = () => {
         if (closed || !consume) {
           resolve();
           return;
         }
-        consume(message)
+        consume(message, { messageId })
           .catch((error: unknown) => {
             errors.push(error);
           })
@@ -80,7 +87,7 @@ export function createInProcessQueue(): InProcessQueue {
       if (key) {
         sentKeys.set(key, messageId);
       }
-      deliver(message, Math.max(0, options?.delayMs ?? 0));
+      deliver(message, messageId, Math.max(0, options?.delayMs ?? 0));
       return { messageId };
     },
     connect(next) {

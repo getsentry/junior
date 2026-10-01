@@ -17,6 +17,67 @@ There are four independently runnable suites:
 - Behavioral and integration evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. Neither suite pins models or adds profiles.
 - Router evals use the shared core profiles and configured fast model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
 
+## Agent Test Fixture
+
+New tests that run the agent use the agent test fixture in `src/fixture/`.
+It replaces the Slack harness below. Issue #2001 has the full contract and the
+migration order. The old harness stays until the remaining evals move.
+
+The agent is one unit. A test does not mock the model or any other part of
+the agent. A test touches the product in three places only:
+
+1. Inputs through app routes: `mention()` and `threadMessage()` post signed
+   Slack Events API webhooks, and `webMessage()` posts to the conversations
+   API.
+2. Mocked third-party APIs: Slack and other providers through MSW.
+3. What people and the model see: replies, tool calls, reactions, and turn
+   states, read through Junior's reporting API.
+
+```ts
+import { describe, expect } from "vitest";
+import { mention, reply } from "../../src/fixture/inputs";
+import { rubric } from "../../src/fixture/judge";
+import { test } from "../../src/fixture/test";
+
+describe("Thread Continuity", () => {
+  test("when asked about the prior turn, recall it", async ({ run }) => {
+    const conversation = await run(mention("what did i just ask?"), {
+      history: [mention("I need the budget by Friday."), reply("Got it.")],
+      criteria: rubric({ pass: ["Recalls the budget and Friday."] }),
+    });
+    expect(conversation.replies).toHaveLength(1);
+  });
+});
+```
+
+- `run()` starts a new Conversation on the test's agent. `continue()` sends
+  the next input to the same Conversation. `fork()` calls the forks route.
+- `agent(options)` creates the test's agent with `createApp()` options, such
+  as `limits` or `slack.crossActorMidRunMode`. Without it, the agent uses the
+  default options.
+- A call returns when the agent is idle: the in-process queue is empty, and
+  the work that turns started, such as titles, is finished. A call fails when
+  the agent is not idle within 60 seconds.
+- `history` loads earlier turns as stored data. Loading never runs the agent.
+  It writes the same rows as a real turn; `src/fixture/history.eval.ts` checks
+  this against real turns. `history` also accepts a recorded conversation from
+  `src/fixture/recordings/`. Export one with `exportRecordedConversation()`.
+- `onProgress` reacts to what the turn does: `model_request`,
+  `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
+  waits, so the product decides whether it steers, waits, or stops the turn.
+- Insert functions in `src/fixture/insert.ts` write setup data through the
+  product store functions. They never run turns. Add one when a test needs a
+  new kind of setup data.
+- Slack replies are the posts in the Slack thread, including posts that Junior
+  does not store. Each Conversation is read as the person who started it.
+- Assert facts that do not depend on wording: reply counts, turn states, tool
+  calls, and reactions. Use `criteria` for wording. Do not assert on stored
+  rows or runtime objects.
+
+`scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
+in `scripts/test-architecture-baseline.json` lists the files that break each
+rule today. Lower an entry when you fix a file. Do not add entries.
+
 ## Layer Boundaries
 
 Testing taxonomy and layer contracts are defined in:

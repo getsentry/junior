@@ -3,7 +3,6 @@ import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   conversationQueueMessageSchema,
@@ -91,30 +90,25 @@ export async function processConversationQueueMessage(
 
 /**
  * Run one queue message through the worker without a Vercel push callback.
- * In-process queues use this. It applies the kill switch, request deadline,
- * and permanent rejection rules of the callback.
+ * In-process queues use this. The callback's kill switch, request deadline,
+ * and permanent rejection rules apply; signature checks do not.
  */
 export async function consumeConversationQueueMessage(
   message: ConversationQueueMessage,
-  options: ProcessConversationQueueMessageOptions,
+  options: VercelConversationWorkCallbackOptions & { messageId: string },
 ): Promise<void> {
-  if (!getChatConfig().conversationWorkEnabled) {
-    return;
-  }
-  try {
-    await runWithTurnRequestDeadline(() =>
-      processConversationQueueMessage(message, options),
-    );
-  } catch (error) {
-    if (!isConversationQueueMessageRejectedError(error)) {
-      throw error;
-    }
-    withLogContext({ conversationId: error.conversationId }, () => {
-      logWarn("conversation.queue.message.rejected", {
-        "app.queue.reject_reason": error.reason,
-      });
-    });
-  }
+  const nowMs = Date.now();
+  await conversationWorkCallback(options).consume(message, {
+    consumerGroup: "in_process",
+    createdAt: new Date(nowMs),
+    deliveryCount: 1,
+    expiresAt: new Date(
+      nowMs + CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS * 1000,
+    ),
+    messageId: options.messageId,
+    region: "local",
+    topicName: resolveConversationWorkQueueTopic(options),
+  });
 }
 
 function logConversationQueueMessageRejected(

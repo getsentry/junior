@@ -79,14 +79,12 @@ export function createProductionConversationWorkOptions(options: {
   waitUntil: (task: Promise<unknown>) => void;
 }): ConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
-  return {
-    ...createConversationWork({
-      agentRunner: options.agentRunner,
-      conversationStore,
-      getSlackAdapter: getProductionSlackAdapter,
-      queue: options.queue,
-      services: options.services,
-    }),
+  return createConversationWork({
+    agentRunner: options.agentRunner,
+    conversationStore,
+    getSlackAdapter: getProductionSlackAdapter,
+    queue: options.queue,
+    services: options.services,
     waitUntil: options.waitUntil,
-  };
+  });
 }

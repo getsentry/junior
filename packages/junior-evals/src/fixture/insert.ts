@@ -3,19 +3,13 @@
  *
  * Each kind of setup data has one insert function. It writes through the
  * product store function for that kind. Insert functions only write data:
- * they never run turns and they contain no assertions.
+ * they never run turns and they contain no assertions. Add one when a test
+ * needs a new kind of setup data.
  */
 import { randomUUID } from "node:crypto";
-import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
-import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
-import { createEventAutomation } from "@/chat/event-automations/store";
-import type { EventAutomation } from "@/chat/event-automations/types";
-import { createWatch } from "@/chat/events/store";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { createPluginEmbedder } from "@/chat/plugins/model";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -116,109 +110,4 @@ export async function insertScheduledAutomation(args: {
   };
   await saveScheduledAutomation(getDb(), automation);
   return { id };
-}
-
-/** Store an event automation that answers matching events in a channel. */
-export async function insertEventAutomation(args: {
-  createdBy?: SlackAuthor;
-  destination: SlackChannel;
-  task: string;
-  trigger: EventAutomation["trigger"];
-}): Promise<{ id: string }> {
-  const author = resolveAuthor(args.createdBy);
-  const id = `eva_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
-  await createEventAutomation(getDb(), {
-    id,
-    createdAtMs: Date.now() - 60_000,
-    createdBy: {
-      fullName: author.fullName,
-      slackUserId: author.userId,
-      userName: author.userName,
-    },
-    credentialMode: "system",
-    destination: args.destination,
-    destinationVisibility: "public",
-    outcomes: [{ action: "send_message", destination: args.destination }],
-    task: { text: args.task },
-    trigger: args.trigger,
-  });
-  return { id };
-}
-
-/** Store a watch that wakes a Conversation for matching events. */
-export async function insertWatch(args: {
-  conversation: { conversationId: string };
-  events: string[];
-  identifier: string;
-  intent: string;
-  label: string;
-  namespace: string;
-  resourceType: string;
-}): Promise<void> {
-  await createWatch({
-    conversationId: args.conversation.conversationId,
-    events: args.events,
-    expiresAtMs: Date.now() + 14 * 24 * 60 * 60 * 1000,
-    identifier: args.identifier,
-    intent: args.intent,
-    label: args.label,
-    namespace: args.namespace,
-    resourceType: args.resourceType,
-  });
-}
-
-/** Store a memory that a Slack person saved in a channel. */
-export async function insertMemory(args: {
-  author?: SlackAuthor;
-  channel: SlackChannel;
-  content: string;
-  kind?: "knowledge" | "preference" | "procedure";
-}): Promise<void> {
-  const author = resolveAuthor(args.author);
-  const identity = await insertSlackIdentity(author);
-  if (!identity.userId) {
-    throw new Error("insertMemory() needs a Slack person with a Junior user");
-  }
-  const threadTs = `${Math.floor(Date.now() / 1000)}.000000`;
-  const store = createMemoryStore(
-    // The memory plugin reads Junior's database through its own schema.
-    getDb() as unknown as MemoryDb,
-    {
-      actor: {
-        platform: "slack",
-        teamId: SLACK_TEAM_ID,
-        userId: author.userId,
-      },
-      conversationId: `slack:${args.channel.channelId}:${threadTs}`,
-      source: createSlackSource({
-        channelId: args.channel.channelId,
-        messageTs: threadTs,
-        teamId: SLACK_TEAM_ID,
-        threadTs,
-        visibility: "public",
-      }),
-      userId: identity.userId,
-    },
-    { embedder: createPluginEmbedder("junior-memory") },
-  );
-  await store.createMemory({
-    content: args.content,
-    idempotencyKey: randomUUID(),
-    kind: args.kind ?? "preference",
-  });
-}
-
-/** Store a provider credential for a Slack person. */
-export async function insertCredential(args: {
-  author?: SlackAuthor;
-  provider: string;
-  scope?: string;
-}): Promise<void> {
-  const author = resolveAuthor(args.author);
-  await createUserTokenStore().set(author.userId, args.provider, {
-    accessToken: `eval-${args.provider}-access-token`,
-    refreshToken: `eval-${args.provider}-refresh-token`,
-    expiresAt: Date.now() + 60 * 60 * 1000,
-    ...(args.scope ? { scope: args.scope } : undefined),
-  });
 }

@@ -178,7 +178,10 @@ export interface JuniorAppOptions extends BotModelConfig {
    * worker. Every app route and worker sends to the returned queue.
    */
   conversationWorkQueue?: (
-    consume: (message: ConversationQueueMessage) => Promise<void>,
+    consume: (
+      message: ConversationQueueMessage,
+      delivery: { messageId: string },
+    ) => Promise<void>,
   ) => ConversationWorkQueue;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
@@ -460,8 +463,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
   const conversationWorkQueue: ConversationWorkQueue =
     options?.conversationWork?.queue ??
-    options?.conversationWorkQueue?.((message) =>
-      consumeConversationQueueMessage(message, getConversationWorkOptions()),
+    options?.conversationWorkQueue?.((message, delivery) =>
+      consumeConversationQueueMessage(message, {
+        ...getConversationWorkOptions(),
+        messageId: delivery.messageId,
+      }),
     ) ??
     getVercelConversationWorkQueue();
   const attachmentStorage = createVercelAttachmentStorage();

@@ -15,11 +15,12 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
+import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
-import type { HistoryItem, HistoryReply, Input, SlackAuthor } from "./inputs";
+import type { HistoryItem, HistoryReply, Input } from "./inputs";
 import {
   hasHistory,
   loadHistory,
@@ -36,10 +37,13 @@ import { createInProcessQueue } from "./queue";
 import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
-  lastEventSeq,
+  combinedRun,
   readCallEvents,
   readConversationDetail,
+  slackCallReplies,
+  toHarnessRun,
   VIEWER_HEADER,
+  type FixtureUsage,
   type Reply,
   type ToolCall,
   type Turn,
@@ -50,8 +54,6 @@ import {
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
-  type RequestApp,
-  type SlackPost,
 } from "./slack";
 
 /** Every call fails when the agent is not idle within this budget. */
@@ -106,6 +108,10 @@ export interface FixtureTestContext {
 
 /** What the fixture knows about one Conversation of the test. */
 type ConversationRecord = LoadedConversation & {
+  /** Key of the request that creates a web Conversation. */
+  idempotencyKey: string;
+  /** Whether an input or loaded history created the Conversation. */
+  started: boolean;
   /** Last event seen by an earlier call or by history loading. */
   lastSeq: number;
   /** The person who started the Conversation reads its results. */
@@ -161,11 +167,22 @@ export async function createFixtureAgent(
     }
   };
 
-  const conversations = new Map<string, ConversationRecord>();
   const replyMessages = new WeakMap<HistoryReply, string>();
   const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
     [];
+  // Agent model cost per Conversation, from the reporting API.
+  const agentCostUsd = new Map<string, number>();
+  const currentUsage = (): FixtureUsage => ({
+    agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
+    gatewayRequests: gateway.requestCounts(),
+  });
   const startedAtMs = Date.now();
+  // Every judged call of the test, for the eval report.
+  const judgeScores: Array<{
+    metadata: Record<string, string>;
+    name: string;
+    score: number;
+  }> = [];
 
   const waitForIdle = async (): Promise<void> => {
     const deadline = Date.now() + IDLE_TIMEOUT_MS;
@@ -197,23 +214,39 @@ export async function createFixtureAgent(
     }
   };
 
+  /**
+   * Post one input through its app route. The first web input creates the
+   * Conversation, and the first Slack mention is the thread root.
+   */
   const sendInput = async (
     record: ConversationRecord,
     input: Input,
   ): Promise<void> => {
+    const started = record.started;
+    record.started = true;
     if (input.kind === "web_message") {
-      const response = await api.request(
-        `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`,
-        jsonRequest({ idempotencyKey: randomUUID(), message: input.text }),
+      const path = started
+        ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
+        : "/api/conversations";
+      await expectAccepted(
+        await api.request(
+          path,
+          jsonRequest({
+            idempotencyKey: started ? randomUUID() : record.idempotencyKey,
+            message: input.text,
+          }),
+        ),
       );
-      await expectAccepted(response);
       return;
     }
     if (record.surface !== "slack") {
       throw new Error("Slack input needs a Slack Conversation");
     }
+    if (!started && input.kind !== "mention") {
+      throw new Error("A Slack Conversation starts with mention()");
+    }
     const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
-    const ts = slack.nextTs();
+    const ts = started ? slack.nextTs() : record.threadTs;
     const mention = input.kind === "mention";
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
     slack.addThreadMessage(record.channelId, {
@@ -227,39 +260,49 @@ export async function createFixtureAgent(
       channelType: record.channelType,
       mention,
       text,
-      threadTs: record.threadTs,
+      ...(started ? { threadTs: record.threadTs } : undefined),
       ts,
       user: author.userId,
     });
   };
 
-  const startConversation = async (
-    input: Input,
-    rootHistoryAuthor: SlackAuthor | undefined,
-  ): Promise<{ record: ConversationRecord; sent: boolean }> => {
-    if (input.kind === "thread_message") {
-      throw new Error("run() needs mention() or webMessage() first");
-    }
-    if (input.kind === "web_message") {
-      const response = await api.request(
-        "/api/conversations",
-        jsonRequest({ idempotencyKey: randomUUID(), message: input.text }),
-      );
-      const accepted = await expectAccepted(response);
-      const record = newRecord({
-        conversationId: accepted.conversationId,
+  /** Create the record for a new Conversation. It starts with its first input. */
+  const newConversation = (
+    first: Input,
+    history: CallOptions["history"],
+  ): ConversationRecord => {
+    if (first.kind === "web_message") {
+      const idempotencyKey = randomUUID();
+      return newRecord({
+        conversationId: createConversationId({
+          actorEmail: WEB_VIEWER_EMAIL,
+          idempotencyKey,
+        }),
+        idempotencyKey,
         surface: "web",
       });
-      return { record, sent: true };
     }
-    const channelType = input.channelType ?? "channel";
+    if (first.kind !== "mention" && !hasHistory(history)) {
+      throw new Error("run() needs mention() or webMessage() first");
+    }
+    const channelType =
+      (first.kind === "mention" && first.channelType) || "channel";
     const channelId =
-      input.channel?.channelId ?? slack.newChannelId(channelType);
+      (first.kind === "mention" ? first.channel?.channelId : undefined) ??
+      slack.newChannelId(channelType);
     const threadTs = slack.nextTs();
+    // The person who posted the thread root reads the results.
+    const historyRoot = Array.isArray(history) ? history[0] : undefined;
+    const root =
+      historyRoot &&
+      historyRoot.kind !== "reply" &&
+      historyRoot.kind !== "web_message"
+        ? historyRoot
+        : first;
     const rootAuthor = slack.registerAuthor(
-      rootHistoryAuthor ?? input.author ?? DEFAULT_SLACK_AUTHOR,
+      root.author ?? DEFAULT_SLACK_AUTHOR,
     );
-    const record = newRecord(
+    return newRecord(
       {
         channelId,
         channelType,
@@ -269,46 +312,19 @@ export async function createFixtureAgent(
       },
       slackAuthorEmail(rootAuthor),
     );
-    return { record, sent: false };
   };
 
   const newRecord = (
-    loaded: LoadedConversation,
+    loaded: LoadedConversation & { idempotencyKey?: string },
     viewerEmail = WEB_VIEWER_EMAIL,
-  ): ConversationRecord => {
-    const record = {
-      ...loaded,
-      lastSeq: BEFORE_FIRST_EVENT,
-      viewerEmail,
-      visibleMessages: [],
-    };
-    conversations.set(record.conversationId, record);
-    return record;
-  };
-
-  const sendSlackRoot = async (
-    record: ConversationRecord,
-    input: Input,
-  ): Promise<void> => {
-    if (record.surface !== "slack" || input.kind !== "mention") return;
-    // The first mention is the thread root.
-    const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
-    const text = `<@${SLACK_BOT_USER_ID}> ${input.text}`;
-    slack.addThreadMessage(record.channelId, {
-      text,
-      thread_ts: record.threadTs,
-      ts: record.threadTs,
-      user: author.userId,
-    });
-    await postSlackMessageEvent(app, {
-      channel: record.channelId,
-      channelType: record.channelType,
-      mention: true,
-      text,
-      ts: record.threadTs,
-      user: author.userId,
-    });
-  };
+  ): ConversationRecord => ({
+    ...loaded,
+    idempotencyKey: loaded.idempotencyKey ?? randomUUID(),
+    lastSeq: BEFORE_FIRST_EVENT,
+    started: false,
+    viewerEmail,
+    visibleMessages: [],
+  });
 
   const call = async (
     record: ConversationRecord,
@@ -385,9 +401,17 @@ export async function createFixtureAgent(
           ),
       ),
     ].map((key) => key.slice(key.indexOf(":") + 1));
+    agentCostUsd.set(
+      record.conversationId,
+      (detail.modelUsage ?? []).reduce(
+        (sum, entry) => sum + (entry.usage.cost?.total ?? 0),
+        0,
+      ),
+    );
+    const usage = currentUsage();
     const evalRun = toHarnessRun({
       conversationId: record.conversationId,
-      gatewayRequests: gateway.requestCounts(),
+      usage,
       messages: visibleMessages,
       startedAtMs,
       toolCalls: events.toolCalls,
@@ -398,7 +422,7 @@ export async function createFixtureAgent(
     });
     context.task.meta.harness = {
       name: "junior",
-      run: combinedRun(calls, gateway.requestCounts(), startedAtMs),
+      run: combinedRun(calls, usage, startedAtMs),
     };
     if (options.criteria) {
       const judged = await judgeReplies({
@@ -407,16 +431,19 @@ export async function createFixtureAgent(
         earlier,
         signal: context.signal,
       });
+      judgeScores.push({
+        name: "RubricJudge",
+        score: judged.score,
+        metadata: { answer: judged.answer, rationale: judged.rationale },
+      });
       context.task.meta.eval = {
-        avgScore: judged.score,
-        scores: [
-          {
-            name: "RubricJudge",
-            score: judged.score,
-            metadata: { answer: judged.answer, rationale: judged.rationale },
-          },
-        ],
-        thresholdFailed: judged.score < JUDGE_THRESHOLD,
+        avgScore:
+          judgeScores.reduce((sum, entry) => sum + entry.score, 0) /
+          judgeScores.length,
+        scores: judgeScores,
+        thresholdFailed: judgeScores.some(
+          (entry) => entry.score < JUDGE_THRESHOLD,
+        ),
       };
       assert(
         judged.score >= JUDGE_THRESHOLD,
@@ -432,19 +459,90 @@ export async function createFixtureAgent(
     });
   };
 
-  const sendInputs = async (
+  /** Load history, then send the inputs as one call. */
+  const converse = async (
     record: ConversationRecord,
-    inputs: Input[],
-  ): Promise<void> => {
-    // Inputs in one call arrive before the worker runs, as one batch.
-    if (inputs.length > 1) queue.hold();
-    try {
-      for (const input of inputs) {
-        await sendInput(record, input);
-      }
-    } finally {
-      queue.release();
+    input: Input | Input[],
+    options: CallOptions,
+  ): Promise<Conversation> => {
+    if (hasHistory(options.history)) {
+      record.lastSeq = await loadHistory({
+        api,
+        conversation: record,
+        items: options.history,
+        replyMessages,
+        slack,
+        viewerEmail: record.viewerEmail,
+      });
+      record.started = true;
     }
+    const inputs = Array.isArray(input) ? input : [input];
+    return await call(
+      record,
+      async () => {
+        // Inputs in one call arrive before the worker runs, as one batch.
+        if (inputs.length > 1) queue.hold();
+        try {
+          for (const next of inputs) await sendInput(record, next);
+        } finally {
+          queue.release();
+        }
+      },
+      options,
+    );
+  };
+
+  const fork = async (
+    record: ConversationRecord,
+    forkReply: Reply | HistoryReply,
+  ): Promise<Conversation> => {
+    const messageId =
+      "messageId" in forkReply
+        ? forkReply.messageId
+        : replyMessages.get(forkReply);
+    if (!messageId) {
+      throw new Error("fork() needs a reply from this test");
+    }
+    const response = await api.request(
+      `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
+      jsonRequest({ idempotencyKey: randomUUID(), messageId }),
+    );
+    if (response.status !== 200) {
+      throw new Error(
+        `Fork returned ${response.status}: ${await response.text()}`,
+      );
+    }
+    const forked = forkConversationResponseSchema.parse(await response.json());
+    const forkRecord = newRecord({
+      conversationId: forked.conversationId,
+      surface: "web",
+    });
+    forkRecord.started = true;
+    const detail = await readConversationDetail(
+      api,
+      forkRecord.conversationId,
+      forkRecord.viewerEmail,
+    );
+    const copied = readCallEvents({
+      afterSeq: BEFORE_FIRST_EVENT,
+      conversationId: forkRecord.conversationId,
+      detail,
+    });
+    forkRecord.lastSeq = copied.lastSeq;
+    forkRecord.visibleMessages = copied.visibleMessages;
+    return conversationResult(forkRecord, {
+      evalRun: toHarnessRun({
+        conversationId: forkRecord.conversationId,
+        usage: currentUsage(),
+        messages: [],
+        startedAtMs,
+        toolCalls: [],
+      }),
+      reactions: [],
+      replies: [],
+      toolCalls: [],
+      turns: [],
+    });
   };
 
   const conversationResult = (
@@ -453,182 +551,22 @@ export async function createFixtureAgent(
   ): Conversation => ({
     conversationId: record.conversationId,
     ...result,
-    continue: (input, callOptions = {}) =>
-      runEvalWork(async () => {
-        if (hasHistory(callOptions.history)) {
-          record.lastSeq = await loadHistory({
-            api,
-            conversation: record,
-            items: callOptions.history,
-            replyMessages,
-            slack,
-            viewerEmail: record.viewerEmail,
-          });
-        }
-        const inputs = Array.isArray(input) ? input : [input];
-        return await call(
-          record,
-          async () => await sendInputs(record, inputs),
-          callOptions,
-        );
-      }),
-    fork: (forkReply) =>
-      runEvalWork(async () => {
-        const messageId =
-          "messageId" in forkReply
-            ? forkReply.messageId
-            : replyMessages.get(forkReply);
-        if (!messageId) {
-          throw new Error("fork() needs a reply from this test");
-        }
-        const response = await api.request(
-          `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
-          jsonRequest({ idempotencyKey: randomUUID(), messageId }),
-        );
-        if (response.status !== 200) {
-          throw new Error(
-            `Fork returned ${response.status}: ${await response.text()}`,
-          );
-        }
-        const forked = forkConversationResponseSchema.parse(
-          await response.json(),
-        );
-        const forkRecord = newRecord({
-          conversationId: forked.conversationId,
-          surface: "web",
-        });
-        const detail = await readConversationDetail(
-          api,
-          forkRecord.conversationId,
-          forkRecord.viewerEmail,
-        );
-        forkRecord.lastSeq = lastEventSeq(detail);
-        forkRecord.visibleMessages = readCallEvents({
-          afterSeq: BEFORE_FIRST_EVENT,
-          conversationId: forkRecord.conversationId,
-          detail,
-        }).visibleMessages;
-        return conversationResult(forkRecord, {
-          evalRun: toHarnessRun({
-            conversationId: forkRecord.conversationId,
-            gatewayRequests: gateway.requestCounts(),
-            messages: [],
-            startedAtMs,
-            toolCalls: [],
-          }),
-          reactions: [],
-          replies: [],
-          toolCalls: [],
-          turns: [],
-        });
-      }),
+    continue: (input, options = {}) =>
+      runEvalWork(() => converse(record, input, options)),
+    fork: (reply) => runEvalWork(() => fork(record, reply)),
   });
 
-  const run: RunAgent = async (input, callOptions = {}) => {
-    const inputs = Array.isArray(input) ? input : [input];
-    const [first, ...rest] = inputs;
+  const run: RunAgent = async (input, options = {}) => {
+    const [first] = Array.isArray(input) ? input : [input];
     if (!first) throw new Error("run() needs an input");
-    if (hasHistory(callOptions.history) && first.kind === "web_message") {
-      // Loaded history needs the Conversation before its first input.
-      const record = newRecord({
-        conversationId: `local:web:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
-        surface: "web",
-      });
-      record.lastSeq = await loadHistory({
-        api,
-        conversation: record,
-        items: callOptions.history,
-        replyMessages,
-        slack,
-        viewerEmail: record.viewerEmail,
-      });
-      return await call(
-        record,
-        async () => await sendInputs(record, inputs),
-        callOptions,
-      );
-    }
-    const historyRoot = Array.isArray(callOptions.history)
-      ? callOptions.history[0]
-      : undefined;
-    const { record, sent } = await startConversation(
-      first,
-      historyRoot &&
-        historyRoot.kind !== "reply" &&
-        historyRoot.kind !== "web_message"
-        ? (historyRoot.author ?? DEFAULT_SLACK_AUTHOR)
-        : undefined,
-    );
-    if (hasHistory(callOptions.history)) {
-      record.lastSeq = await loadHistory({
-        api,
-        conversation: record,
-        items: callOptions.history,
-        replyMessages,
-        slack,
-        viewerEmail: record.viewerEmail,
-      });
-    }
-    return await call(
-      record,
-      async () => {
-        if (!sent && record.surface === "slack") {
-          if (hasHistory(callOptions.history)) {
-            await sendInputs(record, inputs);
-          } else {
-            if (rest.length > 0) queue.hold();
-            try {
-              await sendSlackRoot(record, first);
-              for (const next of rest) await sendInput(record, next);
-            } finally {
-              queue.release();
-            }
-          }
-        } else if (rest.length > 0) {
-          await sendInputs(record, rest);
-        }
-      },
-      callOptions,
+    return await converse(
+      newConversation(first, options.history),
+      input,
+      options,
     );
   };
 
   return { run, close };
-}
-
-function comparableText(text: string): string {
-  return text
-    .replace(/[*_~`>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * Use Slack thread posts as the replies of a Slack call. A post that matches
- * a stored reply keeps the stored message id, so `fork()` can use it.
- */
-function slackCallReplies(args: {
-  conversationId: string;
-  durable: { replies: Reply[]; visibleMessages: VisibleMessage[] };
-  posts: SlackPost[];
-}): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
-  const unmatched = [...args.durable.replies];
-  const extra: VisibleMessage[] = [];
-  const replies = args.posts.map((post): Reply => {
-    const index = unmatched.findIndex(
-      (reply) => comparableText(reply.text) === comparableText(post.text),
-    );
-    const durable = index >= 0 ? unmatched.splice(index, 1)[0] : undefined;
-    if (!durable) extra.push({ content: post.text, role: "assistant" });
-    return {
-      conversationId: args.conversationId,
-      messageId: durable?.messageId ?? `slack:${post.ts}`,
-      text: post.text,
-    };
-  });
-  return {
-    replies,
-    visibleMessages: [...args.durable.visibleMessages, ...extra],
-  };
 }
 
 function jsonRequest(body: unknown): RequestInit {
@@ -646,93 +584,4 @@ async function expectAccepted(response: Response) {
     );
   }
   return acceptedConversationMessageSchema.parse(await response.json());
-}
-
-function toTranscriptEvents(
-  messages: VisibleMessage[],
-  toolCalls: ToolCall[],
-): TranscriptEvent[] {
-  return [
-    ...messages.map(
-      (message): TranscriptEvent => ({
-        type: "message",
-        role: message.role,
-        content: message.content,
-        ...(message.author
-          ? { metadata: { author_name: message.author } }
-          : undefined),
-      }),
-    ),
-    ...toolCalls.flatMap((toolCall): TranscriptEvent[] => [
-      {
-        type: "tool_call",
-        id: toolCall.toolCallId,
-        name: toolCall.name,
-        ...(isJsonObject(toolCall.input)
-          ? { arguments: toolCall.input }
-          : undefined),
-      },
-      ...(toolCall.status === "running"
-        ? []
-        : [
-            {
-              type: "tool_result" as const,
-              toolCallId: toolCall.toolCallId,
-              name: toolCall.name,
-              ...(toolCall.status === "error"
-                ? { error: { message: JSON.stringify(toolCall.output ?? "") } }
-                : {
-                    content: JSON.parse(
-                      JSON.stringify(toolCall.output ?? null),
-                    ),
-                  }),
-            },
-          ]),
-    ]),
-  ];
-}
-
-function isJsonObject(value: unknown): value is Record<string, never> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function toHarnessRun(args: {
-  conversationId: string;
-  gatewayRequests: Record<string, number>;
-  messages: VisibleMessage[];
-  startedAtMs: number;
-  toolCalls: ToolCall[];
-}): HarnessRun {
-  return {
-    session: {
-      events: toTranscriptEvents(args.messages, args.toolCalls),
-      metadata: { conversation_ids: [args.conversationId] },
-    },
-    usage: {
-      toolCalls: args.toolCalls.length,
-      metadata: { gatewayRequests: args.gatewayRequests },
-    },
-    timings: { totalMs: Date.now() - args.startedAtMs },
-    errors: [],
-  };
-}
-
-function combinedRun(
-  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>,
-  gatewayRequests: Record<string, number>,
-  startedAtMs: number,
-): HarnessRun {
-  return {
-    session: {
-      events: calls.flatMap((entry) => entry.events),
-      metadata: {
-        conversation_ids: [
-          ...new Set(calls.map((entry) => entry.conversationId)),
-        ],
-      },
-    },
-    usage: { metadata: { gatewayRequests } },
-    timings: { totalMs: Date.now() - startedAtMs },
-    errors: [],
-  };
 }

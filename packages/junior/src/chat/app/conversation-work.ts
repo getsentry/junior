@@ -48,6 +48,8 @@ interface ConversationWorkOptions {
   sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
   state?: StateAdapter;
+  /** Keeps background work started by turns, such as titles, alive. */
+  waitUntil?: (task: Promise<unknown>) => void;
   /**
    * Optional wrapper around the composed Slack runtime.
    * Eval harnesses use this so worker Delivery lands on TestThreads.
@@ -82,10 +84,13 @@ export function createConversationWork(
       ...options.services,
       agentRunner: options.agentRunner,
     },
+    waitUntil: options.waitUntil,
   });
   const runtime = options.wrapRuntime?.(baseRuntime) ?? baseRuntime;
   const scheduleCompletedPluginTasks = options.sendPluginTask
-    ? async (params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0]) =>
+    ? async (
+        params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
+      ) =>
         await scheduleSessionCompletedPluginTasks(params, {
           send: options.sendPluginTask,
         })
@@ -180,5 +185,6 @@ export function createConversationWork(
     run,
     runtime,
     state: options.state,
+    waitUntil: options.waitUntil,
   };
 }

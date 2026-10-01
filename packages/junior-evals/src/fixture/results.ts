@@ -4,7 +4,12 @@
  */
 import type { z } from "zod";
 import { conversationDetailReportSchema } from "@/api/schema";
-import type { RequestApp } from "./slack";
+import {
+  toJsonValue,
+  type HarnessRun,
+  type TranscriptEvent,
+} from "vitest-evals/harness";
+import type { RequestApp, SlackPost } from "./slack";
 import type { VisibleMessage } from "./judge";
 
 /** Header that selects the signed-in person for a fixture API request. */
@@ -166,5 +171,140 @@ export function readCallEvents(args: {
     toolCalls: [...toolCalls.values()],
     turns: [...turns.values()],
     visibleMessages,
+  };
+}
+
+function comparableText(text: string): string {
+  return text
+    .replace(/[*_~`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Use Slack thread posts as the replies of a Slack call. A post that matches
+ * a stored reply keeps the stored message id, so `fork()` can use it.
+ */
+export function slackCallReplies(args: {
+  conversationId: string;
+  durable: { replies: Reply[]; visibleMessages: VisibleMessage[] };
+  posts: SlackPost[];
+}): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
+  const unmatched = [...args.durable.replies];
+  const extra: VisibleMessage[] = [];
+  const replies = args.posts.map((post): Reply => {
+    const index = unmatched.findIndex(
+      (reply) => comparableText(reply.text) === comparableText(post.text),
+    );
+    const durable = index >= 0 ? unmatched.splice(index, 1)[0] : undefined;
+    if (!durable) extra.push({ content: post.text, role: "assistant" });
+    return {
+      conversationId: args.conversationId,
+      messageId: durable?.messageId ?? `slack:${post.ts}`,
+      text: post.text,
+    };
+  });
+  return {
+    replies,
+    visibleMessages: [...args.durable.visibleMessages, ...extra],
+  };
+}
+
+function toTranscriptEvents(
+  messages: VisibleMessage[],
+  toolCalls: ToolCall[],
+): TranscriptEvent[] {
+  return [
+    ...messages.map(
+      (message): TranscriptEvent => ({
+        type: "message",
+        role: message.role,
+        content: message.content,
+        ...(message.author
+          ? { metadata: { author_name: message.author } }
+          : undefined),
+      }),
+    ),
+    ...toolCalls.flatMap((toolCall): TranscriptEvent[] => {
+      const input = toJsonValue(toolCall.input);
+      const output = toJsonValue(toolCall.output) ?? null;
+      const call: TranscriptEvent = {
+        type: "tool_call",
+        id: toolCall.toolCallId,
+        name: toolCall.name,
+        ...(input && typeof input === "object" && !Array.isArray(input)
+          ? { arguments: input }
+          : undefined),
+      };
+      if (toolCall.status === "running") return [call];
+      return [
+        call,
+        {
+          type: "tool_result",
+          toolCallId: toolCall.toolCallId,
+          name: toolCall.name,
+          ...(toolCall.status === "error"
+            ? { error: { message: JSON.stringify(output) } }
+            : { content: output }),
+        },
+      ];
+    }),
+  ];
+}
+
+/** Model spend the fixture can see: agent cost and AI Gateway requests. */
+export interface FixtureUsage {
+  agentCostUsd: number;
+  gatewayRequests: Record<string, number>;
+}
+
+/** The vitest-evals run for one call. */
+export function toHarnessRun(args: {
+  conversationId: string;
+  usage: FixtureUsage;
+  messages: VisibleMessage[];
+  startedAtMs: number;
+  toolCalls: ToolCall[];
+}): HarnessRun {
+  return {
+    session: {
+      events: toTranscriptEvents(args.messages, args.toolCalls),
+      metadata: { conversation_ids: [args.conversationId] },
+    },
+    usage: {
+      toolCalls: args.toolCalls.length,
+      metadata: {
+        costUsd: args.usage.agentCostUsd,
+        gatewayRequests: args.usage.gatewayRequests,
+      },
+    },
+    timings: { totalMs: Date.now() - args.startedAtMs },
+    errors: [],
+  };
+}
+
+/** One vitest-evals run with every call of the test, for the eval report. */
+export function combinedRun(
+  calls: Array<{ conversationId: string; events: TranscriptEvent[] }>,
+  usage: FixtureUsage,
+  startedAtMs: number,
+): HarnessRun {
+  return {
+    session: {
+      events: calls.flatMap((entry) => entry.events),
+      metadata: {
+        conversation_ids: [
+          ...new Set(calls.map((entry) => entry.conversationId)),
+        ],
+      },
+    },
+    usage: {
+      metadata: {
+        costUsd: usage.agentCostUsd,
+        gatewayRequests: usage.gatewayRequests,
+      },
+    },
+    timings: { totalMs: Date.now() - startedAtMs },
+    errors: [],
   };
 }

@@ -13,12 +13,10 @@ import {
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
 const inFlightTitles = new Map<string, Promise<string | undefined>>();
-const inFlightProjections = new Map<string, Set<Promise<void>>>();
 
 /** Test-only: clear in-flight title work between cases. */
 export function resetConversationTitleStateForTests(): void {
   inFlightTitles.clear();
-  inFlightProjections.clear();
 }
 
 /**
@@ -139,43 +137,13 @@ export function scheduleConversationTitle(args: {
 }
 
 /**
- * Project the stored or in-flight title to a provider once it settles.
- * `settleConversationTitleWork` joins this work, so the queue worker owns it.
- */
-export function scheduleConversationTitleProjection(args: {
-  conversationId: string;
-  project: (title: string) => Promise<void>;
-}): void {
-  const projections =
-    inFlightProjections.get(args.conversationId) ?? new Set<Promise<void>>();
-  inFlightProjections.set(args.conversationId, projections);
-  const work = resolveConversationTitle({ conversationId: args.conversationId })
-    .then(async (title) => {
-      if (title) {
-        await args.project(title);
-      }
-    })
-    .catch((error) => {
-      logException(error, "conversation.title.task.failed");
-    })
-    .finally(() => {
-      projections.delete(work);
-      if (projections.size === 0) {
-        inFlightProjections.delete(args.conversationId);
-      }
-    });
-  projections.add(work);
-}
-
-/**
- * Wait for title generation and projections started for one Conversation.
- * The queue worker gives this to `waitUntil` so title work has an owner.
+ * Wait for title generation started for one Conversation. The queue worker
+ * gives this to `waitUntil` so title work has an owner.
  */
 export async function settleConversationTitleWork(
   conversationId: string,
 ): Promise<void> {
   await inFlightTitles.get(conversationId);
-  await Promise.all(inFlightProjections.get(conversationId) ?? []);
 }
 
 /**

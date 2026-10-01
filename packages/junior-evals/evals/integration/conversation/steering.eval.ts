@@ -7,8 +7,10 @@ import {
 import { rubric } from "../../../src/fixture/judge";
 import { test, type CallOptions } from "../../../src/fixture/test";
 
+// A plain reply keeps each turn to one model call. Routing is the behavior
+// under test, not the summary.
 const INCIDENT_REQUEST =
-  "start a short incident summary for the checkout outage: payments failed for 20 minutes after the 14:05 deploy.";
+  "In two sentences, summarize the checkout outage: payments failed for 20 minutes after the 14:05 deploy.";
 
 /** Send `inputs` while the first agent model request waits. */
 function sendDuringFirstModelRequest(

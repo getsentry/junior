@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import type { Conversation, ToolCall } from "../../../src/fixture/test";
-import { mention, threadMessage } from "../../../src/fixture/inputs";
+import { mention } from "../../../src/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
