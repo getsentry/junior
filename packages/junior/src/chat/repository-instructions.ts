@@ -143,18 +143,11 @@ async function readInstructionFile(
     const content = await fs.readFile(filePath, { encoding: "utf8" });
     return content.trim() ? content : undefined;
   } catch (error) {
-    if (isAbsentPathError(error)) {
+    if (isMissingPathError(error)) {
       return undefined;
     }
     throw error;
   }
-}
-
-function isAbsentPathError(error: unknown): boolean {
-  return (
-    isMissingPathError(error) ||
-    (error as { code?: unknown } | null)?.code === "ENOTDIR"
-  );
 }
 
 async function readOptionalDirectory(
@@ -164,7 +157,7 @@ async function readOptionalDirectory(
   try {
     return await fs.readdir(directory);
   } catch (error) {
-    if (isAbsentPathError(error)) {
+    if (isMissingPathError(error)) {
       return [];
     }
     throw error;
@@ -188,16 +181,18 @@ async function readRepositorySkills(
   listings.forEach((entries, index) => {
     for (const entry of [...entries].sort()) {
       if (!candidates.has(entry)) {
-        candidates.set(
-          entry,
-          path.posix.join(roots[index]!, entry, "SKILL.md"),
-        );
+        candidates.set(entry, path.posix.join(roots[index]!, entry));
       }
     }
   });
 
   const skills = await Promise.all(
-    [...candidates].map(async ([name, filePath]) => {
+    [...candidates].map(async ([name, skillDirectory]) => {
+      // Skill roots can also hold plain files, such as a README.
+      if (!(await directoryExists(fs, skillDirectory))) {
+        return undefined;
+      }
+      const filePath = path.posix.join(skillDirectory, "SKILL.md");
       const raw = await readInstructionFile(fs, filePath);
       const parsed = raw ? parseSkillFile(raw, name) : undefined;
       if (!parsed?.ok || parsed.skill.disableModelInvocation) {
