@@ -32,6 +32,8 @@ export function ConversationHeader(props: {
   archive: ConversationArchiveAction;
   brief?: ReactNode;
   conversationId: string;
+  /** Links to the fork source and to forks of this conversation. */
+  forks?: ReactNode;
   identity: ReactNode;
   linkedWork?: ReactNode;
   lastActivityAt?: string;
@@ -149,7 +151,10 @@ export function ConversationHeader(props: {
   );
 
   const showMobileHeader =
-    searchOpenVisible || props.archive.error || Boolean(props.linkedWork);
+    searchOpenVisible ||
+    props.archive.error ||
+    Boolean(props.linkedWork) ||
+    Boolean(props.forks);
 
   const liveIndicator = props.live ? (
     <span
@@ -183,6 +188,9 @@ export function ConversationHeader(props: {
                 {props.meta}
               </div>
             ) : null}
+            {props.forks ? (
+              <div className="mt-1.5 min-w-0">{props.forks}</div>
+            ) : null}
           </div>
           <ConversationHeaderActions
             archive={props.archive}
@@ -196,6 +204,9 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
+        {props.forks ? (
+          <div className="px-4 py-2 md:hidden">{props.forks}</div>
+        ) : null}
         {props.linkedWork ? (
           <div
             aria-label="Linked work"

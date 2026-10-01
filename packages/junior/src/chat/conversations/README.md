@@ -132,9 +132,8 @@ events through its pagination contract.
 
 ## Conversation Forks
 
-`forkConversation` creates a new web root Conversation from the agent history
-of a source Conversation. The copied history ends at one completed assistant
-reply. The reply must have a saved agent message (`message:<id>:agent`).
+`forkConversation` creates a new web root Conversation from a copy of a source
+Conversation. The copy ends at one completed assistant reply. The reply must have a saved agent message (`message:<id>:agent`).
 Fallback replies and unfinished tool calls cannot be a fork point.
 
 The fork uses the history version at the fork point. A later compaction in the
@@ -152,12 +151,19 @@ the source and fork links that the viewer can read. Detail reads also report
 `canFork`. It is false for child Conversations and for viewers who cannot read
 the content.
 
-Copied events use the `fork:history:` key prefix. Model usage reports skip
-these events. A note after the copied history tells the agent what was not
-copied. The fork does not start a Turn. The user sends the next message through
-the normal web composer.
+The fork copies the source event rows through the reply, so it shows the same
+Messages and event log. Copied rows keep their seq, history version, author,
+key, and time. Seq references in compactions and summaries stay valid. Updates
+of copied Messages and the end of copied Turns are copied too. Events with
+credentials, approvals, provider connections, Guardian reviews, or plugin state
+are not copied.
 
-A fork does not copy the Sandbox, files, attachments, Location, active work,
+A `fork:note` event follows the copied rows. It tells the agent what was not
+copied. Usage and cost reports skip the rows before it, so copied model calls
+count only in the source. The fork does not start a Turn. The dashboard sends
+the first message of the user to the fork with the normal message API.
+
+A fork does not copy the Sandbox, files, attachment files, Location, active work,
 pending messages, credentials, approvals, subagents, Watches, or Automations.
 The normal runtime creates a new Sandbox when the fork needs one.
 

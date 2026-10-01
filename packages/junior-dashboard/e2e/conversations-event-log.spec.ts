@@ -109,7 +109,7 @@ test("inspects all reporting events and searches full event data", async ({
     ),
   ).toBeVisible();
 
-  // Both views send the same retry-safe fork request.
+  // Both views fork and send the first message with retry-safe requests.
   const forkAction = page
     .getByRole("button", { name: "Fork after this message" })
     .last();
@@ -121,6 +121,9 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(
     forkDialog.getByText(/Sandbox files and active work are not copied/),
   ).toBeVisible();
+  await expect(
+    forkDialog.getByRole("button", { name: "Fork and send", exact: true }),
+  ).toBeDisabled();
   await screenshot(page, "conversation-fork-dialog");
   await forkDialog.getByRole("button", { name: "Close fork dialog" }).click();
   await page.getByRole("button", { name: "Event log", exact: true }).click();
@@ -136,7 +139,21 @@ test("inspects all reporting events and searches full event data", async ({
     .getByRole("button", { name: "Fork after this message" })
     .click();
   const requests: Array<{ messageId: string; idempotencyKey: string }> = [];
+  const messages: Array<{ message: string; idempotencyKey: string }> = [];
   const forkId = "local:web:fork-browser-test";
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(forkId)}/messages`,
+    async (route) => {
+      messages.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          conversationId: forkId,
+          messageId: "fork-first-message",
+          status: "accepted",
+        },
+      });
+    },
+  );
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}/forks`,
     async (route) => {
@@ -178,21 +195,32 @@ test("inspects all reporting events and searches full event data", async ({
       }),
   );
   await forkDialog
-    .getByRole("button", { name: "Create fork", exact: true })
-    .click();
+    .getByRole("textbox", { name: "Message" })
+    .fill("Try the other region.");
+  const forkAndSend = forkDialog.getByRole("button", {
+    name: "Fork and send",
+    exact: true,
+  });
+  await forkAndSend.click();
   await expect(forkDialog.getByRole("alert")).toHaveText(
     "Could not create the fork. Try again.",
   );
-  await forkDialog
-    .getByRole("button", { name: "Create fork", exact: true })
-    .click();
+  expect(messages).toHaveLength(0);
+  await forkAndSend.click();
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(forkId)));
   expect(requests).toHaveLength(2);
   expect(requests[0]).toEqual(requests[1]);
   expect(requests[0]?.messageId).toBe(reply.data.messageId);
+  expect(messages).toEqual([
+    {
+      idempotencyKey: requests[0]?.idempotencyKey,
+      message: "Try the other region.",
+    },
+  ]);
   await expect(
     page.getByRole("link", { name: "Forked from source conversation" }),
   ).toBeVisible();
+  await screenshot(page, "conversation-fork-links");
 });
 
 test("loads earlier events without merging tool starts and results", async ({

@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -15,13 +14,13 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationIsResponding } from "./transcript";
-import { conversationPath } from "./conversationRoutes";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationBrief } from "./ConversationBrief";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
@@ -137,28 +136,19 @@ export function ConversationPage(props: {
         scrollClassName="px-4 pb-4 md:px-7 md:pb-6"
         scroll={
           <section className="min-w-0">
-            {detail.data?.forkedFromConversationId ||
-            detail.data?.forks?.length ? (
-              <nav
-                aria-label="Conversation forks"
-                className="mb-3 flex flex-wrap gap-3 text-sm text-dashboard-text-muted"
-              >
-                {detail.data.forkedFromConversationId ? (
-                  <Link
-                    to={conversationPath(detail.data.forkedFromConversationId)}
-                  >
-                    Forked from source conversation
-                  </Link>
-                ) : null}
-                {detail.data.forks?.map((id, index) => (
-                  <Link key={id} to={conversationPath(id)}>
-                    Fork {index + 1}
-                  </Link>
-                ))}
-              </nav>
-            ) : null}
             <ConversationHeader
               conversationId={conversationId}
+              forks={
+                detail.data?.forkedFromConversationId ||
+                detail.data?.forks?.length ? (
+                  <ConversationForkLinks
+                    forkedFromConversationId={
+                      detail.data.forkedFromConversationId
+                    }
+                    forks={detail.data.forks}
+                  />
+                ) : null
+              }
               lastActivityAt={conversation?.lastSeenAt}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={

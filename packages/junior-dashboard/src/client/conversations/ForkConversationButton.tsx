@@ -2,15 +2,15 @@ import { GitFork } from "lucide-react";
 import { useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { forkConversationResponseSchema } from "@sentry/junior/api/schema";
 import { Button } from "../components/Button";
 import { Drawer } from "../components/Drawer";
-import { DashboardApiError, post } from "../http";
+import { Field } from "../components/Field";
+import { TextArea } from "../components/TextInput";
+import { DashboardApiError } from "../http";
 import { conversationPath } from "./conversationRoutes";
-import { TranscriptText } from "./TranscriptText";
+import { useForkConversation } from "./queries";
 
-type ForkTarget = { conversationId: string; messageId: string; text: string };
+type ForkTarget = { conversationId: string; messageId: string };
 
 /** Open the fork dialog for one assistant reply. */
 export function ForkConversationButton(props: ForkTarget) {
@@ -40,24 +40,23 @@ export function ForkConversationButton(props: ForkTarget) {
 
 function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
   const titleId = useId();
+  const inputId = useId();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [message, setMessage] = useState("");
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const fork = useMutation({
-    mutationFn: () =>
-      post(
-        forkConversationResponseSchema,
-        `/api/conversations/${encodeURIComponent(props.conversationId)}/forks`,
-        { messageId: props.messageId, idempotencyKey },
-      ),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
-      props.onClose();
-      navigate(conversationPath(result.conversationId));
-    },
-  });
+  const fork = useForkConversation(props.conversationId);
+  const submit = () => {
+    if (!message.trim() || fork.isPending) return;
+    fork.mutate(
+      { idempotencyKey, message, messageId: props.messageId },
+      {
+        onSuccess: (accepted) => {
+          props.onClose();
+          navigate(conversationPath(accepted.conversationId));
+        },
+      },
+    );
+  };
   return (
     <Drawer
       closeLabel="Close fork dialog"
@@ -74,28 +73,55 @@ function ForkConversationDialog(props: ForkTarget & { onClose(): void }) {
       }}
       width="narrow"
     >
-      <div className="grid gap-4 text-sm">
+      <form
+        className="grid gap-4 text-sm"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
         <p className="m-0">
-          Start a new conversation with the agent history through this reply.
-          The original conversation does not change.
+          Copy this conversation through this reply into a new conversation, and
+          continue there. The original conversation does not change. Sandbox
+          files and active work are not copied.
         </p>
-        <blockquote className="m-0 max-h-48 overflow-auto border-l-2 border-dashboard-border pl-3 text-dashboard-text-muted">
-          <TranscriptText role="assistant" text={props.text} />
-        </blockquote>
-        <p className="m-0">
-          Sandbox files and active work are not copied. The fork opens empty and
-          waits for your next message.
-        </p>
+        <Field htmlFor={inputId} label="Message">
+          <TextArea
+            id={inputId}
+            prose
+            autoFocus
+            className="min-h-28"
+            placeholder="What should Junior do differently?"
+            value={message}
+            disabled={fork.isPending}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              // Same keys as the composer: Enter sends, Shift+Enter adds a line.
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+        </Field>
         {fork.error ? (
           <p role="alert" className="m-0 text-red-300">
             {(fork.error instanceof DashboardApiError && fork.error.apiError) ||
               "Could not fork the conversation. Try again."}
           </p>
         ) : null}
-        <Button disabled={fork.isPending} onClick={() => fork.mutate()}>
-          {fork.isPending ? "Creating fork…" : "Create fork"}
+        <Button
+          tone="primary"
+          type="submit"
+          disabled={!message.trim() || fork.isPending}
+        >
+          {fork.isPending ? "Forking…" : "Fork and send"}
         </Button>
-      </div>
+      </form>
     </Drawer>
   );
 }

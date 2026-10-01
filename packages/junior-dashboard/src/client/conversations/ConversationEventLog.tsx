@@ -200,7 +200,6 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                   <ForkConversationButton
                     conversationId={conversation.conversationId}
                     messageId={selected.data.messageId}
-                    text={selected.data.text ?? ""}
                   />
                   <span>Fork after this reply</span>
                 </div>

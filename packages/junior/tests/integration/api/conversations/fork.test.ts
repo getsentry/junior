@@ -44,6 +44,16 @@ function forkRequest(messageId: string, idempotencyKey = "fork-1") {
   };
 }
 
+/** Messages and Turns, as the transcript and event log show them. */
+function visibleEvents(detail: { events: Array<{ data: unknown }> }) {
+  return detail.events.flatMap(({ data }) => {
+    const event = data as { type: string; role?: string; text?: string };
+    if (event.type === "message") return [`${event.role}: ${event.text}`];
+    if (event.type === "turn_lifecycle") return ["turn"];
+    return [];
+  });
+}
+
 describe("conversation forks", () => {
   afterEach(closeConversationFixture);
 
@@ -141,6 +151,14 @@ describe("conversation forks", () => {
       ).json(),
     );
     expect(sourceDetail.forks).toEqual([forkId]);
+    // The fork shows a copy of the source transcript and event log.
+    expect(visibleEvents(detail)).toEqual(visibleEvents(sourceDetail));
+    expect(visibleEvents(detail)).toEqual([
+      "user: Remember the blue option.",
+      "turn",
+      "assistant: First answer.",
+      "turn",
+    ]);
     harness.setModelStream(
       createModelStream([{ type: "text", text: "Independent answer." }]),
     );

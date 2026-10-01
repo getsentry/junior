@@ -1,6 +1,6 @@
 /** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
-import { FORK_HISTORY_KEY_PREFIX } from "@/chat/conversations/fork";
+import { notCopiedByFork } from "@/chat/conversations/fork";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
@@ -177,7 +177,7 @@ export async function readConversationModelUsageFromSql(
           : eq(juniorConversationEvents.conversationId, options.conversationId),
         eq(juniorConversationEvents.type, "assistant_message"),
         // Copied fork history is model context, not another model call.
-        sql`coalesce(${juniorConversationEvents.idempotencyKey}, '') not like ${`${FORK_HISTORY_KEY_PREFIX}%`}`,
+        notCopiedByFork(),
         sql`jsonb_typeof(${message}->'provider') = 'string'`,
         sql`jsonb_typeof(${message}->'model') = 'string'`,
         sql`coalesce(${message}->>'provider', '') <> ''`,

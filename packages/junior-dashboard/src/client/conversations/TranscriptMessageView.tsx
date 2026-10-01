@@ -47,7 +47,7 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          action={messageAction(props.message, props.conversation, rawText)}
+          action={messageAction(props.message, props.conversation)}
           message={props.message}
           conversation={props.conversation}
         />
@@ -115,7 +115,6 @@ export function RedactedMessageView(props: {
 function messageAction(
   message: TranscriptViewMessage,
   conversation: ConversationTranscript,
-  rawText: string,
 ): ReactNode {
   if (message.role === "user" && message.contexts?.length) {
     return <TranscriptTurnContextView contexts={message.contexts} />;
@@ -130,7 +129,6 @@ function messageAction(
       <ForkConversationButton
         conversationId={conversation.conversationId}
         messageId={message.messageId}
-        text={rawText}
       />
     );
   }

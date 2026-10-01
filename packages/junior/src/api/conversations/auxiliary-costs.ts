@@ -12,6 +12,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
+import { notCopiedByFork } from "@/chat/conversations/fork";
 
 const auxiliaryRootConversation = alias(
   juniorConversations,
@@ -108,6 +109,8 @@ export async function readConversationAuxiliaryCostsFromSql(
           ]),
         ),
         sql`${cost} >= 0`,
+        // A fork copies routing events, but their cost belongs to the source.
+        notCopiedByFork(),
       ),
     )
     .groupBy(conversationId, namespace, name)
