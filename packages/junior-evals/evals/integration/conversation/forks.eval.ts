@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { reply, webMessage } from "../../../src/fixture/inputs";
+import { mention, reply, webMessage } from "../../../src/fixture/inputs";
 import { rubric } from "../../../src/fixture/judge";
 import { test } from "../../../src/fixture/test";
 
@@ -91,5 +91,27 @@ describe("Conversation Forks", () => {
       },
     );
     expect(nestedTurn.replies).toHaveLength(1);
+  });
+
+  test("when a private Slack thread is forked, the fork continues from its reply", async ({
+    run,
+  }) => {
+    const source = await run(
+      mention(
+        "The release codename is Maple. Confirm it in one short sentence.",
+      ),
+    );
+    expect(source.replies).toHaveLength(1);
+
+    const fork = await source.fork(source.replies[0]!);
+    const next = await fork.continue(
+      webMessage("What is the release codename?"),
+      {
+        criteria: rubric({
+          pass: ["The reply says the release codename is Maple."],
+        }),
+      },
+    );
+    expect(next.replies).toHaveLength(1);
   });
 });

@@ -231,7 +231,7 @@ export async function createFixtureAgent(
       await expectAccepted(
         await api.request(
           path,
-          jsonRequest({
+          jsonRequest(record.viewerEmail, {
             idempotencyKey: started ? randomUUID() : record.idempotencyKey,
             message: input.text,
           }),
@@ -505,7 +505,10 @@ export async function createFixtureAgent(
     }
     const response = await api.request(
       `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
-      jsonRequest({ idempotencyKey: randomUUID(), messageId }),
+      jsonRequest(record.viewerEmail, {
+        idempotencyKey: randomUUID(),
+        messageId,
+      }),
     );
     if (response.status !== 200) {
       throw new Error(
@@ -513,10 +516,11 @@ export async function createFixtureAgent(
       );
     }
     const forked = forkConversationResponseSchema.parse(await response.json());
-    const forkRecord = newRecord({
-      conversationId: forked.conversationId,
-      surface: "web",
-    });
+    // The person who forked owns the fork.
+    const forkRecord = newRecord(
+      { conversationId: forked.conversationId, surface: "web" },
+      record.viewerEmail,
+    );
     forkRecord.started = true;
     const detail = await readConversationDetail(
       api,
@@ -569,10 +573,14 @@ export async function createFixtureAgent(
   return { run, close };
 }
 
-function jsonRequest(body: unknown): RequestInit {
+/** A JSON POST signed in as `viewerEmail`. */
+function jsonRequest(viewerEmail: string, body: unknown): RequestInit {
   return {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      [VIEWER_HEADER]: viewerEmail,
+    },
     body: JSON.stringify(body),
   };
 }
