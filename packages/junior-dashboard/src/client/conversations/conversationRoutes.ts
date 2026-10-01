@@ -10,3 +10,13 @@ export const NEW_CONVERSATION_PATH = "/";
 export function isNewConversationPath(pathname: string): boolean {
   return pathname === "/" || pathname === "/conversations/new";
 }
+
+/** Query param that opens one event log entry by its sequence number. */
+export const CONVERSATION_EVENT_PARAM = "event";
+
+/** Read a linked event sequence number. Ignore values that are not one. */
+export function parseConversationEventSeq(
+  value: string | null | undefined,
+): number | undefined {
+  return value && /^\d+$/.test(value) ? Number(value) : undefined;
+}
