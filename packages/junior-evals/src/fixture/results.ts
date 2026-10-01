@@ -67,9 +67,12 @@ export async function readConversationDetail(
   return conversationDetailReportSchema.parse(await response.json());
 }
 
+/** Sequence before a Conversation's first event. */
+export const BEFORE_FIRST_EVENT = -1;
+
 /** Return the last event sequence of a Conversation. */
 export function lastEventSeq(detail: ConversationDetail): number {
-  return detail.events.at(-1)?.seq ?? 0;
+  return detail.events.at(-1)?.seq ?? BEFORE_FIRST_EVENT;
 }
 
 function authorName(event: ReportEvent): string | undefined {

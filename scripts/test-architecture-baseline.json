@@ -37,7 +37,6 @@
     "packages/junior/tests/integration/agent-invocation-work.test.ts": 8,
     "packages/junior/tests/integration/annotation-cards.test.ts": 7,
     "packages/junior/tests/integration/api/conversations/cancel-pending-messages.test.ts": 2,
-    "packages/junior/tests/integration/api/conversations/fork.test.ts": 5,
     "packages/junior/tests/integration/conversation-turn-work.test.ts": 19,
     "packages/junior/tests/integration/durable-queue.test.ts": 8,
     "packages/junior/tests/integration/event-wake-delay.test.ts": 4,
@@ -54,7 +53,6 @@
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 11,
     "packages/junior/tests/integration/slack/bot-handlers.test.ts": 50,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 15,
-    "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 18,
     "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 24,
     "packages/junior/tests/integration/slack/message-content-behavior.test.ts": 28,
     "packages/junior/tests/integration/slack/message-im-attachment-contract.test.ts": 4,
@@ -132,7 +130,6 @@
     "packages/junior/tests/fixtures/model-stream.ts": 6,
     "packages/junior/tests/fixtures/title-model.ts": 1,
     "packages/junior/tests/fixtures/turn-router-model.ts": 1,
-    "packages/junior/tests/integration/api/conversations/fork.test.ts": 3,
     "packages/junior/tests/integration/durable-queue.test.ts": 3,
     "packages/junior/tests/integration/mcp-auth-orchestration.test.ts": 1,
     "packages/junior/tests/integration/oauth-resume-slack.test.ts": 2,
@@ -140,7 +137,6 @@
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 1,
     "packages/junior/tests/integration/slack/bot-handlers.test.ts": 4,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 7,
-    "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 4,
     "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 3,
     "packages/junior/tests/integration/slack/message-content-behavior.test.ts": 4,
     "packages/junior/tests/integration/slack/message-im-attachment-contract.test.ts": 3,
@@ -264,7 +260,7 @@
     "packages/junior/tests/integration/event-wake-delay.test.ts": 3,
     "packages/junior/tests/integration/slack/assistant-lifecycle-contract.test.ts": 2,
     "packages/junior/tests/integration/slack/assistant-thread-contract.test.ts": 2,
-    "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 2,
+    "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 1,
     "packages/junior/tests/integration/slack/message-im-attachment-contract.test.ts": 1
   }
 }

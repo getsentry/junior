@@ -94,7 +94,14 @@ export function installGatewayObserver(): GatewayObserver {
         return passthrough();
       }
       await hook({ type: "model_request" });
-      const response = await fetch(bypass(request));
+      let response: Response;
+      try {
+        response = await fetch(bypass(request));
+      } catch (error) {
+        // The agent aborted the request, for example after a stop.
+        if (request.signal.aborted) return Response.error();
+        throw error;
+      }
       const body = await response.text();
       if (response.ok) {
         for (const toolRequest of toolRequests(body)) {

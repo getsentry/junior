@@ -33,6 +33,7 @@ import {
 } from "./judge";
 import { createInProcessQueue } from "./queue";
 import {
+  BEFORE_FIRST_EVENT,
   lastEventSeq,
   readCallEvents,
   readConversationDetail,
@@ -48,6 +49,7 @@ import {
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
   type RequestApp,
+  type SlackPost,
 } from "./slack";
 
 /** Every call fails when the agent is not idle within this budget. */
@@ -110,6 +112,7 @@ type ConversationRecord = LoadedConversation & {
 };
 
 export interface FixtureAgent {
+  /** Stop new deliveries and wait for running work. */
   close(): Promise<void>;
   run: RunAgent;
 }
@@ -147,6 +150,13 @@ export async function createFixtureAgent(
     await next();
   });
   api.route("/", createJuniorApi({ conversationWorkQueue: queue }));
+
+  const close = async (): Promise<void> => {
+    queue.close();
+    while (queue.pending().length > 0 || background.size > 0) {
+      await Promise.allSettled([...queue.pending(), ...background]);
+    }
+  };
 
   const conversations = new Map<string, ConversationRecord>();
   const replyMessages = new WeakMap<HistoryReply, string>();
@@ -263,7 +273,12 @@ export async function createFixtureAgent(
     loaded: LoadedConversation,
     viewerEmail = WEB_VIEWER_EMAIL,
   ): ConversationRecord => {
-    const record = { ...loaded, lastSeq: 0, viewerEmail, visibleMessages: [] };
+    const record = {
+      ...loaded,
+      lastSeq: BEFORE_FIRST_EVENT,
+      viewerEmail,
+      visibleMessages: [],
+    };
     conversations.set(record.conversationId, record);
     return record;
   };
@@ -298,6 +313,7 @@ export async function createFixtureAgent(
     options: CallOptions,
   ): Promise<Conversation> => {
     const slackCallIndex = readCapturedSlackApiCalls().length;
+    const slackPostIndex = slack.posts().length;
     const progressActions = {
       send: async (input: Input) => await sendInput(record, input),
     };
@@ -313,6 +329,10 @@ export async function createFixtureAgent(
     try {
       await send();
       await waitForIdle();
+    } catch (error) {
+      // Work must not outlive the test and reach closed stores.
+      await close();
+      throw error;
     } finally {
       gateway.setProgressHook(undefined);
       slack.setReplyHook(undefined);
@@ -329,7 +349,24 @@ export async function createFixtureAgent(
     });
     const earlier = [...record.visibleMessages];
     record.lastSeq = events.lastSeq;
-    record.visibleMessages.push(...events.visibleMessages);
+    // Slack people see thread posts, including posts Junior does not store,
+    // such as the opt-out acknowledgement.
+    const { replies, visibleMessages } =
+      record.surface === "slack"
+        ? slackCallReplies({
+            durable: events,
+            posts: slack
+              .posts()
+              .slice(slackPostIndex)
+              .filter(
+                (post) =>
+                  post.channel === record.channelId &&
+                  post.threadTs === record.threadTs,
+              ),
+            conversationId: record.conversationId,
+          })
+        : { replies: events.replies, visibleMessages: events.visibleMessages };
+    record.visibleMessages.push(...visibleMessages);
     // Slack reactions are sets; ingress and the worker can add the same one.
     const reactions = [
       ...new Set(
@@ -348,7 +385,7 @@ export async function createFixtureAgent(
     const evalRun = toHarnessRun({
       conversationId: record.conversationId,
       gatewayRequests: gateway.requestCounts(),
-      messages: events.visibleMessages,
+      messages: visibleMessages,
       startedAtMs,
       toolCalls: events.toolCalls,
     });
@@ -363,7 +400,7 @@ export async function createFixtureAgent(
     if (options.criteria) {
       const judged = await judgeReplies({
         criteria: options.criteria,
-        current: events.visibleMessages,
+        current: visibleMessages,
         earlier,
         signal: context.signal,
       });
@@ -386,7 +423,7 @@ export async function createFixtureAgent(
     return conversationResult(record, {
       evalRun,
       reactions,
-      replies: events.replies,
+      replies,
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
@@ -464,7 +501,7 @@ export async function createFixtureAgent(
         );
         forkRecord.lastSeq = lastEventSeq(detail);
         forkRecord.visibleMessages = readCallEvents({
-          afterSeq: 0,
+          afterSeq: BEFORE_FIRST_EVENT,
           conversationId: forkRecord.conversationId,
           detail,
         }).visibleMessages;
@@ -550,12 +587,42 @@ export async function createFixtureAgent(
     );
   };
 
+  return { run, close };
+}
+
+function comparableText(text: string): string {
+  return text
+    .replace(/[*_~`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Use Slack thread posts as the replies of a Slack call. A post that matches
+ * a stored reply keeps the stored message id, so `fork()` can use it.
+ */
+function slackCallReplies(args: {
+  conversationId: string;
+  durable: { replies: Reply[]; visibleMessages: VisibleMessage[] };
+  posts: SlackPost[];
+}): { replies: Reply[]; visibleMessages: VisibleMessage[] } {
+  const unmatched = [...args.durable.replies];
+  const extra: VisibleMessage[] = [];
+  const replies = args.posts.map((post): Reply => {
+    const index = unmatched.findIndex(
+      (reply) => comparableText(reply.text) === comparableText(post.text),
+    );
+    const durable = index >= 0 ? unmatched.splice(index, 1)[0] : undefined;
+    if (!durable) extra.push({ content: post.text, role: "assistant" });
+    return {
+      conversationId: args.conversationId,
+      messageId: durable?.messageId ?? `slack:${post.ts}`,
+      text: post.text,
+    };
+  });
   return {
-    run,
-    async close() {
-      queue.close();
-      await Promise.allSettled([...queue.pending(), ...background]);
-    },
+    replies,
+    visibleMessages: [...args.durable.visibleMessages, ...extra],
   };
 }
 
