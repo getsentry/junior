@@ -1,0 +1,713 @@
+{
+  "files": [
+    {
+      "file": "automation-attention__desktop.png",
+      "image": "images/candidate/automation-attention__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-attention__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-attention__mobile.png",
+      "image": "images/candidate/automation-attention__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-attention__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor__desktop.png",
+      "image": "images/candidate/automation-editor__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor__mobile.png",
+      "image": "images/candidate/automation-editor__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor-conflict__desktop.png",
+      "image": "images/candidate/automation-editor-conflict__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor-conflict__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-editor-conflict__mobile.png",
+      "image": "images/candidate/automation-editor-conflict__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-editor-conflict__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-event-editor__desktop.png",
+      "image": "images/candidate/automation-event-editor__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-event-editor__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-event-editor__mobile.png",
+      "image": "images/candidate/automation-event-editor__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-event-editor__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-executions__desktop.png",
+      "height": 1098,
+      "image": "images/diff/automation-executions__desktop.png",
+      "images": {
+        "baseline": "images/baseline/automation-executions__desktop.png",
+        "candidate": "images/candidate/automation-executions__desktop.png",
+        "diff": "images/diff/automation-executions__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "automation-executions__mobile.png",
+      "height": 1146,
+      "image": "images/diff/automation-executions__mobile.png",
+      "images": {
+        "baseline": "images/baseline/automation-executions__mobile.png",
+        "candidate": "images/candidate/automation-executions__mobile.png",
+        "diff": "images/diff/automation-executions__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "automation-paused__desktop.png",
+      "image": "images/candidate/automation-paused__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-paused__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-paused__mobile.png",
+      "image": "images/candidate/automation-paused__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-paused__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-settings-readonly__desktop.png",
+      "image": "images/candidate/automation-settings-readonly__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automation-settings-readonly__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automation-settings-readonly__mobile.png",
+      "image": "images/candidate/automation-settings-readonly__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automation-settings-readonly__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations__desktop.png",
+      "image": "images/candidate/automations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations__mobile.png",
+      "image": "images/candidate/automations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automations__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations-list__desktop.png",
+      "image": "images/candidate/automations-list__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automations-list__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations-list__mobile.png",
+      "image": "images/candidate/automations-list__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automations-list__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations-runs__desktop.png",
+      "image": "images/candidate/automations-runs__desktop.png",
+      "images": {
+        "candidate": "images/candidate/automations-runs__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "automations-runs__mobile.png",
+      "image": "images/candidate/automations-runs__mobile.png",
+      "images": {
+        "candidate": "images/candidate/automations-runs__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "code__desktop.png",
+      "image": "images/candidate/code__desktop.png",
+      "images": {
+        "candidate": "images/candidate/code__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "code__mobile.png",
+      "image": "images/candidate/code__mobile.png",
+      "images": {
+        "candidate": "images/candidate/code__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "code-repository__desktop.png",
+      "image": "images/candidate/code-repository__desktop.png",
+      "images": {
+        "candidate": "images/candidate/code-repository__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "code-repository__mobile.png",
+      "image": "images/candidate/code-repository__mobile.png",
+      "images": {
+        "candidate": "images/candidate/code-repository__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment__desktop.png",
+      "image": "images/candidate/conversation-attachment__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment__mobile.png",
+      "image": "images/candidate/conversation-attachment__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-modal__desktop.png",
+      "image": "images/candidate/conversation-attachment-modal__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-modal__mobile.png",
+      "image": "images/candidate/conversation-attachment-modal__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "image": "images/candidate/conversation-create-focused__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-create-focused__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "image": "images/candidate/conversation-create-focused__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-create-focused__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "image": "images/candidate/conversation-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "image": "images/candidate/conversation-detail__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "image": "images/candidate/conversation-detail-focused__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail-focused__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-event-details__desktop.png",
+      "image": "images/candidate/conversation-event-details__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-event-details__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-event-details__mobile.png",
+      "image": "images/candidate/conversation-event-details__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-event-details__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-event-log__desktop.png",
+      "image": "images/candidate/conversation-event-log__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-event-log__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-event-log__mobile.png",
+      "image": "images/candidate/conversation-event-log__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-event-log__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-fork-dialog__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-fork-dialog__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-fork-dialog__desktop.png",
+        "candidate": "images/candidate/conversation-fork-dialog__desktop.png",
+        "diff": "images/diff/conversation-fork-dialog__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-fork-dialog__mobile.png",
+      "image": "images/candidate/conversation-fork-dialog__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-fork-dialog__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-fork-links__desktop.png",
+      "image": "images/candidate/conversation-fork-links__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-fork-links__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-fork-links__mobile.png",
+      "image": "images/candidate/conversation-fork-links__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-fork-links__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-image-draft__desktop.png",
+      "image": "images/candidate/conversation-image-draft__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-image-draft__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-image-draft__mobile.png",
+      "image": "images/candidate/conversation-image-draft__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-image-draft__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-image-reply__desktop.png",
+      "image": "images/candidate/conversation-image-reply__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-image-reply__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-image-reply__mobile.png",
+      "image": "images/candidate/conversation-image-reply__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-image-reply__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-outbox-author__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-outbox-author__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-outbox-author__desktop.png",
+        "candidate": "images/candidate/conversation-outbox-author__desktop.png",
+        "diff": "images/diff/conversation-outbox-author__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-outbox-author__mobile.png",
+      "image": "images/candidate/conversation-outbox-author__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-outbox-author__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-share-details__desktop.png",
+      "image": "images/candidate/conversation-share-details__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-share-details__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-share-details__mobile.png",
+      "image": "images/candidate/conversation-share-details__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-share-details__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-share-menu__mobile.png",
+      "image": "images/candidate/conversation-share-menu__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-share-menu__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "image": "images/candidate/conversations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "image": "images/candidate/conversations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversations__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "image": "images/candidate/gallery-charts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-charts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-foundations__desktop.png",
+      "image": "images/candidate/gallery-foundations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-foundations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "image": "images/candidate/gallery-index__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-index__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "image": "images/candidate/gallery-transcripts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-transcripts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "location-detail__desktop.png",
+      "image": "images/candidate/location-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/location-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "location-detail__mobile.png",
+      "image": "images/candidate/location-detail__mobile.png",
+      "images": {
+        "candidate": "images/candidate/location-detail__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "locations__desktop.png",
+      "image": "images/candidate/locations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/locations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "locations__mobile.png",
+      "image": "images/candidate/locations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/locations__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories__desktop.png",
+      "image": "images/candidate/memories__desktop.png",
+      "images": {
+        "candidate": "images/candidate/memories__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories__mobile.png",
+      "image": "images/candidate/memories__mobile.png",
+      "images": {
+        "candidate": "images/candidate/memories__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories-library__desktop.png",
+      "image": "images/candidate/memories-library__desktop.png",
+      "images": {
+        "candidate": "images/candidate/memories-library__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories-library__mobile.png",
+      "image": "images/candidate/memories-library__mobile.png",
+      "images": {
+        "candidate": "images/candidate/memories-library__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "people__desktop.png",
+      "image": "images/candidate/people__desktop.png",
+      "images": {
+        "candidate": "images/candidate/people__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "people__mobile.png",
+      "image": "images/candidate/people__mobile.png",
+      "images": {
+        "candidate": "images/candidate/people__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "image": "images/candidate/person-profile__desktop.png",
+      "images": {
+        "candidate": "images/candidate/person-profile__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "image": "images/candidate/person-profile__mobile.png",
+      "images": {
+        "candidate": "images/candidate/person-profile__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "settings__desktop.png",
+      "image": "images/candidate/settings__desktop.png",
+      "images": {
+        "candidate": "images/candidate/settings__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "settings-api-tokens__desktop.png",
+      "image": "images/candidate/settings-api-tokens__desktop.png",
+      "images": {
+        "candidate": "images/candidate/settings-api-tokens__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "system-cache-missing__desktop.png",
+      "height": 2029,
+      "image": "images/diff/system-cache-missing__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-missing__desktop.png",
+        "candidate": "images/candidate/system-cache-missing__desktop.png",
+        "diff": "images/diff/system-cache-missing__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-cache-share__desktop.png",
+      "height": 1726,
+      "image": "images/diff/system-cache-share__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-share__desktop.png",
+        "candidate": "images/candidate/system-cache-share__desktop.png",
+        "diff": "images/diff/system-cache-share__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-cache-share__mobile.png",
+      "height": 2564,
+      "image": "images/diff/system-cache-share__mobile.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-share__mobile.png",
+        "candidate": "images/candidate/system-cache-share__mobile.png",
+        "diff": "images/diff/system-cache-share__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "system-cache-tokens__desktop.png",
+      "height": 1726,
+      "image": "images/diff/system-cache-tokens__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-cache-tokens__desktop.png",
+        "candidate": "images/candidate/system-cache-tokens__desktop.png",
+        "diff": "images/diff/system-cache-tokens__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-plugin-github__desktop.png",
+      "height": 900,
+      "image": "images/diff/system-plugin-github__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-plugin-github__desktop.png",
+        "candidate": "images/candidate/system-plugin-github__desktop.png",
+        "diff": "images/diff/system-plugin-github__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "system-plugins__desktop.png",
+      "height": 900,
+      "image": "images/diff/system-plugins__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system-plugins__desktop.png",
+        "candidate": "images/candidate/system-plugins__desktop.png",
+        "diff": "images/diff/system-plugins__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspace-create__desktop.png",
+      "image": "images/candidate/workspace-create__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspace-create__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-create__mobile.png",
+      "image": "images/candidate/workspace-create__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspace-create__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "image": "images/candidate/workspace-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspace-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "image": "images/candidate/workspace-detail__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspace-detail__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspaces__desktop.png",
+      "image": "images/candidate/workspaces__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspaces__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "image": "images/candidate/workspaces__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspaces__mobile.png"
+      },
+      "status": "unchanged"
+    }
+  ],
+  "metadata": {
+    "pullRequest": {
+      "number": 1999,
+      "title": "feat(sandbox): List repository skills with AGENTS.md instructions"
+    }
+  },
+  "summary": {
+    "added": 0,
+    "changed": 10,
+    "removed": 0,
+    "unchanged": 72
+  },
+  "version": 2
+}
