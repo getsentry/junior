@@ -24,7 +24,7 @@ async function createRuntime(
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "",
-    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
     ...env,
   };
@@ -251,7 +251,7 @@ describe("bot image hydration", () => {
     );
   });
 
-  it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
+  it("does not hydrate thread images when AI_VISION_MODEL is explicitly empty", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {

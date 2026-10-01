@@ -1,13 +1,33 @@
+import {
+  readAutomationEventCatalog,
+  previewAutomationSchedule,
+} from "@/chat/automations/editor";
+import { AutomationConflictError } from "@/chat/automations/revision";
+import { zValidator } from "@hono/zod-validator";
+import {
+  changeViewerAutomationLifecycle,
+  readViewerAutomationEdit,
+  updateViewerAutomation,
+} from "@/chat/automations/edit";
+import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { Hono } from "hono";
 import { emptyResponse, jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
+  automationLifecycleSchema,
+  automationEventCatalogSchema,
+  automationScheduleIntentSchema,
+  automationSchedulePreviewSchema,
+  automationEditSchema,
+  automationEditErrorSchema,
+  automationUpdateSchema,
   automationExecutionListSchema,
   automationListQuerySchema,
   automationListSchema,
   automationParamsSchema,
   automationRunListSchema,
+  automationSummarySchema,
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
@@ -16,8 +36,41 @@ import {
   readViewerAutomationExecutions,
   readViewerAutomationRuns,
   readViewerAutomations,
+  readViewerAutomationSummary,
   ViewerTaskNotFoundError,
 } from "@/chat/automations/read";
+
+/** Translate expected edit failures; unexpected failures stay at the API boundary. */
+function editErrorResponse(error: unknown): Response {
+  if (error instanceof ViewerTaskNotFoundError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      { error: "Automation was not found.", code: "not_found" },
+      { status: 404 },
+    );
+  }
+  if (error instanceof AutomationConflictError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      { error: error.message, code: "conflict" },
+      { status: 409 },
+    );
+  }
+  if (error instanceof AutomationEditError) {
+    return jsonResponse(
+      automationEditErrorSchema,
+      {
+        error: error.message,
+        code: "invalid_edit",
+        ...(error.field
+          ? { fields: { [error.field]: [error.message] } }
+          : undefined),
+      },
+      { status: 400 },
+    );
+  }
+  throw error;
+}
 
 /** Create authenticated native task list and action routes. */
 export function createAutomationRoutes(): Hono<JuniorApiEnv> {
@@ -37,6 +90,35 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         automationListSchema,
         await readViewerAutomations(user, query),
       );
+    },
+  );
+  app.get("/event-catalog", requireViewer, () => {
+    return jsonResponse(
+      automationEventCatalogSchema,
+      readAutomationEventCatalog(),
+    );
+  });
+  app.post(
+    "/scheduled/:id/preview",
+    requireViewer,
+    validateRequest(
+      "json",
+      automationScheduleIntentSchema,
+      "Invalid schedule.",
+    ),
+    async (context) => {
+      try {
+        return jsonResponse(
+          automationSchedulePreviewSchema,
+          await previewAutomationSchedule(
+            context.get("viewer"),
+            context.req.param("id"),
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
     },
   );
   app.get("/runs", requireViewer, async (context) => {
@@ -70,6 +152,97 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
       }
     },
   );
+  app.get(
+    "/:kind/:id/edit",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await readViewerAutomationEdit(context.get("viewer"), kind, id),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.post(
+    "/:kind/:id/lifecycle",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    validateRequest(
+      "json",
+      automationLifecycleSchema,
+      "Invalid lifecycle action.",
+    ),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await changeViewerAutomationLifecycle(
+            context.get("viewer"),
+            kind,
+            id,
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.patch(
+    "/:kind/:id",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    zValidator("json", automationUpdateSchema, (result) => {
+      if (!result.success) {
+        const fields: Record<string, string[]> = {};
+        for (const issue of result.error.issues) {
+          const field = issue.path.join(".") || "save";
+          (fields[field] ??= []).push(issue.message);
+        }
+        return jsonResponse(
+          automationEditErrorSchema,
+          { error: "Invalid Automation edit.", code: "invalid_edit", fields },
+          { status: 400 },
+        );
+      }
+    }),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      const input = context.req.valid("json");
+      try {
+        if (input.kind !== kind)
+          throw new AutomationEditError(
+            "The trigger type cannot change.",
+            "kind",
+          );
+        return jsonResponse(
+          automationEditSchema,
+          await updateViewerAutomation(context.get("viewer"), id, input),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.get("/:id", requireViewer, async (context) => {
+    const automation = await readViewerAutomationSummary(
+      context.get("viewer"),
+      context.req.param("id"),
+    );
+    return automation
+      ? jsonResponse(automationSummarySchema, automation)
+      : jsonResponse(
+          apiErrorSchema,
+          { error: "Automation was not found." },
+          { status: 404 },
+        );
+  });
   app.delete(
     "/:kind/:id",
     requireViewer,

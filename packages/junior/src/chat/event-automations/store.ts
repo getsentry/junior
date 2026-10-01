@@ -1,3 +1,4 @@
+import { requireAutomationRevision } from "@/chat/automations/revision";
 import {
   eventMatches,
   slackDestinationSchema,
@@ -8,7 +9,6 @@ import {
 import { z } from "zod";
 import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorDestinations } from "@/db/schema/destinations";
 import {
   juniorEventAutomations,
   type EventAutomationStatus,
@@ -44,7 +44,10 @@ function eventAutomationJsonPayload(
   return payload;
 }
 
-function parseTask(row: EventAutomationRow): StoredEventAutomation {
+/** Decode a retained event Automation with its SQL-backed fields. */
+export function parseEventAutomationRow(
+  row: EventAutomationRow,
+): StoredEventAutomation {
   const raw =
     row.task && typeof row.task === "object"
       ? ({ ...(row.task as Record<string, unknown>) } as Record<
@@ -78,7 +81,7 @@ function parseTask(row: EventAutomationRow): StoredEventAutomation {
       const { threadTs: _threadTs, ...destination } = outcome.destination;
       return { ...outcome, destination };
     }),
-    status: row.status === "deleted" ? "deleted" : "active",
+    status: row.status ?? "active",
     ...(title ? { title } : undefined),
   };
 }
@@ -101,7 +104,7 @@ export async function getEventAutomation(
     .from(juniorEventAutomations)
     .where(eq(juniorEventAutomations.id, id))
     .limit(1);
-  return rows[0] ? parseTask(rows[0]) : undefined;
+  return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
 /** Create one retry-stable event automation, or revive a deleted row with the new payload. */
@@ -158,7 +161,7 @@ export async function createEventAutomation(
       title: juniorEventAutomations.title,
     });
   return rows[0]
-    ? parseTask(rows[0])
+    ? parseEventAutomationRow(rows[0])
     : ((await getEventAutomation(db, parsed.id)) ?? {
         ...parsed,
         status: "active",
@@ -170,7 +173,22 @@ export async function createEventAutomation(
 export async function saveEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
+  expectedRevision?: string,
 ): Promise<StoredEventAutomation | undefined> {
+  if (expectedRevision !== undefined) {
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(juniorEventAutomations)
+        .where(eq(juniorEventAutomations.id, task.id))
+        .for("update");
+      requireAutomationRevision(
+        rows[0] ? parseEventAutomationRow(rows[0]) : undefined,
+        expectedRevision,
+      );
+      return saveEventAutomation(tx, task);
+    });
+  }
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
   const rows = await db
@@ -192,7 +210,7 @@ export async function saveEventAutomation(
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
     });
-  return rows[0] ? parseTask(rows[0]) : undefined;
+  return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
 /** Mark one existing event automation deleted while retaining the row for history. */
@@ -209,7 +227,7 @@ export async function deleteEventAutomation(
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
     });
-  return rows[0] ? parseTask(rows[0]) : undefined;
+  return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
 /** List live event automations in one Slack workspace. */
@@ -234,7 +252,7 @@ export async function listEventAutomationsForTeam(
       asc(juniorEventAutomations.createdAtMs),
       asc(juniorEventAutomations.id),
     );
-  return rows.map(parseTask);
+  return rows.map(parseEventAutomationRow);
 }
 
 function viewerSlackIdentities(user: User) {
@@ -256,47 +274,6 @@ export function eventAutomationBelongsToUser(
       identity.providerTenantId === task.destination.teamId &&
       identity.providerSubjectId === task.createdBy.slackUserId,
   );
-}
-
-/** List a bounded newest-first page of live event automations created by one user. */
-export async function listEventAutomationsCreatedBy(
-  db: JuniorDatabase,
-  user: User,
-  limit: number,
-  query?: string,
-): Promise<StoredEventAutomation[]> {
-  const identities = viewerSlackIdentities(user);
-  const ownership = or(
-    ...identities.map((identity) =>
-      and(
-        eq(juniorEventAutomations.teamId, identity.providerTenantId!),
-        sql`${juniorEventAutomations.task}->'createdBy'->>'slackUserId' = ${identity.providerSubjectId}`,
-      ),
-    ),
-  );
-  if (!ownership) return [];
-  const rows = await db
-    .select({
-      status: juniorEventAutomations.status,
-      task: juniorEventAutomations.task,
-      title: juniorEventAutomations.title,
-    })
-    .from(juniorEventAutomations)
-    .where(
-      and(
-        ownership,
-        activeEventAutomationWhere(),
-        query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorEventAutomations.title}, ${juniorEventAutomations.task}->'task'->>'text')), ${query}) > 0`
-          : undefined,
-      ),
-    )
-    .orderBy(
-      desc(juniorEventAutomations.createdAtMs),
-      desc(juniorEventAutomations.id),
-    )
-    .limit(limit);
-  return rows.map(parseTask);
 }
 
 /**
@@ -331,48 +308,7 @@ export async function listDeletedEventAutomationsCreatedBy(
       desc(juniorEventAutomations.id),
     )
     .limit(limit);
-  return rows.map(parseTask);
-}
-
-/** List live event automations whose current Slack destination is public. */
-export async function listPublicEventAutomationsForTeams(
-  db: JuniorDatabase,
-  teamIds: string[],
-  limit: number,
-  query?: string,
-): Promise<StoredEventAutomation[]> {
-  if (teamIds.length === 0) return [];
-  const rows = await db
-    .select({
-      status: juniorEventAutomations.status,
-      task: juniorEventAutomations.task,
-      title: juniorEventAutomations.title,
-    })
-    .from(juniorEventAutomations)
-    .innerJoin(
-      juniorDestinations,
-      and(
-        eq(juniorDestinations.provider, "slack"),
-        eq(juniorDestinations.providerTenantId, juniorEventAutomations.teamId),
-        sql`${juniorDestinations.providerDestinationId} = ${juniorEventAutomations.task}->'destination'->>'channelId'`,
-      ),
-    )
-    .where(
-      and(
-        inArray(juniorEventAutomations.teamId, teamIds),
-        activeEventAutomationWhere(),
-        query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorEventAutomations.title}, ${juniorEventAutomations.task}->'task'->>'text')), ${query}) > 0`
-          : undefined,
-        eq(juniorDestinations.visibility, "public"),
-      ),
-    )
-    .orderBy(
-      desc(juniorEventAutomations.createdAtMs),
-      desc(juniorEventAutomations.id),
-    )
-    .limit(limit);
-  return rows.map(parseTask);
+  return rows.map(parseEventAutomationRow);
 }
 
 /**
@@ -407,7 +343,7 @@ export async function collectEventAutomationMatchKeys(
         eq(juniorEventAutomations.teamId, input.teamId),
         eq(juniorEventAutomations.namespace, input.namespace),
         inArray(juniorEventAutomations.identifier, identifiers),
-        activeEventAutomationWhere(),
+        eq(juniorEventAutomations.status, "active"),
       ),
     )
     .orderBy(
@@ -416,7 +352,7 @@ export async function collectEventAutomationMatchKeys(
     );
   const keys = new Set<string>();
   for (const row of rows) {
-    const task = parseTask(row);
+    const task = parseEventAutomationRow(row);
     if (!task.trigger.events.some((eventType) => eventTypes.has(eventType))) {
       continue;
     }
@@ -445,7 +381,7 @@ export async function findMatchingEventAutomations(
         eq(juniorEventAutomations.teamId, teamId),
         eq(juniorEventAutomations.namespace, event.namespace),
         eq(juniorEventAutomations.identifier, event.identifier),
-        activeEventAutomationWhere(),
+        eq(juniorEventAutomations.status, "active"),
       ),
     )
     .orderBy(
@@ -453,10 +389,35 @@ export async function findMatchingEventAutomations(
       asc(juniorEventAutomations.id),
     );
   return rows
-    .map(parseTask)
+    .map(parseEventAutomationRow)
     .filter(
       (task) =>
         task.trigger.events.includes(event.eventType) &&
         eventMatches(task.trigger.match, event.data),
     );
+}
+
+/** Change lifecycle under the same row lock as edits, without changing credentials. */
+export async function setEventAutomationStatus(
+  db: JuniorDatabase,
+  id: string,
+  status: "active" | "paused",
+  revision: string,
+): Promise<StoredEventAutomation> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(juniorEventAutomations)
+      .where(eq(juniorEventAutomations.id, id))
+      .for("update");
+    const current = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    requireAutomationRevision(current, revision);
+    if (!current || current.status === "deleted")
+      throw new Error("Automation no longer exists.");
+    await tx
+      .update(juniorEventAutomations)
+      .set({ status })
+      .where(eq(juniorEventAutomations.id, id));
+    return { ...current, status };
+  });
 }

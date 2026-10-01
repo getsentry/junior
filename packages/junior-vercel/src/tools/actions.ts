@@ -3,6 +3,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
   type ToolRegistrationHookContext,
+  type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -66,6 +67,25 @@ function deploymentResult(data: unknown) {
     projectId: value.projectId ?? null,
     commitSha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
+    objectAnnotations: [
+      {
+        kind: "object",
+        objectType: "deployment",
+        displayType: "Deployment",
+        key: value.id,
+        label: value.id,
+        title: value.url.slice(0, 512),
+        url: `https://${value.url}`,
+        status: value.readyState,
+        facts: {
+          type: "deployment",
+          project: value.projectId?.slice(0, 64),
+          environment: value.target?.slice(0, 64) ?? undefined,
+          revision: value.gitSource?.sha?.slice(0, 64),
+          branch: value.gitSource?.ref?.slice(0, 64),
+        },
+      } satisfies ObjectAnnotation,
+    ],
   };
 }
 
@@ -123,7 +143,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
     };
   }
   return {
-    deployment_create: definePluginTool({
+    deploymentCreate: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -200,7 +220,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         );
       },
     }),
-    deployment_inspect: definePluginTool({
+    deploymentInspect: definePluginTool({
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -228,7 +248,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         );
       },
     }),
-    alias_assign: definePluginTool({
+    aliasAssign: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: true,
@@ -255,7 +275,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         };
       },
     }),
-    alias_inspect: definePluginTool({
+    aliasInspect: definePluginTool({
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
@@ -269,7 +289,7 @@ export function createVercelActionTools(ctx: ToolRegistrationHookContext) {
         return inspectAlias(input.alias, input.team);
       },
     }),
-    deployment_delete: definePluginTool({
+    deploymentDelete: definePluginTool({
       annotations: {
         destructiveHint: true,
         idempotentHint: true,

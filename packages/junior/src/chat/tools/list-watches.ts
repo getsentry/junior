@@ -16,6 +16,7 @@ const listedResourceWatchSchema = z
     match: z.record(z.string(), z.unknown()).optional(),
     intent: z.string().min(1),
     expiresAtMs: z.number().finite(),
+    firesAtMs: z.number().finite().optional(),
   })
   .strict();
 
@@ -54,6 +55,7 @@ export function createListWatchesTool(context: ToolRuntimeContext) {
           ...(subscription.match ? { match: subscription.match } : undefined),
           intent: subscription.intent,
           expiresAtMs: subscription.expiresAtMs,
+          firesAtMs: subscription.firesAtMs,
         })),
       };
       return {

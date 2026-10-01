@@ -4,7 +4,7 @@ import { Link, type LinkProps } from "react-router";
 import { cn } from "../styles";
 
 type ButtonSize = "default" | "icon";
-type ButtonTone = "default" | "danger";
+type ButtonTone = "default" | "danger" | "primary";
 type ToggleButtonVariant = "pill" | "segment" | "text";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -44,15 +44,17 @@ export function Button({
                 ? "text-dashboard-text-muted hover:!bg-rose-300/10 hover:!text-rose-300 focus-visible:outline-rose-300/55 disabled:hover:!text-dashboard-text-muted"
                 : "text-dashboard-text-muted hover:!bg-dashboard-fill-strong hover:!text-dashboard-text focus-visible:outline-cyan-300/55 disabled:hover:!text-dashboard-text-muted",
             )
-          : isDanger
-            ? cn(
-                dangerButtonClassName,
-                "disabled:hover:border-dashboard-border-strong disabled:hover:text-dashboard-text-muted",
-              )
-            : cn(
-                buttonClassName,
-                "disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
-              ),
+          : tone === "primary"
+            ? "inline-flex h-9 items-center justify-center gap-2 rounded border border-dashboard-text-solid bg-dashboard-text-solid px-3 font-sans text-sm font-semibold text-dashboard-text-inverse hover:bg-dashboard-text-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+            : isDanger
+              ? cn(
+                  dangerButtonClassName,
+                  "disabled:hover:border-dashboard-border-strong disabled:hover:text-dashboard-text-muted",
+                )
+              : cn(
+                  buttonClassName,
+                  "disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+                ),
         props.disabled ? "" : "cursor-pointer",
         className,
       )}

@@ -83,18 +83,25 @@ describe("resolveGatewayModel", () => {
     vi.resetModules();
   });
 
-  it("loads a Junior-owned model before pi-ai publishes it", async () => {
-    const { resolveGatewayModel } = await import("@/chat/pi/client");
+  it.each([
+    ["openai/gpt-6-astra", 1_050_000],
+    ["openai/gpt-6-luna", 1_050_000],
+    ["anthropic/claude-opus-5.5", 1_000_000],
+  ] as const)(
+    "loads %s before pi-ai publishes it",
+    async (modelId, contextWindow) => {
+      const { resolveGatewayModel } = await import("@/chat/pi/client");
 
-    expect(resolveGatewayModel("openai/gpt-6-astra")).toEqual(
-      expect.objectContaining({
-        id: "openai/gpt-6-astra",
-        provider: "vercel-ai-gateway",
-        contextWindow: 1_050_000,
-        maxTokens: 128_000,
-      }),
-    );
-  });
+      expect(resolveGatewayModel(modelId)).toEqual(
+        expect.objectContaining({
+          id: modelId,
+          provider: "vercel-ai-gateway",
+          contextWindow,
+          maxTokens: 128_000,
+        }),
+      );
+    },
+  );
 });
 
 describe("completeText", () => {
@@ -126,6 +133,7 @@ describe("completeText", () => {
       system: "Be concise.",
       messages: [{ role: "user", content: "hi", timestamp: 1 }] as any,
       thinkingLevel: "low",
+      cacheRetention: "none",
       messageAttributeMode: "content",
     });
 
@@ -134,7 +142,7 @@ describe("completeText", () => {
     expect(mocks.completeSimple).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ apiKey: "oidc-token" }),
+      expect.objectContaining({ apiKey: "oidc-token", cacheRetention: "none" }),
     );
 
     const [name, op, context, _callback, attributes] = mocks.withSpan.mock

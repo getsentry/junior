@@ -1,3 +1,4 @@
+import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
@@ -24,6 +25,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 import { readConversationParticipants } from "./participants";
+import { readConversationForks } from "./fork";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -34,6 +36,7 @@ function projectConversationDetail(args: {
   conversation: Conversation;
   durationMs: number;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
+  sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
@@ -66,6 +69,7 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
+    sidebarAnnotations: canExposePayload ? args.sidebarAnnotations : undefined,
     ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
     ...(canExposePayload && args.participants.length > 0
@@ -146,6 +150,14 @@ async function readConversationDetailFromSql(
     ),
   ]);
   const access = accessByConversation.get(conversationId);
+  const sidebarAnnotations = access?.canViewPrivateContent
+    ? (
+        await listConversationSidebarAnnotations(
+          [conversationId],
+          new Map([[conversationId, annotations]]),
+        )
+      )[conversationId]
+    : undefined;
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
       ? await readConversationEventPage(executor, {
@@ -160,6 +172,7 @@ async function readConversationDetailFromSql(
     access,
     ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
     annotations,
+    sidebarAnnotations,
     auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
     ...(briefVersion
       ? {
@@ -195,5 +208,7 @@ export async function readConversationDetail(
     ...options,
     limit: options.limit ?? 500,
   });
-  return report ? conversationDetailReportSchema.parse(report) : undefined;
+  if (!report) return undefined;
+  const forks = await readConversationForks(conversationId, options.viewer);
+  return conversationDetailReportSchema.parse({ ...report, ...forks });
 }

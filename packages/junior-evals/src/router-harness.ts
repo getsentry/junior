@@ -10,29 +10,21 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import { completeObject } from "@/chat/pi/client";
-import type { ModelProfileConfig } from "@/chat/model-profile";
+import {
+  DEFAULT_MODEL_PROFILES,
+  type ModelProfileConfig,
+} from "@/chat/model-profile";
+import { botConfig } from "@/chat/config";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { selectTurnRoute, type TurnRoute } from "@/chat/services/turn-router";
 
 const ROUTER_EVAL_TIMEOUT_MS = 60_000;
-const ROUTER_PROFILES = {
-  standard: {
-    modelId: "xai/grok-4.5",
-    description:
-      "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
-  },
-  handoff: {
-    modelId: "openai/gpt-5.6-sol",
-    description:
-      "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
-  },
-} satisfies Readonly<Record<string, ModelProfileConfig>>;
-
 interface RouterEvalInput {
   conversationContext?: string;
   expectedProfile: string;
   expectedReasoningLevel: TurnReasoningLevel;
   messageText: string;
+  profiles?: Readonly<Record<string, ModelProfileConfig>>;
 }
 
 interface RouterEvalOutput extends Record<string, JsonValue> {
@@ -43,10 +35,6 @@ interface RouterEvalOutput extends Record<string, JsonValue> {
   profile: string;
   reason: string;
   reasoningLevel: TurnReasoningLevel;
-}
-
-function resolveRouterModelId(): string {
-  return process.env.AI_FAST_MODEL?.trim() || "anthropic/claude-haiku-4.5";
 }
 
 async function routeTask(
@@ -62,9 +50,9 @@ async function routeTask(
     completeObject: (args) => completeObject({ ...args, signal: routeSignal }),
     conversationContext: input.conversationContext,
     defaultProfile: "standard",
-    fastModelId: resolveRouterModelId(),
+    fastModelId: botConfig.fastModelId,
     messageText: input.messageText,
-    profiles: ROUTER_PROFILES,
+    profiles: input.profiles ?? DEFAULT_MODEL_PROFILES,
   });
 }
 
@@ -73,6 +61,11 @@ export const routerHarness = createHarness<RouterEvalInput, RouterEvalOutput>({
   name: "router",
   run: async ({ input, signal }) => {
     const route = await routeTask(input, { signal });
+    if (route.confidence === undefined) {
+      throw new Error(
+        `Router did not return a model decision: ${route.reason}`,
+      );
+    }
     const output: RouterEvalOutput = {
       confidence: route.confidence ?? null,
       costUsd: route.costUsd ?? null,
@@ -112,7 +105,7 @@ export const routerHarness = createHarness<RouterEvalInput, RouterEvalOutput>({
       ],
       usage: {
         provider: "vercel-ai-gateway",
-        model: resolveRouterModelId(),
+        model: botConfig.fastModelId,
         ...(route.costUsd !== undefined
           ? { metadata: { costUsd: route.costUsd } }
           : {}),

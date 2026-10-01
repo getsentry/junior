@@ -1,3 +1,5 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
   type Identity,
   type User,
@@ -178,6 +180,17 @@ export function createGitHubUpdateIssueTool(ctx: {
           })
         : undefined;
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            ...githubObjectFacts("task", parsed),
+            repo: repo.ref,
+            number: providerResult.number,
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "task",
+            status: providerResult.state,
+          }),
+        ],
         target: "updateIssue",
         body: providerResult.body,
         number: providerResult.number,

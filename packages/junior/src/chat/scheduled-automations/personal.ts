@@ -8,7 +8,8 @@ import {
   isListedScheduledAutomation,
   parseScheduledAutomationRow,
   readScheduledAutomation,
-  saveScheduledAutomation,
+  saveScheduledAutomationInLock,
+  withScheduledAutomationLock,
 } from "./tasks";
 import type { ScheduledAutomation } from "./types";
 
@@ -87,21 +88,27 @@ export async function deleteViewerScheduledAutomation(
   id: string,
   nowMs = Date.now(),
 ): Promise<void> {
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
-  const task = await readScheduledAutomation(db, id);
-  if (
-    !task ||
-    task.status === "deleted" ||
-    !identityIds.has(task.creatorIdentityId)
-  ) {
-    throw new PersonalScheduledAutomationNotFoundError();
-  }
-  await saveScheduledAutomation(db, {
-    ...task,
-    nextRunAtMs: undefined,
-    runNowAtMs: undefined,
-    status: "deleted",
-    updatedAtMs: nowMs,
+  await withScheduledAutomationLock(db, id, async (tx) => {
+    const identityIds = new Set(user.identities.map((identity) => identity.id));
+    const task = await readScheduledAutomation(tx, id);
+    if (
+      !task ||
+      task.status === "deleted" ||
+      !identityIds.has(task.creatorIdentityId)
+    ) {
+      throw new PersonalScheduledAutomationNotFoundError();
+    }
+    await saveScheduledAutomationInLock(
+      tx,
+      {
+        ...task,
+        nextRunAtMs: undefined,
+        runNowAtMs: undefined,
+        status: "deleted",
+        updatedAtMs: nowMs,
+      },
+      task,
+    );
   });
 }
 
@@ -142,7 +149,7 @@ export async function listViewerScheduledAutomations(
       .from(juniorSchedulerTasks)
       .where(
         and(
-          notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+          notInArray(juniorSchedulerTasks.status, ["deleted"]),
           inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
           cursorFilter,
           search,

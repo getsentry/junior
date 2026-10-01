@@ -1,16 +1,27 @@
+import { ExternalLink } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { formatRelativeTime, formatTime } from "../format";
+import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
-import { FilterTabList } from "../components/FilterBar";
+import { SegmentedTabs } from "../components/SegmentedTabs";
 import { ConversationMemories } from "./ConversationMemories";
+import { ShareConversationButton } from "./ShareConversationButton";
 
-/** Show the Brief, identity, runtime, and resource details for a Conversation. */
+const tabs = [
+  { label: "Details", value: "details" },
+  { label: "Memories", value: "memories" },
+] as const;
+
+/** Put conversation context before usage and diagnostic links. */
 export function ConversationDetailsDrawer(props: {
   annotations: ReactNode;
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
+  lastActivityAt?: string;
   onClose(): void;
+  sentryConversationUrl?: string;
   privacy: ReactNode;
   stats: ReactNode;
   title: string;
@@ -18,10 +29,10 @@ export function ConversationDetailsDrawer(props: {
   const [tab, setTab] = useState<"details" | "memories">("details");
   const titleId = "conversation-details-drawer-title";
   const sections = [
-    { content: props.brief, title: "Brief" },
-    { content: props.identity, title: "Identity" },
-    { content: props.stats, title: "Runtime" },
-    { content: props.annotations, title: "Links" },
+    { content: props.brief, title: "Summary" },
+    { content: props.annotations, title: "Linked work" },
+    { content: props.identity, title: "Participants" },
+    { content: props.stats, title: "Usage" },
   ].filter((section) => section.content != null);
 
   return (
@@ -44,42 +55,76 @@ export function ConversationDetailsDrawer(props: {
       onClose={props.onClose}
       openKey={props.conversationId}
       titleId={titleId}
+      width="narrow"
     >
-      <div className="grid min-w-0 gap-4">
-        <FilterTabList
-          ariaLabel="Conversation details"
-          items={[
-            { label: "Details", value: "details" },
-            { label: "Memories", value: "memories" },
-          ]}
-          onChange={(value) =>
-            setTab(value === "memories" ? "memories" : "details")
-          }
-          value={tab}
-        />
-        <div aria-label={`${tab} panel`} role="tabpanel">
-          {tab === "memories" ? (
-            <ConversationMemories conversationId={props.conversationId} />
-          ) : sections.length > 0 ? (
-            <div className="grid min-w-0 gap-5">
-              {sections.map((section) => (
-                <section className="grid min-w-0 gap-2" key={section.title}>
-                  <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-                    {section.title}
-                  </h3>
-                  <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-                    {section.content}
-                  </div>
-                </section>
-              ))}
+      <SegmentedTabs
+        items={tabs}
+        label="Conversation details"
+        onChange={setTab}
+        value={tab}
+      >
+        {tab === "memories" ? (
+          <ConversationMemories conversationId={props.conversationId} />
+        ) : sections.length > 0 ? (
+          <div className="grid min-w-0 gap-5">
+            {sections.map((section) => (
+              <section
+                className="grid min-w-0 gap-3 border-b border-dashboard-border pb-5 last:border-0 last:pb-0"
+                key={section.title}
+              >
+                <h3 className="m-0 text-sm font-semibold text-dashboard-text">
+                  {section.title}
+                </h3>
+                <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
+                  {section.content}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            No additional conversation details.
+          </p>
+        )}
+        {tab === "details" ? (
+          <footer className="mt-5 grid gap-6 border-t border-dashboard-border pt-4 text-xs text-dashboard-text-muted">
+            {props.lastActivityAt ? (
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span>Last activity</span>
+                <time
+                  dateTime={props.lastActivityAt}
+                  title={formatTime(props.lastActivityAt, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                >
+                  {formatRelativeTime(props.lastActivityAt)}
+                </time>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <ShareConversationButton
+                key={props.conversationId}
+                conversationId={props.conversationId}
+              />
+              {props.sentryConversationUrl ? (
+                <ButtonLink
+                  className="w-fit focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+                  to={props.sentryConversationUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open in Sentry
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0"
+                  />
+                </ButtonLink>
+              ) : null}
             </div>
-          ) : (
-            <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              No additional conversation details.
-            </p>
-          )}
-        </div>
-      </div>
+          </footer>
+        ) : null}
+      </SegmentedTabs>
     </Drawer>
   );
 }

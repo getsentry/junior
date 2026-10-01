@@ -1,14 +1,20 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
+  AutomationListQuery,
   AutomationRunList,
   AutomationSummary,
 } from "@/api/schema/automation";
+import { automationListQuerySchema } from "@/api/schema/automation";
+import {
+  readAutomationCollection,
+  viewerAutomationCollection,
+} from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
@@ -30,47 +36,41 @@ import {
   eventAutomationBelongsToUser,
   getEventAutomation,
   listDeletedEventAutomationsCreatedBy,
-  listEventAutomationsCreatedBy,
-  listPublicEventAutomationsForTeams,
+  parseEventAutomationRow,
   type StoredEventAutomation,
 } from "@/chat/event-automations/store";
 import { eventAutomationTriggerAvailable } from "@/chat/event-automations/tool-support";
-import type { EventAutomation } from "@/chat/event-automations/types";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   deleteViewerScheduledAutomation,
-  listViewerScheduledAutomations,
   PersonalScheduledAutomationNotFoundError,
 } from "@/chat/scheduled-automations/personal";
 import {
-  listPublicScheduledAutomationsForTeams,
   parseScheduledAutomationRow,
   readScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
+  juniorAutomationExecutions,
   juniorDestinations,
+  juniorEventAutomations,
   juniorIdentities,
   juniorSchedulerTasks,
   juniorUsers,
 } from "@/db/schema";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
-const TASK_LIST_LIMIT = 100;
-const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
 const TASK_EXECUTION_LIST_LIMIT = 100;
 
 type TaskCandidate =
   | {
       kind: "event";
       ownedByViewer: boolean;
-      publicToViewer: boolean;
-      task: EventAutomation;
+      task: StoredEventAutomation;
     }
   | {
       kind: "scheduled";
       ownedByViewer: boolean;
-      publicToViewer: boolean;
       task: ScheduledAutomation;
     };
 
@@ -90,9 +90,11 @@ function creatorKey(teamId: string, slackUserId: string): string {
   return `${teamId}:${slackUserId}`;
 }
 
-async function creatorProfileEmails(
+type CreatorProfile = { email?: string; avatarUrl?: string };
+
+async function creatorProfiles(
   candidates: TaskCandidate[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, CreatorProfile>> {
   const selectors = new Map(
     candidates.map(({ task }) => {
       const teamId = task.destination.teamId;
@@ -106,17 +108,18 @@ async function creatorProfileEmails(
   if (selectors.size === 0) return new Map();
   const rows = await getDb()
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       email: juniorUsers.primaryEmailNormalized,
+      emailVerified: juniorIdentities.emailVerified,
       slackUserId: juniorIdentities.providerSubjectId,
       teamId: juniorIdentities.providerTenantId,
     })
     .from(juniorIdentities)
-    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.emailVerified, true),
         or(
           ...[...selectors.values()].map((selector) =>
             and(
@@ -128,7 +131,13 @@ async function creatorProfileEmails(
       ),
     );
   return new Map(
-    rows.map((row) => [creatorKey(row.teamId, row.slackUserId), row.email]),
+    rows.map((row) => [
+      creatorKey(row.teamId, row.slackUserId),
+      {
+        email: row.emailVerified ? (row.email ?? undefined) : undefined,
+        avatarUrl: row.avatarUrl ?? undefined,
+      },
+    ]),
   );
 }
 
@@ -210,6 +219,7 @@ async function destinationDetails(
 
 function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
   return {
+    lastRunStatus: stats?.lastRunStatus,
     ...(stats?.lastConversationId
       ? { lastConversationId: stats.lastConversationId }
       : undefined),
@@ -226,14 +236,17 @@ function scheduledAutomationSummary(
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: AutomationExecutionSummary | undefined,
-  createdByEmail?: string,
+  creator: CreatorProfile | undefined,
 ): AutomationSummary {
   if (task.status === "deleted") {
     throw new Error(
       "Deleted scheduled automations cannot enter the Automations view",
     );
   }
-  const nextRunAtMs = task.runNowAtMs ?? task.nextRunAtMs;
+  const nextRunAtMs =
+    task.status === "active"
+      ? (task.runNowAtMs ?? task.nextRunAtMs)
+      : undefined;
   const instruction = displayText(
     task.task.text,
     "Untitled scheduled automation",
@@ -241,7 +254,8 @@ function scheduledAutomationSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -258,6 +272,9 @@ function scheduledAutomationSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    statusReason: task.statusReason,
+    timezone: task.schedule.timezone,
+    credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
@@ -268,17 +285,18 @@ function scheduledAutomationSummary(
 }
 
 function eventAutomationSummary(
-  task: EventAutomation,
+  task: StoredEventAutomation,
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: AutomationExecutionSummary | undefined,
-  createdByEmail?: string,
+  creator: CreatorProfile | undefined,
 ): AutomationSummary {
   const instruction = task.task.text;
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : undefined),
+    createdByEmail: creator?.email,
+    createdByAvatarUrl: creator?.avatarUrl,
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -286,6 +304,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     events: task.trigger.events,
+    match: task.trigger.match,
     id: task.id,
     instruction,
     kind: "event",
@@ -293,12 +312,14 @@ function eventAutomationSummary(
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
+    credentialMode: task.credentialMode,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
       instruction,
       "Untitled event automation",
     ),
+    status: task.status === "paused" ? "paused" : "active",
     triggerAvailable: eventAutomationTriggerAvailable(task, getEventCatalog()),
   };
 }
@@ -335,7 +356,6 @@ async function resolveViewerTaskCandidate(
     return {
       kind: "scheduled",
       ownedByViewer,
-      publicToViewer,
       task,
     };
   }
@@ -351,7 +371,6 @@ async function resolveViewerTaskCandidate(
   return {
     kind: "event",
     ownedByViewer,
-    publicToViewer,
     task,
   };
 }
@@ -371,10 +390,12 @@ export async function readViewerAutomationSummary(
 async function automationSummaryForCandidate(
   candidate: TaskCandidate,
 ): Promise<AutomationSummary> {
-  const [destinations, creatorEmails, stats] = await Promise.all([
+  const [destinations, creators, stats] = await Promise.all([
     destinationDetails([candidate.task.destination]),
-    creatorProfileEmails([candidate]),
-    readAutomationExecutionSummaries(candidate.kind, "junior"),
+    creatorProfiles([candidate]),
+    readAutomationExecutionSummaries(candidate.kind, "junior", {
+      automationIds: [candidate.task.id],
+    }),
   ]);
   const destination = destinations.get(
     destinationKey(candidate.task.destination),
@@ -382,7 +403,7 @@ async function automationSummaryForCandidate(
     label: `Channel ${candidate.task.destination.channelId}`,
     visibility: "private" as const,
   };
-  const createdByEmail = creatorEmails.get(
+  const creator = creators.get(
     creatorKey(
       candidate.task.destination.teamId,
       candidate.task.createdBy.slackUserId,
@@ -394,7 +415,7 @@ async function automationSummaryForCandidate(
       candidate.ownedByViewer,
       destination,
       stats.get(candidate.task.id),
-      createdByEmail,
+      creator,
     );
   }
   return eventAutomationSummary(
@@ -402,11 +423,10 @@ async function automationSummaryForCandidate(
     candidate.ownedByViewer,
     destination,
     stats.get(candidate.task.id),
-    createdByEmail,
+    creator,
   );
 }
 
-/** Read viewer-owned and public-workspace automations as one bounded newest-first projection. */
 function emptyAutomationExecutionDay(date: string): AutomationExecutionDay {
   return { costUsd: 0, date, event: 0, scheduled: 0 };
 }
@@ -439,76 +459,53 @@ function automationExecutionStatusSixHours(
   });
 }
 
-/** List one viewer's scheduled and event automations, optionally filtered by title or instruction search. */
+/** Read a page from the full accessible Automation collection. */
 export async function readViewerAutomations(
   user: User,
-  input: { q?: string } = {},
+  input: AutomationListQuery = automationListQuerySchema.parse({}),
 ): Promise<AutomationList> {
+  const { rows, ...page } = await readAutomationCollection(user, input);
   const db = getDb();
-  // TODO(dcramer): Search only matches task title and instruction text today.
-  // Expand to run history and semantic search once title search ships.
-  const query = input.q?.trim().toLowerCase() || undefined;
+  const ids = rows.map((row) => row.id);
+  const [scheduled, events] = ids.length
+    ? await Promise.all([
+        db
+          .select()
+          .from(juniorSchedulerTasks)
+          .where(inArray(juniorSchedulerTasks.id, ids)),
+        db
+          .select()
+          .from(juniorEventAutomations)
+          .where(inArray(juniorEventAutomations.id, ids)),
+      ])
+    : [[], []];
   const identityIds = new Set(user.identities.map((identity) => identity.id));
-  const teamIds = viewerTeamIds(user);
-  const [
-    scheduledPage,
-    publicScheduled,
-    eventAutomations,
-    publicEventAutomations,
-  ] = await Promise.all([
-    listViewerScheduledAutomations(db, user, {
-      limit: TASK_FETCH_LIMIT,
-      query,
-    }),
-    listPublicScheduledAutomationsForTeams(db, teamIds, {
-      limit: TASK_FETCH_LIMIT,
-      query,
-    }),
-    listEventAutomationsCreatedBy(db, user, TASK_FETCH_LIMIT, query),
-    listPublicEventAutomationsForTeams(db, teamIds, TASK_FETCH_LIMIT, query),
-  ]);
-  const candidatesById = new Map<string, TaskCandidate>();
-  const publicScheduledIds = new Set(publicScheduled.map((task) => task.id));
-  const publicEventAutomationIds = new Set(
-    publicEventAutomations.map((task) => task.id),
-  );
-  for (const task of [...scheduledPage.automations, ...publicScheduled]) {
-    candidatesById.set(`scheduled:${task.id}`, {
-      kind: "scheduled",
-      ownedByViewer: identityIds.has(task.creatorIdentityId),
-      publicToViewer: publicScheduledIds.has(task.id),
-      task,
-    });
+  const candidates = new Map<string, TaskCandidate>();
+  for (const row of scheduled) {
+    const task = parseScheduledAutomationRow(row);
+    if (task && task.status !== "deleted")
+      candidates.set(`scheduled:${task.id}`, {
+        kind: "scheduled",
+        task,
+        ownedByViewer: identityIds.has(task.creatorIdentityId),
+      });
   }
-  for (const task of [...eventAutomations, ...publicEventAutomations]) {
-    candidatesById.set(`event:${task.id}`, {
-      kind: "event",
-      ownedByViewer: eventAutomationBelongsToUser(task, user),
-      publicToViewer: publicEventAutomationIds.has(task.id),
-      task,
-    });
+  for (const row of events) {
+    const task = parseEventAutomationRow(row);
+    if (task.status !== "deleted")
+      candidates.set(`event:${task.id}`, {
+        kind: "event",
+        task,
+        ownedByViewer: eventAutomationBelongsToUser(task, user),
+      });
   }
-  const candidates = [...candidatesById.values()].sort(
-    (left, right) =>
-      right.task.createdAtMs - left.task.createdAtMs ||
-      right.task.id.localeCompare(left.task.id),
-  );
-  const ownedCandidates = candidates.filter(
-    (candidate) => candidate.ownedByViewer,
-  );
-  const publicCandidates = candidates.filter(
-    (candidate) => candidate.publicToViewer,
-  );
-  const selectedCandidates = new Set([
-    ...ownedCandidates.slice(0, TASK_LIST_LIMIT),
-    ...publicCandidates.slice(0, TASK_LIST_LIMIT),
-  ]);
-  const selected = candidates.filter((candidate) =>
-    selectedCandidates.has(candidate),
-  );
-  const [destinations, creatorEmails] = await Promise.all([
+  const selected = rows.flatMap((row) => {
+    const candidate = candidates.get(`${row.kind}:${row.id}`);
+    return candidate ? [candidate] : [];
+  });
+  const [destinations, creators] = await Promise.all([
     destinationDetails(selected.map(({ task }) => task.destination)),
-    creatorProfileEmails(selected),
+    creatorProfiles(selected),
   ]);
   const visible = selected.filter(
     (candidate) =>
@@ -516,12 +513,29 @@ export async function readViewerAutomations(
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
+  const collection = viewerAutomationCollection(user);
+  const access = exists(
+    getDb()
+      .select({ id: collection.id })
+      .from(collection)
+      .where(
+        and(
+          eq(collection.id, juniorAutomationExecutions.automationId),
+          eq(collection.kind, juniorAutomationExecutions.kind),
+          eq(juniorAutomationExecutions.namespace, "junior"),
+        ),
+      ),
+  );
   const [executionDays, executionHours, scheduledStats, eventStats] =
     await Promise.all([
-      readAutomationExecutionDays(),
-      readAutomationExecutionHours(),
-      readAutomationExecutionSummaries("scheduled", "junior"),
-      readAutomationExecutionSummaries("event", "junior"),
+      readAutomationExecutionDays(90, { access }),
+      readAutomationExecutionHours(7 * 24, { access }),
+      readAutomationExecutionSummaries("scheduled", "junior", {
+        automationIds: ids,
+      }),
+      readAutomationExecutionSummaries("event", "junior", {
+        automationIds: ids,
+      }),
     ]);
   const automations = visible.map((candidate): AutomationSummary => {
     const destination = destinations.get(
@@ -530,7 +544,7 @@ export async function readViewerAutomations(
       label: `Channel ${candidate.task.destination.channelId}`,
       visibility: "private" as const,
     };
-    const createdByEmail = creatorEmails.get(
+    const creator = creators.get(
       creatorKey(
         candidate.task.destination.teamId,
         candidate.task.createdBy.slackUserId,
@@ -542,7 +556,7 @@ export async function readViewerAutomations(
         candidate.ownedByViewer,
         destination,
         scheduledStats.get(candidate.task.id),
-        createdByEmail,
+        creator,
       );
     }
     return eventAutomationSummary(
@@ -550,7 +564,7 @@ export async function readViewerAutomations(
       candidate.ownedByViewer,
       destination,
       eventStats.get(candidate.task.id),
-      createdByEmail,
+      creator,
     );
   });
   return {
@@ -558,9 +572,7 @@ export async function readViewerAutomations(
     executionHours,
     executionSixHours: automationExecutionSixHours(executionHours),
     automations,
-    truncated:
-      ownedCandidates.length > TASK_LIST_LIMIT ||
-      publicCandidates.length > TASK_LIST_LIMIT,
+    ...page,
   };
 }
 
@@ -640,7 +652,7 @@ export async function readViewerAutomationRuns(
   user: User,
 ): Promise<AutomationRunList> {
   const [taskList, deletedScheduled, deletedEvent] = await Promise.all([
-    readViewerAutomations(user),
+    getDb().select().from(viewerAutomationCollection(user)),
     readDeletedOwnedScheduledAutomations(user),
     readDeletedOwnedEventAutomations(user),
   ]);
@@ -649,8 +661,15 @@ export async function readViewerAutomationRuns(
     kind: "scheduled" | "event";
     automationId: string;
   }> = [];
-  for (const task of taskList.automations) {
-    automationTitles.set(`${task.kind}:${task.id}`, task.title);
+  for (const task of taskList) {
+    automationTitles.set(
+      `${task.kind}:${task.id}`,
+      taskDisplayTitle(
+        task.title ?? undefined,
+        task.instruction,
+        `Untitled ${task.kind} automation`,
+      ),
+    );
     automations.push({ kind: task.kind, automationId: task.id });
   }
   for (const task of deletedScheduled) {

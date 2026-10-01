@@ -430,7 +430,7 @@ describe("SQL conversation storage", () => {
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
-      expect(history.map((event) => event.schemaVersion)).toEqual([1, 1, 1]);
+      expect(history.map((event) => event.schemaVersion)).toEqual([2, 2, 1]);
       expect(history.map((event) => event.data.type)).toEqual([
         "user_message",
         "user_message",
@@ -724,32 +724,6 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("replaces NUL characters before persisting conversation events", async () => {
-    const fixture = await createEmptyJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlConversationEventStore(fixture.sql);
-
-      await store.append(CONVERSATION_ID, [
-        {
-          data: userMessageEvent("before\u0000after and literal \\u0000"),
-          createdAtMs: 1_000,
-        },
-      ]);
-
-      expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
-        {
-          type: "user_message",
-          content: [{ text: "before after and literal \\u0000", type: "text" }],
-        },
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("returns only the active history version", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
@@ -774,7 +748,9 @@ describe("SQL conversation storage", () => {
           type: "compaction",
           modelProfile: "standard",
           modelId: "test/model",
-          replacementHistory: [{ item: userMessageEvent("epoch1-summary") }],
+          replacementHistory: [
+            { item: userMessageEvent("epoch1\u0000summary") },
+          ],
         },
       });
 
@@ -785,6 +761,9 @@ describe("SQL conversation storage", () => {
       expect(current.map((event) => event.historyVersion)).toEqual([1]);
       expect(current.map((event) => event.data.type)).toEqual(["compaction"]);
       expect(current.map((event) => event.seq)).toEqual([2]);
+      expect(current[0]?.data).toMatchObject({
+        replacementHistory: [{ item: userMessageEvent("epoch1\u0000summary") }],
+      });
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.historyVersion)).toEqual([0, 0, 1]);

@@ -1,4 +1,5 @@
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
+import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -85,32 +86,12 @@ describe("selectTurnRoute", () => {
         ),
       }),
     );
-    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
-  });
-
-  it("includes profile descriptions in profile selection", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        reasoning_level: "none",
-        profile: "standard",
-        confidence: 0.99,
-        reason: "acknowledgment only",
-      },
-    }));
-
-    await routeTurn({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "thanks",
+    expect(
+      z.toJSONSchema(completeObject.mock.calls[0]![0].schema, { io: "input" }),
+    ).toMatchObject({
+      properties: { profile: { enum: ["standard", "handoff"] } },
     });
-
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        system: expect.stringContaining(
-          "use each description's use and avoid cases",
-        ),
-      }),
-    );
+    expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
   it("classifies code-change asks as xhigh with the fast model", async () => {

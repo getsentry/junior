@@ -16,15 +16,14 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityChartTooltip,
-  ActivityTooltipRows,
   activityChartAverage,
   ChartSvg,
-  createActivityChartLayout,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
-import { ChartLegend } from "./ChartLegend";
+import { useChartLayout } from "./useChartLayout";
+import { InputCacheChart } from "./InputCacheChart";
 
-type Metric = "costUsd" | "durationMs" | "inputTokens" | "tokens";
+type Metric = "costUsd" | "durationMs" | "tokens";
 
 type ChartConfig = {
   axisFormat(value: number): string;
@@ -58,17 +57,6 @@ function tokenChart(): ChartConfig {
   };
 }
 
-function inputCacheChart(): ChartConfig {
-  return {
-    axisFormat: formatCompactNumber,
-    color: "#22d3ee",
-    format: formatCompactNumber,
-    metric: "inputTokens",
-    title: "Input token cache",
-    type: "bar",
-  };
-}
-
 function supportingCharts(): ChartConfig[] {
   return [
     {
@@ -91,13 +79,6 @@ function supportingCharts(): ChartConfig[] {
 }
 
 function metricValue(day: ConversationMetricDay, metric: Metric): number {
-  if (metric === "inputTokens") {
-    return (
-      (day.inputTokens ?? 0) +
-      (day.cachedInputTokens ?? 0) +
-      (day.cacheCreationTokens ?? 0)
-    );
-  }
   return day[metric] ?? 0;
 }
 
@@ -108,20 +89,30 @@ export function SystemMetricCharts(props: {
   days: ConversationMetricDay[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const charts = [
-    props.cacheBreakdown ? inputCacheChart() : tokenChart(),
-    ...supportingCharts(),
-  ];
+  const charts = props.cacheBreakdown
+    ? supportingCharts()
+    : [tokenChart(), ...supportingCharts()];
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {charts.map((chart) => (
-        <MetricChart
-          bucketUnit={bucketUnit}
-          chart={chart}
-          days={props.days}
-          key={chart.metric}
-        />
-      ))}
+    <div className="grid gap-4">
+      {props.cacheBreakdown ? (
+        <InputCacheChart bucketUnit={bucketUnit} days={props.days} />
+      ) : null}
+      <div
+        className={
+          props.cacheBreakdown
+            ? "grid gap-4 lg:grid-cols-2"
+            : "grid gap-4 lg:grid-cols-3"
+        }
+      >
+        {charts.map((chart) => (
+          <MetricChart
+            bucketUnit={bucketUnit}
+            chart={chart}
+            days={props.days}
+            key={chart.metric}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -132,13 +123,10 @@ function MetricChart(props: {
   days: ConversationMetricDay[];
 }) {
   const { chart, days } = props;
-  const layout = createActivityChartLayout(250, {
-    bottom: 34,
-    left: chart.metric === "costUsd" ? 80 : 64,
-    right: 14,
-    top: 22,
-    width: 400,
-  });
+  const { ref, layout } = useChartLayout(
+    150,
+    chart.metric === "costUsd" ? 72 : 64,
+  );
   const values = days.map((day) => metricValue(day, chart.metric));
   const maximum = Math.max(Number.EPSILON, ...values);
   const step = layout.plotWidth / Math.max(1, days.length);
@@ -158,37 +146,11 @@ function MetricChart(props: {
   return (
     <Card>
       <ChartHeader title={chart.title} total={chart.format(total)} />
-      {chart.metric === "inputTokens" ? (
-        <div className="px-5 pt-3">
-          <ChartLegend
-            ariaLabel="Input token cache series"
-            inline
-            items={[
-              { color: "#22d3ee", key: "cached", label: "Cached" },
-              { color: "#fbbf24", key: "written", label: "Written" },
-              { color: "#a78bfa", key: "uncached", label: "Uncached" },
-            ]}
-          />
-        </div>
-      ) : null}
-      <div className="px-2 py-3">
+      <div className="px-2 py-2" ref={ref}>
         <ChartSvg
           aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
-          className="min-h-52 overflow-hidden"
           layout={layout}
         >
-          <defs>
-            <linearGradient
-              id={`${chart.metric}-area`}
-              x1="0"
-              x2="0"
-              y1="0"
-              y2="1"
-            >
-              <stop offset="0%" stopColor={chart.color} stopOpacity="0.3" />
-              <stop offset="100%" stopColor={chart.color} stopOpacity="0" />
-            </linearGradient>
-          </defs>
           <ActivityChartGrid
             format={chart.axisFormat}
             layout={layout}
@@ -196,7 +158,7 @@ function MetricChart(props: {
           />
           {chart.type === "area" && area ? (
             <>
-              <path d={area} fill={`url(#${chart.metric}-area)`} />
+              <path d={area} fill={chart.color} fillOpacity={0.08} />
               <polyline
                 fill="none"
                 points={points
@@ -217,75 +179,11 @@ function MetricChart(props: {
             return (
               <ActivityChartTooltip
                 key={day.date}
-                content={
-                  chart.metric === "inputTokens" ? (
-                    <ActivityTooltipRows
-                      rows={[
-                        [
-                          "cached",
-                          formatCompactNumber(day.cachedInputTokens ?? 0),
-                        ],
-                        [
-                          "written",
-                          formatCompactNumber(day.cacheCreationTokens ?? 0),
-                        ],
-                        ["uncached", formatCompactNumber(day.inputTokens ?? 0)],
-                      ]}
-                    />
-                  ) : (
-                    chart.format(value)
-                  )
-                }
+                content={chart.format(value)}
                 date={day.date}
-                summary={
-                  chart.metric === "inputTokens"
-                    ? `${chart.format(value)} input tokens`
-                    : chart.format(value)
-                }
+                summary={chart.format(value)}
               >
-                {chart.type === "bar" && chart.metric === "inputTokens" ? (
-                  <g tabIndex={0}>
-                    <rect
-                      fill="#a78bfa"
-                      height={renderedBarHeight}
-                      opacity={value ? 0.8 : 0.1}
-                      rx="1.5"
-                      width={barWidth}
-                      x={point.x - barWidth / 2}
-                      y={layout.top + layout.plotHeight - renderedBarHeight}
-                    />
-                    <rect
-                      fill="#fbbf24"
-                      height={
-                        value
-                          ? (((day.cachedInputTokens ?? 0) +
-                              (day.cacheCreationTokens ?? 0)) /
-                              value) *
-                            renderedBarHeight
-                          : 0
-                      }
-                      opacity={0.85}
-                      rx="1.5"
-                      width={barWidth}
-                      x={point.x - barWidth / 2}
-                      y={layout.top + layout.plotHeight - renderedBarHeight}
-                    />
-                    <rect
-                      fill="#22d3ee"
-                      height={
-                        value
-                          ? ((day.cachedInputTokens ?? 0) / value) *
-                            renderedBarHeight
-                          : 0
-                      }
-                      opacity={0.85}
-                      rx="1.5"
-                      width={barWidth}
-                      x={point.x - barWidth / 2}
-                      y={layout.top + layout.plotHeight - renderedBarHeight}
-                    />
-                  </g>
-                ) : chart.type === "bar" ? (
+                {chart.type === "bar" ? (
                   <rect
                     fill={chart.color}
                     height={renderedBarHeight}
@@ -312,7 +210,7 @@ function MetricChart(props: {
           <ActivityChartAverageLine
             average={average}
             format={
-              chart.metric === "inputTokens" || chart.metric === "tokens"
+              chart.metric === "tokens"
                 ? formatActivityChartAverage
                 : chart.format
             }

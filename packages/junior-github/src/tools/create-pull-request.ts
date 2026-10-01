@@ -1,4 +1,8 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -88,6 +92,9 @@ const createPullRequestStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createPullRequestInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      sourceUpdatedAt: Type.Optional(Type.String()),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -110,6 +117,9 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
+  facts?: ObjectAnnotation["facts"];
+  sourceUpdatedAt?: string;
+  description?: string;
   number: number;
   url: string;
 }
@@ -320,6 +330,7 @@ async function createGitHubPullRequest(
     );
   }
   return {
+    ...githubObjectFacts("code_change", parsed),
     number: pullRequest.number,
     url: pullRequest.html_url,
   };
@@ -339,22 +350,11 @@ function gitHubPullRequestToolResult(
         ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
       })
     : undefined;
-  return { ...result, ...(subscribable ? { subscribable } : undefined) };
-}
-
-async function annotatePullRequest(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubPullRequestInput,
-  result: GitHubPullRequestResult,
-): Promise<void> {
-  const repo = parseRepo(input.repo);
-  await ctx.annotations?.upsert({
-    kind: "resource_link",
-    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label: `${repo.owner}/${repo.name}#${result.number}`,
+  return {
+    number: result.number,
     url: result.url,
-    status: input.draft ? "draft" : "open",
-  });
+    ...(subscribable ? { subscribable } : undefined),
+  };
 }
 
 async function gitHubPullRequestStructuredResult(
@@ -370,8 +370,22 @@ async function gitHubPullRequestStructuredResult(
     result,
     ctx.events.canSubscribe,
   );
+  const objectAnnotations = [
+    githubObjectAnnotation({
+      facts: result.facts,
+      sourceUpdatedAt: result.sourceUpdatedAt,
+      description: result.description,
+      repo: input.repo,
+      number: result.number,
+      title: input.title,
+      url: result.url,
+      objectType: "code_change",
+      status: input.draft ? "draft" : "open",
+    }),
+  ];
   if (!subscriptionConfig || !base.subscribable) {
     return {
+      objectAnnotations,
       target: "createPullRequest",
       ...base,
     };
@@ -389,6 +403,7 @@ async function gitHubPullRequestStructuredResult(
       subscriptionConfig.events,
     );
     return {
+      objectAnnotations,
       target: "createPullRequest",
       ...data,
       subscription,
@@ -400,6 +415,7 @@ async function gitHubPullRequestStructuredResult(
       repo: input.repo,
     });
     return {
+      objectAnnotations,
       target: "createPullRequest",
       ...base,
     };
@@ -442,10 +458,15 @@ export function createGitHubPullRequestTool(
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
+              description: state.description,
               number: state.number,
               url: state.url,
             };
-            await annotatePullRequest(ctx, completedInput, completedResult);
             return await gitHubPullRequestStructuredResult(
               ctx,
               completedInput,
@@ -489,7 +510,6 @@ export function createGitHubPullRequestTool(
                 { cause: error },
               );
             }
-            await annotatePullRequest(ctx, parsedInput, result);
             return await gitHubPullRequestStructuredResult(
               ctx,
               parsedInput,

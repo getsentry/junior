@@ -4,11 +4,20 @@ import { recordDashboardServerVersion } from "./dashboard-version";
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
+  readonly fields?: Record<string, string[]>;
+  readonly code?: string;
   readonly apiError?: string;
 
-  constructor(path: string, status: number, apiError?: string) {
+  constructor(
+    path: string,
+    status: number,
+    apiError?: string,
+    detail?: { fields?: Record<string, string[]>; code?: string },
+  ) {
     super(`${path} returned ${status}`);
     this.status = status;
+    this.fields = detail?.fields;
+    this.code = detail?.code;
     if (apiError?.trim()) this.apiError = apiError.trim();
   }
 }
@@ -18,13 +27,32 @@ async function throwDashboardApiError(
   response: Response,
 ): Promise<never> {
   let apiError: string | undefined;
+  let fields: Record<string, string[]> | undefined;
+  let code: string | undefined;
   try {
-    const body = (await response.json()) as { error?: unknown };
+    const body = (await response.json()) as {
+      error?: unknown;
+      code?: unknown;
+      fields?: unknown;
+    };
     if (typeof body.error === "string") apiError = body.error;
+    if (typeof body.code === "string") code = body.code;
+    if (body.fields && typeof body.fields === "object") {
+      fields = Object.fromEntries(
+        Object.entries(body.fields).filter(
+          (entry): entry is [string, string[]] =>
+            Array.isArray(entry[1]) &&
+            entry[1].every((value) => typeof value === "string"),
+        ),
+      );
+    }
   } catch {
     // Keep the status-only fallback when the body is not JSON.
   }
-  throw new DashboardApiError(path, response.status, apiError);
+  throw new DashboardApiError(path, response.status, apiError, {
+    fields,
+    code,
+  });
 }
 
 function restartDashboardSignIn(): void {
@@ -142,14 +170,26 @@ export async function fetchDashboardJson<T>(
   path: string,
   signal?: AbortSignal,
 ): Promise<T> {
+  const response = await readDashboardResponse(path, signal);
+  return schema.parse(await response.json());
+}
+
+/** Read an authenticated response, allowing 304 only for an explicit validator. */
+export async function readDashboardResponse(
+  path: string,
+  signal?: AbortSignal,
+  etag?: string,
+): Promise<Response> {
   const response = await fetchDashboard(path, {
     credentials: "same-origin",
     ...(signal ? { signal } : undefined),
+    ...(etag
+      ? { cache: "no-store" as const, headers: { "if-none-match": etag } }
+      : undefined),
   });
-  if (response.status === 401) {
-    restartDashboardSignIn();
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok && !(etag && response.status === 304)) {
     await throwDashboardApiError(path, response);
   }
-  if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return response;
 }

@@ -39,9 +39,10 @@ export function parseSearchParamEnum<T extends string>(
 /** Read and write one debounced free-text query param (default `q`). */
 export function useDebouncedSearchParam(
   key = "q",
-  options: { delayMs?: number } = {},
+  options: { delayMs?: number; resetPage?: boolean } = {},
 ) {
   const delayMs = options.delayMs ?? 250;
+  const resetPage = options.resetPage ?? false;
   const [searchParams, setSearchParams] = useSearchParams();
   const committed = searchParams.get(key)?.trim() ?? "";
   const [value, setValue] = useState(committed);
@@ -58,6 +59,7 @@ export function useDebouncedSearchParam(
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
+          if (resetPage) next.delete("page");
           if (normalized) next.set(key, normalized);
           else next.delete(key);
           return next;
@@ -66,7 +68,7 @@ export function useDebouncedSearchParam(
       );
     }, delayMs);
     return () => window.clearTimeout(timeout);
-  }, [committed, delayMs, key, setSearchParams, value]);
+  }, [committed, delayMs, key, resetPage, setSearchParams, value]);
 
   return [value, setValue, committed] as const;
 }

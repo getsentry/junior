@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 import type { EventAutomation } from "@/chat/event-automations/types";
 
-/** Terminal lifecycle status for one retained event automation row. */
-export type EventAutomationStatus = "active" | "deleted";
+/** Lifecycle status for one retained event automation row. */
+export type EventAutomationStatus = "active" | "paused" | "deleted";
 
 export const juniorEventAutomations = pgTable(
   // Keep the deployed table name until a later storage migration.

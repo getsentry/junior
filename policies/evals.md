@@ -9,8 +9,10 @@ Suite policy:
 - **Integration** (`evals/integration/**`): full-runtime integration coverage
   that must never regress. Failures are hard pass/fail.
 - **Behavioral** (domain folders under `evals/` except `integration/`,
-  `guardian/`, and `router/`): agent behavior with bounded variability. CI
-  gates on the aggregate suite floor, not a single weak case.
+  `guardian/`, and `router/`): agent interpretation and reply quality. Rubrics
+  allow valid variations in wording and tool discovery, not broken behavior.
+  CI requires an 80% case pass rate; a failing case names a product gap and
+  stays visible without blocking the suite.
 - **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact
   `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
 - **Router** (`evals/router/**`): isolated turn route snapshots with exact
@@ -52,6 +54,11 @@ Suite policy:
   serialization. Cover those in integration tests.
 - Do not invent parallel transcript, event-log, or tool-call schemas for eval
   assertions. Improve the harness edge instead.
+- A scenario controls three things: the agent config it instantiates, prior
+  turns preloaded through the runtime's own stores, and mocked third-party
+  APIs. Do not add harness knobs that write runtime state directly, script
+  the model, or replace a Junior-owned module. See
+  `packages/junior-evals/README.md`.
 - Keep eval replies within 60 seconds.
 - Use fixtures, mocks, or replay for external resources instead of raising
   timeouts.

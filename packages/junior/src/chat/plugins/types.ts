@@ -155,6 +155,8 @@ export interface PluginDefinition {
 }
 
 export interface InlinePluginManifestDefinition {
+  /** Local manifest directory when the plugin does not come from a package. */
+  dir?: string;
   manifest: PluginManifest;
   packageName?: string;
 }

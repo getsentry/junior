@@ -467,7 +467,7 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
-  resolveGatewayModel: (modelId: string) => modelId,
+  resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
 vi.mock("@/chat/services/guardian-action-review", () => ({

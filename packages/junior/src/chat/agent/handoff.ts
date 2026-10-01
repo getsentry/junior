@@ -88,6 +88,7 @@ export function handoffControl(args: {
     description: profileConfig(botConfig, name).description,
   });
   return {
+    activeProfile: toHandoffProfile(args.activeProfile),
     profiles: [
       toHandoffProfile(firstProfileName),
       ...otherProfileNames.map(toHandoffProfile),

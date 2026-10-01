@@ -26,15 +26,15 @@ related:
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                           |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                      |
-| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `xai/grok-4.5`.                                                    |
-| `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                   |
-| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-5.6-luna`.                                        |
-| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-5.6-luna`.                                                                                                        |
-| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `openai/gpt-5.6-sol`.                                                                                            |
+| `AI_MODEL`                                  | No          | Deprecated profile setting. Creates `standard` and remains the fallback for `AI_FAST_MODEL`. Defaults to `openai/gpt-6-luna` with high reasoning.                           |
+| `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning override: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default. An explicit profile reasoning level takes precedence when routing is enabled. |
+| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-6-luna`.                                          |
+| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
+| `AI_HANDOFF_MODEL`                          | No          | Deprecated profile setting. Creates `handoff`. Defaults to `anthropic/claude-opus-5.5` with high reasoning.                                                                 |
 | `AI_MODEL_PROFILES`                         | No          | Deprecated JSON map of profile names to model IDs for env-only setup. Names must match `^[a-z][a-z0-9_-]*$`.                                                                |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                            |
-| `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                                        |
-| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.6-luna`; does not fall through to `AI_MODEL`.                                                            |
+| `AI_VISION_MODEL`                           | No          | Image-understanding model. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables vision.                                                         |
+| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.        |
 | `JUNIOR_BASE_URL`                           | No          | Main base URL for callback and authorization URLs.                                                                                                                          |
@@ -69,7 +69,7 @@ hook-adjusted semantic input (starting from validated tool arguments and
 excluding hook-injected environment values), current actor and destination
 context, and bounded user, assistant, tool-call, and tool-result evidence using
 the Codex Guardian transcript selection rules. Guardian defaults to
-`openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+`openai/gpt-6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
@@ -162,6 +162,10 @@ const app = await createApp({
     // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
     // unless you are testing the #879 runtime.
     subagents: true,
+    // Operator tools such as runOperatorSql. They read and write the app
+    // database directly and skip Conversation privacy checks. Enable them only
+    // on isolated deployments, such as Previews behind deployment protection.
+    "operator-tools": true,
   },
 });
 ```
@@ -188,9 +192,30 @@ pre-stable surface.
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.
 
+`operator-tools` adds `runOperatorSql` to non-public Conversations. The tool
+runs one SQL statement against the app database and returns up to 200 rows.
+Each call uses its own database connection, which is closed afterwards, so
+session commands such as `BEGIN` or `SET` do not affect the app.
+It can write data and it skips every Conversation privacy check, so the Agent
+can read private Conversations with it. Never enable it in production. Use it
+on an isolated deployment whose database is a disposable copy, and choose that
+deployment in app code, for example:
+
+```ts
+const app = await createApp({
+  experimental: {
+    "operator-tools":
+      process.env.VERCEL_ENV === "preview" &&
+      process.env.JUNIOR_PREVIEW_OPERATOR === "true",
+  },
+});
+```
+
 ## Profiles
 
-Pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
+Without overrides, Junior uses GPT-6 Luna High for `standard` and Claude Opus 5.5 High for `handoff`. Keep these shared defaults unless the app needs different behavior.
+
+To override them, pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
 
 ```ts
 const app = await createApp({
@@ -208,10 +233,10 @@ const app = await createApp({
       reasoningLevel: "high",
     },
   },
-  fastModelId: "openai/gpt-5.6-luna",
-  guardianModelId: "openai/gpt-5.6-luna",
+  fastModelId: "openai/gpt-6-luna",
+  guardianModelId: "openai/gpt-6-luna",
   embeddingModelId: "openai/text-embedding-3-small",
-  webSearchModelId: "openai/gpt-5.6-luna",
+  webSearchModelId: "openai/gpt-6-luna",
   imageGenerationModelId: "google/gemini-3-pro-image",
   visionModelId: "openai/gpt-5.6-sol",
 });

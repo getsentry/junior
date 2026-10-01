@@ -1,3 +1,6 @@
+import { automationRevision } from "@/chat/automations/revision";
+import { removedCardSchema } from "@/chat/conversations/cards";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -33,7 +36,9 @@ export function createSlackScheduleDeleteAutomationTool(
           "ID of the task to delete. Must be from this active Slack conversation.",
         ),
     }),
-    outputSchema: scheduleAutomationToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema.extend({
+      removedCards: z.array(removedCardSchema),
+    }),
     execute: async ({ automationId }) => {
       const lookup = await getWritableTask({ context, taskId: automationId });
 
@@ -45,8 +50,16 @@ export function createSlackScheduleDeleteAutomationTool(
         runNowAtMs: undefined,
       };
 
-      await saveScheduledAutomation(getDb(), next);
-      return { automation: compactTask(next, context.actor?.userId) };
+      await saveScheduledAutomation(getDb(), next, automationRevision(lookup));
+      await createPluginAnnotations({
+        conversationId: context.conversationId,
+        db: getDb(),
+        plugin: "junior",
+      }).remove("object", automationId);
+      return {
+        automation: compactTask(next, context.actor?.userId),
+        removedCards: [{ plugin: "junior", key: automationId }],
+      };
     },
   });
 }

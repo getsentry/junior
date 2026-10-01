@@ -1,23 +1,15 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
-import { beforeAll, expect } from "vitest";
+import { expect } from "vitest";
 import {
   mention,
+  reply,
   rubric,
   scheduledAutomationDue,
   slackEvals,
   threadMessage,
 } from "../../src/helpers";
-import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
-
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("Sentry Skill Workflows", slackEvals, (it) => {
-  // Deployments warm plugin runtime dependencies before serving turns. Keep
-  // that one-time setup cost outside the behavioral response-time budget.
-  beforeAll(async () => {
-    await warmSandboxSnapshot(["@sentry/junior-sentry"]);
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
-
   const followUpThread = {
     id: "thread-sentry-follow-up",
     channel_id: "CSENTRYFOLLOWUP",
@@ -31,10 +23,12 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
       overrides: {
         credential_providers: ["sentry"],
         plugin_packages: ["@sentry/junior-sentry"],
-        reply_texts: ["Yes—I'm working."],
       },
-      initialEvents: [mention("are you working", { thread: followUpThread })],
-      events: [
+      history: [
+        mention("are you working", { thread: followUpThread }),
+        reply("Yes—I'm working.", { thread: followUpThread }),
+      ],
+      initialEvents: [
         threadMessage("what's up with the latest Sentry issues in getsentry?", {
           thread: followUpThread,
           is_mention: true,

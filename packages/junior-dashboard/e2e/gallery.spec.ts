@@ -30,5 +30,26 @@ test("shows gallery transcripts", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Transcripts", exact: true }),
   ).toBeVisible();
+  const transcript = page.getByLabel("Gallery conversation transcript", {
+    exact: true,
+  });
+  const event = transcript.locator("details").filter({
+    has: page.getByText("GitHub PR getsentry/junior#1200 received a review.", {
+      exact: true,
+    }),
+  });
+  const rawEvent = event.getByText("The preview is ready for visual review.", {
+    exact: true,
+  });
+  await expect(rawEvent).toBeHidden();
+  const heading = event.locator("summary");
+  await heading.click();
+  await expect(rawEvent).toBeVisible();
+  await expect(heading).toBeFocused();
+  await heading.press("Enter");
+  await expect(rawEvent).toBeHidden();
+  await heading.press("Space");
+  await expect(rawEvent).toBeVisible();
+  await heading.click();
   await screenshot(page, "gallery-transcripts", { view: "desktop" });
 });

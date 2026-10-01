@@ -1,3 +1,4 @@
+import { INPUT_IMAGE_TYPES } from "@/chat/attachments/media";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   readLiveAttachment,
@@ -13,17 +14,10 @@ export interface OpenConversationAttachment {
   body: ReadableStream<Uint8Array>;
 }
 
-function mayDisplayInline(contentType: string): boolean {
-  return (
-    contentType === "image/gif" ||
-    contentType === "image/jpeg" ||
-    contentType === "image/png" ||
-    contentType === "image/webp"
-  );
-}
-
 function contentDisposition(filename: string, contentType: string): string {
-  const disposition = mayDisplayInline(contentType) ? "inline" : "attachment";
+  const disposition = INPUT_IMAGE_TYPES.some((type) => type === contentType)
+    ? "inline"
+    : "attachment";
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
   return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }

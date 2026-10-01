@@ -1,9 +1,12 @@
+import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
@@ -33,6 +36,7 @@ import {
   createConversationForViewer,
 } from "./create";
 import { readConversationDetail } from "./detail";
+import { forkConversationForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
@@ -44,6 +48,12 @@ export function createConversationRoutes(options: {
   attachmentStorage: AttachmentStorage;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
+  const messageBodyLimit = bodyLimit({
+    maxSize: 4_450_000,
+    onError: () => {
+      throwApiError(413, "Images must total 3 MB or less.");
+    },
+  });
 
   app.get(
     "/",
@@ -53,12 +63,14 @@ export function createConversationRoutes(options: {
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail, q, status } = context.req.valid("query");
+      const { actorEmail, codeRepositoryId, q, status } =
+        context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : undefined),
+          ...(codeRepositoryId ? { codeRepositoryId } : undefined),
           ...(q ? { q } : undefined),
           status,
           ...(viewer ? { viewer } : undefined),
@@ -74,6 +86,7 @@ export function createConversationRoutes(options: {
   app.post(
     "/",
     requireViewer,
+    messageBodyLimit,
     validateRequest(
       "json",
       createConversationBodySchema,
@@ -84,7 +97,11 @@ export function createConversationRoutes(options: {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await createConversationForViewer(viewer, body),
+        await createConversationForViewer(
+          viewer,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
   );
@@ -92,6 +109,7 @@ export function createConversationRoutes(options: {
   app.post(
     "/:conversationId/messages",
     requireViewer,
+    messageBodyLimit,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -108,9 +126,39 @@ export function createConversationRoutes(options: {
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
-        await appendConversationMessageForViewer(viewer, conversationId, body),
+        await appendConversationMessageForViewer(
+          viewer,
+          conversationId,
+          body,
+          options.attachmentStorage,
+        ),
       );
     },
+  );
+
+  app.post(
+    "/:conversationId/forks",
+    requireViewer,
+    bodyLimit({ maxSize: 4096 }),
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      forkConversationBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        forkConversationResponseSchema,
+        await forkConversationForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
   );
 
   app.patch(

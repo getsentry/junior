@@ -1,3 +1,4 @@
+import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -90,7 +91,8 @@ async function projectPendingMessage(
     );
     if (!metadata.success) return undefined;
     const text = message.input.text.trim();
-    if (!text) return undefined;
+    const attachments = readMessageAttachments(message.input.attachments);
+    if (!text && !attachments.length) return undefined;
     return {
       createdAt: isoFromMs(message.createdAtMs),
       delivery: message.delivery,
@@ -103,6 +105,7 @@ async function projectPendingMessage(
         ? {
             actorIdentity: actorIdentityFromWebMetadata(metadata.data),
             text,
+            ...(attachments.length ? { attachments } : undefined),
           }
         : { redacted: true as const }),
     };

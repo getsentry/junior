@@ -1,3 +1,4 @@
+import type { SlackEvent } from "@slack/types";
 import { z } from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
 import { readViewerAutomationSummary } from "@/chat/automations/read";
@@ -6,14 +7,18 @@ import {
   getDashboardTaskLink,
 } from "@/chat/dashboard-link";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { SlackEntity } from "./cards";
+import {
+  slackEntitySchema,
+  type SlackEntity,
+  type SlackTextField,
+} from "./work-object";
 import { getSlackClient } from "./client";
 
 type DetailField = NonNullable<
   SlackEntity["entity_payload"]["custom_fields"]
 >[number];
 
-function textField(key: string, label: string, value: string): DetailField {
+function textField(key: string, label: string, value: string): SlackTextField {
   return { key, label, type: "string", value };
 }
 
@@ -135,7 +140,12 @@ const detailsEventSchema = z.object({
     id: z.string().min(1),
     type: z.literal("automation"),
   }),
-});
+}) satisfies z.ZodType<
+  Pick<
+    Extract<SlackEvent, { type: "entity_details_requested" }>,
+    "trigger_id" | "user" | "external_ref"
+  >
+>;
 
 /** Answer a Work Object open or refresh with current, viewer-visible facts. */
 export async function presentSlackAutomationDetails(
@@ -178,6 +188,6 @@ export async function presentSlackAutomationDetails(
 
   await client.entity.presentDetails({
     trigger_id: triggerId,
-    metadata: entity,
+    metadata: slackEntitySchema.parse(entity),
   });
 }

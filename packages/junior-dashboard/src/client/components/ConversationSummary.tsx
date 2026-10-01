@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import type { KeyboardEvent, MouseEvent } from "react";
 
 import {
   conversationDisplayTitle,
@@ -38,8 +39,12 @@ function ConversationIdentity(props: { conversation: Conversation }) {
         <>
           <Link
             className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
+            onClick={(event: MouseEvent<HTMLAnchorElement>) =>
+              event.stopPropagation()
+            }
+            onKeyDown={(event: KeyboardEvent<HTMLAnchorElement>) =>
+              event.stopPropagation()
+            }
             to={locationPath(props.conversation.locationId)}
           >
             {location}

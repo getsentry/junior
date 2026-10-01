@@ -1,3 +1,4 @@
+import type { MessageAttachment } from "@/chat/attachments/input";
 /** Input for one Run through Junior's agent. */
 import type {
   Destination,
@@ -33,6 +34,7 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
+  attachmentId?: string;
   data?: Buffer;
   mediaType: string;
   filename?: string;
@@ -84,6 +86,8 @@ export type SpawnAgent = (
 export type AgentInstruction = {
   text: string;
   attachments?: readonly AgentAttachment[];
+  /** Durable web image references, resolved by the host before execution. */
+  storedAttachments?: readonly MessageAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
   /** Host-owned turn context shown to the model near the instruction. */

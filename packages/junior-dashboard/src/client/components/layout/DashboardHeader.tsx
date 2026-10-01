@@ -64,9 +64,7 @@ export function DashboardHeader(props: {
   // fallback; explicit empty string means no title (create compose).
   const conversationMode = Boolean(props.mobileBackTo);
   const mobileTitle =
-    props.mobileTitle === undefined
-      ? "Conversation"
-      : props.mobileTitle.trim();
+    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
@@ -74,7 +72,7 @@ export function DashboardHeader(props: {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
+      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
         : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
@@ -150,15 +148,15 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative border-b border-dashboard-border-subtle">
+    <header className="relative border-b border-dashboard-border-emphasis bg-dashboard-bg">
       <div
         className={cn(
-          dashboardContainerClass,
+          props.compact ? "w-full min-w-0" : dashboardContainerClass,
           "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
           props.profile
             ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
             : "md:grid-cols-[auto_minmax(0,1fr)]",
-          props.compact ? "md:px-4" : "md:px-8",
+          props.compact ? "md:px-7 md:py-3" : "md:px-8",
         )}
       >
         {conversationMode && props.mobileBackTo ? (

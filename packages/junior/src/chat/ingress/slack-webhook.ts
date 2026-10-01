@@ -1,22 +1,36 @@
-import type { SlackAdapter, SlackEvent } from "@chat-adapter/slack";
+import { presentSlackAnnotationDetails } from "@/chat/slack/annotation-details";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import {
-  ChannelImpl,
-  ThreadImpl,
-  type Message,
-  type SlashCommandEvent,
-  type StateAdapter,
-} from "chat";
+  slackAssistantThreadSchema,
+  slackEventEnvelopeSchema,
+  slackInteractivePayloadSchema,
+  slackSlashCommandSchema,
+  type SlackSlashCommandForm,
+  type SlackEventEnvelope,
+  type SlackInboundEvent,
+  type SlackInteractivePayload,
+} from "./slack-payload";
+import { ChannelImpl, ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
+import {
+  startProcessingReaction,
+  type ProcessingReaction,
+} from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
 import { cancelSubscriptions } from "@/chat/events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
+import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
+  clearSlackPendingReactions,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -26,6 +40,7 @@ import {
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
@@ -33,12 +48,16 @@ import {
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
-import { stopSlackThread } from "@/chat/slack/thread-stop";
+import {
+  isSlackMessageStopped,
+  stopSlackThread,
+} from "@/chat/slack/thread-stop";
 import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
+import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
+import { slackMessageAttributes } from "./slack-message-telemetry";
 import {
   getWorkspaceTeamId,
   runWithWorkspaceTeamId,
@@ -46,7 +65,7 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { createActor, parseActorUserId } from "@/chat/actor";
+import { parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -55,36 +74,15 @@ import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
   logException,
+  setSpanAttributes,
   withLogContext,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
-type SlackMessageEvent = {
-  blocks?: Array<{ type: string; text?: { type: string; text: string } }>;
-  bot_id?: string;
-  channel?: string;
-  channel_type?: string;
-  event_ts?: string;
-  subtype?: string;
-  text?: string;
-  thread_ts?: string;
-  ts?: string;
-  type?: string;
-  user?: string;
-};
-
-type SlackEventEnvelope = {
-  enterprise_id?: string;
-  event?: SlackMessageEvent & Record<string, unknown>;
-  is_enterprise_install?: boolean;
-  team_id?: string;
-  type?: string;
-};
-
 function slackEventLogContext(
-  event: SlackMessageEvent | undefined,
+  event: SlackInboundEvent | undefined,
 ): LogContext {
   const channelId = event?.channel?.trim() || undefined;
   const threadTs = event?.thread_ts?.trim() || event?.ts?.trim() || undefined;
@@ -122,17 +120,6 @@ const IGNORED_MESSAGE_SUBTYPES = new Set([
   "ekm_access_denied",
   "tombstone",
 ]);
-
-interface SlackInteractivePayload {
-  actions?: Array<{
-    action_id?: string;
-    selected_option?: { value?: string };
-    value?: string;
-  }>;
-  team?: { id?: string };
-  type?: string;
-  user?: { id?: string; name?: string; team_id?: string; username?: string };
-}
 
 class SlackEventPersistenceError extends Error {
   readonly cause: unknown;
@@ -185,11 +172,11 @@ function installationFromEnvelope(
   };
 }
 
-function isDmEvent(event: SlackMessageEvent): boolean {
+function isDmEvent(event: SlackInboundEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
 }
 
-function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
+function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
@@ -226,9 +213,7 @@ async function buildThread(args: {
 
 function shouldIgnoreMessage(message: Message): boolean {
   return (
-    message.author.isMe === true ||
-    !parseActorUserId(message.author.userId) ||
-    isExternalSlackUser(message.raw as Record<string, unknown> | undefined)
+    message.author.isMe === true || !parseActorUserId(message.author.userId)
   );
 }
 
@@ -287,12 +272,45 @@ async function persistSlackMessage(args: {
     route: args.route,
     thread,
   });
+  const work = await getConversationWorkState({
+    conversationId,
+    state: args.state,
+  });
+  let receipt: ProcessingReaction | undefined;
+  if (
+    args.route === "mention" &&
+    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId) &&
+    !(await isSlackMessageStopped({
+      messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+      state: args.state,
+      threadId: canonicalThreadId,
+    }))
+  ) {
+    // Ingress is serialized per thread. React before publishing new input so
+    // neither a fast worker nor a duplicate delivery can leave a stale reaction.
+    receipt = await startProcessingReaction({
+      message: args.message,
+      thread,
+      timeoutMs: 1_000,
+    });
+  }
   await appendAndEnqueueInboundMessage({
     message: inbound,
     conversationStore: args.conversationStore,
     queue: args.queue,
     state: args.state,
-  }).catch((error: unknown) => {
+  }).catch(async (error: unknown) => {
+    // A failed queue send can follow a successful append. Keep that receipt:
+    // retries or heartbeat recovery can still process the saved input.
+    const saved = await getConversationWorkState({
+      conversationId,
+      state: args.state,
+    });
+    if (
+      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
+    ) {
+      await receipt?.stop();
+    }
     throw new SlackEventPersistenceError(error);
   });
 }
@@ -317,6 +335,17 @@ async function handleSlackThreadStop(args: {
   stopReason: string;
 }): Promise<void> {
   const thread = await buildThread(args);
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId: args.canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  // Capture receipts before the watermark lets a worker discard stale input.
+  // The ingress lock prevents another Slack message from arriving meanwhile.
+  const work = await getConversationWorkState({
+    conversationId,
+    state: args.state,
+  });
   const { applied } = await stopSlackThread({
     state: args.state,
     stoppedAtMs: args.message.metadata.dateSent.getTime(),
@@ -326,15 +355,15 @@ async function handleSlackThreadStop(args: {
     return;
   }
 
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
   await stopConversationTurn({
     conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,
+    state: args.state,
+  });
+  await clearSlackPendingReactions({
+    getSlackAdapter: () => args.adapter,
+    messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
   await cancelSubscriptions({ conversationId, state: args.state });
@@ -357,7 +386,7 @@ async function handleSlackThreadStop(args: {
 
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
-  event: SlackMessageEvent;
+  event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
   conversationStore?: ConversationStore;
@@ -381,7 +410,8 @@ async function routeParsedMessage(args: {
       args.event.blocks?.some(
         (block) =>
           block.type === "section" &&
-          block.text?.type === "mrkdwn" &&
+          typeof block.text === "object" &&
+          block.text.type === "mrkdwn" &&
           textMentionsBot(block.text.text, botUserId),
       )),
   );
@@ -405,8 +435,10 @@ async function routeParsedMessage(args: {
   }
 
   const stopDecision = getThreadStopDecision({
+    botUserName: botConfig.userName,
     rawText: args.event.text ?? "",
     text: args.event.text ?? "",
+    isExplicitMention: isMention,
   });
   if (stopDecision) {
     await handleSlackThreadStop({
@@ -496,58 +528,46 @@ async function handleSlackEvent(args: {
       installation,
       state,
       task: async () => {
-        if (event.type === "assistant_thread_started") {
-          const assistantThread = (event as Record<string, unknown>)
-            .assistant_thread as
-            | {
-                channel_id?: string;
-                context?: { channel_id?: string };
-                thread_ts?: string;
-                user_id?: string;
-              }
-            | undefined;
-          if (assistantThread?.channel_id && assistantThread.thread_ts) {
-            await args.services.runtime.handleAssistantThreadStarted({
-              channelId: assistantThread.channel_id,
-              context: { channelId: assistantThread.context?.channel_id },
-              threadId: adapter.encodeThreadId({
-                channel: assistantThread.channel_id,
-                threadTs: assistantThread.thread_ts,
-              }),
-              threadTs: assistantThread.thread_ts,
-              userId: assistantThread.user_id,
-            });
-          }
-          return;
-        }
+        if (
+          event.type === "assistant_thread_started" ||
+          event.type === "assistant_thread_context_changed"
+        ) {
+          const parsed = slackAssistantThreadSchema.safeParse(
+            event.assistant_thread,
+          );
+          if (!parsed.success) return;
 
-        if (event.type === "assistant_thread_context_changed") {
-          const assistantThread = (event as Record<string, unknown>)
-            .assistant_thread as
-            | {
-                channel_id?: string;
-                context?: { channel_id?: string };
-                thread_ts?: string;
-                user_id?: string;
-              }
-            | undefined;
-          if (assistantThread?.channel_id && assistantThread.thread_ts) {
-            await args.services.runtime.handleAssistantContextChanged({
-              channelId: assistantThread.channel_id,
-              context: { channelId: assistantThread.context?.channel_id },
-              threadId: adapter.encodeThreadId({
-                channel: assistantThread.channel_id,
-                threadTs: assistantThread.thread_ts,
-              }),
-              threadTs: assistantThread.thread_ts,
-              userId: assistantThread.user_id,
-            });
+          const thread = parsed.data;
+          const callback = {
+            channelId: thread.channel_id,
+            context: { channelId: thread.context.channel_id },
+            threadId: adapter.encodeThreadId({
+              channel: thread.channel_id,
+              threadTs: thread.thread_ts,
+            }),
+            threadTs: thread.thread_ts,
+            userId: thread.user_id,
+          };
+          if (event.type === "assistant_thread_started") {
+            await args.services.runtime.handleAssistantThreadStarted(callback);
+          } else {
+            await args.services.runtime.handleAssistantContextChanged(callback);
           }
           return;
         }
 
         if (event.type === "entity_details_requested") {
-          await presentSlackAutomationDetails(event, installation.teamId);
+          const ref = event.external_ref;
+          if (
+            ref &&
+            typeof ref === "object" &&
+            "type" in ref &&
+            ref.type === "annotation"
+          ) {
+            await presentSlackAnnotationDetails(event, installation.teamId);
+          } else {
+            await presentSlackAutomationDetails(event, installation.teamId);
+          }
           return;
         }
 
@@ -562,17 +582,31 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
-          const message = adapter.parseMessage(event as SlackEvent);
-          await routeParsedMessage({
-            adapter,
-            event,
-            installation,
-            message,
-            conversationStore: args.services.conversationStore,
-            queue: args.services.queue,
-            receivedAtMs,
-            state,
+          const member = await isSlackWorkspaceMember(event, state);
+          setSpanAttributes({
+            "app.slack.membership": member ? "verified" : "unverified",
           });
+          if (!member) return;
+          const message = adapter.parseMessage(event);
+          const routed = await withLock(
+            state,
+            `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
+            () =>
+              routeParsedMessage({
+                adapter,
+                event,
+                installation,
+                message,
+                conversationStore: args.services.conversationStore,
+                queue: args.services.queue,
+                receivedAtMs,
+                state,
+              }),
+            { keepAlive: true, waitMs: 10_000 },
+          );
+          if (!routed.acquired) {
+            throw new Error("Could not acquire Slack ingress lock");
+          }
         }
       },
     }),
@@ -592,55 +626,27 @@ function requireSlackPayloadUserId(
 
 async function handleSlashCommandForm(args: {
   adapter: SlackAdapter;
-  params: URLSearchParams;
+  form: SlackSlashCommandForm;
   state: StateAdapter;
 }): Promise<void> {
-  const raw = Object.fromEntries(args.params);
-  const channelId = args.params.get("channel_id") ?? "";
+  const { channel_id: channelId, team_id: teamId, user_id: userId } = args.form;
   const channel = new ChannelImpl({
-    id: channelId ? `slack:${channelId}` : "",
+    id: `slack:${channelId}`,
     adapter: args.adapter,
     stateAdapter: args.state,
   });
-  const userId = requireSlackPayloadUserId(
-    args.params.get("user_id"),
-    "Slack slash command payload",
-  );
-  const teamId = args.params.get("team_id") ?? undefined;
-  const userIdentity = createActor(
-    {
-      platform: "slack",
-      teamId,
-      userId,
-      userName: args.params.get("user_name") ?? undefined,
-      fullName: args.params.get("user_name") ?? undefined,
-    },
-    { teamId, userId },
-  );
-  if (!userIdentity?.userId) {
-    throw new Error("Slack slash command payload actor identity is invalid");
-  }
   await withSpan(
     "chat.slash_command",
     "chat.slash_command",
     { userId: userId },
     async () => {
       await handleSlashCommand({
-        adapter: args.adapter,
         channel,
-        command: args.params.get("command") || "",
-        text: args.params.get("text") || "",
-        triggerId: args.params.get("trigger_id") || undefined,
-        raw,
-        user: {
-          userId,
-          userName: userIdentity.userName ?? "",
-          fullName: userIdentity.fullName ?? "",
-          isBot: false,
-          isMe: false,
-        },
-        openModal: async () => undefined,
-      } satisfies SlashCommandEvent);
+        channelId,
+        teamId,
+        text: args.form.text,
+        userId,
+      });
     },
   );
 }
@@ -693,17 +699,6 @@ async function handleInteractivePayload(args: {
   );
 }
 
-function installationFromForm(
-  params: URLSearchParams,
-): SlackInstallationContext {
-  const isEnterpriseInstall = params.get("is_enterprise_install") === "true";
-  return {
-    teamId: params.get("team_id") ?? undefined,
-    enterpriseId: params.get("enterprise_id") ?? undefined,
-    isEnterpriseInstall,
-  };
-}
-
 function installationFromInteractive(
   payload: SlackInteractivePayload,
 ): SlackInstallationContext {
@@ -723,13 +718,24 @@ async function handleSlackForm(args: {
   await state.connect();
 
   if (params.has("command") && !params.has("payload")) {
-    const installation = installationFromForm(params);
+    const result = slackSlashCommandSchema.safeParse(
+      Object.fromEntries(params),
+    );
+    if (!result.success) {
+      return new Response("Invalid slash command payload", { status: 400 });
+    }
+    const form = result.data;
+    const installation: SlackInstallationContext = {
+      teamId: form.team_id,
+      enterpriseId: form.enterprise_id,
+      isEnterpriseInstall: form.is_enterprise_install === "true",
+    };
     enqueue(
       args.waitUntil,
       withLogContext(
         {
           platform: "slack",
-          userId: params.get("user_id")?.trim() || undefined,
+          userId: form.user_id,
         },
         () =>
           runWithWorkspaceTeamId(installation.teamId, () =>
@@ -740,7 +746,7 @@ async function handleSlackForm(args: {
               task: () =>
                 handleSlashCommandForm({
                   adapter,
-                  params,
+                  form,
                   state,
                 }),
             }),
@@ -756,10 +762,11 @@ async function handleSlackForm(args: {
   if (!rawPayload) {
     return new Response("Missing payload", { status: 400 });
   }
-  const payload = parseJson(rawPayload) as SlackInteractivePayload | undefined;
-  if (!payload) {
+  const result = slackInteractivePayloadSchema.safeParse(parseJson(rawPayload));
+  if (!result.success) {
     return new Response("Invalid payload JSON", { status: 400 });
   }
+  const payload = result.data;
   const installation = installationFromInteractive(payload);
 
   enqueue(
@@ -811,14 +818,14 @@ export async function handleSlackWebhook(args: {
     });
   }
 
-  const parsed = parseJson(body) as SlackEventEnvelope | undefined;
-  if (!parsed) {
+  const result = slackEventEnvelopeSchema.safeParse(parseJson(body));
+  if (!result.success) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
+  const parsed = result.data;
   if (parsed.type === "url_verification") {
-    const challenge = (parsed as { challenge?: unknown }).challenge;
-    return Response.json({ challenge });
+    return Response.json({ challenge: parsed.challenge });
   }
 
   if (parsed.type === "event_callback") {
@@ -828,10 +835,20 @@ export async function handleSlackWebhook(args: {
         eventLogContext,
         async () => {
           try {
-            await handleSlackEvent({
-              body: parsed,
-              services: args.services,
-            });
+            await withSpan(
+              "slack.message.ingress",
+              "slack.message.ingress",
+              eventLogContext,
+              () =>
+                handleSlackEvent({
+                  body: parsed,
+                  services: args.services,
+                }),
+              {
+                ...slackMessageAttributes(parsed),
+                "app.slack.membership": "not_checked",
+              },
+            );
           } catch (error) {
             // Any failure before durable mailbox append — installation/token
             // resolution, routing-state reads, persistence — must be retryable.

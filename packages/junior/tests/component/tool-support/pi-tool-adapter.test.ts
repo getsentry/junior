@@ -269,6 +269,45 @@ describe("Pi tool adapter", () => {
     );
   });
 
+  it("reports a failure after the run aborts as an attempt with unknown outcome", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(async () => {
+      abortController.abort(new Error("turn deadline"));
+      throw new Error("transport closed");
+    });
+
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await expect(
+      demoTool!.execute(
+        "tool-demo",
+        { value: "input" },
+        abortController.signal,
+      ),
+    ).resolves.toMatchObject({
+      details: { aborted: true, target: "demo" },
+      isError: false,
+    });
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
+  });
+
   it("reports tool call parameters to the caller", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolCall = vi.fn();
@@ -429,7 +468,7 @@ describe("Pi tool adapter", () => {
       userAuthorization: "high" as const,
     }));
     const pluginHooks = {
-      afterMcpTool: vi.fn(async () => undefined),
+      afterMcpTool: vi.fn(async () => []),
       beforeToolExecute: vi.fn(async () => ({
         input: {
           reportId: "monthly",

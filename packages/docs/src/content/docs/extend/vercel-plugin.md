@@ -213,14 +213,14 @@ If deployment webhooks are enabled, also verify one signed delivery:
 
 These tools are available with `vercelPlugin()` and the existing token:
 
-- `vercel_deployment_create`: supply a project, Git ref, optional team, and
+- `vercel_deploymentCreate`: supply a project, Git ref, optional team, and
   optional full commit SHA. It uses the project's linked GitHub repository.
   Preview is the default target; Production must be selected explicitly.
-- `vercel_deployment_inspect`: inspect an exact deployment ID or hostname.
-- `vercel_alias_assign`: assign an alias hostname to a deployment ID, then read
+- `vercel_deploymentInspect`: inspect an exact deployment ID or hostname.
+- `vercel_aliasAssign`: assign an alias hostname to a deployment ID, then read
   back the target. It can replace live traffic.
-- `vercel_alias_inspect`: read the alias's current deployment ID or redirect.
-- `vercel_deployment_delete`: delete the exact deployment the user requests.
+- `vercel_aliasInspect`: read the alias's current deployment ID or redirect.
+- `vercel_deploymentDelete`: delete the exact deployment the user requests.
 
 Use the CLI for logs, local source uploads, and other Git providers.
 A create starts a build; inspect its state before use. If a response is lost,

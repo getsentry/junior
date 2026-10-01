@@ -161,10 +161,36 @@ Events: `webhook.response.unsuccessful`, `webhook.handler.failed`,
 `slack.event.persist.failed`, `slack.event.routing.failed`,
 `slack.event.enqueue.failed`
 
-Spans: `http.server.request`
+Spans: `http.server.request`, `slack.message.ingress`
 
 Attributes: `http.request.method`, `http.response.status_code`, `url.path`,
 `app.request.id`
+
+Signed Slack message and mention events get a `slack.message.ingress` span
+before membership checks. It carries conversation, channel, and message IDs,
+plus these fields:
+
+- `app.slack.user_id`, `app.slack.bot_id`: sender IDs from the event.
+- `app.slack.team_id`, `app.slack.enterprise_id`: installation envelope IDs.
+- `app.slack.user_team`, `app.slack.source_team`, `app.slack.event_team`:
+  separate Slack fields, not interchangeable membership evidence.
+- `app.slack.event_id`, `app.slack.event_type`, `app.slack.event_subtype`:
+  event correlation and kind.
+- `app.slack.is_ext_shared_channel`: envelope sharing flag, not membership.
+- `app.slack.membership`: `verified`, `unverified`, or `not_checked`.
+  `unverified` includes missing identity data, not just external authors.
+  `not_checked` includes ignored events and failures before the check completes.
+
+Identity fields record `missing` or `invalid` instead of absent or malformed
+values. They do not contain message text, names, emails, or raw payloads.
+A verified author does not imply the message was queued or received a reply.
+These attributes belong to ingress; do not expect them on later worker spans.
+
+```text
+dataset=spans query='span.op:slack.message.ingress gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,app.slack.user_id,app.slack.team_id,app.slack.user_team,app.slack.source_team,app.slack.event_team,app.slack.membership
+sort=timestamp
+```
 
 ### Slack Delivery
 

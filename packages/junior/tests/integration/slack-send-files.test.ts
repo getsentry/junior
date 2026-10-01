@@ -10,7 +10,7 @@ import {
 } from "@/chat/db";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
-import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -135,7 +135,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("sends file-only messages without posting empty text", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -170,7 +170,7 @@ describe("Slack sendFiles", () => {
       mimeType: "image/png",
       path: "/tmp/junior/artifacts/generated.png",
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share the generated image"),
       createToolState(),
       createMaterializeFile({ [generatedArtifact.path]: imageBytes }),
@@ -195,7 +195,7 @@ describe("Slack sendFiles", () => {
       destinationChannelId: "CSHARED",
       threadTs: "1700000000.321",
     });
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       context,
       createToolState(),
       createMaterializeFile({
@@ -221,7 +221,7 @@ describe("Slack sendFiles", () => {
   it("uploads files to a channel-level Conversation Location", async () => {
     const context = createContext("attach the report");
     delete context.messageTs;
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       context,
       createToolState(),
       createMaterializeFile({
@@ -240,7 +240,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("uploads files into the current Slack thread", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -267,7 +267,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("treats nullable optional file metadata as omitted", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report", {
         threadTs: "1700000000.321",
       }),
@@ -322,7 +322,7 @@ describe("Slack sendFiles", () => {
       },
       delete: async () => undefined,
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
       createMaterializeFile({
@@ -343,7 +343,7 @@ describe("Slack sendFiles", () => {
       { toolCallId: "call-send-1" },
     );
     // Clear in-process tool dedupe so a later call exercises durable reuse.
-    const retryTool = createSendFilesTool(
+    const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),
       createToolState(),
       createMaterializeFile({
@@ -427,7 +427,7 @@ describe("Slack sendFiles", () => {
       delete: async () => undefined,
     };
     const state = createToolState();
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("attach the report"),
       state,
       createMaterializeFile({
@@ -508,7 +508,7 @@ describe("Slack sendFiles", () => {
       },
       delete: async () => undefined,
     };
-    const firstTool = createSendFilesTool(
+    const firstTool = createSlackSendFilesTool(
       createContext("attach the report"),
       createToolState(),
       createMaterializeFile({
@@ -534,7 +534,7 @@ describe("Slack sendFiles", () => {
       .set({ deleteRequestedAt: now })
       .where(eq(juniorAttachments.id, attachmentId!));
 
-    const retryTool = createSendFilesTool(
+    const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),
       createToolState(),
       createMaterializeFile({
@@ -581,7 +581,7 @@ describe("Slack sendFiles", () => {
           deleted.push(...keys);
         },
       };
-      const tool = createSendFilesTool(
+      const tool = createSlackSendFilesTool(
         createContext("attach the report"),
         createToolState(),
         createMaterializeFile({
@@ -614,7 +614,7 @@ describe("Slack sendFiles", () => {
     const files = {
       "/tmp/report.txt": Buffer.from("first report"),
     };
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(files),
@@ -634,7 +634,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("deduplicates repeated uploads of the same file contents", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile({
@@ -658,7 +658,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("reports a missing sendFiles path as repairable tool input", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),
@@ -675,7 +675,7 @@ describe("Slack sendFiles", () => {
   });
 
   it("requires at least one file", async () => {
-    const tool = createSendFilesTool(
+    const tool = createSlackSendFilesTool(
       createContext("share this file"),
       createToolState(),
       createMaterializeFile(),

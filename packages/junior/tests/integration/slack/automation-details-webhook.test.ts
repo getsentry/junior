@@ -1,3 +1,4 @@
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -9,6 +10,7 @@ import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import { renderSlackObjectCard } from "@/chat/slack/object-card";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createConversationWorkQueueTestAdapter,
@@ -21,7 +23,12 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 const SIGNING_SECRET = "test-signing-secret";
 const ORIGINAL_ENV = { ...process.env };
 
-async function requestDetails(id: string, user = "U123", teamId = "T123") {
+async function requestDetails(
+  id: string,
+  user = "U123",
+  teamId = "T123",
+  type = "automation",
+) {
   const client = createSlackWebhookTestClient({
     signingSecret: SIGNING_SECRET,
   });
@@ -34,7 +41,7 @@ async function requestDetails(id: string, user = "U123", teamId = "T123") {
       event: {
         type: "entity_details_requested",
         user,
-        external_ref: { id, type: "automation" },
+        external_ref: { id, type },
         trigger_id: `trigger-${id}`,
         // The URL and channel must not grant access or select the object.
         entity_url: "https://untrusted.example/automations/other",
@@ -116,6 +123,137 @@ describe("Slack Work Object details", () => {
     setDashboardConversationLinkOptions(undefined);
     resetSlackApiMockState();
     await disconnectStateAdapter();
+  });
+
+  it("shows saved annotation facts only within the viewer's Conversation access", async () => {
+    await saveReminder();
+    const conversationId = "slack:D123:annotation";
+    await getConversationStore().recordActivity({
+      conversationId,
+      actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
+      destination: { platform: "slack", teamId: "T123", channelId: "D123" },
+      visibility: "private",
+    });
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: 'repo/修正#1:"quoted"',
+      label: "ENG-1",
+      title: "Saved issue",
+      objectType: "task",
+      status: "Started",
+      facts: { type: "task", assignees: ["Sam"], priority: "High" },
+      url: "https://example.com/issues/1",
+    });
+    const id = renderSlackObjectCard(
+      {
+        kind: "object",
+        plugin: "objects",
+        key: 'repo/修正#1:"quoted"',
+        label: "ENG-1",
+        title: "Saved issue",
+        objectType: "task",
+        url: "https://example.com/issues/1",
+      },
+      conversationId,
+    ).entity!.external_ref.id;
+    expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        entity_type: "slack#/entities/task",
+        external_ref: { id, type: "annotation" },
+        entity_payload: {
+          attributes: { title: { text: "Saved issue" } },
+          fields: { status: { value: "Started" } },
+          display_order: ["status", "assignees", "priority"],
+          custom_fields: [
+            {
+              key: "assignees",
+              label: "Assignees",
+              type: "string",
+              value: "Sam",
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              type: "string",
+              value: "High",
+            },
+          ],
+        },
+      },
+    });
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: 'repo/修正#1:"quoted"',
+      label: "ENG-1",
+      title: "Updated issue",
+      objectType: "task",
+      status: "Done",
+      url: "https://example.com/issues/1",
+    });
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        external_ref: { id, type: "annotation" },
+        entity_payload: {
+          attributes: { title: { text: "Updated issue" } },
+          fields: { status: { value: "Done" } },
+        },
+      },
+    });
+    // Detail responses retain the fields omitted from compact code change cards.
+    const description = "Full description. ".repeat(100);
+    await createPluginAnnotations({
+      conversationId,
+      plugin: "objects",
+      db: getDb(),
+    }).upsert({
+      kind: "object",
+      key: 'repo/修正#1:"quoted"',
+      label: "repo#1",
+      title: "Saved code change",
+      objectType: "code_change",
+      description,
+      status: "draft",
+      facts: { type: "code_change", sourceBranch: "feature/parser" },
+      url: "https://example.com/pull/1",
+    });
+    expect(
+      await requestDetails(id, "U123", "T123", "annotation"),
+    ).toMatchObject({
+      metadata: {
+        entity_payload: {
+          display_order: ["status", "description", "sourceBranch"],
+          custom_fields: [
+            { key: "status", value: "draft" },
+            { key: "description", value: description.trim() },
+            { key: "sourceBranch", value: "feature/parser" },
+          ],
+        },
+      },
+    });
+    const denied = await requestDetails(id, "U999", "T123", "annotation");
+    expect(denied).toMatchObject({ error: { status: "not_found" } });
+    expect(denied).not.toHaveProperty("metadata");
+    for (const invalidId of [
+      JSON.stringify([conversationId, "objects", 'repo/修正#1:"quoted"']),
+      Buffer.from('{"not":"a reference tuple"}').toString("base64url"),
+    ]) {
+      expect(
+        await requestDetails(invalidId, "U123", "T123", "annotation"),
+      ).toMatchObject({ error: { status: "not_found" } });
+    }
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {

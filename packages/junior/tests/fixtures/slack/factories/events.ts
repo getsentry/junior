@@ -1,3 +1,4 @@
+import type { AppMentionEvent, GenericMessageEvent } from "@slack/types";
 import {
   TEST_CHANNEL_ID,
   TEST_THREAD_TS,
@@ -168,16 +169,7 @@ export interface SlackEventsApiEnvelope {
   type: "event_callback";
   event_id: string;
   event_time: number;
-  event: {
-    type: "app_mention" | "message";
-    user: string;
-    text: string;
-    channel: string;
-    ts: string;
-    event_ts: string;
-    channel_type?: "channel" | "group" | "im" | "mpim";
-    thread_ts?: string;
-  };
+  event: AppMentionEvent | GenericMessageEvent;
 }
 
 function deriveChannelType(
@@ -191,10 +183,11 @@ function deriveChannelType(
 
 /**
  * Raw Slack Events API wrapper fixture for transport-level webhook tests.
+ * Keep author-team fields absent, as in Slack's message and mention examples.
  * Docs:
  * - https://docs.slack.dev/apis/events-api/
  * - https://docs.slack.dev/reference/events/app_mention/
- * - https://docs.slack.dev/reference/events/message.im/
+ * - https://docs.slack.dev/reference/events/message/
  * - https://docs.slack.dev/reference/events/assistant_thread_started/
  */
 export function slackEventsApiEnvelope(
@@ -210,24 +203,30 @@ export function slackEventsApiEnvelope(
 ): SlackEventsApiEnvelope {
   const ts = input.ts ?? TEST_THREAD_TS;
   const channel = input.channel ?? TEST_CHANNEL_ID;
-  const channelType = deriveChannelType(channel);
+  const event = {
+    user: input.user ?? TEST_USER_ID,
+    text: input.text ?? "<@U0APP> hello",
+    channel,
+    ts,
+    event_ts: input.eventTs ?? ts,
+    ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
+  };
 
   return {
     token: "test-token",
-    team_id: "T0TEST",
+    team_id: "T123",
     api_app_id: "A_TEST",
     type: "event_callback",
     event_id: "Ev_TEST",
     event_time: 1700000000,
-    event: {
-      type: input.eventType ?? "app_mention",
-      user: input.user ?? TEST_USER_ID,
-      text: input.text ?? "<@U0APP> hello",
-      channel,
-      ts,
-      event_ts: input.eventTs ?? ts,
-      ...(channelType ? { channel_type: channelType } : undefined),
-      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
-    },
+    event:
+      input.eventType === "message"
+        ? {
+            ...event,
+            type: "message",
+            subtype: undefined,
+            channel_type: deriveChannelType(channel) ?? "channel",
+          }
+        : { ...event, type: "app_mention" },
   };
 }

@@ -18,6 +18,7 @@ type QueryClient = PgPool | PoolClient;
 class PostgresExecutor implements JuniorSqlExecutor {
   private readonly transactionClient = new AsyncLocalStorage<PoolClient>();
   private savepointId = 0;
+  private isolatedQueryId = 0;
 
   constructor(
     private readonly pool: PgPool,
@@ -45,6 +46,27 @@ class PostgresExecutor implements JuniorSqlExecutor {
       ...params,
     ]);
     return result.rows as T[];
+  }
+
+  async queryIsolated<T = unknown>(
+    statement: string,
+    params: readonly unknown[] = [],
+  ): Promise<T[]> {
+    const client = traceQueries(await this.pool.connect(), {
+      connectionString: this.connectionString,
+      driver: "postgres",
+    });
+    try {
+      // A named statement uses the extended protocol, which accepts one statement only.
+      const result = await client.query<QueryResultRow>({
+        name: `junior_isolated_${++this.isolatedQueryId}`,
+        text: statement,
+        values: [...params],
+      });
+      return result.rows as T[];
+    } finally {
+      client.release(true);
+    }
   }
 
   async migrate(config: MigrationConfig): Promise<void> {

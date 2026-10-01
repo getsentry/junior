@@ -1,3 +1,4 @@
+import { getDashboardObjectIconLink } from "@/chat/dashboard-link";
 import type { AutomationCard } from "@/chat/automations/card";
 import type { SlackCard } from "./cards";
 import { escapeSlackMrkdwnText, formatSlackLink } from "./mrkdwn";
@@ -8,12 +9,16 @@ function preview(text: string, length: number): string {
 }
 
 /** Show an Automation as a native Work Object, not an operation receipt. */
-export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
+export function renderSlackAutomationCard(
+  card: Pick<AutomationCard, "id" | "title" | "url" | "trigger" | "warning">,
+): SlackCard {
   const title = preview(card.title, 160);
+  const iconUrl = getDashboardObjectIconLink("workflow");
 
   const trigger = preview(card.trigger, 500);
   const warning = card.warning ? preview(card.warning, 500) : null;
   const text = [
+    "Automation",
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),
     escapeSlackMrkdwnText(trigger),
     warning ? escapeSlackMrkdwnText(warning) : null,
@@ -34,6 +39,9 @@ export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
         attributes: {
           title: { text: title },
           display_type: "Automation",
+          product_icon: iconUrl
+            ? { url: iconUrl, alt_text: "Automation" }
+            : undefined,
         },
         custom_fields: [
           {
@@ -48,7 +56,7 @@ export function renderSlackAutomationCard(card: AutomationCard): SlackCard {
                 {
                   key: "warning",
                   label: "Needs attention",
-                  type: "string",
+                  type: "string" as const,
                   value: warning,
                   long: true,
                 },

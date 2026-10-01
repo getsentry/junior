@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deliverPrivateMessage } from "@/chat/oauth-flow";
+import {
+  deliverOAuthAuthorization,
+  deliverPrivateMessage,
+} from "@/chat/oauth-flow";
 import {
   TEST_CHANNEL_ID,
   TEST_DM_CHANNEL_ID,
@@ -12,26 +15,37 @@ import {
 } from "../msw/handlers/slack-api";
 
 describe("OAuth private Slack delivery", () => {
-  it("delivers a channel authorization link ephemerally", async () => {
-    const result = await deliverPrivateMessage({
-      channelId: TEST_CHANNEL_ID,
-      threadTs: TEST_THREAD_TS,
-      userId: TEST_USER_ID,
-      text: "Authorize privately",
-    });
+  it("delivers a channel authorization button ephemerally", async () => {
+    const authorizationUrl =
+      "https://example.com/oauth/authorize?state=private";
+    const result = await deliverOAuthAuthorization(
+      {
+        authorizationUrl,
+        label: "Connect to Hex",
+        completionText:
+          "Once you've authorized, Junior will continue automatically.",
+      },
+      {
+        channelId: TEST_CHANNEL_ID,
+        threadTs: TEST_THREAD_TS,
+        userId: TEST_USER_ID,
+      },
+    );
 
     expect(result).toBe("in_context");
-    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toMatchObject([
+      {
+        params: {
           channel: TEST_CHANNEL_ID,
           thread_ts: TEST_THREAD_TS,
           user: TEST_USER_ID,
-          text: "Authorize privately",
-        }),
-      }),
+          text: expect.stringContaining(`<${authorizationUrl}|Connect to Hex>`),
+          blocks: [{ accessory: { type: "button", url: authorizationUrl } }],
+        },
+      },
     ]);
     expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
   it("delivers a direct-message authorization link in the existing DM", async () => {

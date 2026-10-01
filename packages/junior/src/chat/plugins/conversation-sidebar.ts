@@ -8,14 +8,42 @@ import { logWarn } from "@/chat/logging";
 import { getRegistrations } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
-/** Return plugin-selected sidebar annotations for candidate conversations. */
+/** Show native objects by default and let plugins select compact sidebar labels. */
 export async function listConversationSidebarAnnotations(
   conversationIds: string[],
   annotationsByConversation: Map<string, ConversationAnnotation[]>,
 ): Promise<Record<string, ConversationSidebarAnnotation[]>> {
   const candidates = new Set(conversationIds);
   const selected: Record<string, ConversationSidebarAnnotation[]> = {};
-  for (const plugin of getRegistrations()) {
+  const plugins = getRegistrations();
+  const customOwners = new Set(
+    plugins
+      .filter((plugin) => plugin.hooks?.conversationSidebar)
+      .map((plugin) => plugin.manifest.name),
+  );
+  for (const conversationId of conversationIds) {
+    const objects = (
+      annotationsByConversation.get(conversationId) ?? []
+    ).flatMap((annotation) => {
+      if (customOwners.has(annotation.plugin) || !annotation.objectType)
+        return [];
+      return [
+        {
+          key: annotation.key,
+          label: annotation.label,
+          objectType:
+            annotation.objectType === "item" &&
+            annotation.kind === "object" &&
+            annotation.facts?.type === "deployment"
+              ? ("deployment" as const)
+              : annotation.objectType,
+          status: annotation.status,
+        },
+      ];
+    });
+    if (objects.length) selected[conversationId] = objects;
+  }
+  for (const plugin of plugins) {
     const hook = plugin.hooks?.conversationSidebar;
     if (!hook) continue;
     const annotationsByConversationId = Object.fromEntries(

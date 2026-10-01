@@ -23,7 +23,10 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import {
+  queueSlackApiError,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 import {
   FakeSlackAdapter,
   createTestThread,
@@ -441,9 +444,9 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(
-      postIncludes(thread, "The model provider returned an error."),
-    ).toBe(true);
+    expect(postIncludes(thread, "The model provider returned an error.")).toBe(
+      true,
+    );
     expect(JSON.stringify(thread.posts)).not.toContain("LLM unavailable");
     const lifecycle = await loadTurnLifecycleEvents(conversationId);
     expect(lifecycle.map((event) => event.data)).toEqual([
@@ -481,22 +484,18 @@ describe("bot handlers (integration)", () => {
     const thread = await createTestThread({
       id: conversationId,
     });
-    thread.post = vi.fn(async () => {
-      throw new Error("Slack unavailable");
-    }) as typeof thread.post;
+    queueSlackApiError("chat.postMessage", { error: "channel_not_found" });
 
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-delivery-fail",
-          threadId: conversationId,
-          text: "please answer",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).rejects.toThrow("Slack unavailable");
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-delivery-fail",
+        threadId: conversationId,
+        text: "please answer",
+        isMention: true,
+      }),
+      { destination: createTestDestination(thread) },
+    );
 
     const conversation = await loadVisibleConversation(thread);
     expect(conversation?.processing?.activeTurnId).toBeUndefined();

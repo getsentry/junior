@@ -1,3 +1,4 @@
+import { structuredPatch } from "diff";
 import {
   MAX_TEXT_CHARS,
   normalizeToLf,
@@ -22,19 +23,6 @@ interface MatchedEdit {
 }
 
 const MAX_DIFF_LINE_CHARS = 4_000;
-
-function truncateDiffLine(value: string): {
-  line: string;
-  truncated: boolean;
-} {
-  if (value.length <= MAX_DIFF_LINE_CHARS) {
-    return { line: value, truncated: false };
-  }
-  return {
-    line: `${value.slice(0, MAX_DIFF_LINE_CHARS)}... [line truncated]`,
-    truncated: true,
-  };
-}
 
 /** Preserve a text artifact's dominant line-ending style across rewrites. */
 export function detectLineEnding(value: string): "\r\n" | "\n" {
@@ -69,11 +57,9 @@ function countOccurrences(content: string, target: string): number {
 }
 
 function firstChangedLine(
-  oldContent: string,
-  newContent: string,
+  oldLines: string[],
+  newLines: string[],
 ): number | undefined {
-  const oldLines = oldContent.split("\n");
-  const newLines = newContent.split("\n");
   const count = Math.max(oldLines.length, newLines.length);
   for (let index = 0; index < count; index += 1) {
     if (oldLines[index] !== newLines[index]) {
@@ -142,64 +128,60 @@ export function buildCompactDiff(
 } {
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
-  let prefix = 0;
-  while (
-    prefix < oldLines.length &&
-    prefix < newLines.length &&
-    oldLines[prefix] === newLines[prefix]
-  ) {
-    prefix += 1;
-  }
-
-  let oldSuffix = oldLines.length - 1;
-  let newSuffix = newLines.length - 1;
-  while (
-    oldSuffix >= prefix &&
-    newSuffix >= prefix &&
-    oldLines[oldSuffix] === newLines[newSuffix]
-  ) {
-    oldSuffix -= 1;
-    newSuffix -= 1;
-  }
-
-  const contextStart = Math.max(0, prefix - 3);
-  const newContextEnd = Math.min(newLines.length - 1, newSuffix + 3);
-  const oldContextEnd = Math.min(oldLines.length - 1, oldSuffix + 3);
+  // Separate hunks keep unchanged lines between distant edits out of history.
+  const { hunks } = structuredPatch(
+    "",
+    "",
+    oldContent,
+    newContent,
+    undefined,
+    undefined,
+    { context: 3 },
+  );
   const width = String(Math.max(oldLines.length, newLines.length)).length;
   const output: string[] = [];
   let lineTruncated = false;
-  const pushLine = (value: string): void => {
-    const bounded = truncateDiffLine(value);
-    output.push(bounded.line);
-    lineTruncated ||= bounded.truncated;
+  const pushLine = (line: string): void => {
+    if (line.length > MAX_DIFF_LINE_CHARS) {
+      line = `${line.slice(0, MAX_DIFF_LINE_CHARS)}... [line truncated]`;
+      lineTruncated = true;
+    }
+    output.push(line);
   };
 
-  if (contextStart > 0) {
-    pushLine(` ${"".padStart(width)} ...`);
+  let nextLine = 1;
+  for (const hunk of hunks) {
+    if (hunk.newStart > nextLine) {
+      pushLine(` ${"".padStart(width)} ...`);
+    }
+    let oldLine = hunk.oldStart;
+    let newLine = hunk.newStart;
+    for (const line of hunk.lines) {
+      const prefix = line[0];
+      if (prefix === "\\") {
+        pushLine(line);
+        continue;
+      }
+      const lineNumber = prefix === "-" ? oldLine : newLine;
+      pushLine(
+        `${prefix}${String(lineNumber).padStart(width)} ${line.slice(1)}`,
+      );
+      if (prefix !== "+") oldLine += 1;
+      if (prefix !== "-") newLine += 1;
+    }
+    nextLine = newLine;
   }
-  for (let index = contextStart; index < prefix; index += 1) {
-    pushLine(` ${String(index + 1).padStart(width)} ${oldLines[index]}`);
-  }
-  for (let index = prefix; index <= oldSuffix; index += 1) {
-    pushLine(`-${String(index + 1).padStart(width)} ${oldLines[index]}`);
-  }
-  for (let index = prefix; index <= newSuffix; index += 1) {
-    pushLine(`+${String(index + 1).padStart(width)} ${newLines[index]}`);
-  }
-  for (let index = newSuffix + 1; index <= newContextEnd; index += 1) {
-    pushLine(` ${String(index + 1).padStart(width)} ${newLines[index]}`);
-  }
-  if (
-    newContextEnd < newLines.length - 1 ||
-    oldContextEnd < oldLines.length - 1
-  ) {
+  const newLineCount = newContent
+    ? newLines.length - (newContent.endsWith("\n") ? 1 : 0)
+    : 0;
+  if (hunks.length > 0 && nextLine <= newLineCount) {
     pushLine(` ${"".padStart(width)} ...`);
   }
 
   const bounded = truncateText(output.join("\n"), MAX_TEXT_CHARS);
   return {
     diff: bounded.content,
-    firstChangedLine: firstChangedLine(oldContent, newContent),
+    firstChangedLine: firstChangedLine(oldLines, newLines),
     truncated: lineTruncated || bounded.truncated,
   };
 }

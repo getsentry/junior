@@ -95,19 +95,25 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     );
   });
 
-  it("when asked for recurring maintenance, keep successful work silent", async ({
+  it("when asked for nightly fix PRs, omit success notifications by default", async ({
     run,
   }) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every night at 2am Pacific, fix failing CI checks in getsentry/junior.",
+          "@bot every night at 2am Pacific, open PRs to fix failing CI checks in getsentry/junior.",
         ),
       ],
     });
     const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]!.arguments?.outcomes ?? []).toEqual([]);
+    expect(createCalls[0]!.arguments?.schedule).toMatchObject({
+      kind: "recurring",
+      frequency: "daily",
+      time: "02:00",
+      timezone: "America/Los_Angeles",
+    });
   });
 
   it("when asked to schedule clear recurring work, create it in the active channel", async ({

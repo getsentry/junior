@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { Button } from "../components/Button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
+import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
@@ -35,6 +36,7 @@ export function Transcript(props: {
 }) {
   const view = props.view ?? "rich";
   const search = props.search ?? "";
+  const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
@@ -43,7 +45,11 @@ export function Transcript(props: {
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
-    version: transcriptBottomVersion(props.transcript),
+    view,
+    versions: {
+      rich: transcriptBottomVersion(props.transcript, "rich"),
+      raw: transcriptBottomVersion(props.transcript, "raw"),
+    },
   });
 
   if (!props.transcript) {
@@ -77,8 +83,8 @@ export function Transcript(props: {
               type="button"
             >
               {props.loadingPreviousPage
-                ? "Loading earlier messages…"
-                : "Show earlier messages"}
+                ? `Loading earlier ${historyLabel}…`
+                : `Show earlier ${historyLabel}`}
             </button>
             <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
           </div>
@@ -91,12 +97,18 @@ export function Transcript(props: {
             Earlier events could not be loaded.
           </div>
         ) : null}
-        <ConversationTranscriptView
-          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          conversation={props.transcript}
-          responding={props.responding ?? props.live ?? false}
-          view={view}
-        />
+        {view === "raw" ? (
+          <ConversationEventLog
+            key={props.transcript.conversationId}
+            conversation={props.transcript}
+          />
+        ) : (
+          <ConversationTranscriptView
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={props.transcript}
+            responding={props.responding ?? props.live ?? false}
+          />
+        )}
         <div
           aria-hidden="true"
           className="h-px"
@@ -127,7 +139,7 @@ function JumpToLatestButton(props: {
     <div className="pointer-events-none sticky bottom-3 z-20 flex h-0 justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:h-auto md:justify-end md:px-0">
       <Button
         aria-label={label}
-        className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-cyan-300/30 !bg-[#0b181a] text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-cyan-200/60 hover:!bg-[#102226] hover:!text-dashboard-text md:translate-y-0"
+        className="pointer-events-auto relative -translate-y-full rounded-lg !border !border-dashboard-border-emphasis !bg-dashboard-surface-active text-dashboard-text shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:!border-dashboard-border-interactive hover:!bg-dashboard-surface-hover hover:!text-dashboard-text md:translate-y-0"
         onClick={props.onClick}
         size="icon"
         title={label}

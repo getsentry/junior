@@ -1,3 +1,7 @@
+import {
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes-schema";
 import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { getDb } from "@/chat/db";
@@ -6,11 +10,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import {
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-  type TaskOutcomeInput,
-} from "@/chat/task-outcomes";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
 import { createScheduledAutomation, readScheduledAutomation } from "../tasks";
 import {
@@ -47,11 +47,17 @@ export function createSlackScheduleCreateAutomationTool(
       readOnlyHint: false,
     },
     description:
-      "Create a one-time or recurring Junior task in the active Slack channel.",
+      "Create a one-time or recurring Junior task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
     executionMode: "sequential",
     inputSchema: z
       .object({
-        instruction: z.string().min(1).max(4000),
+        instruction: z
+          .string()
+          .min(1)
+          .max(4000)
+          .describe(
+            "Work to perform when the task runs. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
+          ),
         title: z
           .string()
           .trim()
@@ -122,7 +128,11 @@ export function createSlackScheduleCreateAutomationTool(
             "Scheduled automation operation identity is invalid.",
           );
         }
-        return scheduleAutomationToolResult(existing, actor.slackUserId);
+        return scheduleAutomationToolResult(
+          context.conversationId,
+          existing,
+          actor.slackUserId,
+        );
       }
 
       const creator = await context.users.resolveActor();
@@ -157,6 +167,7 @@ export function createSlackScheduleCreateAutomationTool(
         context.source,
       );
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,
@@ -200,7 +211,11 @@ export function createSlackScheduleCreateAutomationTool(
         "scheduled_automation.create.completed",
         scheduledAutomationAttributes(committed),
       );
-      return scheduleAutomationToolResult(committed, actor.slackUserId);
+      return scheduleAutomationToolResult(
+        context.conversationId,
+        committed,
+        actor.slackUserId,
+      );
     },
   });
 }

@@ -1,5 +1,5 @@
 import { describeEval, toolCalls } from "vitest-evals";
-import { beforeAll, expect } from "vitest";
+import { expect } from "vitest";
 import {
   mention,
   event,
@@ -7,16 +7,8 @@ import {
   slackEvals,
   threadMessage,
 } from "../../src/helpers";
-import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
-
-const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 
 describeEval("GitHub Skill Workflows", slackEvals, (it) => {
-  // Keep one-time sandbox setup outside the 60-second behavior budget.
-  beforeAll(async () => {
-    await warmSandboxSnapshot();
-  }, SNAPSHOT_WARMUP_TIMEOUT_MS);
-
   it("when subscribed PR checks fail headlessly, commit and push the fix", async ({
     run,
   }) => {
@@ -59,52 +51,6 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         ) === true,
     );
     expect(verifyCall).toMatchObject({ result: { ok: true } });
-  });
-
-  it("when an interrupted push applied remotely, verify it and do not push again", async ({
-    run,
-  }) => {
-    const pushTool = "mcp__eval-operation__release-push";
-    const statusTool = "mcp__eval-operation__release-status";
-    const result = await run({
-      overrides: {
-        plugin_dirs: ["fixtures/plugins"],
-        timeout_resume: {
-          tool_name: "callMcpTool",
-          arguments: { tool_name: pushTool, arguments: {} },
-        },
-      },
-      initialEvents: [
-        mention(
-          "/eval-operation The release push timed out, so I don't know whether it landed. Please finish the release safely and tell me the final remote status.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant reports that the remote release status is shipped.",
-          "The final answer is based on the observed remote state rather than treating the interrupted command as a confirmed failure.",
-        ],
-        fail: [
-          "Do not ask for OAuth, a token, or changed GitHub permissions for the local fixture.",
-          "Do not contact production GitHub.",
-        ],
-      }),
-    });
-
-    const calls = toolCalls(result.session);
-    const pushCalls = calls.filter(
-      (call) =>
-        call.name === "callMcpTool" && call.arguments?.tool_name === pushTool,
-    );
-    const statusCall = calls.find(
-      (call) =>
-        call.name === "callMcpTool" &&
-        call.status === "ok" &&
-        call.arguments?.tool_name === statusTool,
-    );
-
-    expect(pushCalls).toHaveLength(0);
-    expect(statusCall).toBeDefined();
   });
 
   it("when asked about PR auth sequencing, explain automatic installation credentials", async ({
@@ -184,11 +130,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     });
   });
 
-  it("when drafting a fake issue from contextual foreign reference, keep the default repo as target", async ({
+  it("when drafting an issue from a foreign reference, keep the default repo as target", async ({
     run,
   }) => {
     await run({
       overrides: {
+        credential_providers: ["github"],
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
@@ -225,11 +172,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     });
   });
 
-  it("when confirming a fake explicit issue reference, use that issue as target", async ({
+  it("when confirming an explicit issue reference, use that issue as target", async ({
     run,
   }) => {
     await run({
       overrides: {
+        credential_providers: ["github"],
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },

@@ -1,12 +1,16 @@
+import {
+  ownedObjectAnnotationSchema,
+  type ObjectAnnotation,
+} from "@sentry/junior-plugin-api";
+import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
 import { z } from "zod";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
-import {
-  automationCardSchema,
-  type AutomationCard,
-} from "@/chat/automations/card";
 import { getDb } from "@/chat/db";
-import { getEventAutomation } from "@/chat/event-automations/store";
+import {
+  getEventAutomation,
+  type StoredEventAutomation,
+} from "@/chat/event-automations/store";
 import {
   EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
   type EventAutomation,
@@ -29,6 +33,7 @@ import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
+    status: z.enum(["active", "paused", "deleted"]),
     title: z.string().min(1).nullable(),
     dashboardUrl: z.string().url().nullable(),
     instruction: z.string().min(1),
@@ -73,7 +78,7 @@ const compactEventAutomationResultSchema = z
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
     automation: compactEventAutomationResultSchema,
-    cards: z.array(automationCardSchema),
+    objectCards: z.array(ownedObjectAnnotationSchema),
   })
   .strict();
 
@@ -226,12 +231,13 @@ export function eventAutomationTriggerAvailable(
 
 /** Project an event automation into the bounded tool-result shape. */
 export function compactEventAutomation(
-  task: EventAutomation,
+  task: StoredEventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId?: string,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
+    status: task.status,
     title: task.title?.trim() || null,
     dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,
@@ -263,8 +269,9 @@ export function compactEventAutomation(
 }
 
 /** Return the standard successful event-automation tool result. */
-export function eventAutomationToolResult(
-  task: EventAutomation,
+export async function eventAutomationToolResult(
+  conversationId: string,
+  task: StoredEventAutomation,
   catalog: EventCatalog,
   requesterSlackUserId: string,
 ) {
@@ -276,17 +283,20 @@ export function eventAutomationToolResult(
   const filters = Object.entries(task.trigger.match ?? {}).map(
     ([key, value]) => `${key} = ${JSON.stringify(value)}`,
   );
+  const title =
+    automation.title ?? fallbackShortTitle(task.task.text, "Event automation");
   return {
     automation,
-    cards: [
+    objectCards: await saveObjectAnnotations(conversationId, "junior", [
       {
-        kind: "automation",
-        id: task.id,
-        title:
-          automation.title ??
-          fallbackShortTitle(task.task.text, "Event automation"),
+        kind: "object",
+        objectType: "automation",
+        label: title,
+        key: task.id,
+        title,
         url: automation.dashboardUrl,
-        instruction: task.task.text,
+        description: task.task.text,
+        status: automation.trigger.available ? "ready" : "unavailable",
         trigger: [
           task.trigger.label,
           task.trigger.events.join(", "),
@@ -294,8 +304,8 @@ export function eventAutomationToolResult(
         ].join(" · "),
         warning: !automation.trigger.available
           ? "Trigger unavailable. This automation cannot receive events."
-          : null,
-      } satisfies AutomationCard,
-    ],
+          : undefined,
+      } satisfies ObjectAnnotation,
+    ]),
   };
 }

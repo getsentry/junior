@@ -19,7 +19,7 @@ async function createRuntime(
   process.env = {
     ...ORIGINAL_ENV,
     AI_VISION_MODEL: "",
-    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
     ...env,
   };
@@ -163,7 +163,7 @@ describe("Slack behavior: mixed attachment media", () => {
     );
   }, 20_000);
 
-  it("keeps raw image attachments when AI_VISION_MODEL is unset", async () => {
+  it("keeps raw image attachments when AI_VISION_MODEL is explicitly empty", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
 
     const capturedAttachmentMediaTypes: string[][] = [];

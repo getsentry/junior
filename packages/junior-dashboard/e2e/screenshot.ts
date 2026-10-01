@@ -51,10 +51,13 @@ export async function screenshot(
     await page.waitForLoadState("networkidle");
     await page.evaluate(async () => {
       await document.fonts.ready;
-      await Promise.all(
-        [...document.images]
-          .filter((image) => !image.complete)
-          .map((image) => image.decode()),
+      // Full-page captures include offscreen images. Start lazy loads before
+      // decoding, and let failed images render their fallback in the capture.
+      await Promise.allSettled(
+        [...document.images].map((image) => {
+          image.loading = "eager";
+          return image.decode();
+        }),
       );
       await new Promise<void>((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),

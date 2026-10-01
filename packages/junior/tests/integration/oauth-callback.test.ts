@@ -171,7 +171,7 @@ describe("oauth callback integration", () => {
       await import("@/chat/local/oauth-callback-server");
     const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
     const conversationId = "local:oauth:loopback";
-    const callback = await startLocalOAuthCallbackServer(neverRunAgentRunner());
+    const callback = await startLocalOAuthCallbackServer();
 
     try {
       const state = await createLocalOAuthState(callback.port);

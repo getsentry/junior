@@ -1,3 +1,7 @@
+import {
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes-schema";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
@@ -24,11 +28,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import {
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-  type TaskOutcomeInput,
-} from "@/chat/task-outcomes";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -151,10 +151,16 @@ export function createEventAutomationTool(
         }
         // Live create retries stay idempotent. Deleted rows fall through and reactivate.
         if (existing.status !== "deleted") {
-          return eventAutomationToolResult(existing, catalog, actor.userId);
+          return eventAutomationToolResult(
+            context.conversationId,
+            existing,
+            catalog,
+            actor.userId,
+          );
         }
       }
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,
@@ -191,6 +197,7 @@ export function createEventAutomationTool(
         },
       };
       return eventAutomationToolResult(
+        context.conversationId,
         await createEventAutomation(db, task),
         catalog,
         actor.userId,

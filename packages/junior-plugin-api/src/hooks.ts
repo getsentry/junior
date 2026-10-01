@@ -1,3 +1,4 @@
+import type { ObjectAnnotation } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
@@ -67,7 +68,12 @@ export interface PluginHooks {
    * Prefer this for junior-owned side effects such as conversation annotations.
    * Do not use it to invent a parallel tool contract for the provider tool.
    */
-  afterMcpTool?(ctx: AfterMcpToolHookContext): Promise<void> | void;
+  afterMcpTool?(
+    ctx: AfterMcpToolHookContext,
+  ):
+    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
+    | { objectAnnotations: ObjectAnnotation[] }
+    | void;
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;

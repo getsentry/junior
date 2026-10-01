@@ -6,6 +6,7 @@ import {
   conversationStatsReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -16,6 +17,7 @@ import {
   personalSpendReportSchema,
   automationExecutionListSchema,
   automationListSchema,
+  automationSummarySchema,
   automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -114,6 +116,48 @@ export function useCodeOverviewData() {
   });
 }
 
+/** Fetch code activity, recent changes, and Workspaces for one repository. */
+export function useCodeRepositoryData(repositoryId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(repositoryId),
+    queryKey: ["dashboard", "code", "repositories", repositoryId],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codeRepositoryReportSchema,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch conversations linked to one repository through its code changes. */
+export function useCodeRepositoryConversationsData(
+  repositoryId: string | undefined,
+  search = "",
+) {
+  return useQuery({
+    enabled: Boolean(repositoryId),
+    queryKey: [
+      "dashboard",
+      "conversations",
+      "code-repository",
+      { repositoryId, search },
+    ],
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ codeRepositoryId: repositoryId! });
+      if (search) params.set("q", search);
+      return fetchDashboardJson(
+        conversationFeedSchema,
+        `/api/conversations?${params.toString()}`,
+        signal,
+      );
+    },
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
 /** Fetch the signed-in viewer's scheduled and event automations. */
 export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
@@ -122,10 +166,25 @@ export function useAutomationsData(enabled: boolean, search: string) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
-        `/api/automations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        `/api/automations${search ? `?${search}` : ""}`,
         signal,
       ),
     placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/** Load details by ID, independent of list filters and pagination. */
+export function useAutomationData(enabled: boolean, id: string | undefined) {
+  return useQuery({
+    enabled: enabled && Boolean(id),
+    queryKey: ["dashboard", "automations", "detail", id],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationSummarySchema,
+        `/api/automations/${encodeURIComponent(id!)}`,
+        signal,
+      ),
     retry: false,
   });
 }

@@ -53,17 +53,20 @@ describe("GitHub conversation sidebar", () => {
 
     expect(sidebar).toEqual([
       {
-        icon: "circle-x",
+        objectType: "code_change",
+        status: "closed",
         key: "getsentry/junior#3",
         label: "junior",
       },
       {
-        icon: "git-pull-request",
+        objectType: "code_change",
+        status: "open",
         key: "getsentry/payments#2",
         label: "payments",
       },
       {
-        icon: "git-merge",
+        objectType: "code_change",
+        status: "merged",
         key: "getsentry/junior#1",
         label: "junior",
       },
@@ -73,11 +76,12 @@ describe("GitHub conversation sidebar", () => {
     ).not.toThrow();
   });
 
-  it("uses the pull request icon for open pull requests", () => {
+  it("preserves code change identity for open pull requests", () => {
     expect(githubSidebarAnnotations([annotation("junior", 1, "open")])).toEqual(
       [
         {
-          icon: "git-pull-request",
+          objectType: "code_change",
+          status: "open",
           key: "getsentry/junior#1",
           label: "junior",
         },
@@ -85,7 +89,7 @@ describe("GitHub conversation sidebar", () => {
     );
   });
 
-  it("keeps the issue icon for open issues", () => {
+  it("preserves ticket identity for open issues", () => {
     expect(
       githubSidebarAnnotations([
         annotation(
@@ -99,7 +103,8 @@ describe("GitHub conversation sidebar", () => {
       ]),
     ).toEqual([
       {
-        icon: "circle-dot",
+        objectType: "task",
+        status: "open",
         key: "getsentry/junior#1",
         label: "junior",
       },

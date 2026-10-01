@@ -1,3 +1,4 @@
+import { createOAuthWork } from "./oauth-work";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   waitUntilCallbacks,
@@ -12,6 +13,7 @@ export async function runOauthCallbackRoute(args: {
   agentRunner?: AgentRunner;
   expectBackgroundWork?: boolean;
 }) {
+  const work = createOAuthWork(args.agentRunner ?? realAgentRunner);
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/oauth-callback");
   const response = await GET(
@@ -21,7 +23,7 @@ export async function runOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
-    { agentRunner: args.agentRunner ?? realAgentRunner },
+    { conversationWorkQueue: work.queue },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   if (args.expectBackgroundWork === false && callbacks.length > 0) {
@@ -41,5 +43,6 @@ export async function runOauthCallbackRoute(args: {
       `OAuth callback route returned 200 without registering waitUntil() work for provider "${args.provider}"`,
     );
   }
+  await work.drain();
   return response;
 }

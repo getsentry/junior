@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "tsup";
 
@@ -31,6 +31,12 @@ const dashboardColorIconPath = path.join(
   "assets",
   "junior-avatar.png",
 );
+const dashboardFaviconPath = path.join(
+  packageRoot,
+  "src",
+  "assets",
+  "junior-favicon.png",
+);
 
 /** Read client build output that must be embedded in dashboard routes. */
 function readBuiltAsset(fileName: string): string {
@@ -56,15 +62,22 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           };
         }
 
+        const chunks = Object.fromEntries(
+          readdirSync(path.join(packageRoot, "dist", "chunks"))
+            .filter((file) => file.endsWith(".js"))
+            .map((file) => [file, readBuiltAsset(`chunks/${file}`)]),
+        );
         const colorIconBase64 = readFileSync(dashboardColorIconPath).toString(
           "base64",
         );
         return {
           contents: [
             `export const dashboardClientAsset = ${JSON.stringify(readBuiltAsset("client.js"))};`,
+            `export const dashboardClientChunks = ${JSON.stringify(chunks)};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,
             `export const dashboardInstallIconAsset = ${JSON.stringify(colorIconBase64)};`,
+            `export const dashboardFaviconAsset = ${JSON.stringify(readFileSync(dashboardFaviconPath).toString("base64"))};`,
           ].join("\n"),
           loader: "ts",
         };

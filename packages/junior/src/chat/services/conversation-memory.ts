@@ -1,4 +1,4 @@
-import type { MessageCard } from "@/chat/conversations/cards";
+import { messageCardRef, type MessageCard } from "@/chat/conversations/cards";
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
 import type {
@@ -168,6 +168,7 @@ export function recordDeliveredAssistantMessage(args: {
     replied: true,
     skippedReason: undefined,
   });
+  const objectCards = args.cards?.map(messageCardRef);
   upsertConversationMessage(args.conversation, {
     id: messageId,
     role: "assistant",
@@ -178,7 +179,7 @@ export function recordDeliveredAssistantMessage(args: {
       isBot: true,
     },
     meta: {
-      ...(args.cards?.length ? { cards: args.cards } : undefined),
+      ...(objectCards?.length ? { objectCards } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
     },

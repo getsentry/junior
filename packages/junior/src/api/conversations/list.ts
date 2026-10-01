@@ -6,6 +6,7 @@ import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorCodeChanges,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
@@ -75,6 +76,37 @@ function conversationFeedMembershipFilter(
   );
 }
 
+/**
+ * Keep root conversations linked to one code repository. A code change can
+ * link a child conversation, so linked ids resolve to their root. Private
+ * roots stay visible only to their members.
+ */
+function conversationCodeRepositoryFilter(
+  repositoryId: string,
+  viewerUserId: string | undefined,
+): SQL | undefined {
+  return and(
+    sql<boolean>`${juniorConversations.conversationId} IN (
+      SELECT coalesce(linked.root_conversation_id, linked.conversation_id)
+      FROM ${juniorConversations} AS linked
+      WHERE linked.conversation_id IN (
+        SELECT unnest(${juniorCodeChanges.conversationIds})
+        FROM ${juniorCodeChanges}
+        WHERE ${juniorCodeChanges.repositoryId} = ${repositoryId}
+      )
+    )`,
+    or(
+      eq(juniorDestinations.visibility, "public"),
+      viewerUserId
+        ? viewerConversationMembership({
+            actorMatch: eq(juniorIdentities.userId, viewerUserId),
+            participantMatch: conversationHasParticipantUser(viewerUserId),
+          })
+        : undefined,
+    ),
+  );
+}
+
 async function conversationRows(
   db: JuniorDatabase,
   limit: number,
@@ -82,6 +114,7 @@ async function conversationRows(
   filter: ConversationFeedMembership | undefined,
   query?: string,
   includePrivateBriefs = false,
+  codeRepository?: { id: string; viewerUserId?: string },
 ) {
   return db
     .select({
@@ -109,6 +142,12 @@ async function conversationRows(
       and(
         isNull(juniorConversations.parentConversationId),
         conversationFeedMembershipFilter(status, filter),
+        codeRepository
+          ? conversationCodeRepositoryFilter(
+              codeRepository.id,
+              codeRepository.viewerUserId,
+            )
+          : undefined,
         query
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
@@ -275,10 +314,15 @@ function conversationFeedFilter(options: {
  * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
  * keep only roots linked to actorEmail before applying the limit. Membership is
  * root-actor ownership or a materialized participant row for that person.
+ *
+ * `codeRepositoryId` replaces membership with every root linked to that
+ * repository's code changes. Private roots appear only for their members, and
+ * per-person archive state does not hide rows.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
+    codeRepositoryId?: string;
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -287,15 +331,23 @@ export async function readConversationFeedFromSql(
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const db = getDb();
-  const filter = conversationFeedFilter(options);
+  const filter = options.codeRepositoryId
+    ? undefined
+    : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
-    query ? "all" : (options.status ?? "active"),
+    query || options.codeRepositoryId ? "all" : (options.status ?? "active"),
     filter,
     query,
     filter?.kind === "viewer",
+    options.codeRepositoryId
+      ? {
+          id: options.codeRepositoryId,
+          ...(options.viewer ? { viewerUserId: options.viewer.id } : undefined),
+        }
+      : undefined,
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
@@ -436,6 +488,7 @@ export async function readConversationFeedFromSql(
 export async function readConversationFeed(
   options: {
     actorEmail?: string;
+    codeRepositoryId?: string;
     q?: string;
     status?: "active" | "archived";
     viewer?: User;

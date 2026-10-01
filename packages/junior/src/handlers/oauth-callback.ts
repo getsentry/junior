@@ -1,79 +1,51 @@
+/**
+ * OAuth callbacks exchange and store credentials. Public signed callbacks
+ * relay to the owning CLI, which controls local continuation. Slack callbacks
+ * save readiness and wake the conversation worker. They do not run the agent
+ * or change its history.
+ */
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { hydrateConversationMessages } from "@/chat/conversations/messages";
+
 import {
   formatProviderLabel,
   parseOAuthStatePayload,
   type OAuthStatePayload,
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
-import { buildConversationContext } from "@/chat/services/conversation-memory";
-import { markConversationMessage } from "@/chat/services/conversation-memory";
+
 import { postSlackMessage } from "@/chat/slack/outbound";
-import {
-  ResumeTurnBusyError,
-  resumeSlackTurn,
-} from "@/chat/providers/slack/resume";
-import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import {
-  logException,
-  logInfo,
-  logWarn,
-  runBestEffort,
-  withLogContext,
-} from "@/chat/logging";
+
+import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
-import {
-  getLocationConfigurationService,
-  getPersistedSandboxState,
-  getPersistedThreadState,
-  persistThreadStateById,
-} from "@/chat/runtime/thread-state";
-import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/auth/oauth-request";
 import { resolvePluginOAuthAccount } from "@/chat/plugins/credential-hooks";
-import {
-  getTurnUserMessage,
-  getTurnUserSlackMessageTs,
-  getTurnUserReplyAttachmentContext,
-} from "@/chat/runtime/turn-user-message";
-import { markTurnFailed } from "@/chat/runtime/turn";
+
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
-import { createSlackResumeActor, type Actor } from "@/chat/actor";
+
 import { getStateAdapter } from "@/chat/state/adapter";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import {
-  failTurnRecord,
-  getTurnRecord,
-  abandonTurnRecord,
-} from "@/chat/task-execution/checkpoint";
-import {
-  loadProjection,
   recordAuthenticationLinked,
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
-import {
-  clearPendingAuth,
-  getConversationPendingAuth,
-  isPendingAuthLatestRequest,
-} from "@/chat/services/pending-auth";
+import { getConversationPendingAuth } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
-  resolveTurnSessionRouting,
-  type RequiredTurnSessionRouting,
-} from "@/chat/services/turn-session-routing";
-import type { AgentRunResult } from "@/chat/services/turn-result";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { executeTurn } from "@/chat/runtime/turn-execution";
-import { requireSlackDestination } from "@/chat/destination";
+  wakeAuthorizedTurn,
+  wakePausedTurn,
+} from "@/chat/task-execution/turn-wake";
+
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
@@ -83,20 +55,10 @@ import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 import { botConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
-  agentRunner: AgentRunner;
-  /** Queue used to wake parked web turns after authorization completes. */
+  /** Queue used to wake parked turns after authorization completes. */
   conversationWorkQueue?: ConversationWorkQueue;
 }
 
-/**
- * OAuth callback contract for `@sentry/junior`.
- *
- * Providers redirect users to `/api/oauth/callback/:provider`. A public signed
- * callback relays to the owning CLI; the loopback callback exchanges and stores
- * the local credential while the CLI owns continuation. Slack callbacks
- * exchange credentials synchronously, then use `waitUntil(...)` for
- * best-effort resume side effects.
- */
 function htmlErrorResponse(
   title: string,
   message: string,
@@ -120,30 +82,6 @@ function oauthTokenErrorAttributes(
   };
 }
 
-async function persistCompletedOAuthReplyState(args: {
-  conversationId: string;
-  sessionId: string;
-  reply: AgentRunResult;
-}): Promise<void> {
-  const currentState = await getPersistedThreadState(args.conversationId);
-  const conversation = coerceThreadConversationState(currentState);
-  await hydrateConversationMessages({
-    conversation,
-    conversationId: args.conversationId,
-  });
-  const userMessage = getTurnUserMessage(conversation, args.sessionId);
-  const statePatch = buildDeliveredTurnStatePatch({
-    conversation,
-    reply: args.reply,
-    sessionId: args.sessionId,
-    userMessageId: userMessage?.id,
-  });
-
-  await persistThreadStateById(args.conversationId, {
-    ...statePatch,
-  });
-}
-
 function pluginAuthorizationId(args: {
   provider: string;
   sessionId: string;
@@ -151,90 +89,20 @@ function pluginAuthorizationId(args: {
   return `${args.sessionId}:plugin:${args.provider}`;
 }
 
-async function failSessionRecordBestEffort(args: {
-  conversationId: string;
-  errorMessage: string;
-  expectedVersion: number;
-  turnId: string;
-}): Promise<void> {
-  try {
-    await failTurnRecord({
-      conversationId: args.conversationId,
-      expectedVersion: args.expectedVersion,
-      turnId: args.turnId,
-      errorMessage: args.errorMessage,
-    });
-  } catch (error) {
-    logException(
-      error,
-      "oauth.callback.session_record.failure_persistence.failed",
-      {
-        "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.turnId,
-      },
-    );
-  }
-}
-
-async function persistFailedOAuthReplyState(args: {
-  conversationId: string;
-  expectedVersion: number;
-  sessionId: string;
-}): Promise<void> {
-  const currentState = await getPersistedThreadState(args.conversationId);
-  const conversation = coerceThreadConversationState(currentState);
-  await hydrateConversationMessages({
-    conversation,
-    conversationId: args.conversationId,
-  });
-  clearPendingAuth(conversation, args.sessionId);
-
-  markTurnFailed({
-    conversation,
-    nowMs: Date.now(),
-    sessionId: args.sessionId,
-    userMessageId: getTurnUserMessage(conversation, args.sessionId)?.id,
-    markConversationMessage,
-  });
-
-  await failSessionRecordBestEffort({
-    conversationId: args.conversationId,
-    expectedVersion: args.expectedVersion,
-    turnId: args.sessionId,
-    errorMessage: "OAuth-resumed turn failed",
-  });
-  await persistThreadStateById(args.conversationId, {
-    conversation,
-  });
-}
-
-async function resumeOAuthSessionRecordTurn(
+/** Queue the pending Turn, including a newer Turn that reused this auth link. */
+async function wakeAuthorizedPluginTurn(
   stored: OAuthStatePayload,
   options: OAuthCallbackOptions,
 ): Promise<void> {
   if (
     !stored.resumeConversationId ||
     !stored.resumeSessionId ||
-    !stored.channelId ||
-    !stored.destination ||
-    !stored.source ||
-    !stored.threadTs
-  ) {
+    !stored.destination
+  )
     return;
-  }
-  const destination = requireSlackDestination(
-    stored.destination,
-    "OAuth resume",
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(stored.resumeConversationId),
   );
-
-  const currentState = await getPersistedThreadState(
-    stored.resumeConversationId,
-  );
-  const conversation = coerceThreadConversationState(currentState);
-  await hydrateConversationMessages({
-    conversation,
-    conversationId: stored.resumeConversationId,
-  });
   const pendingAuth = getConversationPendingAuth({
     conversation,
     kind: "plugin",
@@ -242,272 +110,26 @@ async function resumeOAuthSessionRecordTurn(
     actorId: stored.userId,
     ...(stored.scope ? { scope: stored.scope } : undefined),
   });
-
-  const resolvedSessionId = pendingAuth?.sessionId ?? stored.resumeSessionId;
-  const userMessage = resolvedSessionId
-    ? getTurnUserMessage(conversation, resolvedSessionId)
-    : undefined;
-  if (pendingAuth) {
-    if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
-      clearPendingAuth(conversation, pendingAuth.sessionId);
-      await persistThreadStateById(stored.resumeConversationId, {
-        conversation,
-      });
-      await abandonTurnRecord({
-        conversationId: stored.resumeConversationId,
-        turnId: pendingAuth.sessionId,
-        errorMessage:
-          "Auth completed after a newer thread message abandoned this blocked request.",
-      });
-      return;
-    }
-  }
-
-  const sessionRecord = await getTurnRecord(
-    stored.resumeConversationId,
-    resolvedSessionId,
-  );
-  if (!sessionRecord) {
-    return;
-  }
-  // Terminal session record states are already handled.
-  if (
-    sessionRecord.state === "completed" ||
-    sessionRecord.state === "failed" ||
-    sessionRecord.state === "abandoned"
-  ) {
-    return;
-  }
-  if (
-    sessionRecord.state !== "paused" ||
-    sessionRecord.resumeReason !== "auth"
-  ) {
-    return;
-  }
-  if (!userMessage?.author?.userId) {
-    return;
-  }
-  if (
-    !pendingAuth &&
-    conversation.processing.activeTurnId !== stored.resumeSessionId
-  ) {
-    return;
-  }
-
-  await resumeSlackTurn({
-    messageText: userMessage.text,
-    conversationId: stored.resumeConversationId,
-    turnId: resolvedSessionId,
-    channelId: stored.channelId,
-    threadTs: stored.threadTs,
-    messageTs: getTurnUserSlackMessageTs(userMessage),
-    lockKey: stored.resumeConversationId,
-    initialText: "",
-    executeTurn: async (run, saveResult, timeoutMs) =>
-      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
-    beforeStart: async () => {
-      const lockedState = await getPersistedThreadState(
-        stored.resumeConversationId!,
-      );
-      const lockedConversation = coerceThreadConversationState(lockedState);
-      await hydrateConversationMessages({
-        conversation: lockedConversation,
-        conversationId: stored.resumeConversationId!,
-      });
-      const lockedPendingAuth = getConversationPendingAuth({
-        conversation: lockedConversation,
-        kind: "plugin",
+  const turnId = pendingAuth?.sessionId ?? stored.resumeSessionId;
+  await wakeAuthorizedTurn(
+    {
+      conversationId: stored.resumeConversationId,
+      destination: stored.destination,
+      turnId,
+      kind: "plugin",
+      provider: stored.provider,
+      actorId: stored.userId,
+      scope: stored.scope,
+      authorizationId: pluginAuthorizationId({
         provider: stored.provider,
-        actorId: stored.userId,
-        ...(stored.scope ? { scope: stored.scope } : undefined),
-      });
-      const lockedSessionId =
-        lockedPendingAuth?.sessionId ?? stored.resumeSessionId!;
-      if (lockedSessionId !== resolvedSessionId) {
-        return false;
-      }
-      const lockedSessionRecord = await getTurnRecord(
-        stored.resumeConversationId!,
-        lockedSessionId,
-      );
-      if (
-        !lockedSessionRecord ||
-        lockedSessionRecord.state !== "paused" ||
-        lockedSessionRecord.resumeReason !== "auth"
-      ) {
-        return false;
-      }
-      if (lockedPendingAuth) {
-        if (
-          !isPendingAuthLatestRequest(lockedConversation, lockedPendingAuth)
-        ) {
-          clearPendingAuth(lockedConversation, lockedPendingAuth.sessionId);
-          await persistThreadStateById(stored.resumeConversationId!, {
-            conversation: lockedConversation,
-          });
-          await abandonTurnRecord({
-            conversationId: stored.resumeConversationId!,
-            turnId: lockedPendingAuth.sessionId,
-            errorMessage:
-              "Auth completed after a newer thread message abandoned this blocked request.",
-          });
-          return false;
-        }
-      } else if (
-        lockedConversation.processing.activeTurnId !== stored.resumeSessionId
-      ) {
-        return false;
-      }
-
-      const lockedUserMessage = getTurnUserMessage(
-        lockedConversation,
-        lockedSessionId,
-      );
-      if (!lockedUserMessage?.author?.userId) {
-        return false;
-      }
-
-      const lockedConversationContext = buildConversationContext(
-        lockedConversation,
-        {
-          excludeMessageId: lockedUserMessage.id,
-        },
-      );
-      const lockedLocationConfiguration =
-        getLocationConfigurationService(destination);
-      let actor: Actor;
-      try {
-        actor = createSlackResumeActor({
-          actor: lockedSessionRecord.actor,
-          teamId: destination.teamId,
-          userId: lockedUserMessage.author.userId,
-        });
-      } catch {
-        await failTurnRecord({
-          conversationId: stored.resumeConversationId!,
-          expectedVersion: lockedSessionRecord.version,
-          turnId: lockedSessionId,
-          errorMessage: "Unable to rebuild Slack actor for OAuth resume",
-        });
-        return false;
-      }
-      let routing: RequiredTurnSessionRouting;
-      try {
-        routing = await resolveTurnSessionRouting({
-          conversationId: stored.resumeConversationId!,
-        });
-      } catch (error) {
-        await failTurnRecord({
-          conversationId: stored.resumeConversationId!,
-          expectedVersion: lockedSessionRecord.version,
-          turnId: lockedSessionId,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-        return false;
-      }
-
-      await recordAuthorizationCompleted({
-        conversationId: stored.resumeConversationId!,
-        kind: "plugin",
-        provider: stored.provider,
-        actorId: stored.userId,
-        authorizationId: pluginAuthorizationId({
-          provider: stored.provider,
-          sessionId: lockedSessionId,
-        }),
-      });
-
-      const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);
-      return {
-        messageText: lockedUserMessage.text,
-        sliceId: lockedSessionRecord.sliceId,
-        messageTs: lockedMessageTs,
-        inputMessageIds: [lockedUserMessage.id],
-        run: {
-          instruction: {
-            text: lockedUserMessage.text,
-            context: lockedConversationContext,
-            ...getTurnUserReplyAttachmentContext(lockedUserMessage),
-          },
-          // Pi history is SQL-authoritative: the resumed run reads its
-          // session record first and falls back to the step projection.
-          history: await loadProjection({
-            conversationId: stored.resumeConversationId!,
-          }),
-          credentialContext: {
-            actor: {
-              type: "user",
-              userId: actor.userId,
-            },
-          },
-          actor,
-          destination,
-          ...(routing.location ? { location: routing.location } : undefined),
-          source: routing.source,
-          toolChannelId: stored.channelId!,
-          environment: {
-            locationConfiguration: lockedLocationConfiguration,
-          },
-          state: {
-            pendingAuth: lockedPendingAuth,
-            sandboxRef: getPersistedSandboxState(lockedState),
-          },
-          durability: {
-            recordPendingAuth: async (nextPendingAuth) => {
-              lockedConversation.processing.pendingAuth = nextPendingAuth;
-              await persistThreadStateById(stored.resumeConversationId!, {
-                conversation: lockedConversation,
-              });
-            },
-          },
-        },
-        commitResult: async (reply: AgentRunResult) => {
-          logInfo("oauth.callback.resume.completed", {
-            "app.credential.provider": stored.provider,
-            "app.ai.outcome": reply.diagnostics.outcome,
-            "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
-          });
-          await persistCompletedOAuthReplyState({
-            conversationId: stored.resumeConversationId!,
-            sessionId: lockedSessionId,
-            reply,
-          });
-        },
-        onPostDeliveryCommitFailure: async () => {
-          await failTurnRecord({
-            conversationId: stored.resumeConversationId!,
-            expectedVersion: lockedSessionRecord.version,
-            turnId: lockedSessionId,
-            errorMessage:
-              "OAuth-resumed reply was delivered but completion state did not persist",
-          });
-        },
-        onFailure: async () => {
-          await persistFailedOAuthReplyState({
-            conversationId: stored.resumeConversationId!,
-            expectedVersion: lockedSessionRecord.version,
-            sessionId: lockedSessionId,
-          });
-        },
-        onAuthPause: async () => {
-          await persistAuthPauseTurnState({
-            sessionId: lockedSessionId,
-            threadStateId: stored.resumeConversationId!,
-          });
-        },
-        onSuspend: async (resumeVersion) => {
-          await wakePausedTurn({
-            conversationId: stored.resumeConversationId!,
-            destination,
-            turnId: lockedSessionId,
-            expectedVersion: resumeVersion,
-          });
-        },
-      };
+        sessionId: turnId,
+      }),
     },
-  });
+    options.conversationWorkQueue,
+  );
 }
 
+/** Complete provider authorization and queue any paused Slack Turn. */
 export async function GET(
   request: Request,
   provider: string,
@@ -827,30 +449,7 @@ export async function GET(
       );
     });
   } else if (resumesAgentTurn) {
-    waitUntil(() =>
-      withLogContext(
-        { conversationId: stored.resumeConversationId },
-        async () => {
-          try {
-            // Agent OAuth links resume their durable session record. Do not
-            // rebuild a turn from pending message text when that record is
-            // missing.
-            await resumeOAuthSessionRecordTurn(stored, options);
-          } catch (error) {
-            if (error instanceof ResumeTurnBusyError) {
-              logWarn("oauth.callback.resume.busy", {
-                "app.credential.provider": stored.provider,
-                ...(stored.resumeSessionId && {
-                  "app.ai.session_id": stored.resumeSessionId,
-                }),
-              });
-              return;
-            }
-            throw error;
-          }
-        },
-      ),
-    );
+    await wakeAuthorizedPluginTurn(stored, options);
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>

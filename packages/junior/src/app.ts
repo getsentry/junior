@@ -474,6 +474,7 @@ function dashboardHostRoutePaths(
   const pagePaths = [
     basePath,
     pagePath("code"),
+    `${pagePath("code")}/*`,
     conversationsPath,
     `${conversationsPath}/*`,
     pagePath("locations"),
@@ -502,7 +503,9 @@ function dashboardHostRoutePaths(
     ...pagePaths,
     "/favicon.ico",
     "/_junior/dashboard/avatar.png",
+    "/_junior/dashboard/object-icons/*",
     "/_junior/dashboard/client.js",
+    "/_junior/dashboard/chunks/*",
     "/_junior/dashboard/icon-512.png",
     "/_junior/dashboard/manifest.webmanifest",
     loginPath,
@@ -517,6 +520,7 @@ function dashboardHostRoutePaths(
     "/api/automations/*",
     "/api/skills",
     "/api/code",
+    "/api/code/*",
     "/api/stats",
     "/api/conversations",
     "/api/conversations/*",
@@ -900,14 +904,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      agentRunner,
       conversationWorkQueue: getVercelConversationWorkQueue(),
     });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      agentRunner,
       conversationWorkQueue: getVercelConversationWorkQueue(),
     });
   });

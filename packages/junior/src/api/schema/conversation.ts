@@ -1,5 +1,12 @@
-import { messageCardSchema } from "@/chat/conversations/cards";
+import {
+  inputImageSchema,
+  MAX_INPUT_IMAGES,
+  MAX_INPUT_IMAGE_BYTES,
+  messageAttachmentSchema,
+} from "@/chat/attachments/input";
+import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { z } from "zod";
+import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
@@ -66,6 +73,7 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    codeRepositoryId: z.string().uuid().optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -79,21 +87,29 @@ export const archiveConversationResponseSchema = z
   .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
-export const createConversationBodySchema = z
-  .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
-    /** New roots default public. Private roots stay participant-only. */
-    visibility: z.enum(["private", "public"]).optional(),
-  })
-  .strict();
-
 export const createConversationMessageBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
-    message: z.string().trim().min(1).max(32_000),
+    message: z.string().trim().max(32_000),
+    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (body) => Boolean(body.message || body.images?.length),
+    "Add a message or an image.",
+  )
+  .refine(
+    (body) =>
+      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
+      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
+    "Images must total 3 MB or less.",
+  );
+
+export const createConversationBodySchema =
+  createConversationMessageBodySchema.safeExtend({
+    /** New roots default public. Private roots stay participant-only. */
+    visibility: z.enum(["private", "public"]).optional(),
+  });
 
 export const acceptedConversationMessageSchema = z
   .object({
@@ -130,6 +146,7 @@ export const conversationPendingMessageSchema = z
     role: z.literal("user"),
     source: z.enum(["slack", "web"]),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -140,10 +157,11 @@ export const conversationPendingMessageSchema = z
         message: "pending message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && data.actorIdentity) {
+    if (data.redacted && (data.actorIdentity || data.attachments)) {
       context.addIssue({
         code: "custom",
-        message: "redacted pending messages must not expose actor identity",
+        message:
+          "redacted pending messages must not expose actor identity or attachments",
       });
     }
   });
@@ -294,10 +312,12 @@ const conversationReportMessageEventDataSchema = z
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
+    eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     trustedSummary: z.string().min(1).optional(),
-    cards: z.array(messageCardSchema).optional(),
+    cards: z.array(messageCardRefSchema).optional(),
     text: z.string().optional(),
+    attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -308,10 +328,14 @@ const conversationReportMessageEventDataSchema = z
         message: "message content must be text or explicitly redacted",
       });
     }
-    if (data.redacted && (data.actorIdentity || data.cards)) {
+    if (
+      data.redacted &&
+      (data.actorIdentity || data.cards || data.attachments)
+    ) {
       context.addIssue({
         code: "custom",
-        message: "redacted messages must not expose actor identity or cards",
+        message:
+          "redacted messages must not expose actor identity, cards, or attachments",
       });
     }
   });
@@ -420,7 +444,7 @@ const conversationReportToolCallsEventDataSchema = z
 const conversationReportAssistantMessageEventDataSchema = z
   .object({
     type: z.literal("assistant_message"),
-    parts: z.array(conversationReportReasoningPartSchema).min(1),
+    parts: z.array(conversationReportReasoningPartSchema),
   })
   .strict();
 
@@ -506,20 +530,10 @@ const conversationReportStructuredEventDataSchema = z
   })
   .strict();
 
-/** Public attachment metadata on conversation reports and transcript media. */
-const conversationReportDeliveredAttachmentSchema = z
-  .object({
-    id: z.string().min(1),
-    filename: z.string().min(1),
-    contentType: z.string().min(1),
-    bytes: z.number().int().nonnegative(),
-  })
-  .strict();
-
 const conversationReportAttachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),
-    attachments: z.array(conversationReportDeliveredAttachmentSchema).min(1),
+    attachments: z.array(messageAttachmentSchema).min(1),
   })
   .strict();
 
@@ -591,6 +605,23 @@ export const conversationReportEventSchema = z
     seq: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     data: conversationReportEventDataSchema,
+    model: z
+      .object({
+        modelId: z.string().min(1),
+        modelProfile: z.string().min(1).optional(),
+        reasoningLevel: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    modelCall: z
+      .object({
+        provider: z.string().min(1).optional(),
+        api: z.string().min(1).optional(),
+        stopReason: z.string().min(1).optional(),
+        usage: conversationUsageSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -720,8 +751,26 @@ function validateConversationEvents(
   }
 }
 
+export const forkConversationBodySchema = z
+  .object({
+    /** Assistant reply that ends the copied history. */
+    messageId: z.string().min(1).max(500),
+    idempotencyKey: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+export const forkConversationResponseSchema = z
+  .object({ conversationId: z.string() })
+  .strict();
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    /** The viewer can fork this conversation from an assistant reply. */
+    canFork: z.boolean().optional(),
+    forkedFromConversationId: z.string().optional(),
+    /** Title of the fork source, when the viewer can open it. */
+    forkedFromTitle: z.string().optional(),
+    forks: z.array(z.string()).optional(),
     brief: z
       .object({
         content: conversationBriefSchema,
@@ -893,6 +942,7 @@ export type ArchiveConversationBody = z.infer<
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
 >;
+export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
 >;

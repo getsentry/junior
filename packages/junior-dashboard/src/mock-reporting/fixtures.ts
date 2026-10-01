@@ -1,3 +1,4 @@
+import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
@@ -162,8 +163,9 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
+  metadata?: Pick<ConversationReportEvent, "model" | "modelCall">,
 ): ConversationReportEvent {
-  return { seq, createdAt, data };
+  return { seq, createdAt, data, ...metadata };
 }
 
 type DetailOptions = Omit<
@@ -453,38 +455,81 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         reasoningLevel: "high",
         confidence: 0.93,
         source: "router",
+        costUsd: 0.0012,
       }),
-      reportEvent(4, iso(Date.parse(startedAt), 10_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "running",
+      reportEvent(
+        4,
+        iso(Date.parse(startedAt), 10_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "running",
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
           },
-        ],
-      }),
-      reportEvent(5, iso(Date.parse(startedAt), 14_000), {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "active-search",
-            name: "webSearch",
-            status: "completed",
-            startedSeq: 4,
-            startedAt: iso(Date.parse(startedAt), 10_000),
-            input: { query: "checkout latency last deployment" },
-            output: {
-              results: [
-                {
-                  title: "payments-v42 deploy notes",
-                  url: "https://docs.sentry.io",
-                },
-              ],
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+            usage: {
+              inputTokens: 12500,
+              outputTokens: 800,
+              cachedInputTokens: 32000,
+              cacheCreationTokens: 2000,
+              reasoningTokens: 600,
+              totalTokens: 47300,
+              cost: {
+                input: 0.025,
+                output: 0.008,
+                cacheRead: 0.0064,
+                cacheWrite: 0.005,
+                total: 0.0444,
+              },
             },
           },
-        ],
-      }),
+        },
+      ),
+      reportEvent(
+        5,
+        iso(Date.parse(startedAt), 14_000),
+        {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "active-search",
+              name: "webSearch",
+              status: "completed",
+              startedSeq: 4,
+              startedAt: iso(Date.parse(startedAt), 10_000),
+              input: { query: "checkout latency last deployment" },
+              output: {
+                results: [
+                  {
+                    title: "payments-v42 deploy notes",
+                    url: "https://docs.sentry.io",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          model: {
+            modelId: "openai/gpt-5.6-sol",
+            modelProfile: "handoff",
+            reasoningLevel: "high",
+          },
+        },
+      ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
       reportEvent(6, iso(Date.parse(startedAt), 22_000), {
         type: "message",
@@ -631,6 +676,15 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       reportEvent(0, startedAt, {
         type: "message",
         messageId: "qa-user",
+        source: "slack",
+        attachments: [
+          {
+            id: "qa-chart-png",
+            filename: "input-chart.png",
+            contentType: "image/png",
+            bytes: 6400,
+          },
+        ],
         role: "user",
         text: "Review the dashboard plan before editing.",
         actorIdentity: actor(undefined, "Taylor Chen", "taylor"),
@@ -1771,8 +1825,14 @@ export function readMockConversationDetail(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  const { parentConversationId: _parentConversationId, ...detail } =
-    conversation;
+  const { parentConversationId, ...conversationDetail } = conversation;
+  // Match the API: only readable root Conversations can be forked.
+  const detail = {
+    ...conversationDetail,
+    canFork:
+      !parentConversationId &&
+      conversationDetail.eventHistory.status !== "redacted",
+  };
   const withArchiveState = mockArchivedConversationIds.has(conversationId)
     ? {
         ...detail,
@@ -2616,8 +2676,10 @@ function mockTasks(): AutomationSummary[] {
       lastConversationId: "scheduler:daily-ops-digest",
       lastRunAt: "2026-08-06T16:00:00.000Z",
       nextRunAt: "2026-08-10T16:00:00.000Z",
+      credentialMode: "creator",
       ownedByViewer: true,
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
+      timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
       status: "active",
       outcomes: [
@@ -2645,6 +2707,7 @@ function mockTasks(): AutomationSummary[] {
       kind: "event",
       lastConversationId: "agent-dispatch:event-1",
       lastRunAt: "2026-08-05T18:30:00.000Z",
+      credentialMode: "creator",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
@@ -2653,6 +2716,7 @@ function mockTasks(): AutomationSummary[] {
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
+      status: "active",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",
@@ -2668,6 +2732,7 @@ function mockTasks(): AutomationSummary[] {
       id: "event-2",
       instruction: "Notify responders when the incident changes",
       kind: "event",
+      credentialMode: "creator",
       ownedByViewer: false,
       resource: "Incident · INC-17",
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
@@ -2681,13 +2746,14 @@ function mockTasks(): AutomationSummary[] {
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
+      status: "active",
     },
   ];
 }
 
 /** Build mock Tasks list for local dashboard development. */
 export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
-  return {
+  return mockAutomationCollection({
     executionDays: mockAutomationExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
       costUsd: 0,
@@ -2706,8 +2772,7 @@ export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
     automations: mockTasks(),
-    truncated: false,
-  };
+  });
 }
 
 function mockStatusDays(

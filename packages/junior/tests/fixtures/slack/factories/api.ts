@@ -447,6 +447,7 @@ export function conversationsListPage(
   });
 }
 
+/** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {
     userId?: string;
@@ -469,6 +470,7 @@ export function usersInfoOk(
   return slackOk({
     user: {
       id: input.userId ?? TEST_USER_ID,
+      team_id: "T123",
       name: input.userName ?? "testuser",
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,

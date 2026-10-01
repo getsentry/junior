@@ -76,8 +76,12 @@ function buildPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.example.com",
-        ...(options.allowedTools ? { allowedTools: options.allowedTools } : undefined),
-        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : undefined),
+        ...(options.allowedTools
+          ? { allowedTools: options.allowedTools }
+          : undefined),
+        ...(options.wrappedTools
+          ? { wrappedTools: options.wrappedTools }
+          : undefined),
       },
     },
   };
@@ -553,6 +557,7 @@ describe("McpToolManager", () => {
 
     expect(onToolSuccess).toHaveBeenCalledWith({
       arguments: { title: "Created via MCP" },
+      content: [{ type: "text", text: "Created ENG-123" }],
       provider: "demo",
       structuredContent: { identifier: "ENG-123" },
       toolName: "save_issue",

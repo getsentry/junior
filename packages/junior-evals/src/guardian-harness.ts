@@ -41,7 +41,7 @@ function resolveGuardianModelId(): string {
   if (configured) {
     return configured;
   }
-  return "openai/gpt-5.6-luna";
+  return "openai/gpt-6-luna";
 }
 
 /** Run one Guardian proposal through the production reviewer boundary. */

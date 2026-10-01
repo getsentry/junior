@@ -3,6 +3,7 @@ import type { ActorIdentity } from "@sentry/junior/api/schema";
 import { actorLabel } from "../format";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
+import { ActorAvatar } from "./ActorAvatar";
 import { Tooltip } from "./Tooltip";
 
 const MAX_VISIBLE_PARTICIPANTS = 3;
@@ -26,15 +27,6 @@ function participantDescription(participant: ActorIdentity): string {
   const name = participantName(participant);
   const email = participant.email?.trim();
   return email && email !== name ? `${name}, ${email}` : name;
-}
-
-function participantInitials(participant: ActorIdentity): string {
-  const name = participantName(participant);
-  const words = name.split(/\s+/).filter(Boolean);
-  if (words.length > 1) {
-    return `${words[0]![0] ?? ""}${words.at(-1)?.[0] ?? ""}`.toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
 }
 
 function participantKey(participant: ActorIdentity, index: number): string {
@@ -72,14 +64,14 @@ function Avatar(props: {
     >
       <span
         aria-label={label}
-        className={cn(
-          "relative inline-grid shrink-0 place-items-center rounded-full border-2 border-dashboard-bg bg-dashboard-focus font-sans font-bold leading-none text-dashboard-text-inverse shadow-sm focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
-          props.size === "list" ? "size-6 text-2xs" : "size-7 text-xs",
-        )}
+        className="relative inline-flex rounded-full focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
         onKeyDown={(event) => event.stopPropagation()}
         tabIndex={0}
       >
-        {participantInitials(props.participant)}
+        <ActorAvatar
+          name={participantName(props.participant)}
+          size={props.size}
+        />
       </span>
     </Tooltip>
   );

@@ -82,6 +82,7 @@ The dashboard package owns these routes:
 | `/conversations/:conversation`  | Workspace with a selected transcript.             |
 | `/automations`                  | Signed-in user's scheduled and event automations. |
 | `/code`                         | Native code-change volume and cost summary.       |
+| `/code/:repository/*`           | One repository's conversations and code changes.  |
 | `/plugins/:plugin/:page/*`      | Core-rendered signed-in plugin page.              |
 | `/system`                       | Aggregate runtime and model metrics.              |
 | `/system/people`                | Actor activity directory.                         |
@@ -97,39 +98,42 @@ The dashboard package owns these routes:
 | `/api/auth/*`                   | Better Auth Google login and callbacks.           |
 
 `/code` summarizes native Junior code-change records across repositories.
-Person profiles load the same person-scoped code stats under their Code
-section. Existing `/people/*` and `/locations/*` links redirect to their
+Each repository links to its own page. That page has Overview, Conversations,
+and Changes tabs. A conversation belongs to a repository when one of its code
+changes links the conversation. Person profiles load the same person-scoped
+code stats under their Code section. Existing `/people/*` and `/locations/*` links redirect to their
 corresponding System routes.
 
 `/health` remains the public minimal Junior runtime health response.
 
 The current authenticated product API slices are:
 
-| Endpoint                                  | Purpose                                                                                                     |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/api/health`                             | Dashboard-safe health metadata.                                                                             |
-| `/api/runtime`                            | Runtime paths, providers, skills, and packages.                                                             |
-| `/api/plugins`                            | Loaded plugin list.                                                                                         |
-| `/api/plugins/:plugin/*`                  | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
-| `/api/user-pages`                         | Safe navigation metadata for registered plugin pages.                                                       |
-| `/api/user-pages/:plugin/:page`           | Viewer-authorized metrics and records for one plugin page.                                                  |
-| `/api/automations`                        | Viewer-owned scheduled and event automations.                                                               |
-| `/api/automations/:kind/:task`            | Deletes one viewer-owned scheduled or event automation.                                                     |
-| `/api/skills`                             | Discovered skill list.                                                                                      |
-| `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
-| `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                         |
-| `/api/code`                               | Native code-change overview across repositories.                                                            |
-| `/api/people`                             | Actor directory.                                                                                            |
-| `/api/people/:email`                      | Actor profile and recent conversation resources.                                                            |
-| `/api/people/:email/code`                 | Person-scoped native code-change summary for one profile.                                                   |
-| `/api/people/:email/plugin-reports`       | Person-scoped sanitized plugin operational summaries.                                                       |
-| `/api/locations`                          | Public location directory and generic private-activity totals.                                              |
-| `/api/locations/:location`                | Activity, actors, and recent conversations for one public location.                                         |
-| `/api/plugin-reports`                     | Sanitized plugin operational summaries.                                                                     |
-| `/api/conversations/:conversation`        | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.       |
-| `/api/conversations/:conversation/events` | Earlier transcript event pages selected with a signed `before` cursor.                                      |
-| `/api/config`                             | Safe dashboard config signals and feature readiness.                                                        |
-| `/api/me`                                 | Signed-in dashboard identity.                                                                               |
+| Endpoint                                  | Purpose                                                                                                                                                                                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/health`                             | Dashboard-safe health metadata.                                                                                                                                                                       |
+| `/api/runtime`                            | Runtime paths, providers, skills, and packages.                                                                                                                                                       |
+| `/api/plugins`                            | Loaded plugin list.                                                                                                                                                                                   |
+| `/api/plugins/:plugin/*`                  | Authenticated, namespaced API routes contributed by enabled plugins.                                                                                                                                  |
+| `/api/user-pages`                         | Safe navigation metadata for registered plugin pages.                                                                                                                                                 |
+| `/api/user-pages/:plugin/:page`           | Viewer-authorized metrics and records for one plugin page.                                                                                                                                            |
+| `/api/automations`                        | Viewer-owned scheduled and event automations.                                                                                                                                                         |
+| `/api/automations/:kind/:task`            | Deletes one viewer-owned scheduled or event automation.                                                                                                                                               |
+| `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
+| `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
+| `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
+| `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
+| `/api/code/repositories/:repository`      | One repository's code-change summary, recent changes, and Workspaces.                                                                                                                                 |
+| `/api/people`                             | Actor directory.                                                                                                                                                                                      |
+| `/api/people/:email`                      | Actor profile and recent conversation resources.                                                                                                                                                      |
+| `/api/people/:email/code`                 | Person-scoped native code-change summary for one profile.                                                                                                                                             |
+| `/api/people/:email/plugin-reports`       | Person-scoped sanitized plugin operational summaries.                                                                                                                                                 |
+| `/api/locations`                          | Public location directory and generic private-activity totals.                                                                                                                                        |
+| `/api/locations/:location`                | Activity, actors, and recent conversations for one public location.                                                                                                                                   |
+| `/api/plugin-reports`                     | Sanitized plugin operational summaries.                                                                                                                                                               |
+| `/api/conversations/:conversation`        | Conversation header metadata and expiring transcript; private transcripts are participant-authorized.                                                                                                 |
+| `/api/conversations/:conversation/events` | Earlier transcript event pages selected with a signed `before` cursor.                                                                                                                                |
+| `/api/config`                             | Safe dashboard config signals and feature readiness.                                                                                                                                                  |
+| `/api/me`                                 | Signed-in dashboard identity.                                                                                                                                                                         |
 
 For a private conversation, the transcript is available only when the signed-in verified email matches the owning root conversation actor's persisted verified email. Conversation summary resources report that match through `isParticipant`; event-page resources apply the same authorization decision through their projected events and `eventHistory`. Other viewers receive redacted metadata. Top-level conversation resources and System, People, and Location statistics include descendant duration and usage even when child resources are loaded separately. A directly requested child reports only its own metrics.
 

@@ -1,16 +1,23 @@
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationPendingMessage,
+  InputImage,
+} from "@sentry/junior/api/schema";
 
-/** Client-owned mailbox row waiting on accept or retry. */
+/** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
+  actorIdentity?: ActorIdentity;
   createdAt: string;
   idempotencyKey: string;
   message: string;
+  images?: InputImage[];
   messageId: string;
-  status: "failed" | "sending";
+  status: "accepted" | "failed" | "sending";
 };
 
 /** Pending mailbox row with optional client send lifecycle. */
 export type ConversationMailboxMessage = ConversationPendingMessage & {
+  images?: InputImage[];
   clientStatus?: ConversationOutboxMessage["status"];
   idempotencyKey?: string;
 };
@@ -22,16 +29,21 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 
 /** Build one optimistic outbox row for a composer submit. */
 export function conversationOutboxMessageForSubmit(input: {
+  actorIdentity?: ActorIdentity;
   idempotencyKey: string;
   message: string;
+  images?: InputImage[];
+  messageId: string;
   now?: string;
 }): ConversationOutboxMessage {
   const createdAt = input.now ?? new Date().toISOString();
   return {
+    actorIdentity: input.actorIdentity,
     createdAt,
     idempotencyKey: input.idempotencyKey,
     message: input.message,
-    messageId: `client:${input.idempotencyKey}`,
+    ...(input.images?.length ? { images: input.images } : undefined),
+    messageId: input.messageId,
     status: "sending",
   };
 }
@@ -41,6 +53,7 @@ export function mailboxMessageFromOutbox(
   message: ConversationOutboxMessage,
 ): ConversationMailboxMessage {
   return {
+    actorIdentity: message.actorIdentity,
     clientStatus: message.status,
     createdAt: message.createdAt,
     delivery: "defer",
@@ -51,13 +64,14 @@ export function mailboxMessageFromOutbox(
     role: "user",
     source: "web",
     text: message.message,
+    ...(message.images?.length ? { images: message.images } : undefined),
   };
 }
 
 /**
  * Merge accepted mailbox rows with local outbox rows.
  *
- * Server rows win once present. Outbox rows stay visible while sending or failed
+ * Server rows win once present. Local rows stay visible until the server sees them
  * so a submit never depends on restoring text into the composer.
  *
  * Preserve list identity when the visible rows did not change so live polls do
@@ -72,7 +86,9 @@ export function mergeConversationMailboxMessages(
   const outboxMessages = outbox ?? [];
   let next: readonly ConversationMailboxMessage[] = serverMessages;
   if (outboxMessages.length > 0) {
-    const serverIds = new Set(serverMessages.map((message) => message.messageId));
+    const serverIds = new Set(
+      serverMessages.map((message) => message.messageId),
+    );
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);
@@ -109,6 +125,8 @@ function sameMailboxMessage(
     left.clientStatus === right.clientStatus &&
     left.delivery === right.delivery &&
     left.text === right.text &&
+    left.images === right.images &&
+    JSON.stringify(left.attachments) === JSON.stringify(right.attachments) &&
     left.redacted === right.redacted &&
     left.source === right.source &&
     left.role === right.role &&
@@ -150,13 +168,16 @@ export function upsertConversationOutboxMessage(
   return next;
 }
 
-/** Drop one outbox row after the server accepts it. */
-export function removeConversationOutboxMessage(
+/** Keep the local row until a server snapshot contains the accepted Message. */
+export function acceptConversationOutboxMessage(
   current: readonly ConversationOutboxMessage[] | undefined,
   idempotencyKey: string,
+  messageId: string,
 ): ConversationOutboxMessage[] {
-  return (current ?? []).filter(
-    (message) => message.idempotencyKey !== idempotencyKey,
+  return (current ?? []).map((message) =>
+    message.idempotencyKey === idempotencyKey
+      ? { ...message, messageId, status: "accepted" }
+      : message,
   );
 }
 

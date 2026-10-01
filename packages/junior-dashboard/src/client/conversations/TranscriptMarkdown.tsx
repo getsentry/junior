@@ -33,7 +33,7 @@ export function TranscriptMarkdown(props: {
       className={cn(
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.compact
-          ? "font-sans text-sm leading-6"
+          ? "font-sans text-base leading-7"
           : "font-sans text-sm leading-6 md:leading-7",
       )}
     >

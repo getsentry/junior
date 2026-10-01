@@ -74,6 +74,7 @@ jobs:
               - packages/junior-amplitude/**
               - packages/junior-cloudflare/**
               - packages/junior-datadog/**
+              - packages/junior-tts/**
               - packages/junior-github/**
               - packages/junior-gocd/**
               - packages/junior-hex/**
@@ -98,6 +99,8 @@ jobs:
               - README.md
               - scripts/bump-release-versions.mjs
               - scripts/check-release-config.mjs
+              - scripts/release-artifacts*.mjs
+              - scripts/publish-github-release*.mjs
               - packages/*/package.json
               - packages/docs/**
 
@@ -140,6 +143,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm typecheck
+
+  eval-report-tests:
+    name: test / eval reporting
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+      - run: node --test packages/junior-evals/scripts/report.test.mjs
 
   junior-tests:
     name: test / junior ${{ matrix.suite }}
@@ -211,6 +226,33 @@ jobs:
           informational-project: true
           informational-patch: true
 
+  eval-harness-tests:
+    name: test / eval harness
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.full == 'true'
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-evals test
+
   workspace-snapshot-lifecycle:
     name: test / Workspace snapshot lifecycle
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -266,6 +308,7 @@ jobs:
       - run: pnpm --filter @sentry/junior-gocd build
       - run: pnpm --filter @sentry/junior-sentry build
       - run: pnpm --filter @sentry/junior-vercel build
+      - run: pnpm --filter @sentry/junior-tts test
       - run: pnpm --filter @sentry/junior-github test
       - run: pnpm --filter @sentry/junior-gocd test
       - run: pnpm --filter @sentry/junior-sentry test
@@ -425,6 +468,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - eval-harness-tests
       - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
@@ -446,6 +490,7 @@ jobs:
           pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
           pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-tts pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
           pnpm --filter @sentry/junior-gocd pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
@@ -455,15 +500,18 @@ jobs:
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
+          node scripts/release-artifacts.mjs create artifacts
           ls -la artifacts
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.sha }}
-          path: artifacts/*.tgz
+          path: |
+            artifacts/*.tgz
+            artifacts/junior-release.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   required:
     name: ci / required
@@ -475,6 +523,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - eval-harness-tests
       - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
@@ -500,6 +549,7 @@ jobs:
             "${{ needs.lint.result }}" \
             "${{ needs.typecheck.result }}" \
             "${{ needs.junior-tests.result }}" \
+            "${{ needs.eval-harness-tests.result }}" \
             "${{ needs.workspace-snapshot-lifecycle.result }}" \
             "${{ needs.plugin-tests.result }}" \
             "${{ needs.dashboard-tests.result }}" \

@@ -1,3 +1,4 @@
+import { mockAutomationApis } from "./automation-fixture";
 import {
   createServer,
   type IncomingMessage,
@@ -63,7 +64,7 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
 export async function startDashboardE2eServer(
-  options: { componentGallery?: boolean } = {},
+  options: { basePath?: string; componentGallery?: boolean } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
@@ -86,6 +87,7 @@ export async function startDashboardE2eServer(
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    basePath: options.basePath,
     componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
@@ -293,197 +295,7 @@ export async function mockDashboardApis(
       },
     });
   });
-  await page.route("**/api/automations", async (route) => {
-    await route.fulfill({
-      json: {
-        executionDays: [
-          { costUsd: 0.12, date: "2026-05-07", event: 1, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-05-08", event: 0, scheduled: 0 },
-          { costUsd: 0.16, date: "2026-05-09", event: 0, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-05-10", event: 0, scheduled: 0 },
-          { costUsd: 0.44, date: "2026-05-11", event: 1, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-05-12", event: 0, scheduled: 0 },
-          { costUsd: 0.08, date: "2026-05-13", event: 0, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-05-14", event: 0, scheduled: 0 },
-          { costUsd: 0.36, date: "2026-05-15", event: 1, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-05-16", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-05-17", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-05-18", event: 0, scheduled: 0 },
-          { costUsd: 0.28, date: "2026-05-19", event: 1, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-05-20", event: 0, scheduled: 0 },
-          { costUsd: 0.32, date: "2026-05-21", event: 0, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-05-22", event: 0, scheduled: 0 },
-          { costUsd: 0.2, date: "2026-05-23", event: 1, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-05-24", event: 0, scheduled: 0 },
-          { costUsd: 0.24, date: "2026-05-25", event: 0, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-05-26", event: 0, scheduled: 0 },
-          { costUsd: 0.12, date: "2026-05-27", event: 1, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-05-28", event: 0, scheduled: 0 },
-          { costUsd: 0.16, date: "2026-05-29", event: 0, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-05-30", event: 0, scheduled: 0 },
-          { costUsd: 0.44, date: "2026-05-31", event: 1, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-06-01", event: 0, scheduled: 0 },
-          { costUsd: 0.08, date: "2026-06-02", event: 0, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-06-03", event: 0, scheduled: 0 },
-          { costUsd: 0.36, date: "2026-06-04", event: 1, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-06-05", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-06-06", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-06-07", event: 0, scheduled: 0 },
-          { costUsd: 0.28, date: "2026-06-08", event: 1, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-06-09", event: 0, scheduled: 0 },
-          { costUsd: 0.32, date: "2026-06-10", event: 0, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-06-11", event: 0, scheduled: 0 },
-          { costUsd: 0.2, date: "2026-06-12", event: 1, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-06-13", event: 0, scheduled: 0 },
-          { costUsd: 0.24, date: "2026-06-14", event: 0, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-06-15", event: 0, scheduled: 0 },
-          { costUsd: 0.12, date: "2026-06-16", event: 1, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-06-17", event: 0, scheduled: 0 },
-          { costUsd: 0.16, date: "2026-06-18", event: 0, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-06-19", event: 0, scheduled: 0 },
-          { costUsd: 0.44, date: "2026-06-20", event: 1, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-06-21", event: 0, scheduled: 0 },
-          { costUsd: 0.08, date: "2026-06-22", event: 0, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-06-23", event: 0, scheduled: 0 },
-          { costUsd: 0.36, date: "2026-06-24", event: 1, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-06-25", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-06-26", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-06-27", event: 0, scheduled: 0 },
-          { costUsd: 0.28, date: "2026-06-28", event: 1, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-06-29", event: 0, scheduled: 0 },
-          { costUsd: 0.32, date: "2026-06-30", event: 0, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-07-01", event: 0, scheduled: 0 },
-          { costUsd: 0.2, date: "2026-07-02", event: 1, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-07-03", event: 0, scheduled: 0 },
-          { costUsd: 0.24, date: "2026-07-04", event: 0, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-07-05", event: 0, scheduled: 0 },
-          { costUsd: 0.12, date: "2026-07-06", event: 1, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-07-07", event: 0, scheduled: 0 },
-          { costUsd: 0.16, date: "2026-07-08", event: 0, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-07-09", event: 0, scheduled: 0 },
-          { costUsd: 0.44, date: "2026-07-10", event: 1, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-07-11", event: 0, scheduled: 0 },
-          { costUsd: 0.08, date: "2026-07-12", event: 0, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-07-13", event: 0, scheduled: 0 },
-          { costUsd: 0.36, date: "2026-07-14", event: 1, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-07-15", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-07-16", event: 0, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-07-17", event: 0, scheduled: 0 },
-          { costUsd: 0.28, date: "2026-07-18", event: 1, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-07-19", event: 0, scheduled: 0 },
-          { costUsd: 0.32, date: "2026-07-20", event: 0, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-07-21", event: 0, scheduled: 0 },
-          { costUsd: 0.2, date: "2026-07-22", event: 1, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-07-23", event: 0, scheduled: 0 },
-          { costUsd: 0.24, date: "2026-07-24", event: 0, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-07-25", event: 0, scheduled: 0 },
-          { costUsd: 0.12, date: "2026-07-26", event: 1, scheduled: 0 },
-          { costUsd: 0.0, date: "2026-07-27", event: 0, scheduled: 0 },
-          { costUsd: 0.16, date: "2026-07-28", event: 0, scheduled: 2 },
-          { costUsd: 0.0, date: "2026-07-29", event: 0, scheduled: 0 },
-          { costUsd: 0.44, date: "2026-07-30", event: 1, scheduled: 4 },
-          { costUsd: 0.0, date: "2026-07-31", event: 0, scheduled: 0 },
-          { costUsd: 0.08, date: "2026-08-01", event: 0, scheduled: 1 },
-          { costUsd: 0.0, date: "2026-08-02", event: 0, scheduled: 0 },
-          { costUsd: 0.36, date: "2026-08-03", event: 1, scheduled: 3 },
-          { costUsd: 0.0, date: "2026-08-04", event: 0, scheduled: 0 },
-        ],
-        automations: [
-          {
-            createdAt: "2026-07-28T16:00:00.000Z",
-            createdBy: "Morgan",
-            createdByEmail: "dev@example.com",
-            destination: {
-              channelId: "C123",
-              label: "#project-updates",
-              teamId: "T123",
-              visibility: "public",
-            },
-            id: "scheduled-1",
-            instruction: "Send the weekly project summary",
-            kind: "scheduled",
-            lastConversationId: "scheduler:daily-ops-digest",
-            lastRunAt: "2026-08-06T16:00:00.000Z",
-            nextRunAt: "2026-08-10T16:00:00.000Z",
-            ownedByViewer: true,
-            runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
-            schedule: "Every Monday at 9:00 AM",
-            status: "active",
-            outcomes: [
-              {
-                action: "send_message",
-                destination: {
-                  platform: "slack",
-                  teamId: "T123",
-                  channelId: "C123",
-                },
-              },
-            ],
-            title: "Weekly project summary",
-            totalRuns: 48,
-          },
-          {
-            createdAt: "2026-07-29T16:00:00.000Z",
-            createdBy: "Morgan",
-            createdByEmail: "dev@example.com",
-            destination: {
-              channelId: "C123",
-              label: "#project-updates",
-              teamId: "T123",
-              visibility: "public",
-            },
-            events: ["issue.closed"],
-            id: "event-1",
-            instruction: "Summarize the closed issue",
-            kind: "event",
-            lastConversationId: "agent-dispatch:event-1",
-            lastRunAt: "2026-08-05T18:30:00.000Z",
-            ownedByViewer: true,
-            resource: "Issue · ACME-42",
-            runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
-            source: "github",
-            outcomes: [],
-            title: "Closed issue summary",
-            totalRuns: 7,
-            triggerAvailable: true,
-          },
-          {
-            createdAt: "2026-07-30T16:00:00.000Z",
-            createdBy: "Avery Chen",
-            createdByEmail: "avery@sentry.io",
-            destination: {
-              channelId: "C456",
-              label: "#incident-response",
-              teamId: "T123",
-              visibility: "public",
-            },
-            events: ["incident.updated"],
-            id: "event-2",
-            instruction: "Notify responders when the incident changes",
-            kind: "event",
-            ownedByViewer: false,
-            resource: "Incident · INC-17",
-            runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
-            source: "pagerduty",
-            outcomes: [
-              {
-                action: "send_message",
-                destination: {
-                  platform: "slack",
-                  teamId: "T123",
-                  channelId: "C123",
-                },
-              },
-            ],
-            title: "Incident change alerts",
-            totalRuns: 0,
-            triggerAvailable: false,
-          },
-        ],
-        truncated: false,
-      },
-    });
-  });
+  await mockAutomationApis(page);
   await page.route("**/api/automations/*/*/executions", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/").filter(Boolean);
@@ -512,6 +324,7 @@ export async function mockDashboardApis(
           ? "Send the weekly project summary"
           : "Summarize the closed issue",
       kind,
+      credentialMode: "creator",
       ownedByViewer: true,
       runs:
         kind === "scheduled"
@@ -539,6 +352,7 @@ export async function mockDashboardApis(
         ? {
             nextRunAt: "2026-08-10T16:00:00.000Z",
             schedule: "Every Monday at 9:00 AM",
+            timezone: "America/Los_Angeles",
             status: "active" as const,
           }
         : {
@@ -546,6 +360,7 @@ export async function mockDashboardApis(
             resource: "Issue · ACME-42",
             source: "github",
             triggerAvailable: true,
+            status: "active",
           }),
     };
     const executionDays = Array.from({ length: 90 }, (_, index) => {

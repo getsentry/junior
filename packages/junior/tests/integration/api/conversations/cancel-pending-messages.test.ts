@@ -21,11 +21,44 @@ import {
   createConversationFixture,
 } from "../../../fixtures/conversation";
 import { testViewer } from "../../../fixtures/user";
+import {
+  createConversationWorkSlackHarness,
+  CONVERSATION_ID,
+  SLACK_DESTINATION,
+} from "../../../fixtures/conversation-work";
+import { slackApiOutbox } from "../../../fixtures/slack-api-outbox";
+import { cancelConversationPendingMessagesForViewer } from "@/api/conversations/cancel-pending-messages";
 
 describe("conversation cancel pending messages API", () => {
   afterEach(async () => {
     await closeConversationFixture();
     await closeDb();
+  });
+
+  it("clears a queued Slack receipt when a participant cancels it", async () => {
+    const { actor, conversationStore } = await createConversationFixture();
+    const harness = await createConversationWorkSlackHarness();
+    const conversationId = CONVERSATION_ID;
+    await conversationStore.recordActivity({
+      actor: { email: actor.email },
+      conversationId,
+      destination: SLACK_DESTINATION,
+      nowMs: Date.now(),
+      source: "slack",
+      visibility: "public",
+    });
+    await harness.send();
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+    const result = await cancelConversationPendingMessagesForViewer(
+      testViewer("alice@example.com"),
+      conversationId,
+    );
+    expect(result.cancelledCount).toBe(1);
+    expect(slackApiOutbox.reactionRemovals()[0]?.params).toMatchObject({
+      channel: "C123",
+      timestamp: "1712345.0001",
+      name: "eyes",
+    });
   });
 
   it("cancels accepted web mailbox rows for participants", async () => {

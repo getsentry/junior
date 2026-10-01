@@ -31,7 +31,7 @@ no Junior tables remains a normal fresh install.
 
 ## Memory adoption
 
-`0045_memory_core` adopts the Memory tables that the removed
+`0046_memory_core` adopts the Memory tables that the removed
 `@sentry/junior-memory` plugin used to own. It creates the final schema on a fresh database and
 reconciles an existing database from any legacy plugin journal position,
 applying only the transitions and data rewrites that are still missing. The

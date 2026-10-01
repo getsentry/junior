@@ -1,43 +1,24 @@
+import type {
+  ConversationsHistoryResponse,
+  ConversationsRepliesResponse,
+} from "@slack/web-api";
+import { z } from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 
-export interface SlackChannelMessage {
-  ts?: string;
-  user?: string;
-  text?: string;
-  thread_ts?: string;
-  subtype?: string;
-  bot_id?: string;
-  type?: string;
-  attachments?: unknown[];
-}
-
-export interface SlackFileRef {
-  id?: string;
-  mimetype?: string;
-  name?: string;
-  size?: number;
-  url_private?: string;
-  url_private_download?: string;
-}
-
-export interface SlackThreadReply {
-  ts?: string;
-  user?: string;
-  text?: string;
-  thread_ts?: string;
-  subtype?: string;
-  bot_id?: string;
-  type?: string;
-  files?: SlackFileRef[];
-  attachments?: unknown[];
-  reactions?: Array<{
-    name?: string;
-    count?: number;
-    users?: string[];
-  }>;
-}
+type SlackChannelMessage = NonNullable<
+  ConversationsHistoryResponse["messages"]
+>[number];
+// The replies response omits subtype, although history includes it.
+const replySubtypeSchema = z.object({
+  subtype: z.string().optional(),
+}) satisfies z.ZodType<Pick<SlackChannelMessage, "subtype">>;
+export type SlackThreadReply = NonNullable<
+  ConversationsRepliesResponse["messages"]
+>[number] &
+  z.output<typeof replySubtypeSchema>;
+export type SlackFileRef = NonNullable<SlackThreadReply["files"]>[number];
 
 /** List channel history using Slack-native, pre-validated timestamp bounds. */
 export async function listChannelMessages(input: {
@@ -74,7 +55,7 @@ export async function listChannelMessages(input: {
       { action: "conversations.history" },
     );
 
-    const batch = (response.messages ?? []) as SlackChannelMessage[];
+    const batch = response.messages ?? [];
     messages.push(...batch);
     cursor = response.response_metadata?.next_cursor || undefined;
 
@@ -126,8 +107,13 @@ export async function listThreadReplies(input: {
       { action: "conversations.replies" },
     );
 
-    const batch = (response.messages ?? []) as SlackThreadReply[];
-    replies.push(...batch);
+    const batch = response.messages ?? [];
+    replies.push(
+      ...batch.map((reply) => ({
+        ...reply,
+        ...replySubtypeSchema.parse(reply),
+      })),
+    );
     for (const reply of batch) {
       if (typeof reply.ts === "string" && pendingTargets.size > 0) {
         pendingTargets.delete(reply.ts);
@@ -168,30 +154,22 @@ export async function getConversationInfo(
 
   const channel = response.channel;
   if (!channel || typeof channel !== "object") {
-    throw new Error(`Slack conversations.info returned no channel for ${channelId}`);
+    throw new Error(
+      `Slack conversations.info returned no channel for ${channelId}`,
+    );
   }
-
-  const record = channel as {
-    id?: string;
-    name?: string;
-    is_channel?: boolean;
-    is_private?: boolean;
-    is_im?: boolean;
-    is_mpim?: boolean;
-    is_member?: boolean;
-  };
 
   return {
     id: channelId,
-    ...(typeof record.name === "string" && record.name
-      ? { name: record.name }
+    ...(typeof channel.name === "string" && channel.name
+      ? { name: channel.name }
       : undefined),
-    isChannel: record.is_channel === true,
-    isPrivate: record.is_private === true,
-    isIm: record.is_im === true,
-    isMpim: record.is_mpim === true,
-    ...(typeof record.is_member === "boolean"
-      ? { isMember: record.is_member }
+    isChannel: channel.is_channel === true,
+    isPrivate: channel.is_private === true,
+    isIm: channel.is_im === true,
+    isMpim: channel.is_mpim === true,
+    ...(typeof channel.is_member === "boolean"
+      ? { isMember: channel.is_member }
       : undefined),
   };
 }
@@ -210,4 +188,3 @@ export async function joinPublicChannel(
     { action: "conversations.join", idempotent: true },
   );
 }
-

@@ -1,4 +1,8 @@
+import { githubObjectFacts } from "../object-facts.js";
+import { githubObjectAnnotation } from "../annotations.js";
 import {
+  objectFactsSchema,
+  type ObjectAnnotation,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -72,6 +76,9 @@ const createIssueStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createIssueInputSchema),
       number: Type.Number(),
+      facts: Type.Optional(Type.Unknown()),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
+      sourceUpdatedAt: Type.Optional(Type.String()),
       status: Type.Literal("completed"),
       url: Type.String(),
     },
@@ -94,6 +101,9 @@ const createIssueStateSchema = Type.Union([
 type CreateIssueState = Static<typeof createIssueStateSchema>;
 
 interface GitHubIssueResult {
+  facts?: ObjectAnnotation["facts"];
+  description?: string;
+  sourceUpdatedAt?: string;
   number: number;
   url: string;
 }
@@ -130,8 +140,25 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
+  const data = {
+    number: result.number,
+    url: result.url,
+    ...(subscribable ? { subscribable } : undefined),
+  };
   return {
+    objectAnnotations: [
+      githubObjectAnnotation({
+        facts: result.facts,
+        description: result.description,
+        sourceUpdatedAt: result.sourceUpdatedAt,
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "task",
+        status: "open",
+      }),
+    ],
     target: "createIssue",
     ...data,
   };
@@ -281,24 +308,10 @@ async function createGitHubIssue(
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
+    ...githubObjectFacts("task", parsed),
     number: issue.number,
     url: issue.html_url,
   };
-}
-
-async function annotateIssue(
-  ctx: ToolRegistrationHookContext,
-  input: CreateGitHubIssueInput,
-  result: GitHubIssueResult,
-): Promise<void> {
-  const repo = parseRepo(input.repo);
-  await ctx.annotations?.upsert({
-    kind: "resource_link",
-    key: `${repo.owner.toLowerCase()}/${repo.name.toLowerCase()}#${result.number}`,
-    label: `${repo.owner}/${repo.name}#${result.number}`,
-    url: result.url,
-    status: "open",
-  });
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
@@ -333,10 +346,15 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
             const completedResult = {
+              facts:
+                state.facts === undefined
+                  ? undefined
+                  : objectFactsSchema.parse(state.facts),
+              sourceUpdatedAt: state.sourceUpdatedAt,
+              description: state.description,
               number: state.number,
               url: state.url,
             };
-            await annotateIssue(ctx, completedInput, completedResult);
             return gitHubIssueToolResult(
               completedInput,
               completedResult,
@@ -379,7 +397,6 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
                 { cause: error },
               );
             }
-            await annotateIssue(ctx, parsedInput, result);
             return gitHubIssueToolResult(
               parsedInput,
               result,

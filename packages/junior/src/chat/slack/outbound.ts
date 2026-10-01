@@ -1,6 +1,8 @@
 import { SlackActionError } from "@/chat/slack/client";
-import type { SlackMessageBlock } from "@/chat/slack/footer";
-import type { SlackEntity } from "@/chat/slack/cards";
+import { setSpanAttributes } from "@/chat/logging";
+import { captureSlackPostWarning } from "./post-warning";
+import type { KnownBlock } from "@slack/types";
+import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
   getSlackClient,
@@ -89,7 +91,7 @@ export async function getSlackMessagePermalink(args: {
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
   entities?: SlackEntity[];
-  blocks?: SlackMessageBlock[];
+  blocks?: KnownBlock[];
   channelId: string;
   text: string;
   threadTs?: string;
@@ -100,6 +102,9 @@ export async function postSlackMessage(input: {
     "Slack message posting",
   );
   const text = requireSlackMessageText(input.text, "Slack message posting");
+  const entities = input.entities?.length
+    ? slackEntitySchema.array().parse(input.entities)
+    : undefined;
   const threadTs = input.threadTs
     ? requireSlackThreadTimestamp(
         input.threadTs,
@@ -107,30 +112,38 @@ export async function postSlackMessage(input: {
       )
     : undefined;
 
+  const attributes = {
+    "app.slack.channel_id": channelId,
+    ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
+    "app.slack.work_object.count": entities?.length ?? 0,
+  };
   const response = await withSlackRetries(
-    () =>
-      getSlackClient().chat.postMessage({
+    async () => {
+      const response = await getSlackClient().chat.postMessage({
         channel: channelId,
         text,
         unfurl_links: false,
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: input.blocks as Array<Record<string, unknown>>,
+              blocks: input.blocks,
             }
           : undefined),
-        ...(input.entities?.length
-          ? { metadata: { entities: input.entities } }
-          : undefined),
+        ...(entities ? { metadata: { entities } } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
-      }),
+      });
+      const messageId = parseSlackMessageTs(response.ts);
+      setSpanAttributes({ "messaging.message.id": messageId });
+      captureSlackPostWarning(response, {
+        ...attributes,
+        "messaging.message.id": messageId,
+      });
+      return response;
+    },
     3,
     {
       action: "chat.postMessage",
-      spanAttributes: {
-        "app.slack.channel_id": channelId,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
-      },
+      attributes,
     },
   );
 
@@ -189,6 +202,7 @@ export async function deleteSlackMessage(input: {
  * request validation and Web API behavior are centralized here.
  */
 export async function postSlackEphemeralMessage(input: {
+  blocks?: KnownBlock[];
   channelId: string;
   userId: string;
   text: string;
@@ -219,6 +233,7 @@ export async function postSlackEphemeralMessage(input: {
         channel: channelId,
         user: userId,
         text,
+        ...(input.blocks?.length ? { blocks: input.blocks } : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),
     3,
@@ -312,6 +327,8 @@ export async function addReactionToMessage(input: {
   channelId: string;
   timestamp: SlackMessageTs;
   emoji: string;
+  /** Bound optional ingress UI to one short attempt before durable admission. */
+  timeoutMs?: number;
 }): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
     input.channelId,
@@ -329,12 +346,16 @@ export async function addReactionToMessage(input: {
   try {
     await withSlackRetries(
       () =>
-        getSlackClient().reactions.add({
+        getSlackClient(
+          input.timeoutMs === undefined
+            ? undefined
+            : { timeoutMs: input.timeoutMs },
+        ).reactions.add({
           channel: channelId,
           timestamp,
           name: emoji,
         }),
-      3,
+      input.timeoutMs === undefined ? 3 : 1,
       {
         action: "reactions.add",
         idempotent: true,

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { cn } from "../styles";
 import {
@@ -6,6 +6,7 @@ import {
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 /** Render the shared expandable/non-expandable frame for transcript tools. */
 export function ToolFrame(props: {
@@ -13,13 +14,13 @@ export function ToolFrame(props: {
   expandable?: boolean;
   meta: string[];
   mobileSummaryMeta?: string;
-  raw?: boolean;
   signature: ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
+  const [open, setOpen] = useState(false);
   const metaText = props.meta.join(" · ");
   const interactive = props.expandable ?? Boolean(props.children);
-  const staticFrame = searchActive || props.raw || !interactive;
+  const staticFrame = searchActive || !interactive;
   const header = (
     <TranscriptHeadingRow
       left={
@@ -63,7 +64,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words bg-black/15 px-2.5 py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words bg-black/15 px-2 py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -72,7 +73,9 @@ export function ToolFrame(props: {
   if (staticFrame) {
     return (
       <div className="min-w-0 max-w-full overflow-hidden">
-        <div className={toolHeaderClass(false)}>{header}</div>
+        <div className="block px-2 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted">
+          {header}
+        </div>
         {mobileMeta}
         {props.children}
       </div>
@@ -80,19 +83,21 @@ export function ToolFrame(props: {
   }
 
   return (
-    <details className="group min-w-0 max-w-full overflow-hidden">
-      <summary className={toolHeaderClass(true)}>{header}</summary>
-      {mobileMeta}
-      {props.children}
+    <details
+      className="group min-w-0 max-w-full overflow-hidden"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <TranscriptSummary className="block font-mono text-xs leading-tight text-dashboard-text-muted">
+        {header}
+      </TranscriptSummary>
+      {/* Closed details hide DOM, but still mount React children and run Shiki. */}
+      {open ? (
+        <>
+          {mobileMeta}
+          {props.children}
+        </>
+      ) : null}
     </details>
-  );
-}
-
-function toolHeaderClass(interactive: boolean): string {
-  return cn(
-    "block px-2.5 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted",
-    interactive
-      ? "cursor-pointer list-none transition-colors hover:bg-white/[0.03] hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
-      : "cursor-default",
   );
 }

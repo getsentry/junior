@@ -45,12 +45,15 @@ export async function generateShortTitle(args: {
   completeText: typeof completeText;
   kind: ShortTitleKind;
   sourceText: string;
+  signal?: AbortSignal;
 }): Promise<string | undefined> {
+  args.signal?.throwIfAborted();
   const sourceText = args.sourceText.trim();
   if (!sourceText) return undefined;
 
   try {
     const result = await args.completeText({
+      signal: args.signal,
       modelId: botConfig.fastModelId,
       temperature: 0,
       promptName: `junior.${args.kind}_title`,
@@ -71,9 +74,11 @@ export async function generateShortTitle(args: {
         modelId: botConfig.fastModelId,
       },
     });
+    args.signal?.throwIfAborted();
     const title = normalizeShortTitle(result.text);
     return title || undefined;
   } catch (error) {
+    args.signal?.throwIfAborted();
     logWarn(`${args.kind}.title.generation.failed`, {
       "exception.message":
         error instanceof Error ? error.message : String(error),
@@ -90,6 +95,7 @@ export async function resolveTaskTitle(args: {
   completeText: typeof completeText;
   instruction: string;
   title?: string | null;
+  signal?: AbortSignal;
 }): Promise<string | undefined> {
   const explicit = normalizeShortTitle(args.title ?? "");
   if (explicit) return explicit;
@@ -97,5 +103,6 @@ export async function resolveTaskTitle(args: {
     completeText: args.completeText,
     kind: "task",
     sourceText: args.instruction,
+    signal: args.signal,
   });
 }

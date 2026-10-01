@@ -754,7 +754,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("preserves plugin tool instances while adding internal identity", () => {
+  it("preserves plugin tool methods while adding internal identity", async () => {
     const prototypeTool = new PrototypeTool();
     const previous = setPlugins([
       defineJuniorPlugin({
@@ -782,7 +782,9 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_prototypeTool).toBe(prototypeTool);
+      expect(Object.getPrototypeOf(tools.agentDemo_prototypeTool)).toBe(
+        prototypeTool,
+      );
       expect(tools.prototypeTool).toBeUndefined();
       expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
@@ -794,10 +796,10 @@ describe("agent plugin hooks", () => {
         id: "agent-demo",
         description: "Agent demo",
       });
-      const prototypeResult = tools.agentDemo_prototypeTool?.execute?.(
+      const prototypeResult = (await tools.agentDemo_prototypeTool?.execute?.(
         {},
         {},
-      ) as ReturnType<PrototypeTool["execute"]> | undefined;
+      )) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
         message: "done",
       });
@@ -873,7 +875,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("rejects plugin tools with invalid names", () => {
+  it("registers plugin tools without enforcing the lint naming convention", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -884,22 +886,25 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              "not-valid": demoPluginTool(),
+              deployment_create: demoPluginTool(),
             };
           },
         },
       }),
     ]);
     try {
-      expect(() =>
-        getPluginTools({
-          conversationId: LOCAL_DESTINATION.conversationId,
-          destination: LOCAL_DESTINATION,
-          egress: TEST_EGRESS,
-          source: LOCAL_SOURCE,
-          workspace: {} as any,
-        }),
-      ).toThrow("must be a camelCase identifier");
+      const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+      expect(tools.agentDemo_deployment_create?.identity).toEqual({
+        id: "agent-demo.deployment_create",
+        name: "deployment_create",
+        plugin: "agent-demo",
+      });
     } finally {
       setPlugins(previous);
     }

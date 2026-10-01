@@ -13,10 +13,20 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalInvocationContext } from "./src/eval-context";
-import { loadEvalPluginFixtures } from "./src/eval-plugin-fixtures";
+import {
+  evalGitHubEnv,
+  evalRuntimePlugins,
+  loadEvalPluginFixtures,
+} from "./src/eval-plugin-fixtures";
+import {
+  defineJuniorPlugins,
+  pluginCatalogConfigFromPluginSet,
+} from "@/plugins";
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
@@ -32,11 +42,28 @@ const workspaceRoot = path.resolve(
 export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
+  // Global setup runs before case timeouts and result reporting can help.
+  process.stdout.write("[evals] Preparing Postgres template\n");
   const teardownPostgres = await setupPostgres(project);
+  process.stdout.write("[evals] Postgres template ready\n");
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
   let mswListening = false;
+  let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  const fixtureEnv = {
+    ...evalGitHubEnv(),
+    SENTRY_CLIENT_ID: "eval-sentry-client-id",
+    SENTRY_CLIENT_SECRET: "eval-sentry-client-secret",
+    EVAL_OAUTH_CLIENT_ID: "eval-oauth-client-id",
+    EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-client-secret",
+  };
+  const previousEnv = new Map(
+    [...Object.keys(fixtureEnv), "JUNIOR_BASE_URL"].map((key) => [
+      key,
+      process.env[key],
+    ]),
+  );
 
   /** Release every invocation-wide resource while preserving all cleanup errors. */
   const cleanup = async () => {
@@ -49,6 +76,11 @@ export default async function setup(
       async () => await disconnectStateAdapter(),
       async () => {
         pluginCatalogRuntime.setConfig(previousCatalogConfig);
+        if (previousPlugins) setPlugins(previousPlugins);
+        for (const [key, value] of previousEnv) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
       },
       teardownPostgres,
       restoreAiGatewayDispatcher,
@@ -75,14 +107,23 @@ export default async function setup(
     const pluginFixtures = loadEvalPluginFixtures([
       path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins"),
     ]);
+    const packages = ["@sentry/junior-github", "@sentry/junior-sentry"];
+    const runtimePlugins = evalRuntimePlugins(packages);
+    const pluginConfig = pluginCatalogConfigFromPluginSet(
+      defineJuniorPlugins([...packages, ...runtimePlugins]),
+    );
+    previousPlugins = setPlugins(runtimePlugins);
+    Object.assign(process.env, fixtureEnv);
     previousCatalogConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: pluginFixtures.inlineManifests,
-      packages: ["@sentry/junior-sentry"],
+      ...pluginConfig,
+      inlineManifests: [
+        ...pluginFixtures,
+        ...(pluginConfig?.inlineManifests ?? []),
+      ],
     });
-    process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
-    process.env.EVAL_OAUTH_CLIENT_SECRET = "eval-oauth-client-secret";
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    process.stdout.write("[evals] Starting public egress\n");
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
       readFixtureState: () => ({
@@ -95,6 +136,15 @@ export default async function setup(
         resetTestGitHubHttpFixtures();
       },
     });
+    process.stdout.write("[evals] Public egress healthy; warming snapshots\n");
+    process.env.JUNIOR_BASE_URL = egress.baseUrl;
+    for (const packages of [
+      [],
+      ["@sentry/junior-github"],
+      ["@sentry/junior-sentry"],
+    ]) {
+      await warmSandboxSnapshot(packages);
+    }
     project.provide("juniorEvalContext", {
       baseUrl: egress.baseUrl,
       controlToken: egress.controlToken,
@@ -106,6 +156,8 @@ export default async function setup(
     process.stdout.write(`[evals] Public egress ready at ${egress.baseUrl}\n`);
     return cleanup;
   } catch (error) {
+    // Cleanup can also stall; retain the original setup error first.
+    console.error("[evals] Global setup failed; releasing resources", error);
     try {
       await cleanup();
     } catch (cleanupError) {
