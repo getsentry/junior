@@ -6,23 +6,43 @@ import {
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
+import { parseSkillFile } from "@/chat/skills";
 import { isMissingPathError } from "@/chat/tools/sandbox/file-utils";
 
 const AGENTS_FILENAME = "AGENTS.md";
 const MAX_REPOSITORY_INSTRUCTIONS_BYTES = 32 * 1024;
+/** Repository skill directories, in priority order, relative to the Git root. */
+const REPOSITORY_SKILL_ROOTS = [".agents/skills", ".claude/skills"];
+const REPOSITORY_SKILLS_HEADER = [
+  "## Repository skills",
+  "",
+  "These skills come from the repository, not from `<available-skills>`. `loadSkill` cannot load them.",
+  "Before work that matches a skill description, read its `SKILL.md` with `readFile` and follow it.",
+  "Resolve relative paths in a skill against the skill directory.",
+].join("\n");
 
 export const AGENTS_REPLACEMENT_NOTICE =
   "These AGENTS.md instructions replace all previously provided AGENTS.md instructions.";
 export const AGENTS_REMOVAL_NOTICE =
   "The previously provided AGENTS.md instructions no longer apply.";
 
-/** Effective AGENTS.md instructions plus host-only discovery provenance. */
+/** Effective AGENTS.md instructions and repository skills, plus host-only discovery provenance. */
 export interface RepositoryInstructions {
   /** Selected directory when instructions come from one repository tree. */
   directory?: string;
   fingerprint: string;
+  /** Model-invocable skills found in repository skill directories. */
+  skills?: RepositorySkill[];
   sources: Array<{ content: string; path: string }>;
   text: string;
+}
+
+/** One repository-owned skill that the model can read from the sandbox. */
+export interface RepositorySkill {
+  description: string;
+  name: string;
+  /** Absolute sandbox path of the skill's SKILL.md file. */
+  path: string;
 }
 
 /** Latest model-visible AGENTS.md state parsed from trusted runtime context. */
@@ -123,14 +143,81 @@ async function readInstructionFile(
     const content = await fs.readFile(filePath, { encoding: "utf8" });
     return content.trim() ? content : undefined;
   } catch (error) {
-    if (isMissingPathError(error)) {
+    if (isAbsentPathError(error)) {
       return undefined;
     }
     throw error;
   }
 }
 
-/** Resolve the effective root-to-cwd AGENTS.md bundle for one selected directory. */
+function isAbsentPathError(error: unknown): boolean {
+  return (
+    isMissingPathError(error) ||
+    (error as { code?: unknown } | null)?.code === "ENOTDIR"
+  );
+}
+
+async function readOptionalDirectory(
+  fs: SandboxFileSystem,
+  directory: string,
+): Promise<string[]> {
+  try {
+    return await fs.readdir(directory);
+  } catch (error) {
+    if (isAbsentPathError(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** Read model-invocable skills from the repository skill directories. */
+async function readRepositorySkills(
+  fs: SandboxFileSystem,
+  gitRoot: string,
+): Promise<RepositorySkill[]> {
+  const roots = REPOSITORY_SKILL_ROOTS.map((root) =>
+    path.posix.join(gitRoot, root),
+  );
+  const listings = await Promise.all(
+    roots.map(async (root) => await readOptionalDirectory(fs, root)),
+  );
+  // The first root wins for each directory name. Repositories often link
+  // `.claude/skills` to `.agents/skills`, so this also skips duplicate reads.
+  const candidates = new Map<string, string>();
+  listings.forEach((entries, index) => {
+    for (const entry of [...entries].sort()) {
+      if (!candidates.has(entry)) {
+        candidates.set(
+          entry,
+          path.posix.join(roots[index]!, entry, "SKILL.md"),
+        );
+      }
+    }
+  });
+
+  const skills = await Promise.all(
+    [...candidates].map(async ([name, filePath]) => {
+      const raw = await readInstructionFile(fs, filePath);
+      const parsed = raw ? parseSkillFile(raw, name) : undefined;
+      if (!parsed?.ok || parsed.skill.disableModelInvocation) {
+        return undefined;
+      }
+      return {
+        description: parsed.skill.description.replace(/\s+/g, " ").trim(),
+        name,
+        path: filePath,
+      };
+    }),
+  );
+  return skills
+    .filter((skill): skill is RepositorySkill => Boolean(skill))
+    .sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+}
+
+/** Resolve the root-to-cwd AGENTS.md bundle and repository skills for one selected directory. */
 export async function resolveRepositoryInstructions(args: {
   cwd: string;
   fs: SandboxFileSystem;
@@ -174,15 +261,41 @@ export async function resolveRepositoryInstructions(args: {
     sources.push({ content: bounded, path: filePath });
     remaining -= Buffer.byteLength(bounded, "utf8");
   }
-  if (sources.length === 0) {
+
+  // AGENTS.md has priority. Skills use only the budget that remains, and each
+  // skill entry is kept whole or left out.
+  const skills: RepositorySkill[] = [];
+  if (remaining > 0) {
+    for (const skill of await readRepositorySkills(args.fs, gitRoot)) {
+      const bytes = repositorySkillBytes(skill);
+      if (bytes > remaining) {
+        break;
+      }
+      skills.push(skill);
+      remaining -= bytes;
+    }
+  }
+  if (sources.length === 0 && skills.length === 0) {
     return undefined;
   }
 
-  const text = formatInstructionSources(sources);
+  const text = formatRepositoryInstructions(sources, skills);
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ directory: args.cwd, sources }))
+    .update(
+      JSON.stringify({
+        directory: args.cwd,
+        sources,
+        ...(skills.length > 0 ? { skills } : undefined),
+      }),
+    )
     .digest("hex");
-  return { directory: args.cwd, fingerprint, sources, text };
+  return {
+    directory: args.cwd,
+    fingerprint,
+    ...(skills.length > 0 ? { skills } : undefined),
+    sources,
+    text,
+  };
 }
 
 function formatInstructionSources(
@@ -193,10 +306,36 @@ function formatInstructionSources(
   }
   return sources
     .map(
-      (source) =>
-        `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
+      (source) => `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
     )
     .join("\n\n");
+}
+
+function formatRepositorySkill(skill: RepositorySkill): string {
+  return `- \`${skill.name}\` (\`${skill.path}\`): ${skill.description}`;
+}
+
+function repositorySkillBytes(skill: RepositorySkill): number {
+  // One extra byte for the line break between entries.
+  return Buffer.byteLength(formatRepositorySkill(skill), "utf8") + 1;
+}
+
+function formatRepositoryInstructions(
+  sources: Array<{ content: string; path: string }>,
+  skills: RepositorySkill[],
+): string {
+  const sections: string[] = [];
+  if (sources.length > 0) {
+    sections.push(formatInstructionSources(sources));
+  }
+  if (skills.length > 0) {
+    sections.push(
+      [REPOSITORY_SKILLS_HEADER, "", ...skills.map(formatRepositorySkill)].join(
+        "\n",
+      ),
+    );
+  }
+  return sections.join("\n\n");
 }
 
 /** Combine AGENTS.md bundles from one or more repository directories. */
@@ -211,16 +350,23 @@ export function mergeRepositoryInstructions(
   }
 
   const sources = bundles.flatMap((bundle) => bundle.sources);
-  const text = formatInstructionSources(sources);
+  const skills = bundles.flatMap((bundle) => bundle.skills ?? []);
+  const text = formatRepositoryInstructions(sources, skills);
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify({
         directories: bundles.map((bundle) => bundle.directory ?? null),
         sources,
+        ...(skills.length > 0 ? { skills } : undefined),
       }),
     )
     .digest("hex");
-  return { fingerprint, sources, text };
+  return {
+    fingerprint,
+    ...(skills.length > 0 ? { skills } : undefined),
+    sources,
+    text,
+  };
 }
 
 /** Resolve AGENTS.md instructions for each selected repository directory. */
@@ -255,9 +401,14 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
       continue;
     }
     bundles.push(instructions);
-    // Charge source content only. Directory labels are tiny and applied later.
+    // Charge source content and skill entries only. Directory labels and the
+    // skills header are tiny and applied later.
     remaining -= instructions.sources.reduce(
       (total, source) => total + Buffer.byteLength(source.content, "utf8"),
+      0,
+    );
+    remaining -= (instructions.skills ?? []).reduce(
+      (total, skill) => total + repositorySkillBytes(skill),
       0,
     );
   }

@@ -156,6 +156,110 @@ describe("repository instructions", () => {
     expect(instructions?.directory).toBeUndefined();
   });
 
+  it("lists model-invocable repository skills after AGENTS.md", async () => {
+    const skill = (name: string, extra = "") =>
+      `---\nname: ${name}\ndescription: >-\n  Use for ${name}\n  work.\n${extra}---\n\nBody.`;
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/sdk")
+      .directory("/vercel/sandbox/repos/sdk/.git")
+      .directory("/vercel/sandbox/repos/sdk/.agents/skills")
+      .directory("/vercel/sandbox/repos/sdk/.agents/skills/write-tests")
+      .directory("/vercel/sandbox/repos/sdk/.agents/skills/release")
+      .directory("/vercel/sandbox/repos/sdk/.agents/skills/broken")
+      .directory("/vercel/sandbox/repos/sdk/.claude/skills")
+      .directory("/vercel/sandbox/repos/sdk/.claude/skills/write-tests")
+      .directory("/vercel/sandbox/repos/sdk/.claude/skills/add-bundle")
+      .file("/vercel/sandbox/repos/sdk/AGENTS.md", "sdk rules")
+      .file("/vercel/sandbox/repos/sdk/.agents/skills/README.md", "index")
+      .file(
+        "/vercel/sandbox/repos/sdk/.agents/skills/write-tests/SKILL.md",
+        skill("write-tests"),
+      )
+      .file(
+        "/vercel/sandbox/repos/sdk/.agents/skills/release/SKILL.md",
+        skill("release", "disable-model-invocation: true\n"),
+      )
+      .file(
+        "/vercel/sandbox/repos/sdk/.agents/skills/broken/SKILL.md",
+        "no frontmatter",
+      )
+      .file(
+        "/vercel/sandbox/repos/sdk/.claude/skills/write-tests/SKILL.md",
+        skill("write-tests").replace("Use for", "Shadowed"),
+      )
+      .file(
+        "/vercel/sandbox/repos/sdk/.claude/skills/add-bundle/SKILL.md",
+        skill("add-bundle"),
+      );
+
+    const instructions = await resolveRepositoryInstructionsForDirectories({
+      directories: ["/vercel/sandbox/repos/sdk"],
+      fs,
+    });
+
+    expect(instructions?.skills).toEqual([
+      {
+        description: "Use for add-bundle work.",
+        name: "add-bundle",
+        path: "/vercel/sandbox/repos/sdk/.claude/skills/add-bundle/SKILL.md",
+      },
+      {
+        description: "Use for write-tests work.",
+        name: "write-tests",
+        path: "/vercel/sandbox/repos/sdk/.agents/skills/write-tests/SKILL.md",
+      },
+    ]);
+    expect(instructions?.text).toMatch(/^sdk rules\n\n## Repository skills\n/);
+    expect(instructions?.text).toContain(
+      "- `write-tests` (`/vercel/sandbox/repos/sdk/.agents/skills/write-tests/SKILL.md`): Use for write-tests work.",
+    );
+  });
+
+  it("lists repository skills when the repository has no AGENTS.md", async () => {
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repo")
+      .directory("/vercel/sandbox/repo/.git")
+      .directory("/vercel/sandbox/repo/.agents/skills")
+      .directory("/vercel/sandbox/repo/.agents/skills/e2e")
+      .file(
+        "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+        "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
+      );
+
+    const instructions = await resolveRepositoryInstructions({
+      cwd: "/vercel/sandbox/repo",
+      fs,
+    });
+
+    expect(instructions?.sources).toEqual([]);
+    expect(instructions?.text).toMatch(/^## Repository skills\n/);
+  });
+
+  it("gives repository skills only the budget left after AGENTS.md", async () => {
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repo")
+      .directory("/vercel/sandbox/repo/.git")
+      .directory("/vercel/sandbox/repo/.agents/skills")
+      .directory("/vercel/sandbox/repo/.agents/skills/e2e")
+      .file("/vercel/sandbox/repo/AGENTS.md", "a".repeat(32 * 1024 - 10))
+      .file(
+        "/vercel/sandbox/repo/.agents/skills/e2e/SKILL.md",
+        "---\nname: e2e\ndescription: Run e2e tests.\n---\n\nBody.",
+      );
+
+    const instructions = await resolveRepositoryInstructions({
+      cwd: "/vercel/sandbox/repo",
+      fs,
+    });
+
+    expect(instructions?.skills).toBeUndefined();
+    expect(instructions?.text).not.toContain("Repository skills");
+  });
+
   it("shares one AGENTS.md byte budget across selected repositories", async () => {
     const first = "a".repeat(30 * 1024);
     const second = "b".repeat(8 * 1024);
