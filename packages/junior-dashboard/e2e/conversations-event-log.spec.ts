@@ -71,6 +71,8 @@ test("inspects all reporting events and searches full event data", async ({
   await page.keyboard.press("Enter");
   const panel = page.getByRole("dialog", { name: "turn_routed", exact: true });
   await expect(panel.getByText("Model profile", { exact: true })).toBeVisible();
+  // The open entry is in the URL, so a reader can share a link to it.
+  await expect(page).toHaveURL(/[?&]event=3(&|$)/);
   await expect(panel.getByText("handoff", { exact: true })).toBeVisible();
   await expect(panel.locator("pre")).toBeHidden();
   const close = panel.getByRole("button", { name: "Close event details" });
@@ -91,6 +93,7 @@ test("inspects all reporting events and searches full event data", async ({
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(entry).toBeFocused();
+  await expect(page).not.toHaveURL(/[?&]event=/);
 
   const search = page.getByPlaceholder("Search transcript…");
   await search.fill("memory-checkout-runbook");
@@ -258,6 +261,18 @@ test("loads earlier events without merging tool starts and results", async ({
     log.getByRole("button", { name: "Event 3: tool_calls", exact: true }),
   ).toContainText("bash · completed");
   await expect(log.getByText(/Released the package/)).toBeVisible();
+
+  // A link to an event before the first page loads earlier history to open it.
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}?event=2`,
+  );
+  const linked = page.getByRole("dialog", { name: "tool_calls", exact: true });
+  await expect(linked).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Conversation event log" })
+      .getByRole("button", { name: "Event 2: tool_calls", exact: true }),
+  ).toBeAttached();
 });
 
 for (const width of [1440, 390]) {

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -18,6 +19,10 @@ import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationBrief } from "./ConversationBrief";
+import {
+  CONVERSATION_EVENT_PARAM,
+  parseConversationEventSeq,
+} from "./conversationRoutes";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationForkLinks } from "./ConversationForkLinks";
@@ -68,7 +73,15 @@ export function ConversationPage(props: {
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
-  const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The URL owns the open event log entry so readers can share that link.
+  const selectedEventSeq = parseConversationEventSeq(
+    searchParams.get(CONVERSATION_EVENT_PARAM),
+  );
+  const [viewState, setView] = useState<TranscriptViewMode>(() =>
+    selectedEventSeq === undefined ? "rich" : "raw",
+  );
+  const view = selectedEventSeq === undefined ? viewState : "raw";
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
@@ -110,6 +123,48 @@ export function ConversationPage(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
+  const setSelectedEventSeq = useCallback(
+    (seq: number | undefined) => {
+      // Keep the event log after close, even when a link opened the page.
+      setView("raw");
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (seq === undefined) next.delete(CONVERSATION_EVENT_PARAM);
+          else next.set(CONVERSATION_EVENT_PARAM, String(seq));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const onViewChange = useCallback(
+    (value: TranscriptViewMode) => {
+      if (value !== "raw" && selectedEventSeq !== undefined) {
+        setSelectedEventSeq(undefined);
+      }
+      setView(value);
+    },
+    [selectedEventSeq, setSelectedEventSeq],
+  );
+  // A linked event can be older than the first page. Load earlier pages until
+  // it is present or history ends.
+  const loadPreviousPageRef = useRef(detail.loadPreviousPage);
+  loadPreviousPageRef.current = detail.loadPreviousPage;
+  const oldestLoadedSeq = transcript?.events[0]?.seq;
+  const linkedEventMissing =
+    selectedEventSeq !== undefined &&
+    oldestLoadedSeq !== undefined &&
+    selectedEventSeq < oldestLoadedSeq;
+  const loadLinkedEvent =
+    linkedEventMissing &&
+    detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage &&
+    !detail.historyError;
+  useEffect(() => {
+    if (loadLinkedEvent) loadPreviousPageRef.current();
+  }, [loadLinkedEvent, oldestLoadedSeq]);
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -219,7 +274,7 @@ export function ConversationPage(props: {
                 />
               }
               onSearchChange={setSearch}
-              onViewChange={setView}
+              onViewChange={onViewChange}
               privacy={
                 <ConversationPrivacyChip
                   visibility={conversation?.visibility}
@@ -269,12 +324,14 @@ export function ConversationPage(props: {
                     live={live}
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
+                    onSelectedEventSeqChange={setSelectedEventSeq}
                     pinRequestVersion={pinRequestVersion}
                     responding={
                       !detail.error && conversationIsResponding(transcript)
                     }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
+                    selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
                     view={view}
                   />

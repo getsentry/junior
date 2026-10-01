@@ -25,8 +25,10 @@ export function Transcript(props: {
   loadingPreviousPage?: boolean;
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
+  onSelectedEventSeqChange?(seq: number | undefined): void;
   responding?: boolean;
   search?: string;
+  selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -101,6 +103,8 @@ export function Transcript(props: {
           <ConversationEventLog
             key={props.transcript.conversationId}
             conversation={props.transcript}
+            onSelectedSeqChange={props.onSelectedEventSeqChange}
+            selectedSeq={props.selectedEventSeq}
           />
         ) : (
           <ConversationTranscriptView

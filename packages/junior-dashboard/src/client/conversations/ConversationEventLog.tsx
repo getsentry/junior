@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { memo, useId, useMemo, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Drawer } from "../components/Drawer";
@@ -18,13 +18,25 @@ import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 const rowClass =
   "grid grid-cols-[12ch_minmax(0,1fr)_1rem] items-center gap-x-3 px-3 @min-[48rem]:grid-cols-[12ch_19ch_minmax(0,1fr)_1rem]";
 
-/** Show every reporting event in sequence order, outside the transcript reducer. */
+/**
+ * Show every reporting event in sequence order, outside the transcript reducer.
+ * Pass `onSelectedSeqChange` to own the open entry, for example in the URL.
+ */
 export const ConversationEventLog = memo(function ConversationEventLog(props: {
   conversation: ConversationTranscript;
+  onSelectedSeqChange?(seq: number | undefined): void;
+  selectedSeq?: number;
 }) {
   const { conversation } = props;
   const search = useTranscriptSearch();
-  const [selectedSeq, setSelectedSeq] = useState<number>();
+  const [localSelectedSeq, setLocalSelectedSeq] = useState<number>();
+  const selectedSeq = props.onSelectedSeqChange
+    ? props.selectedSeq
+    : localSelectedSeq;
+  const setSelectedSeq = props.onSelectedSeqChange ?? setLocalSelectedSeq;
+  const listRef = useRef<HTMLOListElement>(null);
+  // Rows opened by a click are already visible. Scroll only for a linked entry.
+  const revealedSeqRef = useRef<number>(undefined);
   const titleId = useId();
   const events = conversation.events;
   const rows = useMemo(
@@ -51,6 +63,17 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
   );
   // Resolve the selection from current data so polling cannot leave stale details.
   const selected = events.find((event) => event.seq === selectedSeq);
+  useEffect(() => {
+    if (selectedSeq === undefined || revealedSeqRef.current === selectedSeq) {
+      return;
+    }
+    const row = listRef.current?.querySelector(
+      `[data-event-seq="${selectedSeq}"]`,
+    );
+    if (!row) return;
+    revealedSeqRef.current = selectedSeq;
+    row.scrollIntoView({ block: "center" });
+  }, [selectedSeq, visibleRows]);
 
   if (conversation.eventHistory.status === "expired") {
     return (
@@ -86,9 +109,10 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
         <ol
           aria-label="Events"
           className="m-0 list-none divide-y divide-dashboard-border-subtle p-0"
+          ref={listRef}
         >
           {visibleRows.map(({ event, summary, model, usage }) => (
-            <li key={event.seq}>
+            <li data-event-seq={event.seq} key={event.seq}>
               <button
                 aria-haspopup="dialog"
                 aria-label={`Event ${event.seq}: ${event.data.type}`}
@@ -97,7 +121,10 @@ export const ConversationEventLog = memo(function ConversationEventLog(props: {
                   "min-h-11 w-full cursor-pointer border-0 bg-transparent py-2 text-left leading-5 hover:bg-dashboard-fill-hover active:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus @min-[48rem]:min-h-8 @min-[48rem]:py-1",
                   selectedSeq === event.seq && "bg-dashboard-fill-strong",
                 )}
-                onClick={() => setSelectedSeq(event.seq)}
+                onClick={() => {
+                  revealedSeqRef.current = event.seq;
+                  setSelectedSeq(event.seq);
+                }}
                 type="button"
               >
                 <time
