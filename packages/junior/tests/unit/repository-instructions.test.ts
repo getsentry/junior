@@ -260,6 +260,37 @@ describe("repository instructions", () => {
     expect(instructions?.text).not.toContain("Repository skills");
   });
 
+  it("keeps every AGENTS.md ahead of repository skills from earlier repositories", async () => {
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/alpha")
+      .directory("/vercel/sandbox/repos/alpha/.git")
+      .directory("/vercel/sandbox/repos/alpha/.agents/skills")
+      .directory("/vercel/sandbox/repos/alpha/.agents/skills/big")
+      .file(
+        "/vercel/sandbox/repos/alpha/.agents/skills/big/SKILL.md",
+        `---\nname: big\ndescription: ${"x".repeat(1000)}\n---\n\nBody.`,
+      )
+      .directory("/vercel/sandbox/repos/beta")
+      .directory("/vercel/sandbox/repos/beta/.git")
+      .file(
+        "/vercel/sandbox/repos/beta/AGENTS.md",
+        "b".repeat(32 * 1024 - 500),
+      );
+
+    const instructions = await resolveRepositoryInstructionsForDirectories({
+      directories: [
+        "/vercel/sandbox/repos/alpha",
+        "/vercel/sandbox/repos/beta",
+      ],
+      fs,
+    });
+
+    expect(instructions?.sources[0]?.content.length).toBe(32 * 1024 - 500);
+    expect(instructions?.skills).toBeUndefined();
+  });
+
   it("shares one AGENTS.md byte budget across selected repositories", async () => {
     const first = "a".repeat(30 * 1024);
     const second = "b".repeat(8 * 1024);
