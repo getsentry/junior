@@ -25,6 +25,15 @@ export function botLoginFromEmail(
   return parseGitHubBotIdentity(value)?.login;
 }
 
+/** Check whether a GitHub login is the bot encoded in the configured bot email. */
+export function isBotLogin(
+  login: string | null | undefined,
+  botEmail: string | undefined,
+): boolean {
+  const botLogin = botLoginFromEmail(botEmail)?.toLowerCase();
+  return Boolean(botLogin && login?.trim().toLowerCase() === botLogin);
+}
+
 /** Derive the GitHub user id encoded in a standard GitHub noreply address. */
 export function botUserIdFromEmail(
   value: string | undefined,
