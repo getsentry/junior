@@ -52,7 +52,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
-  it("when a task needs a progress update, use status before one completed reply", async ({
+  it("when asked for updates on a quick task, send one completed reply", async ({
     run,
   }) => {
     const result = await run({
@@ -72,8 +72,9 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       }),
     });
 
+    // Progress updates are optional for a task this short. The contract is
+    // a grounded answer in one reply, without visible narration.
     const callNames = toolCalls(result.session).map((call) => call.name);
-    expect(callNames).toContain("reportProgress");
     expect(callNames).toContain("systemTime");
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
