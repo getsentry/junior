@@ -75,19 +75,25 @@ export async function readConversationForks(
   );
   const canOpen = (id: string) => access.get(id)?.canViewPrivateContent;
   if (!canOpen(conversationId)) return { canFork: false, forks: [] };
-  const source =
-    forkedFrom && canOpen(forkedFrom)
-      ? await db
-          .select({ title: juniorConversations.title })
-          .from(juniorConversations)
-          .where(eq(juniorConversations.conversationId, forkedFrom))
-          .then(([sourceRow]) => sourceRow)
-      : undefined;
-  return {
+  const result: {
+    canFork: boolean;
+    forkedFromConversationId?: string;
+    forkedFromTitle?: string;
+    forks: string[];
+  } = {
     // Child conversations cannot be forked. See `forkConversation`.
     canFork: !row?.parent,
-    ...(forkedFrom && source ? { forkedFromConversationId: forkedFrom } : {}),
-    ...(source?.title ? { forkedFromTitle: source.title } : {}),
     forks: ids.filter(canOpen),
   };
+  if (forkedFrom && canOpen(forkedFrom)) {
+    const [source] = await db
+      .select({ title: juniorConversations.title })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, forkedFrom));
+    if (source) {
+      result.forkedFromConversationId = forkedFrom;
+      if (source.title) result.forkedFromTitle = source.title;
+    }
+  }
+  return result;
 }
