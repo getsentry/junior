@@ -206,6 +206,8 @@ async function copyForkEvents(args: {
   for (const event of args.events) {
     const data = event.data;
     if (UNCOPIED_EVENT_TYPES.has(data.type)) continue;
+    // A fork of a fork writes its own note. The source note would take its key.
+    if (event.idempotencyKey === FORK_NOTE_KEY) continue;
     if (event.seq <= cutoffSeq) {
       if (data.type === "message") messageIds.add(data.messageId);
       if (data.type === "turn_started") turnIds.add(data.turnId);

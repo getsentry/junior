@@ -159,7 +159,8 @@ credentials, approvals, provider connections, Guardian reviews, or plugin state
 are not copied.
 
 A `fork:note` event follows the copied rows. It tells the agent what was not
-copied. Usage and cost reports skip the rows before it, so copied model calls
+copied. A fork of a fork does not copy the source note, so each fork has one
+note after all its copied rows. Usage and cost reports skip the rows before it, so copied model calls
 count only in the source. The fork does not start a Turn. The dashboard sends
 the first message of the user to the fork with the normal message API.
 

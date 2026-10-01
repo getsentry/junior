@@ -178,6 +178,35 @@ describe("conversation forks", () => {
       original.messages,
     );
     expect(forkRun?.state?.sandboxRef).toBeUndefined();
+
+    // A fork of the fork writes its own note after all copied model calls.
+    const forkReply = (await events.loadHistory(forkId)).findLast(
+      (event) =>
+        event.data.type === "message" && event.data.role === "assistant",
+    );
+    if (forkReply?.data.type !== "message")
+      throw new Error("Missing fork reply");
+    const nested = forkConversationResponseSchema.parse(
+      await (
+        await app.request(
+          `/api/conversations/${encodeURIComponent(forkId)}/forks`,
+          forkRequest(forkReply.data.messageId, "fork-2"),
+        )
+      ).json(),
+    );
+    const nestedHistory = await events.loadHistory(nested.conversationId);
+    expect(nestedHistory.at(-1)?.idempotencyKey).toBe("fork:note");
+    expect(
+      nestedHistory.filter((event) => event.idempotencyKey === "fork:note"),
+    ).toHaveLength(1);
+    const nestedDetail = conversationDetailReportSchema.parse(
+      await (
+        await app.request(
+          `/api/conversations/${encodeURIComponent(nested.conversationId)}`,
+        )
+      ).json(),
+    );
+    expect(nestedDetail.modelUsage).toBeUndefined();
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {
