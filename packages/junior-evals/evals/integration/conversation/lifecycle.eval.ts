@@ -3,7 +3,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 /** Release tools of the eval MCP server. */
@@ -47,7 +47,8 @@ describe("Lifecycle and Resilience", () => {
     agent,
   }) => {
     // The first release push lands remotely but stalls past the turn deadline.
-    // The runtime records the interrupted call and resumes the turn.
+    // The runtime records the interrupted call as timed out and resumes the
+    // turn, so the resumed turn knows that the push happened.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: { turnTimeoutMs: 15_000 },
@@ -70,6 +71,10 @@ describe("Lifecycle and Resilience", () => {
       },
     );
 
+    const [interruptedPush] = evalOperationCalls(conversation, "release-push");
+    expect(interruptedPush && toolOutput(interruptedPush)).toMatchObject({
+      timed_out: true,
+    });
     // Whether the agent verifies remote state before pushing again is model
     // judgment, measured by the rubric.
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
