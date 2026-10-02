@@ -52,6 +52,13 @@ export default async function setup(
             ),
             pluginName: "memory",
           },
+          {
+            dir: path.resolve(
+              workspaceRoot,
+              "packages/junior-github/migrations",
+            ),
+            pluginName: "github",
+          },
         ]);
       } finally {
         await executor.close();

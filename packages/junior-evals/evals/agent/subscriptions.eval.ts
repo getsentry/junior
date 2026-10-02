@@ -201,6 +201,7 @@ describe("Watches", () => {
           `The reply says GitHub PR ${pullRequest} has a failed CI/checks result.`,
           'The reply mentions the failing check "test" or commit abcdef1.',
           "The reply gives a concrete next step such as checking CI logs, inspecting the failed workflow, or preparing a fix.",
+          "The reply is a brief summary, not a full report.",
         ],
         fail: [
           "Do not ask what resource or event changed.",
@@ -213,7 +214,6 @@ describe("Watches", () => {
 
     // Read-only inspection is a valid way to explain a failure.
     expect(delivery.replies).toHaveLength(1);
-    expect(delivery.replies[0]!.text.length).toBeLessThanOrEqual(800);
   });
 
   test("when a watched PR is merged, report completion without extra work", async ({
@@ -228,15 +228,21 @@ describe("Watches", () => {
       "No merge watch: this run does not test delivery",
     ).toContain("pull_request.merged");
 
+    const mergedAt = new Date().toISOString();
     const delivery = await conversation.continue(
       githubWebhook("pull_request", {
         action: "closed",
         pull_request: {
+          closed_at: mergedAt,
+          created_at: "2026-01-01T00:00:00Z",
           head: { ref: "fix/cache-refresh" },
+          id: 691_000,
           merged: true,
-          merged_at: new Date().toISOString(),
+          merged_at: mergedAt,
           number: 691,
           title: "Refresh cached values after expiry",
+          updated_at: mergedAt,
+          user: { login: "junior-eval[bot]" },
         },
         repository,
       }),
