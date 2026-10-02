@@ -3,12 +3,27 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a request or a response.
+ * reacts. It never changes a request or a response. Image generation is the
+ * one exception: it is a third-party image API, so the observer answers it
+ * with a 1x1 PNG.
  */
-import { bypass, http, passthrough } from "msw";
+import { bypass, http, HttpResponse, passthrough } from "msw";
 import { mswServer } from "@junior-tests/msw/server";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
+const GATEWAY_CHAT_COMPLETIONS_URL =
+  "https://ai-gateway.vercel.sh/v1/chat/completions";
+const STUB_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH3cAAAAASUVORK5CYII=";
+
+/** Whether a request asks the gateway to generate an image. */
+async function isImageGeneration(request: Request): Promise<boolean> {
+  if (!request.url.startsWith(GATEWAY_CHAT_COMPLETIONS_URL)) return false;
+  const payload = (await request.clone().json()) as { modalities?: unknown };
+  return (
+    Array.isArray(payload.modalities) && payload.modalities.includes("image")
+  );
+}
 
 export type GatewayProgress =
   | { type: "model_request" }
@@ -84,6 +99,15 @@ export function installGatewayObserver(): GatewayObserver {
     http.all("https://ai-gateway.vercel.sh/*", async ({ request }) => {
       const endpoint = new URL(request.url).pathname;
       counts[endpoint] = (counts[endpoint] ?? 0) + 1;
+      if (await isImageGeneration(request)) {
+        return HttpResponse.json({
+          choices: [
+            {
+              message: { images: [{ image_url: { url: STUB_PNG_DATA_URL } }] },
+            },
+          ],
+        });
+      }
       const hook = progressHook;
       if (!hook || !request.url.startsWith(GATEWAY_MESSAGES_URL)) {
         return passthrough();

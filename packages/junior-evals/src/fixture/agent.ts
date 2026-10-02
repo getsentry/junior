@@ -2,9 +2,10 @@
  * One Junior app for one test, driven only through its routes.
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
- * compaction, Postgres, and Redis are real. Slack and other third-party APIs
- * are MSW mocks. The fixture replaces only the Vercel Queue transport and
- * `waitUntil` with in-process versions, so it knows when the agent is idle.
+ * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
+ * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
+ * transport and `waitUntil` with in-process versions, so it knows when the
+ * agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -19,6 +20,7 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
+import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
   AutomationInput,
@@ -87,6 +89,10 @@ export interface Conversation {
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
   reactions: string[];
+  /** Names of the files that Junior uploaded to the Slack thread. */
+  files: string[];
+  /** The title that the dashboard shows after the call. */
+  title: string;
   turns: Turn[];
   /** The vitest-evals run, for `toSatisfyJudge()` and other judges. */
   evalRun: HarnessRun;
@@ -156,6 +162,7 @@ export async function createFixtureAgent(
   };
   const slack = installSlackMock();
   const gateway = installGatewayObserver();
+  const blob = await installBlobMock();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
@@ -173,10 +180,15 @@ export async function createFixtureAgent(
   });
   api.route("/", createJuniorApi({ conversationWorkQueue: queue }));
 
+  let closed = false;
   const close = async (): Promise<void> => {
     queue.close();
     while (queue.pending().length > 0 || background.size > 0) {
       await Promise.allSettled([...queue.pending(), ...background]);
+    }
+    if (!closed) {
+      closed = true;
+      await blob.close();
     }
   };
 
@@ -426,21 +438,32 @@ export async function createFixtureAgent(
             conversationId: record.conversationId,
           });
     record.visibleMessages.push(...visibleMessages);
+    const thread = record.surface === "slack" ? record : undefined;
+    const slackCalls = thread
+      ? readCapturedSlackApiCalls().slice(slackCallIndex)
+      : [];
     // Slack reactions are sets; ingress and the worker can add the same one.
     const reactions = [
       ...new Set(
-        readCapturedSlackApiCalls()
-          .slice(slackCallIndex)
-          .flatMap((captured) =>
-            captured.method === "reactions.add" &&
-            record.surface === "slack" &&
-            captured.params.channel === record.channelId &&
-            typeof captured.params.name === "string"
-              ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
-              : [],
-          ),
+        slackCalls.flatMap((captured) =>
+          captured.method === "reactions.add" &&
+          captured.params.channel === thread?.channelId &&
+          typeof captured.params.name === "string"
+            ? [`${String(captured.params.timestamp)}:${captured.params.name}`]
+            : [],
+        ),
       ),
     ].map((key) => key.slice(key.indexOf(":") + 1));
+    const files = slackCalls.flatMap((captured) =>
+      captured.method === "files.completeUploadExternal" &&
+      captured.params.channel_id === thread?.channelId &&
+      captured.params.thread_ts === thread?.threadTs &&
+      Array.isArray(captured.params.files)
+        ? captured.params.files.map((file: { title?: unknown }) =>
+            String(file.title),
+          )
+        : [],
+    );
     agentCostUsd.set(
       record.conversationId,
       (detail.modelUsage ?? []).reduce(
@@ -492,8 +515,10 @@ export async function createFixtureAgent(
     }
     return conversationResult(record, {
       evalRun,
+      files,
       reactions,
       replies,
+      title: detail.displayTitle,
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
@@ -585,8 +610,10 @@ export async function createFixtureAgent(
         startedAtMs,
         toolCalls: [],
       }),
+      files: [],
       reactions: [],
       replies: [],
+      title: detail.displayTitle,
       toolCalls: [],
       turns: [],
     });

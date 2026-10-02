@@ -4,16 +4,9 @@
 import { readFile } from "node:fs/promises";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
-import { actorFromRun } from "@/chat/agent/types";
-import { renderCurrentInstruction } from "@/chat/current-instruction";
-import type { PiMessage } from "@/chat/pi/messages";
 import { addAgentTurnUsage } from "@/chat/usage";
-import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
-import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
-import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { ToolHooks } from "@/chat/tools/types";
 import { createMemoryAttachmentStorage } from "../fixtures/attachment-storage";
-import { createMockImageGenerateDeps } from "../fixtures/image-generate";
 import {
   type EvalScenario,
   type SteeringDelivery,
@@ -138,7 +131,6 @@ export function buildRuntimeServices(
       `Eval turn timeout must be an integer below the ${replyTimeoutMs}ms reply budget, got ${turnTimeoutMs}`,
     );
   }
-  let activeTurnCompactionInjected = false;
   // Match production agent runs: sendFiles stores durable attachment refs.
   const attachmentStorage = createMemoryAttachmentStorage();
 
@@ -162,68 +154,6 @@ export function buildRuntimeServices(
               },
             }
           : request;
-        const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
-        if (activeTurnCompaction && !activeTurnCompactionInjected) {
-          activeTurnCompactionInjected = true;
-          await runRequest.durability?.onInputCommitted?.();
-          const nowMs = Date.now();
-          const actor = actorFromRun(runRequest);
-          const piMessages = [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
-                },
-              ],
-              timestamp: nowMs,
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: renderCurrentInstruction(runRequest.instruction.text),
-                },
-              ],
-              timestamp: nowMs + 1,
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
-                },
-              ],
-              timestamp: nowMs + 2,
-            },
-          ] as PiMessage[];
-          const sessionRecord = await upsertTurnRecord({
-            conversationId: runRequest.conversationId,
-            turnId: runRequest.turnId,
-            sliceId: 1,
-            state: "paused",
-            piMessages,
-            resumeReason: "yield",
-            destination: runRequest.destination,
-            source: runRequest.source,
-            surface: runRequest.surface,
-            actor,
-            trailingMessageProvenance: [
-              { authority: "instruction", actor },
-              { authority: "context" },
-            ],
-            turnStartMessageIndex: 0,
-          });
-          return {
-            status: "suspended",
-            reason: "yield" as const,
-            resumeVersion: sessionRecord.version,
-          };
-        }
-        const mockImageGeneration = scenario.overrides?.mock_image_generation;
         const baseToolOverrides: ToolHooks["toolOverrides"] = {
           ...(request.environment?.toolOverrides ?? {}),
         };
@@ -237,9 +167,6 @@ export function buildRuntimeServices(
           ...baseToolOverrides,
           webFetch: createReplayWebFetchDeps(baseToolOverrides),
           webSearch: createReplayWebSearchDeps(baseToolOverrides),
-          ...(mockImageGeneration
-            ? { imageGenerate: createMockImageGenerateDeps() }
-            : {}),
           ...(viewImageFixtures.size > 0
             ? {
                 viewImage: {

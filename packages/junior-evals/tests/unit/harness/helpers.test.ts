@@ -13,7 +13,6 @@ vi.mock("../../../src/behavior-harness", () => ({
 }));
 
 import {
-  hasImageAttachment,
   lastTurnReplies,
   serializeVisibleTranscript,
   slackHarness,
@@ -48,7 +47,6 @@ it("selects visible assistant text and image attachments without assertions", ()
   expect(JSON.parse(serializeVisibleTranscript(session))).toEqual([
     { role: "assistant", content: "[attached image: result.png]" },
   ]);
-  expect(hasImageAttachment(session)).toBe(true);
 });
 
 it("includes visible Slack author names in rubric transcripts", () => {

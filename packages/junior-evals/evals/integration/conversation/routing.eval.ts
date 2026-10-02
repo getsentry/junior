@@ -1,58 +1,48 @@
-import { assistantMessages, describeEval } from "vitest-evals";
-import { expect } from "vitest";
-import {
-  mention,
-  rubric,
-  slackEvals,
-  threadMessage,
-  visibleAssistantText,
-  visibleThreadReplies,
-} from "../../../src/helpers";
+import { describe, expect } from "vitest";
+import { mention, threadMessage } from "../../../src/fixture/inputs";
+import { rubric } from "../../../src/fixture/judge";
+import { test } from "../../../src/fixture/test";
 
-describeEval("Conversation Routing", slackEvals, (it) => {
-  it("when a thread message explicitly mentions Junior, post a direct reply", async ({
+describe("Conversation Routing", () => {
+  test("when a thread message explicitly mentions Junior, post a direct reply", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [threadMessage("What is 2+2?", { is_mention: true })],
+    const conversation = await run(mention("What is 2+2?"), {
+      history: [
+        threadMessage("Quick math check before standup.", {
+          author: { fullName: "Sam Example", userId: "U0SAM", userName: "sam" },
+        }),
+      ],
       criteria: rubric({
         pass: ["The reply answers with 4."],
         fail: ["Do not return sandbox setup failure text."],
       }),
     });
 
-    const replies = visibleThreadReplies(result.session);
-    expect(replies).toHaveLength(1);
-    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
-      800,
-    );
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.replies[0]!.text.length).toBeLessThanOrEqual(800);
   });
 
-  it("when asked to post in another named channel, explain the limitation instead", async ({
+  test("when asked to post in another named channel, explain the limitation instead", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [
-        mention(
-          "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
-        ],
-        fail: [
-          "Do not send a direct channel post to the current channel.",
-          "Do not claim the message was posted to #discuss-design-engineering.",
-        ],
-      }),
-    });
-
-    expect(
-      assistantMessages(result.session).filter(
-        (message) => message.metadata?.event_type === "channel_post",
+    const conversation = await run(
+      mention(
+        "post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
       ),
-    ).toHaveLength(0);
-    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
+      {
+        criteria: rubric({
+          pass: [
+            "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
+          ],
+          fail: [
+            "Do not send a direct channel post to the current channel.",
+            "Do not claim the message was posted to #discuss-design-engineering.",
+          ],
+        }),
+      },
+    );
+
+    expect(conversation.replies.length).toBeGreaterThan(0);
   });
 });
