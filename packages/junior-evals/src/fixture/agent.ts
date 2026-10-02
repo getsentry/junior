@@ -240,6 +240,15 @@ export async function createFixtureAgent(
     }
   };
 
+  const postAutomationInput = async (input: AutomationInput): Promise<void> => {
+    const response = await app.request(automationRequest(input));
+    if (response.status !== 202) {
+      throw new Error(
+        `${input.kind} returned ${response.status}: ${await response.text()}`,
+      );
+    }
+  };
+
   /**
    * Post one input through its app route. The first web input creates the
    * Conversation, and the first Slack mention is the thread root.
@@ -248,11 +257,16 @@ export async function createFixtureAgent(
     record: ConversationRecord,
     input: Input,
   ): Promise<void> => {
-    if (isAutomationInput(input)) {
-      throw new Error(`${input.kind} starts a Conversation; pass it to run()`);
-    }
     if (record.surface === "automation") {
       throw new Error("A Conversation from an automation takes no input");
+    }
+    if (isAutomationInput(input)) {
+      // On a started Conversation, the automation input reaches its watches.
+      if (!record.started) {
+        throw new Error(`run(${input.kind}) starts its own Conversation`);
+      }
+      await postAutomationInput(input);
+      return;
     }
     const started = record.started;
     record.started = true;
@@ -653,14 +667,7 @@ export async function createFixtureAgent(
         record.started = true;
         return record;
       },
-      async () => {
-        const response = await app.request(automationRequest(input));
-        if (response.status !== 202) {
-          throw new Error(
-            `${input.kind} returned ${response.status}: ${await response.text()}`,
-          );
-        }
-      },
+      async () => await postAutomationInput(input),
       options,
     );
   };

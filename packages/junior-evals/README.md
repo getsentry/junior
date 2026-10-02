@@ -77,6 +77,9 @@ describe("Thread Continuity", () => {
   `run(githubWebhook(...))` returns the Conversation that a matching
   `insertEventAutomation()` started. The agent needs the GitHub plugin. These
   Conversations take no further input.
+- `conversation.continue(githubWebhook(...))` delivers the event to the
+  watches of that Conversation. The agent can create the watch in an earlier
+  turn, or `insertWatch({ conversation, ... })` stores one.
 - Slack replies are the posts in the Slack thread, including posts that Junior
   does not store. A reply is the body that people see, without the footer.
   Each Conversation is read as the person who started it.

@@ -29,6 +29,8 @@ process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
 // The agent test fixture mocks Vercel Blob, which stores attachments.
 process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_evalstore_secret";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
+// The agent test fixture signs GitHub webhooks with this secret.
+process.env.GITHUB_WEBHOOK_SECRET ??= "junior-test-github-webhook-secret";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-behavioral:${randomUUID()}`;
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";

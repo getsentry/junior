@@ -197,8 +197,14 @@ export function readCallEvents(args: {
   };
 }
 
+/**
+ * Compare a Slack post with a stored reply by their words. Slack rendering
+ * changes formatting and links references, such as `owner/repo#1`.
+ */
 function comparableText(text: string): string {
   return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^|>]+\|([^>]*)>/g, "$1")
     .replace(/[*_~`>]/g, "")
     .replace(/\s+/g, " ")
     .trim();
