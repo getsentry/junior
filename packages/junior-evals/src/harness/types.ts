@@ -164,15 +164,11 @@ interface EvalViewImageFixture {
 }
 
 export interface EvalOverrides {
-  active_turn_compaction?: {
-    summary: string;
-  };
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
   github_events?: boolean;
-  mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
   reply_timeout_ms?: number;

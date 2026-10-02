@@ -3,9 +3,9 @@ import {
   mention,
   threadMessage,
   type Input,
-} from "../../../src/fixture/inputs";
-import { rubric } from "../../../src/fixture/judge";
-import { test, type CallOptions } from "../../../src/fixture/test";
+} from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { test, type CallOptions } from "@junior-evals/fixture/test";
 
 // A plain reply keeps each turn to one model call. Routing is the behavior
 // under test, not the summary.

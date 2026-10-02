@@ -12,6 +12,7 @@
     "noEmit": true,
     "paths": {
       "@/*": ["../junior/src/*"],
+      "@junior-evals/fixture/*": ["./src/fixture/*"],
       "@junior-tests/*": ["../junior/tests/*"],
       "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior-memory": ["../junior-memory/src/index.ts"],

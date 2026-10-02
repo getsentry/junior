@@ -37,9 +37,19 @@ let releasePushCalls = 0;
  */
 export const EVAL_RELEASE_PUSH_STALL_MS = 45_000;
 
-function stall(ms: number): Promise<void> {
+/** Wait `ms`, or less when the client drops the request. */
+function stall(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms).unref();
+    const timer = setTimeout(resolve, ms);
+    timer.unref();
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 
@@ -443,7 +453,7 @@ export const evalMcpAuthHandlers = [
               isError: true,
             });
           }
-          await stall(EVAL_RELEASE_PUSH_STALL_MS);
+          await stall(EVAL_RELEASE_PUSH_STALL_MS, request.signal);
           return jsonRpcResult(message?.id ?? null, {
             content: [
               {

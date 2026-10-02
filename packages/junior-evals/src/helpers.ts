@@ -122,23 +122,6 @@ export function visibleAssistantText(session: NormalizedSession): string {
     .join("\n");
 }
 
-/** Return whether the assistant attached an image in an eval session. */
-export function hasImageAttachment(session: NormalizedSession): boolean {
-  return assistantMessages(session).some((message) => {
-    const files = message.metadata?.files;
-    return (
-      Array.isArray(files) &&
-      files.some(
-        (file) =>
-          file !== null &&
-          typeof file === "object" &&
-          !Array.isArray(file) &&
-          file.isImage === true,
-      )
-    );
-  });
-}
-
 /** Serialize user-visible conversation text and Slack author attribution. */
 export function serializeVisibleTranscript(session: NormalizedSession): string {
   return JSON.stringify(
@@ -355,50 +338,6 @@ export const slackEvals = {
   judges: [RubricJudge],
   judgeThreshold: JUDGE_THRESHOLD,
 } satisfies DescribeEvalOptions<SlackEvalInput>;
-
-export interface SlackSideEffects {
-  suggestedPromptCalls: number;
-  threadTitleCalls: number;
-  threadTitles: string[];
-}
-
-function artifactNumber(
-  artifact: Record<string, JsonValue>,
-  key: string,
-): number {
-  const value = artifact[key];
-  if (typeof value !== "number") {
-    throw new Error(`Missing numeric Slack side-effect artifact: ${key}`);
-  }
-  return value;
-}
-
-function artifactStringArray(
-  artifact: Record<string, JsonValue>,
-  key: string,
-): string[] {
-  const value = artifact[key];
-  if (
-    !Array.isArray(value) ||
-    value.some((entry) => typeof entry !== "string")
-  ) {
-    throw new Error(`Missing string-array Slack side-effect artifact: ${key}`);
-  }
-  return value as string[];
-}
-
-/** Returns deterministic Slack side effects captured outside the rubric prompt. */
-export function slackSideEffects(result: Pick<HarnessRun, "artifacts">) {
-  const artifact = result.artifacts?.slack_side_effects;
-  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) {
-    throw new Error("Missing Slack side-effect artifacts.");
-  }
-  return {
-    suggestedPromptCalls: artifactNumber(artifact, "suggested_prompt_calls"),
-    threadTitleCalls: artifactNumber(artifact, "thread_title_calls"),
-    threadTitles: artifactStringArray(artifact, "thread_titles"),
-  } satisfies SlackSideEffects;
-}
 
 /** Return runtime conversation ids recorded for this harness run. */
 export function conversationIds(result: Pick<HarnessRun, "session">): string[] {
@@ -693,23 +632,5 @@ export function scheduledAutomationDue(
     ...(opts?.schedule ? { schedule: opts.schedule } : {}),
     ...(opts?.schedule_kind ? { schedule_kind: opts.schedule_kind } : {}),
     ...(opts?.timezone ? { timezone: opts.timezone } : {}),
-  };
-}
-
-/** Builds an assistant thread lifecycle start event for a harnessed Slack eval. */
-export function threadStart(opts?: {
-  thread?: ThreadOverrides;
-  user_id?: string;
-}) {
-  const seq = nextId();
-  return {
-    type: "assistant_thread_started" as const,
-    thread: {
-      id: `thread-${seq}`,
-      channel_id: `C${seq}`,
-      thread_ts: `17000000.${seq}`,
-      ...opts?.thread,
-    },
-    user_id: opts?.user_id ?? `U-${seq}`,
   };
 }

@@ -21,6 +21,7 @@ const EMPTY_DATABASE_TESTS = new Set([
 
 const AGENT_TEST_ROOTS = ["packages/junior/tests", "packages/junior-evals"];
 const AGENT_FIXTURE_ROOT = "packages/junior-evals/src/fixture/";
+const AGENT_FIXTURE_ALIAS = "@junior-evals/fixture/";
 const JUNIOR_TESTS_ROOT = "packages/junior/tests/";
 const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
 // Guardian and router evals call one model boundary and do not run the agent.
@@ -149,14 +150,13 @@ function allowedAgentTestImport(filePath, source, typeOnly) {
   ) {
     return true;
   }
+  if (source.startsWith(AGENT_FIXTURE_ALIAS)) return true;
   if (!source.startsWith(".")) return false;
   const resolved = path.posix.normalize(
     path.posix.join(path.posix.dirname(filePath), source),
   );
-  return (
-    resolved.startsWith(AGENT_FIXTURE_ROOT) ||
-    resolved.startsWith(AGENT_EVALS_ROOT)
-  );
+  // Fixture imports use the alias; relative imports stay inside evals.
+  return resolved.startsWith(AGENT_EVALS_ROOT);
 }
 
 function agentRuleApplies(rule, filePath) {

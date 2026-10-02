@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeRecordedEvents } from "../../../src/fixture/recorded";
+import { sanitizeRecordedEvents } from "@junior-evals/fixture/recorded";
 
 function row(type: string, payload: Record<string, unknown>) {
   return {
