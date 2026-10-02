@@ -134,6 +134,7 @@ export class PluginMcpClient {
   async callTool(
     name: string,
     args: Record<string, unknown> | undefined,
+    signal?: AbortSignal,
   ): Promise<ToolCallResult> {
     return await this.withSessionRecovery(async () => {
       const client = await this.getClient();
@@ -154,10 +155,14 @@ export class PluginMcpClient {
       }
       const result = await this.wrapAuth(
         () =>
-          client.callTool({
-            name,
-            arguments: args ?? {},
-          }),
+          client.callTool(
+            {
+              name,
+              arguments: args ?? {},
+            },
+            undefined,
+            signal ? { signal } : undefined,
+          ),
         "call_tool",
       );
       await this.syncTransportSessionId();

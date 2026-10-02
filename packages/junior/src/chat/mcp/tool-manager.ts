@@ -317,6 +317,8 @@ export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
     args: Record<string, unknown>,
     options?: {
       conversationPrivacy?: ConversationPrivacy;
+      /** Cancels the provider request when the host preempts the call. */
+      signal?: AbortSignal;
       toolCallId?: string;
     },
   ) => Promise<ManagedMcpToolResult>;
@@ -573,7 +575,11 @@ export class McpToolManager {
           {},
           async () => {
             try {
-              const result = await client.callTool(tool.name, resolvedArgs);
+              const result = await client.callTool(
+                tool.name,
+                resolvedArgs,
+                options?.signal,
+              );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }

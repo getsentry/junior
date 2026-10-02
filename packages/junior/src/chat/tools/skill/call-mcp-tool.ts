@@ -135,6 +135,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         resolveMcpArguments(input as Record<string, unknown>),
         {
           conversationPrivacy: options?.conversationPrivacy ?? "private",
+          ...(options?.signal ? { signal: options.signal } : undefined),
           ...(options?.toolCallId
             ? { toolCallId: options.toolCallId }
             : undefined),
