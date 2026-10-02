@@ -43,6 +43,8 @@ export function renderTaskInput(args: {
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
+  /** Mention of the person who created the task, so "me" in it is exact. */
+  creator?: string;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
   /** Trusted one-line summary, when available. */
@@ -60,12 +62,14 @@ export function renderTaskInput(args: {
   }
 
   const about = args.about?.trim();
+  const creator = args.creator?.trim();
   const lines = [
     "[task]",
     "",
     "This is a task, not a message from a person.",
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
+    ...(creator ? [`Created by: ${oneLine(creator)}`] : []),
     `Instructions: ${instructions}`,
   ];
 

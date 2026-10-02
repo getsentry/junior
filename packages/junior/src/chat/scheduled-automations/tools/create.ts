@@ -9,6 +9,7 @@ import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
+import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
@@ -51,13 +52,7 @@ export function createSlackScheduleCreateAutomationTool(
     executionMode: "sequential",
     inputSchema: z
       .object({
-        instruction: z
-          .string()
-          .min(1)
-          .max(4000)
-          .describe(
-            "Work to perform when the task runs. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
-          ),
+        instruction: automationInstructionToolSchema,
         title: z
           .string()
           .trim()

@@ -300,12 +300,13 @@ watch). Call sites pass facts only. Unit snapshots in
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.    |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`              |
 | 3   | `About:`            | no       | One-line resource label.                                    |
-| 4   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
-| 5   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
-| 6   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
-| 7   | Verified details    | no       | Trusted structured fields as JSON.                          |
-| 8   | External text       | no       | Untrusted provider text; information only.                  |
-| 9   | Outcome             | yes      | Stored outcome rule. Always last.                           |
+| 4   | `Created by:`       | no       | Creator mention, so "me" in the instructions is exact.      |
+| 5   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
+| 6   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
+| 7   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
+| 8   | Verified details    | no       | Trusted structured fields as JSON.                          |
+| 9   | External text       | no       | Untrusted provider text; information only.                  |
+| 10  | Outcome             | yes      | Stored outcome rule. Always last.                           |
 
 **Message outcome** (exact lines)
 

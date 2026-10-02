@@ -10,6 +10,15 @@ import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 export const automationTitleSchema = z.string().trim().min(1).max(60);
 export const automationInstructionSchema = z.string().trim().min(1).max(4000);
 
+/**
+ * Instruction input for agent tools. An Automation runs later without the
+ * request around it, so the instruction must name each person exactly.
+ */
+export const automationInstructionToolSchema =
+  automationInstructionSchema.describe(
+    "Work to perform when the Automation runs. It runs later without this conversation, so write it to stand alone: name each person with their Slack mention, such as <@U123>, instead of me, my, or you. Preserve the user's scope, targets, and constraints. Do not add permissions or side effects the user did not request.",
+  );
+
 export const automationEditFieldsSchema = z.object({
   title: automationTitleSchema.optional(),
   instruction: automationInstructionSchema.optional(),

@@ -5,6 +5,7 @@ import {
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
 import {
   createEventAutomation,
   getEventAutomation,
@@ -76,7 +77,7 @@ export function createEventAutomationTool(
       "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
-        instruction: z.string().trim().min(1).max(4000),
+        instruction: automationInstructionToolSchema,
         title: z
           .string()
           .trim()

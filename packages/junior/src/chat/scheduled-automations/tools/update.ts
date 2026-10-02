@@ -1,7 +1,7 @@
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import {
   automationTitleSchema,
-  automationInstructionSchema,
+  automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
 import { logInfo } from "@/chat/logging";
 import { automationRevision } from "@/chat/automations/revision";
@@ -51,7 +51,7 @@ export function createSlackScheduleUpdateAutomationTool(
             "Scheduled automation ID returned by slackScheduleListAutomations.",
           ),
         title: automationTitleSchema.optional(),
-        instruction: automationInstructionSchema.optional(),
+        instruction: automationInstructionToolSchema.optional(),
         schedule: scheduleIntentSchema
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()

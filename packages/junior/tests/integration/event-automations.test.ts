@@ -347,6 +347,7 @@ describe("event automations", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#1174
+      Created by: <@U123>
       Instructions: Address the requested changes.
 
       Trusted summary: A reviewer requested changes.
