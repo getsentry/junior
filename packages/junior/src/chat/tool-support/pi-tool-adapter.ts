@@ -52,24 +52,38 @@ import {
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**
- * Stop waiting for a tool when the host preempts it. A tool that ignores the
- * signal must not hold the turn past its deadline, or the parked turn loses
- * the attempt. Work that keeps running is detached; its outcome is unknown.
+ * How long a preempted tool may take to return its own aborted result. Keep it
+ * below the agent's abort settle grace, so the parked turn sees the result.
+ */
+const TOOL_ABORT_SETTLE_GRACE_MS = 2_000;
+
+/**
+ * Stop waiting for a tool shortly after the host preempts it. A tool that
+ * ignores the signal must not hold the turn past its deadline, or the parked
+ * turn loses the attempt. Work that keeps running is detached; its outcome is
+ * unknown.
  */
 async function untilPreempted<T>(
   work: Promise<T>,
   signal: AbortSignal | undefined,
 ): Promise<T> {
   if (!signal) return await work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let onAbort = () => {};
   const preempted = new Promise<never>((_, reject) => {
-    onAbort = () => reject(signal.reason);
+    onAbort = () => {
+      timer = setTimeout(
+        () => reject(signal.reason),
+        TOOL_ABORT_SETTLE_GRACE_MS,
+      );
+    };
     if (signal.aborted) onAbort();
     else signal.addEventListener("abort", onAbort, { once: true });
   });
   try {
     return await Promise.race([work, preempted]);
   } finally {
+    clearTimeout(timer);
     signal.removeEventListener("abort", onAbort);
     // The attempt is already reported; a late failure has no reader.
     work.catch(() => undefined);
