@@ -132,7 +132,6 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior-datadog`
 - `@sentry/junior-tts`
 - `@sentry/junior-github`
-- `@sentry/junior-gocd`
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`
