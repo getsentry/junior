@@ -696,42 +696,6 @@ export function scheduledAutomationDue(
   };
 }
 
-/** Builds an event for a persisted event automation matching a event. */
-export function eventAutomationMatched(
-  taskText: string,
-  opts: {
-    eventKey?: string;
-    eventType: string;
-    label: string;
-    namespace?: string;
-    identifier: string;
-    resourceType: string;
-    thread?: ThreadOverrides;
-    trustedSummary: string;
-    untrustedText?: string;
-  },
-) {
-  const seq = nextId();
-  return {
-    type: "event_automation_matched" as const,
-    thread: {
-      id: `thread-${seq}`,
-      channel_id: `C${seq}`,
-      thread_ts: `17000000.${seq}`,
-      ...opts.thread,
-    },
-    event_key: opts.eventKey ?? `eval-event-automation-${seq}`,
-    event_type: opts.eventType,
-    label: opts.label,
-    namespace: opts.namespace ?? "github",
-    identifier: opts.identifier,
-    resource_type: opts.resourceType,
-    task_text: taskText,
-    trusted_summary: opts.trustedSummary,
-    ...(opts.untrustedText ? { untrusted_text: opts.untrustedText } : {}),
-  };
-}
-
 /** Builds an assistant thread lifecycle start event for a harnessed Slack eval. */
 export function threadStart(opts?: {
   thread?: ThreadOverrides;

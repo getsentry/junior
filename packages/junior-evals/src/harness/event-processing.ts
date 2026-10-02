@@ -21,9 +21,6 @@ import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/he
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { ingestEvent } from "@/chat/events/ingest";
 import { createWatch } from "@/chat/events/store";
-import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import { createEventAutomation } from "@/chat/event-automations/store";
-import type { EventAutomation } from "@/chat/event-automations/types";
 import { FakeSlackAdapter } from "@junior-tests/fixtures/slack-harness";
 import { type ConversationWorkQueueTestAdapter } from "@junior-tests/fixtures/conversation-work";
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
@@ -38,7 +35,6 @@ import {
   type AssistantThreadStartedEvent,
   type AssistantContextChangedEvent,
   type ScheduledAutomationDueEvent,
-  type EventAutomationMatchedEvent,
   type EventFixture,
   type GitHubWebhookEvent,
   type EvalEvent,
@@ -409,64 +405,11 @@ export async function processEvents(args: {
     await drainQueuedConversationWork();
   };
 
-  const runEventAutomationMatched = async (
-    event: EventAutomationMatchedEvent,
-  ): Promise<void> => {
-    const { thread } = await getThreadRecord(event.thread);
-    const nowMs = Date.now();
-    const taskId = `eval_event_automation_${thread.channelId}_${nowMs}`;
-    const destination = createEvalDestination(thread);
-    const task: EventAutomation = {
-      id: taskId,
-      createdAtMs: nowMs - 60_000,
-      createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
-      credentialMode: "system",
-      destination,
-      destinationVisibility: "public",
-      outcomes: [{ action: "send_message", destination }],
-      task: { text: event.task_text },
-      trigger: {
-        events: [event.event_type],
-        label: event.label,
-        namespace: event.namespace,
-        identifier: event.identifier,
-        resourceType: event.resource_type,
-      },
-    };
-    await createEventAutomation(getDb(), task);
-    const result = await ingestEventAutomations(
-      {
-        eventKey: event.event_key,
-        eventType: event.event_type,
-        occurredAtMs: nowMs,
-        namespace: event.namespace,
-        identifier: event.identifier,
-        trustedSummary: event.trusted_summary,
-        ...(event.untrusted_text
-          ? { untrustedText: event.untrusted_text }
-          : {}),
-      },
-      {
-        nowMs,
-        queue: conversationWorkQueue,
-        teamId: task.destination.teamId,
-      },
-    );
-    if (result.dispatched !== 1) {
-      throw new Error(
-        `Event automation eval expected one dispatch, got ${result.dispatched}`,
-      );
-    }
-    await drainQueuedConversationWork();
-  };
-
   const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       await enqueueEvent(event);
     } else if (event.type === "scheduled_automation_due") {
       await runScheduledAutomationDue(event);
-    } else if (event.type === "event_automation_matched") {
-      await runEventAutomationMatched(event);
     } else if (event.type === "event") {
       await runEvent(event);
     } else if (event.type === "github_webhook") {
