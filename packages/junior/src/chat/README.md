@@ -74,6 +74,15 @@ adapters must not orchestrate native Turns. Runtime and service modules depend
 on small injected ports rather than provider implementations or the production
 singleton.
 
+## Schedule timezones
+
+Slack profile lookup carries the user's `tz` into the Actor and agent context.
+New schedules use an explicit requested timezone first, then the Actor timezone.
+If neither is available, the scheduler uses `JUNIOR_TIMEZONE`, or
+`America/Los_Angeles` when that setting is absent. Schedule edits keep the saved
+timezone unless the user asks to change it. Store IANA zones, not fixed offsets,
+so calendar schedules follow daylight saving time.
+
 ## Vocabulary
 
 - **Conversation**: durable identity shared by messages and agent state.

@@ -29,7 +29,19 @@ import {
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../msw/handlers/slack-api";
+import { usersInfoOk } from "../fixtures/slack/factories/api";
+import { lookupSlackActor } from "@/chat/slack/user";
+import {
+  parseActor,
+  toStoredSlackActor,
+  parseStoredSlackActor,
+  createSlackResumeActor,
+} from "@/chat/actor";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -1352,7 +1364,95 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
-  it("computes one-off timestamps from local time in the default Pacific timezone", async () => {
+  it("uses the Slack profile timezone for reminder context and new schedules", async () => {
+    process.env.JUNIOR_TIMEZONE = "America/Los_Angeles";
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "UNEWYORK", tz: "America/New_York" }),
+    });
+    const actor = await lookupSlackActor(TEST_TEAM_ID, "UNEWYORK");
+    const context = createContext({ actor });
+    expect(parseActor(actor)).toEqual(actor);
+    expect(parseStoredSlackActor(toStoredSlackActor(actor))?.timezone).toBe(
+      "America/New_York",
+    );
+    expect(
+      createSlackResumeActor({
+        actor,
+        teamId: TEST_TEAM_ID,
+        userId: "UNEWYORK",
+      }).timezone,
+    ).toBe("America/New_York");
+    expect(buildTurnContextPrompt({ availableSkills: [], actor })).toContain(
+      "- timezone: America/New_York",
+    );
+
+    const created = await createTask(context, {
+      schedule: {
+        kind: "one_off",
+        timezone: null,
+        timing: { type: "at", date: "2026-05-26", time: "09:00" },
+      },
+    });
+    expect(created.automation).toMatchObject({
+      nextRunAt: "2026-05-26T13:00:00.000Z",
+      timezone: "America/New_York",
+    });
+    expect(
+      (await readScheduledAutomation(created.automation.id))?.schedule.timezone,
+    ).toBe("America/New_York");
+
+    const recurring = await createTask(context, {
+      schedule: {
+        kind: "recurring",
+        frequency: "weekly",
+        weekdays: ["monday"],
+        time: "09:00",
+        startDate: "2026-12-07",
+      },
+    });
+    expect(recurring.automation).toMatchObject({
+      nextRunAt: "2026-12-07T14:00:00.000Z",
+      timezone: "America/New_York",
+    });
+  });
+
+  it("honors explicit timezones and keeps the saved timezone on schedule edits", async () => {
+    const context = createContext({
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "UVIENNA",
+        timezone: "Europe/Vienna",
+      },
+    });
+    const created = await createTask(context, {
+      schedule: {
+        kind: "one_off",
+        timezone: "America/New_York",
+        timing: { type: "at", date: "2026-05-26", time: "09:00" },
+      },
+    });
+    expect(created.automation).toMatchObject({
+      nextRunAt: "2026-05-26T13:00:00.000Z",
+      timezone: "America/New_York",
+    });
+    const updated = await executeTool(
+      createSlackScheduleUpdateAutomationTool(context),
+      {
+        automationId: created.automation.id,
+        schedule: {
+          kind: "one_off",
+          timing: { type: "at", date: "2026-05-27", time: "09:00" },
+        },
+      },
+    );
+    expect(updated.automation).toMatchObject({
+      nextRunAt: "2026-05-27T13:00:00.000Z",
+      timezone: "America/New_York",
+    });
+  });
+
+  it("uses the install fallback when the actor has no timezone", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
 

@@ -537,7 +537,12 @@ function buildDispatchSection(
 }
 
 function buildContextSection(params: {
-  actor?: { userName?: string; fullName?: string; userId?: string };
+  actor?: {
+    userName?: string;
+    fullName?: string;
+    userId?: string;
+    timezone?: string;
+  };
   configuration?: Record<string, unknown>;
   dispatch?: {
     actor?: SystemActor;
@@ -563,6 +568,7 @@ function buildContextSection(params: {
     full_name: params.actor?.fullName,
     user_name: params.actor?.userName,
     user_id: params.actor?.userId,
+    timezone: params.actor?.timezone,
   });
   if (actorLines) {
     blocks.push(actorLines);
@@ -682,6 +688,7 @@ type TurnContextPromptInput = {
     source: Source;
   };
   actor?: {
+    timezone?: string;
     userName?: string;
     fullName?: string;
     userId?: string;

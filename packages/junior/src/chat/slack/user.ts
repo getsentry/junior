@@ -4,6 +4,7 @@ import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
 
 interface SlackUserLookupResult {
+  timezone?: string;
   userName?: string;
   fullName?: string;
   email?: string;
@@ -13,6 +14,7 @@ const slackUserInfoSchema = z.object({
   ok: z.literal(true),
   user: z.object({
     name: z.string().nullish(),
+    tz: z.string().nullish(),
     profile: z
       .object({
         email: z.string().nullish(),
@@ -103,6 +105,7 @@ export async function lookupSlackUser(
     const fullName = payload.user.profile?.real_name?.trim() || undefined;
 
     const result: SlackUserLookupResult = {
+      timezone: payload.user.tz?.trim() || undefined,
       userName,
       fullName,
       email: payload.user.profile?.email?.trim() || undefined,

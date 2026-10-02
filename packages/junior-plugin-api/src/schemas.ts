@@ -219,6 +219,7 @@ export const pluginCredentialSubjectSchema = z.discriminatedUnion(
 
 /** Shared exact actor profile fields for platform-scoped actors. */
 const actorProfileSchema = {
+  timezone: nonBlankStringSchema.optional(),
   email: nonBlankStringSchema.optional(),
   fullName: nonBlankStringSchema.optional(),
   userId: exactActorUserIdSchema,
