@@ -1,313 +1,273 @@
-import { describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+import { describe, expect } from "vitest";
+import type { ToolCall } from "../../../src/fixture/test";
+import { mention } from "../../../src/fixture/inputs";
 import {
-  mention,
-  rubric,
-  slackEvals,
-  threadMessage,
-} from "../../../src/helpers";
-import {
-  eventAutomationCreateCalls,
-  eventAutomationManagementCalls,
-  seedEventAutomation,
-} from "./helpers";
+  insertEventAutomation,
+  slackChannel,
+} from "../../../src/fixture/insert";
+import { rubric } from "../../../src/fixture/judge";
+import { completedToolCalls, toolOutput } from "../../../src/fixture/results";
+import { test } from "../../../src/fixture/test";
 
-function eventAutomationCallEvents(
-  call: ReturnType<typeof eventAutomationCreateCalls>[number],
-): string[] {
-  const trigger = call.arguments?.trigger;
-  if (!trigger || typeof trigger !== "object" || Array.isArray(trigger)) {
-    throw new Error("Event automation call did not contain a trigger");
-  }
-  const events = trigger.events;
+const github = { plugins: defineJuniorPlugins([githubPlugin()]) };
+
+const issueTrigger = {
+  events: ["issue.closed", "issue.reopened"],
+  identifier: "getsentry/junior#208",
+  label: "GitHub issue getsentry/junior#208",
+  namespace: "github",
+  resourceType: "issue",
+};
+
+function triggerEvents(call: ToolCall): string[] {
+  const input = call.input as { trigger?: { events?: unknown } } | undefined;
+  const events = input?.trigger?.events;
   if (
     !Array.isArray(events) ||
     !events.every((event) => typeof event === "string")
   ) {
-    throw new Error("Event automation trigger did not contain string events");
+    throw new Error("Event automation call did not contain trigger events");
   }
   return events;
 }
 
-describeEval("Event automation management", slackEvals, (it) => {
-  it("when asked what events are available, search without creating anything", async ({
-    run,
+describe("Event automation management", () => {
+  test("when asked what events are available, search without creating anything", async ({
+    agent,
   }) => {
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_packages: ["@sentry/junior-github"],
-      },
-      initialEvents: [
-        mention(
-          "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply explains available GitHub resource types and gives representative supported events.",
-          "The reply distinguishes temporary thread watches from durable channel event automations.",
-        ],
-        fail: [
-          "Do not claim that a watch, event automation, or scheduled automation was created.",
-          "Do not ask the user to provide an event type before showing what is available.",
-        ],
-      }),
-    });
-
-    const calls = toolCalls(result.session);
-    expect(
-      calls.filter(
-        (call) => call.name === "searchEventTypes" && call.status === "ok",
+    const { run } = await agent(github);
+    const conversation = await run(
+      mention(
+        "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
       ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply explains available GitHub resource types and gives representative supported events.",
+            "The reply distinguishes temporary thread watches from durable channel event automations.",
+          ],
+          fail: [
+            "Do not claim that a watch, event automation, or scheduled automation was created.",
+            "Do not ask the user to provide an event type before showing what is available.",
+          ],
+        }),
+      },
+    );
+
+    expect(
+      completedToolCalls("searchEventTypes", conversation).map(toolOutput),
     ).toEqual([
       expect.objectContaining({
-        result: expect.objectContaining({
-          resourceTypes: expect.arrayContaining([
-            expect.objectContaining({
-              namespace: "github",
-              type: "issue",
-              supportedEvents: expect.arrayContaining([
-                "issue.closed",
-                "issue.reopened",
-              ]),
-            }),
-          ]),
-        }),
+        resourceTypes: expect.arrayContaining([
+          expect.objectContaining({
+            namespace: "github",
+            type: "issue",
+            supportedEvents: expect.arrayContaining([
+              "issue.closed",
+              "issue.reopened",
+            ]),
+          }),
+        ]),
       }),
     ]);
-    expect(calls.map((call) => call.name)).not.toContain("watchEvents");
-    expect(calls.map((call) => call.name)).not.toContain(
-      "createEventAutomation",
-    );
-    expect(calls.map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
-    );
+    const names = conversation.toolCalls.map((call) => call.name);
+    expect(names).not.toContain("watchEvents");
+    expect(names).not.toContain("createEventAutomation");
+    expect(names).not.toContain("slackScheduleCreateAutomation");
   });
 
-  it("when a resource supports the requested event, create the requested event automation", async ({
-    run,
+  test("when a resource supports the requested event, create the requested event automation", async ({
+    agent,
   }) => {
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_dirs: ["fixtures/event-plugins"],
-        plugin_packages: ["@sentry/junior-github"],
+    const { run } = await agent(github);
+    const conversation = await run(
+      mention(
+        "Whenever a reviewer requests changes on GitHub PR getsentry/junior#691, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms that an event automation was created for requested review changes on the pull request.",
+            "The reply describes summarizing the feedback and posting a fix plan when the event occurs.",
+          ],
+          fail: [
+            "Do not claim a polling schedule or recurring timer was created.",
+            "Do not claim creator credentials were authorized.",
+          ],
+        }),
       },
-      initialEvents: [
-        mention(
-          "$eval-events Create a pull request in getsentry/junior titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply confirms that an event automation was created for requested review changes on the new pull request.",
-          "The reply describes summarizing the feedback and posting a fix plan when the event occurs.",
-        ],
-        fail: [
-          "Do not claim a polling schedule or recurring timer was created.",
-          "Do not claim creator credentials were authorized.",
-        ],
-      }),
-    });
+    );
 
-    const createCalls = eventAutomationCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    expect(
-      toolCalls(result.session).find(
-        (call) => call.name === "callMcpTool" && call.status === "ok",
-      )?.arguments,
-    ).toMatchObject({
-      arguments: { repository: "getsentry/junior" },
-    });
-    expect(createCalls[0]!.arguments).toMatchObject({
+    const creates = completedToolCalls("createEventAutomation", conversation);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
+      credentialMode: "system",
       outcomes: [
         { action: "send_message", destination: "current_conversation" },
       ],
       trigger: {
         namespace: "github",
-        identifier: "getsentry/junior#208",
+        identifier: "getsentry/junior#691",
         resourceType: "pull_request",
-        label: "GitHub PR getsentry/junior#208",
         events: ["pull_request.review.changes_requested"],
       },
     });
-    expect(createCalls[0]!.arguments?.credentialMode).toBe("system");
-    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
-    );
-    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "watchEvents",
-    );
+    const names = conversation.toolCalls.map((call) => call.name);
+    expect(names).not.toContain("slackScheduleCreateAutomation");
+    expect(names).not.toContain("watchEvents");
   });
 
-  it("when one GitHub issue has multiple requested states, create one event automation", async ({
-    run,
+  test("when one GitHub issue has multiple requested states, create one event automation", async ({
+    agent,
   }) => {
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_packages: ["@sentry/junior-github"],
+    const { run } = await agent(github);
+    const conversation = await run(
+      mention(
+        "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms that one event automation will react when the issue is closed or reopened.",
+            "The reply accurately describes summarizing the issue state change in this channel.",
+          ],
+          fail: [
+            "Do not create separate tasks for closed and reopened.",
+            "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
+          ],
+        }),
       },
-      initialEvents: [
-        mention(
-          "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply confirms that one event automation will react when the issue is closed or reopened.",
-          "The reply accurately describes summarizing the issue state change in this channel.",
-        ],
-        fail: [
-          "Do not create separate tasks for closed and reopened.",
-          "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
-        ],
-      }),
-    });
+    );
 
-    const createCalls = eventAutomationCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    expect(createCalls[0]!.arguments).toMatchObject({
+    const creates = completedToolCalls("createEventAutomation", conversation);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#208",
         resourceType: "issue",
-        events: expect.arrayContaining(["issue.closed", "issue.reopened"]),
       },
     });
-    expect(new Set(eventAutomationCallEvents(createCalls[0]!))).toEqual(
+    expect(new Set(triggerEvents(creates[0]!))).toEqual(
       new Set(["issue.closed", "issue.reopened"]),
     );
-    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "slackScheduleCreateAutomation",
-    );
-    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "watchEvents",
-    );
+    const names = conversation.toolCalls.map((call) => call.name);
+    expect(names).not.toContain("slackScheduleCreateAutomation");
+    expect(names).not.toContain("watchEvents");
   });
 
-  it("when issue activity spans a repository, create one repo-wide event automation", async ({
-    run,
+  test("when issue activity spans a repository, create one repo-wide event automation", async ({
+    agent,
   }) => {
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_packages: ["@sentry/junior-github"],
+    const { run } = await agent(github);
+    const conversation = await run(
+      mention(
+        "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms one repository-wide event automation for issue closures and reopenings.",
+            "The reply accurately says matching issue state changes will be summarized in this channel.",
+          ],
+          fail: [
+            "Do not narrow the task to one issue number.",
+            "Do not create separate tasks for closed and reopened issues.",
+            "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
+          ],
+        }),
       },
-      initialEvents: [
-        mention(
-          "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply confirms one repository-wide event automation for issue closures and reopenings.",
-          "The reply accurately says matching issue state changes will be summarized in this channel.",
-        ],
-        fail: [
-          "Do not narrow the task to one issue number.",
-          "Do not create separate tasks for closed and reopened issues.",
-          "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
-        ],
-      }),
-    });
+    );
 
-    const createCalls = eventAutomationCreateCalls(result.session);
-    expect(createCalls).toHaveLength(1);
-    expect(createCalls[0]!.arguments).toMatchObject({
+    const creates = completedToolCalls("createEventAutomation", conversation);
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.input).toMatchObject({
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior",
         resourceType: "repository",
-        events: expect.arrayContaining(["issue.closed", "issue.reopened"]),
       },
     });
-    expect(new Set(eventAutomationCallEvents(createCalls[0]!))).toEqual(
+    expect(new Set(triggerEvents(creates[0]!))).toEqual(
       new Set(["issue.closed", "issue.reopened"]),
     );
   });
 
-  it("when managing an existing event automation, list update and delete it", async ({
-    run,
+  test("when managing an existing event automation, list update and delete it", async ({
+    agent,
   }) => {
-    const creationThread = {
-      channel_type: "channel" as const,
-      channel_id: "CEVENTMANAGE",
-      id: "thread-event-automation-creation",
-      thread_ts: "1700000000.918000",
-    };
-    const managementThread = {
-      channel_type: "channel" as const,
-      channel_id: creationThread.channel_id,
-      id: "thread-event-automation-management",
-      thread_ts: "1700000000.919000",
-    };
-    await seedEventAutomation({
-      createdBy: {
-        slackUserId: "U0TEST",
-        userName: "testuser",
-        fullName: "Test User",
-      },
-      id: "evt_issue_state_summary",
-      taskText: "Summarize issue closures and reopenings in this channel.",
-      thread: creationThread,
+    const { run } = await agent(github);
+    const channel = slackChannel();
+    const { id } = await insertEventAutomation({
+      destination: channel,
+      task: "Summarize issue closures and reopenings in this channel.",
+      trigger: issueTrigger,
     });
 
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_packages: ["@sentry/junior-github"],
-      },
-      initialEvents: [
-        mention("Show me the event automations configured for this channel.", {
-          thread: managementThread,
-        }),
-      ],
-      events: [
-        threadMessage(
-          "Change the issue task so it only reacts when the issue is reopened and posts a reopening summary.",
-          { thread: managementThread, is_mention: true },
-        ),
-        threadMessage("Delete that event automation now.", {
-          thread: managementThread,
-          is_mention: true,
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant first identifies the issue event automation created for this channel even though the request comes from another thread.",
-          "The assistant updates that task to react only to issue reopenings and confirms the new behavior.",
-          "The assistant then deletes the same event automation and confirms it no longer exists.",
-        ],
-        fail: [
-          "Do not create a replacement event automation.",
-          "Do not confuse the event automation with a temporary watch or scheduled automation.",
-        ],
+    // The automation came from another thread in the same channel.
+    const listing = await run(
+      mention("Show me the event automations configured for this channel.", {
+        channel,
       }),
-    });
-
-    expect(
-      eventAutomationManagementCalls(result.session, "listEventAutomations"),
-    ).toEqual([
-      expect.objectContaining({
-        result: expect.objectContaining({
-          automations: [
-            expect.objectContaining({
-              id: "evt_issue_state_summary",
-              trigger: expect.objectContaining({ available: true }),
-            }),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply identifies the issue event automation created for this channel even though the request comes from another thread.",
+          ],
+          fail: [
+            "Do not confuse the event automation with a temporary watch or scheduled automation.",
           ],
         }),
+      },
+    );
+    const update = await listing.continue(
+      mention(
+        "Change the issue task so it only reacts when the issue is reopened and posts a reopening summary.",
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms that the task now reacts only to issue reopenings.",
+          ],
+          fail: ["Do not create a replacement event automation."],
+        }),
+      },
+    );
+    const removal = await listing.continue(
+      mention("Delete that event automation now."),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms that the same event automation was deleted and no longer exists.",
+          ],
+          fail: ["Do not create a replacement event automation."],
+        }),
+      },
+    );
+
+    expect(
+      completedToolCalls("listEventAutomations", listing).map(toolOutput),
+    ).toEqual([
+      expect.objectContaining({
+        automations: [
+          expect.objectContaining({
+            id,
+            trigger: expect.objectContaining({ available: true }),
+          }),
+        ],
       }),
     ]);
-    const updateCalls = eventAutomationManagementCalls(
-      result.session,
+    const updates = completedToolCalls(
       "updateEventAutomation",
+      listing,
+      update,
+      removal,
     );
-    expect(updateCalls).toHaveLength(1);
-    expect(updateCalls[0]?.arguments).toMatchObject({
-      automationId: "evt_issue_state_summary",
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.input).toMatchObject({
+      automationId: id,
       trigger: {
         events: ["issue.reopened"],
         identifier: "getsentry/junior#208",
@@ -316,71 +276,61 @@ describeEval("Event automation management", slackEvals, (it) => {
       },
     });
     expect(
-      eventAutomationManagementCalls(result.session, "deleteEventAutomation"),
-    ).toEqual([
-      expect.objectContaining({
-        arguments: { automationId: "evt_issue_state_summary" },
-      }),
-    ]);
-    expect(eventAutomationCreateCalls(result.session)).toEqual([]);
+      completedToolCalls("deleteEventAutomation", listing, update, removal).map(
+        (call) => call.input,
+      ),
+    ).toEqual([{ automationId: id }]);
+    expect(
+      completedToolCalls("createEventAutomation", listing, update, removal),
+    ).toEqual([]);
   });
 
-  it("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
+  test("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
     run,
   }) => {
-    const thread = {
-      channel_type: "channel" as const,
-      channel_id: "CEVENTUNAVAILABLE",
-      id: "thread-event-automation-unavailable",
-      thread_ts: "1700000000.920000",
-    };
-    await seedEventAutomation({
-      id: "evt_unavailable_issue_summary",
-      taskText: "Summarize issue closures in this channel.",
-      thread,
+    // The default agent has no GitHub plugin, so the GitHub trigger is unavailable.
+    const channel = slackChannel();
+    const { id } = await insertEventAutomation({
+      destination: channel,
+      task: "Summarize issue closures in this channel.",
+      trigger: issueTrigger,
     });
 
-    const result = await run({
-      overrides: {
-        github_events: false,
-        plugin_packages: ["@sentry/junior-github"],
-      },
-      initialEvents: [
-        mention(
-          "Is the GitHub issue event automation in this channel currently able to receive events?",
-          { thread },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply says the task remains stored but its GitHub trigger is not currently available, so it cannot receive matching events until that plugin event is enabled again.",
-        ],
-        fail: [
-          "Do not claim the task can currently receive GitHub events.",
-          "Do not delete or replace the task.",
-        ],
-      }),
-    });
-
-    expect(
-      eventAutomationManagementCalls(result.session, "listEventAutomations"),
-    ).toEqual([
-      expect.objectContaining({
-        result: expect.objectContaining({
-          automations: [
-            expect.objectContaining({
-              id: "evt_unavailable_issue_summary",
-              trigger: expect.objectContaining({ available: false }),
-            }),
+    const conversation = await run(
+      mention(
+        "Is the GitHub issue event automation in this channel currently able to receive events?",
+        { channel },
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply says the task remains stored but its GitHub trigger is not currently available, so it cannot receive matching events until that plugin event is enabled again.",
+          ],
+          fail: [
+            "Do not claim the task can currently receive GitHub events.",
+            "Do not delete or replace the task.",
           ],
         }),
+      },
+    );
+
+    expect(
+      completedToolCalls("listEventAutomations", conversation).map(toolOutput),
+    ).toEqual([
+      expect.objectContaining({
+        automations: [
+          expect.objectContaining({
+            id,
+            trigger: expect.objectContaining({ available: false }),
+          }),
+        ],
       }),
     ]);
-    expect(
-      eventAutomationManagementCalls(result.session, "updateEventAutomation"),
-    ).toEqual([]);
-    expect(
-      eventAutomationManagementCalls(result.session, "deleteEventAutomation"),
-    ).toEqual([]);
+    expect(completedToolCalls("updateEventAutomation", conversation)).toEqual(
+      [],
+    );
+    expect(completedToolCalls("deleteEventAutomation", conversation)).toEqual(
+      [],
+    );
   });
 });

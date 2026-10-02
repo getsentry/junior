@@ -28,7 +28,8 @@ the agent. A test touches the product in three places only:
 
 1. Inputs through app routes: `mention()` and `threadMessage()` post signed
    Slack Events API webhooks, `webMessage()` posts to the conversations API,
-   and `heartbeat()` calls the heartbeat route.
+   `heartbeat()` calls the heartbeat route, and `githubWebhook()` posts a
+   signed GitHub webhook to the GitHub plugin route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
@@ -54,7 +55,10 @@ describe("Thread Continuity", () => {
   the next input to the same Conversation. `fork()` calls the forks route.
 - `agent(options)` creates the test's agent with `createApp()` options, such
   as `limits` or `slack.crossActorMidRunMode`. Without it, the agent uses the
-  default options.
+  default options. Configure plugins as a host does:
+  `agent({ plugins: defineJuniorPlugins([githubPlugin()]) })`. Tests may
+  import the public `@sentry/junior` API and plugin packages, but not runtime
+  internals under `@/`.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles, is finished. A call fails when
   the agent is not idle within 60 seconds.
@@ -70,12 +74,15 @@ describe("Thread Continuity", () => {
   new kind of setup data.
 - `run(heartbeat())` returns the Conversation that a due automation started.
   Make an automation due with `insertScheduledAutomation({ due: true })`.
-  That Conversation takes no further input.
+  `run(githubWebhook(...))` returns the Conversation that a matching
+  `insertEventAutomation()` started. The agent needs the GitHub plugin. These
+  Conversations take no further input.
 - Slack replies are the posts in the Slack thread, including posts that Junior
   does not store. A reply is the body that people see, without the footer.
   Each Conversation is read as the person who started it.
 - Assert facts that do not depend on wording: reply counts, turn states, tool
-  calls, and reactions. Use `criteria` for wording. Do not assert on stored
+  calls, and reactions. `toolOutput()` parses a tool result. Use `criteria`
+  for wording. Do not assert on stored
   rows or runtime objects.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline

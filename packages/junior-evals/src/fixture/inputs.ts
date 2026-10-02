@@ -48,10 +48,24 @@ export interface HeartbeatInput {
   kind: "heartbeat";
 }
 
+/**
+ * A GitHub webhook delivery through the GitHub plugin route, with a valid
+ * signature. The fixture adds the configured installation.
+ */
+export interface GitHubWebhookInput {
+  kind: "github_webhook";
+  /** The `x-github-event` header, such as `pull_request_review`. */
+  event: string;
+  payload: Record<string, unknown>;
+}
+
 /** A message from a person. History items use the same inputs. */
 export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
 
-export type Input = MessageInput | HeartbeatInput;
+/** An input that starts a Conversation from an automation. */
+export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
+
+export type Input = MessageInput | AutomationInput;
 
 /** An earlier Junior reply in loaded history. */
 export interface HistoryReply {
@@ -94,6 +108,18 @@ export function webMessage(text: string): WebMessageInput {
  */
 export function heartbeat(): HeartbeatInput {
   return { kind: "heartbeat" };
+}
+
+/**
+ * Deliver a GitHub webhook. `run(githubWebhook(...))` returns the Conversation
+ * that the matching event automation started. The agent needs the GitHub
+ * plugin.
+ */
+export function githubWebhook(
+  event: string,
+  payload: Record<string, unknown>,
+): GitHubWebhookInput {
+  return { kind: "github_webhook", event, payload };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */

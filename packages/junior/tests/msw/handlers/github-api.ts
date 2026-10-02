@@ -9,6 +9,20 @@ export const githubApiHandlers = [
   http.get(`${GITHUB_API_ORIGIN}/repos/:owner/:repo/deployments`, () =>
     HttpResponse.json([]),
   ),
+  // The GitHub plugin reads the installation's permissions before it mints a
+  // token, unless the host declares `appPermissions`.
+  http.get(`${GITHUB_API_ORIGIN}/app/installations/:installationId`, () =>
+    HttpResponse.json({
+      permissions: {
+        actions: "read",
+        checks: "read",
+        contents: "read",
+        deployments: "read",
+        metadata: "read",
+        pull_requests: "read",
+      },
+    }),
+  ),
   http.post(
     `${GITHUB_API_ORIGIN}/app/installations/:installationId/access_tokens`,
     () =>

@@ -259,7 +259,7 @@ test("rejects agent test contract violations above the baseline", () => {
       {},
     ),
     [
-      `${EVAL_PATH}: agent tests must import only the agent test fixture, public types, and test libraries (2 found, 0 allowed)`,
+      `${EVAL_PATH}: agent tests must import only the agent test fixture, the public app API, plugin packages, and test libraries (2 found, 0 allowed)`,
       `${TEST_PATH}: tests must not fake the model; run the real agent through the agent test fixture (1 found, 0 allowed)`,
       `${TEST_PATH}: tests must not mutate runtime config or reload modules; pass options to createApp() or agent() (1 found, 0 allowed)`,
     ],
@@ -277,7 +277,7 @@ test("requires a lower baseline when a file breaks a rule less", () => {
   );
 });
 
-test("allows agent tests to import the fixture, public types, and test libraries", () => {
+test("allows agent tests to import the fixture, the public app API, plugin packages, and test libraries", () => {
   assert.deepEqual(
     checkAgentTestArchitecture(
       [
@@ -286,6 +286,8 @@ test("allows agent tests to import the fixture, public types, and test libraries
             'import { expect } from "vitest";',
             'import { toolCalls } from "vitest-evals";',
             'import type { JuniorAppOptions } from "@sentry/junior";',
+            'import { defineJuniorPlugins } from "@sentry/junior";',
+            'import { githubPlugin } from "@sentry/junior-github";',
             'import { mention, test } from "../../src/fixture/test";',
             'import { launchHistory } from "./helpers";',
           ].join("\n"),

@@ -44,6 +44,19 @@ export function completedToolCalls(
     .filter((call) => call.name === name && call.status === "completed");
 }
 
+/**
+ * The result of a tool call. The reporting API returns JSON results as text,
+ * so this parses them.
+ */
+export function toolOutput(call: ToolCall): unknown {
+  if (typeof call.output !== "string") return call.output;
+  try {
+    return JSON.parse(call.output) as unknown;
+  } catch {
+    return call.output;
+  }
+}
+
 /** Turn states of the reporting API. A turn that waits for authorization stays `started`. */
 export type TurnStatus = "failed" | "no_reply" | "started" | "succeeded";
 

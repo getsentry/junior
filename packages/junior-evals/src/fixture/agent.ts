@@ -6,7 +6,7 @@
  * are MSW mocks. The fixture replaces only the Vercel Queue transport and
  * `waitUntil` with in-process versions, so it knows when the agent is idle.
  */
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { assert } from "vitest";
 import type { HarnessRun, TranscriptEvent } from "vitest-evals/harness";
@@ -20,7 +20,13 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
-import type { HistoryItem, HistoryReply, Input, MessageInput } from "./inputs";
+import type {
+  AutomationInput,
+  HistoryItem,
+  HistoryReply,
+  Input,
+  MessageInput,
+} from "./inputs";
 import {
   hasHistory,
   loadHistory,
@@ -230,11 +236,11 @@ export async function createFixtureAgent(
     record: ConversationRecord,
     input: Input,
   ): Promise<void> => {
-    if (input.kind === "heartbeat") {
-      throw new Error("heartbeat() starts a Conversation; pass it to run()");
+    if (isAutomationInput(input)) {
+      throw new Error(`${input.kind} starts a Conversation; pass it to run()`);
     }
     if (record.surface === "automation") {
-      throw new Error("A Conversation from heartbeat() takes no input");
+      throw new Error("A Conversation from an automation takes no input");
     }
     const started = record.started;
     record.started = true;
@@ -501,7 +507,7 @@ export async function createFixtureAgent(
   ): Promise<Conversation> => {
     if (hasHistory(options.history)) {
       if (record.surface === "automation") {
-        throw new Error("A Conversation from heartbeat() takes no history");
+        throw new Error("A Conversation from an automation takes no history");
       }
       record.lastSeq = await loadHistory({
         api,
@@ -597,8 +603,11 @@ export async function createFixtureAgent(
     fork: (reply) => runEvalWork(() => fork(record, reply)),
   });
 
-  /** Call the heartbeat route and return the Conversation it started. */
-  const runHeartbeat = async (options: CallOptions): Promise<Conversation> => {
+  /** Send an automation input and return the Conversation it started. */
+  const runAutomation = async (
+    input: AutomationInput,
+    options: CallOptions,
+  ): Promise<Conversation> => {
     const sentIndex = queue.sentConversationIds().length;
     return await call(
       () => {
@@ -607,7 +616,7 @@ export async function createFixtureAgent(
         ].filter((id) => !knownConversationIds.has(id));
         if (startedIds.length !== 1) {
           throw new Error(
-            `heartbeat() started ${startedIds.length} Conversations; expected 1`,
+            `${input.kind} started ${startedIds.length} Conversations; expected 1`,
           );
         }
         const record = newRecord(
@@ -618,12 +627,10 @@ export async function createFixtureAgent(
         return record;
       },
       async () => {
-        const response = await app.request("/api/internal/heartbeat", {
-          headers: { authorization: `Bearer ${heartbeatSecret()}` },
-        });
+        const response = await app.request(automationRequest(input));
         if (response.status !== 202) {
           throw new Error(
-            `Heartbeat returned ${response.status}: ${await response.text()}`,
+            `${input.kind} returned ${response.status}: ${await response.text()}`,
           );
         }
       },
@@ -635,11 +642,11 @@ export async function createFixtureAgent(
     const inputs = Array.isArray(input) ? input : [input];
     const [first] = inputs;
     if (!first) throw new Error("run() needs an input");
-    if (first.kind === "heartbeat") {
+    if (isAutomationInput(first)) {
       if (inputs.length > 1 || hasHistory(options.history)) {
-        throw new Error("run(heartbeat()) takes no other input or history");
+        throw new Error(`run(${first.kind}) takes no other input or history`);
       }
-      return await runHeartbeat(options);
+      return await runAutomation(first, options);
     }
     return await converse(
       newConversation(first, options.history),
@@ -649,6 +656,42 @@ export async function createFixtureAgent(
   };
 
   return { run, close };
+}
+
+function isAutomationInput(input: Input): input is AutomationInput {
+  return input.kind === "heartbeat" || input.kind === "github_webhook";
+}
+
+/** The production request for an automation input. */
+function automationRequest(input: AutomationInput): Request {
+  if (input.kind === "heartbeat") {
+    return new Request("http://junior.test/api/internal/heartbeat", {
+      headers: { authorization: `Bearer ${heartbeatSecret()}` },
+    });
+  }
+  const body = JSON.stringify({
+    ...input.payload,
+    installation: { id: Number(requiredEnv("GITHUB_INSTALLATION_ID")) },
+  });
+  const signature = createHmac("sha256", requiredEnv("GITHUB_WEBHOOK_SECRET"))
+    .update(body)
+    .digest("hex");
+  return new Request("http://junior.test/api/webhooks/github", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-github-delivery": randomUUID(),
+      "x-github-event": input.event,
+      "x-hub-signature-256": `sha256=${signature}`,
+    },
+    body,
+  });
+}
+
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`The agent test fixture needs ${name}`);
+  return value;
 }
 
 /** The secret of the heartbeat route, read as the route reads it. */

@@ -84,19 +84,6 @@ export interface ScheduledAutomationDueEvent extends EvalBaseEvent {
   timezone?: string;
 }
 
-export interface EventAutomationMatchedEvent extends EvalBaseEvent {
-  type: "event_automation_matched";
-  event_key: string;
-  event_type: string;
-  label: string;
-  namespace: string;
-  identifier: string;
-  resource_type: string;
-  task_text: string;
-  trusted_summary: string;
-  untrusted_text?: string;
-}
-
 export interface EventFixture extends EvalBaseEvent {
   type: "event";
   data?: Record<string, unknown>;
@@ -139,7 +126,6 @@ export type EvalEvent =
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
   | ScheduledAutomationDueEvent
-  | EventAutomationMatchedEvent
   | EventFixture
   | GitHubWebhookEvent;
 

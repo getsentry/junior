@@ -9,6 +9,8 @@
 import { randomUUID } from "node:crypto";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
+import { createEventAutomation } from "@/chat/event-automations/store";
+import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
@@ -120,5 +122,37 @@ export async function insertScheduledAutomation(args: {
     updatedAtMs: nowMs - 60_000,
   };
   await saveScheduledAutomation(getDb(), automation);
+  return { id };
+}
+
+/**
+ * Store an event automation that a Slack person created. It posts its result
+ * to `destination` when an event matches `trigger`.
+ */
+export async function insertEventAutomation(args: {
+  createdBy?: SlackAuthor;
+  credentialMode?: "creator" | "system";
+  destination: SlackChannel;
+  task: string;
+  trigger: EventAutomation["trigger"];
+}): Promise<{ id: string }> {
+  const author = resolveAuthor(args.createdBy);
+  await insertSlackIdentity(author);
+  const id = `evt_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+  await createEventAutomation(getDb(), {
+    id,
+    createdAtMs: Date.now() - 60_000,
+    createdBy: {
+      fullName: author.fullName,
+      slackUserId: author.userId,
+      userName: author.userName,
+    },
+    credentialMode: args.credentialMode ?? "system",
+    destination: args.destination,
+    destinationVisibility: "public",
+    outcomes: [{ action: "send_message", destination: args.destination }],
+    task: { text: args.task },
+    trigger: args.trigger,
+  });
   return { id };
 }

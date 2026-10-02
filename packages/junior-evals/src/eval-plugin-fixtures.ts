@@ -13,19 +13,9 @@ export function evalRuntimePlugins(
   packages: readonly string[],
 ): PluginRegistration[] {
   return [
-    ...(packages.includes("@sentry/junior-github")
-      ? [
-          githubPlugin({
-            appPermissions: {
-              actions: "read",
-              checks: "read",
-              contents: "read",
-              deployments: "read",
-              pull_requests: "read",
-            },
-          }),
-        ]
-      : []),
+    // The default config, as tests pass it to `agent({ plugins })`. The GitHub
+    // mock answers the installation permission lookup.
+    ...(packages.includes("@sentry/junior-github") ? [githubPlugin()] : []),
     ...(packages.includes("@sentry/junior-memory") ? [memoryPlugin()] : []),
     ...(packages.includes("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];

@@ -26,6 +26,8 @@ process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
 process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
+// The agent test fixture signs GitHub webhooks with this secret.
+process.env.GITHUB_WEBHOOK_SECRET ??= "junior-test-github-webhook-secret";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-integration:${randomUUID()}`;
 process.env.REDIS_URL =
