@@ -218,6 +218,8 @@ async function loadPiMessagesForTurn(args: {
 
 interface SlackTurnDeps {
   contextCompactor: ContextCompactor;
+  /** Keeps background work, such as title projection, alive after the turn. */
+  waitUntil?: (task: Promise<unknown>) => void;
   executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
@@ -1028,12 +1030,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
 
           status.update();
           // Title generation is automatic on transcript persist. DM threads only
-          // project the stored/in-flight title to Slack once it settles.
-          void resolveConversationTitle({ conversationId })
+          // project the stored/in-flight title to Slack once it settles. The
+          // turn does not wait for slow titles; the worker's waitUntil owns it.
+          const titleProjection = resolveConversationTitle({ conversationId })
             .then(async (title) => {
-              if (!title) {
-                return;
-              }
+              if (!title) return;
               await maybeSyncAssistantTitle({
                 channelId: assistantThreadContext?.channelId,
                 getSlackAdapter: deps.getSlackAdapter,
@@ -1044,6 +1045,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             .catch((error) => {
               logException(error, "conversation.title.task.failed");
             });
+          deps.waitUntil?.(titleProjection);
           const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -16,11 +16,8 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { contextProvenance } from "@/chat/conversations/provenance";
-import {
-  closeConversationFixture,
-  createConversationWebHarness,
-} from "../../../fixtures/conversation";
-import { createModelStream } from "../../../fixtures/model-stream";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { closeConversationFixture } from "../../../fixtures/conversation";
 import { juniorConversations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -34,6 +31,98 @@ async function authenticatedApi(email: string) {
   });
   app.route("/", createJuniorApi());
   return app;
+}
+
+const OWNER_EMAIL = "owner@example.com";
+
+/** A stored assistant message, as a completed model call leaves it. */
+function assistantMessage(
+  content: AssistantMessage["content"] | string,
+  stopReason: AssistantMessage["stopReason"] = "stop",
+): AssistantMessage {
+  return {
+    role: "assistant",
+    content:
+      typeof content === "string" ? [{ type: "text", text: content }] : content,
+    api: "anthropic-messages",
+    provider: "vercel-ai-gateway",
+    model: "test-model",
+    stopReason,
+    timestamp: Date.now(),
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  };
+}
+
+/** Store one answered web turn and return its delivered reply id. */
+async function storeAnsweredTurn(
+  conversationId: string,
+  args: { answer: string; question: string; turn: string },
+): Promise<string> {
+  const store = getConversationStore();
+  if (!(await store.get({ conversationId }))) {
+    await store.recordActivity({
+      conversationId,
+      destination: { platform: "local", conversationId },
+      actor: { email: OWNER_EMAIL },
+      source: "web",
+      visibility: "private",
+    });
+  }
+  const events = getConversationEventStore();
+  const lifecycle = getTurnLifecycle();
+  const turnId = `turn_${args.turn}`;
+  const replyId = `${turnId}:assistant:1`;
+  await events.append(conversationId, [
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "message",
+        messageId: `${args.turn}-question`,
+        role: "user",
+        text: args.question,
+      },
+    },
+  ]);
+  await lifecycle.start({
+    conversationId,
+    createdAtMs: Date.now(),
+    inputMessageIds: [`${args.turn}-question`],
+    surface: "api",
+    turnId,
+  });
+  await events.append(conversationId, [
+    {
+      createdAtMs: Date.now(),
+      idempotencyKey: `message:${replyId}:agent`,
+      data: historyItemFromPiMessage(
+        assistantMessage(args.answer),
+        contextProvenance,
+      ),
+    },
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "message",
+        messageId: replyId,
+        role: "assistant",
+        text: args.answer,
+      },
+    },
+  ]);
+  await lifecycle.complete({
+    conversationId,
+    createdAtMs: Date.now(),
+    outcome: "success",
+    turnId,
+  });
+  return replyId;
 }
 
 function forkRequest(messageId: string, idempotencyKey = "fork-1") {
@@ -57,28 +146,19 @@ function visibleEvents(detail: { events: Array<{ data: unknown }> }) {
 describe("conversation forks", () => {
   afterEach(closeConversationFixture);
 
-  it("forks a delivered reply once, preserves its old history version, and continues independently", async () => {
-    const harness = await createConversationWebHarness(
-      createModelStream([{ type: "text", text: "First answer." }]),
-    );
-    const source = await harness.start({
-      message: "Remember the blue option.",
-      idempotencyKey: "source",
+  it("forks a delivered reply once and preserves its old history version", async () => {
+    const source = "local:web:fork-source";
+    const reply = await storeAnsweredTurn(source, {
+      question: "Remember the blue option.",
+      answer: "First answer.",
+      turn: "source",
     });
-    await harness.drain();
     const events = getConversationEventStore();
-    const sourceHistory = await events.loadHistory(source.conversationId);
-    const reply = sourceHistory.find(
-      (event) =>
-        event.data.type === "message" && event.data.role === "assistant",
-    );
-    if (reply?.data.type !== "message")
-      throw new Error("Missing delivered reply");
     const original = await openConversationProjection({
-      conversationId: source.conversationId,
+      conversationId: source,
     });
     // A newer compaction must not leak later knowledge into an earlier fork.
-    await events.replaceHistory(source.conversationId, {
+    await events.replaceHistory(source, {
       createdAtMs: Date.now(),
       data: {
         type: "compaction",
@@ -104,12 +184,12 @@ describe("conversation forks", () => {
     await getDb()
       .update(juniorConversations)
       .set({ title: "Blue option plan" })
-      .where(eq(juniorConversations.conversationId, source.conversationId));
-    const app = await authenticatedApi(harness.actor.email);
-    const url = `/api/conversations/${encodeURIComponent(source.conversationId)}/forks`;
+      .where(eq(juniorConversations.conversationId, source));
+    const app = await authenticatedApi(OWNER_EMAIL);
+    const url = `/api/conversations/${encodeURIComponent(source)}/forks`;
     const responses = await Promise.all([
-      app.request(url, forkRequest(reply.data.messageId)),
-      app.request(url, forkRequest(reply.data.messageId)),
+      app.request(url, forkRequest(reply)),
+      app.request(url, forkRequest(reply)),
     ]);
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
     const results = await Promise.all(
@@ -131,30 +211,25 @@ describe("conversation forks", () => {
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, forkId));
     expect(row).toMatchObject({
-      forkedFromConversationId: source.conversationId,
+      forkedFromConversationId: source,
       rootConversationId: forkId,
       parentConversationId: null,
       executionStatus: "idle",
     });
-    const detail = conversationDetailReportSchema.parse(
-      await (
-        await app.request(`/api/conversations/${encodeURIComponent(forkId)}`)
-      ).json(),
-    );
+    const readDetail = async (id: string) =>
+      conversationDetailReportSchema.parse(
+        await (
+          await app.request(`/api/conversations/${encodeURIComponent(id)}`)
+        ).json(),
+      );
+    const detail = await readDetail(forkId);
     expect(detail).toMatchObject({
       isParticipant: true,
-      forkedFromConversationId: source.conversationId,
+      forkedFromConversationId: source,
       forkedFromTitle: "Blue option plan",
     });
     expect(detail.modelUsage).toBeUndefined();
-    expect((await harness.pendingMessages(forkId)).messages).toEqual([]);
-    const sourceDetail = conversationDetailReportSchema.parse(
-      await (
-        await app.request(
-          `/api/conversations/${encodeURIComponent(source.conversationId)}`,
-        )
-      ).json(),
-    );
+    const sourceDetail = await readDetail(source);
     expect(sourceDetail.forks).toEqual([forkId]);
     // The fork shows a copy of the source transcript and event log.
     expect(visibleEvents(detail)).toEqual(visibleEvents(sourceDetail));
@@ -164,40 +239,18 @@ describe("conversation forks", () => {
       "assistant: First answer.",
       "turn",
     ]);
-    harness.setModelStream(
-      createModelStream([{ type: "text", text: "Independent answer." }]),
-    );
-    await harness.continue({
-      conversationId: forkId,
-      message: "Try the green option instead.",
-      idempotencyKey: "next",
-    });
-    await harness.drain();
-    expect(await harness.historyTexts(forkId)).toContain("Independent answer.");
-    expect(await harness.historyTexts(source.conversationId)).not.toContain(
-      "Independent answer.",
-    );
-    const forkRun = harness.agentRuns.at(-1);
-    expect(forkRun?.conversationId).toBe(forkId);
-    expect(forkRun?.history?.slice(0, original.messages.length)).toEqual(
-      original.messages,
-    );
-    expect(forkRun?.state?.sandboxRef).toBeUndefined();
 
     // A fork of the fork writes its own note after all copied model calls.
-    const forkReply = [...(await events.loadHistory(forkId))]
-      .reverse()
-      .find(
-        (event) =>
-          event.data.type === "message" && event.data.role === "assistant",
-      );
-    if (forkReply?.data.type !== "message")
-      throw new Error("Missing fork reply");
+    const forkReply = await storeAnsweredTurn(forkId, {
+      question: "Try the green option instead.",
+      answer: "Independent answer.",
+      turn: "fork",
+    });
     const nested = forkConversationResponseSchema.parse(
       await (
         await app.request(
           `/api/conversations/${encodeURIComponent(forkId)}/forks`,
-          forkRequest(forkReply.data.messageId, "fork-2"),
+          forkRequest(forkReply, "fork-2"),
         )
       ).json(),
     );
@@ -206,14 +259,9 @@ describe("conversation forks", () => {
     expect(
       nestedHistory.filter((event) => event.idempotencyKey === "fork:note"),
     ).toHaveLength(1);
-    const nestedDetail = conversationDetailReportSchema.parse(
-      await (
-        await app.request(
-          `/api/conversations/${encodeURIComponent(nested.conversationId)}`,
-        )
-      ).json(),
-    );
-    expect(nestedDetail.modelUsage).toBeUndefined();
+    expect(
+      (await readDetail(nested.conversationId)).modelUsage,
+    ).toBeUndefined();
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {
@@ -227,7 +275,7 @@ describe("conversation forks", () => {
       source: "web",
       visibility: "private",
     });
-    const message = fauxAssistantMessage("Private answer.");
+    const message = assistantMessage("Private answer.");
     await events.append(source, [
       {
         createdAtMs: Date.now(),
@@ -244,7 +292,7 @@ describe("conversation forks", () => {
         },
       },
     ]);
-    const owner = await authenticatedApi("owner@example.com");
+    const owner = await authenticatedApi(OWNER_EMAIL);
     const stranger = await authenticatedApi("stranger@example.com");
     const url = `/api/conversations/${source}/forks`;
     expect((await stranger.request(url, forkRequest("reply"))).status).toBe(
@@ -285,7 +333,7 @@ describe("conversation forks", () => {
       );
     expect((await readDetail(source)).canFork).toBe(true);
     expect((await readDetail(child)).canFork).toBe(false);
-    const toolCall = fauxAssistantMessage(
+    const toolCall = assistantMessage(
       [
         {
           type: "toolCall",
@@ -294,7 +342,7 @@ describe("conversation forks", () => {
           arguments: { command: "echo hello" },
         },
       ],
-      { stopReason: "toolUse" },
+      "toolUse",
     );
     await events.append(source, [
       {

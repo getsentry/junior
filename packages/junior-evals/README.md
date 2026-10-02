@@ -17,6 +17,67 @@ There are four independently runnable suites:
 - Behavioral and integration evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. Neither suite pins models or adds profiles.
 - Router evals use the shared core profiles and configured fast model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
 
+## Agent Test Fixture
+
+New tests that run the agent use the agent test fixture in `src/fixture/`.
+It replaces the Slack harness below. Issue #2001 has the full contract and the
+migration order. The old harness stays until the remaining evals move.
+
+The agent is one unit. A test does not mock the model or any other part of
+the agent. A test touches the product in three places only:
+
+1. Inputs through app routes: `mention()` and `threadMessage()` post signed
+   Slack Events API webhooks, and `webMessage()` posts to the conversations
+   API.
+2. Mocked third-party APIs: Slack and other providers through MSW.
+3. What people and the model see: replies, tool calls, reactions, and turn
+   states, read through Junior's reporting API.
+
+```ts
+import { describe, expect } from "vitest";
+import { mention, reply } from "../../src/fixture/inputs";
+import { rubric } from "../../src/fixture/judge";
+import { test } from "../../src/fixture/test";
+
+describe("Thread Continuity", () => {
+  test("when asked about the prior turn, recall it", async ({ run }) => {
+    const conversation = await run(mention("what did i just ask?"), {
+      history: [mention("I need the budget by Friday."), reply("Got it.")],
+      criteria: rubric({ pass: ["Recalls the budget and Friday."] }),
+    });
+    expect(conversation.replies).toHaveLength(1);
+  });
+});
+```
+
+- `run()` starts a new Conversation on the test's agent. `continue()` sends
+  the next input to the same Conversation. `fork()` calls the forks route.
+- `agent(options)` creates the test's agent with `createApp()` options, such
+  as `limits` or `slack.crossActorMidRunMode`. Without it, the agent uses the
+  default options.
+- A call returns when the agent is idle: the in-process queue is empty, and
+  the work that turns started, such as titles, is finished. A call fails when
+  the agent is not idle within 60 seconds.
+- `history` loads earlier turns as stored data. Loading never runs the agent.
+  It writes the same rows as a real turn; `src/fixture/history.eval.ts` checks
+  this against real turns. `history` also accepts a recorded conversation from
+  `src/fixture/recordings/`. Export one with `exportRecordedConversation()`.
+- `onProgress` reacts to what the turn does: `model_request`,
+  `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
+  waits, so the product decides whether it steers, waits, or stops the turn.
+- Insert functions in `src/fixture/insert.ts` write setup data through the
+  product store functions. They never run turns. Add one when a test needs a
+  new kind of setup data.
+- Slack replies are the posts in the Slack thread, including posts that Junior
+  does not store. Each Conversation is read as the person who started it.
+- Assert facts that do not depend on wording: reply counts, turn states, tool
+  calls, and reactions. Use `criteria` for wording. Do not assert on stored
+  rows or runtime objects.
+
+`scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
+in `scripts/test-architecture-baseline.json` lists the files that break each
+rule today. Lower an entry when you fix a file. Do not add entries.
+
 ## Layer Boundaries
 
 Testing taxonomy and layer contracts are defined in:
@@ -188,8 +249,9 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 
 ## Authoring Rules
 
-- Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
-- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
+- Write new cases with the agent test fixture (see **Agent Test Fixture**). Files that still use `describeEval()` with `slackEvals` move to the fixture over time.
+- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
+- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Put messages that should be pending before processing starts in `initialEvents`.
@@ -209,7 +271,8 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope.
 - Each eval name should only state the specific scenario and outcome.
 - Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
-- Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
+- Keep user prompts natural when a rubric or judge scores the outcome. They should read like plausible user requests, not scripted implementation instructions.
+- A case that only asserts a deterministic outcome, such as turn routing or delivery, may use short manufactured inputs. Fewer model calls keep it fast.
 - Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
 - If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
 

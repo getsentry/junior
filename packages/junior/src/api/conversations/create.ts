@@ -9,7 +9,7 @@ import {
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
-import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { throwApiError } from "../http";
 import type {
   AcceptedConversationMessage,
@@ -38,11 +38,17 @@ function actorFromViewer(viewer: User): WebActor {
   });
 }
 
+/** Services that accept web input into the conversation work queue. */
+export interface WebInputServices {
+  attachmentStorage: AttachmentStorage;
+  queue: ConversationWorkQueue;
+}
+
 /** Create a dashboard root conversation and enqueue its first message. */
 export async function createConversationForViewer(
   viewer: User,
   body: CreateConversationBody,
-  attachmentStorage: AttachmentStorage,
+  services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
   const images = parseImages(body.images);
   try {
@@ -56,8 +62,8 @@ export async function createConversationForViewer(
       },
       {
         conversationStore: getConversationStore(),
-        attachmentStorage,
-        queue: getVercelConversationWorkQueue(),
+        attachmentStorage: services.attachmentStorage,
+        queue: services.queue,
       },
     );
   } catch (error) {
@@ -70,7 +76,7 @@ export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
-  attachmentStorage: AttachmentStorage,
+  services: WebInputServices,
 ): Promise<AcceptedConversationMessage> {
   const conversation = await getConversationStore().get({
     conversationId,
@@ -108,8 +114,8 @@ export async function appendConversationMessageForViewer(
       },
       {
         conversationStore: getConversationStore(),
-        attachmentStorage,
-        queue: getVercelConversationWorkQueue(),
+        attachmentStorage: services.attachmentStorage,
+        queue: services.queue,
       },
     );
   } catch (error) {

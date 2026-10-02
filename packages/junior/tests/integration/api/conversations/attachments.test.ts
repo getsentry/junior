@@ -2,6 +2,7 @@ import { memoryAttachmentStorage } from "../../../fixtures/attachment-storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -28,7 +29,10 @@ function apiWithViewer(
   }
   app.route(
     "/api/conversations",
-    createConversationRoutes({ attachmentStorage: storage }),
+    createConversationRoutes({
+      attachmentStorage: storage,
+      queue: createConversationWorkQueueTestAdapter(),
+    }),
   );
   return app;
 }

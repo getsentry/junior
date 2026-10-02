@@ -17,5 +17,11 @@
       "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"]
     }
   },
-  "include": ["*.ts", "evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "*.ts",
+    "evals/**/*.ts",
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../junior/src/virtual-modules.d.ts"
+  ]
 }

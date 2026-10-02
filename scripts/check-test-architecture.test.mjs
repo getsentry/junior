@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  checkAgentTestArchitecture,
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
 } from "./check-test-architecture.mjs";
@@ -237,6 +238,70 @@ test("scopes dashboard E2E rules to dashboard browser specs", () => {
     checkIntegrationTestArchitecture([
       integrationTest("await control.boundingBox();"),
     ]),
+    [],
+  );
+});
+
+const EVAL_PATH = "packages/junior-evals/evals/conversation/new.eval.ts";
+
+test("rejects agent test contract violations above the baseline", () => {
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(
+          'vi.mock("@/chat/pi/client", () => ({}));\nsetPlugins([]);',
+        ),
+        integrationTest(
+          'import { getDb } from "@/chat/db";\nimport { mention } from "../../src/helpers";',
+          EVAL_PATH,
+        ),
+      ],
+      {},
+    ),
+    [
+      `${EVAL_PATH}: agent tests must import only the agent test fixture, public types, and test libraries (2 found, 0 allowed)`,
+      `${TEST_PATH}: tests must not fake the model; run the real agent through the agent test fixture (1 found, 0 allowed)`,
+      `${TEST_PATH}: tests must not mutate runtime config or reload modules; pass options to createApp() or agent() (1 found, 0 allowed)`,
+    ],
+  );
+});
+
+test("requires a lower baseline when a file breaks a rule less", () => {
+  assert.deepEqual(
+    checkAgentTestArchitecture([integrationTest("setPlugins([]);")], {
+      "runtime-config-mutation": { [TEST_PATH]: 2 },
+    }),
+    [
+      `${TEST_PATH}: runtime-config-mutation baseline allows 2 but 1 found; lower the entry in scripts/test-architecture-baseline.json`,
+    ],
+  );
+});
+
+test("allows agent tests to import the fixture, public types, and test libraries", () => {
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(
+          [
+            'import { expect } from "vitest";',
+            'import { toolCalls } from "vitest-evals";',
+            'import type { JuniorAppOptions } from "@sentry/junior";',
+            'import { mention, test } from "../../src/fixture/test";',
+            'import { launchHistory } from "./helpers";',
+          ].join("\n"),
+          EVAL_PATH,
+        ),
+        integrationTest(
+          'import { getDb } from "@/chat/db";\nprocessConversationQueueMessage(message);',
+          "packages/junior-evals/src/fixture/agent.ts",
+        ),
+        integrationTest(
+          'import { getDb } from "@/chat/db";',
+          "packages/junior-evals/evals/router/new.eval.ts",
+        ),
+      ],
+      {},
+    ),
     [],
   );
 });

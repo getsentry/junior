@@ -58,7 +58,10 @@ describe("web image input", () => {
     });
     app.route(
       "/api/conversations",
-      createConversationRoutes({ attachmentStorage: storage }),
+      createConversationRoutes({
+        attachmentStorage: storage,
+        queue: fixture.queue,
+      }),
     );
     const base = `/api/conversations/${encodeURIComponent(accepted.conversationId)}`;
     const headers = { "x-test-viewer": fixture.actor.email };

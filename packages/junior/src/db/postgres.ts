@@ -10,6 +10,7 @@ import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
 import { traceQueries } from "./tracing";
+import { logException } from "@/chat/logging";
 
 const { Pool } = pg;
 
@@ -172,13 +173,18 @@ export function createPostgresJuniorSqlExecutor(args: {
   connectionString: string;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
-  return new PostgresExecutor(
-    new Pool({
-      application_name: args.applicationName,
-      connectionString: args.connectionString,
-      max: 3,
-      statement_timeout: args.statementTimeoutMs,
-    }),
-    args.connectionString,
-  );
+  const pool = new Pool({
+    application_name: args.applicationName,
+    connectionString: args.connectionString,
+    max: 3,
+    statement_timeout: args.statementTimeoutMs,
+  });
+  // An idle client can fail when the server closes it. The pool replaces the
+  // client, so report the error instead of crashing the process.
+  pool.on("error", (error) => {
+    logException(error, "db.pool.client.failed", {
+      "app.db.driver": "postgres",
+    });
+  });
+  return new PostgresExecutor(pool, args.connectionString);
 }

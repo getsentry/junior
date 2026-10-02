@@ -24,6 +24,8 @@
     "@sentry/junior-testing": "workspace:*",
     "ai": "^6.0.190",
     "chat": "4.29.0",
+    "hono": "^4.12.27",
+    "msw": "^2.14.6",
     "tinyrainbow": "^3.1.0",
     "typescript": "^6.0.3",
     "undici": "7.29.0",

@@ -32,6 +32,24 @@ export interface QueueCallbackOptions<Message> {
 
 /** Build the HTTP callback and local-dev consumer for one signed queue. */
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
+  const consume = async (
+    message: Message,
+    metadata: MessageMetadata,
+  ): Promise<void> => {
+    if (options.skip?.(metadata)) {
+      return;
+    }
+    try {
+      await runWithTurnRequestDeadline(() => options.run(message, metadata));
+    } catch (error) {
+      const reason = options.permanentError?.(error);
+      if (!reason) {
+        throw error;
+      }
+      options.onRejected(reason, metadata, error);
+    }
+  };
+
   const handler = async (
     value: unknown,
     metadata: MessageMetadata,
@@ -49,17 +67,7 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    try {
-      await runWithTurnRequestDeadline(() =>
-        options.run(checked.message, metadata),
-      );
-    } catch (error) {
-      const reason = options.permanentError?.(error);
-      if (!reason) {
-        throw error;
-      }
-      options.onRejected(reason, metadata, error);
-    }
+    await consume(checked.message, metadata);
   };
 
   const retry = (
@@ -86,6 +94,8 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
       : { visibilityTimeoutSeconds: options.visibilityTimeoutSeconds };
 
   return {
+    /** Run a message that an in-process queue already trusts. */
+    consume,
     create: () => handleCallback(handler, { retry, ...visibility }),
     registerDev: () => {
       if (process.env.NODE_ENV !== "development") {
