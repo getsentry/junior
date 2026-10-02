@@ -16,6 +16,12 @@ import {
   type MemoryKind,
 } from "./types";
 
+import {
+  extractedGapSchema,
+  GAP_EXTRACTION_RULES,
+  type ExtractedGap,
+} from "./gaps/types";
+
 const memoryKindSchema = z.enum(MEMORY_KINDS);
 const memoryRejectReasonSchema = z.enum([
   "not_public_shareable",
@@ -198,6 +204,7 @@ const extractedMemoryResultSchema = z
   .strict();
 const extractMemoriesResponseSchema = z
   .object({
+    gaps: z.array(extractedGapSchema).max(3),
     memories: z
       .array(extractedMemorySchema)
       .max(5)
@@ -225,6 +232,7 @@ export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 export type MemoryExtractionResult = {
   costUsd?: number;
   memories: ExtractedMemory[];
+  gaps: ExtractedGap[];
 };
 
 /** Memories admitted by automatic recall and the model cost of that decision. */
@@ -258,11 +266,12 @@ const MEMORY_REVIEW_SYSTEM = [
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
 const MEMORY_EXTRACTION_SYSTEM = [
-  "You are Junior's passive memory extraction agent. Return only structured memories worth storing.",
+  "You are Junior's passive extraction agent. Return durable memories and separate observations of capability gaps.",
   "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
-  "Assistant text is context for interpreting the run, not independent evidence for new facts.",
-  "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
+  "Assistant text is not independent evidence for memory facts. It can support an unverified gap observation under the gap rules.",
+  "Reject secrets, credentials, private or sensitive personal details, gossip, and speculative claims about other people from both outputs. For memories, also reject assistant/system implementation details, vague references, and low-durability chatter.",
   "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
+  GAP_EXTRACTION_RULES,
 ].join("\n");
 const MEMORY_RECALL_SYSTEM = [
   "You are Junior's memory recall relevance agent.",
@@ -464,7 +473,7 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   const allowsPreference = allowedKinds.has("preference");
   return [
     "<memory-extraction-input>",
-    "Extract durable memories from this completed agent run using the runtime-owned context below.",
+    "Extract durable memories and separate gap observations from this completed agent run using the runtime-owned context below. The rules below apply to memories; use the system gap rules for gaps.",
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
@@ -612,12 +621,12 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         schema: extractMemoriesResponseSchema,
         system: MEMORY_EXTRACTION_SYSTEM,
         prompt: sessionExtractionPrompt(request),
-        maxTokens: 1_000,
+        maxTokens: 2_000,
       });
+      const response = extractMemoriesResponseSchema.parse(result.object);
       return {
-        memories: extractedMemoriesFromResponse(
-          extractMemoriesResponseSchema.parse(result.object),
-        ),
+        gaps: response.gaps,
+        memories: extractedMemoriesFromResponse(response),
         ...(result.costUsd !== undefined
           ? { costUsd: result.costUsd }
           : undefined),

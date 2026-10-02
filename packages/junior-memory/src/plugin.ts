@@ -21,6 +21,7 @@ import {
 } from "./events";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
+import { createGapUserPage } from "./gaps/page";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
 
@@ -115,7 +116,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
             },
           },
         },
-    userPages: [createMemoryUserPage()],
+    userPages: [createMemoryUserPage(), createGapUserPage()],
     hooks: {
       async operationalReport(ctx) {
         const extractionDays = await ctx.eventStats.costsByDay({

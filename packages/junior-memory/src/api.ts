@@ -25,6 +25,8 @@ import {
 } from "./viewer";
 import { parseCapturedMemories } from "./events";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
+import { gapListInputSchema, listGaps, reviewGap } from "./gaps/store";
+import { GAP_REVIEW_STATES } from "./gaps/types";
 
 export const memoryApiSchema = z
   .object({
@@ -179,13 +181,29 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       const conversationPath = /^\/conversations\/([^/]+)\/memories$/.exec(
         url.pathname,
       );
+      const isGaps = url.pathname === "/gaps";
+      const gapReviewPath =
+        /^\/gaps\/([a-f0-9]{64})\/(unreviewed|confirmed|dismissed)$/.exec(
+          url.pathname,
+        );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
+      if (
+        !isCollection &&
+        !isDashboard &&
+        !memoryPath &&
+        !conversationPath &&
+        !isGaps &&
+        !gapReviewPath
+      ) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+      if (
+        !isRead &&
+        !(memoryPath && request.method === "DELETE") &&
+        !(gapReviewPath && request.method === "POST")
+      ) {
         return json({ error: "Method not allowed." }, 405);
       }
 
@@ -194,6 +212,42 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       const userId = viewer.id;
 
       try {
+        if (isGaps && isRead) {
+          const input = gapListInputSchema.parse({
+            limit: Number(url.searchParams.get("limit") ?? 25),
+            cursor: url.searchParams.get("cursor") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined,
+            category: url.searchParams.get("category") ?? undefined,
+            impact: url.searchParams.get("impact") ?? undefined,
+            reviewState: url.searchParams.get("state") ?? undefined,
+            days: url.searchParams.has("days")
+              ? Number(url.searchParams.get("days"))
+              : undefined,
+          });
+          const page = await listGaps(options.db, userId, input);
+          return request.method === "HEAD"
+            ? new Response(null, { headers: { "cache-control": "no-store" } })
+            : json(page);
+        }
+        if (gapReviewPath && request.method === "POST") {
+          // Reject simple cross-origin form submissions. Dashboard actions use JSON.
+          if (
+            request.headers.get("content-type")?.split(";")[0]?.trim() !==
+            "application/json"
+          ) {
+            return json({ error: "Use application/json for gap review." }, 415);
+          }
+          const state = z.enum(GAP_REVIEW_STATES).parse(gapReviewPath[2]);
+          const found = await reviewGap(
+            options.db,
+            userId,
+            gapReviewPath[1]!,
+            state,
+          );
+          return found
+            ? json({ ok: true })
+            : json({ error: "Gap not found." }, 404);
+        }
         if (isDashboard && isRead) {
           const [
             stats,

@@ -1,7 +1,8 @@
 import { Boxes, Trash2 } from "lucide-react";
-import { Navigate, useLocation, useParams } from "react-router";
+import { Link, Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
+import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
@@ -62,6 +63,8 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
   const {
     action,
     content,
+    filter,
+    setFilter,
     query,
     records,
     runAction,
@@ -102,6 +105,26 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
             ))}
           </section>
         ) : null}
+        {content?.filters?.length ? (
+          <Field
+            htmlFor="plugin-page-filter"
+            label="Filter records"
+            size="compact"
+          >
+            <select
+              id="plugin-page-filter"
+              className="rounded border border-dashboard-border-strong bg-dashboard-control p-2 text-dashboard-text"
+              value={filter}
+              onChange={(event) => setFilter(event.currentTarget.value)}
+            >
+              {content.filters.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         {content?.searchPlaceholder ? (
           <SearchInput
             className="w-full"
@@ -134,8 +157,17 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
             {records.map((record) => (
               <Card key={record.id} padding="md">
                 <div className="flex items-start gap-3">
-                  <h2 className="m-0 min-w-0 flex-1 font-display text-base font-medium text-dashboard-text">
-                    {record.title}
+                  <h2 className="m-0 min-w-0 flex-1 break-words font-display text-base font-medium text-dashboard-text">
+                    {record.href ? (
+                      <Link
+                        className="text-dashboard-text hover:underline"
+                        to={record.href}
+                      >
+                        {record.title}
+                      </Link>
+                    ) : (
+                      record.title
+                    )}
                   </h2>
                   {record.actions?.map((recordAction) => (
                     <button
@@ -171,7 +203,7 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                         <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                           {item.label}
                         </dt>
-                        <dd className="mt-1 ml-0 font-mono text-xs text-dashboard-text-muted">
+                        <dd className="mt-1 ml-0 break-all font-mono text-xs text-dashboard-text-muted">
                           {item.value}
                         </dd>
                       </div>

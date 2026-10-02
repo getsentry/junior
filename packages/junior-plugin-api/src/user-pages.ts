@@ -38,7 +38,7 @@ const pluginUserPageActionSchema = z
       .max(500)
       .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
     label: nonBlankStringSchema.max(80),
-    method: z.literal("DELETE"),
+    method: z.enum(["DELETE", "POST"]),
     tone: z.enum(["danger", "neutral"]).optional(),
   })
   .strict();
@@ -50,6 +50,10 @@ const pluginUserPageRecordSchema = z
     id: nonBlankStringSchema.max(128),
     metadata: z.array(pluginUserPageMetadataSchema).max(8).optional(),
     title: nonBlankStringSchema.max(4_000),
+    href: nonBlankStringSchema
+      .max(500)
+      .regex(/^\/[a-zA-Z0-9][a-zA-Z0-9/%_.~-]*$/)
+      .optional(),
   })
   .strict();
 
@@ -58,6 +62,17 @@ export const pluginUserPageContentSchema = z
   .object({
     emptyText: nonBlankStringSchema.max(500).optional(),
     metrics: z.array(pluginUserPageMetricSchema).max(6).optional(),
+    filters: z
+      .array(
+        z
+          .object({
+            label: nonBlankStringSchema.max(80),
+            value: z.string().max(64),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
     nextCursor: nonBlankStringSchema.max(1_000).optional(),
     records: z.array(pluginUserPageRecordSchema).max(100),
     searchPlaceholder: nonBlankStringSchema.max(120).optional(),

@@ -11,6 +11,7 @@ import {
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   uniqueIndex,
@@ -24,6 +25,75 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
 } from "../types";
+
+import { GAP_CATEGORIES, GAP_IMPACTS, GAP_REVIEW_STATES } from "../gaps/types";
+
+/** A committed capture also records Turns with no observed gaps. */
+export const juniorMemoryGapCaptures = pgTable("junior_memory_gap_captures", {
+  turnId: text("turn_id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  capturedAtMs: bigint("captured_at_ms", { mode: "number" }).notNull(),
+});
+
+/** Observations stay outside the memory recall and embedding tables. */
+export const juniorMemoryGaps = pgTable(
+  "junior_memory_gaps",
+  {
+    id: text("id").primaryKey(),
+    turnId: text("turn_id")
+      .notNull()
+      .references(() => juniorMemoryGapCaptures.turnId, {
+        onDelete: "cascade",
+      }),
+    conversationId: text("conversation_id").notNull(),
+    scope: text("scope", { enum: ["private", "public"] }).notNull(),
+    ownerUserId: text("owner_user_id").notNull(),
+    description: text("description").notNull(),
+    explanation: text("explanation").notNull(),
+    category: text("category", { enum: GAP_CATEGORIES }).notNull(),
+    impact: text("impact", { enum: GAP_IMPACTS }).notNull(),
+    evidenceMessageIndices: jsonb("evidence_message_indices")
+      .$type<number[]>()
+      .notNull(),
+    evidenceKind: text("evidence_kind", {
+      enum: ["tool", "reported"],
+    }).notNull(),
+    observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
+    reviewState: text("review_state", { enum: GAP_REVIEW_STATES })
+      .notNull()
+      .default("unreviewed"),
+    reviewedByUserId: text("reviewed_by_user_id"),
+    reviewedAtMs: bigint("reviewed_at_ms", { mode: "number" }),
+  },
+  (table) => [
+    index("junior_memory_gaps_visible_idx").on(
+      table.scope,
+      table.ownerUserId,
+      table.observedAtMs.desc(),
+      table.id,
+    ),
+    check(
+      "junior_memory_gaps_scope_check",
+      sql`${table.scope} IN ('private', 'public')`,
+    ),
+    check(
+      "junior_memory_gaps_category_check",
+      sql`${table.category} IN ('knowledge', 'capability', 'permission', 'tool_failure')`,
+    ),
+    check(
+      "junior_memory_gaps_impact_check",
+      sql`${table.impact} IN ('blocked', 'workaround', 'uncertain_answer')`,
+    ),
+    check(
+      "junior_memory_gaps_review_check",
+      sql`${table.reviewState} IN ('unreviewed', 'confirmed', 'dismissed')`,
+    ),
+    check(
+      "junior_memory_gaps_evidence_check",
+      sql`${table.evidenceKind} IN ('tool', 'reported')`,
+    ),
+  ],
+);
 
 const tsvector = customType<{ data: string }>({
   dataType() {
