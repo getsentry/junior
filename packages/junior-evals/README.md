@@ -27,8 +27,8 @@ The agent is one unit. A test does not mock the model or any other part of
 the agent. A test touches the product in three places only:
 
 1. Inputs through app routes: `mention()` and `threadMessage()` post signed
-   Slack Events API webhooks, and `webMessage()` posts to the conversations
-   API.
+   Slack Events API webhooks, `webMessage()` posts to the conversations API,
+   and `heartbeat()` calls the heartbeat route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
@@ -68,8 +68,12 @@ describe("Thread Continuity", () => {
 - Insert functions in `src/fixture/insert.ts` write setup data through the
   product store functions. They never run turns. Add one when a test needs a
   new kind of setup data.
+- `run(heartbeat())` returns the Conversation that a due automation started.
+  Make an automation due with `insertScheduledAutomation({ due: true })`.
+  That Conversation takes no further input.
 - Slack replies are the posts in the Slack thread, including posts that Junior
-  does not store. Each Conversation is read as the person who started it.
+  does not store. A reply is the body that people see, without the footer.
+  Each Conversation is read as the person who started it.
 - Assert facts that do not depend on wording: reply counts, turn states, tool
   calls, and reactions. Use `criteria` for wording. Do not assert on stored
   rows or runtime objects.

@@ -34,6 +34,16 @@ export interface ToolCall {
   toolCallId: string;
 }
 
+/** Completed calls of one tool across the results of several calls. */
+export function completedToolCalls(
+  name: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return results
+    .flatMap((result) => result.toolCalls)
+    .filter((call) => call.name === name && call.status === "completed");
+}
+
 /** Turn states of the reporting API. A turn that waits for authorization stays `started`. */
 export type TurnStatus = "failed" | "no_reply" | "started" | "succeeded";
 

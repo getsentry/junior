@@ -39,7 +39,7 @@ import {
   buildDeterministicAssistantMessageId,
   buildDeterministicTurnId,
 } from "@/chat/state/turn-id";
-import type { HistoryItem, HistoryReply, Input } from "./inputs";
+import type { HistoryItem, HistoryReply, MessageInput } from "./inputs";
 import {
   insertRecordedEvents,
   isRecordedConversation,
@@ -71,7 +71,7 @@ export type LoadedConversation =
     };
 
 interface HistoryTurn {
-  input: Input;
+  input: MessageInput;
   replies: HistoryReply[];
 }
 
@@ -95,7 +95,7 @@ function groupTurns(items: HistoryItem[]): HistoryTurn[] {
  */
 function slackInputVisibility(
   conversation: Extract<LoadedConversation, { surface: "slack" }>,
-  input: Input,
+  input: MessageInput,
 ) {
   return conversationVisibilityFromSlackChannelType(
     isAppMention(input, conversation.channelType)
@@ -107,7 +107,7 @@ function slackInputVisibility(
 async function recordRoot(
   conversation: LoadedConversation,
   nowMs: number,
-  firstInput?: Input,
+  firstInput?: MessageInput,
 ) {
   if (conversation.surface === "web") {
     await recordWebConversationActivity({
@@ -218,7 +218,7 @@ function historyUserMessage(args: {
   createdAtMs: number;
   /** The first Slack message is the thread root. */
   first: boolean;
-  input: Input;
+  input: MessageInput;
   slack: SlackMock;
 }): {
   actor: ConversationMessageProvenance["actor"];

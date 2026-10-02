@@ -26,6 +26,8 @@ export interface InProcessQueue extends ConversationWorkQueue {
   /** Hold deliveries until `release()`, so inputs form one mailbox batch. */
   hold(): void;
   release(): void;
+  /** The Conversation of each sent message, in send order. */
+  sentConversationIds(): string[];
   /** Failures from deliveries since the last call. */
   takeErrors(): unknown[];
   /** Stop starting deliveries. Running deliveries finish. */
@@ -42,6 +44,7 @@ export function createInProcessQueue(): InProcessQueue {
   const waiting: Array<() => void> = [];
   const pending = new Set<Promise<void>>();
   const errors: unknown[] = [];
+  const sentConversationIds: string[] = [];
 
   const deliver = (
     message: ConversationQueueMessage,
@@ -82,6 +85,7 @@ export function createInProcessQueue(): InProcessQueue {
       if (existing) {
         return { messageId: existing };
       }
+      sentConversationIds.push(message.conversationId);
       nextMessageId += 1;
       const messageId = `in-process-${nextMessageId}`;
       if (key) {
@@ -104,6 +108,7 @@ export function createInProcessQueue(): InProcessQueue {
         schedule();
       }
     },
+    sentConversationIds: () => [...sentConversationIds],
     takeErrors: () => errors.splice(0),
     close() {
       closed = true;

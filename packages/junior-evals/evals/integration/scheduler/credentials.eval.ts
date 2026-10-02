@@ -1,11 +1,12 @@
 import { describe, expect } from "vitest";
-import type { Conversation, ToolCall } from "../../../src/fixture/test";
+import type { ToolCall } from "../../../src/fixture/test";
 import { mention } from "../../../src/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
 } from "../../../src/fixture/insert";
 import { rubric } from "../../../src/fixture/judge";
+import { completedToolCalls } from "../../../src/fixture/results";
 import { test } from "../../../src/fixture/test";
 
 const alice = {
@@ -13,12 +14,6 @@ const alice = {
   userId: "UALICE",
   userName: "alice",
 };
-
-function completedCalls(name: string, ...results: Conversation[]): ToolCall[] {
-  return results
-    .flatMap((result) => result.toolCalls)
-    .filter((call) => call.name === name && call.status === "completed");
-}
 
 function credentialMode(call: ToolCall | undefined): unknown {
   const input = call?.input;
@@ -49,7 +44,7 @@ describe("Scheduled Credentials", () => {
       },
     );
 
-    const creates = completedCalls(
+    const creates = completedToolCalls(
       "slackScheduleCreateAutomation",
       conversation,
     );
@@ -84,7 +79,7 @@ describe("Scheduled Credentials", () => {
       },
     );
 
-    const creates = completedCalls(
+    const creates = completedToolCalls(
       "slackScheduleCreateAutomation",
       proposal,
       confirmation,
@@ -92,7 +87,7 @@ describe("Scheduled Credentials", () => {
     expect(creates).toHaveLength(1);
     expect(credentialMode(creates[0])).toBe("system");
     expect(
-      completedCalls(
+      completedToolCalls(
         "slackScheduleUpdateAutomation",
         proposal,
         confirmation,
@@ -139,13 +134,13 @@ describe("Scheduled Credentials", () => {
     // Anyone may edit a public automation; only the creator may enable
     // creator credentials.
     expect(
-      completedCalls("slackScheduleCreateAutomation", conversation),
+      completedToolCalls("slackScheduleCreateAutomation", conversation),
     ).toEqual([]);
     expect(
-      completedCalls("slackScheduleDeleteAutomation", conversation),
+      completedToolCalls("slackScheduleDeleteAutomation", conversation),
     ).toEqual([]);
     expect(
-      completedCalls("slackScheduleUpdateAutomation", conversation).filter(
+      completedToolCalls("slackScheduleUpdateAutomation", conversation).filter(
         (call) => credentialMode(call) === "creator",
       ),
     ).toEqual([]);
@@ -182,7 +177,7 @@ describe("Scheduled Credentials", () => {
       },
     );
 
-    const updates = completedCalls(
+    const updates = completedToolCalls(
       "slackScheduleUpdateAutomation",
       proposal,
       confirmation,

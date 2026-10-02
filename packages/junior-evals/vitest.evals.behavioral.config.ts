@@ -24,6 +24,8 @@ loadJuniorTestEnvFiles({
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
+// The agent test fixture calls the heartbeat route with this secret.
+process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-behavioral:${randomUUID()}`;
 process.env.REDIS_URL =

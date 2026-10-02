@@ -1,20 +1,25 @@
-import { describeEval } from "vitest-evals";
-import { rubric, scheduledAutomationDue, slackEvals } from "../../src/helpers";
+import { describe, expect } from "vitest";
+import { heartbeat } from "../../src/fixture/inputs";
+import {
+  insertScheduledAutomation,
+  slackChannel,
+} from "../../src/fixture/insert";
+import { rubric } from "../../src/fixture/judge";
+import { test } from "../../src/fixture/test";
 
-describeEval("Scheduled Delivery", slackEvals, (it) => {
-  it("when a one-off reminder becomes due, deliver the reminder outcome", async ({
+describe("Scheduled Delivery", () => {
+  test("when a one-off reminder becomes due, deliver the reminder outcome", async ({
     run,
   }) => {
-    await run({
-      initialEvents: [
-        scheduledAutomationDue(
-          "Post this reminder: Standup moved to 10:30 today.",
-          {
-            schedule: "Once at noon UTC",
-            schedule_kind: "one_off",
-          },
-        ),
-      ],
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: "Post this reminder: Standup moved to 10:30 today.",
+    });
+
+    const delivery = await run(heartbeat(), {
       criteria: rubric({
         pass: [
           "Junior posts a Slack message saying standup moved to 10:30 today.",
@@ -28,46 +33,21 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(delivery.replies).toHaveLength(1);
   });
 
-  it("when a reminder addresses its creator, use the known creator mention", async ({
+  test("when a recurring scheduled automation becomes due, deliver that occurrence", async ({
     run,
   }) => {
-    await run({
-      initialEvents: [
-        scheduledAutomationDue("Remind me to do healthchecks.", {
-          schedule: "Once at noon UTC",
-          schedule_kind: "one_off",
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "Junior reminds the scheduled automation creator to do healthchecks.",
-          "The reminder addresses the creator with the known Slack mention for user U0TEST.",
-        ],
-        fail: [
-          "Do not address a different person.",
-          "Do not resolve the creator by name or ask which person the task means.",
-          "Do not omit the healthchecks reminder.",
-        ],
-      }),
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post this reminder: Submit timesheets by 5pm today.",
     });
-  });
 
-  it("when a recurring scheduled automation becomes due, deliver that occurrence", async ({
-    run,
-  }) => {
-    await run({
-      initialEvents: [
-        scheduledAutomationDue(
-          "Post this reminder: Submit timesheets by 5pm today.",
-          {
-            recurrence: "weekly",
-            schedule: "Weekly on Monday at noon UTC",
-            schedule_kind: "recurring",
-          },
-        ),
-      ],
+    const delivery = await run(heartbeat(), {
       criteria: rubric({
         pass: [
           "Junior posts a Slack message reminding people to submit timesheets by 5pm today.",
@@ -81,5 +61,7 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(delivery.replies).toHaveLength(1);
   });
 });

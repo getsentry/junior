@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { mention, reply, webMessage, type Input } from "./inputs";
+import { mention, reply, webMessage, type MessageInput } from "./inputs";
 import { isRecordedConversation } from "./recorded";
 import { test, type Conversation, type RunAgent } from "./test";
 
@@ -85,8 +85,8 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
 
 async function compareWithRealTurn(
   run: RunAgent,
-  input: Input,
-  rest: Input,
+  input: MessageInput,
+  rest: MessageInput,
 ): Promise<void> {
   const real: Conversation = await run(input);
   // A failed real turn leaves nothing valid to compare against.

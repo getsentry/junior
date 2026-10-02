@@ -43,7 +43,15 @@ export interface WebMessageInput {
   text: string;
 }
 
-export type Input = MentionInput | ThreadMessageInput | WebMessageInput;
+/** The authenticated heartbeat route, which runs due automations. */
+export interface HeartbeatInput {
+  kind: "heartbeat";
+}
+
+/** A message from a person. History items use the same inputs. */
+export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
+
+export type Input = MessageInput | HeartbeatInput;
 
 /** An earlier Junior reply in loaded history. */
 export interface HistoryReply {
@@ -53,7 +61,7 @@ export interface HistoryReply {
   toolHistory?: Array<AssistantMessage | ToolResultMessage>;
 }
 
-export type HistoryItem = Input | HistoryReply;
+export type HistoryItem = MessageInput | HistoryReply;
 
 /** Mention Junior in Slack. `run()` posts it to a new thread. */
 export function mention(
@@ -78,6 +86,14 @@ export function threadMessage(
 /** Send a message from the dashboard. */
 export function webMessage(text: string): WebMessageInput {
   return { kind: "web_message", text };
+}
+
+/**
+ * Call the heartbeat route. `run(heartbeat())` returns the Conversation that
+ * the due automation started.
+ */
+export function heartbeat(): HeartbeatInput {
+  return { kind: "heartbeat" };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */
