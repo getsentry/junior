@@ -128,7 +128,7 @@ export type TranscriptViewMessage = {
     modelId: string;
     modelProfile: string;
     reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
+    source: "configured" | "inherited" | "router" | "model";
   };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;

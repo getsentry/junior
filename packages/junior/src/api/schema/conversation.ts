@@ -492,7 +492,7 @@ const conversationReportTurnRoutedEventDataSchema = z
     costUsd: z.number().finite().nonnegative().optional(),
     reasoningLevel: z.string().min(1),
     confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
+    source: z.enum(["configured", "inherited", "router", "model"]),
   })
   .strict();
 

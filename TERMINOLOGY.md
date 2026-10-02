@@ -77,7 +77,8 @@ Canonical words used across Junior's code and documentation.
 - **History version**: an internal sequence partition used to load agent
   history after a replacement. It is not a product event or lifecycle state.
 - **Turn route**: the model profile and reasoning level selected for a turn
-  before model execution begins.
+  before model execution begins. The router selects it. The model can replace
+  it once with a `handoff` call before it does any work.
 - **Model profile**: a stable host-owned model name, such as `standard` or
   `handoff`, recorded on a turn route or history replacement. A profile may
   include a short task-fit description. The turn router and `handoff` tool use

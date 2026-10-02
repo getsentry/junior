@@ -73,7 +73,7 @@ describe("model profile routing", () => {
     ]);
   });
 
-  it("blocks oversized current input after a router handoff before the first provider request", async () => {
+  it("blocks oversized current input for a router-selected profile before the first provider request", async () => {
     observations.routedModelProfile = "handoff";
     const conversationId = "local:test:router-handoff-input-limit";
     const outcome = await executeAgentRun({
@@ -175,7 +175,9 @@ describe("model profile routing", () => {
     if (outcome.status !== "completed") return;
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(observations.providerCalls).toBe(3);
-    expect(observations.summaryCalls).toBe(2);
+    // The first switch only replaces the router's choice. The second one
+    // follows model work, so it is a real handoff.
+    expect(observations.summaryCalls).toBe(1);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("coding");

@@ -300,7 +300,7 @@ const turnRoutedEventDataSchema = z
     costUsd: z.number().finite().nonnegative().optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS),
     confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
+    source: z.enum(["configured", "inherited", "router", "model"]),
   })
   .strict();
 
