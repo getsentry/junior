@@ -1,0 +1,50 @@
+name: Slack QA alias
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Select a ready preview, or check that it still owns the QA alias
+        type: choice
+        options: [check, select]
+        default: check
+        required: true
+      deployment_id:
+        description: Exact Vercel preview deployment ID (dpl_...)
+        type: string
+        required: true
+      commit_sha:
+        description: Full getsentry/junior commit SHA used by that deployment
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# Deliberately no concurrency group: this workflow is not a QA-session lock.
+jobs:
+  alias:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: slack-qa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check operator script
+        run: node --test apps/example/scripts/slack-qa-alias.test.mjs
+      - name: Select or check preview
+        env:
+          QA_ACTION: ${{ inputs.action }}
+          QA_DEPLOYMENT: ${{ inputs.deployment_id }}
+          QA_SHA: ${{ inputs.commit_sha }}
+          SLACK_QA_ALIAS: ${{ vars.SLACK_QA_ALIAS }}
+          SLACK_QA_PROJECT_ID: ${{ vars.SLACK_QA_PROJECT_ID }}
+          SLACK_QA_TEAM_ID: ${{ vars.SLACK_QA_TEAM_ID }}
+          SLACK_QA_VERCEL_TOKEN: ${{ secrets.SLACK_QA_VERCEL_TOKEN }}
+        run: node apps/example/scripts/slack-qa-alias.mjs "$QA_ACTION" "$QA_DEPLOYMENT" "$QA_SHA"
