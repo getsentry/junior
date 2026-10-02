@@ -14,11 +14,7 @@ import {
   MobileSecondaryNavigationSlot,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardInteractiveTextClass } from "../../styles";
 
 export type DashboardHeaderNavItem = {
   key: string;
@@ -37,7 +33,6 @@ const focusableSelector = [
 
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
-  compact?: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
   mobileNavigationOpen: boolean;
@@ -151,12 +146,12 @@ export function DashboardHeader(props: {
     <header className="relative border-b border-dashboard-border-emphasis bg-dashboard-bg">
       <div
         className={cn(
-          props.compact ? "w-full min-w-0" : dashboardContainerClass,
-          "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
+          // Span the full shell width on every page so the logo and tabs stay
+          // pinned left and the profile and spend stay pinned right.
+          "grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-7 md:py-3",
           props.profile
             ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
             : "md:grid-cols-[auto_minmax(0,1fr)]",
-          props.compact ? "md:px-7 md:py-3" : "md:px-8",
         )}
       >
         {conversationMode && props.mobileBackTo ? (
