@@ -19,10 +19,10 @@ Each matching automation receives an independent idempotent agent dispatch. A
 failure for one automation does not stop other matching automations. The ingress
 boundary receives the combined failure so the provider can retry. Dispatch
 identity binds the automation, plugin namespace, and provider event key. A
-provider retry does not run the same automation twice. A destination may still
-stop further event-automation dispatches after too many automated turns with no user
-message. The Turn that hits the limit posts a plain notice, and later matching
-events stay quiet until a user message clears that pause.
+provider retry does not run the same automation twice. Dispatches do not use the
+consecutive automated-turn limit. Each dispatch runs in its own Conversation, and
+the limit is not counted for a Destination. A shared Destination count paused
+unrelated automations in the same channel.
 
 Event automations target channels or DMs, not threads. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
