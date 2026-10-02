@@ -20,7 +20,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
-import type { HistoryItem, HistoryReply, Input } from "./inputs";
+import type { HistoryItem, HistoryReply, Input, MessageInput } from "./inputs";
 import {
   hasHistory,
   loadHistory,
@@ -107,8 +107,14 @@ export interface FixtureTestContext {
   };
 }
 
+/**
+ * A Conversation that an automation started. Its replies are the Slack posts
+ * of the call, and it takes no further input.
+ */
+type AutomationConversation = { conversationId: string; surface: "automation" };
+
 /** What the fixture knows about one Conversation of the test. */
-type ConversationRecord = LoadedConversation & {
+type ConversationRecord = (LoadedConversation | AutomationConversation) & {
   /** Key of the request that creates a web Conversation. */
   idempotencyKey: string;
   /** Whether an input or loaded history created the Conversation. */
@@ -169,6 +175,7 @@ export async function createFixtureAgent(
   };
 
   const replyMessages = new WeakMap<HistoryReply, string>();
+  const knownConversationIds = new Set<string>();
   const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
     [];
   // Agent model cost per Conversation, from the reporting API.
@@ -223,6 +230,12 @@ export async function createFixtureAgent(
     record: ConversationRecord,
     input: Input,
   ): Promise<void> => {
+    if (input.kind === "heartbeat") {
+      throw new Error("heartbeat() starts a Conversation; pass it to run()");
+    }
+    if (record.surface === "automation") {
+      throw new Error("A Conversation from heartbeat() takes no input");
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -269,7 +282,7 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: Input,
+    first: MessageInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
     if (first.kind === "web_message") {
@@ -316,26 +329,43 @@ export async function createFixtureAgent(
   };
 
   const newRecord = (
-    loaded: LoadedConversation & { idempotencyKey?: string },
+    loaded: (LoadedConversation | AutomationConversation) & {
+      idempotencyKey?: string;
+    },
     viewerEmail = WEB_VIEWER_EMAIL,
-  ): ConversationRecord => ({
-    ...loaded,
-    idempotencyKey: loaded.idempotencyKey ?? randomUUID(),
-    lastSeq: BEFORE_FIRST_EVENT,
-    started: false,
-    viewerEmail,
-    visibleMessages: [],
-  });
+  ): ConversationRecord => {
+    knownConversationIds.add(loaded.conversationId);
+    return {
+      ...loaded,
+      idempotencyKey: loaded.idempotencyKey ?? randomUUID(),
+      lastSeq: BEFORE_FIRST_EVENT,
+      started: false,
+      viewerEmail,
+      visibleMessages: [],
+    };
+  };
 
+  /**
+   * Send the inputs of one call and wait until the agent is idle. A target
+   * function finds a Conversation that the call started, such as the one a
+   * due automation started.
+   */
   const call = async (
-    record: ConversationRecord,
+    target: ConversationRecord | (() => ConversationRecord),
     send: () => Promise<void>,
     options: CallOptions,
   ): Promise<Conversation> => {
     const slackCallIndex = readCapturedSlackApiCalls().length;
     const slackPostIndex = slack.posts().length;
     const progressActions = {
-      send: async (input: Input) => await sendInput(record, input),
+      send: async (input: Input) => {
+        if (typeof target === "function") {
+          throw new Error(
+            "send() needs a Conversation from mention() or webMessage()",
+          );
+        }
+        await sendInput(target, input);
+      },
     };
     if (options.onProgress) {
       const onProgress = options.onProgress;
@@ -357,6 +387,7 @@ export async function createFixtureAgent(
       gateway.setProgressHook(undefined);
       slack.setReplyHook(undefined);
     }
+    const record = typeof target === "function" ? target() : target;
     const detail = await readConversationDetail(
       api,
       record.conversationId,
@@ -370,22 +401,24 @@ export async function createFixtureAgent(
     const earlier = [...record.visibleMessages];
     record.lastSeq = events.lastSeq;
     // Slack people see thread posts, including posts Junior does not store,
-    // such as the opt-out acknowledgement.
+    // such as the opt-out acknowledgement. An automation posts to its
+    // destination, and it is the only work of its call.
+    const callPosts = slack.posts().slice(slackPostIndex);
     const { replies, visibleMessages } =
-      record.surface === "slack"
-        ? slackCallReplies({
+      record.surface === "web"
+        ? { replies: events.replies, visibleMessages: events.visibleMessages }
+        : slackCallReplies({
             durable: events,
-            posts: slack
-              .posts()
-              .slice(slackPostIndex)
-              .filter(
-                (post) =>
-                  post.channel === record.channelId &&
-                  post.threadTs === record.threadTs,
-              ),
+            posts:
+              record.surface === "automation"
+                ? callPosts
+                : callPosts.filter(
+                    (post) =>
+                      post.channel === record.channelId &&
+                      post.threadTs === record.threadTs,
+                  ),
             conversationId: record.conversationId,
-          })
-        : { replies: events.replies, visibleMessages: events.visibleMessages };
+          });
     record.visibleMessages.push(...visibleMessages);
     // Slack reactions are sets; ingress and the worker can add the same one.
     const reactions = [
@@ -467,6 +500,9 @@ export async function createFixtureAgent(
     options: CallOptions,
   ): Promise<Conversation> => {
     if (hasHistory(options.history)) {
+      if (record.surface === "automation") {
+        throw new Error("A Conversation from heartbeat() takes no history");
+      }
       record.lastSeq = await loadHistory({
         api,
         conversation: record,
@@ -561,9 +597,50 @@ export async function createFixtureAgent(
     fork: (reply) => runEvalWork(() => fork(record, reply)),
   });
 
+  /** Call the heartbeat route and return the Conversation it started. */
+  const runHeartbeat = async (options: CallOptions): Promise<Conversation> => {
+    const sentIndex = queue.sentConversationIds().length;
+    return await call(
+      () => {
+        const startedIds = [
+          ...new Set(queue.sentConversationIds().slice(sentIndex)),
+        ].filter((id) => !knownConversationIds.has(id));
+        if (startedIds.length !== 1) {
+          throw new Error(
+            `heartbeat() started ${startedIds.length} Conversations; expected 1`,
+          );
+        }
+        const record = newRecord(
+          { conversationId: startedIds[0]!, surface: "automation" },
+          slackAuthorEmail(DEFAULT_SLACK_AUTHOR),
+        );
+        record.started = true;
+        return record;
+      },
+      async () => {
+        const response = await app.request("/api/internal/heartbeat", {
+          headers: { authorization: `Bearer ${heartbeatSecret()}` },
+        });
+        if (response.status !== 202) {
+          throw new Error(
+            `Heartbeat returned ${response.status}: ${await response.text()}`,
+          );
+        }
+      },
+      options,
+    );
+  };
+
   const run: RunAgent = async (input, options = {}) => {
-    const [first] = Array.isArray(input) ? input : [input];
+    const inputs = Array.isArray(input) ? input : [input];
+    const [first] = inputs;
     if (!first) throw new Error("run() needs an input");
+    if (first.kind === "heartbeat") {
+      if (inputs.length > 1 || hasHistory(options.history)) {
+        throw new Error("run(heartbeat()) takes no other input or history");
+      }
+      return await runHeartbeat(options);
+    }
     return await converse(
       newConversation(first, options.history),
       input,
@@ -572,6 +649,17 @@ export async function createFixtureAgent(
   };
 
   return { run, close };
+}
+
+/** The secret of the heartbeat route, read as the route reads it. */
+function heartbeatSecret(): string {
+  const secret =
+    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
+    process.env.CRON_SECRET?.trim();
+  if (!secret) {
+    throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
+  }
+  return secret;
 }
 
 /** A JSON POST signed in as `viewerEmail`. */

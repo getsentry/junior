@@ -64,13 +64,18 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
   });
 }
 
-/** Store a weekly scheduled automation that a Slack person created. */
+/**
+ * Store a scheduled automation that a Slack person created. It is weekly and
+ * next runs in a week unless `due` or `once` says otherwise.
+ */
 export async function insertScheduledAutomation(args: {
   createdBy?: SlackAuthor;
   credentialMode?: "creator" | "system";
   destination: SlackChannel;
-  /** Defaults to one week from now, so the automation is not due. */
-  nextRunAtMs?: number;
+  /** Make the automation due, so the next `heartbeat()` runs it. */
+  due?: boolean;
+  /** Run one time instead of every week. */
+  once?: boolean;
   task: string;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
@@ -90,20 +95,26 @@ export async function insertScheduledAutomation(args: {
     credentialMode: args.credentialMode ?? "creator",
     destination: args.destination,
     executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
-    nextRunAtMs: args.nextRunAtMs ?? nowMs + 7 * 24 * 60 * 60 * 1000,
+    nextRunAtMs: args.due ? nowMs : nowMs + 7 * 24 * 60 * 60 * 1000,
     outcomes: [{ action: "send_message", destination: args.destination }],
-    schedule: {
-      description: "Every Monday at 9:00 AM Pacific",
-      kind: "recurring",
-      recurrence: {
-        frequency: "weekly",
-        interval: 1,
-        startDate: new Date(nowMs).toISOString().slice(0, 10),
-        time: { hour: 9, minute: 0 },
-        weekdays: [1],
-      },
-      timezone: "America/Los_Angeles",
-    },
+    schedule: args.once
+      ? {
+          description: "Once at 9:00 AM Pacific",
+          kind: "one_off",
+          timezone: "America/Los_Angeles",
+        }
+      : {
+          description: "Every Monday at 9:00 AM Pacific",
+          kind: "recurring",
+          recurrence: {
+            frequency: "weekly",
+            interval: 1,
+            startDate: new Date(nowMs).toISOString().slice(0, 10),
+            time: { hour: 9, minute: 0 },
+            weekdays: [1],
+          },
+          timezone: "America/Los_Angeles",
+        },
     status: "active",
     task: { text: args.task },
     updatedAtMs: nowMs - 60_000,

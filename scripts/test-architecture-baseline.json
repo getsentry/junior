@@ -91,16 +91,11 @@
     "packages/junior-evals/evals/integration/event-automations/delivery.eval.ts": 1,
     "packages/junior-evals/evals/integration/event-automations/helpers.ts": 4,
     "packages/junior-evals/evals/integration/event-automations/management.eval.ts": 1,
-    "packages/junior-evals/evals/integration/scheduler/creation.eval.ts": 3,
-    "packages/junior-evals/evals/integration/scheduler/helpers.ts": 4,
-    "packages/junior-evals/evals/integration/scheduler/management.eval.ts": 1,
-    "packages/junior-evals/evals/integration/scheduler/move.eval.ts": 3,
     "packages/junior-evals/evals/memory/actors.eval.ts": 4,
     "packages/junior-evals/evals/memory/helpers.ts": 8,
     "packages/junior-evals/evals/memory/management.eval.ts": 1,
     "packages/junior-evals/evals/memory/shared.eval.ts": 1,
     "packages/junior-evals/evals/memory/user.eval.ts": 1,
-    "packages/junior-evals/evals/scheduler/delivery.eval.ts": 1,
     "packages/junior-evals/evals/sentry/skills.eval.ts": 1
   },
   "model-fakes": {

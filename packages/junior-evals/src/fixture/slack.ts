@@ -82,6 +82,30 @@ async function readSlackParams(
   return Object.fromEntries(new URLSearchParams(await request.text()));
 }
 
+/**
+ * The message body people see. Slack shows `blocks` instead of `text`, which
+ * is a notification fallback that can repeat the footer.
+ */
+function readPostBody(params: Record<string, string>): string {
+  const blocks = params.blocks
+    ? (JSON.parse(params.blocks) as Array<{
+        text?: string | { text?: string };
+        type?: string;
+      }>)
+    : [];
+  const body = blocks
+    .flatMap((block) =>
+      block.type === "markdown" && typeof block.text === "string"
+        ? [block.text]
+        : block.type === "section" && typeof block.text === "object"
+          ? [block.text.text ?? ""]
+          : [],
+    )
+    .filter(Boolean)
+    .join("\n\n");
+  return body || (params.text ?? "");
+}
+
 /** The email `users.info` returns, which links the Slack person to Junior. */
 export function slackAuthorEmail(author: Required<SlackAuthor>): string {
   return `${author.userName}@example.com`;
@@ -145,7 +169,7 @@ export function installSlackMock(): SlackMock {
       const channel = params.channel ?? "";
       const post: SlackPost = {
         channel,
-        text: params.text ?? "",
+        text: readPostBody(params),
         ts: nextTs(),
         ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
       };
