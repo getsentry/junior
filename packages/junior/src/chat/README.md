@@ -253,8 +253,9 @@ delegation without becoming the execution actor or a general task owner.
   in explicitly. Every execution attempt that enters review reaches Guardian;
   prior rejections are context rather than binding decisions. Each Guardian
   decision is committed to the conversation event log before the reviewed
-  action can continue. `ask` and `deny` become expected tool failures, and three
-  consecutive rejections interrupt the execution slice.
+  action can continue. `ask` and `deny` become expected tool failures. After
+  three consecutive rejections, the rejection tells the agent to stop retrying
+  and explain the risk to the user. It does not end the execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded user, assistant, tool-call, and tool-result
   evidence selected with the Codex Guardian transcript rules. It cannot override
