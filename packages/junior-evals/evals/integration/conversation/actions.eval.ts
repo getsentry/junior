@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
-import { mention } from "../../../src/fixture/inputs";
-import { completedToolCalls } from "../../../src/fixture/results";
-import { test } from "../../../src/fixture/test";
+import { mention } from "@junior-evals/fixture/inputs";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Conversation Actions", () => {
   test("when the request is reaction-only, add a reaction without reply clutter", async ({

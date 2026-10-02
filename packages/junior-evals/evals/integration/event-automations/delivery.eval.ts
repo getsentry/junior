@@ -1,13 +1,13 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
-import { githubWebhook } from "../../../src/fixture/inputs";
+import { githubWebhook } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
-} from "../../../src/fixture/insert";
-import { rubric } from "../../../src/fixture/judge";
-import { test } from "../../../src/fixture/test";
+} from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Event automation delivery", () => {
   test("when an event matches, execute the task with provider text as data", async ({

@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
-import { mention, threadMessage } from "../../../src/fixture/inputs";
-import { rubric } from "../../../src/fixture/judge";
-import { test } from "../../../src/fixture/test";
+import { mention, threadMessage } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Conversation Routing", () => {
   test("when a thread message explicitly mentions Junior, post a direct reply", async ({

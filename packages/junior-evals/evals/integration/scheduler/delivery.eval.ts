@@ -1,10 +1,10 @@
 import { describe, expect } from "vitest";
-import { heartbeat } from "../../../src/fixture/inputs";
+import { heartbeat } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
-} from "../../../src/fixture/insert";
-import { test } from "../../../src/fixture/test";
+} from "@junior-evals/fixture/insert";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
   test("when a due reminder says me, mention its creator", async ({ run }) => {

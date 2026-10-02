@@ -1,15 +1,15 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
-import type { ToolCall } from "../../../src/fixture/test";
-import { mention } from "../../../src/fixture/inputs";
+import type { ToolCall } from "@junior-evals/fixture/test";
+import { mention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
-} from "../../../src/fixture/insert";
-import { rubric } from "../../../src/fixture/judge";
-import { completedToolCalls, toolOutput } from "../../../src/fixture/results";
-import { test } from "../../../src/fixture/test";
+} from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
 const alice = {
   fullName: "Alice Example",

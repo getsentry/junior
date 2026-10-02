@@ -1,12 +1,12 @@
 import { describe, expect } from "vitest";
-import { mention } from "../../../src/fixture/inputs";
+import { mention } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
-} from "../../../src/fixture/insert";
-import { rubric } from "../../../src/fixture/judge";
-import { completedToolCalls } from "../../../src/fixture/results";
-import { test } from "../../../src/fixture/test";
+} from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
 const alice = {
   fullName: "Alice Example",

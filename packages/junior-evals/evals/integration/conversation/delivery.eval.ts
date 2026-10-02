@@ -1,8 +1,8 @@
 import { describe, expect } from "vitest";
-import { mention } from "../../../src/fixture/inputs";
-import { rubric } from "../../../src/fixture/judge";
-import { completedToolCalls, toolOutput } from "../../../src/fixture/results";
-import { test } from "../../../src/fixture/test";
+import { mention } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Slack Message Delivery", () => {
   test("when asked for no visible reply, complete silently", async ({

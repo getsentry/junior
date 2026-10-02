@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
-import { mention, reply } from "../../src/fixture/inputs";
-import { rubric } from "../../src/fixture/judge";
-import { test } from "../../src/fixture/test";
+import { mention, reply } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
   test("when a follow-up asks about the prior turn, recall the earlier budget context", async ({

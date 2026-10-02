@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
-import { mention, reply, webMessage } from "../../../src/fixture/inputs";
-import { rubric } from "../../../src/fixture/judge";
-import { test } from "../../../src/fixture/test";
+import { mention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
 describe("Conversation Forks", () => {
   test("when a loaded reply is forked, the fork does not know later turns", async ({
