@@ -1,3 +1,4 @@
+import { slackMention } from "@/chat/slack/mrkdwn";
 import {
   type Dispatch,
   type ReplyAttribution,
@@ -50,6 +51,7 @@ function singleLineMetadataValue(value: string): string {
 /** Render the due scheduled automation as plain agent input. */
 function buildDispatchInput(task: ScheduledAutomation): string {
   return renderTaskInput({
+    creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });

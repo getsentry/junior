@@ -4,7 +4,7 @@ import {
 } from "@/chat/task-outcomes-schema";
 import {
   automationTitleSchema,
-  automationInstructionSchema,
+  automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
 import { automationRevision } from "@/chat/automations/revision";
 import { editEventAutomation } from "@/chat/event-automations/edit";
@@ -43,7 +43,7 @@ export function createUpdateEventAutomationTool(
       .object({
         automationId: z.string().min(1),
         title: automationTitleSchema.optional(),
-        instruction: automationInstructionSchema.nullable().optional(),
+        instruction: automationInstructionToolSchema.nullable().optional(),
         trigger: registeredEventAutomationTriggerSchema(catalog)
           .nullable()
           .optional(),

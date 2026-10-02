@@ -304,3 +304,8 @@ export function normalizeSlackStatusText(text: string): string {
   }
   return truncateStatusText(trimmed.replace(/(?:\.\s*)+$/, "").trim());
 }
+
+/** Render a Slack user mention, which Slack shows as the person's name. */
+export function slackMention(userId: string): string {
+  return `<@${userId}>`;
+}
