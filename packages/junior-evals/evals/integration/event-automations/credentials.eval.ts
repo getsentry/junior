@@ -1,3 +1,5 @@
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import type { ToolCall } from "../../../src/fixture/test";
 import { mention } from "../../../src/fixture/inputs";
@@ -6,7 +8,6 @@ import {
   slackChannel,
 } from "../../../src/fixture/insert";
 import { rubric } from "../../../src/fixture/judge";
-import { evalPlugins } from "../../../src/fixture/plugins";
 import { completedToolCalls, toolOutput } from "../../../src/fixture/results";
 import { test } from "../../../src/fixture/test";
 
@@ -42,7 +43,7 @@ describe("Event automation credentials", () => {
     agent,
   }) => {
     const { run } = await agent({
-      plugins: evalPlugins(["@sentry/junior-github"]),
+      plugins: defineJuniorPlugins([githubPlugin()]),
     });
     const conversation = await run(
       mention(
@@ -78,7 +79,7 @@ describe("Event automation credentials", () => {
     agent,
   }) => {
     const { run } = await agent({
-      plugins: evalPlugins(["@sentry/junior-github"]),
+      plugins: defineJuniorPlugins([githubPlugin()]),
     });
     const channel = slackChannel();
     const { id } = await insertEventAutomation({
@@ -138,7 +139,7 @@ describe("Event automation credentials", () => {
     agent,
   }) => {
     const { run } = await agent({
-      plugins: evalPlugins(["@sentry/junior-github"]),
+      plugins: defineJuniorPlugins([githubPlugin()]),
     });
     const channel = slackChannel();
     const { id } = await insertEventAutomation({

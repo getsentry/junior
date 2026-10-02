@@ -1,3 +1,5 @@
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import { githubWebhook } from "../../../src/fixture/inputs";
 import {
@@ -5,7 +7,6 @@ import {
   slackChannel,
 } from "../../../src/fixture/insert";
 import { rubric } from "../../../src/fixture/judge";
-import { evalPlugins } from "../../../src/fixture/plugins";
 import { test } from "../../../src/fixture/test";
 
 describe("Event automation delivery", () => {
@@ -13,7 +14,7 @@ describe("Event automation delivery", () => {
     agent,
   }) => {
     const { run } = await agent({
-      plugins: evalPlugins(["@sentry/junior-github"]),
+      plugins: defineJuniorPlugins([githubPlugin()]),
     });
     await insertEventAutomation({
       destination: slackChannel(),

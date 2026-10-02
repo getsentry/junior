@@ -55,8 +55,10 @@ describe("Thread Continuity", () => {
   the next input to the same Conversation. `fork()` calls the forks route.
 - `agent(options)` creates the test's agent with `createApp()` options, such
   as `limits` or `slack.crossActorMidRunMode`. Without it, the agent uses the
-  default options. Tests do not import plugin packages; pass
-  `plugins: evalPlugins([...])` from `src/fixture/plugins.ts`.
+  default options. Configure plugins as a host does:
+  `agent({ plugins: defineJuniorPlugins([githubPlugin()]) })`. Tests may
+  import the public `@sentry/junior` API and plugin packages, but not runtime
+  internals under `@/`.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles, is finished. A call fails when
   the agent is not idle within 60 seconds.

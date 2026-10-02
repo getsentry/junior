@@ -98,7 +98,7 @@ const AGENT_TEST_RULES = [
   {
     id: "agent-test-imports",
     message:
-      "agent tests must import only the agent test fixture, public types, and test libraries",
+      "agent tests must import only the agent test fixture, the public app API, plugin packages, and test libraries",
     pathPrefix: AGENT_EVALS_ROOT,
     count: countForbiddenAgentTestImports,
   },
@@ -128,7 +128,7 @@ const AGENT_TEST_RULES = [
 const IMPORT_PATTERN =
   /\bimport\s+(type\s+)?(?:[^"';]*?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
-/** Count value imports from outside the fixture, public types, and test libraries. */
+/** Count value imports from outside the fixture, the public app API, plugin packages, and test libraries. */
 function countForbiddenAgentTestImports(file) {
   let count = 0;
   for (const match of file.contents.matchAll(IMPORT_PATTERN)) {
@@ -142,6 +142,13 @@ function countForbiddenAgentTestImports(file) {
 function allowedAgentTestImport(filePath, source, typeOnly) {
   if (/^(?:vitest|vitest-evals)(?:\/|$)/.test(source)) return true;
   if (typeOnly && source.startsWith("@sentry/")) return true;
+  // Tests configure the agent as a host does: the public app API and plugin
+  // packages. Test helpers and the dashboard are not public API.
+  if (
+    /^@sentry\/junior(?:-(?!testing$|evals$|dashboard$)[a-z-]+)?$/.test(source)
+  ) {
+    return true;
+  }
   if (!source.startsWith(".")) return false;
   const resolved = path.posix.normalize(
     path.posix.join(path.posix.dirname(filePath), source),
