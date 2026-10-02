@@ -308,6 +308,44 @@ describe("Pi tool adapter", () => {
     expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 
+  it("reports a preempted tool that ignores the abort as an attempt with unknown outcome", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(() => {
+      abortController.abort(new Error("turn deadline"));
+      return new Promise<never>(() => {});
+    });
+
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await expect(
+      demoTool!.execute(
+        "tool-demo",
+        { value: "input" },
+        abortController.signal,
+      ),
+    ).resolves.toMatchObject({
+      details: { aborted: true, target: "demo" },
+      isError: false,
+    });
+  });
+
   it("reports tool call parameters to the caller", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolCall = vi.fn();

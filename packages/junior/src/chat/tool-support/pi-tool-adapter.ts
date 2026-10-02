@@ -51,6 +51,31 @@ import {
 } from "@/chat/tool-support/action-review";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
+/**
+ * Stop waiting for a tool when the host preempts it. A tool that ignores the
+ * signal must not hold the turn past its deadline, or the parked turn loses
+ * the attempt. Work that keeps running is detached; its outcome is unknown.
+ */
+async function untilPreempted<T>(
+  work: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return await work;
+  let onAbort = () => {};
+  const preempted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([work, preempted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    // The attempt is already reported; a late failure has no reader.
+    work.catch(() => undefined);
+  }
+}
+
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
@@ -194,21 +219,26 @@ export function createPiAgentTools(
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);
     const isSandbox = Boolean(sandboxTools?.supports(toolName));
-    const result = isSandbox
-      ? await sandboxTools!.execute({
-          toolName,
-          input: sandboxInput,
-          ...(signal ? { signal } : undefined),
-          ...(toolName === "grep" || toolName === "findFiles"
-            ? { setToolCallSpanAttributes: setSpanAttributes }
-            : undefined),
-        })
-      : await toolDef.execute(executionInput, {
-          experimental_context: sandbox,
-          ...(signal ? { signal } : undefined),
-          conversationPrivacy: effectiveConversationPrivacy,
-          toolCallId,
-        });
+    const result = await untilPreempted(
+      isSandbox
+        ? sandboxTools!.execute({
+            toolName,
+            input: sandboxInput,
+            ...(signal ? { signal } : undefined),
+            ...(toolName === "grep" || toolName === "findFiles"
+              ? { setToolCallSpanAttributes: setSpanAttributes }
+              : undefined),
+          })
+        : Promise.resolve(
+            toolDef.execute(executionInput, {
+              experimental_context: sandbox,
+              ...(signal ? { signal } : undefined),
+              conversationPrivacy: effectiveConversationPrivacy,
+              toolCallId,
+            }),
+          ),
+      signal,
+    );
 
     const normalized = normalizeToolResult(result, {
       requireStructuredResult: Boolean(toolDef.outputSchema),
