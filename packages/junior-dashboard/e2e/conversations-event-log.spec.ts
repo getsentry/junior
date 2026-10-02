@@ -241,7 +241,10 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(
     page.getByRole("heading", { name: "Package release and self-update" }),
   ).toBeVisible();
-  await expect(page.getByText("Released the package.")).toBeVisible();
+  const transcript = page.getByLabel("Conversation transcript", {
+    exact: true,
+  });
+  await expect(transcript.getByText("Released the package.")).toBeVisible();
 
   const loadEarlier = page.getByRole("button", {
     name: "Load earlier events",

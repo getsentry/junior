@@ -1,4 +1,21 @@
-# Transcript components
+# Conversation components
+
+## Conversation list
+
+`ConversationSplitLayout` owns the desktop list width and resize divider for
+home and selected conversations. Drag the divider or use Left/Right arrow keys.
+Home and End select the width limits. Double-click restores the default width.
+The list ranges from 256 to 640 pixels, with at least 448 pixels left for content
+on desktop. A smaller window limits the width without losing the user's choice.
+The width stays set when selecting a conversation or returning to New. Mobile
+keeps its compose-first landing page without a resize divider.
+
+`ConversationSidebar` owns the named `conversations` query container. Activity
+previews show one line below 18rem, two lines from 18rem, and four lines from
+28rem. Wide lists also wrap titles and use larger preview text. These rules use
+the list width, not the viewport width.
+
+## Transcript components
 
 Keep transcript layout in these feature components. Use the dashboard UI kit for
 shared controls and overlays.

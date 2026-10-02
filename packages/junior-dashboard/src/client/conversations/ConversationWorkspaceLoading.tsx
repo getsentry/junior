@@ -1,50 +1,55 @@
 import { Skeleton } from "../components/Skeleton";
-import { dashboardContainerClass, cn } from "../styles";
+import { cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { ConversationSplitLayout } from "./ConversationSplitLayout";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
-  if (!props.detail) return <ConversationHomeLoading />;
   return (
     <div
       aria-busy="true"
       aria-live="polite"
-      className={cn(
-        dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
-      )}
+      className="h-full min-h-0"
       role="status"
     >
-      <span className="sr-only">Loading conversation</span>
-      <ConversationSidebarLoading />
-      <ConversationDetailLoading />
+      <span className="sr-only">
+        {props.detail ? "Loading conversation" : "Loading conversations"}
+      </span>
+      <ConversationSplitLayout sidebar={<ConversationSidebarLoading />}>
+        {props.detail ? (
+          <ConversationDetailLoading />
+        ) : (
+          <ConversationHomeLoading />
+        )}
+      </ConversationSplitLayout>
     </div>
   );
 }
 
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02] md:grid">
-      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3">
+    <aside className="@container/conversations grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel">
+      <div className="flex items-center justify-between gap-2 px-5 py-3">
         <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
           Conversations
         </h2>
-        <div className="flex gap-1">
-          <Skeleton className="size-7 rounded-md" />
-          <Skeleton className="size-7 rounded-md" />
-        </div>
+        <Skeleton className="size-7 rounded-md" />
       </div>
-      <div className="px-2 pb-2">
+      <div className="px-4 pb-2">
         <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
       </div>
-      <div className="grid content-start gap-1 px-1.5 pb-2">
+      <div className="grid content-start gap-1 px-3 pb-2">
         <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
         {Array.from({ length: 7 }, (_, index) => (
           <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
             <Skeleton
               className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
             />
+            <Skeleton className="h-3 w-full opacity-70" />
+            <Skeleton className="hidden h-3 w-4/5 opacity-70 @min-[18rem]/conversations:block" />
+            <Skeleton className="hidden h-3 w-full opacity-70 @min-[28rem]/conversations:block" />
+            <Skeleton className="hidden h-3 w-3/5 opacity-70 @min-[28rem]/conversations:block" />
             <Skeleton className="h-2.5 w-2/5 opacity-70" />
           </div>
         ))}
@@ -55,17 +60,8 @@ function ConversationSidebarLoading() {
 
 function ConversationHomeLoading() {
   return (
-    <main
-      aria-busy="true"
-      aria-live="polite"
-      className={cn(
-        dashboardContainerClass,
-        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
-      )}
-      role="status"
-    >
-      <span className="sr-only">Loading conversations</span>
-      <div className="mx-auto grid w-full max-w-6xl gap-8">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 md:p-8">
+      <div className="mx-auto grid w-full max-w-6xl gap-8 md:my-auto">
         <section className="mx-auto grid w-full max-w-3xl gap-3">
           <Skeleton className="mx-auto h-8 w-56" />
           <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
@@ -76,12 +72,12 @@ function ConversationHomeLoading() {
             </div>
           </div>
         </section>
-        <section className="grid gap-3">
+        <section className="grid gap-3 md:hidden">
           <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
           <ConversationHomeListLoading />
         </section>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -89,7 +85,7 @@ function ConversationDetailLoading() {
   return (
     <section
       aria-label="Selected conversation"
-      className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+      className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
     >
       <ChatLayout
         scrollAriaLabel="Conversation transcript"
