@@ -34,6 +34,21 @@ const inputSchema = z
       .describe(
         "Set true to keep an intentional ad-hoc checkout when matching Workspaces exist. Prefer switchWorkspace; the checkout is already present after a successful switch.",
       ),
+    blobless: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to perform a blobless shallow clone (--filter=blob:none) to reduce bandwidth and clone times on large repositories.",
+      ),
+    timeoutSeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(300)
+      .optional()
+      .describe(
+        "Optional timeout in seconds for the clone operation. Defaults to 300 seconds (5 minutes), which is the sandbox executor cap.",
+      ),
   })
   .strict();
 const cloneSchema = z.object({
@@ -206,20 +221,24 @@ export function createGitHubCloneRepositoryTool(ctx: {
       // ls-remote, so egress policy cannot distinguish clone without also
       // blocking normal repository workflows. This tool is the bounded,
       // preferred clone path rather than an enforceable network boundary.
+      const timeoutMs = (input.timeoutSeconds ?? 300) * 1000;
+      const cloneArgs = ["clone", "--quiet", "--depth=1"];
+      if (input.blobless === true) {
+        cloneArgs.push("--filter=blob:none");
+      }
+      cloneArgs.push(
+        "--",
+        `https://github.com/${repo.owner}/${repo.name}.git`,
+        directory,
+      );
+
       let clone;
       try {
         clone = await ctx.sandbox.run({
           cmd: "git",
-          args: [
-            "clone",
-            "--quiet",
-            "--depth=1",
-            "--",
-            `https://github.com/${repo.owner}/${repo.name}.git`,
-            directory,
-          ],
+          args: cloneArgs,
           cwd: ctx.sandbox.root,
-          signal: commandSignal(options.signal, 2 * 60_000),
+          signal: commandSignal(options.signal, timeoutMs),
         });
       } catch (error) {
         await removePartialClone(ctx, path);
