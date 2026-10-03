@@ -1,13 +1,14 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 import { handoffHistory } from "./handoff-history";
 
 // Memory defines the terse request. Prior work is complete, so the continuation
-// must act on the new request rather than repeat old work. Both cases use live
-// handoff and summarization; only the cleanup request differs.
+// must act on the new request rather than repeat old work. Both cases switch
+// profiles; the task must succeed with either handoff history strategy.
 describe("Handoff task continuity", () => {
   for (const [label, instruction] of [
     ["terse request", "Deslop"],
@@ -24,7 +25,17 @@ describe("Handoff task continuity", () => {
       });
       const conversation = await run(
         mention(`Switch to the other configured profile first. ${instruction}`),
-        { history: handoffHistory() },
+        {
+          history: handoffHistory(),
+          criteria: rubric({
+            pass: [
+              "Explains that the cleanup removed the unnecessary class and factory while keeping workObjectId stable for the same provider and key.",
+            ],
+            fail: [
+              "Do not claim that a pull request was pushed or that live rendering was verified unless the conversation shows that work.",
+            ],
+          }),
+        },
       );
 
       const handoffIndex = conversation.toolCalls.findIndex(
