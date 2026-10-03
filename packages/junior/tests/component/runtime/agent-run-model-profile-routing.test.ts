@@ -175,7 +175,7 @@ describe("model profile routing", () => {
     if (outcome.status !== "completed") return;
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(observations.providerCalls).toBe(3);
-    expect(observations.summaryCalls).toBe(2);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("coding");

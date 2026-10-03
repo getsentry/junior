@@ -60,7 +60,7 @@ function expectedHandoffReplacementHistory(instruction: string) {
         content: [
           expect.objectContaining({
             type: "text",
-            text: expect.stringContaining(MODEL_HANDOFF_SUMMARY_PREFIX),
+            text: expect.stringContaining("Model handoff completed:"),
           }),
         ],
         provenance: { authority: "context" },
@@ -73,7 +73,7 @@ describe("model handoff execution", () => {
   beforeEach(resetHandoffTestState);
   afterEach(restoreHandoffTestState);
 
-  it("compacts and upgrades the same conversation before continuing the turn", async () => {
+  it("reuses committed history when switching a short turn and resumes from it", async () => {
     observations.requestedProfile = "handoff";
     const conversationId = "local:test:model-handoff";
     const outcome = await executeAgentRun({
@@ -112,8 +112,7 @@ describe("model handoff execution", () => {
     );
     expect(observations.initialHandoffProfiles).toEqual(["coding", "handoff"]);
     expect(observations.afterHandoffProfiles).toEqual(["standard", "coding"]);
-    expect(observations.summaryCalls).toBe(1);
-    expect(observations.handoffStatusBeforeSummary).toBe(true);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
@@ -129,7 +128,6 @@ describe("model handoff execution", () => {
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
-        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(
           "Implement the multi-file refactor.",
         ),
@@ -146,9 +144,7 @@ describe("model handoff execution", () => {
     ).resolves.toBeUndefined();
     const projection = await loadProjection({ conversationId });
     expect(projection).toEqual(outcome.result.piMessages);
-    expect(JSON.stringify(projection)).toContain(
-      "Implement the requested change and verify it.",
-    );
+    expect(JSON.stringify(projection)).toContain("Model handoff completed:");
     expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
       "user",
       "user",
@@ -173,7 +169,7 @@ describe("model handoff execution", () => {
     expect(observations.afterHandoffMessages[2]?.content).toEqual([
       {
         type: "text",
-        text: `${MODEL_HANDOFF_SUMMARY_PREFIX}\n<thread-context authority="evidence-only">\nImplement the requested change and verify it.\n</thread-context>\n\nModel handoff completed: {"modelId":"openai/gpt-5.6-sol","modelProfile":"handoff","reasoningLevel":"high"}.`,
+        text: 'Model handoff completed: {"modelId":"openai/gpt-5.6-sol","modelProfile":"handoff","reasoningLevel":"high"}.',
       },
     ]);
 
@@ -210,7 +206,7 @@ describe("model handoff execution", () => {
     expect(observations.afterHandoffModelId).toBe("xai/grok-4.5");
     expect(observations.afterHandoffToolNames).toContain("handoff");
     expect(observations.reasoningLevels).toEqual(["high", "high", "high"]);
-    expect(observations.summaryCalls).toBe(1);
+    expect(observations.summaryCalls).toBe(0);
     expect(
       observations.handoffDescriptions.map(
         (description) => description.match(/Active profile: "([^"]+)"/)?.[1],
@@ -523,7 +519,6 @@ describe("model handoff execution", () => {
         modelId: "openai/gpt-5.4",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
-        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(
           "Implement the focused code change.",
         ),
@@ -544,7 +539,7 @@ describe("model handoff execution", () => {
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(observations.routerCalls).toBe(2);
     expect(observations.afterHandoffToolNames).toContain("handoff");
-    expect(observations.summaryCalls).toBe(1);
+    expect(observations.summaryCalls).toBe(0);
   });
 
   it("blocks every call when handoff is mixed with a sibling tool", async () => {
@@ -600,7 +595,6 @@ describe("model handoff execution", () => {
         modelId: "openai/gpt-5.6-sol",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-1",
-        summary: "Implement the requested change and verify it.",
         replacementHistory: expectedHandoffReplacementHistory(
           "Implement the refactor.",
         ),

@@ -438,6 +438,7 @@ describe("context compaction projection reset", () => {
     await commitMessages({
       conversationId,
       messages: priorMessages,
+      newMessageProvenance: { authority: "instruction" },
     });
 
     const runtimeContext = [
@@ -446,6 +447,10 @@ describe("context compaction projection reset", () => {
         3,
       ),
     ];
+    const summarize = vi.fn(
+      async () =>
+        ({ text: "Continue the multi-file implementation." }) as never,
+    );
     const handoffMessages = await compactContextForHandoff(
       {
         conversationId,
@@ -457,26 +462,23 @@ describe("context compaction projection reset", () => {
           modelProfile: "handoff",
         },
       },
-      {
-        completeText: async () =>
-          ({ text: "Continue the multi-file implementation." }) as never,
-      },
+      { completeText: summarize },
     );
 
-    expect(handoffMessages).toHaveLength(2);
+    expect(summarize).not.toHaveBeenCalled();
+    expect(handoffMessages.map((message) => message.role)).toEqual([
+      "user",
+      "user",
+      "assistant",
+      "toolResult",
+      "user",
+    ]);
     expect(textOf(handoffMessages[0]!)).toContain(
       "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
     );
     expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Another language model started to solve this problem",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      "Continue the multi-file implementation.",
-    );
-    expect(textOf(handoffMessages[1]!)).toContain(
-      '<open-plan>\n[{"step":"Edit both modules","status":"in_progress"},{"step":"Run focused tests","status":"pending"}]\n</open-plan>',
-    );
+    expect(handoffMessages.slice(1, 4)).toEqual(priorMessages);
+    expect(textOf(handoffMessages[4]!)).toContain("Model handoff completed:");
     const durableHandoffMessages = handoffMessages;
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       durableHandoffMessages,
@@ -489,21 +491,36 @@ describe("context compaction projection reset", () => {
     )
       .map((event) => event.data)
       .find((entry) => entry.type === "handoff");
-    expect(marker).toEqual({
+    expect(marker).toMatchObject({
       type: "handoff",
       modelProfile: "handoff",
       modelId: botConfig.profiles.handoff!.modelId,
       triggeringToolCallId: "handoff-call-1",
-      summary: "Continue the multi-file implementation.",
-      replacementHistory: durableHandoffMessages.map((message) => ({
-        item: {
-          type: "user_message",
-          content: (message as { content: unknown[] }).content,
-          timestamp: expect.any(Number),
-          provenance: { authority: "context" },
+      replacementHistory: [
+        {
+          item: { type: "user_message", provenance: { authority: "context" } },
         },
-      })),
+        {
+          sourceEventSeq: expect.any(Number),
+          item: {
+            type: "user_message",
+            provenance: { authority: "instruction" },
+          },
+        },
+        {
+          sourceEventSeq: expect.any(Number),
+          item: { type: "assistant_message" },
+        },
+        {
+          sourceEventSeq: expect.any(Number),
+          item: { type: "tool_result", toolCallId: "plan-handoff" },
+        },
+        {
+          item: { type: "user_message", provenance: { authority: "context" } },
+        },
+      ],
     });
+    expect(marker).not.toHaveProperty("summary");
 
     const compactor = createContextCompactor({
       completeText: async () =>
@@ -549,7 +566,7 @@ describe("context compaction projection reset", () => {
         type: "handoff",
         modelProfile: "handoff",
         modelId: botConfig.profiles.handoff!.modelId,
-        summary: "Continue the multi-file implementation.",
+        summary: undefined,
       },
       {
         type: "compaction",
