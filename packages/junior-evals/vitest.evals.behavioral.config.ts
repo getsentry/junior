@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
+import type { InlineConfig } from "vitest/node";
 import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
+import { codingSuite } from "./src/suites/coding";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -42,39 +44,71 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
 }
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      "@": path.resolve(juniorPackageRoot, "src"),
-      "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-      "@sentry/junior-plugin-api": path.resolve(
-        pluginApiPackageRoot,
-        "src/index.ts",
-      ),
-    },
-    // Vite 8 resolves tsconfig `paths` natively here:
-    // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
-    // The aliases above keep workspace package internals on source instead of package dist.
-    tsconfigPaths: true,
+const resolve = {
+  alias: {
+    "@": path.resolve(juniorPackageRoot, "src"),
+    "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+    "@sentry/junior-plugin-api": path.resolve(
+      pluginApiPackageRoot,
+      "src/index.ts",
+    ),
   },
+  // Vite 8 resolves tsconfig `paths` natively here:
+  // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
+  // The aliases above keep workspace package internals on source instead of package dist.
+  tsconfigPaths: true,
+};
+
+const projectTest = {
+  environment: "node",
+  sequence: { setupFiles: "list", hooks: "stack" },
+  setupFiles: [
+    path.resolve(__dirname, "src/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
+    path.resolve(__dirname, "src/eval-cleanup.ts"),
+  ],
+  testTimeout: EVAL_TEST_TIMEOUT_MS,
+} satisfies InlineConfig;
+
+// The behavioral directory of the coding suite. See `src/suites/coding.ts`.
+const codingSuiteRoot = "evals/coding";
+
+export default defineConfig({
+  resolve,
   test: {
-    environment: "node",
     fileParallelism: false,
-    sequence: { setupFiles: "list", hooks: "stack" },
+    // Projects do not extend this config, so this global setup runs one time
+    // and every project reads what it provides.
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
-    // Behavioral quality cases. Strict suites have their own configs.
-    include: ["evals/**/*.eval.ts"],
-    exclude: ["evals/guardian/**", "evals/integration/**", "evals/router/**"],
     maxWorkers: 1,
-    setupFiles: [
-      path.resolve(__dirname, "src/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
-      path.resolve(__dirname, "src/eval-cleanup.ts"),
-    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
-    testTimeout: EVAL_TEST_TIMEOUT_MS,
+    projects: [
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          name: "behavioral",
+          // Behavioral quality cases. Strict suites have their own configs.
+          include: ["evals/**/*.eval.ts"],
+          exclude: [
+            "evals/guardian/**",
+            "evals/integration/**",
+            "evals/router/**",
+            `${codingSuiteRoot}/**`,
+          ],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...codingSuite,
+          include: [`${codingSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+    ],
   },
 });

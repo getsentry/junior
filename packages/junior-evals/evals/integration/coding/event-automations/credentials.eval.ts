@@ -1,5 +1,3 @@
-import { defineJuniorPlugins } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import type { ToolCall } from "@junior-evals/fixture/test";
 import { mention } from "@junior-evals/fixture/inputs";
@@ -40,11 +38,8 @@ function credentialMode(call: ToolCall | undefined): unknown {
 
 describe("Event automation credentials", () => {
   test("when event work may need user-bound authorization, use the creator default", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({
-      plugins: defineJuniorPlugins([githubPlugin()]),
-    });
     const conversation = await run(
       mention(
         "When review changes are requested on GitHub PR getsentry/junior#691, create an event automation that looks at the feedback and posts a fix plan in this channel.",
@@ -76,11 +71,8 @@ describe("Event automation credentials", () => {
   });
 
   test("when another channel member requests creator credentials, explain who can enable them", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({
-      plugins: defineJuniorPlugins([githubPlugin()]),
-    });
     const channel = slackChannel();
     const { id } = await insertEventAutomation({
       createdBy: alice,
@@ -136,11 +128,8 @@ describe("Event automation credentials", () => {
   });
 
   test("when the creator requests credential use, enable creator mode", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({
-      plugins: defineJuniorPlugins([githubPlugin()]),
-    });
     const channel = slackChannel();
     const { id } = await insertEventAutomation({
       createdBy: alice,

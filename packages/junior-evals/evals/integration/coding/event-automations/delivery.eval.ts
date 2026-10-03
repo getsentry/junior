@@ -1,5 +1,3 @@
-import { defineJuniorPlugins } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import { githubWebhook } from "@junior-evals/fixture/inputs";
 import {
@@ -11,11 +9,8 @@ import { test } from "@junior-evals/fixture/test";
 
 describe("Event automation delivery", () => {
   test("when an event matches, execute the task with provider text as data", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({
-      plugins: defineJuniorPlugins([githubPlugin()]),
-    });
     await insertEventAutomation({
       destination: slackChannel(),
       task: "Post a concise summary of the requested review changes and one safe next step.",
