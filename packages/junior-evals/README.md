@@ -102,6 +102,20 @@ describe("Thread Continuity", () => {
   calls, and reactions. `toolOutput()` parses a tool result. Use `criteria`
   for wording. Do not assert on stored
   rows or runtime objects.
+- Eval results put numeric agent-call usage in `usage.metadata.modelCalls`.
+  Each entry comes from an `assistant_message` event in the reporting API.
+  It has the model, event sequence, token counts, and cost when available.
+  Loaded history and model calls outside agent history have no entry.
+  `usage.metadata.modelTotals` has aggregate token counts and costs for
+  recorded assistant calls by model. `usage.metadata.costUsd` sums those
+  totals. `usage.metadata.auxiliaryCostUsd` has recorded routing and other
+  non-assistant event costs. `usage.metadata.gatewayModelCalls` has estimated
+  costs and numeric token counts from Messages responses during fixture calls.
+  This includes assistant calls, titles, and compaction summaries. Do not add
+  it to `costUsd` without removing the assistant calls counted in both.
+  Gateway calls on other endpoints have no per-call cache counters here.
+  A missing counter means unknown, not zero.
+  The fixture never copies message or tool content into these usage entries.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each

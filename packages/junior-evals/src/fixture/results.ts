@@ -11,12 +11,16 @@ import {
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
 import type { VisibleMessage } from "./judge";
+import type { GatewayModelCall } from "./gateway";
 
 /** Header that selects the signed-in person for a fixture API request. */
 export const VIEWER_HEADER = "x-fixture-viewer";
 
 type ConversationDetail = z.infer<typeof conversationDetailReportSchema>;
 type ReportEvent = ConversationDetail["events"][number];
+type ReportUsage = NonNullable<
+  ConversationDetail["modelUsage"]
+>[number]["usage"];
 
 /** An assistant message that people saw. */
 export interface Reply {
@@ -217,6 +221,74 @@ export function readCallEvents(args: {
   };
 }
 
+function usageMetrics(usage: ReportUsage | undefined): ModelUsageMetrics {
+  const cost = usage?.cost;
+  return {
+    ...(usage?.inputTokens !== undefined
+      ? { inputTokens: usage.inputTokens }
+      : undefined),
+    ...(usage?.outputTokens !== undefined
+      ? { outputTokens: usage.outputTokens }
+      : undefined),
+    ...(usage?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : undefined),
+    ...(usage?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: usage.cacheCreationTokens }
+      : undefined),
+    ...(cost
+      ? {
+          costUsd: {
+            ...(cost.input !== undefined ? { input: cost.input } : undefined),
+            ...(cost.output !== undefined
+              ? { output: cost.output }
+              : undefined),
+            ...(cost.cacheRead !== undefined
+              ? { cacheRead: cost.cacheRead }
+              : undefined),
+            ...(cost.cacheWrite !== undefined
+              ? { cacheWrite: cost.cacheWrite }
+              : undefined),
+            ...(cost.total !== undefined ? { total: cost.total } : undefined),
+          },
+        }
+      : undefined),
+  };
+}
+
+/** Numeric model-call usage after a Conversation event boundary, without content. */
+export function readModelCalls(
+  events: ReadonlyArray<ReportEvent>,
+  afterSeq: number,
+): ModelCallUsage[] {
+  return events.flatMap((event) =>
+    event.seq > afterSeq && event.data.type === "assistant_message"
+      ? [
+          {
+            eventSeq: event.seq,
+            ...(event.model?.modelId
+              ? { modelId: event.model.modelId }
+              : undefined),
+            ...(event.model?.modelProfile
+              ? { modelProfile: event.model.modelProfile }
+              : undefined),
+            ...usageMetrics(event.modelCall?.usage),
+          },
+        ]
+      : [],
+  );
+}
+
+/** Model totals include recorded assistant calls, including child Conversations. */
+export function readModelTotals(
+  entries: ReadonlyArray<NonNullable<ConversationDetail["modelUsage"]>[number]>,
+): ModelTotalUsage[] {
+  return entries.map(({ modelId, usage }) => ({
+    modelId,
+    ...usageMetrics(usage),
+  }));
+}
+
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
  * changes formatting and links references, such as `owner/repo#1`.
@@ -305,8 +377,36 @@ function toTranscriptEvents(
 /** Model spend the fixture can see: agent cost and AI Gateway requests. */
 export interface FixtureUsage {
   agentCostUsd: number;
+  auxiliaryCostUsd: number;
   gatewayRequests: Record<string, number>;
+  gatewayModelCalls: GatewayModelCall[];
+  modelCalls: ModelCallUsage[];
+  modelTotals: ModelTotalUsage[];
 }
+
+interface ModelUsageMetrics {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
+  costUsd?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+}
+
+/** Per-call counters from the Conversation reporting API. */
+export type ModelCallUsage = ModelUsageMetrics & {
+  eventSeq: number;
+  modelId?: string;
+  modelProfile?: string;
+};
+
+/** Per-model totals from the Conversation reporting API. */
+export type ModelTotalUsage = ModelUsageMetrics & { modelId: string };
 
 /** The vitest-evals run for one call. */
 export function toHarnessRun(args: {
@@ -325,7 +425,11 @@ export function toHarnessRun(args: {
       toolCalls: args.toolCalls.length,
       metadata: {
         costUsd: args.usage.agentCostUsd,
+        auxiliaryCostUsd: args.usage.auxiliaryCostUsd,
         gatewayRequests: args.usage.gatewayRequests,
+        gatewayModelCalls: toJsonValue(args.usage.gatewayModelCalls) ?? [],
+        modelCalls: toJsonValue(args.usage.modelCalls) ?? [],
+        modelTotals: toJsonValue(args.usage.modelTotals) ?? [],
       },
     },
     timings: { totalMs: Date.now() - args.startedAtMs },
@@ -351,7 +455,11 @@ export function combinedRun(
     usage: {
       metadata: {
         costUsd: usage.agentCostUsd,
+        auxiliaryCostUsd: usage.auxiliaryCostUsd,
         gatewayRequests: usage.gatewayRequests,
+        gatewayModelCalls: toJsonValue(usage.gatewayModelCalls) ?? [],
+        modelCalls: toJsonValue(usage.modelCalls) ?? [],
+        modelTotals: toJsonValue(usage.modelTotals) ?? [],
       },
     },
     timings: { totalMs: Date.now() - startedAtMs },
