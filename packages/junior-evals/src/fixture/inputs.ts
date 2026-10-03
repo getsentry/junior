@@ -10,6 +10,15 @@ export interface SlackAuthor {
   userName?: string;
 }
 
+/** A Slack person for `author`, such as `person("U0SAM", "Sam")`. */
+export function person(userId: string, name: string): Required<SlackAuthor> {
+  return {
+    fullName: `${name} Example`,
+    userId,
+    userName: name.toLowerCase(),
+  };
+}
+
 /** A Slack channel from `slackChannel()`. */
 export interface MentionChannel {
   channelId: string;

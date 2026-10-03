@@ -1,36 +1,13 @@
 import { describe, expect } from "vitest";
-import {
-  mention,
-  threadMessage,
-  type Input,
-} from "@junior-evals/fixture/inputs";
+import { mention, person, threadMessage } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
-import { test, type CallOptions } from "@junior-evals/fixture/test";
+import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
+import { test } from "@junior-evals/fixture/test";
 
 // A plain reply keeps each turn to one model call. Routing is the behavior
 // under test, not the summary.
 const INCIDENT_REQUEST =
   "In two sentences, summarize the checkout outage: payments failed for 20 minutes after the 14:05 deploy.";
-
-/** Send `inputs` while the first agent model request waits. */
-function sendDuringFirstModelRequest(
-  inputs: Input[],
-): NonNullable<CallOptions["onProgress"]> {
-  let sent = false;
-  return async (progress, { send }) => {
-    if (sent || progress.type !== "model_request") return;
-    sent = true;
-    for (const input of inputs) {
-      await send(input);
-    }
-  };
-}
-
-const person = (userId: string, name: string) => ({
-  fullName: `${name} Example`,
-  userId,
-  userName: name.toLowerCase(),
-});
 
 describe("Slack Turn Steering", () => {
   test("when the same person mentions Junior during a turn, the running turn takes the mention", async ({

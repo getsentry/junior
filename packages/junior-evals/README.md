@@ -69,9 +69,13 @@ describe("Thread Continuity", () => {
   `evals/integration/coding/`, and its behavioral evals are in `evals/coding/`.
   Put an eval that needs the GitHub plugin in this suite. Do not set up the
   plugin in the test.
+- The `memory` suite has the memory plugin and no other plugin or skill.
+  `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - A call returns when the agent is idle: the in-process queue is empty, and
-  the work that turns started, such as titles, is finished. A call fails when
-  the agent is not idle within 60 seconds.
+  the work that turns started, such as titles and plugin tasks, is finished.
+  A call fails when the agent is not idle within 60 seconds.
+- Plugin tasks run in process after each completed turn. For example, the
+  memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
   It writes the same rows as a real turn; `src/fixture/history.eval.ts` checks
   this against real turns. An input that addresses Junior without a reply is a
@@ -82,6 +86,8 @@ describe("Thread Continuity", () => {
 - `onProgress` reacts to what the turn does: `model_request`,
   `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
   waits, so the product decides whether it steers, waits, or stops the turn.
+  `sendDuringFirstModelRequest(inputs)` in `src/fixture/progress.ts` sends
+  inputs while the first model request waits.
 - Insert functions in `src/fixture/insert.ts` write setup data through the
   product store functions. They never run turns. Add one when a test needs a
   new kind of setup data.
@@ -94,7 +100,16 @@ describe("Thread Continuity", () => {
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
-  needs the memory plugin to recall it.
+  needs the memory plugin to recall it. `subjectType: "conversation"` stores a
+  memory about the conversation. `visibility: "private"` stores a memory that
+  only the person can recall.
+- `readMemories()` in `src/fixture/memory.ts` returns the active memories
+  that a Slack person can recall. It reads through the store of the memory
+  plugin. A memory that Junior forgot is not in the list. Assert on the
+  result in the eval, for example on `content`, `kind`, `scope`, and
+  `subjectType`.
+- When several evals need the same input, read, or assertion, add a shared
+  helper to `src/fixture/`. Do not repeat the logic in each eval.
 - Slack replies are the posts in the Slack thread, including posts that Junior
   does not store. A reply is the body that people see, without the footer.
   Each Conversation is read as the person who started it.

@@ -193,21 +193,32 @@ export async function insertWatch(args: {
 }
 
 /**
- * Store a memory about a Slack person, as the memory plugin stores one that
- * the person asked for in a public channel. The agent needs the memory
- * plugin to recall it in later Conversations of that person.
+ * Store a memory that a Slack person asked for, as the memory plugin stores
+ * it. The agent needs the memory plugin to recall it in later Conversations.
  */
 export async function insertMemory(args: {
   author?: SlackAuthor;
   content: string;
   kind?: "knowledge" | "preference" | "procedure";
+  /** What the memory is about. Defaults to the person. */
+  subjectType?: "conversation" | "user";
+  /**
+   * `private` is a memory from a direct message, which only the person can
+   * recall. Defaults to `public`, a memory from a public channel.
+   */
+  visibility?: "private" | "public";
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.author);
   const identity = await insertSlackIdentity(author);
   if (!identity.userId) {
     throw new Error(`The Slack person ${author.userId} has no User`);
   }
+  const visibility = args.visibility ?? "public";
   const channel = slackChannel();
+  const channelId =
+    visibility === "private"
+      ? channel.channelId.replace(/^C/, "D")
+      : channel.channelId;
   const messageTs = `${Math.floor(Date.now() / 1000)}.000100`;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
@@ -217,22 +228,26 @@ export async function insertMemory(args: {
         teamId: SLACK_TEAM_ID,
         userId: author.userId,
       },
-      conversationId: `slack:${channel.channelId}:${messageTs}`,
+      conversationId: `slack:${channelId}:${messageTs}`,
       source: createSlackSource({
-        channelId: channel.channelId,
+        channelId,
         messageTs,
         teamId: SLACK_TEAM_ID,
         threadTs: messageTs,
-        visibility: "public",
+        visibility,
       }),
       userId: identity.userId,
     },
     { embedder: createPluginEmbedder("memory") },
   );
-  const { memory } = await store.createMemory({
+  const input = {
     content: args.content,
     idempotencyKey: randomUUID(),
     kind: args.kind ?? "preference",
-  });
+  };
+  const { memory } =
+    args.subjectType === "conversation"
+      ? await store.createConversationMemory(input)
+      : await store.createMemory(input);
   return { id: memory.id };
 }

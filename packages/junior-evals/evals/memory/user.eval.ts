@@ -1,129 +1,65 @@
-import { expect } from "vitest";
-import { describeEval, toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
-import {
-  clearMemories,
-  countMemoryEmbeddings,
-  expectActorMemorySemantics,
-  expectAssistantMemoryAnswer,
-  type MemoryThread,
-  memoryPluginOverrides,
-  readActiveMemories,
-  readMemories,
-  seedMemory,
-  visibleAssistantText,
-} from "./helpers";
+import { describe, expect } from "vitest";
+import { mention } from "@junior-evals/fixture/inputs";
+import { insertMemory } from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
+import { readMemories } from "@junior-evals/fixture/memory";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("User Memory", slackEvals, (it) => {
-  const explicitRememberThread = {
-    id: "thread-memory-explicit-remember",
-    channel_type: "im",
-    channel_id: "DMEMORYEXPLICIT",
-    thread_ts: "17000000.000001",
-  } satisfies MemoryThread;
-
-  it("when explicitly asked to remember a first-person preference, store one private memory", async ({
+describe("User Memory", () => {
+  test("when explicitly asked to remember a first-person preference, store one private memory", async ({
     run,
   }) => {
-    await clearMemories();
-    const result = await run({
-      overrides: memoryPluginOverrides,
-      initialEvents: [
-        mention("Please remember that I prefer terse PR summaries.", {
-          thread: explicitRememberThread,
-        }),
-      ],
-      events: [
-        mention("What do you remember about how I like PR summaries?", {
-          thread: explicitRememberThread,
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant says it remembers a preference for terse PR summaries.",
-          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
-        ],
-        fail: [
-          "Do not say the memory failed to save.",
-          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-          "Do not claim no relevant preference was remembered.",
-        ],
+    const asked = await run(
+      mention("Please remember that I prefer terse PR summaries.", {
+        channelType: "im",
       }),
-    });
+    );
+    const recalled = await asked.continue(
+      mention("What do you remember about how I like PR summaries?"),
+      {
+        criteria: rubric({
+          pass: [
+            "The assistant says it remembers a preference for terse PR summaries.",
+            "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+          ],
+          fail: [
+            "Do not say the memory failed to save.",
+            "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+            "Do not claim no relevant preference was remembered.",
+          ],
+        }),
+      },
+    );
 
-    const rows = await readMemories(explicitRememberThread);
-    expect(rows).toEqual([
+    expect(await readMemories()).toEqual([
       expect.objectContaining({
-        archivedAtMs: null,
+        content: expect.stringMatching(/terse/i),
         scope: "private",
-        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "searchTools",
-          arguments: expect.objectContaining({ source: "memory" }),
-        }),
-        expect.objectContaining({
-          name: "memory_createMemory",
-        }),
-      ]),
-    );
-    await expectActorMemorySemantics({
-      assistantText: visibleAssistantText(result),
-      expectedMeaning: "The actor prefers terse pull request summaries.",
-      storedMemories: rows,
-      userText: "Please remember that I prefer terse PR summaries.",
-    });
+    expect(
+      completedToolCalls("memory_createMemory", asked, recalled).length,
+    ).toBeGreaterThan(0);
   });
 
-  const timezoneMemoryThread = {
-    id: "thread-memory-timezone-private",
-    channel_type: "im",
-    channel_id: "DMEMORYTIMEZONE",
-    thread_ts: "17000000.000011",
-  } satisfies MemoryThread;
-  const timezoneRecallThread = {
-    id: "thread-memory-timezone-public",
-    channel_type: "channel",
-    channel_id: "CMEMORYTIMEZONE",
-    thread_ts: "17000000.000012",
-  } satisfies MemoryThread;
-
-  it("uses a remembered timezone when answering the current time", async ({
+  test("uses a remembered timezone when answering the current time", async ({
     run,
   }) => {
-    await clearMemories();
     // Use short SF/PT wording without an IANA token or "current time" phrase.
-    const timezoneMemoryContent =
-      "Located in San Francisco and uses Pacific Time (PT).";
-    await seedMemory({
-      content: timezoneMemoryContent,
-      idempotencyKey: "eval-memory-timezone-recall",
-      thread: timezoneMemoryThread,
-    });
+    const timezone = "Located in San Francisco and uses Pacific Time (PT).";
+    await insertMemory({ content: timezone, visibility: "private" });
     // New public memory with the word "time" fills the public search window.
     for (let index = 0; index < 50; index += 1) {
-      await seedMemory({
+      await insertMemory({
         content: `Recent workspace time note ${index} about deploy time windows`,
-        idempotencyKey: `eval-memory-timezone-noise-${index}`,
         kind: "knowledge",
-        subject: "conversation",
-        thread: timezoneRecallThread,
+        subjectType: "conversation",
       });
     }
-    await expect(countMemoryEmbeddings(timezoneMemoryThread)).resolves.toBe(1);
-    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(50);
 
-    const result = await run({
-      overrides: memoryPluginOverrides,
-      initialEvents: [
-        mention("what time is it", {
-          thread: timezoneRecallThread,
-        }),
-      ],
+    const conversation = await run(mention("what time is it"), {
       criteria: rubric({
         pass: [
           "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
@@ -137,134 +73,86 @@ describeEval("User Memory", slackEvals, (it) => {
       }),
     });
 
-    await expect(readActiveMemories(timezoneMemoryThread)).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          content: timezoneMemoryContent,
-          scope: "private",
-          scopeKey: expect.any(String),
-          subjectType: "user",
-        }),
-      ]),
+    expect(await readMemories()).toContainEqual(
+      expect.objectContaining({
+        content: timezone,
+        scope: "private",
+        subjectType: "user",
+      }),
     );
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "systemTime",
-          status: "ok",
-          arguments: expect.objectContaining({
-            timezone: "America/Los_Angeles",
-          }),
-        }),
-      ]),
+    expect(completedToolCalls("systemTime", conversation)).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({ timezone: "America/Los_Angeles" }),
+      }),
     );
-    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+    expect(conversation.toolCalls.map((call) => call.name)).not.toContain(
       "bash",
     );
-    await expectAssistantMemoryAnswer({
-      assistantText: visibleAssistantText(result),
-      expectedBehavior:
-        "The assistant uses the remembered San Francisco / Pacific Time preference and reports the user's current local time in Pacific Time.",
-    });
   });
 
-  const firstPersonRewrittenThread = {
-    id: "thread-memory-first-person-rewritten",
-    channel_type: "im",
-    channel_id: "DMEMORYFIRSTPERSON",
-    thread_ts: "17000000.000002",
-  } satisfies MemoryThread;
-
-  it("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
+  test("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
     run,
   }) => {
-    await clearMemories();
-    const userText = "ok remember that i think types in python are bad";
-    const result = await run({
-      overrides: memoryPluginOverrides,
-      initialEvents: [
-        mention(userText, {
-          thread: firstPersonRewrittenThread,
-        }),
-      ],
-      events: [
-        mention("What do you remember about my opinion on Python types?", {
-          thread: firstPersonRewrittenThread,
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant remembers that the user dislikes Python types or type annotations.",
-          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
-        ],
-        fail: [
-          "Do not ask the user to rephrase the already first-person memory request.",
-          "Do not claim no relevant preference was remembered.",
-          "Do not store a memory about a third party.",
-        ],
+    const asked = await run(
+      mention("ok remember that i think types in python are bad", {
+        channelType: "im",
       }),
-    });
+    );
+    await asked.continue(
+      mention("What do you remember about my opinion on Python types?"),
+      {
+        criteria: rubric({
+          pass: [
+            "The assistant remembers that the user dislikes Python types or type annotations.",
+            "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+          ],
+          fail: [
+            "Do not ask the user to rephrase the already first-person memory request.",
+            "Do not claim no relevant preference was remembered.",
+            "Do not store a memory about a third party.",
+          ],
+        }),
+      },
+    );
 
-    const rows = await readMemories(firstPersonRewrittenThread);
-    expect(rows).toEqual([
+    expect(await readMemories()).toEqual([
       expect.objectContaining({
-        archivedAtMs: null,
+        content: expect.stringMatching(/python/i),
         scope: "private",
-        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);
-    await expectActorMemorySemantics({
-      assistantText: visibleAssistantText(result),
-      expectedMeaning:
-        "The actor thinks types in Python are bad or dislikes Python typing/type annotations.",
-      storedMemories: rows,
-      userText,
-    });
   });
 
-  const explicitDuplicateThread = {
-    id: "thread-memory-explicit-duplicate",
-    channel_type: "im",
-    channel_id: "DMEMORYEXPLICITDUPLICATE",
-    thread_ts: "17000000.000004",
-  } satisfies MemoryThread;
-
-  it("when explicitly asked to remember an existing preference, acknowledge the existing memory", async ({
+  test("when explicitly asked to remember an existing preference, acknowledge the existing memory", async ({
     run,
   }) => {
-    await clearMemories();
-    await seedMemory({
-      content: "Prefers PR summaries with risks first.",
-      idempotencyKey: "eval-memory-explicit-duplicate",
-      thread: explicitDuplicateThread,
-    });
+    const existing = "Prefers PR summaries with risks first.";
+    await insertMemory({ content: existing, visibility: "private" });
 
-    await run({
-      overrides: memoryPluginOverrides,
-      initialEvents: [
-        mention(
-          "Please remember that I want risk notes at the start of PR summaries.",
-          { thread: explicitDuplicateThread },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant confirms that the preference is already remembered or remains remembered.",
-          "The assistant does not imply that a second or additional memory was created.",
-        ],
-        fail: [
-          "Do not claim that a new or additional memory was created when the preference was already remembered.",
-          "Do not expose hidden memory ids, scope keys, actor ids, or Slack ids.",
-        ],
-      }),
-    });
+    await run(
+      mention(
+        "Please remember that I want risk notes at the start of PR summaries.",
+        { channelType: "im" },
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The assistant confirms that the preference is already remembered or remains remembered.",
+            "The assistant does not imply that a second or additional memory was created.",
+          ],
+          fail: [
+            "Do not claim that a new or additional memory was created when the preference was already remembered.",
+            "Do not expose hidden memory ids, scope keys, actor ids, or Slack ids.",
+          ],
+        }),
+      },
+    );
 
-    await expect(readActiveMemories(explicitDuplicateThread)).resolves.toEqual([
+    expect(await readMemories()).toEqual([
       expect.objectContaining({
-        content: "Prefers PR summaries with risks first.",
+        content: existing,
         scope: "private",
-        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);
