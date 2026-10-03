@@ -82,3 +82,11 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Temporary plans        | `openspec/changes/<slug>/`                                                                                       |
 
 Feature architecture and non-obvious invariants belong in the owning package or module `README.md`. Code, schemas, exported types, and tests are authoritative. Plans cannot override policy; update the policy for an exception.
+
+<!-- This section is maintained by the coding agent via lore (https://github.com/BYK/loreai) -->
+
+## Long-term Knowledge
+
+For long-term knowledge entries managed by [lore](https://github.com/BYK/loreai) (gotchas, patterns, decisions, architecture), see [`.lore.md`](.lore.md) in the project root.
+
+<!-- End lore-managed section -->
