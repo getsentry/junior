@@ -193,24 +193,6 @@ export const evalMcpAuthHandlers = [
               },
             },
             {
-              name: "create-watchable-pull-request",
-              title: "Create Watchable Pull Request",
-              description:
-                "Create an eval pull request and return its subscribable events.",
-              inputSchema: {
-                type: "object",
-                properties: {
-                  repository: {
-                    type: "string",
-                    description: "GitHub repository in owner/name format.",
-                  },
-                  title: { type: "string" },
-                },
-                required: ["repository", "title"],
-                additionalProperties: false,
-              },
-            },
-            {
               name: "release-push",
               title: "Release Push",
               description: "Publish the eval release status.",
@@ -285,61 +267,6 @@ export const evalMcpAuthHandlers = [
           typeof message.params.arguments === "object"
             ? (message.params.arguments as Record<string, unknown>)
             : undefined;
-        if (toolName === "create-watchable-pull-request") {
-          if (
-            typeof args?.repository !== "string" ||
-            typeof args?.title !== "string"
-          ) {
-            return jsonRpcResult(message?.id ?? null, {
-              content: [
-                {
-                  type: "text",
-                  text: 'Input validation error: Invalid arguments for tool create-watchable-pull-request:\n- "repository": expected string\n- "title": expected string',
-                },
-              ],
-              isError: true,
-            });
-          }
-          return jsonRpcResult(message?.id ?? null, {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  number: 208,
-                  url: `https://github.com/${args.repository}/pull/208`,
-                  title: args.title,
-                  subscribable: {
-                    namespace: "github",
-                    type: "pull_request",
-                    identifier: `${args.repository}#208`,
-                    label: `GitHub PR ${args.repository}#208`,
-                    supportedEvents: [
-                      "pull_request.checks.failed",
-                      "pull_request.comment.created",
-                      "pull_request.opened",
-                      "pull_request.ready_for_review",
-                      "pull_request.review.changes_requested",
-                      "pull_request.review.commented",
-                      "pull_request.review_comment.created",
-                      "pull_request.merged",
-                      "pull_request.closed_unmerged",
-                    ],
-                    suggestedEvents: [
-                      "pull_request.checks.failed",
-                      "pull_request.ready_for_review",
-                      "pull_request.review.changes_requested",
-                      "pull_request.review.commented",
-                      "pull_request.review_comment.created",
-                      "pull_request.merged",
-                      "pull_request.closed_unmerged",
-                    ],
-                  },
-                }),
-              },
-            ],
-            isError: false,
-          });
-        }
         if (toolName === "search-tickets") {
           const query = typeof args?.query === "string" ? args.query : "";
           return jsonRpcResult(message?.id ?? null, {

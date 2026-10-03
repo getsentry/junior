@@ -111,9 +111,10 @@ export function heartbeat(): HeartbeatInput {
 }
 
 /**
- * Deliver a GitHub webhook. `run(githubWebhook(...))` returns the Conversation
- * that the matching event automation started. The agent needs the GitHub
- * plugin.
+ * Deliver a GitHub webhook. The agent needs the GitHub plugin.
+ * `run(githubWebhook(...))` returns the Conversation that the matching event
+ * automation started. `conversation.continue(githubWebhook(...))` returns
+ * what the matching watches of that Conversation did.
  */
 export function githubWebhook(
   event: string,

@@ -34,14 +34,27 @@ export interface ToolCall {
   toolCallId: string;
 }
 
-/** Completed calls of one tool across the results of several calls. */
+/**
+ * Completed calls of one tool across the results of several calls. The agent
+ * runs deferred tools through `executeTool`; those calls count as calls of the
+ * inner tool, with its arguments as `input`.
+ */
 export function completedToolCalls(
   name: string,
   ...results: Array<{ toolCalls: ToolCall[] }>
 ): ToolCall[] {
   return results
     .flatMap((result) => result.toolCalls)
-    .filter((call) => call.name === name && call.status === "completed");
+    .filter((call) => call.status === "completed")
+    .flatMap((call) => {
+      if (call.name === name) return [call];
+      const deferred = call.input as
+        | { arguments?: unknown; tool_name?: unknown }
+        | undefined;
+      return call.name === "executeTool" && deferred?.tool_name === name
+        ? [{ ...call, input: deferred.arguments, name }]
+        : [];
+    });
 }
 
 /**
@@ -197,8 +210,15 @@ export function readCallEvents(args: {
   };
 }
 
+/**
+ * Compare a Slack post with a stored reply by their words. Slack rendering
+ * changes formatting and links references, such as `owner/repo#1`.
+ */
 function comparableText(text: string): string {
   return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<[^|>]+\|([^>]*)>/g, "$1")
+    .replace(/<(https?:\/\/[^>]+)>/g, "$1")
     .replace(/[*_~`>]/g, "")
     .replace(/\s+/g, " ")
     .trim();

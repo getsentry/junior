@@ -1,29 +1,33 @@
-import { describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
-import { mention, rubric, slackEvals } from "../../../src/helpers";
+import { defineJuniorPlugins } from "@sentry/junior";
+import { githubPlugin } from "@sentry/junior-github";
+import { describe, expect } from "vitest";
+import { mention } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Watches", slackEvals, (it) => {
-  it("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
-    run,
+describe("Watches", () => {
+  test("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
+    agent,
   }) => {
-    const thread = {
-      id: "thread-event-stop",
-      channel_id: "CRESOURCEEVENTSTOP",
-      thread_ts: "17000000.7301",
-    };
-    const result = await run({
-      overrides: {
-        github_events: true,
-        plugin_dirs: ["fixtures/event-plugins"],
-        plugin_packages: ["@sentry/junior-github"],
-      },
-      initialEvents: [
-        mention(
-          "$eval-events Create a pull request in getsentry/junior titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
-          { thread },
-        ),
-      ],
-      events: [mention("stop", { thread })],
+    const { run } = await agent({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    });
+    const conversation = await run(
+      mention(
+        "Watch the checks and review feedback on getsentry/junior#691, and keep me posted here.",
+      ),
+    );
+    const [watch] = completedToolCalls("watchEvents", conversation).map(
+      (call) => toolOutput(call) as { id: string },
+    );
+    expect(watch?.id, "No watch: this run does not test stopping").toEqual(
+      expect.any(String),
+    );
+
+    // A bare "stop" opts Junior out of the thread before any turn runs. This
+    // follow-up needs the conversation to mean "stop the watch".
+    const stopped = await conversation.continue(mention("you can stop now"), {
       criteria: rubric({
         pass: [
           "Junior understands from the conversation that the terse follow-up asks it to stop monitoring the pull request.",
@@ -36,39 +40,19 @@ describeEval("Watches", slackEvals, (it) => {
       }),
     });
 
-    const calls = toolCalls(result.session);
-    expect(calls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "watchEvents",
-          status: "ok",
+    expect(
+      completedToolCalls("stopWatchingResources", stopped).map((call) => ({
+        input: call.input,
+        output: toolOutput(call),
+      })),
+    ).toEqual([
+      {
+        input: { id: watch!.id },
+        output: expect.objectContaining({
+          stoppedIds: [watch!.id],
+          watching_status: "stopped",
         }),
-        expect.objectContaining({
-          name: "stopWatchingResources",
-          status: "ok",
-        }),
-      ]),
-    );
-    const watch = calls.find((call) => call.name === "watchEvents");
-    const stop = calls.find((call) => call.name === "stopWatchingResources");
-    if (!watch || watch.status !== "ok") {
-      throw new Error("Expected a successful watch tool call");
-    }
-    if (
-      !watch.result ||
-      typeof watch.result !== "object" ||
-      Array.isArray(watch.result) ||
-      typeof watch.result.id !== "string"
-    ) {
-      throw new Error("Watch result did not contain an id");
-    }
-    expect(stop).toMatchObject({
-      arguments: { id: watch.result.id },
-      result: {
-        stoppedIds: [watch.result.id],
-        watching_status: "stopped",
       },
-      status: "ok",
-    });
+    ]);
   });
 });

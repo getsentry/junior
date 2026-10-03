@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
+import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
@@ -155,4 +156,35 @@ export async function insertEventAutomation(args: {
     trigger: args.trigger,
   });
   return { id };
+}
+
+/**
+ * Store a watch on a Conversation of the test. It lasts two weeks. A later
+ * matching event, such as `conversation.continue(githubWebhook(...))`,
+ * delivers to that Conversation.
+ */
+export async function insertWatch(args: {
+  conversation: { conversationId: string };
+  events: string[];
+  identifier: string;
+  intent: string;
+  label: string;
+  namespace?: string;
+  resourceType: string;
+}): Promise<{ id: string }> {
+  const nowMs = Date.now();
+  const watch = await createWatch(
+    {
+      conversationId: args.conversation.conversationId,
+      events: args.events,
+      expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+      identifier: args.identifier,
+      intent: args.intent,
+      label: args.label,
+      namespace: args.namespace ?? "github",
+      resourceType: args.resourceType,
+    },
+    { nowMs },
+  );
+  return { id: watch.id };
 }
