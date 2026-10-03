@@ -21,7 +21,11 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { installBlobMock } from "./blob";
-import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import {
+  installGatewayObserver,
+  type GatewayModelCall,
+  type GatewayProgress,
+} from "./gateway";
 import type {
   AutomationInput,
   HistoryItem,
@@ -48,10 +52,14 @@ import {
   combinedRun,
   readCallEvents,
   readConversationDetail,
+  readModelCalls,
+  readModelTotals,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
   type FixtureUsage,
+  type ModelCallUsage,
+  type ModelTotalUsage,
   type Reply,
   type ToolCall,
   type Turn,
@@ -198,9 +206,17 @@ export async function createFixtureAgent(
     [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
+  const auxiliaryCostUsd = new Map<string, number>();
+  const agentModelCalls = new Map<string, ModelCallUsage[]>();
+  const agentModelTotals = new Map<string, ModelTotalUsage[]>();
+  const gatewayModelCalls: GatewayModelCall[] = [];
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
+    auxiliaryCostUsd: [...auxiliaryCostUsd.values()].reduce((a, b) => a + b, 0),
     gatewayRequests: gateway.requestCounts(),
+    gatewayModelCalls: [...gatewayModelCalls],
+    modelCalls: [...agentModelCalls.values()].flat(),
+    modelTotals: [...agentModelTotals.values()].flat(),
   });
   const startedAtMs = Date.now();
   // Every judged call of the test, for the eval report.
@@ -408,6 +424,7 @@ export async function createFixtureAgent(
         await onProgress({ type: "reply", text: post.text }, progressActions);
       });
     }
+    gateway.setRecording(true);
     try {
       await send();
       await waitForIdle();
@@ -416,22 +433,31 @@ export async function createFixtureAgent(
       await close();
       throw error;
     } finally {
+      gateway.setRecording(false);
       gateway.setProgressHook(undefined);
       slack.setReplyHook(undefined);
     }
+    gatewayModelCalls.push(
+      ...(await gateway.modelCalls()).slice(gatewayModelCalls.length),
+    );
     const record = typeof target === "function" ? target() : target;
     const detail = await readConversationDetail(
       api,
       record.conversationId,
       record.viewerEmail,
     );
+    const afterSeq = record.lastSeq;
     const events = readCallEvents({
-      afterSeq: record.lastSeq,
+      afterSeq,
       conversationId: record.conversationId,
       detail,
     });
     const earlier = [...record.visibleMessages];
     record.lastSeq = events.lastSeq;
+    agentModelCalls.set(record.conversationId, [
+      ...(agentModelCalls.get(record.conversationId) ?? []),
+      ...readModelCalls(detail.events, afterSeq),
+    ]);
     // Slack people see thread posts, including posts Junior does not store,
     // such as the opt-out acknowledgement. An automation posts to its
     // destination, and it is the only work of its call.
@@ -484,6 +510,14 @@ export async function createFixtureAgent(
         (sum, entry) => sum + (entry.usage.cost?.total ?? 0),
         0,
       ),
+    );
+    auxiliaryCostUsd.set(
+      record.conversationId,
+      detail.auxiliaryCosts?.costUsd ?? 0,
+    );
+    agentModelTotals.set(
+      record.conversationId,
+      readModelTotals(detail.modelUsage ?? []),
     );
     const usage = currentUsage();
     const evalRun = toHarnessRun({
