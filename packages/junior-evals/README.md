@@ -59,13 +59,23 @@ describe("Thread Continuity", () => {
   `agent({ plugins: defineJuniorPlugins([githubPlugin()]) })`. Tests may
   import the public `@sentry/junior` API and plugin packages, but not runtime
   internals under `@/`.
+- A suite is a Vitest project for one directory in
+  `vitest.evals.integration.config.ts`. It provides `agentOptionsModule`, a
+  module whose default export is the default `createApp()` options of its
+  tests, and it can set host environment such as `SKILL_DIRS`. Tests in a
+  suite call `run()` without `agent()`. `agent(options)` replaces the suite
+  defaults key by key. The `coding` suite in `evals/integration/coding/` has
+  the GitHub and memory plugins and the coding skills.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles, is finished. A call fails when
   the agent is not idle within 60 seconds.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
   It writes the same rows as a real turn; `src/fixture/history.eval.ts` checks
-  this against real turns. `history` also accepts a recorded conversation from
-  `src/fixture/recordings/`. Export one with `exportRecordedConversation()`.
+  this against real turns. An input that addresses Junior without a reply is a
+  turn that ended with `[[NO_REPLY]]`. `reply(text, { toolHistory })` adds the completed tool calls
+  before that reply. The model sees them; people do not. `history`
+  also accepts a recorded conversation from `src/fixture/recordings/`. Export
+  one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
   `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
   waits, so the product decides whether it steers, waits, or stops the turn.
@@ -80,6 +90,8 @@ describe("Thread Continuity", () => {
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
+- `insertMemory({ content })` stores a memory about a Slack person. The agent
+  needs the memory plugin to recall it.
 - Slack replies are the posts in the Slack thread, including posts that Junior
   does not store. A reply is the body that people see, without the footer.
   Each Conversation is read as the person who started it.

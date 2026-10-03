@@ -1,4 +1,5 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+import type { InlineConfig } from "vitest/node";
 import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
@@ -42,39 +43,81 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
 }
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
-export default defineConfig({
-  resolve: {
-    alias: {
-      "@": path.resolve(juniorPackageRoot, "src"),
-      "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-      "@sentry/junior-plugin-api": path.resolve(
-        pluginApiPackageRoot,
-        "src/index.ts",
-      ),
-    },
-    // Vite 8 resolves tsconfig `paths` natively here:
-    // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
-    // The aliases above keep workspace package internals on source instead of package dist.
-    tsconfigPaths: true,
+const resolve = {
+  alias: {
+    "@": path.resolve(juniorPackageRoot, "src"),
+    "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
+    "@sentry/junior-plugin-api": path.resolve(
+      pluginApiPackageRoot,
+      "src/index.ts",
+    ),
   },
+  // Vite 8 resolves tsconfig `paths` natively here:
+  // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths
+  // The aliases above keep workspace package internals on source instead of package dist.
+  tsconfigPaths: true,
+};
+
+const projectTest = {
+  environment: "node",
+  sequence: { setupFiles: "list", hooks: "stack" },
+  setupFiles: [
+    path.resolve(__dirname, "src/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
+    path.resolve(__dirname, "src/eval-cleanup.ts"),
+  ],
+  testTimeout: EVAL_TEST_TIMEOUT_MS,
+} satisfies InlineConfig;
+
+// A suite is a project for one directory under `evals/integration/`. It sets
+// the default agent options for its tests. See `src/fixture/test.ts`.
+const codingSuiteRoot = "evals/integration/coding";
+
+export default defineConfig({
+  resolve,
   test: {
-    environment: "node",
     fileParallelism: false,
-    sequence: { setupFiles: "list", hooks: "stack" },
+    // Projects do not extend this config, so this global setup runs one time
+    // and every project reads what it provides.
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
-    // Strict system-correctness cases. Any failure fails the suite hard.
-    // Fixture tests check the agent test fixture against real turns.
-    include: ["evals/integration/**/*.eval.ts", "src/fixture/**/*.eval.ts"],
     maxWorkers: 1,
-    setupFiles: [
-      path.resolve(__dirname, "src/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-      path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
-      path.resolve(__dirname, "src/eval-cleanup.ts"),
-    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
-    testTimeout: EVAL_TEST_TIMEOUT_MS,
+    projects: [
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          name: "integration",
+          // Strict system-correctness cases. Any failure fails the suite hard.
+          // Fixture tests check the agent test fixture against real turns.
+          include: [
+            "evals/integration/**/*.eval.ts",
+            "src/fixture/**/*.eval.ts",
+          ],
+          exclude: [...configDefaults.exclude, `${codingSuiteRoot}/**`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          name: "coding",
+          include: [`${codingSuiteRoot}/**/*.eval.ts`],
+          env: {
+            SKILL_DIRS: path.resolve(__dirname, "fixtures/coding-skills"),
+          },
+          provide: {
+            agentOptionsModule: path.resolve(
+              __dirname,
+              codingSuiteRoot,
+              "agent-options.ts",
+            ),
+          },
+        },
+      },
+    ],
   },
 });

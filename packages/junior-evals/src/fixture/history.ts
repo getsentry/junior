@@ -8,7 +8,11 @@
  * when Junior replied in it.
  */
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { SlackFormatConverter } from "@chat-adapter/slack";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { appendConversationMessages } from "@/chat/conversations/messages";
@@ -27,10 +31,13 @@ import {
 } from "@/chat/conversations/web-input";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
+import { parseContent } from "@/chat/slack/message/content";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -39,7 +46,12 @@ import {
   buildDeterministicAssistantMessageId,
   buildDeterministicTurnId,
 } from "@/chat/state/turn-id";
-import type { HistoryItem, HistoryReply, MessageInput } from "./inputs";
+import type {
+  HistoryItem,
+  HistoryReply,
+  HistoryToolCall,
+  MessageInput,
+} from "./inputs";
 import {
   insertRecordedEvents,
   isRecordedConversation,
@@ -139,16 +151,21 @@ async function recordRoot(
   });
 }
 
-function assistantPiMessage(text: string, timestamp: number): AssistantMessage {
+function assistantPiMessage(
+  content: AssistantMessage["content"],
+  timestamp: number,
+): AssistantMessage {
   const modelId =
     botConfig.profiles[botConfig.defaultProfile]?.modelId ?? "history";
   return {
     role: "assistant",
-    content: [{ type: "text", text }],
+    content,
     api: "anthropic-messages",
     provider: "vercel-ai-gateway",
     model: modelId,
-    stopReason: "stop",
+    stopReason: content.some((part) => part.type === "toolCall")
+      ? "toolUse"
+      : "stop",
     timestamp,
     usage: {
       input: 0,
@@ -159,6 +176,37 @@ function assistantPiMessage(text: string, timestamp: number): AssistantMessage {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
   };
+}
+
+/** The model request and the tool output of one completed tool call. */
+function toolCallPiMessages(
+  call: HistoryToolCall,
+  timestamp: number,
+): [AssistantMessage, ToolResultMessage] {
+  const toolCallId = `history-${randomUUID()}`;
+  const output = makeStructuredToolOutput(call.result);
+  return [
+    assistantPiMessage(
+      [
+        {
+          type: "toolCall",
+          id: toolCallId,
+          name: call.name,
+          arguments: call.arguments,
+        },
+      ],
+      timestamp,
+    ),
+    {
+      role: "toolResult",
+      toolCallId,
+      toolName: call.name,
+      content: output.content,
+      details: output.details,
+      isError: false,
+      timestamp,
+    },
+  ];
 }
 
 /** Return whether a call loads any history. */
@@ -260,6 +308,7 @@ function historyUserMessage(args: {
   const author = args.slack.registerAuthor(
     input.author ?? DEFAULT_SLACK_AUTHOR,
   );
+  const text = slackInputText(input.text);
   // Junior routes every direct message like a mention. Only an app_mention
   // carries the @Junior token in its text.
   const explicitMention =
@@ -286,7 +335,7 @@ function historyUserMessage(args: {
       content: [
         {
           type: "text",
-          text: renderCurrentInstruction(input.text, {
+          text: renderCurrentInstruction(text, {
             authorId: author.userId,
             authorName: author.fullName,
             slackTs: ts,
@@ -313,9 +362,21 @@ function historyUserMessage(args: {
         source: "slack",
       },
       role: "user",
-      text: input.text,
+      text,
     },
   };
+}
+
+const slackFormat = new SlackFormatConverter();
+
+/** The text of a Slack message as Slack ingress stores it for the agent. */
+function slackInputText(text: string): string {
+  return parseContent({
+    attachments: [],
+    formatted: slackFormat.toAst(text),
+    raw: {},
+    text,
+  }).text;
 }
 
 /** Write `items` as earlier turns. Return the last event sequence. */
@@ -392,9 +453,11 @@ export async function loadHistory(args: {
     for (const [replyIndex, historyReply] of turn.replies.entries()) {
       const repliedAtMs = tick();
       if (historyReply.toolHistory?.length) {
-        for (const toolMessage of historyReply.toolHistory) {
-          agentHistory.push({ ...toolMessage, timestamp: repliedAtMs });
-          agentProvenance.push(contextProvenance);
+        for (const toolCall of historyReply.toolHistory) {
+          for (const toolMessage of toolCallPiMessages(toolCall, repliedAtMs)) {
+            agentHistory.push(toolMessage);
+            agentProvenance.push(contextProvenance);
+          }
         }
         await commitMessages({
           conversationId,
@@ -427,7 +490,10 @@ export async function loadHistory(args: {
         role: "assistant",
         text: historyReply.text,
       });
-      const agentMessage = assistantPiMessage(historyReply.text, repliedAtMs);
+      const agentMessage = assistantPiMessage(
+        [{ type: "text", text: historyReply.text }],
+        repliedAtMs,
+      );
       agentHistory.push(agentMessage);
       agentProvenance.push(contextProvenance);
       await commitAcceptedReply({
@@ -440,6 +506,18 @@ export async function loadHistory(args: {
       args.replyMessages.set(historyReply, replyId);
     }
     if (turn.replies.length === 0) {
+      // Junior answered an input that addressed it with the silence marker.
+      if (message.conversationMessage.meta?.explicitMention) {
+        agentHistory.push(
+          assistantPiMessage([{ type: "text", text: NO_REPLY_MARKER }], tick()),
+        );
+        agentProvenance.push(contextProvenance);
+        await commitMessages({
+          conversationId,
+          messages: agentHistory,
+          provenance: agentProvenance,
+        });
+      }
       await appendConversationMessages(getConversationEventStore(), {
         conversation: state,
         conversationId,

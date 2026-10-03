@@ -79,8 +79,6 @@
     "packages/junior-evals/evals/conversation/storage.eval.ts": 1,
     "packages/junior-evals/evals/github/skills.eval.ts": 1,
     "packages/junior-evals/evals/integration/agent/oauth.eval.ts": 2,
-    "packages/junior-evals/evals/integration/conversation/handoff-history.ts": 6,
-    "packages/junior-evals/evals/integration/conversation/handoff.eval.ts": 1,
     "packages/junior-evals/evals/memory/actors.eval.ts": 4,
     "packages/junior-evals/evals/memory/helpers.ts": 6,
     "packages/junior-evals/evals/memory/management.eval.ts": 1,
@@ -89,7 +87,6 @@
     "packages/junior-evals/evals/sentry/skills.eval.ts": 1
   },
   "model-fakes": {
-    "packages/junior-evals/evals/integration/conversation/handoff-history.ts": 3,
     "packages/junior-evals/src/router-harness.ts": 1,
     "packages/junior-evals/tests/component/slack-transcript.test.ts": 3,
     "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts": 3,

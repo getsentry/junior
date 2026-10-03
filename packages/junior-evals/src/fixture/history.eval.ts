@@ -7,7 +7,12 @@ import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { mention, reply, webMessage, type MessageInput } from "./inputs";
 import { isRecordedConversation } from "./recorded";
-import { test, type Conversation, type RunAgent } from "./test";
+import {
+  test,
+  type Conversation,
+  type RunAgent,
+  type TurnStatus,
+} from "./test";
 
 // Ids, timestamps, and model usage differ between any two turns.
 const VOLATILE_KEYS = new Set([
@@ -87,15 +92,15 @@ async function compareWithRealTurn(
   run: RunAgent,
   input: MessageInput,
   rest: MessageInput,
+  status: TurnStatus = "succeeded",
 ): Promise<void> {
   const real: Conversation = await run(input);
-  // A failed real turn leaves nothing valid to compare against.
-  expect(real.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
-  const replyText = real.turns[0]?.replies[0]?.text;
-  expect(replyText).toBeDefined();
-  const loaded = await run(rest, {
-    history: [input, reply(replyText!)],
-  });
+  // Any other real turn leaves nothing valid to compare against.
+  expect(real.turns.map((turn) => turn.status)).toEqual([status]);
+  const replies = real.turns[0]!.replies.map((realReply) =>
+    reply(realReply.text),
+  );
+  const loaded = await run(rest, { history: [input, ...replies] });
   const realRows = await comparableRows(real.conversationId);
   const loadedRows = await comparableRows(loaded.conversationId);
   expect(loadedRows.slice(0, realRows.length)).toEqual(realRows);
@@ -121,6 +126,18 @@ describe("loaded history", () => {
       run,
       mention("Reply with exactly: noted"),
       mention("thanks"),
+    );
+  });
+
+  test("matches the rows of a real Slack turn without a reply", async ({
+    run,
+  }) => {
+    // Slack ingress escapes markdown, such as the brackets and underscore.
+    await compareWithRealTurn(
+      run,
+      mention("Do not reply to this. Answer with exactly [[NO_REPLY]]"),
+      mention("thanks"),
+      "no_reply",
     );
   });
 

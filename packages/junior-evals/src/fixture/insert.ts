@@ -7,12 +7,15 @@
  * needs a new kind of setup data.
  */
 import { randomUUID } from "node:crypto";
+import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity } from "@/chat/identities/sql";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -187,4 +190,49 @@ export async function insertWatch(args: {
     { nowMs },
   );
   return { id: watch.id };
+}
+
+/**
+ * Store a memory about a Slack person, as the memory plugin stores one that
+ * the person asked for in a public channel. The agent needs the memory
+ * plugin to recall it in later Conversations of that person.
+ */
+export async function insertMemory(args: {
+  author?: SlackAuthor;
+  content: string;
+  kind?: "knowledge" | "preference" | "procedure";
+}): Promise<{ id: string }> {
+  const author = resolveAuthor(args.author);
+  const identity = await insertSlackIdentity(author);
+  if (!identity.userId) {
+    throw new Error(`The Slack person ${author.userId} has no User`);
+  }
+  const channel = slackChannel();
+  const messageTs = `${Math.floor(Date.now() / 1000)}.000100`;
+  const store = createMemoryStore(
+    getDb() as unknown as MemoryDb,
+    {
+      actor: {
+        platform: "slack",
+        teamId: SLACK_TEAM_ID,
+        userId: author.userId,
+      },
+      conversationId: `slack:${channel.channelId}:${messageTs}`,
+      source: createSlackSource({
+        channelId: channel.channelId,
+        messageTs,
+        teamId: SLACK_TEAM_ID,
+        threadTs: messageTs,
+        visibility: "public",
+      }),
+      userId: identity.userId,
+    },
+    { embedder: createPluginEmbedder("memory") },
+  );
+  const { memory } = await store.createMemory({
+    content: args.content,
+    idempotencyKey: randomUUID(),
+    kind: args.kind ?? "preference",
+  });
+  return { id: memory.id };
 }
