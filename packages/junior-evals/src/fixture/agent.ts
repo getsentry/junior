@@ -4,7 +4,7 @@
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
- * transport and `waitUntil` with in-process versions, so it knows when the
+ * transports and `waitUntil` with in-process versions, so it knows when the
  * agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
@@ -166,6 +166,10 @@ export async function createFixtureAgent(
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
+    // Plugin tasks run in process. A call is idle only after they finish.
+    pluginTaskQueue: (consume) => ({
+      send: async (message) => track(consume(message)),
+    }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in
