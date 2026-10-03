@@ -8,6 +8,7 @@
  * when Junior replied in it.
  */
 import { randomUUID } from "node:crypto";
+import { SlackFormatConverter } from "@chat-adapter/slack";
 import type {
   AssistantMessage,
   ToolResultMessage,
@@ -30,8 +31,10 @@ import {
 } from "@/chat/conversations/web-input";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
+import { parseContent } from "@/chat/slack/message/content";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
@@ -305,6 +308,7 @@ function historyUserMessage(args: {
   const author = args.slack.registerAuthor(
     input.author ?? DEFAULT_SLACK_AUTHOR,
   );
+  const text = slackInputText(input.text);
   // Junior routes every direct message like a mention. Only an app_mention
   // carries the @Junior token in its text.
   const explicitMention =
@@ -331,7 +335,7 @@ function historyUserMessage(args: {
       content: [
         {
           type: "text",
-          text: renderCurrentInstruction(input.text, {
+          text: renderCurrentInstruction(text, {
             authorId: author.userId,
             authorName: author.fullName,
             slackTs: ts,
@@ -358,9 +362,21 @@ function historyUserMessage(args: {
         source: "slack",
       },
       role: "user",
-      text: input.text,
+      text,
     },
   };
+}
+
+const slackFormat = new SlackFormatConverter();
+
+/** The text of a Slack message as Slack ingress stores it for the agent. */
+function slackInputText(text: string): string {
+  return parseContent({
+    attachments: [],
+    formatted: slackFormat.toAst(text),
+    raw: {},
+    text,
+  }).text;
 }
 
 /** Write `items` as earlier turns. Return the last event sequence. */
@@ -490,6 +506,18 @@ export async function loadHistory(args: {
       args.replyMessages.set(historyReply, replyId);
     }
     if (turn.replies.length === 0) {
+      // Junior answered an input that addressed it with the silence marker.
+      if (message.conversationMessage.meta?.explicitMention) {
+        agentHistory.push(
+          assistantPiMessage([{ type: "text", text: NO_REPLY_MARKER }], tick()),
+        );
+        agentProvenance.push(contextProvenance);
+        await commitMessages({
+          conversationId,
+          messages: agentHistory,
+          provenance: agentProvenance,
+        });
+      }
       await appendConversationMessages(getConversationEventStore(), {
         conversation: state,
         conversationId,

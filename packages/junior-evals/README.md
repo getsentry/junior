@@ -71,8 +71,9 @@ describe("Thread Continuity", () => {
   the agent is not idle within 60 seconds.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
   It writes the same rows as a real turn; `src/fixture/history.eval.ts` checks
-  this against real turns. `reply(text, { toolHistory })` adds the completed
-  tool calls before that reply. The model sees them; people do not. `history`
+  this against real turns. An input that addresses Junior without a reply is a
+  turn that ended with `[[NO_REPLY]]`. `reply(text, { toolHistory })` adds the completed tool calls
+  before that reply. The model sees them; people do not. `history`
   also accepts a recorded conversation from `src/fixture/recordings/`. Export
   one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
