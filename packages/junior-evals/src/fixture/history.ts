@@ -8,7 +8,10 @@
  * when Junior replied in it.
  */
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { appendConversationMessages } from "@/chat/conversations/messages";
@@ -31,6 +34,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -39,7 +43,12 @@ import {
   buildDeterministicAssistantMessageId,
   buildDeterministicTurnId,
 } from "@/chat/state/turn-id";
-import type { HistoryItem, HistoryReply, MessageInput } from "./inputs";
+import type {
+  HistoryItem,
+  HistoryReply,
+  HistoryToolCall,
+  MessageInput,
+} from "./inputs";
 import {
   insertRecordedEvents,
   isRecordedConversation,
@@ -139,16 +148,21 @@ async function recordRoot(
   });
 }
 
-function assistantPiMessage(text: string, timestamp: number): AssistantMessage {
+function assistantPiMessage(
+  content: AssistantMessage["content"],
+  timestamp: number,
+): AssistantMessage {
   const modelId =
     botConfig.profiles[botConfig.defaultProfile]?.modelId ?? "history";
   return {
     role: "assistant",
-    content: [{ type: "text", text }],
+    content,
     api: "anthropic-messages",
     provider: "vercel-ai-gateway",
     model: modelId,
-    stopReason: "stop",
+    stopReason: content.some((part) => part.type === "toolCall")
+      ? "toolUse"
+      : "stop",
     timestamp,
     usage: {
       input: 0,
@@ -159,6 +173,37 @@ function assistantPiMessage(text: string, timestamp: number): AssistantMessage {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
   };
+}
+
+/** The model request and the tool output of one completed tool call. */
+function toolCallPiMessages(
+  call: HistoryToolCall,
+  timestamp: number,
+): [AssistantMessage, ToolResultMessage] {
+  const toolCallId = `history-${randomUUID()}`;
+  const output = makeStructuredToolOutput(call.result);
+  return [
+    assistantPiMessage(
+      [
+        {
+          type: "toolCall",
+          id: toolCallId,
+          name: call.name,
+          arguments: call.arguments,
+        },
+      ],
+      timestamp,
+    ),
+    {
+      role: "toolResult",
+      toolCallId,
+      toolName: call.name,
+      content: output.content,
+      details: output.details,
+      isError: false,
+      timestamp,
+    },
+  ];
 }
 
 /** Return whether a call loads any history. */
@@ -392,9 +437,11 @@ export async function loadHistory(args: {
     for (const [replyIndex, historyReply] of turn.replies.entries()) {
       const repliedAtMs = tick();
       if (historyReply.toolHistory?.length) {
-        for (const toolMessage of historyReply.toolHistory) {
-          agentHistory.push({ ...toolMessage, timestamp: repliedAtMs });
-          agentProvenance.push(contextProvenance);
+        for (const toolCall of historyReply.toolHistory) {
+          for (const toolMessage of toolCallPiMessages(toolCall, repliedAtMs)) {
+            agentHistory.push(toolMessage);
+            agentProvenance.push(contextProvenance);
+          }
         }
         await commitMessages({
           conversationId,
@@ -427,7 +474,10 @@ export async function loadHistory(args: {
         role: "assistant",
         text: historyReply.text,
       });
-      const agentMessage = assistantPiMessage(historyReply.text, repliedAtMs);
+      const agentMessage = assistantPiMessage(
+        [{ type: "text", text: historyReply.text }],
+        repliedAtMs,
+      );
       agentHistory.push(agentMessage);
       agentProvenance.push(contextProvenance);
       await commitAcceptedReply({
