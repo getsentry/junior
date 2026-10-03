@@ -1,5 +1,3 @@
-import { defineJuniorPlugins } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
@@ -8,11 +6,8 @@ import { test } from "@junior-evals/fixture/test";
 
 describe("Watches", () => {
   test("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({
-      plugins: defineJuniorPlugins([githubPlugin()]),
-    });
     const conversation = await run(
       mention(
         "Watch the checks and review feedback on getsentry/junior#691, and keep me posted here.",

@@ -1,13 +1,9 @@
-import { defineJuniorPlugins } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import { githubWebhook, mention } from "@junior-evals/fixture/inputs";
 import { insertWatch } from "@junior-evals/fixture/insert";
 import { rubric } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
-
-const github = { plugins: defineJuniorPlugins([githubPlugin()]) };
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
 const pullRequest = "getsentry/junior#691";
@@ -54,9 +50,8 @@ function watchedEvents(conversation: { toolCalls: ToolCall[] }) {
 
 describe("Watches", () => {
   test("looks up and subscribes to an exact deployment before GitHub creates it", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const commitSha = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
     const conversation = await run(
       mention(
@@ -105,9 +100,8 @@ describe("Watches", () => {
   });
 
   test("when a PR can emit the requested events, subscribe instead of polling", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         `Check ${pullRequest} every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.`,
@@ -159,9 +153,8 @@ describe("Watches", () => {
   });
 
   test("when a watched event does not serve the intent, stay silent", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(`Let me know here when ${pullRequest} lands.`),
     );
@@ -182,9 +175,8 @@ describe("Watches", () => {
   });
 
   test("when a watched PR check fails, summarize the failure and suggest next steps", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         `Watch ${pullRequest} for CI failures before review and tell me here. Just summarize any failure and suggest next steps; do not change the PR.`,
@@ -217,9 +209,8 @@ describe("Watches", () => {
   });
 
   test("when a watched PR is merged, report completion without extra work", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(`Let me know here when ${pullRequest} lands.`),
     );

@@ -34,6 +34,7 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/agent/**'
+              - 'packages/junior-evals/evals/coding/**'
               - 'packages/junior-evals/evals/conversation/**'
               - 'packages/junior-evals/evals/github/**'
               - 'packages/junior-evals/evals/memory/**'

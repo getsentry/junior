@@ -1,5 +1,4 @@
 import { defineJuniorPlugins } from "@sentry/junior";
-import { githubPlugin } from "@sentry/junior-github";
 import { describe, expect } from "vitest";
 import type { ToolCall } from "@junior-evals/fixture/test";
 import { mention } from "@junior-evals/fixture/inputs";
@@ -10,8 +9,6 @@ import {
 import { rubric } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
-
-const github = { plugins: defineJuniorPlugins([githubPlugin()]) };
 
 const issueTrigger = {
   events: ["issue.closed", "issue.reopened"],
@@ -35,9 +32,8 @@ function triggerEvents(call: ToolCall): string[] {
 
 describe("Event automation management", () => {
   test("when asked what events are available, search without creating anything", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
@@ -79,9 +75,8 @@ describe("Event automation management", () => {
   });
 
   test("when a resource supports the requested event, create the requested event automation", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         "Whenever a reviewer requests changes on GitHub PR getsentry/junior#691, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
@@ -120,9 +115,8 @@ describe("Event automation management", () => {
   });
 
   test("when one GitHub issue has multiple requested states, create one event automation", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
@@ -159,9 +153,8 @@ describe("Event automation management", () => {
   });
 
   test("when issue activity spans a repository, create one repo-wide event automation", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const conversation = await run(
       mention(
         "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
@@ -196,9 +189,8 @@ describe("Event automation management", () => {
   });
 
   test("when managing an existing event automation, list update and delete it", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent(github);
     const channel = slackChannel();
     const { id } = await insertEventAutomation({
       destination: channel,
@@ -286,9 +278,10 @@ describe("Event automation management", () => {
   });
 
   test("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
-    run,
+    agent,
   }) => {
-    // The default agent has no GitHub plugin, so the GitHub trigger is unavailable.
+    // This agent has no GitHub plugin, so the GitHub trigger is unavailable.
+    const { run } = await agent({ plugins: defineJuniorPlugins([]) });
     const channel = slackChannel();
     const { id } = await insertEventAutomation({
       destination: channel,

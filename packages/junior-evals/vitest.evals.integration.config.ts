@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
+import { codingSuite } from "./src/suites/coding";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -71,8 +72,7 @@ const projectTest = {
   testTimeout: EVAL_TEST_TIMEOUT_MS,
 } satisfies InlineConfig;
 
-// A suite is a project for one directory under `evals/integration/`. It sets
-// the default agent options for its tests. See `src/fixture/test.ts`.
+// The integration directory of the coding suite. See `src/suites/coding.ts`.
 const codingSuiteRoot = "evals/integration/coding";
 
 export default defineConfig({
@@ -104,18 +104,8 @@ export default defineConfig({
         resolve,
         test: {
           ...projectTest,
-          name: "coding",
+          ...codingSuite,
           include: [`${codingSuiteRoot}/**/*.eval.ts`],
-          env: {
-            SKILL_DIRS: path.resolve(__dirname, "fixtures/coding-skills"),
-          },
-          provide: {
-            agentOptionsModule: path.resolve(
-              __dirname,
-              codingSuiteRoot,
-              "agent-options.ts",
-            ),
-          },
         },
       },
     ],

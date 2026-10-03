@@ -56,16 +56,19 @@ describe("Thread Continuity", () => {
 - `agent(options)` creates the test's agent with `createApp()` options, such
   as `limits` or `slack.crossActorMidRunMode`. Without it, the agent uses the
   default options. Configure plugins as a host does:
-  `agent({ plugins: defineJuniorPlugins([githubPlugin()]) })`. Tests may
+  `agent({ plugins: defineJuniorPlugins([sentryPlugin()]) })`. Tests may
   import the public `@sentry/junior` API and plugin packages, but not runtime
   internals under `@/`.
-- A suite is a Vitest project for one directory in
-  `vitest.evals.integration.config.ts`. It provides `agentOptionsModule`, a
-  module whose default export is the default `createApp()` options of its
-  tests, and it can set host environment such as `SKILL_DIRS`. Tests in a
-  suite call `run()` without `agent()`. `agent(options)` replaces the suite
-  defaults key by key. The `coding` suite in `evals/integration/coding/` has
-  the GitHub and memory plugins and the coding skills.
+- A suite is a Vitest project for one directory. It provides
+  `agentOptionsModule`, a module whose default export is the default
+  `createApp()` options of its tests, and it can set host environment such as
+  `SKILL_DIRS`. Tests in a suite call `run()` without `agent()`.
+  `agent(options)` replaces the suite defaults key by key.
+- The `coding` suite has the GitHub and memory plugins and the coding skills.
+  `src/suites/coding.ts` has its settings. Its integration evals are in
+  `evals/integration/coding/`, and its behavioral evals are in `evals/coding/`.
+  Put an eval that needs the GitHub plugin in this suite. Do not set up the
+  plugin in the test.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles, is finished. A call fails when
   the agent is not idle within 60 seconds.
@@ -139,7 +142,9 @@ Not in scope:
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, output shape, and model-variable routing judgment
 - Behavioral agent cases: `evals/agent/`
-  - skills, providers, research, files, subscription intent/summary quality, and skill routing
+  - skills, providers, research, files, and skill routing
+- Behavioral coding suite cases: `evals/coding/`
+  - watch intent and summary quality with the GitHub plugin
 - Behavioral feature cases:
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
@@ -253,7 +258,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `trigger-evals-behavioral`, `trigger-evals-integration`, `trigger-evals-guardian`, and `trigger-evals-router` start one suite
 - Behavioral and integration evals require both gateway and sandbox secrets. Guardian and Router only need gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
-- Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
+- Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
