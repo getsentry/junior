@@ -116,6 +116,24 @@ describe("Thread Continuity", () => {
   Gateway calls on other endpoints have no per-call cache counters here.
   A missing counter means unknown, not zero.
   The fixture never copies message or tool content into these usage entries.
+- `usage.metadata.distillation[conversationId]` records the number and cost of
+  stored observations. It also lists history replacements with their event
+  sequence, input token estimates, expected calls, and price decision. It
+  contains no observation text or replacement summary. Check `historyComplete`
+  before treating an empty replacement list as proof that none happened.
+
+Compare context cost on the same commit with
+`JUNIOR_CONTEXT_DISTILLATION_ENABLED=false` and `true`. Use a full-runtime
+case with completed Turns. Loaded `history` does not start the worker. Before
+comparing cost, check that the enabled run wrote observations and replaced
+history. Match the routed models and completed tasks across runs. Compare
+assistant cost plus auxiliary cost, cache reads and writes, reply quality,
+elapsed time, and repeated work. Repeat each setting. A run with no history
+replacement does not measure the cost of using observations.
+On a draft PR to `main`, the `trigger-context-cost-evals` label runs the long
+CI investigation with the feature off and on at the same revision. Both runs
+upload a `context-cost-*` result. Check activation in the on result before
+using the pair as cost evidence. Re-run the pair to check variation.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each

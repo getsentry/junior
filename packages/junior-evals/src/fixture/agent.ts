@@ -52,12 +52,14 @@ import {
   combinedRun,
   readCallEvents,
   readConversationDetail,
+  readDistillationUsage,
   readModelCalls,
   readModelTotals,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
   type FixtureUsage,
+  type DistillationUsage,
   type ModelCallUsage,
   type ModelTotalUsage,
   type Reply,
@@ -207,12 +209,14 @@ export async function createFixtureAgent(
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
   const auxiliaryCostUsd = new Map<string, number>();
+  const distillation = new Map<string, DistillationUsage>();
   const agentModelCalls = new Map<string, ModelCallUsage[]>();
   const agentModelTotals = new Map<string, ModelTotalUsage[]>();
   const gatewayModelCalls: GatewayModelCall[] = [];
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     auxiliaryCostUsd: [...auxiliaryCostUsd.values()].reduce((a, b) => a + b, 0),
+    distillation: Object.fromEntries(distillation),
     gatewayRequests: gateway.requestCounts(),
     gatewayModelCalls: [...gatewayModelCalls],
     modelCalls: [...agentModelCalls.values()].flat(),
@@ -515,6 +519,7 @@ export async function createFixtureAgent(
       record.conversationId,
       detail.auxiliaryCosts?.costUsd ?? 0,
     );
+    distillation.set(record.conversationId, readDistillationUsage(detail));
     agentModelTotals.set(
       record.conversationId,
       readModelTotals(detail.modelUsage ?? []),

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { conversationReportEventSchema } from "@/api/schema/conversation";
-import { readModelCalls, readModelTotals } from "../../../src/fixture/results";
+import {
+  readDistillationUsage,
+  readModelCalls,
+  readModelTotals,
+  toHarnessRun,
+} from "../../../src/fixture/results";
 
 describe("model call usage", () => {
   it("keeps only new, privacy-safe call metrics and preserves missing counters", () => {
@@ -88,5 +93,87 @@ describe("model call usage", () => {
         costUsd: { cacheRead: 0.00002, cacheWrite: 0.0001, total: 0.00012 },
       },
     ]);
+  });
+});
+
+describe("distillation usage", () => {
+  it("records activation and cost from the reporting API without observations or summaries", () => {
+    const events = [
+      conversationReportEventSchema.parse({
+        seq: 12,
+        createdAt: "2026-10-03T12:00:00.000Z",
+        data: {
+          type: "compaction",
+          summary: "private observation text",
+          details: {
+            reason: "distillation",
+            throughSeq: 9,
+            estimatedInputTokens: 180_000,
+            replacementInputTokens: 20_000,
+            expectedCalls: 10,
+            priced: true,
+          },
+        },
+      }),
+    ];
+    const usage = readDistillationUsage({
+      events,
+      auxiliaryCosts: {
+        costUsd: 0.05,
+        operations: [
+          {
+            namespace: "junior",
+            name: "distillation",
+            events: 3,
+            costUsd: 0.02,
+          },
+        ],
+      },
+    });
+
+    expect(usage).toEqual({
+      historyComplete: true,
+      observationCount: 3,
+      observationCostUsd: 0.02,
+      replacements: [
+        {
+          eventSeq: 12,
+          reason: "distillation",
+          throughSeq: 9,
+          estimatedInputTokens: 180_000,
+          replacementInputTokens: 20_000,
+          expectedCalls: 10,
+          priced: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(usage)).not.toContain("private observation text");
+    const report = toHarnessRun({
+      conversationId: "local:example:context-cost",
+      usage: {
+        agentCostUsd: 0.1,
+        auxiliaryCostUsd: 0.05,
+        distillation: { "local:example:context-cost": usage },
+        gatewayRequests: {},
+        gatewayModelCalls: [],
+        modelCalls: [],
+        modelTotals: [],
+      },
+      messages: [],
+      startedAtMs: Date.now(),
+      toolCalls: [],
+    });
+    expect(report.usage?.metadata?.distillation).toEqual({
+      "local:example:context-cost": usage,
+    });
+    expect(JSON.stringify(report.usage)).not.toContain(
+      "private observation text",
+    );
+    expect(
+      readDistillationUsage({
+        events,
+        previousCursor: "older-events",
+      }).historyComplete,
+    ).toBe(false);
   });
 });

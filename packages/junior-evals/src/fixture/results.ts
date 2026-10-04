@@ -289,6 +289,28 @@ export function readModelTotals(
   }));
 }
 
+/** Count stored observations and history replacements without reading their text. */
+export function readDistillationUsage(
+  detail: Pick<
+    ConversationDetail,
+    "events" | "auxiliaryCosts" | "previousCursor"
+  >,
+): DistillationUsage {
+  const operation = detail.auxiliaryCosts?.operations.find(
+    ({ namespace, name }) => namespace === "junior" && name === "distillation",
+  );
+  return {
+    historyComplete: detail.previousCursor === undefined,
+    observationCount: operation?.events ?? 0,
+    observationCostUsd: operation?.costUsd ?? 0,
+    replacements: detail.events.flatMap(({ seq, data }) =>
+      data.type === "compaction" && data.details?.reason === "distillation"
+        ? [{ eventSeq: seq, ...data.details }]
+        : [],
+    ),
+  };
+}
+
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
  * changes formatting and links references, such as `owner/repo#1`.
@@ -378,10 +400,27 @@ function toTranscriptEvents(
 export interface FixtureUsage {
   agentCostUsd: number;
   auxiliaryCostUsd: number;
+  distillation: Record<string, DistillationUsage>;
   gatewayRequests: Record<string, number>;
   gatewayModelCalls: GatewayModelCall[];
   modelCalls: ModelCallUsage[];
   modelTotals: ModelTotalUsage[];
+}
+
+/** Conversation-scoped activation and price decisions from the reporting API. */
+export interface DistillationUsage {
+  historyComplete: boolean;
+  observationCount: number;
+  observationCostUsd: number;
+  replacements: Array<{
+    eventSeq: number;
+    reason: "distillation";
+    throughSeq: number;
+    estimatedInputTokens: number;
+    replacementInputTokens: number;
+    expectedCalls: number;
+    priced: boolean;
+  }>;
 }
 
 interface ModelUsageMetrics {
@@ -426,6 +465,7 @@ export function toHarnessRun(args: {
       metadata: {
         costUsd: args.usage.agentCostUsd,
         auxiliaryCostUsd: args.usage.auxiliaryCostUsd,
+        distillation: toJsonValue(args.usage.distillation) ?? {},
         gatewayRequests: args.usage.gatewayRequests,
         gatewayModelCalls: toJsonValue(args.usage.gatewayModelCalls) ?? [],
         modelCalls: toJsonValue(args.usage.modelCalls) ?? [],
@@ -456,6 +496,7 @@ export function combinedRun(
       metadata: {
         costUsd: usage.agentCostUsd,
         auxiliaryCostUsd: usage.auxiliaryCostUsd,
+        distillation: toJsonValue(usage.distillation) ?? {},
         gatewayRequests: usage.gatewayRequests,
         gatewayModelCalls: toJsonValue(usage.gatewayModelCalls) ?? [],
         modelCalls: toJsonValue(usage.modelCalls) ?? [],
