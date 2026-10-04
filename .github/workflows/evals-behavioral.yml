@@ -293,7 +293,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      - name: Run long coding eval
+      - name: Run long Conversation eval
         id: run
         continue-on-error: true
         env:
@@ -301,9 +301,9 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
         run: >-
           pnpm --filter @sentry/junior-evals evals:behavioral
-          evals/coding/context-cost.eval.ts
-          -t "repairs an organization ID collision and checks what remains"
-      - name: Require long coding result
+          evals/conversation/continuity.eval.ts
+          -t "continues a long CI investigation across two Turns"
+      - name: Require long Conversation result
         run: |
           set -euo pipefail
           result_file="packages/junior-evals/context-cost-${{ matrix.mode }}.json"
@@ -311,8 +311,8 @@ jobs:
             echo "::error::missing context-cost eval result ($result_file)"
             exit 1
           fi
-          jq -e '[.testResults[].assertionResults[] | select(.fullName | contains("repairs an organization ID collision and checks what remains"))] | length == 1' "$result_file" >/dev/null
-      - name: Upload long coding result
+          jq -e '[.testResults[].assertionResults[] | select(.fullName | contains("continues a long CI investigation across two Turns"))] | length == 1' "$result_file" >/dev/null
+      - name: Upload long Conversation result
         uses: actions/upload-artifact@v4
         with:
           name: context-cost-${{ matrix.mode }}
@@ -324,7 +324,7 @@ jobs:
         run: |
           jq -e '[
             .testResults[].assertionResults[]
-            | select(.fullName | contains("repairs an organization ID collision and checks what remains"))
+            | select(.fullName | contains("continues a long CI investigation across two Turns"))
             | .meta.harness.run.usage.metadata.distillation // {}
             | .[]
             | select(.historyComplete == true and .observationCount > 0 and (.replacements | length) > 0)
