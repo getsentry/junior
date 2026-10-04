@@ -20,7 +20,6 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
-import { processEvalPluginTask } from "../harness/plugin-tasks";
 import { installBlobMock } from "./blob";
 import {
   installGatewayObserver,
@@ -177,9 +176,10 @@ export async function createFixtureAgent(
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
-    pluginTaskQueue: async (message) => {
-      track(processEvalPluginTask(message));
-    },
+    // Plugin tasks run in process. A call is idle only after they finish.
+    pluginTaskQueue: (consume) => ({
+      send: async (message) => track(consume(message)),
+    }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in

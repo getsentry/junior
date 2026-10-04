@@ -5,6 +5,7 @@ import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { codingSuite } from "./src/suites/coding";
+import { memorySuite } from "./src/suites/memory";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -74,6 +75,8 @@ const projectTest = {
 
 // The behavioral directory of the coding suite. See `src/suites/coding.ts`.
 const codingSuiteRoot = "evals/coding";
+// The directory of the memory suite. See `src/suites/memory.ts`.
+const memorySuiteRoot = "evals/memory";
 
 export default defineConfig({
   resolve,
@@ -98,6 +101,7 @@ export default defineConfig({
             "evals/integration/**",
             "evals/router/**",
             `${codingSuiteRoot}/**`,
+            `${memorySuiteRoot}/**`,
           ],
         },
       },
@@ -107,6 +111,14 @@ export default defineConfig({
           ...projectTest,
           ...codingSuite,
           include: [`${codingSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...memorySuite,
+          include: [`${memorySuiteRoot}/**/*.eval.ts`],
         },
       },
     ],

@@ -76,6 +76,7 @@ export function createProductionSlackWebhookServices(options: {
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
   queue: ConversationWorkQueue;
+  /** Send path for plugin tasks. Without it, tasks go to the Vercel queue. */
   sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
   waitUntil: (task: Promise<unknown>) => void;
@@ -86,9 +87,7 @@ export function createProductionConversationWorkOptions(options: {
     conversationStore,
     getSlackAdapter: getProductionSlackAdapter,
     queue: options.queue,
-    ...(options.sendPluginTask
-      ? { sendPluginTask: options.sendPluginTask }
-      : undefined),
+    sendPluginTask: options.sendPluginTask,
     services: options.services,
     waitUntil: options.waitUntil,
   });

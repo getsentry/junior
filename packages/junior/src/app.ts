@@ -89,8 +89,9 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
+  type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import { processPluginTask } from "@/chat/plugins/task-runner";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -184,10 +185,16 @@ export interface JuniorAppOptions extends BotModelConfig {
       delivery: { messageId: string },
     ) => Promise<void>,
   ) => ConversationWorkQueue;
-  /** Replace the Vercel Queue sender for completed-Turn plugin tasks. */
-  pluginTaskQueue?: NonNullable<
-    ScheduleSessionCompletedPluginTasksOptions["send"]
-  >;
+  /**
+   * Replace the Vercel Queue transport for plugin tasks, for example with an
+   * in-process queue. `consume` runs one task through this app's task runner.
+   * Completed Slack turns send their plugin tasks to the returned queue.
+   * Mailbox turns, such as web turns, run their plugin tasks in the worker
+   * and do not use this queue.
+   */
+  pluginTaskQueue?: (
+    consume: (message: PluginTaskQueueMessage) => Promise<void>,
+  ) => { send(message: PluginTaskQueueMessage): Promise<void> };
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -475,6 +482,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     ) ??
     getVercelConversationWorkQueue();
+  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
   const attachmentStorage = createVercelAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
@@ -494,10 +502,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       createProductionConversationWorkOptions({
         agentRunner,
         queue: conversationWorkQueue,
-        services: runtimeServiceOverrides,
-        ...(options?.pluginTaskQueue
-          ? { sendPluginTask: options.pluginTaskQueue }
+        ...(pluginTaskQueue
+          ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
           : undefined),
+        services: runtimeServiceOverrides,
         waitUntil: (task) => waitUntil(task),
       });
     return conversationWorkOptions;
