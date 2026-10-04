@@ -23,6 +23,8 @@ export interface InProcessQueue extends ConversationWorkQueue {
   connect(consume: Consume): ConversationWorkQueue;
   /** Deliveries that are waiting for their delay or running. */
   pending(): Promise<void>[];
+  /** When the last delivery was due to start, or 0 before the first one. */
+  latestStartAtMs(): number;
   /** Hold deliveries until `release()`, so inputs form one mailbox batch. */
   hold(): void;
   release(): void;
@@ -40,6 +42,7 @@ export function createInProcessQueue(): InProcessQueue {
   let held = false;
   let closed = false;
   let nextMessageId = 0;
+  let latestStartAtMs = 0;
   const sentKeys = new Map<string, string>();
   const waiting: Array<() => void> = [];
   const pending = new Set<Promise<void>>();
@@ -51,6 +54,7 @@ export function createInProcessQueue(): InProcessQueue {
     messageId: string,
     delayMs: number,
   ) => {
+    latestStartAtMs = Math.max(latestStartAtMs, Date.now() + delayMs);
     const delivery = new Promise<void>((resolve) => {
       const start = () => {
         if (closed || !consume) {
@@ -99,6 +103,7 @@ export function createInProcessQueue(): InProcessQueue {
       return queue;
     },
     pending: () => [...pending],
+    latestStartAtMs: () => latestStartAtMs,
     hold() {
       held = true;
     },

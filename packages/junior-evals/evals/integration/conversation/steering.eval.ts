@@ -9,6 +9,11 @@ import { test } from "@junior-evals/fixture/test";
 const INCIDENT_REQUEST =
   "In two sentences, summarize the checkout outage: payments failed for 20 minutes after the 14:05 deploy.";
 
+// With passive routing, Junior can answer a thread message that has no
+// mention. Without it, no such message starts a turn, so a check for "no
+// turn" cannot fail.
+const PASSIVE_ROUTING = { experimental: { "passive-routing": true } };
+
 describe("Slack Turn Steering", () => {
   test("when the same person mentions Junior during a turn, the running turn takes the mention", async ({
     run,
@@ -84,8 +89,9 @@ describe("Slack Turn Steering", () => {
   });
 
   test("when a thread message needs no reply, Junior consumes it without a turn", async ({
-    run,
+    agent,
   }) => {
+    const { run } = await agent(PASSIVE_ROUTING);
     const conversation = await run(mention(INCIDENT_REQUEST));
     expect(conversation.replies.length).toBeGreaterThan(0);
 
@@ -97,8 +103,9 @@ describe("Slack Turn Steering", () => {
   });
 
   test("when someone says stop during a turn, Junior stops and stays out of the thread", async ({
-    run,
+    agent,
   }) => {
+    const { run } = await agent(PASSIVE_ROUTING);
     const conversation = await run(mention(INCIDENT_REQUEST), {
       // The mention waits for a follow-up turn; the stop discards it.
       onProgress: sendDuringFirstModelRequest([

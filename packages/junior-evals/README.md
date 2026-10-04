@@ -76,7 +76,12 @@ describe("Thread Continuity", () => {
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
-  A call fails when the agent is not idle within 60 seconds.
+  A call fails when the agent is not idle within 60 seconds. The product
+  delays some queued deliveries; for example, a watch delivery waits 30
+  seconds for more events. The 60 seconds start when the last delivery is due.
+- A channel `mention()` arrives as Slack sends it: a `message` event with the
+  channel type, then an `app_mention` event with the same `ts`. Junior learns
+  from the channel type that the channel is public.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
