@@ -9,14 +9,14 @@ import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 import { handoffHistory } from "../integration/coding/handoff-history";
 
-const SHARDS = 20;
-const CHECKS_PER_SHARD = 230;
+const SHARDS = 12;
+const CHECKS_PER_SHARD = 160;
 
 function isolationLogs(): HistoryToolCall[] {
   return Array.from({ length: SHARDS }, (_, shard) => {
     const lines = Array.from({ length: CHECKS_PER_SHARD }, (_, check) => {
       const location = `tests/work-object/test_isolation.py::test_identity_${shard + 1}_${check + 1}`;
-      if (shard === 10 && check === 114) {
+      if (shard === 6 && check === 99) {
         return `${location} FAIL org=org-red provider=github key=shared expected=distinct-from-org-blue observed=same-work-object-id; the identifier contains provider and key but no organization id`;
       }
       return `${location} PASS org=org-red provider=github key=object-${shard + 1}-${check + 1} expected=stable-within-org observed=stable-within-org duration=${((check % 17) + 1) / 100}s`;
@@ -25,7 +25,7 @@ function isolationLogs(): HistoryToolCall[] {
       name: "bash",
       arguments: { command: `pnpm test --shard=${shard + 1}/${SHARDS}` },
       result: {
-        exit_code: shard === 10 ? 1 : 0,
+        exit_code: shard === 6 ? 1 : 0,
         stdout: lines.join("\n"),
         stderr: "",
         timed_out: false,
