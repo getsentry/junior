@@ -131,9 +131,9 @@ assistant cost plus auxiliary cost, cache reads and writes, reply quality,
 elapsed time, and repeated work. Repeat each setting. A run with no history
 replacement does not measure the cost of using observations.
 On a draft PR to `main`, the `trigger-context-cost-evals` label runs the long
-CI investigation with the feature off and on at the same revision. Both runs
-upload a `context-cost-*` result. Check activation in the on result before
-using the pair as cost evidence. Re-run the pair to check variation.
+coding case with the feature off and on at the same revision. Both runs upload
+a `context-cost-*` result. Check activation in the on result before using the
+pair as cost evidence. Re-run the pair to check variation.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each
