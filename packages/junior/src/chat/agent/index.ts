@@ -16,6 +16,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
+import { compactWithDistillations } from "@/chat/distillation/context";
 import {
   extractGenAiUsageAttributes,
   extractGenAiUsageSummary,
@@ -915,37 +916,53 @@ async function executeAgentRunInPrivacyContext(
       }>,
       clearSteeringQueueOnCommit = false,
       pairPendingRuntimeContext = false,
+      tryDistillation = false,
     ): Promise<AgentLoopTurnUpdate | undefined> => {
-      const compaction = await compactActiveContextIfNeeded(
-        {
-          conversationContext: input.conversationContext,
-          conversationId,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackChannelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
-          modelId: activeModelId,
-          modelProfile: activeModelProfile,
-          onCompactionStart: () =>
-            observers.onStatus?.({ text: "Compacting context" }),
-          pendingMessages,
-          piMessages: messages,
-          ...(pairPendingRuntimeContext && pendingMessages
-            ? {
-                runtimeContextMessages: [
-                  ...messages,
-                  ...pendingMessages.map((entry) => entry.message),
-                ],
-              }
-            : undefined),
-          signal: hookSignal,
-        },
-        {
-          completeText: (args) => completeText(args),
-        },
-      );
+      const distilled =
+        tryDistillation &&
+        botConfig.contextDistillationEnabled &&
+        pendingMessages?.length === 1
+          ? await compactWithDistillations({
+              conversationId,
+              modelId: activeModelId,
+              modelProfile: activeModelProfile,
+              messages,
+              pendingInstruction: pendingMessages[0]!,
+              signal: hookSignal,
+            })
+          : undefined;
+      const compaction = distilled
+        ? { compacted: true, piMessages: distilled }
+        : await compactActiveContextIfNeeded(
+            {
+              conversationContext: input.conversationContext,
+              conversationId,
+              metadata: {
+                threadId: conversationId,
+                channelId: slackChannelId,
+                actorId: slackActor?.userId,
+                runId,
+              },
+              modelId: activeModelId,
+              modelProfile: activeModelProfile,
+              onCompactionStart: () =>
+                observers.onStatus?.({ text: "Compacting context" }),
+              pendingMessages,
+              piMessages: messages,
+              ...(pairPendingRuntimeContext && pendingMessages
+                ? {
+                    runtimeContextMessages: [
+                      ...messages,
+                      ...pendingMessages.map((entry) => entry.message),
+                    ],
+                  }
+                : undefined),
+              signal: hookSignal,
+            },
+            {
+              completeText: (args) => completeText(args),
+            },
+          );
       if (!compaction.compacted || !compaction.piMessages) {
         return undefined;
       }
@@ -1400,6 +1417,7 @@ async function executeAgentRunInPrivacyContext(
                 : undefined,
               false,
               Boolean(contextMessage),
+              shouldPromptAgent && !resumedFromSessionRecord,
             ),
             () => compactionAbortController.abort(),
           );

@@ -544,17 +544,30 @@ const conversationReportCompactionEventDataSchema = z
     modelId: z.string().min(1).optional(),
     summary: z.string().min(1).optional(),
     details: z
-      .object({
-        reason: z.literal("capacity"),
-        estimatedInputTokens: z.number().int().nonnegative(),
-        replacementInputTokens: z.number().int().nonnegative().optional(),
-        triggerTokens: z.number().int().nonnegative(),
-        inputLimitTokens: z.number().int().positive(),
-        inputMessageCount: z.number().int().nonnegative(),
-        retainedMessageCount: z.number().int().nonnegative(),
-        summaryChars: z.number().int().nonnegative(),
-      })
-      .strict()
+      .discriminatedUnion("reason", [
+        z
+          .object({
+            reason: z.literal("capacity"),
+            estimatedInputTokens: z.number().int().nonnegative(),
+            replacementInputTokens: z.number().int().nonnegative().optional(),
+            triggerTokens: z.number().int().nonnegative(),
+            inputLimitTokens: z.number().int().positive(),
+            inputMessageCount: z.number().int().nonnegative(),
+            retainedMessageCount: z.number().int().nonnegative(),
+            summaryChars: z.number().int().nonnegative(),
+          })
+          .strict(),
+        z
+          .object({
+            reason: z.literal("distillation"),
+            throughSeq: z.number().int().nonnegative(),
+            estimatedInputTokens: z.number().int().nonnegative(),
+            replacementInputTokens: z.number().int().nonnegative(),
+            expectedCalls: z.number().int().positive(),
+            priced: z.boolean(),
+          })
+          .strict(),
+      ])
       .optional(),
   })
   .strict();

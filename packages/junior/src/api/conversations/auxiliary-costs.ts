@@ -24,7 +24,7 @@ function eventCost(): SQL<number | null> {
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       AND jsonb_typeof(${juniorConversationEvents.payload}->'content'->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->'content'->>'costUsd')::numeric
-    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed')
+    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed', 'distillation')
       AND jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->>'costUsd')::numeric
     ELSE NULL
@@ -106,6 +106,7 @@ export async function readConversationAuxiliaryCostsFromSql(
           inArray(juniorConversationEvents.type, [
             "guardian_action_reviewed",
             "turn_routed",
+            "distillation",
           ]),
         ),
         sql`${cost} >= 0`,

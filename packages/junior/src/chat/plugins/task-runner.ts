@@ -47,7 +47,7 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { coreTaskRegistrations } from "@/chat/plugins/core-tasks";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,

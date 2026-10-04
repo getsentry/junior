@@ -87,6 +87,19 @@ describe("conversation detail API", () => {
           type: "turn_routed",
         },
       },
+      {
+        createdAtMs: 5,
+        data: {
+          type: "distillation",
+          generation: 0,
+          sourceHistoryVersion: 0,
+          fromSeq: 0,
+          throughSeq: 0,
+          observations: "Private prior work as evidence only.",
+          modelId: "openai/gpt-6-luna",
+          costUsd: 0.0005,
+        },
+      },
     ]);
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
@@ -96,8 +109,14 @@ describe("conversation detail API", () => {
     );
     expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
     expect(refreshed.auxiliaryCosts).toEqual({
-      costUsd: 0.0006,
+      costUsd: 0.0011,
       operations: [
+        {
+          costUsd: 0.0005,
+          events: 1,
+          name: "distillation",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0002,
           events: 1,

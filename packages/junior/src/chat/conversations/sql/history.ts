@@ -31,7 +31,7 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
 import { withConversationEventLock } from "./event-lock";
@@ -204,6 +204,18 @@ class SqlConversationEventStore implements ConversationEventStore {
         if (pending.length === 0) {
           return [];
         }
+        if (pending.some((event) => event.data.type === "distillation")) {
+          const [conversation] = await this.executor
+            .db()
+            .select({
+              transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+            })
+            .from(juniorConversations)
+            .where(eq(juniorConversations.conversationId, conversationId));
+          if (!conversation || conversation.transcriptPurgedAt) {
+            throw new Error("Cannot distill a purged or missing Conversation");
+          }
+        }
         const newestCreatedAtMs = Math.max(
           ...pending.map((event) => event.createdAtMs),
         );
@@ -215,6 +227,15 @@ class SqlConversationEventStore implements ConversationEventStore {
         );
         const cursor = await this.readCursor(conversationId);
         const historyVersion = cursor.maxHistoryVersion ?? 0;
+        if (
+          pending.some(
+            (event) =>
+              event.data.type === "distillation" &&
+              event.data.sourceHistoryVersion !== historyVersion,
+          )
+        ) {
+          return [];
+        }
         let seq = cursor.nextSeq;
         const rows: ConversationEventInsert[] = [];
         for (const event of pending) {
@@ -259,6 +280,14 @@ class SqlConversationEventStore implements ConversationEventStore {
   ): Promise<void> {
     const parsed = historyReplacementSchema.parse(replacement);
     await withConversationEventLock(this.executor, conversationId, async () => {
+      const [conversation] = await this.executor
+        .db()
+        .select({ transcriptPurgedAt: juniorConversations.transcriptPurgedAt })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, conversationId));
+      if (conversation?.transcriptPurgedAt) {
+        throw new Error("Cannot replace history in a purged Conversation");
+      }
       await ensureConversationRow(this.executor, conversationId, Date.now());
       const cursor = await this.readCursor(conversationId);
       const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;

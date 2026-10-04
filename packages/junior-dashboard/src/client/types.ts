@@ -15,6 +15,7 @@ import type {
   ConversationTurnFailureReason,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationReportEventData } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
@@ -53,16 +54,10 @@ export type TranscriptViewContextEventPart = {
         modelId?: string;
         modelProfile?: string;
         summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
+        details?: Extract<
+          ConversationReportEventData,
+          { type: "compaction" }
+        >["details"];
       }
     | {
         createdAt: string;

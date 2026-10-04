@@ -66,18 +66,30 @@ const nativeReplacementHistoryItemSchema = z
  */
 const replacementHistorySchema = z.array(nativeReplacementHistoryItemSchema);
 
-const compactionDetailsSchema = z
-  .object({
-    reason: z.literal("capacity"),
-    estimatedInputTokens: z.number().int().nonnegative(),
-    replacementInputTokens: z.number().int().nonnegative().optional(),
-    triggerTokens: z.number().int().nonnegative(),
-    inputLimitTokens: z.number().int().positive(),
-    inputMessageCount: z.number().int().nonnegative(),
-    retainedMessageCount: z.number().int().nonnegative(),
-    summaryChars: z.number().int().nonnegative(),
-  })
-  .strict();
+const compactionDetailsSchema = z.discriminatedUnion("reason", [
+  z
+    .object({
+      reason: z.literal("capacity"),
+      estimatedInputTokens: z.number().int().nonnegative(),
+      replacementInputTokens: z.number().int().nonnegative().optional(),
+      triggerTokens: z.number().int().nonnegative(),
+      inputLimitTokens: z.number().int().positive(),
+      inputMessageCount: z.number().int().nonnegative(),
+      retainedMessageCount: z.number().int().nonnegative(),
+      summaryChars: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      reason: z.literal("distillation"),
+      throughSeq: z.number().int().nonnegative(),
+      estimatedInputTokens: z.number().int().nonnegative(),
+      replacementInputTokens: z.number().int().nonnegative(),
+      expectedCalls: z.number().int().positive(),
+      priced: z.boolean(),
+    })
+    .strict(),
+]);
 
 const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
   z
@@ -354,6 +366,22 @@ const turnCompletedEventDataSchema = z
   })
   .strict();
 
+// Observations are Conversation-scoped derived context, not model history or
+// instructions. An event's historyVersion pins it to its source projection.
+const distillationEventDataSchema = z
+  .object({
+    type: z.literal("distillation"),
+    generation: z.union([z.literal(0), z.literal(1)]),
+    sourceHistoryVersion: z.number().int().nonnegative(),
+    fromSeq: z.number().int().nonnegative(),
+    throughSeq: z.number().int().nonnegative(),
+    observations: z.string().min(1).max(20_000),
+    modelId: z.string().min(1),
+    costUsd: z.number().finite().nonnegative(),
+  })
+  .strict()
+  .refine((data) => data.fromSeq <= data.throughSeq);
+
 const turnFailedEventDataSchema = z
   .object({
     type: z.literal("turn_failed"),
@@ -412,6 +440,7 @@ const appendableConversationEventDataSchema = z.union([
   attachmentsDeliveredEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
+  distillationEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
@@ -452,6 +481,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "attachments_delivered",
   "turn_routed",
   "turn_completed",
+  "distillation",
   "turn_failed",
   "subagent_started",
   "subagent_ended",
