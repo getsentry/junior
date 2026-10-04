@@ -11,6 +11,14 @@ import {
 } from "@/chat/conversations/projection";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
+import { getConversationInfo } from "@/chat/slack/channel";
+import { SlackActionError } from "@/chat/slack/client";
+import {
+  resolveSlackChannelTypeFromMessage,
+  slackChannelTypeFromConversationInfo,
+  type SlackEventChannelType,
+} from "@/chat/slack/conversation-context";
+import { parseSlackChannelId } from "@/chat/slack/ids";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
@@ -132,6 +140,40 @@ export async function resolveChannelName(
     return metadata.name?.trim() || undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Return the Slack channel type of a message.
+ *
+ * Slack delivers a channel mention as two events with the same `ts`: `message`
+ * has `channel_type`, and `app_mention` does not. Junior stores the event that
+ * arrives first. When that event has no `channel_type`, ask Slack for the
+ * conversation, so the turn does not depend on the order of the two events.
+ */
+export async function resolveSlackChannelType(
+  message: Message,
+  channelId: string | undefined,
+): Promise<SlackEventChannelType | undefined> {
+  const eventChannelType = resolveSlackChannelTypeFromMessage(message);
+  if (eventChannelType) {
+    return eventChannelType;
+  }
+  const slackChannelId = parseSlackChannelId(channelId);
+  if (!slackChannelId) {
+    return undefined;
+  }
+  try {
+    return slackChannelTypeFromConversationInfo(
+      await getConversationInfo(slackChannelId),
+    );
+  } catch (error) {
+    // Slack can refuse the lookup, for example when an install has no read
+    // scope for this conversation. The turn then has no confirmed visibility.
+    if (error instanceof SlackActionError) {
+      return undefined;
+    }
+    throw error;
   }
 }
 

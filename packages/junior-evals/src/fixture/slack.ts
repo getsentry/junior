@@ -250,8 +250,9 @@ let eventSequence = 0;
  * Deliver one Slack message to the app route as Slack does. A channel mention
  * arrives as two signed events with the same `ts`: a `message` event, which
  * has the channel type, and an `app_mention` event, which has none. Slack does
- * not fix their order. The fixture sends the `message` event first, so the
- * stored message has the channel type that tells Junior the channel is public.
+ * not fix their order, and Junior stores the first one. The fixture sends
+ * `app_mention` first, so each mention turn must learn the channel type from
+ * Slack and not from the event.
  */
 export async function postSlackMessageEvent(
   app: RequestApp,
@@ -273,14 +274,14 @@ export async function postSlackMessageEvent(
     event_ts: event.ts,
     ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
   };
+  if (event.mention) {
+    await postSlackEvent(app, { ...message, type: "app_mention" });
+  }
   await postSlackEvent(app, {
     ...message,
     type: "message",
     channel_type: event.channelType,
   });
-  if (event.mention) {
-    await postSlackEvent(app, { ...message, type: "app_mention" });
-  }
 }
 
 /** Post one signed Slack Events API event to the app route. */

@@ -156,6 +156,7 @@ import {
   inboundMessageActor,
   inboundMessageProvenance,
   resolveChannelName,
+  resolveSlackChannelType,
   saveSteeringMessages,
   steeringMessageKey,
 } from "@/chat/providers/slack/input";
@@ -290,7 +291,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       options.destination,
       "Slack reply execution",
     );
-    const slackChannelType = resolveSlackChannelTypeFromMessage(message);
+    const slackChannelType = options.execution
+      ? resolveSlackChannelTypeFromMessage(message)
+      : await resolveSlackChannelType(message, channelId);
     const slackConversation = resolveSlackConversationContext({
       channelId,
       channelName,
