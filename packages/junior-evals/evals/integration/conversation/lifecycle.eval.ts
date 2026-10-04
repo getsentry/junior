@@ -3,7 +3,10 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedMcpToolCalls,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 /** Release tools of the eval MCP server. */
@@ -19,18 +22,6 @@ const evalOperation = defineJuniorPlugin({
     },
   },
 });
-
-/** The MCP call of one eval-operation tool, by tool name. */
-function evalOperationCalls(
-  conversation: Parameters<typeof completedToolCalls>[1],
-  tool: string,
-) {
-  return completedToolCalls("callMcpTool", conversation).filter(
-    (call) =>
-      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
-      `mcp__eval-operation__${tool}`,
-  );
-}
 
 describe("Lifecycle and Resilience", () => {
   test("when the first human message lands, store a conversation title", async ({
@@ -71,7 +62,10 @@ describe("Lifecycle and Resilience", () => {
       },
     );
 
-    const [interruptedPush] = evalOperationCalls(conversation, "release-push");
+    const [interruptedPush] = completedMcpToolCalls(
+      "mcp__eval-operation__release-push",
+      conversation,
+    );
     expect(interruptedPush && toolOutput(interruptedPush)).toMatchObject({
       timed_out: true,
     });
@@ -80,9 +74,12 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
     ]);
-    expect(evalOperationCalls(conversation, "release-status")).not.toHaveLength(
-      0,
-    );
+    expect(
+      completedMcpToolCalls(
+        "mcp__eval-operation__release-status",
+        conversation,
+      ),
+    ).not.toHaveLength(0);
     expect(conversation.replies).toHaveLength(1);
   });
 });
