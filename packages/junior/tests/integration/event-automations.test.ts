@@ -347,7 +347,7 @@ describe("event automations", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#1174
-      Created by: <@U123>
+      Created by: <@U123>. Where the instructions say "me" or "my", write this mention.
       Instructions: Address the requested changes.
 
       Trusted summary: A reviewer requested changes.
