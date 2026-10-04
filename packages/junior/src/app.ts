@@ -90,6 +90,7 @@ import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
 } from "@/chat/plugins/task-queue";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -183,6 +184,10 @@ export interface JuniorAppOptions extends BotModelConfig {
       delivery: { messageId: string },
     ) => Promise<void>,
   ) => ConversationWorkQueue;
+  /** Replace the Vercel Queue sender for completed-Turn plugin tasks. */
+  pluginTaskQueue?: NonNullable<
+    ScheduleSessionCompletedPluginTasksOptions["send"]
+  >;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -490,6 +495,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         agentRunner,
         queue: conversationWorkQueue,
         services: runtimeServiceOverrides,
+        ...(options?.pluginTaskQueue
+          ? { sendPluginTask: options.pluginTaskQueue }
+          : undefined),
         waitUntil: (task) => waitUntil(task),
       });
     return conversationWorkOptions;

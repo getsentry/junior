@@ -3,9 +3,9 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
- * transport and `waitUntil` with in-process versions, so it knows when the
- * agent is idle.
+ * third-party APIs are MSW mocks. The fixture replaces the Vercel Queue
+ * transports and `waitUntil` with in-process versions, so it knows when the
+ * agent and its plugin tasks are idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -20,6 +20,7 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
+import { processEvalPluginTask } from "../harness/plugin-tasks";
 import { installBlobMock } from "./blob";
 import {
   installGatewayObserver,
@@ -176,6 +177,9 @@ export async function createFixtureAgent(
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
+    pluginTaskQueue: async (message) => {
+      track(processEvalPluginTask(message));
+    },
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in

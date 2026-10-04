@@ -15,6 +15,7 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
 import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
@@ -75,6 +76,7 @@ export function createProductionSlackWebhookServices(options: {
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
   queue: ConversationWorkQueue;
+  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
   waitUntil: (task: Promise<unknown>) => void;
 }): ConversationWorkCallbackOptions {
@@ -84,6 +86,9 @@ export function createProductionConversationWorkOptions(options: {
     conversationStore,
     getSlackAdapter: getProductionSlackAdapter,
     queue: options.queue,
+    ...(options.sendPluginTask
+      ? { sendPluginTask: options.sendPluginTask }
+      : undefined),
     services: options.services,
     waitUntil: options.waitUntil,
   });

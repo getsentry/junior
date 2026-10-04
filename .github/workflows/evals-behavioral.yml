@@ -319,6 +319,16 @@ jobs:
           path: packages/junior-evals/context-cost-${{ matrix.mode }}.json
           if-no-files-found: error
           retention-days: 7
+      - name: Require priced history replacement
+        if: matrix.mode == 'on'
+        run: |
+          jq -e '[
+            .testResults[].assertionResults[]
+            | select(.fullName | contains("repairs an organization ID collision and checks what remains"))
+            | .meta.harness.run.usage.metadata.distillation // {}
+            | .[]
+            | select(.historyComplete == true and .observationCount > 0 and (.replacements | length) > 0)
+          ] | length > 0' packages/junior-evals/context-cost-on.json >/dev/null
       - name: Require eval pass
         if: steps.run.outcome != 'success'
         run: exit 1
