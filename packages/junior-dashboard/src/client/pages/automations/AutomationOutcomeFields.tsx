@@ -9,6 +9,24 @@ import { cn } from "../../styles";
 import type { AutomationDraft } from "./automationDraft";
 import { automationOutcomeLabel } from "./automationOutcomes";
 
+/** Show saved outcomes in order for a reader who cannot change them. */
+export function AutomationOutcomeList(props: {
+  outcomes: AutomationEdit["outcomes"];
+  destination: AutomationSummary["destination"];
+}) {
+  if (!props.outcomes.length)
+    return <p className="m-0 text-sm">No success message</p>;
+  return (
+    <ol className="m-0 grid gap-2 pl-5 text-sm">
+      {props.outcomes.map((outcome, index) => (
+        <li key={index}>
+          {automationOutcomeLabel(outcome, props.destination)}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** Keep outcome order and offer only supported message Destinations. */
 export function AutomationOutcomeFields(props: {
   value: AutomationDraft["outcomes"];

@@ -39,17 +39,18 @@ export function AutomationVersionsPage(props: { enabled: boolean }) {
   }
   const backTo = pathWithSearch(automationPath(automationId), searchParams);
   const error = summary.error ?? versions.error;
-  if (error || (summary.data && summary.data.kind !== taskKind)) {
+  const notFound =
+    (error instanceof DashboardApiError && error.status === 404) ||
+    (summary.data && summary.data.kind !== taskKind);
+  if (error || notFound) {
     return (
       <>
         <PageHeader description={DESCRIPTION} title="Version history" />
         <Card padding="md">
           <InlineError>
-            {error instanceof DashboardApiError && error.status === 404
+            {notFound
               ? "This automation was not found or is not visible to you."
-              : summary.data && summary.data.kind !== taskKind
-                ? "This automation was not found or is not visible to you."
-                : "Version history could not be loaded. Try again."}
+              : "Version history could not be loaded. Try again."}
           </InlineError>
           <BackLink to={backTo} />
         </Card>
@@ -107,9 +108,7 @@ function AutomationVersionsView(props: {
       return post(
         automationEditSchema,
         `${path}/versions/${version}/activate`,
-        {
-          revision: current.revision,
-        },
+        { revision: current.revision },
       );
     },
     onMutate: () => setActivated(undefined),
@@ -135,10 +134,9 @@ function AutomationVersionsView(props: {
           : "This automation has completed. Its versions are read-only."}
       </p>
       {activated !== undefined ? (
-        <p
-          role="status"
-          className="m-0 text-sm text-emerald-300"
-        >{`Version ${activated} is active again. It was saved as a new version.`}</p>
+        <p role="status" className="m-0 text-sm text-emerald-300">
+          Version {activated} is active again. It was saved as a new version.
+        </p>
       ) : null}
       {data.versions.length === 0 ? (
         <Card padding="md">
@@ -160,7 +158,6 @@ function AutomationVersionsView(props: {
                   activate.variables === version.version ? activate.error : null
                 }
                 onActivate={() => {
-                  // Use the dashboard's native confirm, like delete actions.
                   const creatorOnly = automation.ownedByViewer
                     ? ""
                     : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`;
@@ -316,7 +313,7 @@ function VersionSettings(props: {
       <Detail label="Destination">{destination}</Detail>
       <Detail label="On success">
         {definition.outcomes.length ? (
-          <ol className="m-0 pl-4">
+          <ol className="m-0 grid gap-1 p-0">
             {definition.outcomes.map((outcome, index) => (
               <li key={index}>
                 {automationOutcomeLabel(outcome, automation.destination)}
@@ -330,7 +327,7 @@ function VersionSettings(props: {
       <Detail label="Connected accounts">
         {definition.credentialMode === "creator"
           ? `Uses accounts connected by ${automation.ownedByViewer ? "you" : automation.createdBy}.`
-          : "Junior’s accounts only"}
+          : "System credentials only"}
       </Detail>
     </DetailList>
   );

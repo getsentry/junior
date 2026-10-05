@@ -14,7 +14,7 @@ import { AutomationsNavigation } from "./AutomationsPageLayout";
 import { AutomationEditor } from "./AutomationEditor";
 import { AutomationEditorLoading } from "./AutomationEditorLoading";
 import { AutomationFormSection } from "./AutomationFormSection";
-import { automationOutcomeLabel } from "./automationOutcomes";
+import { AutomationOutcomeList } from "./AutomationOutcomeFields";
 
 /** Load a linkable editor. Owners and public readers can edit until work completes. */
 export function AutomationEditPage(props: { enabled: boolean }) {
@@ -151,17 +151,10 @@ function AutomationReadOnly({ automation }: { automation: AutomationSummary }) {
         title="Where results go"
         detail="Messages after successful work."
       >
-        {automation.outcomes.length ? (
-          <ol className="m-0 grid gap-2 pl-5 text-sm">
-            {automation.outcomes.map((outcome, index) => (
-              <li key={index}>
-                {automationOutcomeLabel(outcome, automation.destination)}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="m-0 text-sm">No success message</p>
-        )}
+        <AutomationOutcomeList
+          outcomes={automation.outcomes}
+          destination={automation.destination}
+        />
       </AutomationFormSection>
       <AutomationFormSection
         title="Credentials"

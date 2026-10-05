@@ -24,7 +24,10 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
-import type { ScheduleIntent } from "@/chat/scheduled-automations/schedule-intent";
+import {
+  weekdaySchema,
+  type ScheduleIntent,
+} from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { automationRevision, requireAutomationRevision } from "./revision";
 import {
@@ -46,16 +49,6 @@ type RestoredValues = {
 type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
-
-const WEEKDAYS = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-] as const;
 
 async function requireOwnedAutomation(
   user: User,
@@ -175,11 +168,11 @@ export async function updateViewerAutomation(
   return saveViewerEdit(user, current, input);
 }
 
+/** `restored` carries version values that edit input cannot express, such as a cleared title. */
 async function saveViewerEdit(
   user: User,
   current: TaskCandidate,
   input: AutomationUpdate,
-  // Restored values that edit input cannot express, such as a cleared title.
   restored?: RestoredValues,
 ): Promise<AutomationEdit> {
   const isCreator = current.ownedByViewer;
@@ -234,7 +227,7 @@ function scheduleIntent(
     frequency: recurrence.frequency,
     interval: recurrence.interval,
     time: `${String(recurrence.time.hour).padStart(2, "0")}:${String(recurrence.time.minute).padStart(2, "0")}`,
-    weekdays: recurrence.weekdays?.map((day) => WEEKDAYS[day]!),
+    weekdays: recurrence.weekdays?.map((day) => weekdaySchema.options[day]!),
     dayOfMonth: recurrence.dayOfMonth,
     month: recurrence.month,
     startDate: recurrence.startDate,

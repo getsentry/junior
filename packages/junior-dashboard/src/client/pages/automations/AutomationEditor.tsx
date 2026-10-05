@@ -16,8 +16,10 @@ import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
-import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
-import { automationOutcomeLabel } from "./automationOutcomes";
+import {
+  AutomationOutcomeFields,
+  AutomationOutcomeList,
+} from "./AutomationOutcomeFields";
 import {
   automationDraftChanges,
   createAutomationDraft,
@@ -325,20 +327,10 @@ export function AutomationEditor(props: {
             />
           ) : (
             <>
-              {original.outcomes.length ? (
-                <ol className="m-0 grid gap-2 pl-5 text-sm">
-                  {original.outcomes.map((outcome, index) => (
-                    <li key={index}>
-                      {automationOutcomeLabel(
-                        outcome,
-                        props.summary.destination,
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="m-0 text-sm">No success message</p>
-              )}
+              <AutomationOutcomeList
+                outcomes={original.outcomes}
+                destination={props.summary.destination}
+              />
               <p className="m-0 text-xs text-dashboard-text-muted">
                 Only {creator} can change where results go.
               </p>
