@@ -143,6 +143,7 @@ export async function compactWithDistillations(args: {
       rawTokens < getAgentContextCompactionTriggerTokens(args.modelId))
   ) {
     logInfo("conversation.distillation.skipped", {
+      "gen_ai.conversation.id": args.conversationId,
       "app.distillation.stage": "replacement",
       "app.distillation.reason":
         replacementTokens >= getAgentContextInputLimitTokens(args.modelId)

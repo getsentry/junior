@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { conversationReportEventSchema } from "@/api/schema/conversation";
 import {
+  logInfo,
+  registerLogRecordSink,
+  type EmittedLogRecord,
+} from "@/chat/logging";
+import {
+  readDistillationDecision,
   readDistillationUsage,
   readModelCalls,
   readModelTotals,
@@ -97,6 +103,68 @@ describe("model call usage", () => {
 });
 
 describe("distillation usage", () => {
+  it("copies only numeric skip reasons from log records", () => {
+    const decision = readDistillationDecision({
+      eventName: "conversation.distillation.skipped",
+      level: "info",
+      body: "private observation text",
+      attributes: {
+        "gen_ai.conversation.id": "local:example:context-cost",
+        "app.distillation.stage": "observer",
+        "app.distillation.reason": "not_economical",
+        "app.distillation.raw_tokens": 180_000,
+        "app.distillation.expected_calls": 2,
+        "app.distillation.savings_ratio": -4.5,
+        "gen_ai.prompt": "private observation text",
+      },
+    } satisfies EmittedLogRecord);
+    expect(decision).toEqual({
+      conversationId: "local:example:context-cost",
+      stage: "observer",
+      reason: "not_economical",
+      rawTokens: 180_000,
+      expectedCalls: 2,
+      savingsRatio: -4.5,
+    });
+    expect(JSON.stringify(decision)).not.toContain("private observation text");
+    expect(
+      readDistillationDecision({
+        eventName: "conversation.distillation.skipped",
+        level: "info",
+        body: "",
+        attributes: {
+          "gen_ai.conversation.id": "local:example:context-cost",
+          "app.distillation.stage": "observer",
+          "app.distillation.reason": "private observation text",
+        },
+      }),
+    ).toBeUndefined();
+    const captured: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => {
+      if (record.eventName === "conversation.distillation.skipped") {
+        captured.push(record);
+      }
+    });
+    try {
+      logInfo("conversation.distillation.skipped", {
+        "gen_ai.conversation.id": "local:example:context-cost",
+        "app.distillation.stage": "observer",
+        "app.distillation.reason": "not_economical",
+        "app.distillation.expected_calls": 2,
+      });
+    } finally {
+      unregister();
+    }
+    expect(captured.map(readDistillationDecision)).toEqual([
+      {
+        conversationId: "local:example:context-cost",
+        stage: "observer",
+        reason: "not_economical",
+        expectedCalls: 2,
+      },
+    ]);
+  });
+
   it("records activation and cost from the reporting API without observations or summaries", () => {
     const events = [
       conversationReportEventSchema.parse({
@@ -154,6 +222,7 @@ describe("distillation usage", () => {
         agentCostUsd: 0.1,
         auxiliaryCostUsd: 0.05,
         distillation: { "local:example:context-cost": usage },
+        distillationDecisions: {},
         gatewayRequests: {},
         gatewayModelCalls: [],
         modelCalls: [],

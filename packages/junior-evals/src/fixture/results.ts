@@ -4,6 +4,7 @@
  */
 import type { z } from "zod";
 import { conversationDetailReportSchema } from "@/api/schema";
+import type { EmittedLogRecord } from "@/chat/logging";
 import {
   toJsonValue,
   type HarnessRun,
@@ -311,6 +312,54 @@ export function readDistillationUsage(
   };
 }
 
+/** Copy only safe decision fields from a distillation diagnostic log. */
+export function readDistillationDecision(
+  record: EmittedLogRecord,
+): DistillationDecision | undefined {
+  if (record.eventName !== "conversation.distillation.skipped") {
+    return undefined;
+  }
+  const attrs = record.attributes;
+  const conversationId = attrs["gen_ai.conversation.id"];
+  const stage = attrs["app.distillation.stage"];
+  const reason = attrs["app.distillation.reason"];
+  if (
+    typeof conversationId !== "string" ||
+    (stage !== "observer" && stage !== "replacement") ||
+    typeof reason !== "string" ||
+    ![
+      "no_completed_turn",
+      "no_safe_segment",
+      "no_model",
+      "not_economical",
+      "input_limit",
+    ].includes(reason)
+  ) {
+    return undefined;
+  }
+  const number = (key: string): number | undefined => {
+    const value = attrs[key];
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
+  };
+  const rawTokens = number("app.distillation.raw_tokens");
+  const replacementTokens = number("app.distillation.replacement_tokens");
+  const expectedCalls = number("app.distillation.expected_calls");
+  const workerCostUsd = number("app.distillation.worker_cost_usd");
+  const savingsRatio = number("app.distillation.savings_ratio");
+  return {
+    conversationId,
+    stage,
+    reason: reason as DistillationDecision["reason"],
+    ...(rawTokens !== undefined ? { rawTokens } : undefined),
+    ...(replacementTokens !== undefined ? { replacementTokens } : undefined),
+    ...(expectedCalls !== undefined ? { expectedCalls } : undefined),
+    ...(workerCostUsd !== undefined ? { workerCostUsd } : undefined),
+    ...(savingsRatio !== undefined ? { savingsRatio } : undefined),
+  };
+}
+
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
  * changes formatting and links references, such as `owner/repo#1`.
@@ -401,10 +450,28 @@ export interface FixtureUsage {
   agentCostUsd: number;
   auxiliaryCostUsd: number;
   distillation: Record<string, DistillationUsage>;
+  distillationDecisions: Record<string, DistillationDecision[]>;
   gatewayRequests: Record<string, number>;
   gatewayModelCalls: GatewayModelCall[];
   modelCalls: ModelCallUsage[];
   modelTotals: ModelTotalUsage[];
+}
+
+/** Numeric skip diagnostics; never include log bodies or source text. */
+export interface DistillationDecision {
+  conversationId: string;
+  stage: "observer" | "replacement";
+  reason:
+    | "no_completed_turn"
+    | "no_safe_segment"
+    | "no_model"
+    | "not_economical"
+    | "input_limit";
+  rawTokens?: number;
+  replacementTokens?: number;
+  expectedCalls?: number;
+  workerCostUsd?: number;
+  savingsRatio?: number;
 }
 
 /** Conversation-scoped activation and price decisions from the reporting API. */
@@ -466,6 +533,8 @@ export function toHarnessRun(args: {
         costUsd: args.usage.agentCostUsd,
         auxiliaryCostUsd: args.usage.auxiliaryCostUsd,
         distillation: toJsonValue(args.usage.distillation) ?? {},
+        distillationDecisions:
+          toJsonValue(args.usage.distillationDecisions) ?? {},
         gatewayRequests: args.usage.gatewayRequests,
         gatewayModelCalls: toJsonValue(args.usage.gatewayModelCalls) ?? [],
         modelCalls: toJsonValue(args.usage.modelCalls) ?? [],
@@ -497,6 +566,7 @@ export function combinedRun(
         costUsd: usage.agentCostUsd,
         auxiliaryCostUsd: usage.auxiliaryCostUsd,
         distillation: toJsonValue(usage.distillation) ?? {},
+        distillationDecisions: toJsonValue(usage.distillationDecisions) ?? {},
         gatewayRequests: usage.gatewayRequests,
         gatewayModelCalls: toJsonValue(usage.gatewayModelCalls) ?? [],
         modelCalls: toJsonValue(usage.modelCalls) ?? [],

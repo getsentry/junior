@@ -90,6 +90,7 @@ function workerIsWorthRunning(
   entries: readonly HistoryEntry[],
   modelId: string,
   expectedCalls: number,
+  conversationId: string,
 ): boolean {
   const rawTokens = estimateModelVisibleTokens(
     entries.map((entry) => entry.message),
@@ -115,6 +116,7 @@ function workerIsWorthRunning(
   const worthRunning = shouldUseDistillations(price);
   if (!worthRunning) {
     logInfo("conversation.distillation.skipped", {
+      "gen_ai.conversation.id": conversationId,
       "app.distillation.stage": "observer",
       "app.distillation.reason": "not_economical",
       "app.distillation.raw_tokens": rawTokens,
@@ -184,6 +186,7 @@ export async function distillCompletedTurn(
       });
       if (!source) {
         logInfo("conversation.distillation.skipped", {
+          "gen_ai.conversation.id": run.conversationId,
           "app.distillation.stage": "observer",
           "app.distillation.reason": "no_completed_turn",
         });
@@ -196,6 +199,7 @@ export async function distillCompletedTurn(
       );
       if (segments.length === 0 || !modelId) {
         logInfo("conversation.distillation.skipped", {
+          "gen_ai.conversation.id": run.conversationId,
           "app.distillation.stage": "observer",
           "app.distillation.reason":
             segments.length === 0 ? "no_safe_segment" : "no_model",
@@ -206,7 +210,16 @@ export async function distillCompletedTurn(
         });
         return;
       }
-      if (!workerIsWorthRunning(source.entries, modelId, futureCalls)) return;
+      if (
+        !workerIsWorthRunning(
+          source.entries,
+          modelId,
+          futureCalls,
+          run.conversationId,
+        )
+      ) {
+        return;
+      }
 
       const previousObservations = source.events.at(-1)?.data.observations
         ? [source.events.at(-1)!.data.observations]

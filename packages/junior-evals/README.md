@@ -136,6 +136,9 @@ describe("Thread Continuity", () => {
   sequence, input token estimates, expected calls, and price decision. It
   contains no observation text or replacement summary. Check `historyComplete`
   before treating an empty replacement list as proof that none happened.
+- `usage.metadata.distillationDecisions[conversationId]` copies fixed skip
+  reasons and numeric estimates from diagnostic logs. Use them for diagnosis,
+  not as a product behavior assertion. No source text enters this field.
 
 Compare context cost on the same commit with
 `JUNIOR_CONTEXT_DISTILLATION_ENABLED=false` and `true`. Use a full-runtime

@@ -17,6 +17,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
 import { createConversationId } from "@/chat/conversations/web-input";
+import { registerLogRecordSink } from "@/chat/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
@@ -52,6 +53,7 @@ import {
   combinedRun,
   readCallEvents,
   readConversationDetail,
+  readDistillationDecision,
   readDistillationUsage,
   readModelCalls,
   readModelTotals,
@@ -60,6 +62,7 @@ import {
   VIEWER_HEADER,
   type FixtureUsage,
   type DistillationUsage,
+  type DistillationDecision,
   type ModelCallUsage,
   type ModelTotalUsage,
   type Reply,
@@ -182,6 +185,15 @@ export async function createFixtureAgent(
     }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
+  const knownConversationIds = new Set<string>();
+  const distillationDecisions = new Map<string, DistillationDecision[]>();
+  const unregisterLogSink = registerLogRecordSink((record) => {
+    const decision = readDistillationDecision(record);
+    if (!decision || !knownConversationIds.has(decision.conversationId)) return;
+    const current = distillationDecisions.get(decision.conversationId) ?? [];
+    current.push(decision);
+    distillationDecisions.set(decision.conversationId, current);
+  });
   // The dashboard mounts the same API after sign-in. Each request signs in
   // as the person in `x-fixture-viewer`, or as the web person by default.
   const api = new Hono<JuniorApiEnv>();
@@ -202,12 +214,12 @@ export async function createFixtureAgent(
     }
     if (!closed) {
       closed = true;
+      unregisterLogSink();
       await blob.close();
     }
   };
 
   const replyMessages = new WeakMap<HistoryReply, string>();
-  const knownConversationIds = new Set<string>();
   const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
     [];
   // Agent model cost per Conversation, from the reporting API.
@@ -221,6 +233,7 @@ export async function createFixtureAgent(
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     auxiliaryCostUsd: [...auxiliaryCostUsd.values()].reduce((a, b) => a + b, 0),
     distillation: Object.fromEntries(distillation),
+    distillationDecisions: Object.fromEntries(distillationDecisions),
     gatewayRequests: gateway.requestCounts(),
     gatewayModelCalls: [...gatewayModelCalls],
     modelCalls: [...agentModelCalls.values()].flat(),
