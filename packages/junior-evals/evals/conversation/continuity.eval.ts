@@ -1,40 +1,8 @@
 import { describe, expect } from "vitest";
-import {
-  mention,
-  reply,
-  type HistoryToolCall,
-} from "@junior-evals/fixture/inputs";
+import { mention, reply } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
-
-const SHARDS = 20;
-const CHECKS_PER_SHARD = 230;
-const MODULES = ["resources", "projects", "permissions", "audit"] as const;
-
-// A completed CI investigation has many small results and one blocking failure.
-// The model sees them as completed tool calls, as it does after real coding work.
-function validationLogs(): HistoryToolCall[] {
-  return Array.from({ length: SHARDS }, (_, shard) => {
-    const lines = Array.from({ length: CHECKS_PER_SHARD }, (_, check) => {
-      const module = MODULES[(shard + check) % MODULES.length];
-      const location = `tests/api/${module}/test_access.py::test_resource_${shard + 1}_${check + 1}`;
-      if (shard === 10 && check === 114) {
-        return `${location} FAIL org=org-red project=project-red resource=resource-115 expected=404 observed=200; lookup filtered by resource id only and returned the row owned by org-blue`;
-      }
-      return `${location} PASS org=org-red project=project-red resource=resource-${shard + 1}-${check + 1} expected=200 observed=200 duration=${((check % 17) + 1) / 100}s`;
-    });
-    return {
-      name: "bash",
-      arguments: { command: `pnpm test --shard=${shard + 1}/${SHARDS}` },
-      result: {
-        exit_code: shard === 10 ? 1 : 0,
-        stdout: lines.join("\n"),
-        stderr: "",
-        timed_out: false,
-      },
-    };
-  });
-}
+import { validationLogs } from "./ci-results";
 
 describe("Thread Continuity", () => {
   test("when a follow-up asks about the prior turn, recall the earlier budget context", async ({
