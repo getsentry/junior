@@ -1,5 +1,4 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
-import type { AutomationEditor } from "@/chat/automations/version-schema";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import {
   eventMatches,
@@ -109,12 +108,6 @@ export async function getEventAutomation(
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
-const eventAutomationRowColumns = {
-  status: juniorEventAutomations.status,
-  task: juniorEventAutomations.task,
-  title: juniorEventAutomations.title,
-};
-
 /** Create one retry-stable event automation, or revive a deleted row with the new payload. */
 export async function createEventAutomation(
   db: JuniorDatabase,
@@ -136,24 +129,17 @@ export async function createEventAutomation(
         task: parsed,
       })
       .onConflictDoNothing()
-      .returning(eventAutomationRowColumns);
+      .returning({
+        status: juniorEventAutomations.status,
+        task: juniorEventAutomations.task,
+        title: juniorEventAutomations.title,
+      });
     if (inserted[0]) {
       const created = parseEventAutomationRow(inserted[0]);
-      await recordAutomationVersion(tx, {
-        kind: "event",
-        task: created,
-        current: undefined,
-        editedBy: created.createdBy,
-        nowMs: created.createdAtMs,
-      });
+      await recordAutomationVersion(tx, "event", created, undefined);
       return created;
     }
-    const rows = await tx
-      .select(eventAutomationRowColumns)
-      .from(juniorEventAutomations)
-      .where(eq(juniorEventAutomations.id, parsed.id))
-      .for("update");
-    const existing = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    const existing = await getEventAutomation(tx, parsed.id);
     if (!existing) {
       return {
         ...parsed,
@@ -165,7 +151,7 @@ export async function createEventAutomation(
     if (existing.status !== "deleted") {
       return existing;
     }
-    const revived = await tx
+    const rows = await tx
       .update(juniorEventAutomations)
       .set({
         teamId: parsed.destination.teamId,
@@ -175,17 +161,29 @@ export async function createEventAutomation(
         title,
         task: parsed,
       })
-      .where(eq(juniorEventAutomations.id, parsed.id))
-      .returning(eventAutomationRowColumns);
-    const created = parseEventAutomationRow(revived[0]!);
-    await recordAutomationVersion(tx, {
-      kind: "event",
-      task: created,
-      current: undefined,
-      editedBy: created.createdBy,
-      nowMs: created.createdAtMs,
-    });
-    return created;
+      .where(
+        and(
+          eq(juniorEventAutomations.id, parsed.id),
+          eq(juniorEventAutomations.status, "deleted"),
+        ),
+      )
+      .returning({
+        status: juniorEventAutomations.status,
+        task: juniorEventAutomations.task,
+        title: juniorEventAutomations.title,
+      });
+    if (!rows[0]) {
+      return (
+        (await getEventAutomation(tx, parsed.id)) ?? {
+          ...parsed,
+          status: "active",
+          ...(title ? { title } : undefined),
+        }
+      );
+    }
+    const revived = parseEventAutomationRow(rows[0]);
+    await recordAutomationVersion(tx, "event", revived, undefined);
+    return revived;
   });
 }
 
@@ -197,13 +195,17 @@ export async function saveEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
   expectedRevision?: string,
-  editedBy?: AutomationEditor,
+  editedBy?: EventAutomation["createdBy"],
 ): Promise<StoredEventAutomation | undefined> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
   return db.transaction(async (tx) => {
     const rows = await tx
-      .select(eventAutomationRowColumns)
+      .select({
+        status: juniorEventAutomations.status,
+        task: juniorEventAutomations.task,
+        title: juniorEventAutomations.title,
+      })
       .from(juniorEventAutomations)
       .where(eq(juniorEventAutomations.id, parsed.id))
       .for("update");
@@ -220,14 +222,13 @@ export async function saveEventAutomation(
         task: parsed,
       })
       .where(eq(juniorEventAutomations.id, parsed.id))
-      .returning(eventAutomationRowColumns);
+      .returning({
+        status: juniorEventAutomations.status,
+        task: juniorEventAutomations.task,
+        title: juniorEventAutomations.title,
+      });
     const saved = parseEventAutomationRow(updated[0]!);
-    await recordAutomationVersion(tx, {
-      kind: "event",
-      task: saved,
-      current,
-      editedBy,
-    });
+    await recordAutomationVersion(tx, "event", saved, current, editedBy);
     return saved;
   });
 }

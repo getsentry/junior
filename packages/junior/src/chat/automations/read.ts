@@ -4,10 +4,10 @@ import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   AutomationExecutionDay,
   AutomationExecutionList,
-  AutomationVersionList,
   AutomationExecutionStatusDay,
   AutomationList,
   AutomationListQuery,
+  AutomationVersionList,
   AutomationRunList,
   AutomationSummary,
 } from "@/api/schema/automation";
@@ -783,12 +783,7 @@ export async function readViewerAutomationVersions(
     AUTOMATION_VERSION_LIST_LIMIT + 1,
   );
   return {
-    versions: versions
-      .slice(0, AUTOMATION_VERSION_LIST_LIMIT)
-      .map(({ createdAtMs, ...version }) => ({
-        ...version,
-        createdAt: new Date(createdAtMs).toISOString(),
-      })),
+    versions: versions.slice(0, AUTOMATION_VERSION_LIST_LIMIT),
     truncated: versions.length > AUTOMATION_VERSION_LIST_LIMIT,
   };
 }

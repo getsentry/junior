@@ -529,8 +529,8 @@ describe("Automation edit API", () => {
         expect(await executions.json()).toMatchObject({
           executions: [{ executionId: "retained-run", status: "completed" }],
         });
-        // Each saved definition is a version. Rejected saves add none.
-        // Public readers can see versions; they cannot edit.
+        // Each saved definition change is a version. Rejected saves add none.
+        // A public reader can read versions but cannot edit.
         const versionsResponse = await app.request(`${url}/versions`, {
           headers: { "test-viewer": "reader@example.com" },
         });
@@ -539,56 +539,26 @@ describe("Automation edit API", () => {
           await versionsResponse.json(),
         );
         expect(
-          versions.map(({ version, editedBy, definition }) => ({
+          versions.map(({ version, editedBy, definition }) => [
             version,
-            editor: editedBy?.slackUserId,
-            instruction: definition.instruction,
-            title: definition.title,
-            credentialMode: definition.credentialMode,
-          })),
+            editedBy?.slackUserId,
+            definition.instruction,
+            definition.title,
+            definition.credentialMode,
+          ]),
         ).toEqual([
-          {
-            version: 6,
-            editor: "U123",
-            instruction: "Edited again from Slack.",
-            title: current.title,
-            credentialMode: "system",
-          },
-          {
-            version: 5,
-            editor: "U123",
-            instruction: "Edited again from Slack.",
-            title: current.title,
-            credentialMode: "creator",
-          },
-          {
-            version: 4,
-            editor: "U123",
-            instruction: "Edited again from Slack.",
-            title: "Title from Slack",
-            credentialMode: "creator",
-          },
-          {
-            version: 3,
-            editor: "U123",
-            instruction: "Edited from Slack.",
-            title: "Title from Slack",
-            credentialMode: "creator",
-          },
-          {
-            version: 2,
-            editor: "U123",
-            instruction: "Post the revised digest.",
-            title: "My custom title",
-            credentialMode: "creator",
-          },
-          {
-            version: 1,
-            editor: "U123",
-            instruction: originalInstruction,
-            title: "My custom title",
-            credentialMode: "creator",
-          },
+          [6, "U123", "Edited again from Slack.", current.title, "system"],
+          [5, "U123", "Edited again from Slack.", current.title, "creator"],
+          [
+            4,
+            "U123",
+            "Edited again from Slack.",
+            "Title from Slack",
+            "creator",
+          ],
+          [3, "U123", "Edited from Slack.", "Title from Slack", "creator"],
+          [2, "U123", "Post the revised digest.", "My custom title", "creator"],
+          [1, "U123", originalInstruction, "My custom title", "creator"],
         ]);
         expect(versions[0]!.definition.outcomes).toEqual(outcomes.outcomes);
         expect(

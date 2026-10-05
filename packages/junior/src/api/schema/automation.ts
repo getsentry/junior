@@ -1,17 +1,16 @@
 import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
 import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
 import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
-import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
+import {
+  eventAutomationPrincipalSchema,
+  eventAutomationSchema,
+  eventAutomationTriggerSchema,
+} from "@/chat/event-automations/types";
 import {
   scheduledAutomationEditSchema,
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
-import {
-  automationEditorSchema,
-  eventAutomationDefinitionSchema,
-  scheduledAutomationDefinitionSchema,
-} from "@/chat/automations/version-schema";
 import { z } from "zod";
 
 const automationDestinationSchema = z
@@ -207,27 +206,48 @@ export const automationRunListSchema = z
   })
   .strict();
 
-const automationVersionBaseSchema = {
+const automationDefinitionFields = {
+  title: z.string().nullable(),
+  instruction: z.string(),
+};
+
+const automationVersionFields = {
   version: z.number().int().positive(),
   createdAt: z.string().datetime(),
-  /** Null when the editor is unknown, such as for versions saved at upgrade. */
-  editedBy: automationEditorSchema.nullable(),
+  /** Null for versions saved by the upgrade, because the editor is unknown. */
+  editedBy: eventAutomationPrincipalSchema.nullable(),
 };
 
 /** One saved Automation definition. Newer versions have larger numbers. */
 export const automationVersionSchema = z.discriminatedUnion("kind", [
   z
     .object({
-      ...automationVersionBaseSchema,
+      ...automationVersionFields,
       kind: z.literal("scheduled"),
-      definition: scheduledAutomationDefinitionSchema,
+      definition: scheduledAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          schedule: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
     })
     .strict(),
   z
     .object({
-      ...automationVersionBaseSchema,
+      ...automationVersionFields,
       kind: z.literal("event"),
-      definition: eventAutomationDefinitionSchema,
+      definition: eventAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          trigger: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
     })
     .strict(),
 ]);

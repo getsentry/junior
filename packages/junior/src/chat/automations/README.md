@@ -49,23 +49,23 @@ editor must keep unsaved input when a save fails.
 
 ## Versions
 
-Each saved definition change makes an Automation version. The definition is
-the title, instruction, Schedule or event selector, Destination, outcomes, and
-credential mode. Status, run times, and other scheduler state are not part of
-it. Pause, resume, delete, and run-now do not make a version.
+An Automation version is one saved definition. The definition is the title,
+instruction, Schedule or event selector, Destination, outcomes, and credential
+mode. Status and run times are not part of it. Pause, resume, delete, and
+run-now do not make a version.
 
-The storage owner writes the version in the same transaction and lock as the
-Automation write. It compares the stored and new definitions. A save that does
-not change the definition does not make a version. Creation always makes
-version 1, edited by the creator. Slack edits record the requester. Web edits
-are creator-only, so they record the creator.
+The save writes the version in the same transaction and lock as the
+Automation. A save that does not change the definition does not make a
+version. A new Automation gets version 1 from its creator. A Slack edit records
+the requester. A web edit records the creator, because only the creator can
+edit on the web.
 
 Migration 0046 saves the current definition of each live Automation as
-version 1. Its editor is unknown and its time is the upgrade time. Edits made
-by older workers during a rolling deploy do not make versions.
+version 1, with no editor. Edits by older workers during a rolling deploy do
+not make versions.
 
-`GET /api/automations/:kind/:id/versions` returns the newest 100 versions with
-the same read access as executions. A public Destination grants read access.
+`GET /api/automations/:kind/:id/versions` returns the newest 100 versions. It
+uses the same read access as executions.
 
 ## Pause and attention
 

@@ -1,35 +1,14 @@
 /** Automation versions keep each saved definition so people can see how it changed. */
 import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  automationVersionSchema,
+  type AutomationVersion,
+} from "@/api/schema/automation";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomationVersions } from "@/db/schema/automation-versions";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { canonicalJson } from "./revision";
-import {
-  automationEditorSchema,
-  eventAutomationDefinitionSchema,
-  scheduledAutomationDefinitionSchema,
-  type AutomationEditor,
-  type EventAutomationDefinition,
-  type ScheduledAutomationDefinition,
-} from "./version-schema";
-
-/** One saved definition of an Automation. */
-export type AutomationVersion =
-  | {
-      kind: "scheduled";
-      version: number;
-      createdAtMs: number;
-      editedBy: AutomationEditor | null;
-      definition: ScheduledAutomationDefinition;
-    }
-  | {
-      kind: "event";
-      version: number;
-      createdAtMs: number;
-      editedBy: AutomationEditor | null;
-      definition: EventAutomationDefinition;
-    };
 
 type VersionedAutomation = ScheduledAutomation | EventAutomation;
 
@@ -46,28 +25,24 @@ function automationDefinition(task: VersionedAutomation) {
     : { ...common, trigger: task.trigger };
 }
 
-function sameDefinition(a: unknown, b: unknown): boolean {
-  return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
-}
-
 /**
- * Save a new version when the definition changed. Call this in the same
- * transaction and lock as the Automation write. A missing `current` means the
- * Automation was just created, so a version is always saved.
+ * Save a version when the definition changed. Call this in the same
+ * transaction and lock as the Automation write. Without `current`, the
+ * Automation is new, so the creator saves version 1.
  */
 export async function recordAutomationVersion(
   db: JuniorDatabase,
-  args: {
-    kind: "scheduled" | "event";
-    task: VersionedAutomation;
-    current: VersionedAutomation | undefined;
-    editedBy: AutomationEditor | undefined;
-    nowMs?: number;
-  },
+  kind: "scheduled" | "event",
+  task: VersionedAutomation,
+  current: VersionedAutomation | undefined,
+  editedBy?: EventAutomation["createdBy"],
 ): Promise<void> {
-  const { kind, task, current } = args;
   const definition = automationDefinition(task);
-  if (current && sameDefinition(automationDefinition(current), definition))
+  if (
+    current &&
+    JSON.stringify(canonicalJson(automationDefinition(current))) ===
+      JSON.stringify(canonicalJson(definition))
+  )
     return;
   await db.insert(juniorAutomationVersions).values({
     kind,
@@ -78,13 +53,13 @@ export async function recordAutomationVersion(
       WHERE ${juniorAutomationVersions.kind} = ${kind}
         AND ${juniorAutomationVersions.automationId} = ${task.id}
     )`,
-    createdAtMs: args.nowMs ?? Date.now(),
-    editedBy: args.editedBy ?? null,
+    createdAtMs: Date.now(),
+    editedBy: editedBy ?? (current ? null : task.createdBy),
     definition,
   });
 }
 
-/** Read the newest saved definitions first. Undecodable retained rows are skipped. */
+/** Read saved definitions, newest first. */
 export async function listAutomationVersions(
   db: JuniorDatabase,
   kind: "scheduled" | "event",
@@ -102,28 +77,13 @@ export async function listAutomationVersions(
     )
     .orderBy(desc(juniorAutomationVersions.version))
     .limit(limit);
-  const editor = automationEditorSchema.nullable();
-  return rows.flatMap((row): AutomationVersion[] => {
-    const editedBy = editor.safeParse(row.editedBy ?? null);
-    if (!editedBy.success) return [];
-    const common = {
+  return rows.map((row) =>
+    automationVersionSchema.parse({
+      kind,
       version: row.version,
-      createdAtMs: row.createdAtMs,
-      editedBy: editedBy.data,
-    };
-    if (kind === "scheduled") {
-      const definition = scheduledAutomationDefinitionSchema.safeParse(
-        row.definition,
-      );
-      return definition.success
-        ? [{ ...common, kind, definition: definition.data }]
-        : [];
-    }
-    const definition = eventAutomationDefinitionSchema.safeParse(
-      row.definition,
-    );
-    return definition.success
-      ? [{ ...common, kind, definition: definition.data }]
-      : [];
-  });
+      createdAt: new Date(row.createdAtMs).toISOString(),
+      editedBy: row.editedBy,
+      definition: row.definition,
+    }),
+  );
 }
