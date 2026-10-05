@@ -8,7 +8,8 @@ import { rubric } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
-const SHARDS = 11;
+// Five older shards form observation-sized groups. The last shard stays raw.
+const SHARDS = 6;
 
 function priorCiResults(): HistoryToolCall[] {
   return Array.from({ length: SHARDS }, (_, shard) => {
