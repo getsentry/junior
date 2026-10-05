@@ -246,12 +246,14 @@ test("makes an earlier version active from version history", async ({
   await page.getByRole("link", { name: "Version history" }).click();
   await expect(page).toHaveURL(/scheduled\/scheduled-1\/versions/);
   await expect(page.getByText("Changed instruction")).toBeVisible();
+  await screenshot(page, "automation-versions");
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("Make version 1 active?");
+    void dialog.accept();
+  });
   await page
     .getByRole("button", { name: "Make version 1 active", exact: true })
     .click();
-  await expect(page.getByText("Make version 1 active?")).toBeVisible();
-  await screenshot(page, "automation-versions");
-  await page.getByRole("button", { name: "Make active", exact: true }).click();
   await expect(
     page.getByText("Version 1 is active again. It was saved as a new version."),
   ).toBeVisible();

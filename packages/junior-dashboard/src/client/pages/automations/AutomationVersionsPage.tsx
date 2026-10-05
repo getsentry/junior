@@ -92,7 +92,6 @@ function AutomationVersionsView(props: {
 }) {
   const { automation, data } = props;
   const queryClient = useQueryClient();
-  const [confirming, setConfirming] = useState<number>();
   const [activated, setActivated] = useState<number>();
   const canActivate = !(
     automation.kind === "scheduled" && automation.status === "completed"
@@ -115,7 +114,6 @@ function AutomationVersionsView(props: {
     },
     onMutate: () => setActivated(undefined),
     onSuccess: async (_, version) => {
-      setConfirming(undefined);
       setActivated(version);
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "automations"],
@@ -158,15 +156,20 @@ function AutomationVersionsView(props: {
                 active={version.version === data.activeVersion}
                 automation={automation}
                 canActivate={canActivate}
-                confirming={confirming === version.version}
                 error={
                   activate.variables === version.version ? activate.error : null
                 }
-                onCancel={() => setConfirming(undefined)}
-                onConfirm={() => activate.mutate(version.version)}
-                onRequest={() => {
-                  activate.reset();
-                  setConfirming(version.version);
+                onActivate={() => {
+                  // Use the dashboard's native confirm, like delete actions.
+                  const creatorOnly = automation.ownedByViewer
+                    ? ""
+                    : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`;
+                  if (
+                    window.confirm(
+                      `Make version ${version.version} active? Junior saves these settings as a new version. Future runs use them.${creatorOnly}`,
+                    )
+                  )
+                    activate.mutate(version.version);
                 }}
                 pending={
                   activate.isPending && activate.variables === version.version
@@ -192,11 +195,8 @@ function VersionRow(props: {
   active: boolean;
   automation: AutomationSummary;
   canActivate: boolean;
-  confirming: boolean;
   error: Error | null;
-  onCancel(): void;
-  onConfirm(): void;
-  onRequest(): void;
+  onActivate(): void;
   pending: boolean;
   previous: AutomationVersion | undefined;
   truncated: boolean;
@@ -242,37 +242,16 @@ function VersionRow(props: {
             </p>
           ) : null}
         </div>
-        {props.canActivate && !props.active && !props.confirming ? (
+        {props.canActivate && !props.active ? (
           <Button
             aria-label={`Make version ${version.version} active`}
-            onClick={props.onRequest}
+            disabled={props.pending}
+            onClick={props.onActivate}
           >
-            Make active
+            {props.pending ? "Saving…" : "Make active"}
           </Button>
         ) : null}
       </div>
-      {props.confirming ? (
-        <FormNotice title={`Make version ${version.version} active?`}>
-          <p className="mt-0">
-            Junior saves these settings as a new version. Future runs use them.
-            {automation.ownedByViewer
-              ? ""
-              : ` Only ${automation.createdBy} can turn on their connected accounts or change where results go.`}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              tone="primary"
-              disabled={props.pending}
-              onClick={props.onConfirm}
-            >
-              {props.pending ? "Saving…" : "Make active"}
-            </Button>
-            <Button disabled={props.pending} onClick={props.onCancel}>
-              Cancel
-            </Button>
-          </div>
-        </FormNotice>
-      ) : null}
       {props.error ? (
         <FormNotice tone="error" title="This version could not be made active.">
           {props.error instanceof DashboardApiError

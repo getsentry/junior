@@ -21,8 +21,9 @@ The data router blocks navigation with unsaved changes. Browser unload uses the
 native prompt. Save and Cancel keep the list query string.
 
 Version history lists saved versions, newest first, and marks the active
-version. "Make active" reads the latest revision, then asks core to save that
-version again as a new version. Core applies the same edit rules, so the page
+version. "Make active" uses the native confirm dialog, like delete. It then
+reads the latest revision and asks core to save that version again as a new
+version. Core applies the same edit rules, so the page
 shows its error when a public reader cannot make a version active.
 
 Browser behavior lives in `e2e/automation-editor.spec.ts`. API and persistence
