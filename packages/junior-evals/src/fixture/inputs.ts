@@ -24,12 +24,21 @@ export interface MentionChannel {
   channelId: string;
 }
 
+/** Channel fields that any channel member can edit in Slack. */
+export interface SlackChannelInfo {
+  topic?: string;
+  /** Slack shows this field as the channel description. */
+  purpose?: string;
+}
+
 /** An `app_mention` through the Slack Events API webhook. */
 export interface MentionInput {
   kind: "mention";
   author?: SlackAuthor;
   /** The channel for a new thread. Defaults to a new channel. */
   channel?: MentionChannel;
+  /** The topic and description of a new channel. */
+  channelInfo?: SlackChannelInfo;
   /** `im` starts a direct message Conversation. */
   channelType?: "channel" | "im";
   text: string;
@@ -96,6 +105,7 @@ export function mention(
   options: {
     author?: SlackAuthor;
     channel?: MentionChannel;
+    channelInfo?: SlackChannelInfo;
     channelType?: "channel" | "im";
   } = {},
 ): MentionInput {

@@ -19,8 +19,33 @@ export type SlackConversationVisibility = "public" | "private";
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
+  /**
+   * Channel topic. Any channel member can edit it, so it is untrusted text.
+   * The prompt renders it only as a hint.
+   */
+  topic?: string;
+  /**
+   * Channel purpose, which Slack shows as the description. Any channel member
+   * can edit it, so it is untrusted text. The prompt renders it only as a hint.
+   */
+  purpose?: string;
   /** Visibility proven by source or persisted metadata. */
   visibility?: SlackConversationVisibility;
+}
+
+/**
+ * Slack limits a topic or purpose to 250 characters. Junior applies the same
+ * limit, so a changed Slack limit cannot grow the prompt.
+ */
+const CHANNEL_HINT_MAX_LENGTH = 250;
+
+function normalizeChannelHint(value: string | undefined): string | undefined {
+  const collapsed = value?.replace(/\s+/g, " ").trim();
+  if (!collapsed) return undefined;
+  const chars = Array.from(collapsed);
+  return chars.length > CHANNEL_HINT_MAX_LENGTH
+    ? `${chars.slice(0, CHANNEL_HINT_MAX_LENGTH - 1).join("")}…`
+    : collapsed;
 }
 
 function normalizeConversationName(
@@ -127,6 +152,8 @@ export function resolveSlackChannelTypeFromMessage(
 export function resolveSlackConversationContext(input: {
   channelId?: string;
   channelName?: string;
+  channelPurpose?: string;
+  channelTopic?: string;
   channelType?: SlackEventChannelType;
 }): SlackConversationContext | undefined {
   const type =
@@ -135,6 +162,8 @@ export function resolveSlackConversationContext(input: {
   if (!type) return undefined;
 
   const name = normalizeConversationName(type, input.channelName);
+  const topic = normalizeChannelHint(input.channelTopic);
+  const purpose = normalizeChannelHint(input.channelPurpose);
   const visibility = conversationVisibilityFromSlackChannelType(
     input.channelType,
   );
@@ -142,6 +171,8 @@ export function resolveSlackConversationContext(input: {
   return {
     type,
     ...(name ? { name } : undefined),
+    ...(topic ? { topic } : undefined),
+    ...(purpose ? { purpose } : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }

@@ -13,6 +13,7 @@ import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
   chatPostMessageOk,
+  conversationsInfoOk,
   conversationsRepliesPage,
   usersInfoOk,
 } from "@junior-tests/fixtures/slack/factories/api";
@@ -20,7 +21,7 @@ import {
   TEST_BOT_USER_ID,
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
-import type { SlackAuthor } from "./inputs";
+import type { SlackAuthor, SlackChannelInfo } from "./inputs";
 
 export const SLACK_TEAM_ID = "TEVAL";
 export const SLACK_BOT_USER_ID = TEST_BOT_USER_ID;
@@ -59,6 +60,8 @@ export interface SlackMock {
     message: Omit<SlackThreadMessage, "ts"> & { ts?: string },
   ): string;
   newChannelId(channelType: "channel" | "im"): string;
+  /** Set the topic and description that `conversations.info` returns. */
+  setChannelInfo(channel: string, info: SlackChannelInfo): void;
   nextTs(): string;
   posts(): SlackPost[];
   registerAuthor(author: SlackAuthor): Required<SlackAuthor>;
@@ -121,6 +124,7 @@ export function installSlackMock(): SlackMock {
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],
   ]);
   const posts: SlackPost[] = [];
+  const channelInfo = new Map<string, SlackChannelInfo>();
   let replyHook: ((post: SlackPost) => Promise<void>) | undefined;
 
   const nextTs = () => {
@@ -199,6 +203,26 @@ export function installSlackMock(): SlackMock {
         );
       },
     ),
+    http.post(
+      "https://slack.com/api/conversations.info",
+      async ({ request }) => {
+        const channel = (await readSlackParams(request)).channel ?? "";
+        const info = channelInfo.get(channel);
+        // Channels without fixture info use the shared handler.
+        if (!info) return undefined;
+        const body = conversationsInfoOk({ channelId: channel });
+        return HttpResponse.json({
+          ...body,
+          channel: {
+            ...body.channel,
+            ...(info.topic ? { topic: { value: info.topic } } : undefined),
+            ...(info.purpose
+              ? { purpose: { value: info.purpose } }
+              : undefined),
+          },
+        });
+      },
+    ),
     http.get("https://slack.com/api/users.info", ({ request }) =>
       usersInfo(new URL(request.url).searchParams.get("user")),
     ),
@@ -216,6 +240,9 @@ export function installSlackMock(): SlackMock {
     },
     nextTs,
     posts: () => [...posts],
+    setChannelInfo(channel, info) {
+      channelInfo.set(channel, info);
+    },
     registerAuthor(author) {
       const userId = author.userId ?? DEFAULT_SLACK_AUTHOR.userId;
       const known = authors.get(userId);

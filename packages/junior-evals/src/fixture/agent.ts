@@ -348,6 +348,9 @@ export async function createFixtureAgent(
     const channelId =
       (first.kind === "mention" ? first.channel?.channelId : undefined) ??
       slack.newChannelId(channelType);
+    if (first.kind === "mention" && first.channelInfo) {
+      slack.setChannelInfo(channelId, first.channelInfo);
+    }
     const threadTs = slack.nextTs();
     // The person who posted the thread root reads the results.
     const historyRoot = Array.isArray(history) ? history[0] : undefined;
