@@ -58,10 +58,10 @@ it("preserves local fixture skill ownership", () => {
     packages: [],
     inlineManifests: fixture,
   });
-  expect(pluginCatalogRuntime.getOAuthConfig("eval-oauth")).toBeDefined();
+  expect(pluginCatalogRuntime.getDefinition("eval-mcp")).toBeDefined();
   expect(
     pluginCatalogRuntime.getForSkillPath(
-      path.join(root, "eval-oauth/skills/eval-oauth/SKILL.md"),
+      path.join(root, "eval-mcp/skills/eval-mcp/SKILL.md"),
     )?.manifest.name,
-  ).toBe("eval-oauth");
+  ).toBe("eval-mcp");
 });

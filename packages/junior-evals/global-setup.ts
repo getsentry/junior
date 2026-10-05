@@ -28,6 +28,7 @@ import {
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
+import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
   provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
@@ -109,8 +110,14 @@ export default async function setup(
     ]);
     const packages = ["@sentry/junior-github", "@sentry/junior-sentry"];
     const runtimePlugins = evalRuntimePlugins(packages);
+    // The egress process adds plugin credentials to sandbox requests, so it
+    // needs the plugins of every suite that uses credentials.
     const pluginConfig = pluginCatalogConfigFromPluginSet(
-      defineJuniorPlugins([...packages, ...runtimePlugins]),
+      defineJuniorPlugins([
+        ...packages,
+        ...runtimePlugins,
+        ...authSuitePlugins,
+      ]),
     );
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);

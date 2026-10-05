@@ -72,9 +72,7 @@
     "packages/junior-evals/evals/agent/skill-routing.eval.ts": 1,
     "packages/junior-evals/evals/agent/skills.eval.ts": 1,
     "packages/junior-evals/evals/agent/slack-user-status.eval.ts": 1,
-    "packages/junior-evals/evals/github/skills.eval.ts": 1,
-    "packages/junior-evals/evals/integration/agent/oauth.eval.ts": 2,
-    "packages/junior-evals/evals/sentry/skills.eval.ts": 1
+    "packages/junior-evals/evals/github/skills.eval.ts": 1
   },
   "model-fakes": {
     "packages/junior-evals/src/router-harness.ts": 1,

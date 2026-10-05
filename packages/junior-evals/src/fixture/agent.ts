@@ -20,6 +20,7 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
+import { completeAuthorization, deleteCredentials } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
@@ -187,6 +188,11 @@ export async function createFixtureAgent(
   });
   api.route("/", createJuniorApi({ conversationWorkQueue: queue }));
 
+  // A person opens each authorization link one time.
+  const usedAuthorizationUrls = new Set<string>();
+  // Authorizations that the test completed, for cleanup.
+  const authorized: Array<{ provider: string; userId: string }> = [];
+
   let closed = false;
   const close = async (): Promise<void> => {
     queue.close();
@@ -196,6 +202,10 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
+      // The next test starts with no credential from this test.
+      for (const { provider, userId } of authorized.splice(0)) {
+        await deleteCredentials(userId, provider);
+      }
     }
   };
 
@@ -278,6 +288,21 @@ export async function createFixtureAgent(
         throw new Error(`run(${input.kind}) starts its own Conversation`);
       }
       await postAutomationInput(input);
+      return;
+    }
+    if (input.kind === "complete_auth") {
+      if (!record.started) {
+        throw new Error("completeAuth() needs a turn that waits for it");
+      }
+      const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
+      authorized.push({ provider: input.provider, userId: author.userId });
+      await completeAuthorization({
+        app,
+        links: slack.authorizationLinks(),
+        provider: input.provider,
+        usedUrls: usedAuthorizationUrls,
+        userId: author.userId,
+      });
       return;
     }
     const started = record.started;
@@ -693,6 +718,9 @@ export async function createFixtureAgent(
         throw new Error(`run(${first.kind}) takes no other input or history`);
       }
       return await runAutomation(first, options);
+    }
+    if (first.kind === "complete_auth") {
+      throw new Error("completeAuth() continues a Conversation");
     }
     return await converse(
       newConversation(first, options.history),

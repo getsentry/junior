@@ -28,8 +28,9 @@ the agent. A test touches the product in three places only:
 
 1. Inputs through app routes: `mention()` and `threadMessage()` post signed
    Slack Events API webhooks, `webMessage()` posts to the conversations API,
-   `heartbeat()` calls the heartbeat route, and `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route.
+   `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
+   signed GitHub webhook to the GitHub plugin route, and `completeAuth()`
+   calls the OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
@@ -74,6 +75,15 @@ describe("Thread Continuity", () => {
   plugin in the test.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
+- The `sentry` suite has the Sentry plugin and no other plugin.
+  `src/suites/sentry.ts` has its settings. Its evals are in `evals/sentry/`.
+  Store the Sentry account of a person with `insertCredential()`.
+- The `auth` suite has two plugins that need authorization, and their skills:
+  `eval-auth` has an MCP server that needs OAuth, and `eval-oauth` has an HTTP
+  API that needs an OAuth bearer token. `src/suites/auth.ts` has its settings.
+  Its evals are in `evals/integration/auth/`. The eval egress process adds the
+  credential to sandbox requests, so `global-setup.ts` registers the same
+  plugins.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
   A call fails when the agent is not idle within 60 seconds. The product
@@ -109,6 +119,17 @@ describe("Thread Continuity", () => {
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
+- A turn that needs authorization sends the person a private link and waits.
+  Its state stays `started`. `conversation.continue(completeAuth(provider))`
+  opens that link as the browser of the person does: the mocked provider
+  approves and redirects to the callback route of the app. The call returns
+  the resumed turn. It fails when Junior sent the person no private link for
+  that provider, so a link in a public reply does not count.
+- `insertCredential({ provider, accessToken, refreshToken })` stores the
+  OAuth credential that a Slack person has for a plugin. `expired: true`
+  stores an expired access token, so its next use refreshes it. Credentials
+  are in the state store, which all tests of a run share. The fixture removes
+  the credentials that a test inserted or authorized when the test finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
   needs the memory plugin to recall it. `subjectType: "conversation"` stores a
   memory about the conversation. `visibility: "private"` stores a memory that

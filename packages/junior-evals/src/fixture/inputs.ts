@@ -64,13 +64,24 @@ export interface GitHubWebhookInput {
   payload: Record<string, unknown>;
 }
 
+/**
+ * A Slack person finishes the authorization that Junior asked them for. The
+ * provider sends their browser to the OAuth or MCP OAuth callback route.
+ */
+export interface CompleteAuthInput {
+  kind: "complete_auth";
+  author?: SlackAuthor;
+  /** The plugin name, such as `github`. */
+  provider: string;
+}
+
 /** A message from a person. History items use the same inputs. */
 export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
 
 /** An input that starts a Conversation from an automation. */
 export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
-export type Input = MessageInput | AutomationInput;
+export type Input = MessageInput | AutomationInput | CompleteAuthInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
@@ -134,6 +145,19 @@ export function githubWebhook(
   payload: Record<string, unknown>,
 ): GitHubWebhookInput {
   return { kind: "github_webhook", event, payload };
+}
+
+/**
+ * Finish the authorization of a turn that waits for it.
+ * `conversation.continue(completeAuth(provider))` opens the link that Junior
+ * sent to the person in private, and it returns the resumed turn. It fails
+ * when Junior sent the person no such link.
+ */
+export function completeAuth(
+  provider: string,
+  options: { author?: SlackAuthor } = {},
+): CompleteAuthInput {
+  return { kind: "complete_auth", provider, ...options };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */
