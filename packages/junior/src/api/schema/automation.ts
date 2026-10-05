@@ -256,8 +256,14 @@ export const automationVersionSchema = z.discriminatedUnion("kind", [
 export const automationVersionListSchema = z
   .object({
     versions: z.array(automationVersionSchema),
+    /** Newest version that matches the current definition. Null when none match. */
+    activeVersion: z.number().int().positive().nullable(),
     truncated: z.boolean(),
   })
+  .strict();
+
+export const automationVersionParamsSchema = automationParamsSchema
+  .extend({ version: z.coerce.number().int().positive() })
   .strict();
 
 export type AutomationVersion = z.output<typeof automationVersionSchema>;
@@ -285,6 +291,11 @@ export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
 const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
+/** Make a saved version active. The revision is the edit read revision. */
+export const automationVersionActivateSchema = z
+  .object({ revision: automationRevisionSchema })
+  .strict();
+
 /** Pause and resume do not start work. */
 export const automationLifecycleSchema = z
   .object({
@@ -302,9 +313,11 @@ const automationEditBaseSchema = scheduledAutomationSchema
     instruction: z.string(),
     credentialMode: z.enum(["system", "creator"]),
     outcomes: z.array(taskOutcomeSchema).max(5),
+    /** Creator-only rules apply when false. */
+    ownedByViewer: z.boolean(),
   });
 
-/** Creator-only edit values. Read schemas also retain legacy values. */
+/** Edit values for owners and public readers. Read schemas also retain legacy values. */
 export const automationEditSchema = z.discriminatedUnion("kind", [
   automationEditBaseSchema
     .merge(scheduledAutomationSchema.pick({ schedule: true }))

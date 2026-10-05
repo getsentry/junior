@@ -19,6 +19,7 @@ import {
   automationListSchema,
   automationSummarySchema,
   automationRunListSchema,
+  automationVersionListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -217,6 +218,25 @@ export function useAutomationExecutionsData(
       fetchDashboardJson(
         automationExecutionListSchema,
         `/api/automations/${kind}/${encodeURIComponent(automationId!)}/executions`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch saved definitions for one viewer-visible Automation, newest first. */
+export function useAutomationVersionsData(
+  enabled: boolean,
+  kind: "scheduled" | "event" | undefined,
+  automationId: string | undefined,
+) {
+  return useQuery({
+    enabled: enabled && Boolean(kind && automationId),
+    queryKey: ["dashboard", "automations", kind, automationId, "versions"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        automationVersionListSchema,
+        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/versions`,
         signal,
       ),
     retry: false,

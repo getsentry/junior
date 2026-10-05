@@ -9,8 +9,9 @@ Counts use the same access rules. Public access and Destination labels come
 from the Destination directory. Missing or private entries do not grant access.
 
 Scheduled automations run through the heartbeat. Event automations run when a
-matching event arrives. The dashboard can edit and delete only Automations
-that the user owns. A public Destination grants read access, not write access.
+matching event arrives. The dashboard can edit Automations that the user owns
+or can read through a public Destination. Pause, resume, and delete stay
+creator-only on the web.
 
 Deleted automations keep their execution history and title. They do not match
 new events or schedules.
@@ -44,8 +45,14 @@ The revision hashes the decoded stored values, including title and lifecycle.
 Scheduled saves compare it under the task lock. Event saves compare it under a
 SQL row lock. Slack edits use the same check. A scheduler state change can also
 invalidate an open edit. The API returns 409 for a stale edit, 400 with field
-paths for input errors, and 404 for a missing or non-owned Automation. The
+paths for input errors, and 404 for an Automation the user cannot read. The
 editor must keep unsaved input when a save fails.
+
+A public reader edits with the same rules as a non-creator in Slack. They
+cannot enable creator credential use or change outcomes. A change to the
+instruction or event selector switches creator credential use to system
+credentials. The edit read returns `ownedByViewer` so the editor can show
+these rules before a save.
 
 ## Versions
 
@@ -56,16 +63,23 @@ run-now do not make a version.
 
 The save writes the version in the same transaction and lock as the
 Automation. A save that does not change the definition does not make a
-version. A new Automation gets version 1 from its creator. A Slack edit records
-the requester. A web edit records the creator, because only the creator can
-edit on the web.
+version. A new Automation gets version 1 from its creator. Slack and web edits
+record the requester.
 
 Migration 0046 saves the current definition of each live Automation as
 version 1, with no editor. Edits by older workers during a rolling deploy do
 not make versions.
 
 `GET /api/automations/:kind/:id/versions` returns the newest 100 versions. It
-uses the same read access as executions.
+uses the same read access as executions. `activeVersion` is the newest version
+that matches the current definition.
+
+`POST /api/automations/:kind/:id/versions/:version/activate` makes a version
+active. It needs the edit read revision. It saves that definition as a new
+version, so history is never rewritten. It uses the edit access and edit rules,
+so a public reader cannot use it to enable creator credentials or change
+outcomes. A version with another Destination or a one-time Schedule cannot be
+made active. A one-time version does not keep its run time.
 
 ## Pause and attention
 

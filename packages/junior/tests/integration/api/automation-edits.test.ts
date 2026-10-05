@@ -347,6 +347,9 @@ describe("Automation edit API", () => {
       });
       expect(
         (await preview("Europe/Vienna", "reader@example.com")).status,
+      ).toBe(200);
+      expect(
+        (await preview("Europe/Vienna", "foreign@example.com")).status,
       ).toBe(404);
       expect((await preview("Not/AZone")).status).toBe(400);
       expect(await read()).toEqual(initial);
@@ -530,7 +533,6 @@ describe("Automation edit API", () => {
           executions: [{ executionId: "retained-run", status: "completed" }],
         });
         // Each saved definition change is a version. Rejected saves add none.
-        // A public reader can read versions but cannot edit.
         const versionsResponse = await app.request(`${url}/versions`, {
           headers: { "test-viewer": "reader@example.com" },
         });
@@ -561,6 +563,77 @@ describe("Automation edit API", () => {
           [1, "U123", originalInstruction, "My custom title", "creator"],
         ]);
         expect(versions[0]!.definition.outcomes).toEqual(outcomes.outcomes);
+
+        // Making an old version active saves it again as the newest version.
+        const activate = (version: number, revision: string, viewer?: string) =>
+          app.request(`${url}/versions/${version}/activate`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "test-viewer": viewer ?? user.email,
+            },
+            body: JSON.stringify({ revision }),
+          });
+        expect((await activate(1, current.revision)).status).toBe(409);
+        const restored = await activate(1, outcomes.revision);
+        expect(restored.status).toBe(200);
+        expect(automationEditSchema.parse(await restored.json())).toMatchObject(
+          {
+            title: "My custom title",
+            instruction: originalInstruction,
+            credentialMode: "creator",
+            outcomes: initial.outcomes,
+          },
+        );
+        const afterRestore = automationVersionListSchema.parse(
+          await (await app.request(`${url}/versions`)).json(),
+        );
+        expect(afterRestore.activeVersion).toBe(7);
+        expect(afterRestore.versions[0]!.definition).toEqual(
+          versions.at(-1)!.definition,
+        );
+
+        // A public reader can edit, but cannot use the creator's accounts.
+        const readerView = automationEditSchema.parse(
+          await (
+            await app.request(`${url}/edit`, {
+              headers: { "test-viewer": "reader@example.com" },
+            })
+          ).json(),
+        );
+        expect(readerView.ownedByViewer).toBe(false);
+        const readerEdit = await patch(
+          { kind, revision: readerView.revision, instruction: "Reader edit." },
+          "reader@example.com",
+        );
+        expect(readerEdit.status).toBe(200);
+        const readerSaved = automationEditSchema.parse(await readerEdit.json());
+        expect(readerSaved).toMatchObject({
+          instruction: "Reader edit.",
+          credentialMode: "system",
+          ownedByViewer: false,
+        });
+        const readerRestore = await activate(
+          7,
+          readerSaved.revision,
+          "reader@example.com",
+        );
+        expect(readerRestore.status).toBe(400);
+        expect(await readerRestore.json()).toMatchObject({
+          fields: { credentialMode: expect.any(Array) },
+        });
+        const afterReader = automationVersionListSchema.parse(
+          await (await app.request(`${url}/versions`)).json(),
+        );
+        expect(
+          afterReader.versions
+            .slice(0, 2)
+            .map(({ version, editedBy }) => [version, editedBy?.slackUserId]),
+        ).toEqual([
+          [8, "U456"],
+          [7, "U123"],
+        ]);
+        expect(afterReader.activeVersion).toBe(8);
         expect(
           (
             await app.request(`${url}/versions`, {
@@ -599,15 +672,27 @@ describe("Automation edit API", () => {
           title: "Must not save",
           credentialMode: "system",
         };
-        for (const viewer of ["reader@example.com", "foreign@example.com"]) {
-          expect(
-            (
-              await app.request(`${url}/edit`, {
-                headers: { "test-viewer": viewer },
-              })
-            ).status,
-          ).toBe(404);
-          expect((await patch(input, viewer)).status).toBe(404);
+        expect(
+          (
+            await app.request(`${url}/edit`, {
+              headers: { "test-viewer": "foreign@example.com" },
+            })
+          ).status,
+        ).toBe(404);
+        expect((await patch(input, "foreign@example.com")).status).toBe(404);
+        // Public readers can edit, but creator-only fields stay creator-only.
+        for (const [field, value] of [
+          ["credentialMode", "creator"],
+          ["outcomes", []],
+        ] as const) {
+          const response = await patch(
+            { kind, revision: initial.revision, [field]: value },
+            "reader@example.com",
+          );
+          expect(response.status).toBe(400);
+          expect(await response.json()).toMatchObject({
+            fields: { [field]: expect.any(Array) },
+          });
         }
         expect(
           (
@@ -672,7 +757,7 @@ describe("Automation edit API", () => {
   );
 
   test("compiles schedules without resuming blocked or completed work", async () => {
-    const { fixture, id, read, patch } = await setup("scheduled");
+    const { app, fixture, id, url, read, patch } = await setup("scheduled");
     try {
       const initial = await read();
       const response = await patch({
@@ -698,6 +783,18 @@ describe("Automation edit API", () => {
             time: { hour: 10, minute: 30 },
           },
         },
+      });
+      // A restored Schedule compiles again and keeps the block.
+      const restored = await app.request(`${url}/versions/1/activate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ revision: saved.revision }),
+      });
+      expect(restored.status).toBe(200);
+      expect(automationEditSchema.parse(await restored.json())).toMatchObject({
+        status: "blocked",
+        schedule: initial.kind === "scheduled" ? initial.schedule : {},
+        nextRunAtMs: expect.any(Number),
       });
       const task = await readScheduledAutomation(getDb(), id);
       if (!task) throw new Error("Missing scheduled Automation");

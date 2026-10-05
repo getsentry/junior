@@ -50,6 +50,7 @@ import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
 import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
+import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
@@ -229,6 +230,27 @@ export function DashboardShell() {
               )
             }
             path="/automations/:kind/:automationId/executions"
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Saved settings for this automation, newest first."
+                    label="Loading version history"
+                    title="Version history"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationVersionsPage enabled={loggedIn} />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:kind/:automationId/versions"
           />
           <Route
             element={

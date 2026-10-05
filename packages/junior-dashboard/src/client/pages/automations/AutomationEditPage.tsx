@@ -16,13 +16,13 @@ import { AutomationEditorLoading } from "./AutomationEditorLoading";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { automationOutcomeLabel } from "./automationOutcomes";
 
-/** Load a linkable editor, with readable public values for non-creators. */
+/** Load a linkable editor. Owners and public readers can edit until work completes. */
 export function AutomationEditPage(props: { enabled: boolean }) {
   const { kind, automationId } = useParams();
   const location = useLocation();
   const summary = useAutomationData(props.enabled, automationId);
   const canEdit =
-    summary.data?.ownedByViewer &&
+    summary.data &&
     !(summary.data.kind === "scheduled" && summary.data.status === "completed");
   const edit = useQuery({
     queryKey: ["dashboard", "automations", "edit", kind, automationId],
@@ -74,9 +74,17 @@ export function AutomationEditPage(props: { enabled: boolean }) {
             ) : null}
           </div>
           {value ? (
-            <StatusChip tone={statusTone}>
-              {status === "unavailable" ? "Trigger unavailable" : status}
-            </StatusChip>
+            <div className="flex items-center gap-4">
+              <Link
+                to={`/automations/${value.kind}/${encodeURIComponent(value.id)}/versions${location.search}`}
+                className="text-sm text-dashboard-text-muted underline underline-offset-2 hover:text-dashboard-text"
+              >
+                Version history
+              </Link>
+              <StatusChip tone={statusTone}>
+                {status === "unavailable" ? "Trigger unavailable" : status}
+              </StatusChip>
+            </div>
           ) : null}
         </div>
         {(!value && summary.error) ||
@@ -114,9 +122,8 @@ function AutomationReadOnly({ automation }: { automation: AutomationSummary }) {
   return (
     <>
       <p className="mb-6 text-sm text-dashboard-text-muted">
-        {automation.ownedByViewer
-          ? "This automation has completed and cannot be edited. It will not run again."
-          : `Only ${automation.createdBy} can edit this automation.`}
+        This automation has completed and cannot be edited. It will not run
+        again.
       </p>
       <AutomationFormSection title="What to do" detail="The saved instruction.">
         <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed">

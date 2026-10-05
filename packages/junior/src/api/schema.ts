@@ -175,7 +175,9 @@ export {
   automationRunSchema,
   automationRunWindowsSchema,
   automationSummarySchema,
+  automationVersionActivateSchema,
   automationVersionListSchema,
+  automationVersionParamsSchema,
   automationVersionSchema,
 } from "./schema/automation";
 export type {

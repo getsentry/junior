@@ -9,7 +9,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { FormNotice } from "../../components/FormNotice";
 import { DashboardApiError, fetchDashboardJson, post } from "../../http";
 
-/** Explain lifecycle separately from the last execution and offer creator-only actions. */
+/** Explain lifecycle separately from the last execution. Pause and resume are creator-only. */
 export function AutomationLifecycle({
   automation,
   editPath,
@@ -23,7 +23,9 @@ export function AutomationLifecycle({
   const blocked = automation.status === "blocked";
   const unavailable =
     automation.kind === "event" && !automation.triggerAvailable;
-  const canEdit = automation.ownedByViewer && !completed;
+  // Public readers can edit settings, but only the creator controls lifecycle.
+  const canEdit = !completed;
+  const canPause = automation.ownedByViewer && !completed;
   const blockReason =
     automation.kind === "scheduled" ? automation.statusReason : undefined;
   const action = paused || blocked ? "resume" : "pause";
@@ -78,7 +80,7 @@ export function AutomationLifecycle({
           <ButtonLink className="min-h-11" to={editPath}>
             {canEdit ? "Edit automation" : "View settings"}
           </ButtonLink>
-          {canEdit ? (
+          {canPause ? (
             <Button
               className="min-h-11"
               disabled={mutation.isPending}
@@ -119,7 +121,7 @@ export function AutomationLifecycle({
           </Link>
         </p>
       ) : null}
-      {canEdit ? (
+      {canPause ? (
         <details className="text-dashboard-text-muted">
           <summary className="w-fit cursor-pointer py-2 text-xs hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
             About pausing
