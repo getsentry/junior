@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import {
   pendingSegments,
+  renderSegment,
   type HistoryEntry,
 } from "@/chat/distillation/history";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 
 function entry(message: PiMessage, seq: number): HistoryEntry {
   return { message, provenance: contextProvenance, seq };
@@ -100,6 +101,11 @@ describe("Conversation observation boundaries", () => {
     expect(segments.map((segment) => segment.map((item) => item.seq))).toEqual([
       [1, 2, 3, 4],
     ]);
+    const observed = renderSegment(segments[0]!);
+    expect(observed).toContain("Called readFile (read-a)");
+    expect(observed).toContain("tool result (readFile, call read-a)");
+    expect(observed).toContain("Called readFile (read-b)");
+    expect(observed).toContain("tool result (readFile, call read-b)");
   });
 
   it("does not cover a tool group that exceeds one observation segment", () => {
@@ -183,5 +189,34 @@ describe("Conversation observation boundaries", () => {
         terminalSeq: 6,
       }),
     ).toEqual([]);
+  });
+
+  it("leaves unreadable assistant content raw instead of marking it covered", () => {
+    const opaque = entry(
+      piMessageSchema.parse({
+        role: "assistant",
+        content: [{ type: "redacted_thinking", text: "not visible" }],
+        timestamp: 2,
+      }),
+      2,
+    );
+    expect(
+      pendingSegments({
+        entries: [
+          entry({ role: "user", content: "Earlier work", timestamp: 1 }, 1),
+          opaque,
+          entry(
+            { role: "user", content: "Recent".repeat(30_000), timestamp: 3 },
+            3,
+          ),
+        ],
+        events: [],
+        historyVersion: 0,
+        terminalSeq: 4,
+      }),
+    ).toEqual([]);
+    expect(() => renderSegment([opaque])).toThrow(
+      "Cannot render an unreadable observation entry",
+    );
   });
 });

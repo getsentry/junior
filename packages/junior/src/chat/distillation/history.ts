@@ -86,6 +86,32 @@ function tokens(message: PiMessage): number {
   return estimateModelVisibleTokens([message]);
 }
 
+function readable(message: PiMessage): boolean {
+  const content = "content" in message ? message.content : undefined;
+  if (typeof content === "string") return true;
+  if (!Array.isArray(content)) return false;
+  return content.every((part: unknown) => {
+    if (!part || typeof part !== "object" || !("type" in part)) return false;
+    if (part.type === "text") {
+      return "text" in part && typeof part.text === "string";
+    }
+    if (part.type === "thinking") {
+      return "thinking" in part && typeof part.thinking === "string";
+    }
+    if (part.type === "toolCall") {
+      return (
+        "id" in part &&
+        typeof part.id === "string" &&
+        "name" in part &&
+        typeof part.name === "string" &&
+        "arguments" in part &&
+        typeof JSON.stringify(part.arguments) === "string"
+      );
+    }
+    return false;
+  });
+}
+
 /** Price request content, not past usage counters on assistant messages. */
 export function estimateModelVisibleTokens(
   messages: readonly PiMessage[],
@@ -137,11 +163,7 @@ export function pendingSegments(source: DistillationSource): HistoryEntry[][] {
     eligible
       .slice(0, end)
       .some(
-        ({ message }) =>
-          tokens(message) > SEGMENT_TOKENS ||
-          ("content" in message && Array.isArray(message.content)
-            ? message.content.some((part) => part.type === "image")
-            : false),
+        ({ message }) => tokens(message) > SEGMENT_TOKENS || !readable(message),
       )
   ) {
     return [];
@@ -168,6 +190,9 @@ export function pendingSegments(source: DistillationSource): HistoryEntry[][] {
 }
 
 function messageContentText(message: PiMessage): string {
+  if (!readable(message)) {
+    throw new Error("Cannot render an unreadable observation entry");
+  }
   const content = "content" in message ? message.content : undefined;
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -188,10 +213,15 @@ function messageContentText(message: PiMessage): string {
       ) {
         return `Thinking: ${part.thinking}`;
       }
-      if (part.type === "toolCall" && "name" in part && "arguments" in part) {
-        return `Called ${String(part.name)}: ${JSON.stringify(part.arguments)}`;
+      if (
+        part.type === "toolCall" &&
+        "id" in part &&
+        "name" in part &&
+        "arguments" in part
+      ) {
+        return `Called ${String(part.name)} (${String(part.id)}): ${JSON.stringify(part.arguments)}`;
       }
-      return "";
+      throw new Error("Cannot render an unreadable observation part");
     })
     .filter(Boolean)
     .join("\n");
@@ -207,7 +237,7 @@ export function renderSegment(entries: readonly HistoryEntry[]): string {
             ? "user instruction"
             : "context"
           : message.role === "toolResult"
-            ? `tool result (${message.toolName}${message.isError ? ", error" : ""})`
+            ? `tool result (${message.toolName}, call ${message.toolCallId}${message.isError ? ", error" : ""})`
             : "assistant";
       const content = messageContentText(message);
       return `${new Date(message.timestamp).toISOString()} ${role}: ${escapeXml(content)}`;

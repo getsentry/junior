@@ -3,8 +3,9 @@
 `task.ts` observes completed agent history after a Turn. It uses Luna and
 stores short, dated observations as `distillation` events. It can merge older
 segments into a structured summary. The task keeps recent segments as they
-were recorded. It leaves images and oversized entries in raw history rather
-than claim that it observed content it did not read. It makes no model call on
+were recorded. It leaves images, unknown content parts, and oversized entries
+in raw history rather than claim that it observed content it did not read. It
+makes no model call on
 the user's reply path.
 
 Each event names its source sequence range and active history version. An
