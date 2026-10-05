@@ -3,7 +3,7 @@ import { mention, reply } from "@junior-evals/fixture/inputs";
 import { rubric } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
-import { validationLogs } from "./ci-results";
+import { validationLogs } from "../conversation/ci-results";
 
 describe("Long resource investigation", () => {
   test("repairs the owner-scoped lookup and checks the earlier CI failure", async ({
