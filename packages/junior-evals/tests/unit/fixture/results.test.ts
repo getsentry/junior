@@ -188,13 +188,20 @@ describe("distillation usage", () => {
     const usage = readDistillationUsage({
       events,
       auxiliaryCosts: {
-        costUsd: 0.05,
+        costUsd: 0.053,
         operations: [
           {
             namespace: "junior",
             name: "distillation",
             events: 3,
             costUsd: 0.02,
+          },
+          {
+            namespace: "junior",
+            name: "distillation_batch_done",
+            events: 1,
+            costUsd: 0.003,
+            estimatedCostUsd: 0.003,
           },
         ],
       },
@@ -203,7 +210,8 @@ describe("distillation usage", () => {
     expect(usage).toEqual({
       historyComplete: true,
       observationCount: 3,
-      observationCostUsd: 0.02,
+      observationCostUsd: 0.023,
+      observationEstimatedCostUsd: 0.003,
       replacements: [
         {
           eventSeq: 12,
@@ -219,13 +227,20 @@ describe("distillation usage", () => {
     expect(JSON.stringify(usage)).not.toContain("private observation text");
     const operations = readAuxiliaryOperations({
       auxiliaryCosts: {
-        costUsd: 0.05,
+        costUsd: 0.053,
         operations: [
           {
             namespace: "junior",
             name: "distillation",
             events: 3,
             costUsd: 0.02,
+          },
+          {
+            namespace: "junior",
+            name: "distillation_batch_done",
+            events: 1,
+            costUsd: 0.003,
+            estimatedCostUsd: 0.003,
           },
           {
             namespace: "junior",
@@ -243,7 +258,12 @@ describe("distillation usage", () => {
       },
     });
     expect(operations).toEqual([
-      { kind: "distillation", events: 3, costUsd: 0.02 },
+      {
+        kind: "distillation",
+        events: 4,
+        costUsd: 0.023,
+        estimatedCostUsd: 0.003,
+      },
       { kind: "turn_routed", events: 1, costUsd: 0.01 },
       { kind: "other", events: 2, costUsd: 0.02 },
     ]);
@@ -252,7 +272,7 @@ describe("distillation usage", () => {
       conversationId: "local:example:context-cost",
       usage: {
         agentCostUsd: 0.1,
-        auxiliaryCostUsd: 0.05,
+        auxiliaryCostUsd: 0.053,
         auxiliaryOperations: operations,
         distillation: { "local:example:context-cost": usage },
         distillationDecisions: {},

@@ -113,6 +113,20 @@ describe("chat config", () => {
     expect(botConfig.reasoningLevel).toBeUndefined();
   });
 
+  it("validates linked user IDs for personal distillation", async () => {
+    process.env.JUNIOR_CONTEXT_DISTILLATION_USER_IDS =
+      " 550e8400-e29b-41d4-a716-446655440000 , 550e8400-e29b-41d4-a716-446655440000 ";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.contextDistillationUserIds).toEqual([
+      "550e8400-e29b-41d4-a716-446655440000",
+    ]);
+
+    process.env.JUNIOR_CONTEXT_DISTILLATION_USER_IDS = "not-a-user-id";
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_CONTEXT_DISTILLATION_USER_IDS must contain user UUIDs",
+    );
+  });
+
   it("uses an explicitly configured reasoning level", async () => {
     process.env.AI_REASONING_LEVEL = "xhigh";
 

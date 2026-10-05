@@ -378,9 +378,43 @@ const distillationEventDataSchema = z
     observations: z.string().min(1).max(20_000),
     modelId: z.string().min(1),
     costUsd: z.number().finite().nonnegative(),
+    costEstimated: z.literal(true).optional(),
   })
   .strict()
   .refine((data) => data.fromSeq <= data.throughSeq);
+
+const distillationBatchEventDataSchema = z
+  .object({
+    type: z.literal("distillation_batch"),
+    sourceHistoryVersion: z.number().int().nonnegative(),
+    batchId: z.string().min(1),
+    provider: z.string().min(1),
+    requests: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            fromSeq: z.number().int().nonnegative(),
+            throughSeq: z.number().int().nonnegative(),
+          })
+          .strict()
+          .refine((request) => request.fromSeq <= request.throughSeq),
+      )
+      .min(1)
+      .max(12),
+  })
+  .strict();
+
+const distillationBatchDoneEventDataSchema = z
+  .object({
+    type: z.literal("distillation_batch_done"),
+    sourceHistoryVersion: z.number().int().nonnegative(),
+    batchId: z.string().min(1),
+    outcome: z.enum(["processed", "failed"]),
+    costUsd: z.number().finite().nonnegative().optional(),
+    costEstimated: z.literal(true).optional(),
+  })
+  .strict();
 
 const turnFailedEventDataSchema = z
   .object({
@@ -441,6 +475,8 @@ const appendableConversationEventDataSchema = z.union([
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   distillationEventDataSchema,
+  distillationBatchEventDataSchema,
+  distillationBatchDoneEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
@@ -482,6 +518,8 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_routed",
   "turn_completed",
   "distillation",
+  "distillation_batch",
+  "distillation_batch_done",
   "turn_failed",
   "subagent_started",
   "subagent_ended",

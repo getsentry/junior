@@ -204,7 +204,14 @@ class SqlConversationEventStore implements ConversationEventStore {
         if (pending.length === 0) {
           return [];
         }
-        if (pending.some((event) => event.data.type === "distillation")) {
+        if (
+          pending.some(
+            (event) =>
+              event.data.type === "distillation" ||
+              event.data.type === "distillation_batch" ||
+              event.data.type === "distillation_batch_done",
+          )
+        ) {
           const [conversation] = await this.executor
             .db()
             .select({

@@ -205,11 +205,13 @@ export const cancelConversationPendingMessagesResponseSchema = z
 export const conversationAuxiliaryCostsSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
+    estimatedCostUsd: z.number().finite().nonnegative().optional(),
     operations: z
       .array(
         z
           .object({
             costUsd: z.number().finite().nonnegative(),
+            estimatedCostUsd: z.number().finite().nonnegative().optional(),
             events: z.number().int().positive(),
             name: z.string().min(1),
             namespace: z.string().min(1),

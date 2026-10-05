@@ -20,6 +20,7 @@ import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-ma
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { escapeXml } from "@/chat/xml";
 import { expectedContextCalls, shouldUseDistillations } from "./economics";
+import { mayDistillConversation } from "./eligibility";
 import { activeDistillations, estimateModelVisibleTokens } from "./history";
 
 interface PendingInstruction {
@@ -83,6 +84,15 @@ export async function compactWithDistillations(args: {
       projection.provenance[instructionIndex],
       args.pendingInstruction.provenance,
     )
+  ) {
+    return undefined;
+  }
+  if (
+    !(await mayDistillConversation(
+      args.conversationId,
+      args.pendingInstruction.provenance.actor,
+      projection.provenance,
+    ))
   ) {
     return undefined;
   }

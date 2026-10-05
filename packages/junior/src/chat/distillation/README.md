@@ -37,16 +37,36 @@ the current rates, even when the full eligible history passes the worker's
 price check. Twelve segments cover a qualifying 180k-token history in one
 bounded task. The next Turn still checks the cost of the actual replacement.
 
-The Luna worker sends direct calls through AI Gateway with
-`cacheRetention: "none"`. This omits explicit cache markers. OpenAI caches
-prompts without such markers when it can reuse a prefix. Lore uses a provider
-Batch API for background work when available. Its one-hour system cache marker
-applies to Anthropic requests. Lore's OpenAI batch path sends the system text
-without that marker. AI Gateway does not document a Batch API endpoint, and
-Junior uses gateway credentials rather than a direct provider key. Do not
-price worker calls at a Batch API discount until a supported path records its
-actual cost. A provider batch can take up to 24 hours. It needs durable
-submission and result handling outside the current ten-minute worker lock.
+The direct Luna worker uses `cacheRetention: "none"`. OpenAI caches reusable
+prefixes without explicit markers. Set `JUNIOR_CONTEXT_DISTILLATION_BATCH_ENABLED=true`
+to send bounded observation segments through AI Gateway's Batch API. Junior
+uses the same Gateway credential resolver for direct calls and batches. It
+prefers Vercel OIDC and resolves the credential anew for each batch request.
+The worker stores the batch reference in the Conversation before it schedules
+a new signed task message. That message checks the batch every ten minutes.
+It stops polling before the provider's 24-hour completion limit if results
+remain unavailable and leaves the source history raw.
+If history is replaced while a batch runs, the worker reads the old reference
+only to record its known cost. It never uses those observations in the new
+history.
+The user reply does not wait for it. The worker matches results by request ID,
+then writes all valid observations in source order or leaves the history raw.
+Failed items do not cover source history. The batch has at most twelve requests
+and stays below four megabytes of input. Older observations provide common
+context to each request; later segments in the same batch do not see earlier
+batch results. A direct consolidation call merges older results after the batch
+finishes. Each new Turn keeps raw history until the results pass the price and
+authority checks.
+
+AI Gateway bills supported batches at a lower rate. The worker uses that rate
+only while the batch setting is on. It reads billed generation cost when the
+Gateway provides it. If only token usage is available, it records a discounted
+estimate and marks that cost as estimated. Failed batches record known charges
+separately from completed observations. Batches can take up to 24 hours.
+AI Gateway rejects batches under zero data retention. If a batch endpoint is
+unavailable, the worker checks direct-call cost again before a direct call.
+Lore's one-hour Anthropic cache marker does not apply to Junior's OpenAI Luna
+requests. OpenAI handles prefix caching implicitly.
 
 The replacement is one durable `compaction` event. It keeps recent raw
 messages, tool-call/result pairs, the current instruction and its author, and
@@ -62,6 +82,21 @@ under the `distillation` operation in Conversation auxiliary costs. Cache
 token counts for assistant model calls remain separate. Evaluate completed
 tasks, reply quality, latency, and both costs before wider use. No
 cross-Conversation recall or Lore long-term memory is part of this feature.
+The batch flag also defaults to `false`. It has no effect while distillation is
+off. A direct-call eval cannot measure the delay or quality of batch results.
+
+For a personal production trial, set `JUNIOR_CONTEXT_DISTILLATION_USER_IDS` to
+the linked Junior user UUID and enable distillation in the same deployment.
+The worker and new-Turn replacement require confirmed private visibility. They
+also check that the current Actor and every authored instruction in active
+history belong to that linked user. Unknown or unlinked authors block the
+personal trial. When the user-ID list is empty, the
+enabled flag keeps its deployment-wide meaning for controlled evals. Do not
+enable it without the user-ID list for a personal production trial. The
+Conversation reporting API records observer and Batch costs as auxiliary
+operations. Add those costs to assistant usage for each completed task; the
+personal spend total alone does not separate observer costs or priced history
+replacements.
 
 The observation and consolidation prompts adapt Lore's design with the
 copyright holder's Apache-2.0 permission. The runtime and storage here belong

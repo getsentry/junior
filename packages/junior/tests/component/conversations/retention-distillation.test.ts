@@ -45,7 +45,19 @@ describe("Conversation observation retention", () => {
     };
     await history.append(
       conversationId,
-      [{ data: observation, createdAtMs: 2 }],
+      [
+        { data: observation, createdAtMs: 2 },
+        {
+          data: {
+            type: "distillation_batch",
+            sourceHistoryVersion: 0,
+            batchId: "batch-pending",
+            provider: "vercel-ai-gateway.batch",
+            requests: [{ id: "segment:0:0", fromSeq: 0, throughSeq: 0 }],
+          },
+          createdAtMs: 2,
+        },
+      ],
       { activity: "preserve" },
     );
 
@@ -60,6 +72,23 @@ describe("Conversation observation retention", () => {
       history.append(conversationId, [{ data: observation, createdAtMs: 4 }], {
         activity: "preserve",
       }),
+    ).rejects.toThrow(/purged/);
+    await expect(
+      history.append(
+        conversationId,
+        [
+          {
+            data: {
+              type: "distillation_batch_done",
+              sourceHistoryVersion: 0,
+              batchId: "batch-pending",
+              outcome: "processed",
+            },
+            createdAtMs: 4,
+          },
+        ],
+        { activity: "preserve" },
+      ),
     ).rejects.toThrow(/purged/);
     await expect(
       history.replaceHistory(conversationId, {

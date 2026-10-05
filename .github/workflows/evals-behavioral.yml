@@ -332,3 +332,25 @@ jobs:
       - name: Require eval pass
         if: steps.run.outcome != 'success'
         run: exit 1
+
+  context_batch_probe:
+    name: context batch / probe
+    needs: select
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'trigger-context-cost-evals') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.select.outputs.gateway_ready == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Probe synthetic Gateway Batch
+        run: pnpm --filter @sentry/junior exec tsx scripts/context-batch-probe.ts

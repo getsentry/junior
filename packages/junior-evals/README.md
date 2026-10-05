@@ -126,6 +126,9 @@ describe("Thread Continuity", () => {
   totals. `usage.metadata.auxiliaryCostUsd` has recorded routing and other
   non-assistant event costs. `usage.metadata.auxiliaryOperations` groups those
   costs by fixed Junior event kind. Other operation names stay in one group.
+  Failed batches can have a cost without a stored observation. Optional
+  `estimatedCostUsd` marks charges based on token rates instead of a Gateway
+  bill. Keep estimated charges distinct from billed costs.
   `usage.metadata.gatewayModelCalls` has estimated
   costs and numeric token counts from Messages responses during fixture calls.
   This includes assistant calls, titles, and compaction summaries. Do not add
@@ -134,8 +137,9 @@ describe("Thread Continuity", () => {
   A missing counter means unknown, not zero.
   The fixture never copies message or tool content into these usage entries.
 - `usage.metadata.distillation[conversationId]` records the number and cost of
-  stored observations. It also lists history replacements with their event
-  sequence, input token estimates, expected calls, and price decision. It
+  stored observations and the known cost of failed batches. It lists history
+  replacements with their event sequence, input token estimates, expected
+  calls, and price decision. It
   contains no observation text or replacement summary. Check `historyComplete`
   before treating an empty replacement list as proof that none happened.
 - `usage.metadata.distillationDecisions[conversationId]` copies fixed skip
@@ -161,6 +165,12 @@ variation. The separate long CI continuity case routes Luna. At the default
 context cap and current prices, its worker cannot pass the 20% check. Keep an
 uneconomical skip as a valid price decision. Do not lower the price check to
 make an eval activate.
+
+The `context batch / probe` CI job sends one synthetic Gateway Batch. It
+reports only its state and numeric cost. A pending result proves submission,
+not completed Batch cost or quality. Re-run the job at the same revision to
+check the same idempotency key. The paired `context cost / off` and `/ on`
+jobs use direct observation calls. They do not measure Batch cost.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each

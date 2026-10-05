@@ -302,9 +302,12 @@ export function readAuxiliaryOperations(
     const kind =
       operation.namespace === "junior" &&
       (operation.name === "distillation" ||
+        operation.name === "distillation_batch_done" ||
         operation.name === "turn_routed" ||
         operation.name === "guardian_action_reviewed")
-        ? operation.name
+        ? operation.name === "distillation_batch_done"
+          ? "distillation"
+          : operation.name
         : "other";
     const current = totals.get(kind);
     totals.set(kind, {
@@ -312,6 +315,16 @@ export function readAuxiliaryOperations(
       events: (current?.events ?? 0) + operation.events,
       costUsd:
         Math.round(((current?.costUsd ?? 0) + operation.costUsd) * 1e12) / 1e12,
+      ...(operation.estimatedCostUsd || current?.estimatedCostUsd
+        ? {
+            estimatedCostUsd:
+              Math.round(
+                ((current?.estimatedCostUsd ?? 0) +
+                  (operation.estimatedCostUsd ?? 0)) *
+                  1e12,
+              ) / 1e12,
+          }
+        : undefined),
     });
   }
   return [...totals.values()];
@@ -327,10 +340,29 @@ export function readDistillationUsage(
   const operation = detail.auxiliaryCosts?.operations.find(
     ({ namespace, name }) => namespace === "junior" && name === "distillation",
   );
+  const failedBatch = detail.auxiliaryCosts?.operations.find(
+    ({ namespace, name }) =>
+      namespace === "junior" && name === "distillation_batch_done",
+  );
   return {
     historyComplete: detail.previousCursor === undefined,
     observationCount: operation?.events ?? 0,
-    observationCostUsd: operation?.costUsd ?? 0,
+    observationCostUsd:
+      Math.round(
+        ((operation?.costUsd ?? 0) + (failedBatch?.costUsd ?? 0)) * 1e12,
+      ) / 1e12,
+    ...((operation?.estimatedCostUsd ?? 0) +
+      (failedBatch?.estimatedCostUsd ?? 0) >
+    0
+      ? {
+          observationEstimatedCostUsd:
+            Math.round(
+              ((operation?.estimatedCostUsd ?? 0) +
+                (failedBatch?.estimatedCostUsd ?? 0)) *
+                1e12,
+            ) / 1e12,
+        }
+      : undefined),
     replacements: detail.events.flatMap(({ seq, data }) =>
       data.type === "compaction" && data.details?.reason === "distillation"
         ? [{ eventSeq: seq, ...data.details }]
@@ -490,6 +522,7 @@ export interface AuxiliaryOperationUsage {
   kind: "distillation" | "guardian_action_reviewed" | "turn_routed" | "other";
   events: number;
   costUsd: number;
+  estimatedCostUsd?: number;
 }
 
 /** Numeric skip diagnostics; never include log bodies or source text. */
@@ -514,6 +547,7 @@ export interface DistillationUsage {
   historyComplete: boolean;
   observationCount: number;
   observationCostUsd: number;
+  observationEstimatedCostUsd?: number;
   replacements: Array<{
     eventSeq: number;
     reason: "distillation";
