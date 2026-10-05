@@ -148,18 +148,17 @@ history. Match the routed models and completed tasks across runs. Compare
 assistant cost plus auxiliary cost, cache reads and writes, reply quality,
 elapsed time, and repeated work. Repeat each setting. A run with no history
 replacement does not measure the cost of using observations.
-On a draft PR to `main`, the `trigger-context-cost-evals` label runs the long
-Conversation case with the feature off and on at the same revision. Both runs
-upload a `context-cost-*` result. Require observations and a `priced: true`
-history replacement in the on result before using the pair as cost evidence.
-Re-run the pair to check variation.
-The current case routes Luna. At the default context cap and current model
-prices, its worker cannot pass the 20% price check. This case checks reply
-continuity, but it cannot measure the benefit of an activated replacement.
-Use the trigger label only after selecting a full-runtime case that can pass
-the price check and finish each reply within 60 seconds. Keep an uneconomical
-skip as a valid price decision. Do not lower the price check to make an eval
-activate.
+On a draft PR to `main`, the `trigger-context-cost-evals` label runs the
+scoped-lookup coding case with the feature off and on at the same revision.
+Both runs upload a `context-cost-*` result. The case uses Astra because a
+three-call Turn can make a bounded observation task worthwhile at its current
+cache prices. Require a completed repair and passing focused test in both
+runs. Require observations and a `priced: true` history replacement in the
+on run before using the pair as cost evidence. Re-run the pair to check
+variation. The separate long CI continuity case routes Luna. At the default
+context cap and current prices, its worker cannot pass the 20% check. Keep an
+uneconomical skip as a valid price decision. Do not lower the price check to
+make an eval activate.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each
