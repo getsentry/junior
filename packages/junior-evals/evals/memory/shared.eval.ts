@@ -5,10 +5,14 @@ import { rubric } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { test } from "@junior-evals/fixture/test";
 
-/** A stored memory about the conversation, not about one person. */
+/**
+ * A stored memory about the conversation, not about one person. A memory
+ * from a public channel is public: other people in the workspace can recall it.
+ */
 const conversationMemory = (content: RegExp) =>
   expect.objectContaining({
     content: expect.stringMatching(content),
+    scope: "public",
     subjectType: "conversation",
   });
 

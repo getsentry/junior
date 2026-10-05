@@ -58,6 +58,21 @@ export function completedToolCalls(
 }
 
 /**
+ * Completed calls of one MCP tool, such as `mcp__eval-tracker__search-tickets`,
+ * across the results of several calls.
+ */
+export function completedMcpToolCalls(
+  toolName: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return completedToolCalls("callMcpTool", ...results).filter(
+    (call) =>
+      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
+      toolName,
+  );
+}
+
+/**
  * The result of a tool call. The reporting API returns JSON results as text,
  * so this parses them.
  */

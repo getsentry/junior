@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { githubWebhook, mention } from "@junior-evals/fixture/inputs";
 import { insertWatch } from "@junior-evals/fixture/insert";
 import { rubric } from "@junior-evals/fixture/judge";
+import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
 
@@ -36,6 +37,26 @@ function checkSuiteWebhook(conclusion: "failure" | "success") {
           number: 691,
         },
       ],
+    },
+    repository,
+  });
+}
+
+function mergedWebhook() {
+  const mergedAt = new Date().toISOString();
+  return githubWebhook("pull_request", {
+    action: "closed",
+    pull_request: {
+      closed_at: mergedAt,
+      created_at: "2026-01-01T00:00:00Z",
+      head: { ref: "fix/cache-refresh" },
+      id: 691_000,
+      merged: true,
+      merged_at: mergedAt,
+      number: 691,
+      title: "Refresh cached values after expiry",
+      updated_at: mergedAt,
+      user: { login: "junior-eval[bot]" },
     },
     repository,
   });
@@ -219,40 +240,56 @@ describe("Watches", () => {
       "No merge watch: this run does not test delivery",
     ).toContain("pull_request.merged");
 
-    const mergedAt = new Date().toISOString();
-    const delivery = await conversation.continue(
-      githubWebhook("pull_request", {
-        action: "closed",
-        pull_request: {
-          closed_at: mergedAt,
-          created_at: "2026-01-01T00:00:00Z",
-          head: { ref: "fix/cache-refresh" },
-          id: 691_000,
-          merged: true,
-          merged_at: mergedAt,
-          number: 691,
-          title: "Refresh cached values after expiry",
-          updated_at: mergedAt,
-          user: { login: "junior-eval[bot]" },
-        },
-        repository,
+    const delivery = await conversation.continue(mergedWebhook(), {
+      criteria: rubric({
+        pass: [
+          `The reply says GitHub PR ${pullRequest} was merged.`,
+          "The reply frames the merge as the outcome this thread was waiting for.",
+          "The reply stays brief and does not propose unnecessary follow-up work.",
+        ],
+        fail: [
+          "Do not say checks failed or review changes were requested.",
+          "Do not ask the user what to do with the merged PR.",
+          "Do not treat the event notification as a new user request.",
+        ],
       }),
-      {
-        criteria: rubric({
-          pass: [
-            `The reply says GitHub PR ${pullRequest} was merged.`,
-            "The reply frames the merge as the outcome this thread was waiting for.",
-            "The reply stays brief and does not propose unnecessary follow-up work.",
-          ],
-          fail: [
-            "Do not say checks failed or review changes were requested.",
-            "Do not ask the user what to do with the merged PR.",
-            "Do not treat the event notification as a new user request.",
-          ],
-        }),
-      },
-    );
+    });
 
     expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when directly mentioned during a watch delivery, answer the mention in its own turn", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      mention(`Let me know here when ${pullRequest} lands.`),
+    );
+    expect(
+      watchedEvents(conversation),
+      "No merge watch: this run does not test delivery",
+    ).toContain("pull_request.merged");
+
+    // A watch delivery turn takes no steering input. The mention waits for
+    // its own turn.
+    const delivery = await conversation.continue(mergedWebhook(), {
+      onProgress: sendDuringFirstModelRequest([
+        mention(
+          "The deployment owner is Alice. Tell the thread who owns the deployment.",
+        ),
+      ]),
+      criteria: rubric({
+        pass: [
+          "A reply says Alice owns the deployment.",
+          "The user's direct instruction is the focus of the final reply.",
+        ],
+        fail: [
+          "Do not ignore or contradict the user's instruction in order to continue handling the GitHub notification.",
+          "Do not finish with a reply that addresses only the GitHub notification.",
+        ],
+      }),
+    });
+
+    expect(delivery.turns).toHaveLength(2);
+    expect(delivery.replies.at(-1)?.text).toMatch(/Alice/i);
   });
 });

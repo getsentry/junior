@@ -82,14 +82,30 @@ function toSlackEventChannelType(
 /**
  * Map Slack's Events API channel_type to a source-confirmed visibility.
  *
- * Slack's event metadata is the only visibility authority; channel IDs never
- * classify visibility.
+ * Slack's event metadata and live conversation metadata are the only
+ * visibility authorities; channel IDs never classify visibility.
  */
 export function conversationVisibilityFromSlackChannelType(
   channelType: SlackEventChannelType | undefined,
 ): SlackConversationVisibility | undefined {
   if (!channelType) return undefined;
   return channelType === "channel" ? "public" : "private";
+}
+
+/**
+ * Map live `conversations.info` metadata to Slack's Events API channel type,
+ * for events that carry no `channel_type`.
+ */
+export function slackChannelTypeFromConversationInfo(info: {
+  isChannel: boolean;
+  isIm: boolean;
+  isMpim: boolean;
+  isPrivate: boolean;
+}): SlackEventChannelType | undefined {
+  if (info.isIm) return "im";
+  if (info.isMpim) return "mpim";
+  if (info.isPrivate) return "group";
+  return info.isChannel ? "channel" : undefined;
 }
 
 /** Resolve Slack's raw event channel type from a Chat SDK message-like object. */

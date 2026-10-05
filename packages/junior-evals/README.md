@@ -59,6 +59,9 @@ describe("Thread Continuity", () => {
   `agent({ plugins: defineJuniorPlugins([sentryPlugin()]) })`. Tests may
   import the public `@sentry/junior` API and plugin packages, but not runtime
   internals under `@/`.
+- The default agent has no experimental feature, as in production. A test
+  that needs one turns it on. For example, Junior replies to a thread message
+  without a mention only with `agent({ experimental: { "passive-routing": true } })`.
 - A suite is a Vitest project for one directory. It provides
   `agentOptionsModule`, a module whose default export is the default
   `createApp()` options of its tests, and it can set host environment such as
@@ -73,7 +76,14 @@ describe("Thread Continuity", () => {
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
-  A call fails when the agent is not idle within 60 seconds.
+  A call fails when the agent is not idle within 60 seconds. The product
+  delays some queued deliveries; for example, a watch delivery waits 30
+  seconds for more events. The 60 seconds start when the last delivery is due.
+- A channel `mention()` arrives as Slack sends it: an `app_mention` event
+  without a channel type, then a `message` event with the same `ts` and the
+  channel type. Slack does not fix the order, and Junior stores the first
+  event. Junior then asks Slack for the channel type and learns that the
+  channel is public.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
@@ -114,7 +124,9 @@ describe("Thread Continuity", () => {
   does not store. A reply is the body that people see, without the footer.
   Each Conversation is read as the person who started it.
 - Assert facts that do not depend on wording: reply counts, turn states, tool
-  calls, and reactions. `toolOutput()` parses a tool result. Use `criteria`
+  calls, and reactions. `completedToolCalls()` returns the completed calls of
+  one tool, and `completedMcpToolCalls()` returns those of one MCP tool.
+  `toolOutput()` parses a tool result. Use `criteria`
   for wording. Do not assert on stored
   rows or runtime objects.
 
@@ -155,11 +167,11 @@ Not in scope:
   - primary runtime/system correctness that must never regress (hard pass/fail)
   - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, and scheduler create/credential/management contracts
 - Behavioral conversation cases: `evals/conversation/`
-  - participation, actor attribution, continuity, storage, output shape, and model-variable routing judgment
+  - participation, actor attribution, continuity, storage, and output shape
 - Behavioral agent cases: `evals/agent/`
   - skills, providers, research, files, and skill routing
 - Behavioral coding suite cases: `evals/coding/`
-  - watch intent and summary quality with the GitHub plugin
+  - watch intent, summary quality, and a mention during a watch delivery, with the GitHub plugin
 - Behavioral feature cases:
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
@@ -174,10 +186,11 @@ Not in scope:
 - Router harness: `src/router-harness.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts` (scenario entry) with its concerns split under `src/harness/`: types, environment, auth fixtures, threads, Slack artifacts, replay tools, runtime services, event processing, and plugin tasks
 
-The ticket lookup in `evals/conversation/actors.eval.ts` uses the `eval-tracker`
-MCP fixture. It supplies two tickets with different causes and exposes a write
-operation. The case requires a successful search and rejects writes. An ambient
-offer from another person is not permission to change a ticket.
+The ticket lookup in `evals/conversation/actors.eval.ts` defines an
+`eval-tracker` plugin for the eval MCP server. The server supplies two tickets
+with different causes and exposes a write operation. The case requires a
+successful search and rejects writes. An ambient offer from another person is
+not permission to change a ticket.
 
 The output cases accept labeled links, as the Slack output contract does.
 Watch summaries may use tool discovery and read-only inspection; they do not

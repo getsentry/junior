@@ -246,7 +246,14 @@ export function isAppMention(
 
 let eventSequence = 0;
 
-/** Post one signed Slack Events API message event to the app route. */
+/**
+ * Deliver one Slack message to the app route as Slack does. A channel mention
+ * arrives as two signed events with the same `ts`: a `message` event, which
+ * has the channel type, and an `app_mention` event, which has none. Slack does
+ * not fix their order, and Junior stores the first one. The fixture sends
+ * `app_mention` first, so each mention turn must learn the channel type from
+ * Slack and not from the event.
+ */
 export async function postSlackMessageEvent(
   app: RequestApp,
   event: {
@@ -259,6 +266,29 @@ export async function postSlackMessageEvent(
     user: string;
   },
 ): Promise<void> {
+  const message = {
+    user: event.user,
+    text: event.text,
+    channel: event.channel,
+    ts: event.ts,
+    event_ts: event.ts,
+    ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+  };
+  if (event.mention) {
+    await postSlackEvent(app, { ...message, type: "app_mention" });
+  }
+  await postSlackEvent(app, {
+    ...message,
+    type: "message",
+    channel_type: event.channelType,
+  });
+}
+
+/** Post one signed Slack Events API event to the app route. */
+async function postSlackEvent(
+  app: RequestApp,
+  event: Record<string, unknown>,
+): Promise<void> {
   eventSequence += 1;
   const body = JSON.stringify({
     token: "test-token",
@@ -267,17 +297,7 @@ export async function postSlackMessageEvent(
     type: "event_callback",
     event_id: `EvEVAL${eventSequence}`,
     event_time: Math.floor(Date.now() / 1000),
-    event: {
-      type: event.mention ? "app_mention" : "message",
-      user: event.user,
-      text: event.text,
-      channel: event.channel,
-      ts: event.ts,
-      event_ts: event.ts,
-      ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
-      // Slack sends no channel type with app_mention events.
-      ...(event.mention ? undefined : { channel_type: event.channelType }),
-    },
+    event,
   });
   const secret = getSlackSigningSecret();
   if (!secret) {

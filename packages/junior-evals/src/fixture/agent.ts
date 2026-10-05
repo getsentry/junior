@@ -65,7 +65,10 @@ import {
   SLACK_BOT_USER_ID,
 } from "./slack";
 
-/** Every call fails when the agent is not idle within this budget. */
+/**
+ * Every call fails when the agent is not idle within this budget. The budget
+ * does not include the time that a delivery waits for its delay.
+ */
 const IDLE_TIMEOUT_MS = 60_000;
 
 export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
@@ -215,8 +218,13 @@ export async function createFixtureAgent(
   }> = [];
 
   const waitForIdle = async (): Promise<void> => {
-    const deadline = Date.now() + IDLE_TIMEOUT_MS;
+    const startedAtMs = Date.now();
     for (;;) {
+      // The product delays some deliveries. For example, a watch delivery
+      // waits 30 seconds for more events. The budget starts when the last
+      // delivery is due to start.
+      const deadline =
+        Math.max(startedAtMs, queue.latestStartAtMs()) + IDLE_TIMEOUT_MS;
       const pending = [...queue.pending(), ...background];
       if (pending.length === 0) {
         // Let work that a finished delivery started reach the queue.
