@@ -45,7 +45,7 @@ describe("renderTaskInput", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#691
-      Created by: <@U123>
+      Created by: <@U123>. Where the instructions say "me" or "my", write this mention.
       Instructions: Fix failed checks on this PR.
 
       Trusted summary: CI failed on workflow test.

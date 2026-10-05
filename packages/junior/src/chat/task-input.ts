@@ -69,7 +69,11 @@ export function renderTaskInput(args: {
     "This is a task, not a message from a person.",
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
-    ...(creator ? [`Created by: ${oneLine(creator)}`] : []),
+    ...(creator
+      ? [
+          `Created by: ${oneLine(creator)}. Where the instructions say "me" or "my", write this mention.`,
+        ]
+      : []),
     `Instructions: ${instructions}`,
   ];
 
