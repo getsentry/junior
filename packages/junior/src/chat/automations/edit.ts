@@ -113,7 +113,13 @@ export async function updateViewerAutomation(
       true,
       Date.now(),
     );
-    const task = await saveScheduledAutomation(getDb(), next, input.revision);
+    // Web edits are creator-only, so the creator is the editor.
+    const task = await saveScheduledAutomation(
+      getDb(),
+      next,
+      input.revision,
+      current.task.createdBy,
+    );
     return editView({ kind: "scheduled", task });
   }
   if (input.kind === "event" && current.kind === "event") {
@@ -123,7 +129,12 @@ export async function updateViewerAutomation(
       true,
       getEventCatalog(),
     );
-    const task = await saveEventAutomation(getDb(), next, input.revision);
+    const task = await saveEventAutomation(
+      getDb(),
+      next,
+      input.revision,
+      current.task.createdBy,
+    );
     if (!task) throw new ViewerTaskNotFoundError();
     return editView({ kind: "event", task });
   }

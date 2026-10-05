@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { automationEditSchema } from "@/api/schema/automation";
+import {
+  automationEditSchema,
+  automationVersionListSchema,
+} from "@/api/schema/automation";
 import { getDb, getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -224,6 +227,10 @@ describe("Automation edit API", () => {
           outcomes: initial.outcomes,
           id,
         });
+        // Lifecycle changes are not definition changes.
+        expect(
+          await (await app.request(`${url}/versions`)).json(),
+        ).toMatchObject({ versions: [{ version: 1 }] });
       } finally {
         await fixture.close();
       }
@@ -522,6 +529,45 @@ describe("Automation edit API", () => {
         expect(await executions.json()).toMatchObject({
           executions: [{ executionId: "retained-run", status: "completed" }],
         });
+        // Each saved definition change is a version. Rejected saves add none.
+        // A public reader can read versions but cannot edit.
+        const versionsResponse = await app.request(`${url}/versions`, {
+          headers: { "test-viewer": "reader@example.com" },
+        });
+        expect(versionsResponse.status).toBe(200);
+        const { versions } = automationVersionListSchema.parse(
+          await versionsResponse.json(),
+        );
+        expect(
+          versions.map(({ version, editedBy, definition }) => [
+            version,
+            editedBy?.slackUserId,
+            definition.instruction,
+            definition.title,
+            definition.credentialMode,
+          ]),
+        ).toEqual([
+          [6, "U123", "Edited again from Slack.", current.title, "system"],
+          [5, "U123", "Edited again from Slack.", current.title, "creator"],
+          [
+            4,
+            "U123",
+            "Edited again from Slack.",
+            "Title from Slack",
+            "creator",
+          ],
+          [3, "U123", "Edited from Slack.", "Title from Slack", "creator"],
+          [2, "U123", "Post the revised digest.", "My custom title", "creator"],
+          [1, "U123", originalInstruction, "My custom title", "creator"],
+        ]);
+        expect(versions[0]!.definition.outcomes).toEqual(outcomes.outcomes);
+        expect(
+          (
+            await app.request(`${url}/versions`, {
+              headers: { "test-viewer": "foreign@example.com" },
+            })
+          ).status,
+        ).toBe(404);
         const stored =
           kind === "scheduled"
             ? await readScheduledAutomation(getDb(), id)

@@ -220,6 +220,7 @@ export function createSlackScheduleUpdateAutomationTool(
         db,
         next,
         automationRevision(lookup),
+        actor,
       );
       if (changingDestination) {
         logInfo(

@@ -1,4 +1,5 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
+import { recordAutomationVersion } from "@/chat/automations/versions";
 import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import {
   slackDestinationSchema,
@@ -249,6 +250,7 @@ async function writeScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
   current: ScheduledAutomation | undefined,
+  editedBy?: ScheduledAutomation["createdBy"],
 ): Promise<void> {
   // Reactivation forgets the blocked slot so the same occurrence can dispatch.
   if (
@@ -272,6 +274,7 @@ async function writeScheduledAutomation(
     await skipPendingRunsForDeletedTask(db, task);
   }
   await upsertScheduledAutomation(db, task);
+  await recordAutomationVersion(db, "scheduled", task, current, editedBy);
 }
 
 async function skipPendingRunsForDeletedTask(
@@ -326,18 +329,22 @@ export async function createScheduledAutomation(
   });
 }
 
-/** Save a scheduled automation and clear its blocked occurrence on reactivation. */
+/**
+ * Save a scheduled automation and clear its blocked occurrence on reactivation.
+ * Pass `editedBy` when a person changes the definition so its version names them.
+ */
 export async function saveScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
   expectedRevision?: string,
+  editedBy?: ScheduledAutomation["createdBy"],
 ): Promise<ScheduledAutomation> {
   const next = requireStoredTask(task);
   await withScheduledAutomationLock(db, task.id, async (tx) => {
     const current = await readScheduledAutomation(tx, task.id);
     if (expectedRevision !== undefined)
       requireAutomationRevision(current, expectedRevision);
-    await writeScheduledAutomation(tx, next, current);
+    await writeScheduledAutomation(tx, next, current, editedBy);
   });
   return next;
 }

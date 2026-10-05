@@ -28,6 +28,7 @@ import {
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
+  automationVersionListSchema,
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
@@ -37,6 +38,7 @@ import {
   readViewerAutomationRuns,
   readViewerAutomations,
   readViewerAutomationSummary,
+  readViewerAutomationVersions,
   ViewerTaskNotFoundError,
 } from "@/chat/automations/read";
 
@@ -139,6 +141,29 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         return jsonResponse(
           automationExecutionListSchema,
           await readViewerAutomationExecutions(user, params.kind, params.id),
+        );
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
+      }
+    },
+  );
+  app.get(
+    "/:kind/:id/versions",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationVersionListSchema,
+          await readViewerAutomationVersions(context.get("viewer"), kind, id),
         );
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
