@@ -129,6 +129,60 @@ describe("Thread Continuity", () => {
   `toolOutput()` parses a tool result. Use `criteria`
   for wording. Do not assert on stored
   rows or runtime objects.
+- Eval results put numeric agent-call usage in `usage.metadata.modelCalls`.
+  Each entry comes from an `assistant_message` event in the reporting API.
+  It has the model, event sequence, token counts, and cost when available.
+  Loaded history and model calls outside agent history have no entry.
+  `usage.metadata.modelTotals` has aggregate token counts and costs for
+  recorded assistant calls by model. `usage.metadata.costUsd` sums those
+  totals. `usage.metadata.auxiliaryCostUsd` has recorded routing and other
+  non-assistant event costs. `usage.metadata.auxiliaryOperations` groups those
+  costs by fixed Junior event kind. Other operation names stay in one group.
+  Failed batches can have a cost without a stored observation. Optional
+  `estimatedCostUsd` marks charges based on token rates instead of a Gateway
+  bill. Keep estimated charges distinct from billed costs.
+  `usage.metadata.gatewayModelCalls` has estimated
+  costs and numeric token counts from Messages responses during fixture calls.
+  This includes assistant calls, titles, and compaction summaries. Do not add
+  it to `costUsd` without removing the assistant calls counted in both.
+  Gateway calls on other endpoints have no per-call cache counters here.
+  A missing counter means unknown, not zero.
+  The fixture never copies message or tool content into these usage entries.
+- `usage.metadata.distillation[conversationId]` records the number and cost of
+  stored observations and the known cost of failed batches. It lists history
+  replacements with their event sequence, input token estimates, expected
+  calls, and price decision. It
+  contains no observation text or replacement summary. Check `historyComplete`
+  before treating an empty replacement list as proof that none happened.
+- `usage.metadata.distillationDecisions[conversationId]` copies fixed skip
+  reasons and numeric estimates from diagnostic logs. Use them for diagnosis,
+  not as a product behavior assertion. No source text enters this field.
+
+Compare context cost on the same commit with
+`JUNIOR_CONTEXT_DISTILLATION_ENABLED=false` and `true`. Use a full-runtime
+case with completed Turns. Loaded `history` does not start the worker. Before
+comparing cost, check that the enabled run wrote observations and replaced
+history. Match the routed models and completed tasks across runs. Compare
+assistant cost plus auxiliary cost, cache reads and writes, reply quality,
+elapsed time, and repeated work. Repeat each setting. A run with no history
+replacement does not measure the cost of using observations.
+On a draft PR to `main`, the `trigger-context-cost-evals` label runs the
+scoped-lookup coding case with the feature off and on at the same revision.
+Both runs upload a `context-cost-*` result. The case uses Astra because a
+three-call Turn can make a bounded observation task worthwhile at its current
+cache prices. Require a completed repair and passing focused test in both
+runs. Require observations and a `priced: true` history replacement in the
+on run before using the pair as cost evidence. Re-run the pair to check
+variation. The separate long CI continuity case routes Luna. At the default
+context cap and current prices, its worker cannot pass the 20% check. Keep an
+uneconomical skip as a valid price decision. Do not lower the price check to
+make an eval activate.
+
+The `context batch / probe` CI job sends one synthetic Gateway Batch. It
+reports only its state and numeric cost. A pending result proves submission,
+not completed Batch cost or quality. Re-run the job at the same revision to
+check the same idempotency key. The paired `context cost / off` and `/ on`
+jobs use direct observation calls. They do not measure Batch cost.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each

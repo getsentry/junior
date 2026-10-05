@@ -24,7 +24,7 @@ function eventCost(): SQL<number | null> {
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       AND jsonb_typeof(${juniorConversationEvents.payload}->'content'->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->'content'->>'costUsd')::numeric
-    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed')
+    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed', 'distillation', 'distillation_batch_done')
       AND jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->>'costUsd')::numeric
     ELSE NULL
@@ -57,6 +57,11 @@ export async function readConversationAuxiliaryCostsFromSql(
     ELSE ${juniorConversationEvents.type}
   END`;
   const cost = eventCost();
+  const estimatedCost = sql<number>`round(sum(CASE
+    WHEN ${juniorConversationEvents.payload}->>'costEstimated' = 'true'
+      THEN ${cost}
+    ELSE 0
+  END), 12)::double precision`.mapWith(Number);
   const selectedConversation = options.includeDescendants
     ? or(
         and(
@@ -72,6 +77,7 @@ export async function readConversationAuxiliaryCostsFromSql(
       costUsd: sql<number>`round(sum(${cost}), 12)::double precision`.mapWith(
         Number,
       ),
+      estimatedCostUsd: estimatedCost,
       events: sql<number>`count(*)::integer`.mapWith(Number),
       name,
       namespace,
@@ -106,6 +112,8 @@ export async function readConversationAuxiliaryCostsFromSql(
           inArray(juniorConversationEvents.type, [
             "guardian_action_reviewed",
             "turn_routed",
+            "distillation",
+            "distillation_batch_done",
           ]),
         ),
         sql`${cost} >= 0`,
@@ -118,13 +126,24 @@ export async function readConversationAuxiliaryCostsFromSql(
 
   const result = new Map<string, ConversationAuxiliaryCosts>();
   for (const row of rows) {
-    const current = result.get(row.conversationId) ?? {
+    const current: ConversationAuxiliaryCosts = result.get(
+      row.conversationId,
+    ) ?? {
       costUsd: 0,
       operations: [],
     };
     current.costUsd = Math.round((current.costUsd + row.costUsd) * 1e12) / 1e12;
+    if (row.estimatedCostUsd > 0) {
+      current.estimatedCostUsd =
+        Math.round(
+          ((current.estimatedCostUsd ?? 0) + row.estimatedCostUsd) * 1e12,
+        ) / 1e12;
+    }
     current.operations.push({
       costUsd: row.costUsd,
+      ...(row.estimatedCostUsd > 0
+        ? { estimatedCostUsd: row.estimatedCostUsd }
+        : undefined),
       events: row.events,
       name: row.name,
       namespace: row.namespace,

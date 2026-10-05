@@ -52,28 +52,27 @@ Hex's Threads Agent decides which tables to query and what SQL to run based enti
 
 1. **Create a Hex thread.**
    Call `create_thread` with the fully constructed prompt.
-   If the call fails (network error, auth error), return immediately with `status: "error"` and the error message.
+   Stop on an authorization error. Retry one transient network or server error.
+   If the retry fails, return `status: "error"` with a short failure reason.
+   Never include the raw provider error in a user-facing reply.
 
-2. **Poll for completion.**
-   Call `get_thread` to check thread status.
-   - Wait approximately **20 seconds** between polls.
-   - Retry up to **10 times** before giving up.
-   - Continue polling while status is not `IDLE` (i.e., still processing).
-   - If still not `IDLE` after 10 retries, return:
-     ```json
-     {
-       "status": "timeout",
-       "value": null,
-       "source": "Hex",
-       "raw": "Hex query did not complete after 10 polling attempts."
-     }
-     ```
+2. **Wait for completion.**
+   Call `waitForHexThread` with the Thread ID from `create_thread`. The tool calls Hex up to five times without another model call. If it returns `pending`, call it once more for a total of at most ten polls. Stop on `error` or `authorization_pending`. If it returns `unknown`, inspect its Hex response. Do not treat an unknown status as a completed query. If it is still `pending` after two calls, return:
+
+   ```json
+   {
+     "status": "timeout",
+     "value": null,
+     "source": "Hex",
+     "raw": "Hex query did not complete after 10 polling attempts."
+   }
+   ```
 
 3. **Extract the result.**
-   Once the thread reaches `IDLE`, read the response content. Reason against the returned data using the caller-provided **pattern** to locate and extract the target value(s).
+   Once `waitForHexThread` returns `complete`, read the response content. Reason against the returned data using the caller-provided **pattern** to locate and extract the target value(s).
 
 4. **Use `continue_thread` only as a last resort.**
-   If a genuinely requested data point is completely absent from the response (not just unlabeled or formatted differently), use `continue_thread` once to ask for it specifically. Re-extract after. Do not use it to request additional data the caller didn't include in the original query — that is a caller-side error.
+   If a genuinely requested data point is completely absent from the response (not just unlabeled or formatted differently), use `continue_thread` once to ask for it specifically, but only if a wait call remains. Wait for the continued Thread with the remaining call, then re-extract when it is complete. If no wait call remains, return `not_found`. Do not use `continue_thread` to request data the caller did not include in the original query.
 
 5. **Return structured output.**
    Return one of:
@@ -120,5 +119,5 @@ Hex's Threads Agent decides which tables to query and what SQL to run based enti
 
 ### Rate limits
 
-- **Cap `get_thread` polling to 10 calls per thread.** Do not poll beyond this — return `status: "timeout"`.
+- **Cap Hex Thread polling at two `waitForHexThread` calls per thread.** Do not poll beyond this — return `status: "timeout"`.
 - **Do not chain this skill recursively.** One invocation handles one query.

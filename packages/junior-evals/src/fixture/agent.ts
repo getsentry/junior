@@ -3,9 +3,9 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
+ * third-party APIs are MSW mocks. The fixture replaces the Vercel Queue
  * transports and `waitUntil` with in-process versions, so it knows when the
- * agent is idle.
+ * agent and its plugin tasks are idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -17,11 +17,16 @@ import type { JuniorApiEnv } from "@/api/route";
 import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
 import { createConversationId } from "@/chat/conversations/web-input";
+import { registerLogRecordSink } from "@/chat/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { installBlobMock } from "./blob";
-import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import {
+  installGatewayObserver,
+  type GatewayModelCall,
+  type GatewayProgress,
+} from "./gateway";
 import type {
   AutomationInput,
   HistoryItem,
@@ -46,12 +51,22 @@ import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
+  readAuxiliaryOperations,
   readCallEvents,
   readConversationDetail,
+  readDistillationDecision,
+  readDistillationUsage,
+  readModelCalls,
+  readModelTotals,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
   type FixtureUsage,
+  type AuxiliaryOperationUsage,
+  type DistillationUsage,
+  type DistillationDecision,
+  type ModelCallUsage,
+  type ModelTotalUsage,
   type Reply,
   type ToolCall,
   type Turn,
@@ -175,6 +190,15 @@ export async function createFixtureAgent(
     }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
+  const knownConversationIds = new Set<string>();
+  const distillationDecisions = new Map<string, DistillationDecision[]>();
+  const unregisterLogSink = registerLogRecordSink((record) => {
+    const decision = readDistillationDecision(record);
+    if (!decision || !knownConversationIds.has(decision.conversationId)) return;
+    const current = distillationDecisions.get(decision.conversationId) ?? [];
+    current.push(decision);
+    distillationDecisions.set(decision.conversationId, current);
+  });
   // The dashboard mounts the same API after sign-in. Each request signs in
   // as the person in `x-fixture-viewer`, or as the web person by default.
   const api = new Hono<JuniorApiEnv>();
@@ -195,19 +219,32 @@ export async function createFixtureAgent(
     }
     if (!closed) {
       closed = true;
+      unregisterLogSink();
       await blob.close();
     }
   };
 
   const replyMessages = new WeakMap<HistoryReply, string>();
-  const knownConversationIds = new Set<string>();
   const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
     [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
+  const auxiliaryCostUsd = new Map<string, number>();
+  const auxiliaryOperations = new Map<string, AuxiliaryOperationUsage[]>();
+  const distillation = new Map<string, DistillationUsage>();
+  const agentModelCalls = new Map<string, ModelCallUsage[]>();
+  const agentModelTotals = new Map<string, ModelTotalUsage[]>();
+  const gatewayModelCalls: GatewayModelCall[] = [];
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
+    auxiliaryCostUsd: [...auxiliaryCostUsd.values()].reduce((a, b) => a + b, 0),
+    auxiliaryOperations: [...auxiliaryOperations.values()].flat(),
+    distillation: Object.fromEntries(distillation),
+    distillationDecisions: Object.fromEntries(distillationDecisions),
     gatewayRequests: gateway.requestCounts(),
+    gatewayModelCalls: [...gatewayModelCalls],
+    modelCalls: [...agentModelCalls.values()].flat(),
+    modelTotals: [...agentModelTotals.values()].flat(),
   });
   const startedAtMs = Date.now();
   // Every judged call of the test, for the eval report.
@@ -420,6 +457,7 @@ export async function createFixtureAgent(
         await onProgress({ type: "reply", text: post.text }, progressActions);
       });
     }
+    gateway.setRecording(true);
     try {
       await send();
       await waitForIdle();
@@ -428,22 +466,31 @@ export async function createFixtureAgent(
       await close();
       throw error;
     } finally {
+      gateway.setRecording(false);
       gateway.setProgressHook(undefined);
       slack.setReplyHook(undefined);
     }
+    gatewayModelCalls.push(
+      ...(await gateway.modelCalls()).slice(gatewayModelCalls.length),
+    );
     const record = typeof target === "function" ? target() : target;
     const detail = await readConversationDetail(
       api,
       record.conversationId,
       record.viewerEmail,
     );
+    const afterSeq = record.lastSeq;
     const events = readCallEvents({
-      afterSeq: record.lastSeq,
+      afterSeq,
       conversationId: record.conversationId,
       detail,
     });
     const earlier = [...record.visibleMessages];
     record.lastSeq = events.lastSeq;
+    agentModelCalls.set(record.conversationId, [
+      ...(agentModelCalls.get(record.conversationId) ?? []),
+      ...readModelCalls(detail.events, afterSeq),
+    ]);
     // Slack people see thread posts, including posts Junior does not store,
     // such as the opt-out acknowledgement. An automation posts to its
     // destination, and it is the only work of its call.
@@ -496,6 +543,19 @@ export async function createFixtureAgent(
         (sum, entry) => sum + (entry.usage.cost?.total ?? 0),
         0,
       ),
+    );
+    auxiliaryCostUsd.set(
+      record.conversationId,
+      detail.auxiliaryCosts?.costUsd ?? 0,
+    );
+    auxiliaryOperations.set(
+      record.conversationId,
+      readAuxiliaryOperations(detail),
+    );
+    distillation.set(record.conversationId, readDistillationUsage(detail));
+    agentModelTotals.set(
+      record.conversationId,
+      readModelTotals(detail.modelUsage ?? []),
     );
     const usage = currentUsage();
     const evalRun = toHarnessRun({

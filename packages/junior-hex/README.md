@@ -10,12 +10,13 @@ pnpm add @sentry/junior @sentry/junior-hex
 
 ## Configure
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Register the Hex plugin in the plugin set exported from `plugins.ts`:
 
 ```ts
 import { defineJuniorPlugins } from "@sentry/junior";
+import { hexPlugin } from "@sentry/junior-hex";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-hex"]);
+export const plugins = defineJuniorPlugins([hexPlugin()]);
 ```
 
 No API token is needed. Each user completes OAuth the first time Junior calls a Hex MCP tool on their behalf.
@@ -27,3 +28,6 @@ For non-standard Hex deployments, set `HEX_MCP_URL` in your environment:
 - HIPAA: `https://hc.hex.tech/mcp`
 
 Requires a Hex Team or Enterprise plan.
+
+The `waitForHexThread` tool polls Hex up to five times per call. A second call
+can continue the wait without another model request for each poll.

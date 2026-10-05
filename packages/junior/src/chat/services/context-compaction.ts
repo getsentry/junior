@@ -10,7 +10,7 @@ import type { Message } from "@earendil-works/pi-ai";
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import type { completeText } from "@/chat/pi/client";
+import { resolveGatewayModel, type completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   estimateTextTokens,
@@ -46,9 +46,21 @@ import {
 } from "@/chat/repository-instructions";
 import { appendOpenPlan } from "@/chat/services/plan-continuation";
 import { escapeXml } from "@/chat/xml";
+import { shouldReuseHandoffHistory } from "@/chat/services/handoff-cost";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_CHARS = 6_000;
+const COMPACTION_INSTRUCTIONS = [
+  "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.",
+  "",
+  "Include:",
+  "- Current progress and key decisions made",
+  "- Important context, constraints, or user preferences",
+  "- What remains to be done (clear next steps)",
+  "- Any critical data, examples, or references needed to continue",
+  "",
+  "Be concise, structured, and focused on helping the next LLM seamlessly continue the work.",
+].join("\n");
 
 export interface ContextCompactorDeps {
   completeText: typeof completeText;
@@ -334,17 +346,6 @@ async function summarizeContext(
   },
   deps: ContextCompactorDeps,
 ): Promise<string> {
-  const instructions = [
-    "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.",
-    "",
-    "Include:",
-    "- Current progress and key decisions made",
-    "- Important context, constraints, or user preferences",
-    "- What remains to be done (clear next steps)",
-    "- Any critical data, examples, or references needed to continue",
-    "",
-    "Be concise, structured, and focused on helping the next LLM seamlessly continue the work.",
-  ].join("\n");
   const visibleContext = args.conversationContext?.trim();
   const labeledContext = visibleContext
     ? `<visible-thread-context>\n${visibleContext}\n</visible-thread-context>`
@@ -366,7 +367,7 @@ async function summarizeContext(
     messages: [
       ...history,
       ...(labeledContext ? [userMessage(labeledContext) as Message] : []),
-      userMessage(instructions) as Message,
+      userMessage(COMPACTION_INSTRUCTIONS) as Message,
     ],
     metadata: {
       modelId: botConfig.fastModelId,
@@ -607,6 +608,12 @@ export async function compactContextForHandoff(
   if (!contextMessage) {
     throw new Error("Handoff requires the current runtime turn context");
   }
+  const reused = await reuseHistoryForHandoff(
+    args,
+    retainedInstruction,
+    contextMessage,
+  );
+  if (reused) return reused;
   const generatedSummary = await summarizeContext(args, deps);
   const continuation = appendOpenPlan(
     renderCompactionSummary(generatedSummary),
@@ -614,7 +621,11 @@ export async function compactContextForHandoff(
   );
   // The summary supplies context. It must not become the authored instruction.
   const replacement = [
-    { message: contextMessage, provenance: contextProvenance },
+    {
+      message: contextMessage,
+      provenance: contextProvenance,
+      sourceEventSeq: undefined,
+    },
     ...(retainedInstruction ? [retainedInstruction] : []),
     {
       // Summarization runs inside the handoff tool, before its result exists.
@@ -645,6 +656,105 @@ export async function compactContextForHandoff(
         ...("sourceEventSeq" in entry
           ? { sourceEventSeq: entry.sourceEventSeq }
           : undefined),
+      })),
+    },
+  });
+  return messages;
+}
+
+async function reuseHistoryForHandoff(
+  args: HandoffContextArgs,
+  retainedInstruction: Awaited<ReturnType<typeof loadLastInstruction>>,
+  contextMessage: PiMessage,
+): Promise<PiMessage[] | undefined> {
+  if (!retainedInstruction) return undefined;
+  const projection = await loadConversationProjection({
+    conversationId: args.conversationId,
+  });
+  const retained = projection.messages.flatMap((message, index) =>
+    stripRuntimeTurnContext([message]).map((stripped) => ({
+      message: stripped,
+      provenance: projection.provenance[index],
+      sourceEventSeq: projection.seqs[index],
+    })),
+  );
+  // A live tool result may not have reached the durable projection yet. Never
+  // use a raw replacement unless all work before this handoff is committed.
+  const source = stripRuntimeTurnContext(
+    trimTrailingAssistantMessages(args.piMessages),
+  );
+  if (
+    JSON.stringify(source) !==
+      JSON.stringify(retained.map((entry) => entry.message)) ||
+    retained.some((entry) => !entry.provenance)
+  ) {
+    return undefined;
+  }
+  const instructionIndex = retained.findIndex(
+    (entry) => entry.sourceEventSeq === retainedInstruction.sourceEventSeq,
+  );
+  if (instructionIndex < 0) return undefined;
+  const fact = userMessage(
+    `Model handoff completed: ${JSON.stringify(args.target)}.`,
+  );
+  const replacement = [
+    ...retained.slice(0, instructionIndex),
+    { message: contextMessage, provenance: contextProvenance },
+    ...retained.slice(instructionIndex),
+    { message: fact, provenance: contextProvenance, sourceEventSeq: undefined },
+  ];
+  const messages = replacement.map((entry) => entry.message);
+  const rawTokens = estimateHistoryTokens(messages);
+  if (
+    rawTokens > getAgentContextCompactionTriggerTokens(args.target.modelId) ||
+    rawTokens > getAgentContextInputLimitTokens(args.target.modelId)
+  ) {
+    return undefined;
+  }
+  const estimatedSummary = appendOpenPlan(
+    renderCompactionSummary("x".repeat(MAX_SUMMARY_CHARS)),
+    args.piMessages,
+  );
+  const replacementTokens = estimateHistoryTokens([
+    contextMessage,
+    retainedInstruction.message,
+    userMessage(`${estimatedSummary}\n\n${messageText(fact)}`),
+  ]);
+  const fastModel = resolveGatewayModel(botConfig.fastModelId);
+  const targetModel = resolveGatewayModel(args.target.modelId);
+  if (
+    !shouldReuseHandoffHistory({
+      fastModel,
+      targetModel,
+      rawTokens,
+      replacementTokens,
+      summaryInputTokens:
+        estimateHistoryTokens(stripRuntimeTurnContext(args.piMessages)) +
+        estimateTextTokens(args.conversationContext ?? "") +
+        estimateTextTokens(COMPACTION_INSTRUCTIONS),
+      summaryOutputTokens: estimateTextTokens("x".repeat(MAX_SUMMARY_CHARS)),
+    })
+  ) {
+    return undefined;
+  }
+  args.signal?.throwIfAborted();
+  await getConversationEventStore().replaceHistory(args.conversationId, {
+    createdAtMs: Date.now(),
+    data: {
+      type: "handoff",
+      modelProfile: args.target.modelProfile,
+      modelId: args.target.modelId,
+      ...(args.target.reasoningLevel
+        ? { reasoningLevel: args.target.reasoningLevel }
+        : undefined),
+      ...(args.triggeringToolCallId
+        ? { triggeringToolCallId: args.triggeringToolCallId }
+        : undefined),
+      replacementHistory: replacement.map((entry) => ({
+        item: historyItemFromPiMessage(entry.message, entry.provenance!),
+        ...(entry.sourceEventSeq === undefined
+          ? undefined
+          : { sourceEventSeq: entry.sourceEventSeq }),
       })),
     },
   });

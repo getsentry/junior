@@ -260,6 +260,7 @@ function appendContextEvent(
     addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Model", event.modelId);
     if (event.details) {
+      addMetaLine(lines, "Reason", event.details.reason);
       addMetaLine(
         lines,
         "Estimated input tokens",
@@ -272,27 +273,49 @@ function appendContextEvent(
           String(event.details.replacementInputTokens),
         );
       }
-      addMetaLine(
-        lines,
-        "Compaction trigger",
-        String(event.details.triggerTokens),
-      );
-      addMetaLine(lines, "Input limit", String(event.details.inputLimitTokens));
-      addMetaLine(
-        lines,
-        "Input messages",
-        String(event.details.inputMessageCount),
-      );
-      addMetaLine(
-        lines,
-        "Retained messages",
-        String(event.details.retainedMessageCount),
-      );
-      addMetaLine(
-        lines,
-        "Summary characters",
-        String(event.details.summaryChars),
-      );
+      if (event.details.reason === "capacity") {
+        addMetaLine(
+          lines,
+          "Compaction trigger",
+          String(event.details.triggerTokens),
+        );
+        addMetaLine(
+          lines,
+          "Input limit",
+          String(event.details.inputLimitTokens),
+        );
+        addMetaLine(
+          lines,
+          "Input messages",
+          String(event.details.inputMessageCount),
+        );
+        addMetaLine(
+          lines,
+          "Retained messages",
+          String(event.details.retainedMessageCount),
+        );
+        addMetaLine(
+          lines,
+          "Summary characters",
+          String(event.details.summaryChars),
+        );
+      } else {
+        addMetaLine(
+          lines,
+          "Covered through event",
+          String(event.details.throughSeq),
+        );
+        addMetaLine(
+          lines,
+          "Expected model calls",
+          String(event.details.expectedCalls),
+        );
+        addMetaLine(
+          lines,
+          "Price gate passed",
+          event.details.priced ? "yes" : "no",
+        );
+      }
     }
   }
   if (event.summary) {

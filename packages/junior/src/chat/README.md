@@ -204,6 +204,16 @@ delegation without becoming the execution actor or a general task owner.
   latest successful `updatePlan` call in its continuation context. Compaction
   events retain the active model plus privacy-safe capacity and replacement
   metrics for reporting without exposing the summary or replaced history.
+- When `JUNIOR_CONTEXT_DISTILLATION_ENABLED=true`, a post-Turn task asks Luna
+  to record dated observations from completed agent history. The task keeps a
+  raw tail and may merge older observations into a structured summary. Events
+  belong to one Conversation and its active history version. A new Turn uses
+  them only when the routed model's priced cache reads pay for the worker and
+  a cold replacement write. Capacity still uses the normal compaction path.
+  The new Turn retains its exact current instruction, actor, recent results,
+  and resumable boundary. The observations remain unauthored evidence. The
+  switch defaults to off. See `distillation/README.md` for the cost and safety
+  rules.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.
@@ -244,11 +254,14 @@ delegation without becoming the execution actor or a general task owner.
   sample without replaying the actor's instruction. Ambient thread history in
   that context message is evidence only; only `<current-instruction>` authorizes
   work. Active compaction and handoff keep the latest committed instruction
-  verbatim, with its author and source event. The generated summary follows it
-  as escaped text inside `<thread-context authority="evidence-only">`, not as a
-  new instruction. Runtime-owned open plan state and completed handoff facts
-  stay outside that block. Steering messages are drained after handoff and pass
-  through the normal capacity check.
+  verbatim, with its author and source event. Handoff keeps committed history
+  when it fits and a summary saves less than 20% under the current model prices.
+  Otherwise, it creates a summary. The summary follows the instruction as
+  escaped text inside `<thread-context authority="evidence-only">`. It is never
+  a new instruction.
+  Runtime-owned open plan state and completed handoff facts stay outside that
+  block. Steering messages are drained after handoff and pass through the
+  normal capacity check.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt

@@ -11,7 +11,7 @@ related:
 
 The Hex plugin uses Hex's hosted MCP server so Slack users can run analytical queries against the data warehouse from Junior.
 
-Junior exposes only Hex's `create_thread` and `get_thread` MCP tools. These support creating new analysis threads and polling for results — the core primitives needed for data retrieval workflows.
+Junior exposes Hex's `create_thread` and `continue_thread` MCP tools. Its `waitForHexThread` tool polls `get_thread` without a model call for each poll.
 
 Requires a Hex Team or Enterprise plan.
 
@@ -25,12 +25,13 @@ pnpm add @sentry/junior @sentry/junior-hex
 
 ## Runtime setup
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Register the plugin in the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { hexPlugin } from "@sentry/junior-hex";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-hex"]);
+export const plugins = defineJuniorPlugins([hexPlugin()]);
 ```
 
 ## Auth model
@@ -80,7 +81,7 @@ Confirm a real user can connect and query successfully:
 ## Failure modes
 
 - No auth prompt or no resume: the user still needs to complete the OAuth flow. Retry the request and finish the private authorization flow when prompted.
-- Query timeout: Hex threads can take time to process. The `hex` skill polls up to 10 times with 20-second intervals. Complex queries may need to be simplified.
+- Query timeout: Hex threads can take time to process. The `hex` skill uses two bounded waits for up to ten polls. Complex queries may need to be simplified.
 - No data returned: verify the entity identifier in the prompt matches what's in the warehouse. Narrow the query and try again.
 - Wrong Hex workspace: verify `HEX_MCP_URL` points to the correct deployment if your org uses a custom Hex domain.
 

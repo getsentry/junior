@@ -147,6 +147,7 @@ describe("plugin background tasks", () => {
     const runSource = { kind: "plugin_dispatch" } as const;
     const runActor = { name: "plugin", platform: "system" } as const;
     const queue = new PluginTaskQueueTestAdapter();
+    const send = vi.fn(async () => undefined);
     const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
@@ -164,6 +165,7 @@ describe("plugin background tasks", () => {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
+              await ctx.requeue?.(600);
             },
           },
         },
@@ -230,7 +232,11 @@ describe("plugin background tasks", () => {
     const messages = queue.queuedMessages();
     expect(messages).toHaveLength(1);
 
-    await processPluginTask(messages[0]!);
+    await processPluginTask(messages[0]!, { send });
+    expect(send).toHaveBeenCalledWith(
+      { ...messages[0], retry: 1 },
+      { delaySeconds: 600 },
+    );
 
     expect(loadedRuns).toEqual([
       expect.objectContaining({
