@@ -67,6 +67,7 @@ export interface GitHubWebhookInput {
 /** The OAuth or MCP OAuth callback route, after the person approves. */
 export interface CompleteAuthInput {
   kind: "complete_auth";
+  author?: SlackAuthor;
   /** The plugin name, such as `github`. */
   provider: string;
 }
@@ -146,11 +147,14 @@ export function githubWebhook(
 /**
  * Finish the authorization that a turn waits for.
  * `conversation.continue(completeAuth(provider))` opens the link that Junior
- * sent to the default Slack person in an ephemeral message, and it returns
- * the resumed turn.
+ * sent to the person in private, and it returns the resumed turn. It fails
+ * when Junior sent the person no private link.
  */
-export function completeAuth(provider: string): CompleteAuthInput {
-  return { kind: "complete_auth", provider };
+export function completeAuth(
+  provider: string,
+  options: { author?: SlackAuthor } = {},
+): CompleteAuthInput {
+  return { kind: "complete_auth", provider, ...options };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */

@@ -130,6 +130,22 @@ describe("OAuth Workflows", () => {
     expect(skillLoads("eval-oauth", paused, resumed, reused)).toEqual([]);
   });
 
+  test("when OAuth pauses a turn in a direct message, send the link there and resume", async ({
+    run,
+  }) => {
+    const paused = await run(
+      mention("/eval-oauth Tell me which eval identity is active.", {
+        channelType: "im",
+      }),
+    );
+    expect(turnStates(paused)).toEqual(["started"]);
+    expect(identityChecks(paused)).toEqual([]);
+
+    const resumed = await paused.continue(completeAuth("eval-oauth"));
+    expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(identityChecks(resumed)).not.toHaveLength(0);
+  });
+
   test("refreshes an expired generic OAuth credential during a normal turn", async ({
     run,
   }) => {

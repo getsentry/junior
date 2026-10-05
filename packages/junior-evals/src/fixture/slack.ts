@@ -54,8 +54,15 @@ export interface SlackPost {
 }
 
 export interface SlackMock {
-  /** Authorization links in ephemeral messages to a person, oldest first. */
-  authorizationLinks(userId: string): string[];
+  /**
+   * Authorization links that a person saw in private, oldest first: the
+   * ephemeral messages to the person, and the messages in their direct
+   * message channel. A link in another channel is not private.
+   */
+  authorizationLinks(person: {
+    directMessageChannel?: string;
+    userId: string;
+  }): string[];
   /** Add a message that people or Junior posted before the input. */
   addThreadMessage(
     channel: string,
@@ -137,7 +144,12 @@ export function installSlackMock(): SlackMock {
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],
   ]);
   const posts: SlackPost[] = [];
-  const authorizationLinks: Array<{ url: string; userId: string }> = [];
+  // An ephemeral message has the person who saw it.
+  const authorizationLinks: Array<{
+    channel: string;
+    url: string;
+    userId?: string;
+  }> = [];
   let replyHook: ((post: SlackPost) => Promise<void>) | undefined;
 
   const nextTs = () => {
@@ -191,6 +203,10 @@ export function installSlackMock(): SlackMock {
         ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
       };
       posts.push(post);
+      const authorizationUrl = readAuthorizationUrl(params);
+      if (authorizationUrl) {
+        authorizationLinks.push({ channel, url: authorizationUrl });
+      }
       if (post.threadTs) {
         addThreadMessage(channel, {
           bot_id: "B_TEST_BOT",
@@ -208,7 +224,13 @@ export function installSlackMock(): SlackMock {
       async ({ request }) => {
         const params = await readSlackParams(request);
         const url = readAuthorizationUrl(params);
-        if (url) authorizationLinks.push({ url, userId: params.user ?? "" });
+        if (url) {
+          authorizationLinks.push({
+            channel: params.channel ?? "",
+            url,
+            userId: params.user ?? "",
+          });
+        }
         return HttpResponse.json(chatPostEphemeralOk());
       },
     ),
@@ -234,9 +256,13 @@ export function installSlackMock(): SlackMock {
   );
 
   return {
-    authorizationLinks: (userId) =>
+    authorizationLinks: (person) =>
       authorizationLinks
-        .filter((link) => link.userId === userId)
+        .filter((link) =>
+          link.userId === undefined
+            ? link.channel === person.directMessageChannel
+            : link.userId === person.userId,
+        )
         .map((link) => link.url),
     addThreadMessage,
     newChannelId(channelType) {

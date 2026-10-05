@@ -25,9 +25,7 @@ export async function completeAuthorization(args: {
 }): Promise<void> {
   const link = args.links.at(-1);
   if (!link) {
-    throw new Error(
-      `Junior sent ${args.userId} no ephemeral authorization link`,
-    );
+    throw new Error(`Junior sent ${args.userId} no private authorization link`);
   }
   const approval = await fetch(link, { redirect: "manual" });
   const location = approval.headers.get("location");

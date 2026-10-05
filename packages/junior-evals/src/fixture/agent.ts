@@ -282,10 +282,19 @@ export async function createFixtureAgent(
       return;
     }
     if (input.kind === "complete_auth") {
-      const { userId } = DEFAULT_SLACK_AUTHOR;
+      const { userId } = slack.registerAuthor(
+        input.author ?? DEFAULT_SLACK_AUTHOR,
+      );
       await completeAuthorization({
         app,
-        links: slack.authorizationLinks(userId),
+        links: slack.authorizationLinks({
+          // In a direct message, Junior sends the link as a normal message.
+          directMessageChannel:
+            record.surface === "slack" && record.channelType === "im"
+              ? record.channelId
+              : undefined,
+          userId,
+        }),
         provider: input.provider,
         userId,
       });

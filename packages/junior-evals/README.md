@@ -117,12 +117,15 @@ describe("Thread Continuity", () => {
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
-- A turn that needs authorization sends the person an ephemeral link and
-  stays `started`. `conversation.continue(completeAuth(provider))` opens that
-  link, the mocked provider redirects to the callback route of the app, and
-  the call returns the resumed turn.
-- `insertCredential()` stores the OAuth credential that the default Slack
-  person has for a plugin. `expired: true` makes its next use refresh it.
+- A turn that needs authorization sends the person a private link and stays
+  `started`. The link is in an ephemeral message, or in a normal message when
+  the Conversation is a direct message.
+  `conversation.continue(completeAuth(provider))` opens that link, the mocked
+  provider redirects to the callback route of the app, and the call returns
+  the resumed turn. A link in a channel message is not private, so the call
+  fails.
+- `insertCredential()` stores the OAuth credential that a Slack person has
+  for a plugin. `expired: true` makes its next use refresh it.
   Credentials are in the state store, which tests share, so the fixture
   removes the credentials of a test when the test finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
