@@ -255,29 +255,26 @@ export async function insertMemory(args: {
 }
 
 /**
- * Store an OAuth credential that a Slack person has for a plugin, as the
- * OAuth callback stores it. Credentials are in the state store, which tests
- * share, so the credential is removed when the test finishes.
+ * Store the OAuth credential that the default Slack person has for a plugin.
+ * Credentials are in the state store, which tests share, so the credential is
+ * removed when the test finishes.
  */
 export async function insertCredential(args: {
   accessToken: string;
-  author?: SlackAuthor;
   /** Store an access token that is expired, so its next use refreshes it. */
   expired?: boolean;
   /** The plugin name, such as `sentry`. */
   provider: string;
   refreshToken: string;
-  scope?: string;
+  scope: string;
 }): Promise<void> {
-  const { userId } = resolveAuthor(args.author);
+  const { userId } = DEFAULT_SLACK_AUTHOR;
   const store = createUserTokenStore();
   await store.set(userId, args.provider, {
     accessToken: args.accessToken,
     expiresAt: args.expired ? Date.now() - 1 : Date.now() + 60 * 60 * 1000,
     refreshToken: args.refreshToken,
-    ...(args.scope ? { scope: args.scope } : undefined),
+    scope: args.scope,
   });
-  onTestFinished(async () => {
-    await store.delete(userId, args.provider);
-  });
+  onTestFinished(() => store.delete(userId, args.provider));
 }

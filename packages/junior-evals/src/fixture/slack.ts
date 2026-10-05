@@ -53,19 +53,9 @@ export interface SlackPost {
   ts: string;
 }
 
-/** An authorization link that Junior sent to one person in private. */
-export interface SlackAuthorizationLink {
-  url: string;
-  /** The person who saw an ephemeral message. A direct message has none. */
-  userId?: string;
-}
-
 export interface SlackMock {
-  /**
-   * Authorization links from ephemeral messages and direct messages, oldest
-   * first. A link that Junior posts in a channel is not in this list.
-   */
-  authorizationLinks(): SlackAuthorizationLink[];
+  /** Authorization links in ephemeral messages to a person, oldest first. */
+  authorizationLinks(userId: string): string[];
   /** Add a message that people or Junior posted before the input. */
   addThreadMessage(
     channel: string,
@@ -147,7 +137,7 @@ export function installSlackMock(): SlackMock {
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],
   ]);
   const posts: SlackPost[] = [];
-  const authorizationLinks: SlackAuthorizationLink[] = [];
+  const authorizationLinks: Array<{ url: string; userId: string }> = [];
   let replyHook: ((post: SlackPost) => Promise<void>) | undefined;
 
   const nextTs = () => {
@@ -201,10 +191,6 @@ export function installSlackMock(): SlackMock {
         ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
       };
       posts.push(post);
-      const authorizationUrl = readAuthorizationUrl(params);
-      if (authorizationUrl && channel.startsWith("D")) {
-        authorizationLinks.push({ url: authorizationUrl });
-      }
       if (post.threadTs) {
         addThreadMessage(channel, {
           bot_id: "B_TEST_BOT",
@@ -221,13 +207,8 @@ export function installSlackMock(): SlackMock {
       "https://slack.com/api/chat.postEphemeral",
       async ({ request }) => {
         const params = await readSlackParams(request);
-        const authorizationUrl = readAuthorizationUrl(params);
-        if (authorizationUrl && params.user) {
-          authorizationLinks.push({
-            url: authorizationUrl,
-            userId: params.user,
-          });
-        }
+        const url = readAuthorizationUrl(params);
+        if (url) authorizationLinks.push({ url, userId: params.user ?? "" });
         return HttpResponse.json(chatPostEphemeralOk());
       },
     ),
@@ -253,7 +234,10 @@ export function installSlackMock(): SlackMock {
   );
 
   return {
-    authorizationLinks: () => [...authorizationLinks],
+    authorizationLinks: (userId) =>
+      authorizationLinks
+        .filter((link) => link.userId === userId)
+        .map((link) => link.url),
     addThreadMessage,
     newChannelId(channelType) {
       channelSequence += 1;

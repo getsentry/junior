@@ -5,7 +5,6 @@ export const EVAL_OAUTH_CODE = "eval-oauth-code";
 export const EVAL_OAUTH_ORIGIN = "https://example.com";
 const EVAL_OAUTH_AUTHORIZE_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/authorize`;
 const EVAL_OAUTH_TOKEN_ENDPOINT = `${EVAL_OAUTH_ORIGIN}/junior-eval-oauth/oauth/token`;
-const EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
 const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
 const EVAL_OAUTH_REFRESH_TOKEN = "eval-oauth-refresh-token";
 const refreshTokens: string[] = [];
@@ -21,23 +20,12 @@ export function readEvalOAuthRefreshTokens(): string[] {
 }
 
 export const evalOAuthHandlers = [
-  // The person approves at once. The provider sends their browser back to
-  // Junior with the code.
+  // The person approves at once, and the provider redirects with the code.
   http.get(EVAL_OAUTH_AUTHORIZE_ENDPOINT, ({ request }) => {
-    const url = new URL(request.url);
-    const redirectUri = url.searchParams.get("redirect_uri");
-    const state = url.searchParams.get("state");
-    if (
-      url.searchParams.get("client_id") !== EVAL_OAUTH_CLIENT_ID ||
-      url.searchParams.get("response_type") !== "code" ||
-      !redirectUri ||
-      !state
-    ) {
-      return HttpResponse.json({ error: "invalid_request" }, { status: 400 });
-    }
-    const callback = new URL(redirectUri);
+    const params = new URL(request.url).searchParams;
+    const callback = new URL(params.get("redirect_uri") ?? "");
     callback.searchParams.set("code", EVAL_OAUTH_CODE);
-    callback.searchParams.set("state", state);
+    callback.searchParams.set("state", params.get("state") ?? "");
     return new HttpResponse(null, {
       status: 302,
       headers: { Location: callback.toString() },

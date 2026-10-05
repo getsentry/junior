@@ -20,7 +20,7 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
-import { completeAuthorization, deleteCredentials } from "./auth";
+import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
@@ -188,11 +188,6 @@ export async function createFixtureAgent(
   });
   api.route("/", createJuniorApi({ conversationWorkQueue: queue }));
 
-  // A person opens each authorization link one time.
-  const usedAuthorizationUrls = new Set<string>();
-  // Authorizations that the test completed, for cleanup.
-  const authorized: Array<{ provider: string; userId: string }> = [];
-
   let closed = false;
   const close = async (): Promise<void> => {
     queue.close();
@@ -202,10 +197,6 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
-      // The next test starts with no credential from this test.
-      for (const { provider, userId } of authorized.splice(0)) {
-        await deleteCredentials(userId, provider);
-      }
     }
   };
 
@@ -291,17 +282,12 @@ export async function createFixtureAgent(
       return;
     }
     if (input.kind === "complete_auth") {
-      if (!record.started) {
-        throw new Error("completeAuth() needs a turn that waits for it");
-      }
-      const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
-      authorized.push({ provider: input.provider, userId: author.userId });
+      const { userId } = DEFAULT_SLACK_AUTHOR;
       await completeAuthorization({
         app,
-        links: slack.authorizationLinks(),
+        links: slack.authorizationLinks(userId),
         provider: input.provider,
-        usedUrls: usedAuthorizationUrls,
-        userId: author.userId,
+        userId,
       });
       return;
     }

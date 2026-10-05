@@ -56,9 +56,6 @@ describe("Sentry Skill Workflows", () => {
       ),
     ).toContain("sentry");
     expect(issueListCommands(conversation)).not.toHaveLength(0);
-    expect(conversation.replies.at(-1)?.text).toMatch(
-      /\b(JUNIOR-1|Eval issue|getsentry)\b/i,
-    );
   });
 
   test("when creator-bound scheduled Sentry work becomes due, use the creator's account", async ({

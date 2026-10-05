@@ -1,10 +1,7 @@
 /**
  * The default `createApp()` options of the auth suite. Each test in the suite
- * runs on an agent with these options. `auth.ts` also adds the skills that
- * use the plugins with `SKILL_DIRS`.
- *
- * The eval egress process registers the same plugins, because it adds the
- * credential to the requests that the sandbox sends to `example.com`.
+ * runs on an agent with these options. `auth.ts` also adds the skills of the
+ * plugins with `SKILL_DIRS`.
  */
 import { defineJuniorPlugins, type JuniorAppOptions } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -45,7 +42,7 @@ const evalOAuthPlugin = defineJuniorPlugin({
   },
 });
 
-/** The plugins of the auth suite. */
+/** The eval egress process registers these plugins too. */
 export const authSuitePlugins = [evalAuthPlugin, evalOAuthPlugin];
 
 export default {
