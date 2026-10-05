@@ -9,9 +9,10 @@ import { automationReport } from "./automation-fixture";
 export async function mockAutomationEditor(
   page: Page,
   kind: "scheduled" | "event",
+  id = `${kind}-1`,
 ) {
   const summary = automationReport.automations.find(
-    (value) => value.id === `${kind}-1`,
+    (value) => value.id === id,
   )!;
   const common = {
     id: summary.id,
@@ -26,6 +27,7 @@ export async function mockAutomationEditor(
       teamId: summary.destination.teamId,
     },
     createdBy: { slackUserId: "U123" },
+    ownedByViewer: summary.ownedByViewer,
   };
   const value = automationEditSchema.parse(
     kind === "scheduled"

@@ -29,7 +29,8 @@ const timezoneSchema = z
   )
   .nullable()
   .optional();
-const weekdaySchema = z.enum([
+/** Weekday names in `Date#getDay` order. */
+export const weekdaySchema = z.enum([
   "sunday",
   "monday",
   "tuesday",

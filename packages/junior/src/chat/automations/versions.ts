@@ -12,7 +12,8 @@ import { canonicalJson } from "./revision";
 
 type VersionedAutomation = ScheduledAutomation | EventAutomation;
 
-function automationDefinition(task: VersionedAutomation) {
+/** Return the versioned part of an Automation. Lifecycle and run state are excluded. */
+export function automationDefinition(task: VersionedAutomation) {
   const common = {
     title: task.title?.trim() || null,
     instruction: task.task.text,
@@ -23,6 +24,13 @@ function automationDefinition(task: VersionedAutomation) {
   return "schedule" in task
     ? { ...common, schedule: task.schedule }
     : { ...common, trigger: task.trigger };
+}
+
+/** Compare definition values after key sorting. */
+export function sameDefinitionValue(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+  );
 }
 
 /**
@@ -38,11 +46,7 @@ export async function recordAutomationVersion(
   editedBy?: EventAutomation["createdBy"],
 ): Promise<void> {
   const definition = automationDefinition(task);
-  if (
-    current &&
-    JSON.stringify(canonicalJson(automationDefinition(current))) ===
-      JSON.stringify(canonicalJson(definition))
-  )
+  if (current && sameDefinitionValue(automationDefinition(current), definition))
     return;
   await db.insert(juniorAutomationVersions).values({
     kind,
@@ -57,6 +61,40 @@ export async function recordAutomationVersion(
     editedBy: editedBy ?? (current ? null : task.createdBy),
     definition,
   });
+}
+
+function parseVersionRow(
+  kind: "scheduled" | "event",
+  row: typeof juniorAutomationVersions.$inferSelect,
+): AutomationVersion {
+  return automationVersionSchema.parse({
+    kind,
+    version: row.version,
+    createdAt: new Date(row.createdAtMs).toISOString(),
+    editedBy: row.editedBy,
+    definition: row.definition,
+  });
+}
+
+/** Read one saved definition. */
+export async function readAutomationVersion(
+  db: JuniorDatabase,
+  kind: "scheduled" | "event",
+  automationId: string,
+  version: number,
+): Promise<AutomationVersion | undefined> {
+  const [row] = await db
+    .select()
+    .from(juniorAutomationVersions)
+    .where(
+      and(
+        eq(juniorAutomationVersions.kind, kind),
+        eq(juniorAutomationVersions.automationId, automationId),
+        eq(juniorAutomationVersions.version, version),
+      ),
+    )
+    .limit(1);
+  return row ? parseVersionRow(kind, row) : undefined;
 }
 
 /** Read saved definitions, newest first. */
@@ -77,13 +115,5 @@ export async function listAutomationVersions(
     )
     .orderBy(desc(juniorAutomationVersions.version))
     .limit(limit);
-  return rows.map((row) =>
-    automationVersionSchema.parse({
-      kind,
-      version: row.version,
-      createdAt: new Date(row.createdAtMs).toISOString(),
-      editedBy: row.editedBy,
-      definition: row.definition,
-    }),
-  );
+  return rows.map((row) => parseVersionRow(kind, row));
 }

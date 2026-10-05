@@ -5,6 +5,7 @@ import {
 import { AutomationConflictError } from "@/chat/automations/revision";
 import { zValidator } from "@hono/zod-validator";
 import {
+  activateViewerAutomationVersion,
   changeViewerAutomationLifecycle,
   readViewerAutomationEdit,
   updateViewerAutomation,
@@ -28,7 +29,9 @@ import {
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
+  automationVersionActivateSchema,
   automationVersionListSchema,
+  automationVersionParamsSchema,
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
@@ -174,6 +177,36 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           );
         }
         throw error;
+      }
+    },
+  );
+  app.post(
+    "/:kind/:id/versions/:version/activate",
+    requireViewer,
+    validateRequest(
+      "param",
+      automationVersionParamsSchema,
+      "Invalid Automation version.",
+    ),
+    validateRequest(
+      "json",
+      automationVersionActivateSchema,
+      "Invalid version activation.",
+    ),
+    async (context) => {
+      const { kind, id, version } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await activateViewerAutomationVersion(
+            context.get("viewer"),
+            kind,
+            id,
+            { version, revision: context.req.valid("json").revision },
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
       }
     },
   );

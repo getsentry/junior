@@ -47,6 +47,9 @@ Canonical words used across Junior's code and documentation.
 - **Automation version**: one saved definition of an Automation. The
   definition is its title, instruction, trigger, Destination, outcomes, and
   credential mode. It is not the edit revision, which only rejects stale edits.
+  The active version is the newest version that matches the current
+  definition. To make an older version active, Junior saves its definition
+  again as a new version.
 - **Event**: one normalized change identified by namespace, identifier, event
   type, and an idempotency key. Plugins and core can publish Events. An Event
   can wake a Conversation. Location stays on that Conversation.

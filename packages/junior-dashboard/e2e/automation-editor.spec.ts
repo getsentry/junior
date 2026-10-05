@@ -157,28 +157,108 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   ]);
 });
 
-test("public non-creators can read settings without fetching the edit API", async ({
+test("public non-creators edit settings without creator-only controls", async ({
   page,
   dashboard,
 }) => {
-  const editRequests: string[] = [];
-  page.on("request", (request) => {
-    if (
-      request.url().includes("/api/automations/") &&
-      request.url().endsWith("/edit")
-    )
-      editRequests.push(request.url());
-  });
+  const state = await mockAutomationEditor(page, "event", "event-2");
   await page.goto(`${dashboard.baseURL}/automations/event/event-2/edit`);
   await expect(
-    page.getByText("Only Avery Chen can edit this automation."),
+    page.getByText(/You can edit it because it is in a public channel/),
   ).toBeVisible();
-  await expect(
-    page.getByText("Uses Avery Chen’s connected accounts."),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
+  await expect(page.getByRole("button", { name: "Add message" })).toHaveCount(
     0,
   );
-  expect(editRequests).toEqual([]);
-  await screenshot(page, "automation-settings-readonly");
+  await page
+    .getByLabel("Instruction", { exact: true })
+    .fill("Notify responders and link the incident timeline.");
+  await expect(
+    page.getByText("Saving switches this automation to system credentials."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: /Avery Chen’s connected accounts/ }),
+  ).toBeDisabled();
+  await screenshot(page, "automation-editor-public");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/list`);
+  expect(state.writes).toEqual([
+    {
+      kind: "event",
+      revision: "a".repeat(64),
+      instruction: "Notify responders and link the incident timeline.",
+    },
+  ]);
+});
+
+test("makes an earlier version active from version history", async ({
+  page,
+  dashboard,
+}) => {
+  const editor = await mockAutomationEditor(page, "scheduled");
+  const definition = {
+    title: editor.value.title,
+    instruction: editor.value.instruction,
+    credentialMode: editor.value.credentialMode,
+    destination: editor.value.destination,
+    outcomes: editor.value.outcomes,
+    schedule:
+      editor.value.kind === "scheduled" ? editor.value.schedule : undefined,
+  };
+  const versions = [
+    {
+      kind: "scheduled",
+      version: 2,
+      createdAt: "2026-08-04T16:00:00.000Z",
+      editedBy: { slackUserId: "U456", fullName: "Avery Chen" },
+      definition: { ...definition, instruction: "Post a shorter summary" },
+    },
+    {
+      kind: "scheduled",
+      version: 1,
+      createdAt: "2026-07-28T16:00:00.000Z",
+      editedBy: null,
+      definition,
+    },
+  ];
+  let activeVersion = 2;
+  const activations: unknown[] = [];
+  await page.route(
+    "**/api/automations/scheduled/scheduled-1/versions",
+    (route) =>
+      route.fulfill({
+        json: { versions, activeVersion, truncated: false },
+      }),
+  );
+  await page.route(
+    "**/api/automations/scheduled/scheduled-1/versions/1/activate",
+    (route) => {
+      activations.push(route.request().postDataJSON());
+      versions.unshift({
+        ...versions.at(-1)!,
+        version: 3,
+        editedBy: { slackUserId: "U123", fullName: "Morgan" },
+      });
+      activeVersion = 3;
+      return route.fulfill({ json: editor.value });
+    },
+  );
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
+  await page.getByRole("link", { name: "Version history" }).click();
+  await expect(page).toHaveURL(/scheduled\/scheduled-1\/versions/);
+  await expect(page.getByText("Changed instruction")).toBeVisible();
+  await screenshot(page, "automation-versions");
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("Make version 1 active?");
+    void dialog.accept();
+  });
+  await page
+    .getByRole("button", { name: "Make version 1 active", exact: true })
+    .click();
+  await expect(
+    page.getByText("Version 1 is active again. It was saved as a new version."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("listitem", { name: "Version 3" }).getByText("Active"),
+  ).toBeVisible();
+  expect(activations).toEqual([{ revision: "a".repeat(64) }]);
 });
