@@ -47,6 +47,26 @@ invalidate an open edit. The API returns 409 for a stale edit, 400 with field
 paths for input errors, and 404 for a missing or non-owned Automation. The
 editor must keep unsaved input when a save fails.
 
+## Versions
+
+Each saved definition change makes an Automation version. The definition is
+the title, instruction, Schedule or event selector, Destination, outcomes, and
+credential mode. Status, run times, and other scheduler state are not part of
+it. Pause, resume, delete, and run-now do not make a version.
+
+The storage owner writes the version in the same transaction and lock as the
+Automation write. It compares the stored and new definitions. A save that does
+not change the definition does not make a version. Creation always makes
+version 1, edited by the creator. Slack edits record the requester. Web edits
+are creator-only, so they record the creator.
+
+Migration 0046 saves the current definition of each live Automation as
+version 1. Its editor is unknown and its time is the upgrade time. Edits made
+by older workers during a rolling deploy do not make versions.
+
+`GET /api/automations/:kind/:id/versions` returns the newest 100 versions with
+the same read access as executions. A public Destination grants read access.
+
 ## Pause and attention
 
 Pause and resume are creator-only actions, separate from form saves. Both check

@@ -7,6 +7,11 @@ import {
   eventAutomationEditSchema,
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
+import {
+  automationEditorSchema,
+  eventAutomationDefinitionSchema,
+  scheduledAutomationDefinitionSchema,
+} from "@/chat/automations/version-schema";
 import { z } from "zod";
 
 const automationDestinationSchema = z
@@ -201,6 +206,44 @@ export const automationRunListSchema = z
     truncated: z.boolean(),
   })
   .strict();
+
+const automationVersionBaseSchema = {
+  version: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+  /** Null when the editor is unknown, such as for versions saved at upgrade. */
+  editedBy: automationEditorSchema.nullable(),
+};
+
+/** One saved Automation definition. Newer versions have larger numbers. */
+export const automationVersionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...automationVersionBaseSchema,
+      kind: z.literal("scheduled"),
+      definition: scheduledAutomationDefinitionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...automationVersionBaseSchema,
+      kind: z.literal("event"),
+      definition: eventAutomationDefinitionSchema,
+    })
+    .strict(),
+]);
+
+/** Newest versions first. */
+export const automationVersionListSchema = z
+  .object({
+    versions: z.array(automationVersionSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export type AutomationVersion = z.output<typeof automationVersionSchema>;
+export type AutomationVersionList = z.output<
+  typeof automationVersionListSchema
+>;
 
 export type AutomationExecutionDay = z.output<
   typeof automationExecutionDaySchema

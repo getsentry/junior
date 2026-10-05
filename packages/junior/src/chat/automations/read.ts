@@ -4,6 +4,7 @@ import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   AutomationExecutionDay,
   AutomationExecutionList,
+  AutomationVersionList,
   AutomationExecutionStatusDay,
   AutomationList,
   AutomationListQuery,
@@ -31,6 +32,7 @@ import {
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
+import { listAutomationVersions } from "@/chat/automations/versions";
 import {
   deleteEventAutomation,
   eventAutomationBelongsToUser,
@@ -61,6 +63,7 @@ import {
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const TASK_EXECUTION_LIST_LIMIT = 100;
+const AUTOMATION_VERSION_LIST_LIMIT = 100;
 
 type TaskCandidate =
   | {
@@ -762,6 +765,31 @@ export async function readViewerAutomationExecutions(
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
+  };
+}
+
+/** Read saved definitions for one viewer-visible Automation, newest first. */
+export async function readViewerAutomationVersions(
+  user: User,
+  kind: "scheduled" | "event",
+  id: string,
+): Promise<AutomationVersionList> {
+  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  if (!candidate) throw new ViewerTaskNotFoundError();
+  const versions = await listAutomationVersions(
+    getDb(),
+    kind,
+    id,
+    AUTOMATION_VERSION_LIST_LIMIT + 1,
+  );
+  return {
+    versions: versions
+      .slice(0, AUTOMATION_VERSION_LIST_LIMIT)
+      .map(({ createdAtMs, ...version }) => ({
+        ...version,
+        createdAt: new Date(createdAtMs).toISOString(),
+      })),
+    truncated: versions.length > AUTOMATION_VERSION_LIST_LIMIT,
   };
 }
 

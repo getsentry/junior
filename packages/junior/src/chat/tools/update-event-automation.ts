@@ -117,6 +117,11 @@ export function createUpdateEventAutomationTool(
         getDb(),
         next,
         automationRevision(current),
+        {
+          slackUserId: actor.userId,
+          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+          ...(actor.userName ? { userName: actor.userName } : undefined),
+        },
       );
       if (!saved) {
         throw new ToolInputError("Event automation was not found.");

@@ -1,4 +1,6 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
+import type { AutomationEditor } from "@/chat/automations/version-schema";
+import { recordAutomationVersion } from "@/chat/automations/versions";
 import {
   eventMatches,
   slackDestinationSchema,
@@ -107,6 +109,12 @@ export async function getEventAutomation(
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
 
+const eventAutomationRowColumns = {
+  status: juniorEventAutomations.status,
+  task: juniorEventAutomations.task,
+  title: juniorEventAutomations.title,
+};
+
 /** Create one retry-stable event automation, or revive a deleted row with the new payload. */
 export async function createEventAutomation(
   db: JuniorDatabase,
@@ -114,103 +122,114 @@ export async function createEventAutomation(
 ): Promise<StoredEventAutomation> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
-  await db
-    .insert(juniorEventAutomations)
-    .values({
-      id: parsed.id,
-      teamId: parsed.destination.teamId,
-      namespace: parsed.trigger.namespace,
-      identifier: parsed.trigger.identifier,
-      createdAtMs: parsed.createdAtMs,
-      status: "active",
-      title,
-      task: parsed,
-    })
-    .onConflictDoNothing();
-  const existing = await getEventAutomation(db, parsed.id);
-  if (!existing) {
-    return {
-      ...parsed,
-      status: "active",
-      ...(title ? { title } : undefined),
-    };
-  }
-  // Live retries keep the original row. Deleted rows reactivate with the new payload.
-  if (existing.status !== "deleted") {
-    return existing;
-  }
-  const rows = await db
-    .update(juniorEventAutomations)
-    .set({
-      teamId: parsed.destination.teamId,
-      namespace: parsed.trigger.namespace,
-      identifier: parsed.trigger.identifier,
-      status: "active",
-      title,
-      task: parsed,
-    })
-    .where(
-      and(
-        eq(juniorEventAutomations.id, parsed.id),
-        eq(juniorEventAutomations.status, "deleted"),
-      ),
-    )
-    .returning({
-      status: juniorEventAutomations.status,
-      task: juniorEventAutomations.task,
-      title: juniorEventAutomations.title,
-    });
-  return rows[0]
-    ? parseEventAutomationRow(rows[0])
-    : ((await getEventAutomation(db, parsed.id)) ?? {
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(juniorEventAutomations)
+      .values({
+        id: parsed.id,
+        teamId: parsed.destination.teamId,
+        namespace: parsed.trigger.namespace,
+        identifier: parsed.trigger.identifier,
+        createdAtMs: parsed.createdAtMs,
+        status: "active",
+        title,
+        task: parsed,
+      })
+      .onConflictDoNothing()
+      .returning(eventAutomationRowColumns);
+    if (inserted[0]) {
+      const created = parseEventAutomationRow(inserted[0]);
+      await recordAutomationVersion(tx, {
+        kind: "event",
+        task: created,
+        current: undefined,
+        editedBy: created.createdBy,
+        nowMs: created.createdAtMs,
+      });
+      return created;
+    }
+    const rows = await tx
+      .select(eventAutomationRowColumns)
+      .from(juniorEventAutomations)
+      .where(eq(juniorEventAutomations.id, parsed.id))
+      .for("update");
+    const existing = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    if (!existing) {
+      return {
         ...parsed,
         status: "active",
         ...(title ? { title } : undefined),
-      });
+      };
+    }
+    // Live retries keep the original row. Deleted rows reactivate with the new payload.
+    if (existing.status !== "deleted") {
+      return existing;
+    }
+    const revived = await tx
+      .update(juniorEventAutomations)
+      .set({
+        teamId: parsed.destination.teamId,
+        namespace: parsed.trigger.namespace,
+        identifier: parsed.trigger.identifier,
+        status: "active",
+        title,
+        task: parsed,
+      })
+      .where(eq(juniorEventAutomations.id, parsed.id))
+      .returning(eventAutomationRowColumns);
+    const created = parseEventAutomationRow(revived[0]!);
+    await recordAutomationVersion(tx, {
+      kind: "event",
+      task: created,
+      current: undefined,
+      editedBy: created.createdBy,
+      nowMs: created.createdAtMs,
+    });
+    return created;
+  });
 }
 
-/** Replace an existing non-deleted event automation. */
+/**
+ * Replace an existing non-deleted event automation under a row lock.
+ * Pass `editedBy` when a person changes the definition so its version names them.
+ */
 export async function saveEventAutomation(
   db: JuniorDatabase,
   task: EventAutomation,
   expectedRevision?: string,
+  editedBy?: AutomationEditor,
 ): Promise<StoredEventAutomation | undefined> {
-  if (expectedRevision !== undefined) {
-    return db.transaction(async (tx) => {
-      const rows = await tx
-        .select()
-        .from(juniorEventAutomations)
-        .where(eq(juniorEventAutomations.id, task.id))
-        .for("update");
-      requireAutomationRevision(
-        rows[0] ? parseEventAutomationRow(rows[0]) : undefined,
-        expectedRevision,
-      );
-      return saveEventAutomation(tx, task);
-    });
-  }
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
-  const rows = await db
-    .update(juniorEventAutomations)
-    .set({
-      namespace: parsed.trigger.namespace,
-      identifier: parsed.trigger.identifier,
-      title,
-      task: parsed,
-    })
-    .where(
-      and(
-        eq(juniorEventAutomations.id, parsed.id),
-        activeEventAutomationWhere(),
-      ),
-    )
-    .returning({
-      status: juniorEventAutomations.status,
-      task: juniorEventAutomations.task,
-      title: juniorEventAutomations.title,
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select(eventAutomationRowColumns)
+      .from(juniorEventAutomations)
+      .where(eq(juniorEventAutomations.id, parsed.id))
+      .for("update");
+    const current = rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    if (expectedRevision !== undefined)
+      requireAutomationRevision(current, expectedRevision);
+    if (!current || current.status === "deleted") return undefined;
+    const updated = await tx
+      .update(juniorEventAutomations)
+      .set({
+        namespace: parsed.trigger.namespace,
+        identifier: parsed.trigger.identifier,
+        title,
+        task: parsed,
+      })
+      .where(eq(juniorEventAutomations.id, parsed.id))
+      .returning(eventAutomationRowColumns);
+    const saved = parseEventAutomationRow(updated[0]!);
+    await recordAutomationVersion(tx, {
+      kind: "event",
+      task: saved,
+      current,
+      editedBy,
     });
-  return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
+    return saved;
+  });
 }
 
 /** Mark one existing event automation deleted while retaining the row for history. */
