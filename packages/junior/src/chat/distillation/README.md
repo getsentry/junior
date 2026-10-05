@@ -37,6 +37,17 @@ the current rates, even when the full eligible history passes the worker's
 price check. Twelve segments cover a qualifying 180k-token history in one
 bounded task. The next Turn still checks the cost of the actual replacement.
 
+The Luna worker sends direct calls through AI Gateway with
+`cacheRetention: "none"`. This omits explicit cache markers. OpenAI caches
+prompts without such markers when it can reuse a prefix. Lore uses a provider
+Batch API for background work when available. Its one-hour system cache marker
+applies to Anthropic requests. Lore's OpenAI batch path sends the system text
+without that marker. AI Gateway does not document a Batch API endpoint, and
+Junior uses gateway credentials rather than a direct provider key. Do not
+price worker calls at a Batch API discount until a supported path records its
+actual cost. A provider batch can take up to 24 hours. It needs durable
+submission and result handling outside the current ten-minute worker lock.
+
 The replacement is one durable `compaction` event. It keeps recent raw
 messages, tool-call/result pairs, the current instruction and its author, and
 the open plan. The observations sit in an escaped
