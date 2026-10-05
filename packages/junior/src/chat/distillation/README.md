@@ -22,6 +22,15 @@ replacement would exceed the model's input limit, it keeps the current path.
 At the capacity trigger, an already prepared replacement may avoid another
 summary call. All other capacity checks still use the existing path.
 
+The worker makes the same price check before it writes observations. At the
+current rates in `pi/client.ts` and the default 400k context cap, a Luna-to-Luna
+Turn cannot pass this 20% check. Across the worker's eligible history sizes and
+two to twelve expected calls, its best estimate saves 18%. This is an expected
+price decision, not a worker failure. For an Opus history of 188,608 tokens and
+an estimated 42,528-token replacement, eight expected calls save less than 1%.
+Twelve expected calls save 26%. Recheck these figures when prices or limits
+change. Neither estimate proves savings on a completed task.
+
 The replacement is one durable `compaction` event. It keeps recent raw
 messages, tool-call/result pairs, the current instruction and its author, and
 the open plan. The observations sit in an escaped

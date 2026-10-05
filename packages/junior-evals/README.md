@@ -153,6 +153,13 @@ Conversation case with the feature off and on at the same revision. Both runs
 upload a `context-cost-*` result. Require observations and a `priced: true`
 history replacement in the on result before using the pair as cost evidence.
 Re-run the pair to check variation.
+The current case routes Luna. At the default context cap and current model
+prices, its worker cannot pass the 20% price check. This case checks reply
+continuity, but it cannot measure the benefit of an activated replacement.
+Use the trigger label only after selecting a full-runtime case that can pass
+the price check and finish each reply within 60 seconds. Keep an uneconomical
+skip as a valid price decision. Do not lower the price check to make an eval
+activate.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each
