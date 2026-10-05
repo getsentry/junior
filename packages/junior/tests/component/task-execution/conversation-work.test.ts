@@ -508,6 +508,11 @@ describe("conversation work execution", () => {
         queue,
       }),
     ).rejects.toThrow("queue unavailable");
+    // No nudge is on its way, so the next wake must not wait for one.
+    expect(
+      (await getConversationWorkState({ conversationId: CONVERSATION_ID }))
+        ?.lastEnqueuedAtMs,
+    ).toBeUndefined();
 
     queue.allowSends();
     await expect(
@@ -798,6 +803,56 @@ describe("conversation work execution", () => {
         conversationId: CONVERSATION_ID,
         idempotencyKey: "m2",
       },
+    ]);
+  });
+
+  it("wakes a paused turn when its first delivery started before the enqueue returned", async () => {
+    // A queue can deliver a message before `send()` returns to the sender.
+    let lease: Awaited<ReturnType<typeof startConversationWork>> | undefined;
+    await appendAndEnqueueInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      queue: {
+        async send() {
+          lease = await startConversationWork({
+            conversationId: CONVERSATION_ID,
+            nowMs: 1_000,
+          });
+          return { messageId: "queue-1" };
+        },
+      },
+    });
+    expect(lease?.status).toBe("acquired");
+    if (lease?.status !== "acquired") {
+      return;
+    }
+
+    // The turn pauses, for example for authorization, and the worker is done.
+    await ackMessages({
+      conversationId: CONVERSATION_ID,
+      inboundMessageIds: ["m1"],
+      leaseToken: lease.leaseToken,
+      nowMs: 2_000,
+    });
+    await completeConversationWork({
+      conversationId: CONVERSATION_ID,
+      leaseToken: lease.leaseToken,
+      nowMs: 2_000,
+    });
+
+    const queue = createConversationWorkQueueTestAdapter();
+    await wakePausedTurn(
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        expectedVersion: 2,
+        turnId: "turn-1",
+      },
+      { queue, nowMs: 3_000 },
+    );
+
+    expect(queue.sentRecords()).toMatchObject([
+      { conversationId: CONVERSATION_ID },
     ]);
   });
 
