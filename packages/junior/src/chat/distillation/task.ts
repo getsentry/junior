@@ -5,9 +5,11 @@ import type {
 import type { Message } from "@earendil-works/pi-ai";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
+import { logInfo } from "@/chat/logging";
 import { resolveGatewayModel, completeText } from "@/chat/pi/client";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import {
+  distillationSavings,
   estimateWorkerCost,
   expectedContextCalls,
   shouldUseDistillations,
@@ -102,14 +104,28 @@ function workerIsWorthRunning(
     inputTokens: removedTokens,
     outputTokens: Math.ceil(removedTokens / 16_000) * 2_048,
   });
-  return shouldUseDistillations({
+  const price = {
     model: resolveGatewayModel(modelId),
     rawTokens,
     replacementTokens,
     expectedCalls,
     rawCacheWarm: true,
     workerCostUsd: observerCost,
-  });
+  };
+  const worthRunning = shouldUseDistillations(price);
+  if (!worthRunning) {
+    logInfo("conversation.distillation.skipped", {
+      "app.distillation.stage": "observer",
+      "app.distillation.reason": "not_economical",
+      "app.distillation.raw_tokens": rawTokens,
+      "app.distillation.replacement_tokens": replacementTokens,
+      "app.distillation.expected_calls": expectedCalls,
+      "app.distillation.worker_cost_usd": observerCost,
+      "app.distillation.savings_ratio":
+        distillationSavings(price)?.savingsRatio ?? null,
+    });
+  }
+  return worthRunning;
 }
 
 function lastTurnModelId(
@@ -166,19 +182,31 @@ export async function distillCompletedTurn(
         profile: botConfig.defaultProfile,
         turnId: run.runId,
       });
-      if (!source) return;
+      if (!source) {
+        logInfo("conversation.distillation.skipped", {
+          "app.distillation.stage": "observer",
+          "app.distillation.reason": "no_completed_turn",
+        });
+        return;
+      }
       const segments = pendingSegments(source);
       const modelId = lastTurnModelId(events, run.runId, source.terminalSeq);
       const futureCalls = expectedContextCalls(
         events.filter((event) => event.seq <= source.terminalSeq),
       );
-      if (
-        segments.length === 0 ||
-        !modelId ||
-        !workerIsWorthRunning(source.entries, modelId, futureCalls)
-      ) {
+      if (segments.length === 0 || !modelId) {
+        logInfo("conversation.distillation.skipped", {
+          "app.distillation.stage": "observer",
+          "app.distillation.reason":
+            segments.length === 0 ? "no_safe_segment" : "no_model",
+          "app.distillation.raw_tokens": estimateModelVisibleTokens(
+            source.entries.map((entry) => entry.message),
+          ),
+          "app.distillation.expected_calls": futureCalls,
+        });
         return;
       }
+      if (!workerIsWorthRunning(source.entries, modelId, futureCalls)) return;
 
       const previousObservations = source.events.at(-1)?.data.observations
         ? [source.events.at(-1)!.data.observations]

@@ -10,7 +10,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
-import { setSpanAttributes } from "@/chat/logging";
+import { logInfo, setSpanAttributes } from "@/chat/logging";
 import type { ModelProfile } from "@/chat/model-profile";
 import {
   getAgentContextCompactionTriggerTokens,
@@ -142,6 +142,16 @@ export async function compactWithDistillations(args: {
     (!priced &&
       rawTokens < getAgentContextCompactionTriggerTokens(args.modelId))
   ) {
+    logInfo("conversation.distillation.skipped", {
+      "app.distillation.stage": "replacement",
+      "app.distillation.reason":
+        replacementTokens >= getAgentContextInputLimitTokens(args.modelId)
+          ? "input_limit"
+          : "not_economical",
+      "app.distillation.raw_tokens": rawTokens,
+      "app.distillation.replacement_tokens": replacementTokens,
+      "app.distillation.expected_calls": futureCalls,
+    });
     return undefined;
   }
 
