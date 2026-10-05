@@ -5,9 +5,10 @@
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError } from "./edit-rules";
 import type { AutomationEditFields } from "./edit-schema";
-import type { User } from "@sentry/junior-plugin-api";
+import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import {
   eventAutomationBelongsToUser,
   getEventAutomation,
@@ -236,6 +237,48 @@ function scheduleIntent(
 }
 
 /**
+ * Turn saved outcomes back into edit input. Messages to the Automation
+ * Destination or the creator DM are always allowed again. Other stored
+ * Destinations must still be on the Automation.
+ */
+async function restorableOutcomes(
+  current: TaskCandidate,
+  outcomes: TaskOutcome[],
+): Promise<NonNullable<AutomationEditFields["outcomes"]>> {
+  const { task } = current;
+  let creatorDm: TaskOutcome["destination"] | undefined;
+  const restored: NonNullable<AutomationEditFields["outcomes"]> = [];
+  for (const outcome of outcomes) {
+    if (sameDefinitionValue(outcome.destination, task.destination)) {
+      restored.push({
+        action: outcome.action,
+        destination: "current_conversation",
+      });
+      continue;
+    }
+    // Only the creator can change outcomes, so skip the Slack lookup for others.
+    if (
+      current.ownedByViewer &&
+      !task.outcomes.some((stored) => sameDefinitionValue(stored, outcome))
+    ) {
+      creatorDm ??= (
+        await resolveTaskOutcomes(
+          [{ action: "send_message", destination: "task_creator" }],
+          task.destination,
+          task.createdBy.slackUserId,
+        )
+      )[0]!.destination;
+      if (sameDefinitionValue(outcome.destination, creatorDm)) {
+        restored.push({ action: outcome.action, destination: "task_creator" });
+        continue;
+      }
+    }
+    restored.push(outcome);
+  }
+  return restored;
+}
+
+/**
  * Make a saved version active. This saves its definition as a new version
  * through the same edit rules, so history is never rewritten.
  */
@@ -264,14 +307,8 @@ export async function activateViewerAutomationVersion(
     fields.instruction = definition.instruction;
   if (definition.credentialMode !== current.task.credentialMode)
     fields.credentialMode = definition.credentialMode;
-  if (!sameDefinitionValue(definition.outcomes, current.task.outcomes)) {
-    // Messages to the Automation Destination are always allowed again.
-    fields.outcomes = definition.outcomes.map((outcome) =>
-      sameDefinitionValue(outcome.destination, current.task.destination)
-        ? { action: outcome.action, destination: "current_conversation" }
-        : outcome,
-    );
-  }
+  if (!sameDefinitionValue(definition.outcomes, current.task.outcomes))
+    fields.outcomes = await restorableOutcomes(current, definition.outcomes);
   const title = definition.title ?? undefined;
   if (saved.kind === "scheduled" && current.kind === "scheduled") {
     const update: Extract<AutomationUpdate, { kind: "scheduled" }> = {

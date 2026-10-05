@@ -78,8 +78,9 @@ that matches the current definition.
 active. It needs the edit read revision. It saves that definition as a new
 version, so history is never rewritten. It uses the edit access and edit rules,
 so a public reader cannot use it to enable creator credentials or change
-outcomes. A version with another Destination or a one-time Schedule cannot be
-made active. A one-time version does not keep its run time.
+outcomes. The creator can restore messages to the Destination or to the
+creator DM. A version with another Destination or a one-time Schedule cannot
+be made active. A one-time version does not keep its run time.
 
 ## Pause and attention
 

@@ -592,6 +592,12 @@ describe("Automation edit API", () => {
         expect(afterRestore.versions[0]!.definition).toEqual(
           versions.at(-1)!.definition,
         );
+        // The creator DM removed by that restore can come back.
+        const dmRestore = await activate(6, (await read()).revision);
+        expect(dmRestore.status).toBe(200);
+        expect(
+          automationEditSchema.parse(await dmRestore.json()).outcomes,
+        ).toEqual(outcomes.outcomes);
 
         // A public reader can edit, but cannot use the creator's accounts.
         const readerView = automationEditSchema.parse(
@@ -630,10 +636,10 @@ describe("Automation edit API", () => {
             .slice(0, 2)
             .map(({ version, editedBy }) => [version, editedBy?.slackUserId]),
         ).toEqual([
-          [8, "U456"],
-          [7, "U123"],
+          [9, "U456"],
+          [8, "U123"],
         ]);
-        expect(afterReader.activeVersion).toBe(8);
+        expect(afterReader.activeVersion).toBe(9);
         expect(
           (
             await app.request(`${url}/versions`, {
