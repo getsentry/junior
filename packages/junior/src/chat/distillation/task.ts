@@ -95,7 +95,7 @@ function workerIsWorthRunning(
   const rawTokens = estimateModelVisibleTokens(
     entries.map((entry) => entry.message),
   );
-  // The worker is bounded to six segments per Turn. Price the full eligible
+  // The worker is bounded to twelve segments per Turn. Price the full eligible
   // prefix, not only this batch, or a long Turn could never start distilling.
   const removedTokens = Math.max(0, rawTokens - 20_000);
   const replacementTokens =

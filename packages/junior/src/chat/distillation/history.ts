@@ -9,7 +9,7 @@ import { estimateTextTokens } from "@/chat/services/context-budget";
 
 const RAW_TAIL_TOKENS = 20_000;
 export const SEGMENT_TOKENS = 16_000;
-const MAX_SEGMENTS_PER_TURN = 6;
+const MAX_SEGMENTS_PER_TURN = 12;
 
 type DistillationEvent = ConversationEvent & {
   data: Extract<ConversationEvent["data"], { type: "distillation" }>;

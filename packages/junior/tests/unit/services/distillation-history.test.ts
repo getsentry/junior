@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import {
+  estimateWorkerCost,
+  shouldUseDistillations,
+} from "@/chat/distillation/economics";
+import {
+  estimateModelVisibleTokens,
   pendingSegments,
   renderSegment,
   type HistoryEntry,
 } from "@/chat/distillation/history";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 
 function entry(message: PiMessage, seq: number): HistoryEntry {
@@ -12,6 +18,58 @@ function entry(message: PiMessage, seq: number): HistoryEntry {
 }
 
 describe("Conversation observation boundaries", () => {
+  it("covers enough safe history to make one completed Opus Turn worth replacing", () => {
+    const prior = Array.from({ length: 11 }, (_, index) =>
+      entry(
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "a".repeat(60_000) }],
+          timestamp: index + 1,
+        } as PiMessage,
+        index + 1,
+      ),
+    );
+    const entries = [
+      ...prior,
+      entry(
+        { role: "user", content: "recent".repeat(14_000), timestamp: 12 },
+        12,
+      ),
+    ];
+    const segments = pendingSegments({
+      entries,
+      events: [],
+      historyVersion: 0,
+      terminalSeq: 13,
+    });
+    const covered = segments.flat();
+    const rawTokens = estimateModelVisibleTokens(
+      entries.map((item) => item.message),
+    );
+    const coveredTokens = estimateModelVisibleTokens(
+      covered.map((item) => item.message),
+    );
+    const observationTokens = segments.length * 2_048;
+
+    expect(covered.map((item) => item.seq)).toEqual(
+      prior.map((item) => item.seq),
+    );
+    expect(
+      shouldUseDistillations({
+        model: resolveGatewayModel("anthropic/claude-opus-5.5"),
+        rawTokens,
+        replacementTokens: rawTokens - coveredTokens + observationTokens,
+        expectedCalls: 12,
+        rawCacheWarm: true,
+        workerCostUsd: estimateWorkerCost({
+          model: resolveGatewayModel("openai/gpt-6-luna"),
+          inputTokens: coveredTokens,
+          outputTokens: observationTokens,
+        }),
+      }),
+    ).toBe(true);
+  });
+
   it("keeps parallel tool calls with both results and leaves the recent answer raw", () => {
     const entries = [
       entry(

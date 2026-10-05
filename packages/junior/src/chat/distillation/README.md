@@ -31,6 +31,12 @@ an estimated 42,528-token replacement, eight expected calls save less than 1%.
 Twelve expected calls save 26%. Recheck these figures when prices or limits
 change. Neither estimate proves savings on a completed task.
 
+The worker reads at most twelve complete 16k-token segments after a Turn.
+Six segments cannot produce a priced replacement from one warm Opus Turn at
+the current rates, even when the full eligible history passes the worker's
+price check. Twelve segments cover a qualifying 180k-token history in one
+bounded task. The next Turn still checks the cost of the actual replacement.
+
 The replacement is one durable `compaction` event. It keeps recent raw
 messages, tool-call/result pairs, the current instruction and its author, and
 the open plan. The observations sit in an escaped
