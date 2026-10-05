@@ -301,8 +301,8 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
         run: >-
           pnpm --filter @sentry/junior-evals evals:behavioral
-          evals/coding/resource-scope.eval.ts
-          -t "repairs the owner-scoped lookup and checks the earlier CI failure"
+          evals/conversation/continuity.eval.ts
+          -t "continues a long CI investigation across two Turns"
       - name: Require long Conversation result
         run: |
           set -euo pipefail
@@ -311,7 +311,7 @@ jobs:
             echo "::error::missing context-cost eval result ($result_file)"
             exit 1
           fi
-          jq -e '[.testResults[].assertionResults[] | select(.fullName | contains("repairs the owner-scoped lookup and checks the earlier CI failure"))] | length == 1' "$result_file" >/dev/null
+          jq -e '[.testResults[].assertionResults[] | select(.fullName | contains("continues a long CI investigation across two Turns"))] | length == 1' "$result_file" >/dev/null
       - name: Upload long Conversation result
         uses: actions/upload-artifact@v4
         with:
@@ -324,7 +324,7 @@ jobs:
         run: |
           jq -e '[
             .testResults[].assertionResults[]
-            | select(.fullName | contains("repairs the owner-scoped lookup and checks the earlier CI failure"))
+            | select(.fullName | contains("continues a long CI investigation across two Turns"))
             | .meta.harness.run.usage.metadata.distillation // {}
             | .[]
             | select(.historyComplete == true and .observationCount > 0 and any(.replacements[]?; .priced == true))
