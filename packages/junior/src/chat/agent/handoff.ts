@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { ResumeState } from "@/chat/agent/resume";
 import { botConfig } from "@/chat/config";
+import { recordTurnRoute } from "@/chat/conversations/projection";
 import {
   extractGenAiUsageSummary,
   logWarn,
@@ -41,6 +42,8 @@ import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 /** Staged handoff waiting for the next Pi turn boundary. */
 export type PendingHandoff = {
   messages: PiMessage[];
+  /** False when the switch only changed the turn route and kept history. */
+  replacesHistory: boolean;
   model: ReturnType<typeof resolveGatewayModel>;
   modelId: string;
   modelProfile: ModelProfile;
@@ -135,8 +138,31 @@ export function toolsForHandoffProfile(args: {
 }
 
 /**
+ * Return the history before a handoff call that is the first model output.
+ * The model has not done work yet, so the switch only selects the model.
+ */
+function historyBeforeFirstModelOutput(
+  messages: PiMessage[],
+  toolCallId: string | undefined,
+): PiMessage[] | undefined {
+  const last = messages.at(-1);
+  if (
+    !toolCallId ||
+    !isAssistantMessage(last) ||
+    messages.filter(isAssistantMessage).length !== 1 ||
+    !last.content.some(
+      (part) => part.type === "toolCall" && part.id === toolCallId,
+    )
+  ) {
+    return undefined;
+  }
+  return messages.slice(0, -1);
+}
+
+/**
  * Commit the durable handoff epoch and return the staged Pi swap.
- * No-op when the requested profile is already active.
+ * A router-selected turn whose first model output is the handoff call changes
+ * only the turn route. No-op when the requested profile is already active.
  */
 export async function commitHandoff(args: {
   activeModelProfile: ModelProfile;
@@ -146,18 +172,16 @@ export async function commitHandoff(args: {
   metadata?: CompactContextArgs["metadata"];
   onStatus?: (status: { text: string }) => void | Promise<void>;
   profile: ModelProfile;
-  runtimeContextSourceMessages?: PiMessage[];
   signal?: AbortSignal;
   sourceMessages: PiMessage[];
   triggeringToolCallId?: string;
+  turnId: string;
   turnRoute: TurnRoute;
 }): Promise<PendingHandoff | undefined> {
   if (args.profile === args.activeModelProfile) {
     return undefined;
   }
-  const runtimeContext = retainRuntimeTurnContext(
-    args.runtimeContextSourceMessages ?? args.sourceMessages,
-  );
+  const runtimeContext = retainRuntimeTurnContext(args.sourceMessages);
   const phaseUsageSummary = extractGenAiUsageSummary(
     ...args.sourceMessages
       .slice(args.beforeMessageCount)
@@ -174,6 +198,40 @@ export async function commitHandoff(args: {
     modelProfile: args.profile,
     reasoningLevel: handoffReasoningLevel,
   };
+  // Only the router's choice can be replaced this way, and only once.
+  const historyBeforeHandoff =
+    args.turnRoute.source === "router"
+      ? historyBeforeFirstModelOutput(
+          args.sourceMessages,
+          args.triggeringToolCallId,
+        )
+      : undefined;
+  if (historyBeforeHandoff) {
+    args.signal?.throwIfAborted();
+    await recordTurnRoute({
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      modelProfile: args.profile,
+      modelId: target.modelId,
+      reasoningLevel: handoffReasoningLevel,
+      source: "model",
+    });
+    return {
+      messages: historyBeforeHandoff,
+      replacesHistory: false,
+      model: resolveGatewayModel(target.modelId),
+      modelId: target.modelId,
+      modelProfile: args.profile,
+      phaseUsage,
+      thinkingLevel: toPiReasoningLevel(handoffReasoningLevel),
+      turnRoute: {
+        profile: args.profile,
+        reasoningLevel: handoffReasoningLevel,
+        reason: `model_selected:${args.profile}:${args.turnRoute.reason}`,
+        source: "model",
+      },
+    };
+  }
   void (async () => {
     await args.onStatus?.({ text: "Switching models" });
   })().catch((error) => {
@@ -207,6 +265,7 @@ export async function commitHandoff(args: {
         };
   return {
     messages: handoffMessages,
+    replacesHistory: true,
     model: resolveGatewayModel(target.modelId),
     modelId: target.modelId,
     modelProfile: args.profile,
@@ -216,7 +275,10 @@ export async function commitHandoff(args: {
   };
 }
 
-/** Apply a committed handoff to Pi and reset its durable resume baseline. */
+/**
+ * Apply a committed handoff to Pi. A history replacement also resets the
+ * durable resume baseline; a turn route change keeps the turn's boundaries.
+ */
 export function applyHandoff(args: {
   agent: Agent;
   baseInstructions: string;
@@ -229,8 +291,10 @@ export function applyHandoff(args: {
   args.agent.state.model = args.pending.model;
   args.agent.state.thinkingLevel = args.pending.thinkingLevel;
   args.agent.state.tools = args.tools;
-  args.resume.setBeforeMessageCount(replacement.length);
-  args.resume.setTurnStartMessageIndex(0);
+  if (args.pending.replacesHistory) {
+    args.resume.setBeforeMessageCount(replacement.length);
+    args.resume.setTurnStartMessageIndex(0);
+  }
   args.resume.adoptCommittedBoundary(replacement);
   setSpanAttributes({
     "gen_ai.agent.model": args.pending.modelId,

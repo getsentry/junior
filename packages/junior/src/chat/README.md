@@ -276,7 +276,14 @@ reasoning without calling the router.
 
 `tools/handoff/tool.ts` owns in-turn switch rules. Its description includes the
 active profile and the other available profiles. `agent/handoff.ts` refreshes
-that description after each switch. The system prompt points to this contract
+that description after each switch.
+
+A handoff call can be the first model output in the agent history. Then the
+model has done no work yet. Such a switch is not a handoff. It replaces the
+router's Turn route once, with source `model`. It does not summarize, does not
+write a history replacement, and does not show a model-switch status. The
+selected model gets the original request without the discarded call. A switch
+after any model work is a real handoff. The system prompt points to this contract
 before skill selection; it does not repeat the task-fit descriptions.
 
 The system prompt owns when a plan helps. The `updatePlan` tool owns plan input
