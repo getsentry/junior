@@ -6,6 +6,7 @@ import {
   type EmittedLogRecord,
 } from "@/chat/logging";
 import {
+  readAuxiliaryOperations,
   readDistillationDecision,
   readDistillationUsage,
   readModelCalls,
@@ -216,11 +217,43 @@ describe("distillation usage", () => {
       ],
     });
     expect(JSON.stringify(usage)).not.toContain("private observation text");
+    const operations = readAuxiliaryOperations({
+      auxiliaryCosts: {
+        costUsd: 0.05,
+        operations: [
+          {
+            namespace: "junior",
+            name: "distillation",
+            events: 3,
+            costUsd: 0.02,
+          },
+          {
+            namespace: "junior",
+            name: "turn_routed",
+            events: 1,
+            costUsd: 0.01,
+          },
+          {
+            namespace: "private plugin",
+            name: "private prompt",
+            events: 2,
+            costUsd: 0.02,
+          },
+        ],
+      },
+    });
+    expect(operations).toEqual([
+      { kind: "distillation", events: 3, costUsd: 0.02 },
+      { kind: "turn_routed", events: 1, costUsd: 0.01 },
+      { kind: "other", events: 2, costUsd: 0.02 },
+    ]);
+    expect(JSON.stringify(operations)).not.toContain("private prompt");
     const report = toHarnessRun({
       conversationId: "local:example:context-cost",
       usage: {
         agentCostUsd: 0.1,
         auxiliaryCostUsd: 0.05,
+        auxiliaryOperations: operations,
         distillation: { "local:example:context-cost": usage },
         distillationDecisions: {},
         gatewayRequests: {},
@@ -235,6 +268,7 @@ describe("distillation usage", () => {
     expect(report.usage?.metadata?.distillation).toEqual({
       "local:example:context-cost": usage,
     });
+    expect(report.usage?.metadata?.auxiliaryOperations).toEqual(operations);
     expect(JSON.stringify(report.usage)).not.toContain(
       "private observation text",
     );

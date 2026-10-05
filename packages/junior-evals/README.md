@@ -124,7 +124,9 @@ describe("Thread Continuity", () => {
   `usage.metadata.modelTotals` has aggregate token counts and costs for
   recorded assistant calls by model. `usage.metadata.costUsd` sums those
   totals. `usage.metadata.auxiliaryCostUsd` has recorded routing and other
-  non-assistant event costs. `usage.metadata.gatewayModelCalls` has estimated
+  non-assistant event costs. `usage.metadata.auxiliaryOperations` groups those
+  costs by fixed Junior event kind. Other operation names stay in one group.
+  `usage.metadata.gatewayModelCalls` has estimated
   costs and numeric token counts from Messages responses during fixture calls.
   This includes assistant calls, titles, and compaction summaries. Do not add
   it to `costUsd` without removing the assistant calls counted in both.

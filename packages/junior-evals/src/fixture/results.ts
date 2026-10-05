@@ -290,6 +290,33 @@ export function readModelTotals(
   }));
 }
 
+/** Group auxiliary spend without copying plugin operation names into artifacts. */
+export function readAuxiliaryOperations(
+  detail: Pick<ConversationDetail, "auxiliaryCosts">,
+): AuxiliaryOperationUsage[] {
+  const totals = new Map<
+    AuxiliaryOperationUsage["kind"],
+    AuxiliaryOperationUsage
+  >();
+  for (const operation of detail.auxiliaryCosts?.operations ?? []) {
+    const kind =
+      operation.namespace === "junior" &&
+      (operation.name === "distillation" ||
+        operation.name === "turn_routed" ||
+        operation.name === "guardian_action_reviewed")
+        ? operation.name
+        : "other";
+    const current = totals.get(kind);
+    totals.set(kind, {
+      kind,
+      events: (current?.events ?? 0) + operation.events,
+      costUsd:
+        Math.round(((current?.costUsd ?? 0) + operation.costUsd) * 1e12) / 1e12,
+    });
+  }
+  return [...totals.values()];
+}
+
 /** Count stored observations and history replacements without reading their text. */
 export function readDistillationUsage(
   detail: Pick<
@@ -449,12 +476,20 @@ function toTranscriptEvents(
 export interface FixtureUsage {
   agentCostUsd: number;
   auxiliaryCostUsd: number;
+  auxiliaryOperations: AuxiliaryOperationUsage[];
   distillation: Record<string, DistillationUsage>;
   distillationDecisions: Record<string, DistillationDecision[]>;
   gatewayRequests: Record<string, number>;
   gatewayModelCalls: GatewayModelCall[];
   modelCalls: ModelCallUsage[];
   modelTotals: ModelTotalUsage[];
+}
+
+/** Only fixed operation kinds and numeric costs reach the eval artifact. */
+export interface AuxiliaryOperationUsage {
+  kind: "distillation" | "guardian_action_reviewed" | "turn_routed" | "other";
+  events: number;
+  costUsd: number;
 }
 
 /** Numeric skip diagnostics; never include log bodies or source text. */
@@ -532,6 +567,7 @@ export function toHarnessRun(args: {
       metadata: {
         costUsd: args.usage.agentCostUsd,
         auxiliaryCostUsd: args.usage.auxiliaryCostUsd,
+        auxiliaryOperations: toJsonValue(args.usage.auxiliaryOperations) ?? [],
         distillation: toJsonValue(args.usage.distillation) ?? {},
         distillationDecisions:
           toJsonValue(args.usage.distillationDecisions) ?? {},
@@ -565,6 +601,7 @@ export function combinedRun(
       metadata: {
         costUsd: usage.agentCostUsd,
         auxiliaryCostUsd: usage.auxiliaryCostUsd,
+        auxiliaryOperations: toJsonValue(usage.auxiliaryOperations) ?? [],
         distillation: toJsonValue(usage.distillation) ?? {},
         distillationDecisions: toJsonValue(usage.distillationDecisions) ?? {},
         gatewayRequests: usage.gatewayRequests,

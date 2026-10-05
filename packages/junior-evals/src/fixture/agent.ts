@@ -51,6 +51,7 @@ import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
+  readAuxiliaryOperations,
   readCallEvents,
   readConversationDetail,
   readDistillationDecision,
@@ -61,6 +62,7 @@ import {
   toHarnessRun,
   VIEWER_HEADER,
   type FixtureUsage,
+  type AuxiliaryOperationUsage,
   type DistillationUsage,
   type DistillationDecision,
   type ModelCallUsage,
@@ -225,6 +227,7 @@ export async function createFixtureAgent(
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
   const auxiliaryCostUsd = new Map<string, number>();
+  const auxiliaryOperations = new Map<string, AuxiliaryOperationUsage[]>();
   const distillation = new Map<string, DistillationUsage>();
   const agentModelCalls = new Map<string, ModelCallUsage[]>();
   const agentModelTotals = new Map<string, ModelTotalUsage[]>();
@@ -232,6 +235,7 @@ export async function createFixtureAgent(
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     auxiliaryCostUsd: [...auxiliaryCostUsd.values()].reduce((a, b) => a + b, 0),
+    auxiliaryOperations: [...auxiliaryOperations.values()].flat(),
     distillation: Object.fromEntries(distillation),
     distillationDecisions: Object.fromEntries(distillationDecisions),
     gatewayRequests: gateway.requestCounts(),
@@ -535,6 +539,10 @@ export async function createFixtureAgent(
     auxiliaryCostUsd.set(
       record.conversationId,
       detail.auxiliaryCosts?.costUsd ?? 0,
+    );
+    auxiliaryOperations.set(
+      record.conversationId,
+      readAuxiliaryOperations(detail),
     );
     distillation.set(record.conversationId, readDistillationUsage(detail));
     agentModelTotals.set(
