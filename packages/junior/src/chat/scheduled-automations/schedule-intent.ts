@@ -25,7 +25,7 @@ const timezoneSchema = z
   .min(1)
   .max(80)
   .describe(
-    "IANA timezone explicitly requested by the user. Omit or use null to use the requester's profile timezone for a new schedule, or keep the existing timezone on updates. Do not infer it from company or office locations.",
+    "IANA timezone the user explicitly requested, for example America/New_York. Omit or use null to use the creator's profile timezone for a new schedule, or to keep the saved timezone on an update. Do not infer it from company or office locations.",
   )
   .nullable()
   .optional();
@@ -214,7 +214,8 @@ function localDateAt(timestampMs: number, timezone: string): string {
     .join("-");
 }
 
-function isValidTimeZone(timezone: string): boolean {
+/** Whether the runtime accepts this IANA timezone name. */
+export function isValidTimeZone(timezone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
     return true;

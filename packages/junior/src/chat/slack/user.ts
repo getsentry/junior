@@ -4,10 +4,11 @@ import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
 
 interface SlackUserLookupResult {
-  timezone?: string;
   userName?: string;
   fullName?: string;
   email?: string;
+  /** Slack profile timezone. Never copy it onto the Actor. */
+  timezone?: string;
 }
 
 const slackUserInfoSchema = z.object({
@@ -105,10 +106,10 @@ export async function lookupSlackUser(
     const fullName = payload.user.profile?.real_name?.trim() || undefined;
 
     const result: SlackUserLookupResult = {
-      timezone: payload.user.tz?.trim() || undefined,
       userName,
       fullName,
       email: payload.user.profile?.email?.trim() || undefined,
+      timezone: payload.user.tz?.trim() || undefined,
     };
     writeToCache(teamId, userId, result);
     return result;

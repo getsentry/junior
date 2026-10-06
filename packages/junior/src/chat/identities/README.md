@@ -9,6 +9,10 @@ provider-specific names do not replace it. Conversation actors use that user
 name when present and otherwise fall back to
 `junior_identities.display_name`.
 
+`junior_users.timezone` is the person's IANA timezone. The scheduler saves the
+latest valid Slack profile timezone there. See
+`chat/scheduled-automations/README.md` (Timezones).
+
 Provider handles and subject IDs always remain identity-scoped. Display names
 are presentation data and must never be used to link identities or grant
 authority.

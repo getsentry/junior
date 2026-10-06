@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
   normalizeIdentityEmail,
@@ -113,18 +113,10 @@ async function upsertIdentityRecord(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  if (
-    linkedUserId &&
-    verifiedUserId &&
-    linkedUserId !== verifiedUserId
-  ) {
+  if (linkedUserId && verifiedUserId && linkedUserId !== verifiedUserId) {
     throw new Error("Linked identity conflicts with verified email user");
   }
-  if (
-    existing?.userId &&
-    linkedUserId &&
-    existing.userId !== linkedUserId
-  ) {
+  if (existing?.userId && linkedUserId && existing.userId !== linkedUserId) {
     throw new Error("Identity conflicts with linked user");
   }
   const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
@@ -191,6 +183,37 @@ async function upsertIdentityRecord(
     id: row.id,
     ...(row.userId ? { userId: row.userId } : undefined),
   };
+}
+
+/** Read the saved timezone for one user. */
+export async function readUserTimezone(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<string | undefined> {
+  const rows = await db
+    .select({ timezone: juniorUsers.timezone })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.id, userId))
+    .limit(1);
+  return rows[0]?.timezone ?? undefined;
+}
+
+/** Save the latest observed IANA timezone for one user. */
+export async function saveUserTimezone(
+  db: JuniorDatabase,
+  userId: string,
+  timezone: string,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  await db
+    .update(juniorUsers)
+    .set({ timezone, updatedAt: dateFromMs(nowMs) })
+    .where(
+      and(
+        eq(juniorUsers.id, userId),
+        sql`${juniorUsers.timezone} is distinct from ${timezone}`,
+      ),
+    );
 }
 
 /** Persist one provider identity observation and link verified emails to users. */

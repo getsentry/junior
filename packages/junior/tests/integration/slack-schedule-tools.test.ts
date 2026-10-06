@@ -24,6 +24,8 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorUsers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -34,14 +36,6 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import { usersInfoOk } from "../fixtures/slack/factories/api";
-import { lookupSlackActor } from "@/chat/slack/user";
-import {
-  parseActor,
-  toStoredSlackActor,
-  parseStoredSlackActor,
-  createSlackResumeActor,
-} from "@/chat/actor";
-import { buildTurnContextPrompt } from "@/chat/prompt";
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -164,6 +158,38 @@ function schedulerDb(): JuniorDatabase {
     throw new Error("Scheduler SQL database is not initialized");
   }
   return currentFixture.sql.db();
+}
+
+function queueSlackProfileTimezone(userId: string, tz: string | undefined) {
+  const body = usersInfoOk({ userId, ...(tz ? { tz } : undefined) });
+  if (!tz) delete body.user.tz;
+  queueSlackApiResponse("users.info", { body });
+}
+
+async function insertUser(userId: string, timezone?: string) {
+  const now = new Date("2026-05-24T12:00:00.000Z");
+  await schedulerDb()
+    .insert(juniorUsers)
+    .values({
+      id: `user:${userId}`,
+      primaryEmail: `${userId.toLowerCase()}@example.com`,
+      primaryEmailNormalized: `${userId.toLowerCase()}@example.com`,
+      timezone: timezone ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+}
+
+async function readUserTimezone(userId: string) {
+  const rows = await schedulerDb()
+    .select({ timezone: juniorUsers.timezone })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.id, `user:${userId}`));
+  return rows[0]?.timezone;
+}
+
+function slackActor(userId: string) {
+  return { platform: "slack" as const, teamId: TEST_TEAM_ID, userId };
 }
 
 async function readScheduledAutomation(id: string) {
@@ -1364,125 +1390,69 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
-  it("uses the Slack profile timezone for reminder context and new schedules", async () => {
-    process.env.JUNIOR_TIMEZONE = "America/Los_Angeles";
-    queueSlackApiResponse("users.info", {
-      body: usersInfoOk({ userId: "UNEWYORK", tz: "America/New_York" }),
-    });
-    const actor = await lookupSlackActor(TEST_TEAM_ID, "UNEWYORK");
-    const context = createContext({ actor });
-    expect(parseActor(actor)).toEqual(actor);
-    expect(parseStoredSlackActor(toStoredSlackActor(actor))?.timezone).toBe(
-      "America/New_York",
-    );
-    expect(
-      createSlackResumeActor({
-        actor,
-        teamId: TEST_TEAM_ID,
-        userId: "UNEWYORK",
-      }).timezone,
-    ).toBe("America/New_York");
-    expect(buildTurnContextPrompt({ availableSkills: [], actor })).toContain(
-      "- timezone: America/New_York",
-    );
+  it("uses the creator's Slack timezone and saves it on the user", async () => {
+    queueSlackProfileTimezone("UNEWYORK", "America/New_York");
+    await insertUser("UNEWYORK", "Europe/Vienna");
 
-    const created = await createTask(context, {
-      schedule: {
-        kind: "one_off",
-        timezone: null,
-        timing: { type: "at", date: "2026-05-26", time: "09:00" },
-      },
-    });
-    expect(created.automation).toMatchObject({
-      nextRunAt: "2026-05-26T13:00:00.000Z",
-      timezone: "America/New_York",
-    });
-    expect(
-      (await readScheduledAutomation(created.automation.id))?.schedule.timezone,
-    ).toBe("America/New_York");
-
-    const recurring = await createTask(context, {
-      schedule: {
-        kind: "recurring",
-        frequency: "weekly",
-        weekdays: ["monday"],
-        time: "09:00",
-        startDate: "2026-12-07",
-      },
-    });
-    expect(recurring.automation).toMatchObject({
-      nextRunAt: "2026-12-07T14:00:00.000Z",
-      timezone: "America/New_York",
-    });
-  });
-
-  it("honors explicit timezones and keeps the saved timezone on schedule edits", async () => {
-    const context = createContext({
-      actor: {
-        platform: "slack",
-        teamId: TEST_TEAM_ID,
-        userId: "UVIENNA",
-        timezone: "Europe/Vienna",
-      },
-    });
-    const created = await createTask(context, {
-      schedule: {
-        kind: "one_off",
-        timezone: "America/New_York",
-        timing: { type: "at", date: "2026-05-26", time: "09:00" },
-      },
-    });
-    expect(created.automation).toMatchObject({
-      nextRunAt: "2026-05-26T13:00:00.000Z",
-      timezone: "America/New_York",
-    });
-    const updated = await executeTool(
-      createSlackScheduleUpdateAutomationTool(context),
+    const created = await createTask(
+      createContext({ actor: slackActor("UNEWYORK") }),
       {
-        automationId: created.automation.id,
         schedule: {
           kind: "one_off",
-          timing: { type: "at", date: "2026-05-27", time: "09:00" },
+          timezone: null,
+          timing: { type: "at", date: "2026-05-26", time: "09:00" },
         },
       },
     );
-    expect(updated.automation).toMatchObject({
-      nextRunAt: "2026-05-27T13:00:00.000Z",
-      timezone: "America/New_York",
-    });
-  });
-
-  it("uses the install fallback when the actor has no timezone", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
-
-    const created = await createTask(createContext(), {
-      schedule: {
-        kind: "one_off",
-        timing: { type: "at", date: "2026-05-26", time: "09:00" },
-      },
-    });
 
     expect(created).toMatchObject({
       automation: {
-        nextRunAt: "2026-05-26T16:00:00.000Z",
+        nextRunAt: "2026-05-26T13:00:00.000Z",
         recurrence: null,
-        timezone: "America/Los_Angeles",
+        timezone: "America/New_York",
       },
     });
+    await expect(readUserTimezone("UNEWYORK")).resolves.toBe(
+      "America/New_York",
+    );
   });
 
-  it("uses JUNIOR_TIMEZONE as the default schedule timezone", async () => {
-    process.env.JUNIOR_TIMEZONE = "America/New_York";
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-25T12:00:00.000Z"));
+  it("uses the saved user timezone when Slack has no valid timezone", async () => {
+    queueSlackProfileTimezone("UVIENNA", "Not/AZone");
+    await insertUser("UVIENNA", "Europe/Vienna");
 
-    const created = await createTask(createContext(), {
-      schedule: {
-        kind: "one_off",
-        timing: { type: "at", date: "2026-05-26", time: "09:00" },
+    const created = await createTask(
+      createContext({ actor: slackActor("UVIENNA") }),
+      {
+        schedule: {
+          kind: "one_off",
+          timing: { type: "at", date: "2026-05-26", time: "09:00" },
+        },
+      },
+    );
+
+    expect(created).toMatchObject({
+      automation: {
+        nextRunAt: "2026-05-26T07:00:00.000Z",
+        timezone: "Europe/Vienna",
       },
     });
+    await expect(readUserTimezone("UVIENNA")).resolves.toBe("Europe/Vienna");
+  });
+
+  it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
+    process.env.JUNIOR_TIMEZONE = "America/New_York";
+    queueSlackProfileTimezone("UNOZONE", undefined);
+
+    const created = await createTask(
+      createContext({ actor: slackActor("UNOZONE"), linkedUser: false }),
+      {
+        schedule: {
+          kind: "one_off",
+          timing: { type: "at", date: "2026-05-26", time: "09:00" },
+        },
+      },
+    );
 
     expect(created).toMatchObject({
       automation: {
@@ -1495,9 +1465,10 @@ describe("Slack schedule tools", () => {
 
   it("rejects invalid default timezones", async () => {
     process.env.JUNIOR_TIMEZONE = "not/a-zone";
+    queueSlackProfileTimezone("UBADDEFAULT", undefined);
 
     await expect(
-      createTask(createContext(), {
+      createTask(createContext({ actor: slackActor("UBADDEFAULT") }), {
         schedule: {
           kind: "one_off",
           timing: { type: "after", value: 1, unit: "minute" },
