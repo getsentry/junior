@@ -91,6 +91,7 @@ it("submits each complete observation through the shared Gateway with a private 
     {
       id: "segment:1:2",
       model: "openai/gpt-6-luna",
+      reasoning: "none",
       system: "observe",
       prompt: "one",
       type: "text",
@@ -98,6 +99,7 @@ it("submits each complete observation through the shared Gateway with a private 
     {
       id: "segment:3:4",
       model: "openai/gpt-6-luna",
+      reasoning: "none",
       system: "observe",
       prompt: "two",
       type: "text",

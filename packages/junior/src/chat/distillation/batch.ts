@@ -48,6 +48,7 @@ export async function submitObservationBatch(args: {
       system: request.system,
       prompt: request.prompt,
       maxOutputTokens: 4_096,
+      reasoning: "none",
       temperature: 0,
     })),
   });
