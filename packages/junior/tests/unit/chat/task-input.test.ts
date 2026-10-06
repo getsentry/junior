@@ -19,14 +19,30 @@ describe("renderTaskInput", () => {
     `);
   });
 
-  it("renders an empty outcome list without a no-reply instruction", () => {
-    const text = renderTaskInput({
+  it("ends automation input with the declared result contract", () => {
+    const silent = renderTaskInput({
       instructions: "Apply the requested maintenance.",
       outcomes: [],
     });
+    const sends = renderTaskInput({
+      instructions: "Post a digest.",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        },
+      ],
+    });
 
-    expect(text).toContain("No successful output will be delivered.");
-    expect(text).not.toContain("[[NO_REPLY]]");
+    expect(silent.split("\n").slice(-2)).toEqual([
+      "End with `finishAutomationRun`. This automation posts nothing.",
+      "Use `no_action` when the work is done. Use `blocked` only when the creator must fix something.",
+    ]);
+    expect(sends.split("\n").slice(-2)).toEqual([
+      "End with `finishAutomationRun`. Use `send_message` with the finished message, following any format in the instructions.",
+      "Use `no_action` when nothing should be sent. Use `blocked` only when the creator must fix something.",
+    ]);
+    expect(`${silent}\n${sends}`).not.toContain("[[NO_REPLY]]");
   });
 
   it("renders optional facts between the job and reply contract", () => {

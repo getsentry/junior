@@ -121,7 +121,14 @@ describe("agent dispatch recovery", () => {
     const agentRunner = createModelAgentRunner(
       createModelStream([
         { type: "toolCall", name: "systemTime", arguments: {} },
-        { type: "text", text: "Resumed scheduled digest" },
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Resumed scheduled digest",
+          },
+        },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
@@ -177,6 +184,7 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
+    expect(resumedRun).not.toHaveProperty("delivery");
     expect(resumedRun?.instruction.text).toBe(dispatch.input);
     expect(resumedRun?.instruction.context).toBeUndefined();
   });

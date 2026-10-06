@@ -314,7 +314,8 @@ async function projectDispatchTurnResult(
     case "blocked":
       await markDispatchBlocked(
         dispatchId,
-        "Dispatch requires authorization that is unavailable for background work",
+        result.errorMessage ??
+          "Dispatch requires authorization that is unavailable for background work",
         result.resultMessageTs,
       );
       break;

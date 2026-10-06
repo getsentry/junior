@@ -35,6 +35,7 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
+import { isAutomationSource } from "@/chat/automation-result";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
@@ -514,8 +515,12 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
+  const promptMode = isAutomationSource(source) ? "automation" : "conversation";
+  // Automation runs have no Delivery port. Their declared message still goes
+  // to Slack, so they keep Slack formatting rules.
   const platform =
-    args.run.delivery && args.run.location?.provider === "slack"
+    (args.run.delivery || promptMode === "automation") &&
+    args.run.location?.provider === "slack"
       ? "slack"
       : "local";
   const systemPromptContributions =
@@ -523,7 +528,10 @@ export async function assemblePrompt(args: {
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt(platform), pluginSystemPrompt]
+  const baseInstructions = [
+    buildSystemPrompt(platform, promptMode),
+    pluginSystemPrompt,
+  ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =

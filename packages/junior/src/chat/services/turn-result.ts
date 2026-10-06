@@ -18,6 +18,10 @@ import {
   decideReply,
   sanitizeAssistantText,
 } from "@/chat/services/assistant-reply";
+import {
+  readAutomationResult,
+  type AutomationResult,
+} from "@/chat/automation-result";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -36,8 +40,13 @@ export interface AgentTurnDiagnostics {
 }
 
 export interface AgentRunResult {
-  /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
+  /**
+   * Sanitized terminal text for diagnostics and failure fallback. For an
+   * Automation run that declared `send_message`, this is the declared message.
+   */
   text: string;
+  /** Declared result of a Scheduled automation or Event automation run. */
+  automation?: AutomationResult;
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
@@ -56,10 +65,18 @@ export interface TurnResultInput {
   executionProfile: TurnRoute;
   assistantUserName?: string;
   modelId: string;
+  /** Automation runs succeed only with one declared result. */
+  requireAutomationResult?: boolean;
 }
+
+const MISSING_AUTOMATION_RESULT_ERROR =
+  "Automation run ended without a declared result.";
 
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
+  if (input.requireAutomationResult) {
+    return buildAutomationTurnResult(input);
+  }
   const {
     newMessages,
     toolCalls,
@@ -160,7 +177,9 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       "app.message.output": summarizeMessageText(primaryText),
       "app.ai.outcome": outcome,
       "app.ai.assistant_messages": assistantMessages.length,
-      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : undefined),
+      ...(stopReason
+        ? { "gen_ai.response.finish_reasons": [stopReason] }
+        : undefined),
     });
   }
 
@@ -194,5 +213,73 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     sandboxRef,
     piMessages: input.piMessages,
     diagnostics: resolvedDiagnostics,
+  };
+}
+
+/**
+ * Build the result of an Automation run from its declared result.
+ *
+ * Final assistant text is diagnostic only. A run without a declared result is
+ * an execution failure.
+ */
+function buildAutomationTurnResult(input: TurnResultInput): AgentRunResult {
+  const { newMessages, toolCalls, executionProfile, modelId } = input;
+  const toolResults = newMessages.filter(isToolResultMessage);
+  const assistantMessages = newMessages.filter(isAssistantMessage);
+  const lastAssistant = assistantMessages.at(-1);
+  const stopReason = lastAssistant?.stopReason;
+  const providerErrorMessage =
+    stopReason === "error" ? lastAssistant?.errorMessage : undefined;
+  const automation = readAutomationResult(newMessages);
+  const outcome: AgentTurnDiagnostics["outcome"] =
+    stopReason === "error"
+      ? "provider_error"
+      : automation
+        ? "success"
+        : "execution_failure";
+  const errorMessage =
+    outcome === "provider_error"
+      ? providerErrorMessage
+      : outcome === "execution_failure"
+        ? MISSING_AUTOMATION_RESULT_ERROR
+        : undefined;
+
+  if (input.shouldTrace) {
+    logInfo("agent.message.generated", {
+      "app.message.kind": "automation_result",
+      "app.ai.outcome": outcome,
+      "app.automation.result": automation?.result ?? "missing",
+      "app.ai.assistant_messages": assistantMessages.length,
+    });
+  }
+
+  return {
+    text: automation?.result === "send_message" ? automation.message : "",
+    ...(automation ? { automation } : undefined),
+    sandboxRef: input.sandboxRef,
+    piMessages: input.piMessages,
+    diagnostics: {
+      outcome,
+      modelId,
+      assistantMessageCount: assistantMessages.length,
+      reasoningLevel: executionProfile.reasoningLevel,
+      toolCalls,
+      toolResultCount: toolResults.length,
+      toolErrorCount: toolResults.filter((result) => result.isError).length,
+      usedPrimaryText: automation?.result === "send_message",
+      durationMs: input.durationMs,
+      usage: input.usage,
+      ...(stopReason ? { stopReason } : undefined),
+      ...(errorMessage ? { errorMessage } : undefined),
+      providerError:
+        outcome === "provider_error" && providerErrorMessage
+          ? createProviderError(providerErrorMessage, {
+              modelId,
+              retryable:
+                lastAssistant !== undefined &&
+                isRetryableAssistantError(lastAssistant),
+            })
+          : undefined,
+    },
   };
 }

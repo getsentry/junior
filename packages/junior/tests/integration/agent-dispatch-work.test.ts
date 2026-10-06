@@ -29,6 +29,19 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
+/** Model output that ends an Automation run with one declared result. */
+function finishRun(
+  args:
+    | { result: "send_message"; message: string }
+    | { result: "no_action" | "blocked"; reason: string },
+) {
+  return {
+    type: "toolCall" as const,
+    name: "finishAutomationRun",
+    arguments: args,
+  };
+}
+
 describe("agent dispatch conversation work", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -50,7 +63,9 @@ describe("agent dispatch conversation work", () => {
       input,
     );
     const modelStream = vi.fn(
-      createModelStream([{ type: "text", text: "Done" }]),
+      createModelStream([
+        finishRun({ result: "send_message", message: "Done" }),
+      ]),
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(modelStream),
@@ -80,6 +95,10 @@ describe("agent dispatch conversation work", () => {
       publishExternally: true,
     });
     expect(modelStream).toHaveBeenCalledOnce();
+    const systemPrompt = modelStream.mock.calls[0]?.[1].systemPrompt;
+    expect(systemPrompt).toContain("<automation-run>");
+    expect(systemPrompt).not.toContain("<conversation>");
+    expect(systemPrompt).toContain(`<output format="slack-markdown">`);
     const instruction = modelStream.mock.calls[0]?.[1].messages.at(-1);
     if (!instruction) {
       throw new Error("Expected one model instruction");
@@ -97,8 +116,13 @@ describe("agent dispatch conversation work", () => {
       undefined,
       { label: "Scheduled automation", detail: "Weekly" },
     );
+    // The first stop has no declared result. The run gets one reminder, and
+    // only the declared message is delivered.
     const agentRunner = createModelAgentRunner(
-      createModelStream([{ type: "text", text: "Scheduled digest" }]),
+      createModelStream([
+        { type: "text", text: "Draft that must not be delivered" },
+        finishRun({ result: "send_message", message: "Scheduled digest" }),
+      ]),
     );
     const run = vi.spyOn(agentRunner, "run");
     const {
@@ -170,7 +194,9 @@ describe("agent dispatch conversation work", () => {
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(
-        createModelStream([{ type: "text", text: "Scheduled digest" }]),
+        createModelStream([
+          finishRun({ result: "send_message", message: "Scheduled digest" }),
+        ]),
       ),
     );
 
@@ -208,7 +234,9 @@ describe("agent dispatch conversation work", () => {
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(
-        createModelStream([{ type: "text", text: "Work complete" }]),
+        createModelStream([
+          finishRun({ result: "send_message", message: "Work complete" }),
+        ]),
       ),
     );
 
@@ -224,37 +252,53 @@ describe("agent dispatch conversation work", () => {
     ).toEqual(["D123", "C456"]);
   });
 
-  it("completes work with no outcomes without posting the model result", async () => {
-    const dispatch = await createDispatch(
-      "no-outcomes",
-      undefined,
-      undefined,
-      undefined,
-      "Apply the requested maintenance.",
-      [],
-    );
-    const agentRunner = createModelAgentRunner(
-      createModelStream([{ type: "text", text: "Maintenance complete" }]),
-    );
-    const runAgent = vi.spyOn(agentRunner, "run");
-    const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+  it.each([
+    {
+      declared: finishRun({ result: "no_action", reason: "Maintenance done" }),
+      expected: { status: "completed" },
+    },
+    {
+      declared: finishRun({
+        result: "blocked",
+        reason: "The maintenance repo was archived.",
+      }),
+      expected: {
+        errorMessage: "The maintenance repo was archived.",
+        status: "blocked",
+      },
+    },
+  ])(
+    "records a declared $declared.arguments.result result without posting",
+    async ({ declared, expected }) => {
+      const dispatch = await createDispatch(
+        `silent-${declared.arguments.result}`,
+        undefined,
+        undefined,
+        undefined,
+        "Apply the requested maintenance.",
+        [],
+      );
+      const agentRunner = createModelAgentRunner(createModelStream([declared]));
+      const runAgent = vi.spyOn(agentRunner, "run");
+      const { queue, run, state } =
+        await createAgentDispatchWorkHarness(agentRunner);
 
-    await enqueueAgentDispatch(dispatch, { queue, state });
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
+      await enqueueAgentDispatch(dispatch, { queue, state });
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        state,
+      });
 
-    expect(slackApiOutbox.messages()).toEqual([]);
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "completed",
-      outcomes: [],
-    });
-    expect(runAgent).toHaveBeenCalledOnce();
-    expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
-  });
+      expect(slackApiOutbox.messages()).toEqual([]);
+      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+        ...expected,
+        outcomes: [],
+      });
+      expect(runAgent).toHaveBeenCalledOnce();
+      expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+    },
+  );
 
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");

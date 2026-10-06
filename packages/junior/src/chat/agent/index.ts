@@ -76,6 +76,11 @@ import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
+import {
+  FINISH_AUTOMATION_RUN_TOOL_NAME,
+  isAutomationSource,
+  remindMissingAutomationResult,
+} from "@/chat/automation-result";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
   findProviderError,
@@ -285,6 +290,8 @@ async function executeAgentRunInPrivacyContext(
   const conversationId = run.conversationId;
   const turnId = run.turnId;
   const runId = run.runId;
+  // Automation runs end only with a declared result.
+  const requireAutomationResult = isAutomationSource(run.source);
   const input = {
     actor: run.instruction.actor,
     includeConversationContextWithPiMessages:
@@ -1096,7 +1103,7 @@ async function executeAgentRunInPrivacyContext(
         }
         return undefined;
       },
-      afterToolCall: async ({ result, toolCall }, signal) => {
+      afterToolCall: async ({ isError, result, toolCall }, signal) => {
         // Host continuity is session-owned (`resumeReason: "timeout"` + auto
         // continue). Only rewrite tool attempts that themselves aborted; a
         // finished sibling must keep its real result. Project those preempted
@@ -1110,9 +1117,18 @@ async function executeAgentRunInPrivacyContext(
           toolCall.id,
           sourceResult,
         );
-        return timedOutResult || projectedResult !== result
-          ? projectedResult
-          : undefined;
+        const override =
+          timedOutResult || projectedResult !== result
+            ? projectedResult
+            : undefined;
+        // A declared Automation result is the last step of the run.
+        if (
+          toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME &&
+          !(override && "isError" in override ? override.isError : isError)
+        ) {
+          return { ...override, terminate: true };
+        }
+        return override;
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
@@ -1415,6 +1431,7 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           let discardedRetryUsage: AgentTurnUsage | undefined;
           let actionConfirmationRetryUsed = false;
+          let automationResultReminderUsed = !requireAutomationResult;
           let providerRetryAttempt = 0;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
@@ -1484,6 +1501,21 @@ async function executeAgentRunInPrivacyContext(
               if (confirmationRetry) {
                 actionConfirmationRetryUsed = true;
                 await prepareRetry(confirmationRetry);
+                run = agent!.continue();
+                continue;
+              }
+
+              const automationResultReminder = automationResultReminderUsed
+                ? undefined
+                : remindMissingAutomationResult(
+                    agent!.state.messages,
+                    newMessages,
+                  );
+              if (automationResultReminder) {
+                automationResultReminderUsed = true;
+                agent!.state.messages = automationResultReminder;
+                await runResume.persistSafeBoundary(automationResultReminder);
+                logWarn("agent.turn.automation_result.reminded", {});
                 run = agent!.continue();
                 continue;
               }
@@ -1588,6 +1620,7 @@ async function executeAgentRunInPrivacyContext(
       executionProfile: turnRoute,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
+      requireAutomationResult,
     });
     return {
       status: "completed",

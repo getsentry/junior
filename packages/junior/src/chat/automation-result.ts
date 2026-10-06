@@ -1,0 +1,139 @@
+/**
+ * Automation run result.
+ *
+ * A Scheduled automation or Event automation run ends with one declared
+ * result. The run does not deliver its final assistant text. The work owner
+ * reads the declared result and applies the stored outcomes.
+ */
+import type { Source, TaskOutcome } from "@sentry/junior-plugin-api";
+import { z } from "zod";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  isAssistantMessage,
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
+} from "@/chat/pi/transcript";
+
+/** Model-facing tool that ends an Automation run. */
+export const FINISH_AUTOMATION_RUN_TOOL_NAME = "finishAutomationRun";
+
+/** One declared result for an Automation run. */
+export const automationResultSchema = z.discriminatedUnion("result", [
+  z.object({
+    result: z.literal("send_message"),
+    message: z.string().trim().min(1),
+  }),
+  z.object({
+    result: z.literal("no_action"),
+    reason: z.string().trim().min(1),
+  }),
+  z.object({
+    result: z.literal("blocked"),
+    reason: z.string().trim().min(1),
+  }),
+]);
+
+/** One declared result for an Automation run. */
+export type AutomationResult = z.output<typeof automationResultSchema>;
+
+/** Return whether this Source starts an Automation run. */
+export function isAutomationSource(source: Source): boolean {
+  return (
+    source.kind === "scheduled_automation" || source.kind === "event_automation"
+  );
+}
+
+/**
+ * Return whether a successful Automation run sends a message.
+ *
+ * Missing outcomes are legacy dispatch records. They send to the dispatch
+ * Destination, so they still send a message.
+ */
+export function automationSendsMessage(
+  outcomes: readonly TaskOutcome[] | undefined,
+): boolean {
+  return outcomes === undefined || outcomes.length > 0;
+}
+
+/** Read the last successful declared result from agent history items. */
+export function readAutomationResult(
+  messages: readonly unknown[],
+): AutomationResult | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      !isToolResultMessage(message) ||
+      isToolResultError(message) ||
+      normalizeToolNameFromResult(message) !== FINISH_AUTOMATION_RUN_TOOL_NAME
+    ) {
+      continue;
+    }
+    const parsed = automationResultSchema.safeParse(message.details);
+    if (parsed.success) {
+      return parsed.data;
+    }
+  }
+  return undefined;
+}
+
+/** Dispatch outcome and error text recorded for one finished agent run. */
+export interface RunDispatchOutcome {
+  errorMessage?: string;
+  outcome: "blocked" | "completed" | "failed";
+}
+
+/**
+ * Map one finished agent run to its dispatch outcome.
+ *
+ * A declared `blocked` result is a problem the automation creator must fix.
+ * It is recorded as a blocked dispatch with the declared reason.
+ */
+export function runDispatchOutcome(result: {
+  automation?: AutomationResult;
+  diagnostics: { errorMessage?: string; outcome: string };
+}): RunDispatchOutcome {
+  if (result.diagnostics.outcome !== "success") {
+    return {
+      errorMessage:
+        result.diagnostics.errorMessage ??
+        `Agent turn ended with ${result.diagnostics.outcome}.`,
+      outcome: "failed",
+    };
+  }
+  if (result.automation?.result === "blocked") {
+    return { errorMessage: result.automation.reason, outcome: "blocked" };
+  }
+  return { outcome: "completed" };
+}
+
+const MISSING_RESULT_REMINDER =
+  "This automation run has not ended. Your text was not delivered. Call `finishAutomationRun` now with one result.";
+
+/**
+ * Return agent history with one reminder when the model stopped without a
+ * declared result. Return undefined when no reminder applies.
+ *
+ * The run gets one reminder. A second stop without a result fails the run.
+ */
+export function remindMissingAutomationResult(
+  messages: readonly PiMessage[],
+  newMessages: readonly unknown[],
+): PiMessage[] | undefined {
+  const last = messages.at(-1);
+  if (
+    !isAssistantMessage(last) ||
+    last.stopReason !== "stop" ||
+    readAutomationResult(newMessages)
+  ) {
+    return undefined;
+  }
+  return [
+    ...messages,
+    {
+      role: "user",
+      content: [{ type: "text", text: MISSING_RESULT_REMINDER }],
+      timestamp: Date.now(),
+    } as PiMessage,
+  ];
+}

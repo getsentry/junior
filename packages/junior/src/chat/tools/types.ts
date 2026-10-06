@@ -88,6 +88,11 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
+  /** Present only for Scheduled automation and Event automation runs. */
+  automation?: {
+    /** True when a successful run sends a message to stored Destinations. */
+    sendsMessage: boolean;
+  };
   handoff?: HandoffControl;
   spawnAgent?: SpawnAgent;
   /**

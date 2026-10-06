@@ -21,6 +21,10 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  isAutomationSource,
+  runDispatchOutcome,
+} from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
@@ -353,7 +357,10 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    ...(savedRun.dispatch?.outcomes?.length === 0 ? undefined : { delivery }),
+    // Automation runs deliver only their declared result after the run.
+    ...(savedRun.dispatch?.outcomes?.length === 0 || isAutomationSource(source)
+      ? undefined
+      : { delivery }),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {
@@ -641,12 +648,16 @@ async function resumeSlackTurnInContext(
           logException,
         });
         const reply = finalized.reply;
-        const dispatchErrorMessage =
-          run.dispatch && reply.diagnostics.outcome !== "success"
-            ? (reply.diagnostics.errorMessage ??
-              `Agent turn ended with ${reply.diagnostics.outcome}.`)
-            : undefined;
+        const dispatchResult = runDispatchOutcome(reply);
+        const dispatchErrorMessage = run.dispatch
+          ? dispatchResult.errorMessage
+          : undefined;
         if (reply.diagnostics.outcome !== "success") {
+          await deliverAssistantMessage(reply.text);
+        } else if (
+          reply.automation?.result === "send_message" &&
+          run.dispatch?.outcomes?.length !== 0
+        ) {
           await deliverAssistantMessage(reply.text);
         }
         runResultHandled = true;
@@ -666,8 +677,7 @@ async function resumeSlackTurnInContext(
             destination: run.destination,
             destinationVisibility: visibility,
             dispatchId: run.dispatch?.id,
-            dispatchOutcome:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
+            dispatchOutcome: dispatchResult.outcome,
             ...(dispatchErrorMessage
               ? { errorMessage: dispatchErrorMessage }
               : undefined),
@@ -685,8 +695,7 @@ async function resumeSlackTurnInContext(
             destination: run.destination,
             destinationVisibility: visibility,
             dispatchId: run.dispatch?.id,
-            dispatchOutcome:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
+            dispatchOutcome: dispatchResult.outcome,
             ...(acceptedDeliveryId
               ? { resultMessageId: acceptedDeliveryId }
               : undefined),

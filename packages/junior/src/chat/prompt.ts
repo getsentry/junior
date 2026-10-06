@@ -32,7 +32,12 @@ import type {
   Platform,
   Source,
   SystemActor,
+  TaskOutcome,
 } from "@sentry/junior-plugin-api";
+import {
+  FINISH_AUTOMATION_RUN_TOOL_NAME,
+  isAutomationSource,
+} from "@/chat/automation-result";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -344,6 +349,19 @@ const SLACK_ACTION_RULES = [
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 
+// Automation runs replace the interactive task, conversation, and Slack action
+// rules. Nobody reads the run while it executes, and only the declared result
+// is delivered.
+const AUTOMATION_RUN_RULES = [
+  "- This run comes from a stored automation, not from a person. The stored instruction is the job. Its creator approved it when they created the automation.",
+  "- Nobody reads this run while it executes. Do not ask questions, ask for approval, or offer options. Infer conservatively and do the work now.",
+  "- When the instruction has a condition, check it first. When the condition is not met, or you cannot verify it, end with `no_action`.",
+  "- A tool result with `timed_out: true` means that attempt did not finish. Before you retry work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
+  `- Your assistant text is never delivered. End the run with exactly one \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` call, alone in its message.`,
+  "- `send_message` sends its `message` text to the stored outcome destinations. Do not post the result with another tool.",
+  "- Use `blocked` only for a real problem that the automation creator must fix, such as missing access, a missing tool, or an instruction that cannot work. A blocked scheduled automation stops until someone resumes it.",
+];
+
 const SAFETY_RULES = [
   "- Stay within the user's request and the runtime's available capabilities; do not pursue independent goals, persistence, replication, credential gathering, or access expansion.",
   "- Respect stop, pause, audit, and approval boundaries. Do not bypass safeguards or persuade the user to weaken them.",
@@ -360,7 +378,21 @@ function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
 }
 
-function buildBehaviorSection(platform: PromptPlatform): string {
+function buildBehaviorSection(
+  platform: PromptPlatform,
+  mode: PromptMode,
+): string {
+  if (mode === "automation") {
+    return [
+      renderRuleSection("tool-policy", TOOL_POLICY_RULES),
+      renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
+      renderRuleSection("skill-policy", SKILL_POLICY_RULES),
+      renderRuleSection("planning", PLANNING_RULES),
+      renderRuleSection("automation-run", AUTOMATION_RUN_RULES),
+      renderRuleSection("safety", SAFETY_RULES),
+      renderRuleSection("failure-handling", FAILURE_RULES),
+    ].join("\n\n");
+  }
   const sections = [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
@@ -381,7 +413,27 @@ function buildBehaviorSection(platform: PromptPlatform): string {
   return sections.join("\n\n");
 }
 
-function buildOutputSection(platform: PromptPlatform): string {
+function buildAutomationOutputSection(platform: PromptPlatform): string {
+  return [
+    platform === "slack"
+      ? `<output format="slack-markdown">`
+      : `<output format="markdown">`,
+    "- The `send_message` text is the finished deliverable: the reminder, digest, alert, or answer itself. Do not describe the run or your process.",
+    "- Follow any format in the instruction. Otherwise keep the message as short as the job allows.",
+    platform === "slack"
+      ? "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables."
+      : "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+    "</output>",
+  ].join("\n");
+}
+
+function buildOutputSection(
+  platform: PromptPlatform,
+  mode: PromptMode,
+): string {
+  if (mode === "automation") {
+    return buildAutomationOutputSection(platform);
+  }
   if (platform === "local") {
     return [
       `<output format="markdown">`,
@@ -496,12 +548,33 @@ function formatDestinationLines(destination: Destination): string[] {
   ];
 }
 
+function formatOutcomeLines(outcomes: TaskOutcome[] | undefined): string[] {
+  if (!outcomes) {
+    return [
+      "- dispatch.outcomes: send_message to the destination below (legacy default)",
+    ];
+  }
+  if (outcomes.length === 0) {
+    return ["- dispatch.outcomes: none; successful work posts nothing"];
+  }
+  return outcomes.map((outcome, index) => {
+    const target = [
+      `channel_id=${escapeXml(outcome.destination.channelId)}`,
+      ...(outcome.destination.threadTs
+        ? [`thread_ts=${escapeXml(outcome.destination.threadTs)}`]
+        : []),
+    ].join(" ");
+    return `- dispatch.outcome.${index + 1}: ${outcome.action} to slack ${target}`;
+  });
+}
+
 function buildDispatchSection(
   params:
     | {
         actor?: SystemActor;
         destination: Destination;
         metadata?: Record<string, string>;
+        outcomes?: TaskOutcome[];
         plugin?: string;
         source: Source;
       }
@@ -517,10 +590,18 @@ function buildDispatchSection(
       ([key, value]) =>
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
+  const deliveryLines = isAutomationSource(params.source)
+    ? [
+        `- dispatch.delivery: only the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` result is delivered; assistant text is not`,
+        ...formatOutcomeLines(params.outcomes),
+      ]
+    : [
+        "- dispatch.delivery: the runtime delivers the final answer to the destination",
+        "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
+      ];
   return renderTag("dispatch", [
     "- dispatch.execution: execute the dispatched input now",
-    "- dispatch.delivery: the runtime delivers the final answer to the destination",
-    "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
+    ...deliveryLines,
     ...(params.actor
       ? [
           `- dispatch.actor.platform: ${escapeXml(params.actor.platform)}`,
@@ -543,6 +624,7 @@ function buildContextSection(params: {
     actor?: SystemActor;
     destination: Destination;
     metadata?: Record<string, string>;
+    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };
@@ -678,6 +760,7 @@ type TurnContextPromptInput = {
     actor?: SystemActor;
     destination: Destination;
     metadata?: Record<string, string>;
+    outcomes?: TaskOutcome[];
     plugin?: string;
     source: Source;
   };
@@ -689,27 +772,48 @@ type TurnContextPromptInput = {
   configuration?: Record<string, unknown>;
 };
 
-function buildStaticSystemPrompt(platform: PromptPlatform): string {
+/**
+ * Prompt mode for one Run. `automation` is for Scheduled automation and Event
+ * automation runs. It replaces the interactive conversation rules.
+ */
+export type PromptMode = "automation" | "conversation";
+
+function buildStaticSystemPrompt(
+  platform: PromptPlatform,
+  mode: PromptMode,
+): string {
   return [
     platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
     buildIdentitySection(platform),
     buildPersonalitySection(),
     buildWorldSection(),
-    buildBehaviorSection(platform),
-    buildOutputSection(platform),
+    buildBehaviorSection(platform, mode),
+    buildOutputSection(platform, mode),
   ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 }
 
-const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
-  local: buildStaticSystemPrompt("local"),
-  slack: buildStaticSystemPrompt("slack"),
+const STATIC_SYSTEM_PROMPTS: Record<
+  PromptMode,
+  Record<PromptPlatform, string>
+> = {
+  automation: {
+    local: buildStaticSystemPrompt("local", "automation"),
+    slack: buildStaticSystemPrompt("slack", "automation"),
+  },
+  conversation: {
+    local: buildStaticSystemPrompt("local", "conversation"),
+    slack: buildStaticSystemPrompt("slack", "conversation"),
+  },
 };
 
-/** Return the fixed instructions shared by every Conversation and Turn. */
-export function buildSystemPrompt(platform: PromptPlatform): string {
-  return STATIC_SYSTEM_PROMPTS[platform];
+/** Return the fixed instructions for one platform and prompt mode. */
+export function buildSystemPrompt(
+  platform: PromptPlatform,
+  mode: PromptMode = "conversation",
+): string {
+  return STATIC_SYSTEM_PROMPTS[mode][platform];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

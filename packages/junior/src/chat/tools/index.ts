@@ -16,6 +16,8 @@ import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createEventAutomationTools } from "@/chat/tools/event-automations";
@@ -202,6 +204,12 @@ export function createTools(
 
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+  }
+
+  if (context.automation) {
+    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
+      context.automation,
+    );
   }
 
   if (context.mcpToolManager) {

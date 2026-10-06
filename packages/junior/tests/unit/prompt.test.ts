@@ -77,6 +77,40 @@ describe("prompt builders", () => {
     expect(prompt).toContain("- dispatch.metadata.taskId: sched_plugin_1");
   });
 
+  it("renders declared result delivery and outcomes for automation dispatches", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+      dispatch: {
+        source: { kind: "scheduled_automation" },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        outcomes: [
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: "T123",
+              channelId: "D456",
+              threadTs: "1700000000.000100",
+            },
+          },
+        ],
+      },
+    });
+
+    expect(prompt).toContain(
+      "- dispatch.delivery: only the `finishAutomationRun` result is delivered; assistant text is not",
+    );
+    expect(prompt).toContain(
+      "- dispatch.outcome.1: send_message to slack channel_id=D456 thread_ts=1700000000.000100",
+    );
+    expect(prompt).not.toContain("dispatch.delivery_rule");
+  });
+
   it("omits follow-up runtime context once session bootstrap exists", () => {
     expect(
       buildTurnContextPrompt({

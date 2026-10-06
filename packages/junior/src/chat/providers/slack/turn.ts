@@ -146,6 +146,10 @@ import {
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  isAutomationSource,
+  runDispatchOutcome,
+} from "@/chat/automation-result";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -1139,7 +1143,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            ...(options.execution?.dispatch?.outcomes?.length === 0
+            // Automation runs deliver only their declared result after the
+            // run. Silent work has no Delivery.
+            ...(options.execution?.dispatch?.outcomes?.length === 0 ||
+            isAutomationSource(source)
               ? undefined
               : { delivery: deliverAssistantMessage }),
             durability: {
@@ -1178,16 +1185,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               failureEventId = finalized.eventId;
               failureReason = finalized.failureReason;
               await deliverAssistantMessage(finalResult.text);
+            } else if (
+              finalResult.automation?.result === "send_message" &&
+              options.execution?.dispatch?.outcomes?.length !== 0
+            ) {
+              await deliverAssistantMessage(finalResult.text);
             }
-            const turnResult: DispatchTurnResult =
-              finalResult.diagnostics.outcome === "success"
-                ? { outcome: "completed" }
-                : {
-                    errorMessage:
-                      finalResult.diagnostics.errorMessage ??
-                      `Agent turn ended with ${finalResult.diagnostics.outcome}.`,
-                    outcome: "failed",
-                  };
+            const turnResult = runDispatchOutcome(finalResult);
             runResultHandled = true;
             shouldPersistFailureState = false;
             boundaryFailureCode = "agent_run_failed";
@@ -1216,10 +1220,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   destinationVisibility,
                   source,
                   sliceId: 1,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(options.execution?.dispatch && turnResult.errorMessage
                     ? { errorMessage: turnResult.errorMessage }
                     : undefined),
@@ -1247,10 +1248,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   source,
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(acceptedDeliveryId
                     ? { resultMessageId: acceptedDeliveryId }
                     : undefined),

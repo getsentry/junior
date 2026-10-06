@@ -80,6 +80,10 @@ import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evide
 import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import {
+  automationSendsMessage,
+  isAutomationSource,
+} from "@/chat/automation-result";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -391,6 +395,13 @@ export async function wireAgentTools(
       ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
+    ...(isAutomationSource(runSource)
+      ? {
+          automation: {
+            sendsMessage: automationSendsMessage(args.run.dispatch?.outcomes),
+          },
+        }
+      : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,

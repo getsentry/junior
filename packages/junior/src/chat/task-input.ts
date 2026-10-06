@@ -4,18 +4,28 @@
  * and the reply contract. Section outline lives in `chat/README.md`.
  */
 import type { TaskOutcome } from "@sentry/junior-plugin-api";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
-/** Shared closing lines for the stored outcomes. */
+/**
+ * Shared closing lines. Automations pass outcomes and end with a declared
+ * result. Watches pass no outcomes and reply in the Conversation.
+ */
 function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
-  if (outcomes?.length === 0) {
+  if (!outcomes) {
     return [
-      "Do the work without writing a status message.",
-      "No successful output will be delivered.",
+      "When you reply, follow any reply format in the instructions.",
+      "Briefly report what you did or what is needed next.",
+    ];
+  }
+  if (outcomes.length === 0) {
+    return [
+      `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. This automation posts nothing.`,
+      "Use `no_action` when the work is done. Use `blocked` only when the creator must fix something.",
     ];
   }
   return [
-    "When you reply, follow any reply format in the instructions.",
-    "Briefly report what you did or what is needed next.",
+    `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Use \`send_message\` with the finished message, following any format in the instructions.`,
+    "Use `no_action` when nothing should be sent. Use `blocked` only when the creator must fix something.",
   ];
 }
 
@@ -39,7 +49,7 @@ function clip(value: string, maxLength: number | undefined): string {
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
   instructions: string;
-  /** Visible effects after successful work. Missing legacy values send a message. */
+  /** Stored automation outcomes. Watches omit this and reply in the Conversation. */
   outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
