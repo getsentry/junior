@@ -1,4 +1,23 @@
 # Changelog
+## 0.237.0
+
+### New Features ✨
+
+- (brand) Update Junior to the friendlier character art by @sentry-junior in [#2046](https://github.com/getsentry/junior/pull/2046)
+- (sentry) Use an org token for Sentry API reads by @sentry-junior in [#2049](https://github.com/getsentry/junior/pull/2049)
+
+### Bug Fixes 🐛
+
+- (brand) Use head-and-shoulders crops for all Junior avatars by @sentry-junior in [#2048](https://github.com/getsentry/junior/pull/2048)
+- (scheduler) Use the creator's timezone for new schedules by @sentry-junior in [#1921](https://github.com/getsentry/junior/pull/1921)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the last evals to the agent test fixture and use the judge matcher by @dcramer in [#2038](https://github.com/getsentry/junior/pull/2038)
+- Move the OAuth and Sentry evals to the agent test fixture by @dcramer in [#2031](https://github.com/getsentry/junior/pull/2031)
+
 ## 0.236.0
 
 ### New Features ✨
