@@ -25,7 +25,7 @@ import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorUsers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { readUserTimezone } from "@/chat/identities/sql";
 import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -160,10 +160,8 @@ function schedulerDb(): JuniorDatabase {
   return currentFixture.sql.db();
 }
 
-function queueSlackProfileTimezone(userId: string, tz: string | undefined) {
-  const body = usersInfoOk({ userId, ...(tz ? { tz } : undefined) });
-  if (!tz) delete body.user.tz;
-  queueSlackApiResponse("users.info", { body });
+function queueSlackTimezone(userId: string, tz: string) {
+  queueSlackApiResponse("users.info", { body: usersInfoOk({ userId, tz }) });
 }
 
 async function insertUser(userId: string, timezone?: string) {
@@ -178,14 +176,6 @@ async function insertUser(userId: string, timezone?: string) {
       createdAt: now,
       updatedAt: now,
     });
-}
-
-async function readUserTimezone(userId: string) {
-  const rows = await schedulerDb()
-    .select({ timezone: juniorUsers.timezone })
-    .from(juniorUsers)
-    .where(eq(juniorUsers.id, `user:${userId}`));
-  return rows[0]?.timezone;
 }
 
 function slackActor(userId: string) {
@@ -1391,7 +1381,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("uses the creator's Slack timezone and saves it on the user", async () => {
-    queueSlackProfileTimezone("UNEWYORK", "America/New_York");
+    queueSlackTimezone("UNEWYORK", "America/New_York");
     await insertUser("UNEWYORK", "Europe/Vienna");
 
     const created = await createTask(
@@ -1412,13 +1402,13 @@ describe("Slack schedule tools", () => {
         timezone: "America/New_York",
       },
     });
-    await expect(readUserTimezone("UNEWYORK")).resolves.toBe(
-      "America/New_York",
-    );
+    await expect(
+      readUserTimezone(schedulerDb(), "user:UNEWYORK"),
+    ).resolves.toBe("America/New_York");
   });
 
   it("uses the saved user timezone when Slack has no valid timezone", async () => {
-    queueSlackProfileTimezone("UVIENNA", "Not/AZone");
+    queueSlackTimezone("UVIENNA", "Not/AZone");
     await insertUser("UVIENNA", "Europe/Vienna");
 
     const created = await createTask(
@@ -1437,12 +1427,14 @@ describe("Slack schedule tools", () => {
         timezone: "Europe/Vienna",
       },
     });
-    await expect(readUserTimezone("UVIENNA")).resolves.toBe("Europe/Vienna");
+    await expect(readUserTimezone(schedulerDb(), "user:UVIENNA")).resolves.toBe(
+      "Europe/Vienna",
+    );
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
     process.env.JUNIOR_TIMEZONE = "America/New_York";
-    queueSlackProfileTimezone("UNOZONE", undefined);
+    queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
       createContext({ actor: slackActor("UNOZONE"), linkedUser: false }),
@@ -1465,7 +1457,7 @@ describe("Slack schedule tools", () => {
 
   it("rejects invalid default timezones", async () => {
     process.env.JUNIOR_TIMEZONE = "not/a-zone";
-    queueSlackProfileTimezone("UBADDEFAULT", undefined);
+    queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
       createTask(createContext({ actor: slackActor("UBADDEFAULT") }), {

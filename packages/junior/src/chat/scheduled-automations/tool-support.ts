@@ -400,9 +400,9 @@ export function getDefaultScheduleTimezone(): string {
 }
 
 /**
- * Pick the default timezone for a new schedule when the user names none.
- * The creator's Slack profile wins and is saved on the linked user. The saved
- * user timezone covers a failed Slack lookup. The install default comes last.
+ * Pick the timezone for a new schedule when the user names none: the
+ * creator's Slack profile, then the saved user timezone, then the install
+ * default. A valid Slack timezone is saved on the linked user.
  */
 export async function resolveCreatorScheduleTimezone(args: {
   db: JuniorDatabase;
@@ -412,16 +412,15 @@ export async function resolveCreatorScheduleTimezone(args: {
   userId?: string;
 }): Promise<string> {
   const profile = await lookupSlackUser(args.teamId, args.slackUserId);
-  const observed =
-    profile?.timezone && isValidTimeZone(profile.timezone)
-      ? profile.timezone
-      : undefined;
-  if (args.userId && observed) {
-    await saveUserTimezone(args.db, args.userId, observed, args.nowMs);
+  const timezone = profile?.timezone;
+  if (timezone && isValidTimeZone(timezone)) {
+    if (args.userId) {
+      await saveUserTimezone(args.db, args.userId, timezone, args.nowMs);
+    }
+    return timezone;
   }
-  if (observed) return observed;
   const saved = args.userId
     ? await readUserTimezone(args.db, args.userId)
     : undefined;
-  return saved && isValidTimeZone(saved) ? saved : getDefaultScheduleTimezone();
+  return saved ?? getDefaultScheduleTimezone();
 }

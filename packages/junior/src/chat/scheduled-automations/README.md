@@ -28,10 +28,10 @@ A new schedule uses the first available timezone from this list:
 
 1. the timezone that the user asks for;
 2. the creator's Slack profile `tz`;
-3. `junior_users.timezone` for the creator's linked user;
+3. the creator's `junior_users.timezone`;
 4. `JUNIOR_TIMEZONE`, or `America/Los_Angeles` when that setting is absent.
 
-When the Slack profile has a valid timezone, the create tool saves it to `junior_users.timezone`. The saved value is used only when a later Slack lookup fails. Edits keep the saved schedule timezone unless the user asks to change it.
+The create tool saves a valid Slack timezone to `junior_users.timezone`. The saved value is used only when Slack has no valid timezone. Edits keep the schedule timezone unless the user asks to change it.
 
 Do not put the timezone on the Actor. The Actor is stored with each message, and a timezone is a user preference that can change.
 

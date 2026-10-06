@@ -113,10 +113,18 @@ async function upsertIdentityRecord(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  if (linkedUserId && verifiedUserId && linkedUserId !== verifiedUserId) {
+  if (
+    linkedUserId &&
+    verifiedUserId &&
+    linkedUserId !== verifiedUserId
+  ) {
     throw new Error("Linked identity conflicts with verified email user");
   }
-  if (existing?.userId && linkedUserId && existing.userId !== linkedUserId) {
+  if (
+    existing?.userId &&
+    linkedUserId &&
+    existing.userId !== linkedUserId
+  ) {
     throw new Error("Identity conflicts with linked user");
   }
   const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
@@ -198,12 +206,12 @@ export async function readUserTimezone(
   return rows[0]?.timezone ?? undefined;
 }
 
-/** Save the latest observed IANA timezone for one user. */
+/** Save the IANA timezone for one user. */
 export async function saveUserTimezone(
   db: JuniorDatabase,
   userId: string,
   timezone: string,
-  nowMs: number = Date.now(),
+  nowMs: number,
 ): Promise<void> {
   await db
     .update(juniorUsers)

@@ -7,7 +7,7 @@ interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
   email?: string;
-  /** Slack profile timezone. Never copy it onto the Actor. */
+  /** Slack profile timezone. Do not copy it onto the Actor. */
   timezone?: string;
 }
 
