@@ -117,6 +117,8 @@ export interface Turn {
 
 /** What one call added to a Conversation. */
 export interface CallEvents {
+  /** Times Junior replaced agent history with a summary. */
+  compactions: number;
   lastSeq: number;
   replies: Reply[];
   toolCalls: ToolCall[];
@@ -169,6 +171,7 @@ export function readCallEvents(args: {
   const toolCalls = new Map<string, ToolCall>();
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
+  let compactions = 0;
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -228,6 +231,10 @@ export function readCallEvents(args: {
       }
       continue;
     }
+    if (data.type === "compaction") {
+      compactions += 1;
+      continue;
+    }
     // A handoff replaces agent history, so its tool call gets no tool result.
     // The handoff event completes the call, as the dashboard shows it.
     if (data.type === "handoff" && data.triggeringToolCallId) {
@@ -244,6 +251,7 @@ export function readCallEvents(args: {
   }
 
   return {
+    compactions,
     lastSeq,
     replies,
     toolCalls: [...toolCalls.values()],

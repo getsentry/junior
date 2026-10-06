@@ -99,6 +99,8 @@ export interface Conversation extends HarnessRun {
   files: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
+  compactions: number;
   turns: Turn[];
   continue(
     input: Input | Input[],
@@ -538,6 +540,7 @@ export async function createFixtureAgent(
     };
     return conversationResult(record, {
       ...callRun,
+      compactions: events.compactions,
       files,
       reactions,
       replies,
@@ -634,6 +637,7 @@ export async function createFixtureAgent(
         startedAtMs,
         toolCalls: [],
       }),
+      compactions: 0,
       files: [],
       reactions: [],
       replies: [],
