@@ -52,8 +52,14 @@ function cleanDisplayValue(
   return cleaned;
 }
 
+/** Requester label to publish, plus the name label it replaces, if any. */
+interface RequesterLabel {
+  label: string;
+  replaces?: string;
+}
+
 /**
- * Resolve the requester display label through the host identity path first.
+ * Resolve the requester label through the host identity path first.
  *
  * Prefer a linked GitHub login as an `@` mention so GitHub subscribes the
  * requester. Otherwise use the linked user name, then the stored identity
@@ -64,18 +70,13 @@ function requesterLabel(args: {
   actor: Actor | undefined;
   identity?: Identity;
   user?: User;
-}): string | undefined {
+}): RequesterLabel | undefined {
   const { actor, identity, user } = args;
   if (!actor) {
     return undefined;
   }
   if (actor.platform === "system") {
-    return `Junior system actor \`${actor.name}\``;
-  }
-
-  const login = linkedGitHubLogin(user);
-  if (login) {
-    return `@${login}`;
+    return { label: `Junior system actor \`${actor.name}\`` };
   }
 
   const userId = actor.userId;
@@ -85,7 +86,16 @@ function requesterLabel(args: {
     cleanDisplayValue(identity?.handle, userId) ??
     cleanDisplayValue(actor.fullName, userId) ??
     cleanDisplayValue(actor.userName, userId);
-  return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
+  const displayLabel = display
+    ? `**${display.replaceAll("*", "\\*")}**`
+    : undefined;
+  const login = linkedGitHubLogin(user);
+  if (login) {
+    // Bodies written before the mention format credit this requester by name.
+    // Replace that label so the same person is not listed twice.
+    return { label: `@${login}`, replaces: displayLabel };
+  }
+  return displayLabel ? { label: displayLabel } : undefined;
 }
 
 /**
@@ -113,19 +123,27 @@ function formatAttributionBlock(labels: string[]): string {
   return `${GITHUB_REQUEST_ATTRIBUTION_START}\nvia ${labels.join(", ")}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
 }
 
-function applyAttribution(body: string, label: string | undefined): string {
+function applyAttribution(
+  body: string,
+  requester: RequesterLabel | undefined,
+): string {
   const normalizedBody = body.trimEnd();
   const existing = new RegExp(
     `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
   );
   const existingMatch = normalizedBody.match(existing);
-  const existingLabels = existingMatch
-    ? parseExistingLabels(existingMatch[1])
-    : [];
-  const labels =
-    label && !existingLabels.includes(label)
-      ? [...existingLabels, label]
-      : existingLabels;
+  const existingLabels = (
+    existingMatch ? parseExistingLabels(existingMatch[1]) : []
+  ).map((label) =>
+    requester?.replaces && label === requester.replaces
+      ? requester.label
+      : label,
+  );
+  const labels = [
+    ...new Set(
+      requester ? [...existingLabels, requester.label] : existingLabels,
+    ),
+  ];
   const attribution = labels.length
     ? formatAttributionBlock(labels)
     : undefined;
