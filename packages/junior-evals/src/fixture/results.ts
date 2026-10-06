@@ -4,12 +4,14 @@
  */
 import type { z } from "zod";
 import { conversationDetailReportSchema } from "@/api/schema";
+import type { EmittedLogRecord } from "@/chat/logging";
 import {
   toJsonValue,
   type HarnessRun,
   type TranscriptEvent,
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
+import type { GatewayModelCall } from "./gateway";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
 /** Header that selects the signed-in person for a fixture API request. */
@@ -17,6 +19,9 @@ export const VIEWER_HEADER = "x-fixture-viewer";
 
 type ConversationDetail = z.infer<typeof conversationDetailReportSchema>;
 type ReportEvent = ConversationDetail["events"][number];
+type ReportUsage = NonNullable<
+  ConversationDetail["modelUsage"]
+>[number]["usage"];
 
 /** An assistant message that people saw. */
 export interface Reply {
@@ -252,6 +257,210 @@ export function readCallEvents(args: {
   };
 }
 
+function usageMetrics(usage: ReportUsage | undefined): ModelUsageMetrics {
+  const cost = usage?.cost;
+  return {
+    ...(usage?.inputTokens !== undefined
+      ? { inputTokens: usage.inputTokens }
+      : undefined),
+    ...(usage?.outputTokens !== undefined
+      ? { outputTokens: usage.outputTokens }
+      : undefined),
+    ...(usage?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : undefined),
+    ...(usage?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: usage.cacheCreationTokens }
+      : undefined),
+    ...(cost
+      ? {
+          costUsd: {
+            ...(cost.input !== undefined ? { input: cost.input } : undefined),
+            ...(cost.output !== undefined
+              ? { output: cost.output }
+              : undefined),
+            ...(cost.cacheRead !== undefined
+              ? { cacheRead: cost.cacheRead }
+              : undefined),
+            ...(cost.cacheWrite !== undefined
+              ? { cacheWrite: cost.cacheWrite }
+              : undefined),
+            ...(cost.total !== undefined ? { total: cost.total } : undefined),
+          },
+        }
+      : undefined),
+  };
+}
+
+/** Numeric model-call usage after a Conversation event boundary, without content. */
+export function readModelCalls(
+  events: ReadonlyArray<ReportEvent>,
+  afterSeq: number,
+): ModelCallUsage[] {
+  return events.flatMap((event) =>
+    event.seq > afterSeq && event.data.type === "assistant_message"
+      ? [
+          {
+            eventSeq: event.seq,
+            ...(event.model?.modelId
+              ? { modelId: event.model.modelId }
+              : undefined),
+            ...(event.model?.modelProfile
+              ? { modelProfile: event.model.modelProfile }
+              : undefined),
+            ...usageMetrics(event.modelCall?.usage),
+          },
+        ]
+      : [],
+  );
+}
+
+/** Model totals include recorded assistant calls, including child Conversations. */
+export function readModelTotals(
+  entries: ReadonlyArray<NonNullable<ConversationDetail["modelUsage"]>[number]>,
+): ModelTotalUsage[] {
+  return entries.map(({ modelId, usage }) => ({
+    modelId,
+    ...usageMetrics(usage),
+  }));
+}
+
+/** Group auxiliary spend without copying plugin operation names into artifacts. */
+export function readAuxiliaryOperations(
+  detail: Pick<ConversationDetail, "auxiliaryCosts">,
+): AuxiliaryOperationUsage[] {
+  const totals = new Map<
+    AuxiliaryOperationUsage["kind"],
+    AuxiliaryOperationUsage
+  >();
+  for (const operation of detail.auxiliaryCosts?.operations ?? []) {
+    const kind =
+      operation.namespace === "junior" &&
+      (operation.name === "distillation" ||
+        operation.name === "distillation_batch_done" ||
+        operation.name === "turn_routed" ||
+        operation.name === "guardian_action_reviewed")
+        ? operation.name === "distillation_batch_done"
+          ? "distillation"
+          : operation.name
+        : "other";
+    const current = totals.get(kind);
+    totals.set(kind, {
+      kind,
+      events: (current?.events ?? 0) + operation.events,
+      costUsd:
+        Math.round(((current?.costUsd ?? 0) + operation.costUsd) * 1e12) / 1e12,
+      ...(operation.estimatedCostUsd || current?.estimatedCostUsd
+        ? {
+            estimatedCostUsd:
+              Math.round(
+                ((current?.estimatedCostUsd ?? 0) +
+                  (operation.estimatedCostUsd ?? 0)) *
+                  1e12,
+              ) / 1e12,
+          }
+        : undefined),
+    });
+  }
+  return [...totals.values()];
+}
+
+/** Count stored observations and history replacements without reading their text. */
+export function readDistillationUsage(
+  detail: Pick<
+    ConversationDetail,
+    "events" | "auxiliaryCosts" | "previousCursor"
+  >,
+): DistillationUsage {
+  const operation = detail.auxiliaryCosts?.operations.find(
+    ({ namespace, name }) => namespace === "junior" && name === "distillation",
+  );
+  const failedBatch = detail.auxiliaryCosts?.operations.find(
+    ({ namespace, name }) =>
+      namespace === "junior" && name === "distillation_batch_done",
+  );
+  return {
+    historyComplete: detail.previousCursor === undefined,
+    capacityCompactionCount: detail.events.filter(
+      ({ data }) =>
+        data.type === "compaction" && data.details?.reason === "capacity",
+    ).length,
+    unclassifiedCompactionCount: detail.events.filter(
+      ({ data }) => data.type === "compaction" && !data.details,
+    ).length,
+    observationCount: operation?.events ?? 0,
+    observationCostUsd:
+      Math.round(
+        ((operation?.costUsd ?? 0) + (failedBatch?.costUsd ?? 0)) * 1e12,
+      ) / 1e12,
+    ...((operation?.estimatedCostUsd ?? 0) +
+      (failedBatch?.estimatedCostUsd ?? 0) >
+    0
+      ? {
+          observationEstimatedCostUsd:
+            Math.round(
+              ((operation?.estimatedCostUsd ?? 0) +
+                (failedBatch?.estimatedCostUsd ?? 0)) *
+                1e12,
+            ) / 1e12,
+        }
+      : undefined),
+    replacements: detail.events.flatMap(({ seq, data }) =>
+      data.type === "compaction" && data.details?.reason === "distillation"
+        ? [{ eventSeq: seq, ...data.details }]
+        : [],
+    ),
+  };
+}
+
+/** Copy only safe decision fields from a distillation diagnostic log. */
+export function readDistillationDecision(
+  record: EmittedLogRecord,
+): DistillationDecision | undefined {
+  if (record.eventName !== "conversation.distillation.skipped") {
+    return undefined;
+  }
+  const attrs = record.attributes;
+  const conversationId = attrs["gen_ai.conversation.id"];
+  const stage = attrs["app.distillation.stage"];
+  const reason = attrs["app.distillation.reason"];
+  if (
+    typeof conversationId !== "string" ||
+    (stage !== "observer" && stage !== "replacement") ||
+    typeof reason !== "string" ||
+    ![
+      "no_completed_turn",
+      "no_safe_segment",
+      "no_model",
+      "not_economical",
+      "input_limit",
+    ].includes(reason)
+  ) {
+    return undefined;
+  }
+  const number = (key: string): number | undefined => {
+    const value = attrs[key];
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
+  };
+  const rawTokens = number("app.distillation.raw_tokens");
+  const replacementTokens = number("app.distillation.replacement_tokens");
+  const expectedCalls = number("app.distillation.expected_calls");
+  const workerCostUsd = number("app.distillation.worker_cost_usd");
+  const savingsRatio = number("app.distillation.savings_ratio");
+  return {
+    conversationId,
+    stage,
+    reason: reason as DistillationDecision["reason"],
+    ...(rawTokens !== undefined ? { rawTokens } : undefined),
+    ...(replacementTokens !== undefined ? { replacementTokens } : undefined),
+    ...(expectedCalls !== undefined ? { expectedCalls } : undefined),
+    ...(workerCostUsd !== undefined ? { workerCostUsd } : undefined),
+    ...(savingsRatio !== undefined ? { savingsRatio } : undefined),
+  };
+}
+
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
  * changes formatting and links references, such as `owner/repo#1`.
@@ -340,8 +549,83 @@ function toTranscriptEvents(
 /** Model spend the fixture can see: agent cost and AI Gateway requests. */
 export interface FixtureUsage {
   agentCostUsd: number;
+  auxiliaryCostUsd: number;
+  auxiliaryOperations: AuxiliaryOperationUsage[];
+  distillation: Record<string, DistillationUsage>;
+  distillationDecisions: Record<string, DistillationDecision[]>;
   gatewayRequests: Record<string, number>;
+  gatewayModelCalls: GatewayModelCall[];
+  modelCalls: ModelCallUsage[];
+  modelTotals: ModelTotalUsage[];
 }
+
+/** Only fixed operation kinds and numeric costs reach the eval artifact. */
+export interface AuxiliaryOperationUsage {
+  kind: "distillation" | "guardian_action_reviewed" | "turn_routed" | "other";
+  events: number;
+  costUsd: number;
+  estimatedCostUsd?: number;
+}
+
+/** Numeric skip diagnostics; never include log bodies or source text. */
+export interface DistillationDecision {
+  conversationId: string;
+  stage: "observer" | "replacement";
+  reason:
+    | "no_completed_turn"
+    | "no_safe_segment"
+    | "no_model"
+    | "not_economical"
+    | "input_limit";
+  rawTokens?: number;
+  replacementTokens?: number;
+  expectedCalls?: number;
+  workerCostUsd?: number;
+  savingsRatio?: number;
+}
+
+/** Conversation-scoped activation and price decisions from the reporting API. */
+export interface DistillationUsage {
+  historyComplete: boolean;
+  capacityCompactionCount: number;
+  unclassifiedCompactionCount: number;
+  observationCount: number;
+  observationCostUsd: number;
+  observationEstimatedCostUsd?: number;
+  replacements: Array<{
+    eventSeq: number;
+    reason: "distillation";
+    throughSeq: number;
+    estimatedInputTokens: number;
+    replacementInputTokens: number;
+    expectedCalls: number;
+    priced: boolean;
+  }>;
+}
+
+interface ModelUsageMetrics {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationTokens?: number;
+  costUsd?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+}
+
+/** Per-call counters from the Conversation reporting API. */
+export type ModelCallUsage = ModelUsageMetrics & {
+  eventSeq: number;
+  modelId?: string;
+  modelProfile?: string;
+};
+
+/** Per-model totals from the Conversation reporting API. */
+export type ModelTotalUsage = ModelUsageMetrics & { modelId: string };
 
 /** The vitest-evals run for one call. */
 export function toHarnessRun(args: {
@@ -370,7 +654,15 @@ export function toHarnessRun(args: {
       toolCalls: args.toolCalls.length,
       metadata: {
         costUsd: args.usage.agentCostUsd,
+        auxiliaryCostUsd: args.usage.auxiliaryCostUsd,
+        auxiliaryOperations: toJsonValue(args.usage.auxiliaryOperations) ?? [],
+        distillation: toJsonValue(args.usage.distillation) ?? {},
+        distillationDecisions:
+          toJsonValue(args.usage.distillationDecisions) ?? {},
         gatewayRequests: args.usage.gatewayRequests,
+        gatewayModelCalls: toJsonValue(args.usage.gatewayModelCalls) ?? [],
+        modelCalls: toJsonValue(args.usage.modelCalls) ?? [],
+        modelTotals: toJsonValue(args.usage.modelTotals) ?? [],
       },
     },
     timings: { totalMs: Date.now() - args.startedAtMs },
@@ -396,7 +688,14 @@ export function combinedRun(
     usage: {
       metadata: {
         costUsd: usage.agentCostUsd,
+        auxiliaryCostUsd: usage.auxiliaryCostUsd,
+        auxiliaryOperations: toJsonValue(usage.auxiliaryOperations) ?? [],
+        distillation: toJsonValue(usage.distillation) ?? {},
+        distillationDecisions: toJsonValue(usage.distillationDecisions) ?? {},
         gatewayRequests: usage.gatewayRequests,
+        gatewayModelCalls: toJsonValue(usage.gatewayModelCalls) ?? [],
+        modelCalls: toJsonValue(usage.modelCalls) ?? [],
+        modelTotals: toJsonValue(usage.modelTotals) ?? [],
       },
     },
     timings: { totalMs: Date.now() - startedAtMs },
