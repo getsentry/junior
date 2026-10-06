@@ -18,7 +18,7 @@ describe("User Memory", () => {
     const recalled = await asked.continue(
       mention("What do you remember about how I like PR summaries?"),
     );
-    await expect(recalled.evalRun).toSatisfyJudge(
+    await expect(recalled).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -61,7 +61,7 @@ describe("User Memory", () => {
     }
 
     const conversation = await run(mention("what time is it"));
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -104,7 +104,7 @@ describe("User Memory", () => {
     const conversation = await asked.continue(
       mention("What do you remember about my opinion on Python types?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -140,7 +140,7 @@ describe("User Memory", () => {
         { channelType: "im" },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

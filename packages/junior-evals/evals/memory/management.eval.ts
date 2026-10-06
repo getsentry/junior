@@ -18,7 +18,7 @@ describe("Memory Management", () => {
         channelType: "im",
       }),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -51,7 +51,7 @@ describe("Memory Management", () => {
         channelType: "im",
       }),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -84,7 +84,7 @@ describe("Memory Management", () => {
     const conversation = await run(
       mention("Please forget that I prefer terse PR summaries."),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

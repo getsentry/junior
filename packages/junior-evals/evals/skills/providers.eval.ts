@@ -17,7 +17,7 @@ describe("Skill Providers", () => {
         "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -41,7 +41,7 @@ describe("Skill Providers", () => {
         "/eval-mcp Ask the handbook what it says about US holidays, then summarize the result.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -83,7 +83,7 @@ describe("Skill Providers", () => {
         "/eval-directory Find alice@example.com in the directory and tell me whether the account is active.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

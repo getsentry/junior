@@ -79,7 +79,7 @@ describe("Watches", () => {
         `Watch the Production deployment of getsentry/junior-prod for commit ${commitSha}. It may not exist yet; tell me when it succeeds, fails, or reports an error.`,
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -129,7 +129,7 @@ describe("Watches", () => {
         `Check ${pullRequest} every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.`,
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -211,7 +211,7 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -248,7 +248,7 @@ describe("Watches", () => {
     ).toContain("pull_request.checks.failed");
 
     const delivery = await conversation.continue(checkSuiteWebhook("failure"));
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -285,7 +285,7 @@ describe("Watches", () => {
     ).toContain("pull_request.merged");
 
     const delivery = await conversation.continue(mergedWebhook());
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -324,7 +324,7 @@ describe("Watches", () => {
         ),
       ]),
     });
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

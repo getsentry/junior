@@ -39,7 +39,7 @@ describe("Event automation management", () => {
         "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -83,7 +83,7 @@ describe("Event automation management", () => {
         "Whenever a reviewer requests changes on GitHub PR getsentry/junior#691, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -124,7 +124,7 @@ describe("Event automation management", () => {
         "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -163,7 +163,7 @@ describe("Event automation management", () => {
         "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -208,7 +208,7 @@ describe("Event automation management", () => {
         channel,
       }),
     );
-    await expect(listing.evalRun).toSatisfyJudge(
+    await expect(listing).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -224,7 +224,7 @@ describe("Event automation management", () => {
         "Change the issue task so it only reacts when the issue is reopened and posts a reopening summary.",
       ),
     );
-    await expect(update.evalRun).toSatisfyJudge(
+    await expect(update).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -236,7 +236,7 @@ describe("Event automation management", () => {
     const removal = await listing.continue(
       mention("Delete that event automation now."),
     );
-    await expect(removal.evalRun).toSatisfyJudge(
+    await expect(removal).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -302,7 +302,7 @@ describe("Event automation management", () => {
         { channel },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

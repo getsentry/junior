@@ -54,7 +54,7 @@ describe("Actor Attribution", () => {
         ],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -89,7 +89,7 @@ describe("Actor Attribution", () => {
         ],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -131,7 +131,7 @@ describe("Actor Attribution", () => {
         ],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

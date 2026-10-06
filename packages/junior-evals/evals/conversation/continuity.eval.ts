@@ -13,7 +13,7 @@ describe("Thread Continuity", () => {
         reply("Got it: budget due Friday."),
       ],
     });
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

@@ -11,7 +11,7 @@ describe("Slack User Status", () => {
     const conversation = await run(
       mention("Am I marked out of office in Slack right now?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

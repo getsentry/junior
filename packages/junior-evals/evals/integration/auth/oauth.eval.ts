@@ -47,7 +47,7 @@ describe("OAuth Workflows", () => {
     expect(turnStates(paused)).toEqual(["started"]);
 
     const resumed = await paused.continue(completeAuth("eval-auth"));
-    await expect(resumed.evalRun).toSatisfyJudge(
+    await expect(resumed).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -68,7 +68,7 @@ describe("OAuth Workflows", () => {
         "/eval-auth Use the connection again and confirm the lookup works.",
       ),
     );
-    await expect(reused.evalRun).toSatisfyJudge(
+    await expect(reused).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -97,7 +97,7 @@ describe("OAuth Workflows", () => {
     expect(identityChecks(paused)).toEqual([]);
 
     const resumed = await paused.continue(completeAuth("eval-oauth"));
-    await expect(resumed.evalRun).toSatisfyJudge(
+    await expect(resumed).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -118,7 +118,7 @@ describe("OAuth Workflows", () => {
         "/eval-oauth Check again and tell me which eval identity is active.",
       ),
     );
-    await expect(reused.evalRun).toSatisfyJudge(
+    await expect(reused).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -183,7 +183,7 @@ describe("OAuth Workflows", () => {
     expect(turnStates(paused)).toEqual(["started"]);
 
     const resumed = await paused.continue(completeAuth("eval-oauth"));
-    await expect(resumed.evalRun).toSatisfyJudge(
+    await expect(resumed).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

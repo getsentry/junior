@@ -11,7 +11,7 @@ describe("Schedule Creation", () => {
     const conversation = await run(
       mention("send me a direct reminder in 1 minute to wash my hands"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -45,7 +45,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(mention("remind me to drink water in 1m"));
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -156,7 +156,7 @@ describe("Schedule Creation", () => {
         "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

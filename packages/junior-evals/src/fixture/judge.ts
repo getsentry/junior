@@ -184,7 +184,7 @@ function visibleMessages(session: NormalizedSession): VisibleMessage[] {
 
 /**
  * Scores the replies of one call against a rubric:
- * `await expect(conversation.evalRun).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
+ * `await expect(conversation).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
  * The judge reads the earlier messages of the Conversation as context only.
  */
 export const RubricJudge = createJudge<unknown, JsonValue | undefined, Rubric>({

@@ -18,7 +18,7 @@ describe("Skill Invocation Control", () => {
     const conversation = await run(
       mention("$weather-lookup check the weather in San Francisco."),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -43,7 +43,7 @@ describe("Skill Invocation Control", () => {
         "Can you double-check what the source handbook says about capability support verification?",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

@@ -11,7 +11,7 @@
  * key by key.
  */
 import { test as baseTest } from "vitest";
-// Register the `toSatisfyJudge()` matcher for `conversation.evalRun`.
+// Register the `toSatisfyJudge()` matcher for call results.
 import "vitest-evals";
 import type { JuniorAppOptions } from "@/app";
 import { runEvalWork } from "../eval-work";

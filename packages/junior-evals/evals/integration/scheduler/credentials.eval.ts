@@ -31,7 +31,7 @@ describe("Scheduled Credentials", () => {
         "every Monday at 9am Pacific post a digest of unresolved issues for the Acme Sentry organization here.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -67,7 +67,7 @@ describe("Scheduled Credentials", () => {
     const confirmation = await proposal.continue(
       mention("Yes, register that task now. Still without my credentials."),
     );
-    await expect(confirmation.evalRun).toSatisfyJudge(
+    await expect(confirmation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -121,7 +121,7 @@ describe("Scheduled Credentials", () => {
         },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -169,7 +169,7 @@ describe("Scheduled Credentials", () => {
     const confirmation = await proposal.continue(
       mention("Yes, apply that credential change now.", { author: alice }),
     );
-    await expect(confirmation.evalRun).toSatisfyJudge(
+    await expect(confirmation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

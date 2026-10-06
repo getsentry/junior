@@ -44,7 +44,7 @@ describe("Thread Continuity", () => {
     const conversation = await run(mention("what did i just ask?"), {
       history: [mention("I need the budget by Friday."), reply("Got it.")],
     });
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({ pass: ["Recalls the budget and Friday."] }),
     );
@@ -154,8 +154,8 @@ describe("Thread Continuity", () => {
   `toolOutput()` parses a tool result. Do not assert on stored rows or
   runtime objects.
 - Judge wording with the vitest-evals matcher:
-  `await expect(conversation.evalRun).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
-  `conversation.evalRun` is the vitest-evals run of that call. `RubricJudge`
+  `await expect(conversation).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
+  A call result is also the vitest-evals run of that call. `RubricJudge`
   scores the replies of the call and reads the earlier messages of the
   Conversation as context. `rubric()` adds the passing threshold. Other
   vitest-evals judges work the same way; pass `judgeHarness` from
@@ -385,7 +385,7 @@ describe("Routing", () => {
   test("when explicitly mentioned, post one direct reply", async ({ run }) => {
     const conversation = await run(mention("Summarize this"));
 
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({ pass: ["The assistant answers the user's summary request."] }),
     );

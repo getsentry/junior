@@ -36,7 +36,7 @@ describe("Schedule Destination Updates", () => {
         channel: here,
       }),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -81,7 +81,7 @@ describe("Schedule Destination Updates", () => {
         { author: alice, channel: slackChannel() },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

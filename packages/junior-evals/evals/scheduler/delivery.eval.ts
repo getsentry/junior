@@ -20,7 +20,7 @@ describe("Scheduled Delivery", () => {
     });
 
     const delivery = await run(heartbeat());
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -50,7 +50,7 @@ describe("Scheduled Delivery", () => {
     });
 
     const delivery = await run(heartbeat());
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

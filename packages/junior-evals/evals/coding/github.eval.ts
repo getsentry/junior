@@ -12,7 +12,7 @@ describe("GitHub Skill Workflows", () => {
         "/github-code If I ask you to open a PR from an existing branch, do I need to authorize GitHub or provide a token? Also, does the branch get pushed before or after the PR is opened? Keep it short.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -34,7 +34,7 @@ describe("GitHub Skill Workflows", () => {
     const configured = await run(
       mention("Set the default repo to getsentry/junior for this channel."),
     );
-    await expect(configured.evalRun).toSatisfyJudge(
+    await expect(configured).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -47,7 +47,7 @@ describe("GitHub Skill Workflows", () => {
         "Now tell me which GitHub repo you'd use for issue commands when I don't name one.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -74,7 +74,7 @@ describe("GitHub Skill Workflows", () => {
         "We need a tracking issue for the Junior bot. Use getsentry/junior-eval-reference-never-exists#123 as background. Draft the target repo, title, and body for me to review—don't create anything yet.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -104,7 +104,7 @@ describe("GitHub Skill Workflows", () => {
         "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Don't change anything yet.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

@@ -22,7 +22,7 @@ describe("Slack Message Delivery", () => {
     const conversation = await run(
       mention("post this to the channel: deploy is unblocked"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -47,7 +47,7 @@ describe("Slack Message Delivery", () => {
         "Tell me the current UTC time, and keep me posted while you check.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -69,7 +69,7 @@ describe("Slack Message Delivery", () => {
     run,
   }) => {
     const conversation = await run(mention("show me an image of a red panda"));
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

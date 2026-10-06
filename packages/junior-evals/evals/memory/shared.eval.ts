@@ -38,7 +38,7 @@ describe("Shared Memory", () => {
     const result = await run(
       mention("What do you remember about how CI works in getsentry/junior?"),
     );
-    await expect(result.evalRun).toSatisfyJudge(
+    await expect(result).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -64,7 +64,7 @@ describe("Shared Memory", () => {
     const conversation = await asked.continue(
       mention("How should flaky webhook triage be done?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -95,7 +95,7 @@ describe("Shared Memory", () => {
     const conversation = await taught.continue(
       mention("How should sandbox timeout triage be done?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -126,7 +126,7 @@ describe("Shared Memory", () => {
     const conversation = await taught.continue(
       mention("What do branch QA runbooks require?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -154,7 +154,7 @@ describe("Shared Memory", () => {
         "The analytics query says today's signup conversion rate is 8.4%.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -177,7 +177,7 @@ describe("Shared Memory", () => {
     const conversation = await run(
       mention("Please remember that David prefers terse PR summaries."),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

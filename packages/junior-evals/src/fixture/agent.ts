@@ -78,8 +78,12 @@ export interface CallOptions {
   ) => void | Promise<void>;
 }
 
-/** Returned by every call. The fields describe that call only. */
-export interface Conversation {
+/**
+ * Returned by every call. The fields describe that call only. It is also the
+ * vitest-evals run of the call, so `expect(conversation).toSatisfyJudge()`
+ * takes it.
+ */
+export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
@@ -92,8 +96,6 @@ export interface Conversation {
   /** The title that the dashboard shows after the call. */
   title: string;
   turns: Turn[];
-  /** The vitest-evals run, for `toSatisfyJudge()` and other judges. */
-  evalRun: HarnessRun;
   continue(
     input: Input | Input[],
     options?: CallOptions,
@@ -505,7 +507,7 @@ export async function createFixtureAgent(
       ),
     );
     const usage = currentUsage();
-    const evalRun = toHarnessRun({
+    const callRun = toHarnessRun({
       conversationId: record.conversationId,
       earlier,
       usage,
@@ -515,14 +517,14 @@ export async function createFixtureAgent(
     });
     calls.push({
       conversationId: record.conversationId,
-      events: evalRun.session.events,
+      events: callRun.session.events,
     });
     context.task.meta.harness = {
       name: "junior",
       run: combinedRun(calls, usage, startedAtMs),
     };
     return conversationResult(record, {
-      evalRun,
+      ...callRun,
       files,
       reactions,
       replies,
@@ -611,7 +613,7 @@ export async function createFixtureAgent(
     forkRecord.lastSeq = copied.lastSeq;
     forkRecord.visibleMessages = copied.visibleMessages;
     return conversationResult(forkRecord, {
-      evalRun: toHarnessRun({
+      ...toHarnessRun({
         conversationId: forkRecord.conversationId,
         earlier: forkRecord.visibleMessages,
         usage: currentUsage(),

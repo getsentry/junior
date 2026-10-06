@@ -23,7 +23,7 @@ describe("Watches", () => {
     // A bare "stop" opts Junior out of the thread before any turn runs. This
     // follow-up needs the conversation to mean "stop the watch".
     const stopped = await conversation.continue(mention("you can stop now"));
-    await expect(stopped.evalRun).toSatisfyJudge(
+    await expect(stopped).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

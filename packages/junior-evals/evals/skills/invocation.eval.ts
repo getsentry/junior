@@ -16,17 +16,11 @@ describe("Skills", () => {
       });
 
     const first = await run(mention("/incident-brief Checkout latency"));
-    await expect(first.evalRun).toSatisfyJudge(
-      RubricJudge,
-      brief("Checkout latency"),
-    );
+    await expect(first).toSatisfyJudge(RubricJudge, brief("Checkout latency"));
     const second = await first.continue(
       mention("/incident-brief Search errors"),
     );
-    await expect(second.evalRun).toSatisfyJudge(
-      RubricJudge,
-      brief("Search errors"),
-    );
+    await expect(second).toSatisfyJudge(RubricJudge, brief("Search errors"));
 
     expect(first.replies).toHaveLength(1);
     expect(second.replies).toHaveLength(1);

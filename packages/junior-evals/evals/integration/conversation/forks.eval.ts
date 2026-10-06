@@ -21,7 +21,7 @@ describe("Conversation Forks", () => {
     const next = await fork.continue(
       webMessage("Which color is the launch banner right now?"),
     );
-    await expect(next.evalRun).toSatisfyJudge(
+    await expect(next).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["The reply says the launch banner is blue."],
@@ -46,7 +46,7 @@ describe("Conversation Forks", () => {
     const nestedTurn = await nested.continue(
       webMessage("What is the release codename now?"),
     );
-    await expect(nestedTurn.evalRun).toSatisfyJudge(
+    await expect(nestedTurn).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["The reply says the release codename is Birch."],
@@ -69,7 +69,7 @@ describe("Conversation Forks", () => {
     const next = await fork.continue(
       webMessage("What is the release codename?"),
     );
-    await expect(next.evalRun).toSatisfyJudge(
+    await expect(next).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["The reply says the release codename is Maple."],

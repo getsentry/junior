@@ -35,7 +35,7 @@ describe("Event automation delivery", () => {
         },
       }),
     );
-    await expect(delivery.evalRun).toSatisfyJudge(
+    await expect(delivery).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

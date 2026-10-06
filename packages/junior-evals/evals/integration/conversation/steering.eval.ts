@@ -23,7 +23,7 @@ describe("Slack Turn Steering", () => {
         mention("include the rollback owner: Dana"),
       ]),
     });
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["A reply says Dana is the rollback owner."],
@@ -82,7 +82,7 @@ describe("Slack Turn Steering", () => {
         ]),
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["The summary names Dana as the rollback owner."],

@@ -39,7 +39,7 @@ describe("Sentry Skill Workflows", () => {
         history: [mention("are you working"), reply("Yes—I'm working.")],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -73,7 +73,7 @@ describe("Sentry Skill Workflows", () => {
     });
 
     const digest = await run(heartbeat());
-    await expect(digest.evalRun).toSatisfyJudge(
+    await expect(digest).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

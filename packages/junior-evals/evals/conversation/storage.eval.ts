@@ -17,7 +17,7 @@ describe("Conversation Storage", () => {
     const conversation = await run(
       mention("Who did we name as the rollback owner in the earlier thread?"),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

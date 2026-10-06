@@ -13,7 +13,7 @@ describe("Coding File Tools", () => {
         "/coding-workspace-fixture What's in project/assets/workspace-shapes.png? Describe the colored shapes and where they are.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -42,7 +42,7 @@ describe("Coding File Tools", () => {
         "/coding-workspace-fixture Change the default retry count from 2 to 3. Keep the reply brief and tell me which file changed.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -72,7 +72,7 @@ describe("Coding File Tools", () => {
         "/coding-workspace-fixture Compare project/src/alerts.ts and project/docs/operations.md for emergency mode behavior. Summarize what each file says and do not change any files.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -97,7 +97,7 @@ describe("Coding File Tools", () => {
         "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. I'm looking for a design recommendation first, not a repository review.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

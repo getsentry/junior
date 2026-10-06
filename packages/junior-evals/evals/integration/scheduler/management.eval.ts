@@ -35,7 +35,7 @@ describe("Schedule Management", () => {
     const confirmation = await proposal.continue(
       mention("Yes, apply that schedule change now.", { author: alice }),
     );
-    await expect(confirmation.evalRun).toSatisfyJudge(
+    await expect(confirmation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

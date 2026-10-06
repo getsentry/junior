@@ -14,7 +14,7 @@ describe("Conversation Routing", () => {
         }),
       ],
     });
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: ["The reply answers with 4."],
@@ -34,7 +34,7 @@ describe("Conversation Routing", () => {
         "post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

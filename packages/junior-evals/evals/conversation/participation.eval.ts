@@ -51,7 +51,7 @@ describe("Passive Behavior", () => {
         ],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -146,7 +146,7 @@ describe("Passive Behavior", () => {
         ],
       },
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

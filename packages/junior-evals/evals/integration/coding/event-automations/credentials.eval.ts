@@ -45,7 +45,7 @@ describe("Event automation credentials", () => {
         "When review changes are requested on GitHub PR getsentry/junior#691, create an event automation that looks at the feedback and posts a fix plan in this channel.",
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -88,7 +88,7 @@ describe("Event automation credentials", () => {
         { author: bob, channel },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -146,7 +146,7 @@ describe("Event automation credentials", () => {
         { author: alice, channel },
       ),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [

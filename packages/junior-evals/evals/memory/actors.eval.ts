@@ -63,7 +63,7 @@ describe("Memory with Multiple Actors", () => {
     const conversation = await thread.continue(
       mention("What are the takeaways so far?", { author: ALICE }),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -103,7 +103,7 @@ describe("Memory with Multiple Actors", () => {
     const conversation = await thread.continue(
       mention("Thanks, can you tighten the draft a bit?", { author: ALICE }),
     );
-    await expect(conversation.evalRun).toSatisfyJudge(
+    await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
@@ -216,7 +216,7 @@ describe("Memory with Multiple Actors", () => {
     const result = await thread.continue(
       mention("When should we schedule it?", { author: ALICE }),
     );
-    await expect(result.evalRun).toSatisfyJudge(
+    await expect(result).toSatisfyJudge(
       RubricJudge,
       rubric({
         pass: [
