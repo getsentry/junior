@@ -142,7 +142,7 @@ Use a separate **Sentry internal integration** from the webhook integration, so 
 4. Set `SENTRY_READ_TOKEN` to the token.
 5. Redeploy Junior.
 
-Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry API. Sentry limits the token to the organization that installed the integration. Writes, `POST` queries, and `/api/0/users/` requests use the requesting user's OAuth token.
+Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry API. This includes Explore queries for spans, logs, and traces. Sentry limits the token to the organization that installed the integration. Writes and `/api/0/users/` requests use the requesting user's OAuth token.
 
 Anyone who can talk to Junior can read every project the token can read. Sentry audit logs show the integration, not the Slack user.
 

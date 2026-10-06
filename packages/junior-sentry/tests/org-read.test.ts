@@ -49,6 +49,13 @@ describe("sentry org read access", () => {
     expect(grantFor("GET", "https://sentry.io/api/0/issues/123/")).toEqual(
       orgRead,
     );
+    // Explore queries are GET requests.
+    expect(
+      grantFor(
+        "GET",
+        "https://us.sentry.io/api/0/organizations/sentry/events/?dataset=spans&field=span.op",
+      ),
+    ).toEqual(orgRead);
 
     // Writes and user endpoints keep user OAuth.
     expect(
