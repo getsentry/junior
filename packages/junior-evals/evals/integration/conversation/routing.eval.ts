@@ -24,6 +24,28 @@ describe("Conversation Routing", () => {
 
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.replies[0]!.text.length).toBeLessThanOrEqual(800);
+    // The processing reaction marks the mention, then the completed reaction.
+    expect(conversation.reactions).toEqual(["eyes", "white_check_mark"]);
+  });
+
+  test("when two mentions arrive before the turn starts, one turn answers both", async ({
+    run,
+  }) => {
+    const conversation = await run([
+      mention("The rollback owner for the checkout outage is Dana."),
+      mention("In one sentence, who is the rollback owner?"),
+    ]);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says Dana is the rollback owner."],
+      }),
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(conversation.replies).toHaveLength(1);
   });
 
   test("when asked to post in another named channel, explain the limitation instead", async ({

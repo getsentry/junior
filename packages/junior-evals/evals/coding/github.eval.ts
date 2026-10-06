@@ -42,6 +42,8 @@ describe("GitHub Skill Workflows", () => {
         ],
       }),
     );
+    // Junior stores an explicit default without an agent turn.
+    expect(configured.turns).toEqual([]);
     const conversation = await configured.continue(
       mention(
         "Now tell me which GitHub repo you'd use for issue commands when I don't name one.",

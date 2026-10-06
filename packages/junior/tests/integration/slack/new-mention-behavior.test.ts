@@ -9,18 +9,11 @@ import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   createModelAgentRunner,
   createModelAgentRunnerForRun,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
-
-interface CapturedRun {
-  prompt: string;
-  piMessages?: unknown[];
-}
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -38,74 +31,6 @@ function toPostedText(value: unknown): string {
 }
 
 describe("Slack behavior: new mention", () => {
-  it("includes queued SDK messages in the assistant prompt", async () => {
-    const agentRuns: CapturedRun[] = [];
-
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        agentRunner: createModelAgentRunnerForRun((request) => {
-          agentRuns.push({
-            prompt: request.instruction.text,
-            piMessages: request.history ? [...request.history] : undefined,
-          });
-          return createModelStream([
-            { type: "text", text: "Handled both updates." },
-          ]);
-        }),
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0QUEUED:1700001234.000",
-    });
-    const queued = createTestMessage({
-      id: "m-queued",
-      text: "<@U0APP> first queued request",
-      isMention: true,
-      threadId: thread.id,
-      dateSent: new Date(1700001234000),
-    });
-    const latest = createTestMessage({
-      id: "m-latest",
-      text: "<@U0APP> latest request",
-      isMention: true,
-      threadId: thread.id,
-      dateSent: new Date(1700001235000),
-    });
-
-    await slackRuntime.handleNewMention(thread, latest, {
-      destination: createTestDestination(thread),
-      messageContext: {
-        skipped: [queued],
-        totalSinceLastHandler: 2,
-      },
-    });
-
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]?.prompt).toContain("latest request");
-    expect(agentRuns[0]?.prompt).not.toContain("first queued request");
-    expect(JSON.stringify(agentRuns[0]?.piMessages)).toContain(
-      "first queued request",
-    );
-    const conversation = coerceThreadConversationState(await thread.getState());
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(
-      conversation.messages
-        .filter(
-          (message) => message.id === "m-queued" || message.id === "m-latest",
-        )
-        .map((message) => ({ id: message.id, text: message.text })),
-    ).toEqual([
-      { id: "m-queued", text: "first queued request" },
-      { id: "m-latest", text: "latest request" },
-    ]);
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain("Handled both updates.");
-  });
-
   it("forwards queued SDK message attachments to the assistant context", async () => {
     const agentRuns: Array<{
       attachmentText?: string;
