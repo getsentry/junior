@@ -1,30 +1,31 @@
-import { describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { describe, expect } from "vitest";
+import { mention } from "@junior-evals/fixture/inputs";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Slack User Status", slackEvals, (it) => {
-  it("when no custom status is set, report that it is unset", async ({
+describe("Slack User Status", () => {
+  test("when no custom status is set, report that it is unset", async ({
     run,
   }) => {
-    const result = await run({
-      initialEvents: [mention("Am I marked out of office in Slack right now?")],
-      criteria: rubric({
-        pass: [
-          "The assistant clearly says the user does not currently have a custom Slack status set.",
-        ],
-        fail: [
-          "Do not claim that Junior's Slack user lookup tool omits status fields or cannot read Slack status.",
-          "Do not claim that a users.profile:read scope or connector configuration change is required.",
-        ],
-      }),
-    });
-
-    expect(toolCalls(result.session)).toContainEqual(
-      expect.objectContaining({
-        name: "userLookup",
-        arguments: { provider: "slack", query: "U0TEST" },
-        status: "ok",
-      }),
+    const conversation = await run(
+      mention("Am I marked out of office in Slack right now?"),
+      {
+        criteria: rubric({
+          pass: [
+            "The assistant clearly says the user does not currently have a custom Slack status set.",
+          ],
+          fail: [
+            "Do not claim that Junior's Slack user lookup tool omits status fields or cannot read Slack status.",
+            "Do not claim that a users.profile:read scope or connector configuration change is required.",
+          ],
+        }),
+      },
     );
+
+    // `U0TEST` is the default Slack person of the fixture.
+    expect(
+      completedToolCalls("userLookup", conversation).map((call) => call.input),
+    ).toContainEqual({ provider: "slack", query: "U0TEST" });
   });
 });

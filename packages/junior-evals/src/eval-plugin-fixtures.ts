@@ -1,12 +1,8 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
-import { parsePluginManifest } from "@/chat/plugins/manifest";
-import type { InlinePluginManifestDefinition } from "@/chat/plugins/types";
 
 /** Use the same plugin registrations in eval workers, snapshots, and egress. */
 export function evalRuntimePlugins(
@@ -34,36 +30,4 @@ export function evalGitHubEnv(): Record<string, string> {
     GITHUB_APP_BOT_NAME: "junior-eval",
     GITHUB_APP_BOT_EMAIL: "12345+junior-eval[bot]@users.noreply.github.com",
   };
-}
-
-function pluginDirs(root: string): string[] {
-  if (existsSync(path.join(root, "plugin.yaml"))) return [root];
-  return readdirSync(root, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isDirectory() &&
-        existsSync(path.join(root, entry.name, "plugin.yaml")),
-    )
-    .map((entry) => path.join(root, entry.name))
-    .sort((left, right) => left.localeCompare(right));
-}
-
-/** Load eval plugin manifests without changing process cwd. */
-export function loadEvalPluginFixtures(
-  roots: string[],
-): InlinePluginManifestDefinition[] {
-  const inlineManifests: InlinePluginManifestDefinition[] = [];
-  for (const root of roots) {
-    for (const pluginDir of pluginDirs(root)) {
-      inlineManifests.push({
-        dir: pluginDir,
-        manifest: parsePluginManifest(
-          readFileSync(path.join(pluginDir, "plugin.yaml"), "utf8"),
-          pluginDir,
-          undefined,
-        ),
-      });
-    }
-  }
-  return inlineManifests;
 }

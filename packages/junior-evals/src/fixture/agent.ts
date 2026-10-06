@@ -3,9 +3,9 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
- * transports and `waitUntil` with in-process versions, so it knows when the
- * agent is idle.
+ * third-party APIs are MSW mocks, and the web pages that `webFetch` reads are
+ * replayed. The fixture replaces only the Vercel Queue transports and
+ * `waitUntil` with in-process versions, so it knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -65,6 +65,7 @@ import {
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
 } from "./slack";
+import { installWebReplay } from "./web";
 
 /**
  * Every call fails when the agent is not idle within this budget. The budget
@@ -167,6 +168,7 @@ export async function createFixtureAgent(
   const slack = installSlackMock();
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
+  installWebReplay();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),

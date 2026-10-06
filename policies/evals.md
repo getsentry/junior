@@ -40,9 +40,7 @@ Suite policy:
   scenarios.
 - Tests on the agent test fixture assert on its call results: replies, tool
   calls, reactions, and turn states. These come from Junior's reporting API and
-  the Slack mock. Tests on the older Slack harness treat the normalized
-  `vitest-evals` session as the canonical eval surface for judges and
-  assertions.
+  the Slack mock.
 - Limit rubric-judge input to user-visible text from normalized user and
   assistant messages, in session order. Keep tool calls, artifacts, persistence,
   logs, traces, and runtime metadata out of rubric prompts.
@@ -54,9 +52,8 @@ Suite policy:
   multiple assertions behind helpers.
 - Use native `vitest-evals` harness support for ordered full-turn transcripts.
   Do not add repo-local event logs or sequencing layers to simulate them.
-- On the older Slack harness, use `toolCalls(result.session)` or other
-  `vitest-evals` primitives when tool or provider evidence is part of the
-  behavior.
+- Use the tool calls of a call result when tool or provider evidence is part
+  of the behavior.
 - Use evals to prove model-facing choices such as whether the agent calls the
   right tool, target, and final-reply strategy. Do not use evals to prove fixed
   tool transport details such as Slack API payload fields or file upload

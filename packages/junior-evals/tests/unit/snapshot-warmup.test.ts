@@ -11,12 +11,8 @@ import {
   defineJuniorPlugins,
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
-import path from "node:path";
-import {
-  loadEvalPluginFixtures,
-  evalRuntimePlugins,
-} from "../../../src/eval-plugin-fixtures";
-import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
+import { evalRuntimePlugins } from "../../src/eval-plugin-fixtures";
+import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
 
 const previousCatalog = pluginCatalogRuntime.setConfig(undefined);
 afterEach(() => {
@@ -49,19 +45,4 @@ it("warms the same Sentry dependency profile the scenario uses and restores the 
   await warmSandboxSnapshot(packages);
   expect(runSnapshotCreate).toHaveBeenCalledOnce();
   expect(createProfile("node22")).toEqual(originalProfile);
-});
-
-it("preserves local fixture skill ownership", () => {
-  const root = path.resolve(import.meta.dirname, "../../../fixtures/plugins");
-  const fixture = loadEvalPluginFixtures([root]);
-  pluginCatalogRuntime.setConfig({
-    packages: [],
-    inlineManifests: fixture,
-  });
-  expect(pluginCatalogRuntime.getDefinition("eval-mcp")).toBeDefined();
-  expect(
-    pluginCatalogRuntime.getForSkillPath(
-      path.join(root, "eval-mcp/skills/eval-mcp/SKILL.md"),
-    )?.manifest.name,
-  ).toBe("eval-mcp");
 });

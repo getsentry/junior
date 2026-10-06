@@ -229,6 +229,44 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
+  test("when a watch asks for a fix and the PR checks fail, commit and push the fix without a person", async ({
+    run,
+  }) => {
+    // The fixture skill has a local checkout of the pull request branch.
+    const conversation = await run(
+      mention(
+        `/github-headless-pr-fixture Watch ${pullRequest}. When its checks fail, fix the failure and push the update. Do not change anything before a check fails.`,
+      ),
+    );
+    expect(
+      watchedEvents(conversation),
+      "No checks watch: this run does not test delivery",
+    ).toContain("pull_request.checks.failed");
+
+    const delivery = await conversation.continue(checkSuiteWebhook("failure"), {
+      criteria: rubric({
+        pass: [
+          "The assistant handles the failed checks without asking a human to authorize GitHub.",
+          "The assistant reports that the fix is committed and pushed to the existing pull request branch.",
+        ],
+        fail: [
+          "Do not ask for OAuth, a personal access token, approval, or another human action before fixing the pull request.",
+          "Do not stop after describing a plan or editing the file without committing and pushing it.",
+        ],
+      }),
+    });
+
+    // `verify.sh` of the fixture skill prints this line when the remote
+    // branch has the fix.
+    expect(
+      completedToolCalls("bash", delivery).filter((call) =>
+        JSON.stringify(toolOutput(call)).includes(
+          "verified remote branch contains the pushed fix",
+        ),
+      ),
+    ).not.toHaveLength(0);
+  });
+
   test("when a watched PR is merged, report completion without extra work", async ({
     run,
   }) => {

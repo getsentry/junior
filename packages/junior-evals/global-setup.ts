@@ -1,5 +1,3 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   readEvalOAuthRefreshTokens,
   resetEvalOAuthMockState,
@@ -18,11 +16,7 @@ import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalInvocationContext } from "./src/eval-context";
-import {
-  evalGitHubEnv,
-  evalRuntimePlugins,
-  loadEvalPluginFixtures,
-} from "./src/eval-plugin-fixtures";
+import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
 import {
   defineJuniorPlugins,
   pluginCatalogConfigFromPluginSet,
@@ -33,11 +27,6 @@ import { authSuitePlugins } from "./src/suites/auth-agent-options";
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
   provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
 };
-
-const workspaceRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
 
 /** Set up shared Postgres and public sandbox egress for one eval invocation. */
 export default async function setup(
@@ -105,9 +94,6 @@ export default async function setup(
         "Eval global setup requires REDIS_URL and JUNIOR_STATE_KEY_PREFIX",
       );
     }
-    const pluginFixtures = loadEvalPluginFixtures([
-      path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins"),
-    ]);
     const packages = ["@sentry/junior-github", "@sentry/junior-sentry"];
     const runtimePlugins = evalRuntimePlugins(packages);
     // The egress process adds plugin credentials to sandbox requests, so it
@@ -121,13 +107,7 @@ export default async function setup(
     );
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);
-    previousCatalogConfig = pluginCatalogRuntime.setConfig({
-      ...pluginConfig,
-      inlineManifests: [
-        ...pluginFixtures,
-        ...(pluginConfig?.inlineManifests ?? []),
-      ],
-    });
+    previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
     process.stdout.write("[evals] Starting public egress\n");

@@ -64,19 +64,9 @@
     "packages/junior/tests/integration/web-auth-orchestration.test.ts": 9,
     "packages/junior/tests/unit/chat/sandbox/errors.test.ts": 1
   },
-  "agent-test-imports": {
-    "packages/junior-evals/evals/agent/action-review.eval.ts": 1,
-    "packages/junior-evals/evals/agent/files.eval.ts": 1,
-    "packages/junior-evals/evals/agent/providers.eval.ts": 1,
-    "packages/junior-evals/evals/agent/research.eval.ts": 1,
-    "packages/junior-evals/evals/agent/skill-routing.eval.ts": 1,
-    "packages/junior-evals/evals/agent/skills.eval.ts": 1,
-    "packages/junior-evals/evals/agent/slack-user-status.eval.ts": 1,
-    "packages/junior-evals/evals/github/skills.eval.ts": 1
-  },
+  "agent-test-imports": {},
   "model-fakes": {
     "packages/junior-evals/src/router-harness.ts": 1,
-    "packages/junior-evals/tests/component/slack-transcript.test.ts": 3,
     "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts": 3,
     "packages/junior/tests/component/auth/plugin-auth-runtime-slack.test.ts": 2,
     "packages/junior/tests/component/briefs/conversation-brief-task.test.ts": 2,
@@ -126,7 +116,6 @@
   },
   "runtime-config-mutation": {
     "packages/junior-evals/global-setup.ts": 2,
-    "packages/junior-evals/src/behavior-harness.ts": 2,
     "packages/junior/tests/component/app-sandbox-trace-config.test.ts": 1,
     "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts": 1,
     "packages/junior/tests/component/auth/mcp-oauth-client-auth.test.ts": 1,
@@ -210,8 +199,6 @@
     "packages/junior/tests/unit/slack/tool-registration.test.ts": 5
   },
   "runtime-composition": {
-    "packages/junior-evals/src/behavior-harness.ts": 1,
-    "packages/junior-evals/src/harness/event-processing.ts": 1,
     "packages/junior/tests/component/conversations/web-images.test.ts": 1,
     "packages/junior/tests/component/task-execution/conversation-work.test.ts": 2,
     "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts": 1,
