@@ -6,15 +6,15 @@ import { pathToFileURL } from "node:url";
 const API_URL = "https://evals.sentry.dev";
 const SUITES = ["behavioral", "integration", "guardian", "router"];
 
+// Fixture evals are in `src/fixture/`, so an eval file can be outside `evals/`.
 function scenarioFile(filename) {
   const normalized = filename.replaceAll("\\", "/");
   const marker = "/packages/junior-evals/";
   const index = normalized.lastIndexOf(marker);
-  const file = normalized.slice(index + marker.length);
-  if (index === -1 || !file.startsWith("evals/")) {
+  if (index === -1 || !normalized.endsWith(".eval.ts")) {
     throw new Error(`Expected an eval file inside junior-evals: ${filename}`);
   }
-  return file;
+  return normalized.slice(index + marker.length);
 }
 
 /** Map the Vitest assertion and its vitest-evals metadata to the API schema. */

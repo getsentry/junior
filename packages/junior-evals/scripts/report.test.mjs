@@ -104,9 +104,10 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
   await writeFile(report, JSON.stringify(artifact));
   const second = await reportFile(root, "second.json");
   const shard = JSON.parse(await readFile(second, "utf8"));
+  // The integration suite also runs the evals of the agent test fixture.
   shard.testResults[0].name = shard.testResults[0].name.replace(
-    "routing.eval.ts",
-    "reasoning.eval.ts",
+    "evals/router/routing.eval.ts",
+    "src/fixture/history.eval.ts",
   );
   await writeFile(second, JSON.stringify(shard));
   const event = path.join(root, "event.json");
@@ -157,8 +158,14 @@ test("uploads shards with scores, usage, failures, and PR metadata", async (t) =
     commit_url: "https://github.com/getsentry/junior/commit/head-sha",
     run_url: "https://github.com/getsentry/junior/actions/runs/123/attempts/2",
   });
-  assert.equal(created.scenarios.length, 3);
-  assert.ok(created.scenarios.every(({ name }) => name.startsWith("evals/")));
+  assert.deepEqual(
+    created.scenarios.map(({ name }) => name),
+    [
+      "evals/router/routing.eval.ts > Routing chooses standard",
+      "evals/router/routing.eval.ts > Routing fails an assertion",
+      "src/fixture/history.eval.ts > Routing chooses standard",
+    ],
+  );
   const uploaded = requests.slice(1).flatMap(({ url, body }) => {
     assert.equal(url, "https://evals.sentry.dev/api/runs/run-1/scenarios");
     assert.equal(body.run_id, "run-1");
