@@ -128,8 +128,9 @@ describe("agent dispatch recovery", () => {
             message: "Resumed scheduled digest",
           },
         },
-        // The resumed slice sees the saved result and stops.
-        { type: "text", text: "Draft after resume" },
+        // A provider error on the resumed slice must not discard the saved
+        // result.
+        { type: "error", errorMessage: "Model provider quota exhausted" },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");

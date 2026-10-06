@@ -233,12 +233,12 @@ function buildAutomationTurnResult(input: TurnResultInput): AgentRunResult {
   const automation = readAutomationResult(
     input.piMessages ?? input.newMessages,
   );
-  const outcome: AgentTurnDiagnostics["outcome"] =
-    stopReason === "error"
+  // A declared result decides the outcome, even when a later slice errs.
+  const outcome: AgentTurnDiagnostics["outcome"] = automation
+    ? "success"
+    : stopReason === "error"
       ? "provider_error"
-      : automation
-        ? "success"
-        : "execution_failure";
+      : "execution_failure";
   const errorMessage =
     outcome === "provider_error"
       ? lastAssistant?.errorMessage
