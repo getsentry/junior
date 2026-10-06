@@ -9,7 +9,11 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import type { HarnessRun, TranscriptEvent } from "vitest-evals/harness";
+import {
+  serializeError,
+  type HarnessRun,
+  type TranscriptEvent,
+} from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -435,6 +439,15 @@ export async function createFixtureAgent(
     } catch (error) {
       // Work must not outlive the test and reach closed stores.
       await close();
+      // Record the run, so the eval report counts the test as a failed eval.
+      // Without a run, the report gate fails hard, as for a broken setup.
+      context.task.meta.harness = {
+        name: "junior",
+        run: {
+          ...combinedRun(calls, currentUsage(), startedAtMs),
+          errors: [serializeError(error)],
+        },
+      };
       throw error;
     } finally {
       gateway.setProgressHook(undefined);
