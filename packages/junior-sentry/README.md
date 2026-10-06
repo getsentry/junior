@@ -34,12 +34,9 @@ Verified CLI surface (check live `sentry --help` before blocking):
 
 ## Org read access
 
-Scheduled tasks, event automations, and bot messages cannot start user OAuth. To let them read Sentry, create a read-only internal integration token and set:
+Scheduled tasks, event automations, and bot messages cannot start user OAuth. To let them read Sentry, create a read-only internal integration token and set it as `SENTRY_READ_TOKEN`.
 
-- `SENTRY_READ_TOKEN`: the integration token
-- `SENTRY_READ_ORG`: the organization slug the token can read
-
-Junior then uses the token for read requests (`GET`, `HEAD`, `OPTIONS`) to that organization. Writes, `POST` queries, `/api/0/users/` requests, and other organizations still use the requesting user's OAuth token. Without both variables, every request uses user OAuth.
+Junior then uses the token for Sentry API reads (`GET`, `HEAD`, `OPTIONS`). Sentry limits the token to the organization that installed the integration. Writes, `POST` queries, and `/api/0/users/` requests still use the requesting user's OAuth token. Without `SENTRY_READ_TOKEN`, every request uses user OAuth.
 
 ## Issue webhooks
 

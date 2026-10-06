@@ -12,7 +12,6 @@ import {
 import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
 import {
   SENTRY_API_DOMAINS,
-  SENTRY_READ_ORG_ENV,
   SENTRY_READ_TOKEN_ENV,
   issueSentryCredential,
   sentryGrantForEgress,
@@ -58,7 +57,6 @@ export function sentryPlugin(): PluginRegistration {
       envVars: {
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
-        [SENTRY_READ_ORG_ENV]: {},
         [SENTRY_READ_TOKEN_ENV]: {},
         SENTRY_WEBHOOK_ORG: {},
         SENTRY_WEBHOOK_SECRET: {},

@@ -84,20 +84,9 @@ OAuth client secret used when a user connects their Sentry account.
 </details>
 
 <details class="plugin-config">
-<summary><code>SENTRY_READ_ORG</code></summary>
-
-Organization slug that `SENTRY_READ_TOKEN` can read.
-
-- **Define:** Set `SENTRY_READ_ORG` in the deployment environment
-- **Required:** Yes for org read access; otherwise no
-- **Environment override:** `SENTRY_READ_ORG`
-
-</details>
-
-<details class="plugin-config">
 <summary><code>SENTRY_READ_TOKEN</code></summary>
 
-Internal integration token with read-only scopes. Junior uses it for read requests to `SENTRY_READ_ORG`.
+Internal integration token with read-only scopes. Junior uses it for Sentry API reads.
 
 - **Define:** Set `SENTRY_READ_TOKEN` in the deployment environment
 - **Required:** Yes for org read access; otherwise no
@@ -150,10 +139,10 @@ Create a **Sentry internal integration** for org read access. Use a separate int
 1. Create an internal integration in the organization.
 2. Grant read-only permissions for **Project**, **Issue & Event**, **Organization**, and **Release**. Add **Team** and **Member** read only if you need them.
 3. Create a token for the integration.
-4. Set `SENTRY_READ_TOKEN` to the token and `SENTRY_READ_ORG` to the organization slug.
+4. Set `SENTRY_READ_TOKEN` to the token.
 5. Redeploy Junior.
 
-Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry API in `SENTRY_READ_ORG`. Requests that do not name an organization, such as `/api/0/issues/{id}/`, also use the token, because Sentry limits it to its own organization. All other requests use the requesting user's OAuth token. This includes writes, `POST` queries, `/api/0/users/` requests, and requests to other organizations.
+Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry API. Sentry limits the token to the organization that installed the integration. All other requests use the requesting user's OAuth token. This includes writes, `POST` queries, and `/api/0/users/` requests.
 
 Anyone who can talk to Junior can read every project the token can read. Sentry audit logs show the integration, not the Slack user.
 
@@ -224,7 +213,7 @@ Create the watch or event automation before the issue arrives. Junior does not r
 - **Sentry returns `401`:** Reconnect Sentry to replace the stale or revoked token.
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project. With org read access, also check the integration's read permissions.
-- **A scheduled task cannot read Sentry:** Set `SENTRY_READ_TOKEN` and `SENTRY_READ_ORG`, and confirm the request targets `SENTRY_READ_ORG`.
+- **A scheduled task cannot read Sentry:** Set `SENTRY_READ_TOKEN`, and confirm the request targets the organization that installed the integration.
 - **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 

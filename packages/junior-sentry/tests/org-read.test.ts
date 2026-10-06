@@ -25,14 +25,13 @@ function grantFor(method: string, url: string) {
 describe("sentry org read access", () => {
   beforeEach(() => {
     process.env.SENTRY_READ_TOKEN = "org-read-token";
-    process.env.SENTRY_READ_ORG = "Sentry";
   });
 
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("uses the org read token only for reads in the configured org", () => {
+  it("uses the org read token for reads and user OAuth for writes", () => {
     const orgRead = {
       name: "org-read",
       access: "read",
@@ -51,15 +50,12 @@ describe("sentry org read access", () => {
       orgRead,
     );
 
-    // Writes, other orgs, and user endpoints keep user OAuth.
+    // Writes and user endpoints keep user OAuth.
     expect(
       grantFor(
         "PUT",
         "https://sentry.io/api/0/organizations/sentry/issues/123/",
       ),
-    ).toBeUndefined();
-    expect(
-      grantFor("GET", "https://sentry.io/api/0/organizations/acme/issues/"),
     ).toBeUndefined();
     expect(
       grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
