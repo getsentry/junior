@@ -857,26 +857,6 @@ describe("github plugin", () => {
         teamId: "T1",
         userId: "U2",
       },
-      resolveActor: async () => ({
-        identity: {
-          id: "slack-id",
-          provider: "slack",
-          providerSubjectId: "U2",
-        },
-        user: {
-          displayName: "Jane Doe",
-          email: "jane@example.com",
-          id: "user-2",
-          identities: [
-            {
-              id: "github-id",
-              provider: "github",
-              providerSubjectId: "2",
-              handle: "janedoe",
-            },
-          ],
-        },
-      }),
       conversationId: "slack:C123:1712345.0002",
     });
     const plugin = githubPlugin();
@@ -886,7 +866,7 @@ describe("github plugin", () => {
       {
         repo: "getsentry/junior",
         title: "Typed issue",
-        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**.\n<!-- junior-request-attribution:end -->",
         labels: ["bug"],
       },
       { toolCallId: "call-create-issue-accumulate" },
@@ -894,11 +874,11 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, @janedoe.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
-  it("replaces a requester name with their GitHub mention instead of duplicating them", async () => {
+  it("does not duplicate a requester already present in the attribution block", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
       actor: {
@@ -907,26 +887,6 @@ describe("github plugin", () => {
         teamId: "T1",
         userId: "U1",
       },
-      resolveActor: async () => ({
-        identity: {
-          id: "slack-id",
-          provider: "slack",
-          providerSubjectId: "U1",
-        },
-        user: {
-          displayName: "David Cramer",
-          email: "david@example.com",
-          id: "user-1",
-          identities: [
-            {
-              id: "github-id",
-              provider: "github",
-              providerSubjectId: "1473041",
-              handle: "dcramer",
-            },
-          ],
-        },
-      }),
       conversationId: "slack:C123:1712345.0003",
     });
     const plugin = githubPlugin();
@@ -944,7 +904,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
