@@ -5,7 +5,7 @@ import {
   threadMessage,
 } from "@junior-evals/fixture/inputs";
 import { insertCredential } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
   completedToolCalls,
@@ -46,8 +46,10 @@ describe("OAuth Workflows", () => {
     );
     expect(turnStates(paused)).toEqual(["started"]);
 
-    const resumed = await paused.continue(completeAuth("eval-auth"), {
-      criteria: rubric({
+    const resumed = await paused.continue(completeAuth("eval-auth"));
+    await expect(resumed).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The answer explicitly says the earlier budget deadline was Friday.",
         ],
@@ -57,7 +59,7 @@ describe("OAuth Workflows", () => {
           "After authorization completes, do not claim Eval Auth is unavailable, ask the user to reconnect, or post a generic failure message.",
         ],
       }),
-    });
+    );
     expect(turnStates(resumed)).toEqual(["succeeded"]);
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
 
@@ -65,16 +67,17 @@ describe("OAuth Workflows", () => {
       mention(
         "/eval-auth Use the connection again and confirm the lookup works.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The request completes successfully using the Eval Auth connection.",
-          ],
-          fail: [
-            "Do not claim Eval Auth is unavailable, ask the user to reconnect, or post a generic failure message.",
-          ],
-        }),
-      },
+    );
+    await expect(reused).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The request completes successfully using the Eval Auth connection.",
+        ],
+        fail: [
+          "Do not claim Eval Auth is unavailable, ask the user to reconnect, or post a generic failure message.",
+        ],
+      }),
     );
     // The turn does not wait for authorization again.
     expect(turnStates(reused)).toEqual(["succeeded"]);
@@ -93,8 +96,10 @@ describe("OAuth Workflows", () => {
     expect(turnStates(paused)).toEqual(["started"]);
     expect(identityChecks(paused)).toEqual([]);
 
-    const resumed = await paused.continue(completeAuth("eval-oauth"), {
-      criteria: rubric({
+    const resumed = await paused.continue(completeAuth("eval-oauth"));
+    await expect(resumed).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The answer explicitly says the earlier budget deadline was Friday.",
         ],
@@ -104,7 +109,7 @@ describe("OAuth Workflows", () => {
           "After authorization completes, do not claim eval-oauth is unavailable, ask the user to reconnect, or post a generic failure message.",
         ],
       }),
-    });
+    );
     expect(turnStates(resumed)).toEqual(["succeeded"]);
     expect(identityChecks(resumed)).not.toHaveLength(0);
 
@@ -112,16 +117,17 @@ describe("OAuth Workflows", () => {
       mention(
         "/eval-oauth Check again and tell me which eval identity is active.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The answer identifies the connected account as eval-oauth-user.",
-          ],
-          fail: [
-            "Do not claim eval-oauth is unavailable, ask the user to reconnect, or post a generic failure message.",
-          ],
-        }),
-      },
+    );
+    await expect(reused).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The answer identifies the connected account as eval-oauth-user.",
+        ],
+        fail: [
+          "Do not claim eval-oauth is unavailable, ask the user to reconnect, or post a generic failure message.",
+        ],
+      }),
     );
     // The turn does not wait for authorization again.
     expect(turnStates(reused)).toEqual(["succeeded"]);
@@ -176,8 +182,10 @@ describe("OAuth Workflows", () => {
     );
     expect(turnStates(paused)).toEqual(["started"]);
 
-    const resumed = await paused.continue(completeAuth("eval-oauth"), {
-      criteria: rubric({
+    const resumed = await paused.continue(completeAuth("eval-oauth"));
+    await expect(resumed).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "After authorization completes, the assistant briefly confirms that the eval-oauth account is ready to use.",
         ],
@@ -187,7 +195,7 @@ describe("OAuth Workflows", () => {
           "Do not invent or continue with an unrelated task after confirming the connection.",
         ],
       }),
-    });
+    );
     expect(turnStates(resumed)).toEqual(["succeeded"]);
     expect(skillLoads("eval-oauth", paused, resumed)).not.toHaveLength(0);
     expect(identityChecks(resumed)).not.toHaveLength(0);

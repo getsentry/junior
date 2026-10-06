@@ -3,12 +3,14 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a request or a response. Image generation is the
- * one exception: it is a third-party image API, so the observer answers it
- * with a 1x1 PNG.
+ * reacts. It never changes a model request or its response. Two requests are
+ * not model requests. Image generation is a third-party image API, so the
+ * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
+ * provider, so `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { mswServer } from "@junior-tests/msw/server";
+import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
 const GATEWAY_CHAT_COMPLETIONS_URL =
@@ -99,6 +101,8 @@ export function installGatewayObserver(): GatewayObserver {
     http.all("https://ai-gateway.vercel.sh/*", async ({ request }) => {
       const endpoint = new URL(request.url).pathname;
       counts[endpoint] = (counts[endpoint] ?? 0) + 1;
+      const searchResponse = await answerWebSearch(request);
+      if (searchResponse) return searchResponse;
       if (await isImageGeneration(request)) {
         return HttpResponse.json({
           choices: [

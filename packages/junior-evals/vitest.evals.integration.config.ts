@@ -67,7 +67,6 @@ const projectTest = {
     path.resolve(__dirname, "src/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-    path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
     path.resolve(__dirname, "src/eval-cleanup.ts"),
   ],
   testTimeout: EVAL_TEST_TIMEOUT_MS,

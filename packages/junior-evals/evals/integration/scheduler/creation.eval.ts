@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -10,19 +10,20 @@ describe("Schedule Creation", () => {
   }) => {
     const conversation = await run(
       mention("send me a direct reminder in 1 minute to wash my hands"),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms that a one-off reminder to wash hands was scheduled.",
-            "The reply does not ask the user to confirm first.",
-          ],
-          fail: [
-            "Do not ask the user to confirm the reminder before creating it.",
-            "Do not ask the user to provide a channel ID.",
-            "Do not describe the reminder as a recurring schedule.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms that a one-off reminder to wash hands was scheduled.",
+          "The reply does not ask the user to confirm first.",
+        ],
+        fail: [
+          "Do not ask the user to confirm the reminder before creating it.",
+          "Do not ask the user to provide a channel ID.",
+          "Do not describe the reminder as a recurring schedule.",
+        ],
+      }),
     );
 
     const creates = completedToolCalls(
@@ -43,8 +44,10 @@ describe("Schedule Creation", () => {
   test("when asked for a terse one-off reminder, create it without recurrence", async ({
     run,
   }) => {
-    const conversation = await run(mention("remind me to drink water in 1m"), {
-      criteria: rubric({
+    const conversation = await run(mention("remind me to drink water in 1m"));
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The reply confirms that a one-off reminder to drink water was scheduled.",
           "The reply does not ask the user to retry with a different one-time format.",
@@ -55,7 +58,7 @@ describe("Schedule Creation", () => {
           "Do not describe the reminder as a recurring schedule.",
         ],
       }),
-    });
+    );
 
     const creates = completedToolCalls(
       "slackScheduleCreateAutomation",
@@ -152,19 +155,20 @@ describe("Schedule Creation", () => {
       mention(
         "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The created task describes checking scheduler-related GitHub issues, not creating a schedule.",
-            "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
-          ],
-          fail: [
-            "Do not ask the user to confirm before creating the clear recurring task.",
-            "Do not ask the user to provide a channel ID.",
-            "Do not only give instructions for how the user can set up an external cron.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The created task describes checking scheduler-related GitHub issues, not creating a schedule.",
+          "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
+        ],
+        fail: [
+          "Do not ask the user to confirm before creating the clear recurring task.",
+          "Do not ask the user to provide a channel ID.",
+          "Do not only give instructions for how the user can set up an external cron.",
+        ],
+      }),
     );
 
     const creates = completedToolCalls(

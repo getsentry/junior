@@ -10,7 +10,7 @@ import {
   type TranscriptEvent,
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
-import type { VisibleMessage } from "./judge";
+import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
 /** Header that selects the signed-in person for a fixture API request. */
 export const VIEWER_HEADER = "x-fixture-viewer";
@@ -35,17 +35,16 @@ export interface ToolCall {
 }
 
 /**
- * Completed calls of one tool across the results of several calls. The agent
- * runs deferred tools through `executeTool`; those calls count as calls of the
- * inner tool, with its arguments as `input`.
+ * Calls of one tool in any state across the results of several calls. The
+ * agent runs deferred tools through `executeTool`; those calls count as calls
+ * of the inner tool, with its arguments as `input`.
  */
-export function completedToolCalls(
+export function toolCallsOf(
   name: string,
   ...results: Array<{ toolCalls: ToolCall[] }>
 ): ToolCall[] {
   return results
     .flatMap((result) => result.toolCalls)
-    .filter((call) => call.status === "completed")
     .flatMap((call) => {
       if (call.name === name) return [call];
       const deferred = call.input as
@@ -57,18 +56,39 @@ export function completedToolCalls(
     });
 }
 
+/** Completed calls of one tool across the results of several calls. */
+export function completedToolCalls(
+  name: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return toolCallsOf(name, ...results).filter(
+    (call) => call.status === "completed",
+  );
+}
+
 /**
- * Completed calls of one MCP tool, such as `mcp__eval-tracker__search-tickets`,
- * across the results of several calls.
+ * Calls of one MCP tool in any state, such as
+ * `mcp__eval-tracker__search-tickets`, across the results of several calls.
+ * A call that Guardian rejects has the `error` status.
  */
+export function mcpToolCallsOf(
+  toolName: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return toolCallsOf("callMcpTool", ...results).filter(
+    (call) =>
+      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
+      toolName,
+  );
+}
+
+/** Completed calls of one MCP tool across the results of several calls. */
 export function completedMcpToolCalls(
   toolName: string,
   ...results: Array<{ toolCalls: ToolCall[] }>
 ): ToolCall[] {
-  return completedToolCalls("callMcpTool", ...results).filter(
-    (call) =>
-      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
-      toolName,
+  return mcpToolCallsOf(toolName, ...results).filter(
+    (call) => call.status === "completed",
   );
 }
 
@@ -326,15 +346,25 @@ export interface FixtureUsage {
 /** The vitest-evals run for one call. */
 export function toHarnessRun(args: {
   conversationId: string;
+  /** User-visible messages before the call, as context for judges. */
+  earlier: VisibleMessage[];
   usage: FixtureUsage;
   messages: VisibleMessage[];
   startedAtMs: number;
   toolCalls: ToolCall[];
 }): HarnessRun {
   return {
+    // The replies of the call, which a failed judge assertion prints.
+    output: args.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content)
+      .join("\n\n"),
     session: {
       events: toTranscriptEvents(args.messages, args.toolCalls),
-      metadata: { conversation_ids: [args.conversationId] },
+      metadata: {
+        conversation_ids: [args.conversationId],
+        [EARLIER_MESSAGES_KEY]: args.earlier.map((message) => ({ ...message })),
+      },
     },
     usage: {
       toolCalls: args.toolCalls.length,

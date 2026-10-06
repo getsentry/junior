@@ -11,17 +11,15 @@ There are four independently runnable suites:
 3. **Guardian** (`evals/guardian/**`) — isolated decision snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
 4. **Router** (`evals/router/**`) — isolated turn route snapshots scored on exact model profile and reasoning level selections. Failures are hard pass/fail.
 
-- We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
-- We run the real runtime/harness against those fixtures.
-- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client.
+- Integration and behavioral cases run the real agent through the agent test fixture.
+- Guardian and router cases use `describeEval()` with their own harness. They call one model boundary and do not run the agent.
 - Behavioral and integration evals use normal core model configuration, including loaded environment overrides. Without overrides, they use the shared core defaults. Neither suite pins models or adds profiles.
 - Router evals use the shared core profiles and configured fast model. Reasoning cases remove fixed profile levels to test the classifier; profile cases retain the defaults.
 
 ## Agent Test Fixture
 
-New tests that run the agent use the agent test fixture in `src/fixture/`.
-It replaces the Slack harness below. Issue #2001 has the full contract and the
-migration order. The old harness stays until the remaining evals move.
+Tests that run the agent use the agent test fixture in `src/fixture/`. Issue
+#2001 has the full contract.
 
 The agent is one unit. A test does not mock the model or any other part of
 the agent. A test touches the product in three places only:
@@ -38,15 +36,18 @@ the agent. A test touches the product in three places only:
 ```ts
 import { describe, expect } from "vitest";
 import { mention, reply } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
   test("when asked about the prior turn, recall it", async ({ run }) => {
     const conversation = await run(mention("what did i just ask?"), {
       history: [mention("I need the budget by Friday."), reply("Got it.")],
-      criteria: rubric({ pass: ["Recalls the budget and Friday."] }),
     });
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({ pass: ["Recalls the budget and Friday."] }),
+    );
     expect(conversation.replies).toHaveLength(1);
   });
 });
@@ -77,6 +78,10 @@ describe("Thread Continuity", () => {
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
   settings. Its evals are in `evals/sentry/`.
+- The `skills` suite has the skills in `fixtures/skills/`, the skills of the
+  Agent Browser plugin, and two eval plugins with tools of the eval MCP
+  server. `src/suites/skills.ts` has its settings. Its evals are in
+  `evals/skills/`.
 - The `auth` suite has two eval plugins and their skills: the MCP server of
   `eval-auth` needs OAuth, and the HTTP API of `eval-oauth` needs an OAuth
   token. `src/suites/auth.ts` has its settings. Its evals are in
@@ -145,9 +150,16 @@ describe("Thread Continuity", () => {
 - Assert facts that do not depend on wording: reply counts, turn states, tool
   calls, and reactions. `completedToolCalls()` returns the completed calls of
   one tool, and `completedMcpToolCalls()` returns those of one MCP tool.
-  `toolOutput()` parses a tool result. Use `criteria`
-  for wording. Do not assert on stored
-  rows or runtime objects.
+  `toolCallsOf()` and `mcpToolCallsOf()` return the calls in any state.
+  `toolOutput()` parses a tool result. Do not assert on stored rows or
+  runtime objects.
+- Judge wording with the vitest-evals matcher:
+  `await expect(conversation).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
+  A call result is also the vitest-evals run of that call. `RubricJudge`
+  scores the replies of the call and reads the earlier messages of the
+  Conversation as context. `rubric()` adds the passing threshold. Other
+  vitest-evals judges work the same way; pass `judgeHarness` from
+  `src/fixture/judge.ts` to a judge that asks a model.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each
@@ -164,7 +176,7 @@ Testing taxonomy and layer contracts are defined in:
 Quick mapping:
 
 - `tests/integration/*`: Slack/runtime integration and HTTP contract tests.
-- `evals/*`: Integration-style coverage for conversation-level agent behavior and quality scoring through the runtime harness.
+- `evals/*`: Integration-style coverage for conversation-level agent behavior and quality scoring through the agent test fixture.
 - `tests/unit/*` (or non-integration tests): isolated logic/invariant tests.
 
 This separation is enforced by `pnpm lint`.
@@ -173,7 +185,7 @@ This separation is enforced by `pnpm lint`.
 
 - Conversation-level behavior under realistic thread/message flows.
 - Tool use and output behavior as observed by the runtime.
-- Slack-visible metadata exposed by the runtime and harness.
+- Slack-visible metadata exposed by the runtime and the fixture.
 
 Not in scope:
 
@@ -188,22 +200,22 @@ Not in scope:
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, and output shape
 - Behavioral agent cases: `evals/agent/`
-  - skills, providers, research, files, and skill routing
+  - research reply shape and Slack user status, on the default agent
+- Behavioral skills suite cases: `evals/skills/`
+  - skill invocation and routing, MCP providers, and Guardian action review
 - Behavioral coding suite cases: `evals/coding/`
-  - watch intent, summary quality, and a mention during a watch delivery, with the GitHub plugin
+  - file tools, GitHub skill workflows, watch intent, summary quality, a fix after a failed check, and a mention during a watch delivery, with the GitHub plugin
 - Behavioral feature cases:
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
-  - `evals/github/`
   - `evals/sentry/`
 - Isolated Guardian decisions: `evals/guardian/`
   - exact `ToolActionProposal` snapshots scored only on `allow` / `ask` / `deny`
 - Isolated turn routes: `evals/router/`
   - exact model profile and reasoning level selections
-- Helpers and event builders: `src/helpers.ts`
+- Agent test fixture: `src/fixture/`
 - Guardian harness: `src/guardian-harness.ts`
 - Router harness: `src/router-harness.ts`
-- Harness/runtime adapter: `src/behavior-harness.ts` (scenario entry) with its concerns split under `src/harness/`: types, environment, auth fixtures, threads, Slack artifacts, replay tools, runtime services, event processing, and plugin tasks
 
 The ticket lookup in `evals/conversation/actors.eval.ts` defines an
 `eval-tracker` plugin for the eval MCP server. The server supplies two tickets
@@ -218,62 +230,30 @@ credentials. Host and Sandbox HTTP reads use the same open PR, failed check,
 and log fixtures in `junior-testing/src/http/github-checks.ts`.
 Reply-count checks include file-only replies. A reaction is not a thread reply.
 
-## Execution Model
+## Global Setup
 
-For each `it()` case inside a `describeEval()` suite:
+Suite global setup, snapshot warmup, and egress use the same plugin
+registrations so dependencies and credentials match. Worker and global setup
+each install the AI Gateway transport timeouts in their own process. Quick
+Tunnel startup uses normal system DNS and retains failed attempts and logs.
+Global setup reports the Postgres, egress, and snapshot phases before cases
+start. Egress teardown stops the tunnel and closes its remaining HTTP
+connections.
 
-1. Replay events through the harness via `runEvalScenario()`.
-2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
-3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
-4. Return a standard `vitest-evals` `HarnessRun`; `result.session.messages` is the canonical normalized transcript, while tool calls and artifacts remain available for deterministic assertions.
-5. Do not create a second repo-local transcript, event-log, or assertion schema when `vitest-evals` already has `session`, `toolCalls(result.session)`, `artifacts`, or `traces`.
-6. When a case supplies `criteria`, `vitest-evals` scores its normalized visible transcript (A–E -> 1.0-0.0). Deterministic-only cases omit `criteria` and use direct assertions without a model judge.
+## Web Pages And Search
 
-## Harness Boundaries
-
-- Use the Slack eval harness for Slack/runtime behavior: mentions, thread/channel delivery, OAuth privacy, lifecycle/resume behavior, reactions, and Slack-visible side effects.
-- Use an agent-level harness for prompt, skill routing, tool choice, provider/tool calls, and reply quality when Slack transport is not the behavior under test.
-- The Slack eval harness reads SDK and HTTP thread replies from the shared Slack fixture once, before the next inbound message. Other Slack API side effects may be collected afterward. The rubric judge receives user-visible text, visible Slack author names, and attachment labels from normalized user and assistant messages. Tool calls, artifacts, logs, and other runtime observations stay outside its prompt.
-- Omit `criteria` for deterministic-only cases. Use shared typed selectors plus explicit assertions for tool calls, reactions, attachments, persistence, and delivery side effects; the rubric judge is reserved for nondeterministic visible reply quality.
-- When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
-- Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
-
-A scenario controls three things, and nothing else:
-
-1. **Agent config.** The runtime the scenario instantiates: plugin packages and fixture dirs, skill dirs, credentials, env, and runtime service overrides. Production sets the same things at startup, so a scenario that needs different behavior configures a different runtime instead of reaching into a running one.
-2. **Preloaded history.** Prior turns written through the runtime's own stores before the first event, with `history: [mention(...), reply(...)]`. No agent runs for them. A prior reply can include `toolHistory` with native Pi assistant and tool-result messages from the work before that reply. These remain in agent history, not the visible Slack transcript or the current run's tool calls. The visible thread transcript, durable agent history, and conversation messages all exist as a completed turn would have left them, and a thread Junior replied in stays subscribed.
-3. **Mocked third-party APIs.** Slack, provider HTTP, MCP fixtures, and image generation through the shared MSW handlers and fixtures.
-
-Do not add a knob that writes runtime state directly, scripts the model, or replaces a Junior-owned module. `active_turn_compaction` is the one remaining exception: the active-turn compactor takes no trigger override, so it still seeds a paused turn record.
-
-Harness override knobs (in `EvalOverrides`):
-
-- `active_turn_compaction`: seeds an active-turn compaction boundary so an eval can exercise model continuation without manufacturing oversized tool output.
-- `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
-- `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
-- `credential_providers`: seed normal provider credentials for the listed providers. GitHub uses dummy GitHub App env vars plus an intercepted installation-token exchange; Sentry uses the normal OAuth token store.
-- `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
-- `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
-- `reply_timeout_ms`: lower the per-reply harness timeout for a specific scenario. It cannot exceed 60 seconds. Harness tests use it; live evals keep the default.
-- `turn_timeout_ms`: shorten the agent turn deadline for every run slice, below the 60-second reply budget. The real runtime handles the deadline: it aborts in-flight tools, records the boundary, and resumes the turn. Pair it with a fixture tool that stalls, such as the eval-operation `release-push` whose first call lands remotely but stalls past the deadline.
-
-These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
-
-The queue waits for each delivery's due time before starting the worker. The
-60-second reply budget starts after that wait. Scenarios, snapshot warmup, and
-egress use the same plugin registrations so dependencies and credentials match.
-
-Failed runs keep their partial session in the report and still fail the case.
-`src/eval-result.ts` converts both successful and failed results. Worker and global
-setup each install the AI Gateway transport timeouts in their own process. Quick Tunnel
-startup uses normal system DNS and retains failed attempts and logs. Global
-setup reports the Postgres, egress, and snapshot phases before cases start.
-Egress teardown stops the tunnel and closes its remaining HTTP connections.
-
-Tool replay:
-
-- `webFetch` and `webSearch` are wrapped with `vitest-evals/replay` in the eval harness. Use `pnpm evals:record` to force fresh recordings under `.vitest-evals/recordings`.
-- Keep committed recordings minimal and source-specific. Regenerate them from the evals that need replay, then review for stale exploratory fetches and secret-like values before committing.
+- The fixture replays the requests that the `webFetch` tool sends.
+  `src/fixture/web.ts` records each response under
+  `.vitest-evals/recordings/webFetch/` and answers later requests for the same
+  URL from the recording. A redirect is its own recording.
+- The fixture always mocks the search provider of `webSearch`. No test turns
+  the mock on or off, and no search reaches the real provider. A search finds
+  nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
+  the results for one test.
+- Use `pnpm evals:record` to record the pages again.
+- Git ignores new recordings. Add the ones that an eval needs with
+  `git add -f`. Review them for stale fetches and secret-like values before
+  you commit.
 
 ## Running
 
@@ -305,7 +285,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `trigger-evals-behavioral`, `trigger-evals-integration`, `trigger-evals-guardian`, and `trigger-evals-router` start one suite
 - Behavioral and integration evals require both gateway and sandbox secrets. Guardian and Router only need gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
-- Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
+- Behavioral path triggers cover domain folders under `evals/{agent,coding,conversation,memory,scheduler,sentry,skills}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
 - Router path triggers cover `evals/router/**`, the Router harness/config under `packages/junior-evals/`, and the turn router source under `packages/junior/src/chat/`.
@@ -327,26 +307,20 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 
 ## Authoring Rules
 
-- Write new cases with the agent test fixture (see **Agent Test Fixture**). Files that still use `describeEval()` with `slackEvals` move to the fixture over time.
-- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
-- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`.
+- Write cases that run the agent with the agent test fixture (see **Agent Test Fixture**).
+- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep a rubric only when the case still needs light quality scoring.
+- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`. Put a case that needs the plugins or skills of a suite in the directory of that suite.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
-- Put messages that should be pending before processing starts in `initialEvents`.
-- Put ordinary later events in `events`; each is delivered after preceding work settles.
-- Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
-- Use event builders (`mention`, `threadMessage`, `threadStart`) from `src/helpers.ts`.
-- Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
-- For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
-- Put semantic, model-dependent expectations in `criteria`.
-- Put deterministic boundary expectations in normal Vitest assertions against `result.session`, `toolCalls(result.session)`, or `result.artifacts`. Prefer `vitest-evals` primitives over local helper-specific output shapes.
-- When an eval judges nondeterministic visible output, express `criteria` with `rubric({ pass, fail })`.
+- Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
+- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, and `turns`.
+- When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.
 - `fail` should list forbidden outputs or failure conditions.
 - Do not write judge criteria as one dense paragraph.
-- Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope.
+- Let the `describe()` block own the behavior area. The file path and `describe()` context already provide scope.
 - Each eval name should only state the specific scenario and outcome.
 - Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
 - Keep user prompts natural when a rubric or judge scores the outcome. They should read like plausible user requests, not scripted implementation instructions.
@@ -354,33 +328,12 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
 - If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
 
-Scenario scheduling uses three forms:
-
-```ts
-await run({
-  initialEvents: [
-    threadMessage("A provider linked incident OPS-123 to this thread"),
-  ],
-  events: [
-    steer(mention("@junior summarize the incident")),
-    threadMessage("Now include the rollout owner"),
-  ],
-  criteria: rubric({
-    pass: ["The assistant follows the direct request and later follow-up."],
-  }),
-});
-```
-
-- `initialEvents` are pending before processing starts. Multiple initial events must be Slack messages and form one mailbox batch.
-- `steer(...)` delivers message events through normal ingress while the preceding agent run is active. Steering messages must target that same Slack conversation.
-- Plain `events` are ordinary later events delivered after preceding work settles.
-
 Do not do these in eval files:
 
 - Do not import `@/chat/slack/*` directly.
 - Do not use MSW Slack helpers (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, `queueSlackApiError`, `queueSlackRateLimit`).
 - Do not validate raw Slack Web API request payload shapes from evals.
-- Do not invent parallel transcript, event-log, or tool-call schemas for assertions. If the existing `vitest-evals` primitives are insufficient, improve the harness boundary first.
+- Do not invent parallel transcript, event-log, or tool-call schemas for assertions. If the call result is insufficient, improve the fixture first.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.
 
 ## File Organization
@@ -388,7 +341,7 @@ Do not do these in eval files:
 Organize files by suite policy first, then by the user-visible area they exercise:
 
 - `evals/integration/`: strict full-runtime integration cases (hard pass/fail).
-- `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI).
+- `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI). A suite directory, such as `evals/coding/` or `evals/skills/`, has the cases that need its plugins and skills.
 - `evals/guardian/`: isolated Guardian decision snapshots (no main agent; hard pass/fail).
 - `evals/router/`: isolated turn route snapshots (no main agent; hard pass/fail).
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
@@ -413,7 +366,7 @@ Good conversational evals should:
 - Omit `fail` bullets unless they describe a real regression or unsafe side effect.
 - Use fake/nonexistent external targets unless the eval explicitly opts into live provider access.
 - Cover realistic failure behavior with clear user-visible errors.
-- Use `toolCalls(result.session)` when tool/provider evidence proves behavior at a real boundary, such as source grounding, mutation safety, provider routing, or auth sequencing.
+- Use `conversation.toolCalls` when tool/provider evidence proves behavior at a real boundary, such as source grounding, mutation safety, provider routing, or auth sequencing.
 
 Avoid:
 
@@ -425,24 +378,20 @@ Avoid:
 ## Minimal Case
 
 ```typescript
-import { assistantMessages, describeEval } from "vitest-evals";
-import { expect } from "vitest";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { describe, expect } from "vitest";
+import { mention } from "@junior-evals/fixture/inputs";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Routing", slackEvals, (it) => {
-  it("when explicitly mentioned, post one direct reply", async ({ run }) => {
-    const result = await run({
-      initialEvents: [mention("Summarize this")],
-      criteria: rubric({
-        pass: ["The assistant answers the user's summary request."],
-      }),
-    });
+describe("Routing", () => {
+  test("when explicitly mentioned, post one direct reply", async ({ run }) => {
+    const conversation = await run(mention("Summarize this"));
 
-    expect(
-      assistantMessages(result.session).filter(
-        (message) => message.metadata?.event_type === "thread_post",
-      ),
-    ).toHaveLength(1);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({ pass: ["The assistant answers the user's summary request."] }),
+    );
+    expect(conversation.replies).toHaveLength(1);
   });
 });
 ```
@@ -456,8 +405,8 @@ Runtime-only changes still require the eval labels.
 Global setup warms the base, GitHub, and Sentry snapshots once per shard.
 The last setup file joins case work before MSW and database cleanup. This hook
 has no separate timeout: late cleanup must not change the next case's state.
-CI stops a stalled shard at the 30-minute job limit. Scenarios also join title
-and plugin tasks. Failed runs retain their transcript, including cleanup errors.
+CI stops a stalled shard at the 30-minute job limit. Each call also joins the
+title and plugin tasks of its turns.
 
 Gateway header and body-idle limits do not replace request cancellation.
 Judges and task titles receive the caller's signal; reply budgets stay unchanged.

@@ -4,7 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -19,8 +19,10 @@ describe("Scheduled Delivery", () => {
       task: "Post this reminder: Standup moved to 10:30 today.",
     });
 
-    const delivery = await run(heartbeat(), {
-      criteria: rubric({
+    const delivery = await run(heartbeat());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "Junior posts a Slack message saying standup moved to 10:30 today.",
           "The delivered message is the reminder content itself, not a schedule creation confirmation.",
@@ -32,7 +34,7 @@ describe("Scheduled Delivery", () => {
           "Do not ask the user what to do with the reminder.",
         ],
       }),
-    });
+    );
 
     expect(delivery.replies).toHaveLength(1);
   });
@@ -47,8 +49,10 @@ describe("Scheduled Delivery", () => {
       task: "Post this reminder: Submit timesheets by 5pm today.",
     });
 
-    const delivery = await run(heartbeat(), {
-      criteria: rubric({
+    const delivery = await run(heartbeat());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "Junior posts a Slack message reminding people to submit timesheets by 5pm today.",
           "The delivered message treats this as the current due occurrence.",
@@ -60,7 +64,7 @@ describe("Scheduled Delivery", () => {
           "Do not ask the user to confirm the recurring task before posting.",
         ],
       }),
-    });
+    );
 
     expect(delivery.replies).toHaveLength(1);
   });

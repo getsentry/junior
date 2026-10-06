@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention, reply } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
@@ -12,13 +12,16 @@ describe("Thread Continuity", () => {
         mention("I need the budget by Friday."),
         reply("Got it: budget due Friday."),
       ],
-      criteria: rubric({
+    });
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The reply explicitly references the earlier budget context, including budget and/or Friday.",
         ],
         fail: ["Do not return sandbox setup failure text."],
       }),
-    });
+    );
 
     expect(conversation.replies).toHaveLength(1);
   });

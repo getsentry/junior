@@ -1,9 +1,0 @@
-name: eval-guardian-actions
-display-name: Eval Guardian Actions
-description: Exercises approval review for consequential eval actions
-
-mcp:
-  url: https://eval-mcp.example.test/mcp
-  allowed-tools:
-    - delete-eval-workspace
-    - export-eval-credentials
