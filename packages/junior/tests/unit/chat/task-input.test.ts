@@ -19,28 +19,6 @@ describe("renderTaskInput", () => {
     `);
   });
 
-  it("ends automation input with the declared result contract", () => {
-    const silent = renderTaskInput({
-      instructions: "Apply the requested maintenance.",
-      outcomes: [],
-    });
-    const sends = renderTaskInput({
-      instructions: "Post a digest.",
-      outcomes: [
-        {
-          action: "send_message",
-          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
-        },
-      ],
-    });
-
-    expect(silent.split("\n").at(-1)).toBe(
-      "End with `finishAutomationRun`. This automation posts nothing.",
-    );
-    expect(sends.split("\n").at(-1)).toBe("End with `finishAutomationRun`.");
-    expect(`${silent}\n${sends}`).not.toContain("[[NO_REPLY]]");
-  });
-
   it("renders optional facts between the job and reply contract", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",

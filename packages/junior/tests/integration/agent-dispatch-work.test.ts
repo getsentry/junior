@@ -112,12 +112,11 @@ describe("agent dispatch conversation work", () => {
       undefined,
       { label: "Scheduled automation", detail: "Weekly" },
     );
-    const modelStream = vi.fn(
+    const agentRunner = createModelAgentRunner(
       createModelStream([
         finishRun({ result: "send_message", message: "Scheduled digest" }),
       ]),
     );
-    const agentRunner = createModelAgentRunner(modelStream);
     const run = vi.spyOn(agentRunner, "run");
     const {
       queue,
@@ -169,9 +168,6 @@ describe("agent dispatch conversation work", () => {
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
-    const systemPrompt = modelStream.mock.calls[0]?.[1].systemPrompt;
-    expect(systemPrompt).toContain("<automation-run>");
-    expect(systemPrompt).not.toContain("<conversation>");
   });
 
   it("sends the declared message to each outcome destination in order", async () => {

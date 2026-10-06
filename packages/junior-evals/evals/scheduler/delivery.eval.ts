@@ -5,6 +5,7 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -67,5 +68,30 @@ describe("Scheduled Delivery", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a due automation needs a service Junior cannot reach, report it as blocked instead of posting", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post the number of open PagerDuty incidents for the payments service.",
+    });
+
+    const delivery = await run(heartbeat());
+
+    expect(delivery.replies).toEqual([]);
+    expect(
+      completedToolCalls("finishAutomationRun", delivery).map(
+        (call) => call.input,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        reason: expect.any(String),
+        result: "blocked",
+      }),
+    ]);
   });
 });

@@ -4,6 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -20,5 +21,27 @@ describe("Scheduled Delivery", () => {
 
     expect(delivery.replies).toHaveLength(1);
     expect(delivery.replies[0]!.text).toContain("<@U0TEST>");
+  });
+
+  test("when a due automation has no message outcome, do the work without posting", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      silent: true,
+      task: "Check the current UTC time.",
+    });
+
+    const silentRun = await run(heartbeat());
+
+    expect(silentRun.replies).toEqual([]);
+    expect(
+      completedToolCalls("finishAutomationRun", silentRun).map(
+        (call) => call.input,
+      ),
+    ).toEqual([expect.objectContaining({ result: "no_action" })]);
   });
 });
