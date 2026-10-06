@@ -11,8 +11,9 @@ export const GITHUB_REQUEST_ATTRIBUTION_END =
   "<!-- junior-request-attribution:end -->";
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
-const GITHUB_LOGIN_PATTERN =
-  /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+// Only a safe login character set; exact GitHub rules vary. Enterprise Managed
+// User logins add an `_shortcode` suffix, so underscores must stay valid.
+const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
 
 /**
  * Return the GitHub login linked to a user, when it is a valid login.

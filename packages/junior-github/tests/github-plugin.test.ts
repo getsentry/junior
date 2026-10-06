@@ -1500,14 +1500,14 @@ Conversation: \`local:test:old-conversation\`
               id: "github-identity",
               provider: "github",
               providerSubjectId: "1473041",
-              handle: "dcramer",
+              handle: "dcramer_sentry",
             },
           ],
         },
       }),
       egressFetch: async ({ operation }) =>
         operation === "github.pull.assign"
-          ? Response.json({ assignees: [{ login: "dcramer" }] })
+          ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
           : new Response(
               JSON.stringify({
                 number: 692,
@@ -1541,11 +1541,11 @@ Conversation: \`local:test:old-conversation\`
       "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
     );
     await expect(assignment.request.json()).resolves.toEqual({
-      assignees: ["dcramer"],
+      assignees: ["dcramer_sentry"],
     });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
 
