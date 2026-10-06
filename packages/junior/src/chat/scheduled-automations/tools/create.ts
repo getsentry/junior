@@ -25,9 +25,9 @@ import type { ScheduledAutomation } from "../types";
 import {
   buildTaskId,
   getConversationAccess,
-  getDefaultScheduleTimezone,
   requireActiveChannel,
   requireActor,
+  resolveCreatorScheduleTimezone,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
@@ -144,10 +144,19 @@ export function createSlackScheduleCreateAutomationTool(
       }
 
       const nowMs = context.now?.() ?? Date.now();
+      const defaultTimezone =
+        input.schedule.timezone ??
+        (await resolveCreatorScheduleTimezone({
+          db,
+          nowMs,
+          slackUserId: actor.slackUserId,
+          teamId: destination.teamId,
+          ...(creator.user ? { userId: creator.user.id } : undefined),
+        }));
       let compiled;
       try {
         compiled = compileScheduleIntent({
-          defaultTimezone: getDefaultScheduleTimezone(),
+          defaultTimezone,
           intent: input.schedule,
           nowMs,
         });

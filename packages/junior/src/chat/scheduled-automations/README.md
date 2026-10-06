@@ -22,6 +22,19 @@ The heartbeat bounds claims per invocation, reconciles incomplete dispatches bef
 
 Task status is `active`, `paused`, `blocked`, `completed`, or `deleted`. A person can pause future claims without deleting history. A block means a requirement prevents dispatch. A successful terminal run with no future occurrence becomes `completed` so creators can still find one-off reminders. Failed/skipped terminal work without a future occurrence is tombstoned as `deleted`. Listings and tool lookups hide `deleted` rows while retaining the record as a tombstone. Public workspace listings also omit `completed` rows; the creator-owned Tasks view keeps them.
 
+## Timezones
+
+A new schedule uses the first available timezone from this list:
+
+1. the timezone that the user asks for;
+2. the creator's Slack profile `tz`;
+3. the creator's `junior_users.timezone`;
+4. `JUNIOR_TIMEZONE`, or `America/Los_Angeles` when that setting is absent.
+
+The create tool saves a valid Slack timezone to `junior_users.timezone`. The saved value is used only when Slack has no valid timezone. Edits keep the schedule timezone unless the user asks to change it.
+
+Do not put the timezone on the Actor. The Actor is stored with each message, and a timezone is a user preference that can change.
+
 ## Destination moves
 
 A scheduled Automation targets a Slack channel or direct message. It never targets a thread. A tool call from a thread uses the active channel as the Destination.

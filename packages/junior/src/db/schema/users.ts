@@ -8,6 +8,7 @@ export const juniorUsers = pgTable(
     primaryEmail: text("primary_email").notNull(),
     primaryEmailNormalized: text("primary_email_normalized").notNull(),
     displayName: text("display_name"),
+    timezone: text("timezone"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

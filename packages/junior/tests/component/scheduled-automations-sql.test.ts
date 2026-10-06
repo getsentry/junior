@@ -16,7 +16,6 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { deferred } from "../fixtures/conversation-work";
 import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 
@@ -137,14 +136,15 @@ describe("scheduled-automation SQL storage", () => {
         ) VALUES ($1, 'slack', $2, $3, 'channel', 'public', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
         ["destination_scheduler_public", "T123", "C123"],
       );
-      const identity = await upsertIdentity(fixture.sql, {
-        email: "person@example.com",
-        emailVerified: true,
-        kind: "user",
-        provider: "slack",
-        providerSubjectId: "U123",
-        providerTenantId: "T123",
-      });
+      // The old schema lacks newer user columns, so insert the identity with SQL.
+      const identity = { id: "identity_scheduler_creator" };
+      await fixture.sql.execute(
+        `INSERT INTO junior_identities (
+          id, kind, provider, provider_tenant_id, provider_subject_id,
+          created_at, updated_at
+        ) VALUES ($1, 'user', 'slack', 'T123', 'U123', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [identity.id],
+      );
       const currentTask = createTask({ id: "sched_legacy" });
       const {
         conversationAccess: _conversationAccess,
