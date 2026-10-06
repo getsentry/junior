@@ -2,7 +2,7 @@ import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
-import { webSearchResults } from "@junior-evals/fixture/web";
+import { mockWebSearchResults } from "@junior-evals/fixture/web";
 
 describe("Output Contract", () => {
   test("when asked for a structured overview, avoid hash markdown headings", async ({
@@ -31,7 +31,7 @@ describe("Output Contract", () => {
   test("when asked for documentation, link to each official starting page", async ({
     run,
   }) => {
-    webSearchResults([
+    mockWebSearchResults([
       {
         title: "Using the Slack Web API",
         url: "https://docs.slack.dev/apis/web-api/",

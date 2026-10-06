@@ -8,7 +8,9 @@
  * again.
  *
  * The `webSearch` tool asks a search provider through the AI Gateway. This
- * module answers that request with the results that the test set.
+ * module always answers that request itself, so no test reaches the real
+ * provider. A search finds nothing unless the test calls
+ * `mockWebSearchResults()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
@@ -86,11 +88,13 @@ const SEARCH_TOOL_ID = "gateway.parallel_search";
 let searchResults: WebSearchResult[] = [];
 
 /**
- * Set the results that `webSearch` finds in this test, for every query.
- * Without it, a search finds nothing. A search never reaches the real
- * provider.
+ * Set the results that the mocked search provider returns in this test, for
+ * every query.
+ *
+ * The fixture always mocks the search provider. This function does not turn
+ * the mock on. Without it, `webSearch` finds nothing.
  */
-export function webSearchResults(results: WebSearchResult[]): void {
+export function mockWebSearchResults(results: WebSearchResult[]): void {
   searchResults = results;
   onTestFinished(() => {
     searchResults = [];

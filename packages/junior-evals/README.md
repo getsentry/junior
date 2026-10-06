@@ -246,10 +246,10 @@ connections.
   `src/fixture/web.ts` records each response under
   `.vitest-evals/recordings/webFetch/` and answers later requests for the same
   URL from the recording. A redirect is its own recording.
-- `webSearch` never reaches the real search provider. The fixture answers
-  the search request with the results that the test set with
-  `webSearchResults()` from `src/fixture/web.ts`. Without it, a search finds
-  nothing.
+- The fixture always mocks the search provider of `webSearch`. No test turns
+  the mock on or off, and no search reaches the real provider. A search finds
+  nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
+  the results for one test.
 - Use `pnpm evals:record` to record the pages again.
 - Git ignores new recordings. Add the ones that an eval needs with
   `git add -f`. Review them for stale fetches and secret-like values before
