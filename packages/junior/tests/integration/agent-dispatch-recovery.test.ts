@@ -120,7 +120,6 @@ describe("agent dispatch recovery", () => {
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
-        { type: "toolCall", name: "systemTime", arguments: {} },
         {
           type: "toolCall",
           name: "finishAutomationRun",
@@ -129,6 +128,8 @@ describe("agent dispatch recovery", () => {
             message: "Resumed scheduled digest",
           },
         },
+        // The resumed slice sees the saved result and stops.
+        { type: "text", text: "Draft after resume" },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
@@ -145,7 +146,7 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the tool result is saved.
+        // Pause the first slice after the declared result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });

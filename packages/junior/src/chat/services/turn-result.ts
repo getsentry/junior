@@ -230,7 +230,9 @@ function buildDiagnostics(
 function buildAutomationTurnResult(input: TurnResultInput): AgentRunResult {
   const lastAssistant = input.newMessages.filter(isAssistantMessage).at(-1);
   const stopReason = lastAssistant?.stopReason;
-  const automation = readAutomationResult(input.newMessages);
+  const automation = readAutomationResult(
+    input.piMessages ?? input.newMessages,
+  );
   const outcome: AgentTurnDiagnostics["outcome"] =
     stopReason === "error"
       ? "provider_error"

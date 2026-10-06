@@ -44,7 +44,13 @@ export function isAutomationSource(source: Source): boolean {
   );
 }
 
-/** Read the last successful declared result from agent history items. */
+/**
+ * Read the last successful declared result from agent history items.
+ *
+ * Pass the whole run history, not only the current slice. An Automation run
+ * owns its dispatch Conversation, and a resumed slice must see a result that
+ * an earlier slice already saved.
+ */
 export function readAutomationResult(
   messages: readonly unknown[],
 ): AutomationResult | undefined {
@@ -96,13 +102,12 @@ const MISSING_RESULT_REMINDER =
  */
 export function remindMissingAutomationResult(
   messages: readonly PiMessage[],
-  newMessages: readonly unknown[],
 ): PiMessage[] | undefined {
   const last = messages.at(-1);
   if (
     !isAssistantMessage(last) ||
     last.stopReason !== "stop" ||
-    readAutomationResult(newMessages)
+    readAutomationResult(messages)
   ) {
     return undefined;
   }

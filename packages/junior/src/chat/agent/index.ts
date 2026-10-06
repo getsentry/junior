@@ -1507,10 +1507,7 @@ async function executeAgentRunInPrivacyContext(
 
               const automationResultReminder = automationResultReminderUsed
                 ? undefined
-                : remindMissingAutomationResult(
-                    agent!.state.messages,
-                    newMessages,
-                  );
+                : remindMissingAutomationResult(agent!.state.messages);
               if (automationResultReminder) {
                 automationResultReminderUsed = true;
                 agent!.state.messages = automationResultReminder;
