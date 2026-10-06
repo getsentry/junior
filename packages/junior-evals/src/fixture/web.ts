@@ -1,13 +1,18 @@
 /**
- * Web page replay for the agent test fixture.
+ * The public web for the agent test fixture.
  *
  * The `webFetch` tool reads public web pages, which change and can be down.
  * This module records each response with vitest-evals replay and answers
  * later requests from the recording. The recordings are in
  * `.vitest-evals/recordings/webFetch/`. `pnpm evals:record` records them
  * again.
+ *
+ * The `webSearch` tool asks a search provider through the AI Gateway. This
+ * module answers that request with the results that the test set.
  */
+import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
+import { onTestFinished } from "vitest";
 import { executeWithReplay } from "vitest-evals/replay";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
@@ -66,4 +71,83 @@ export function installWebReplay(): void {
       );
     }),
   );
+}
+
+/** One result of the mocked search provider. */
+export interface WebSearchResult {
+  excerpt: string;
+  title: string;
+  url: string;
+}
+
+const SEARCH_REQUEST_URL = "https://ai-gateway.vercel.sh/v3/ai/language-model";
+const SEARCH_TOOL_ID = "gateway.parallel_search";
+
+let searchResults: WebSearchResult[] = [];
+
+/**
+ * Set the results that `webSearch` finds in this test, for every query.
+ * Without it, a search finds nothing. A search never reaches the real
+ * provider.
+ */
+export function webSearchResults(results: WebSearchResult[]): void {
+  searchResults = results;
+  onTestFinished(() => {
+    searchResults = [];
+  });
+}
+
+/**
+ * Answer a `webSearch` request to the AI Gateway as the search provider
+ * does. Return `undefined` for any other request.
+ */
+export async function answerWebSearch(
+  request: Request,
+): Promise<Response | undefined> {
+  if (request.method !== "POST" || request.url !== SEARCH_REQUEST_URL) {
+    return undefined;
+  }
+  const payload = (await request.clone().json()) as {
+    tools?: Array<{
+      args?: { maxResults?: number };
+      id?: string;
+      name?: string;
+    }>;
+  };
+  const tool = payload.tools?.find((entry) => entry.id === SEARCH_TOOL_ID);
+  if (!tool) return undefined;
+  const toolCallId = `call_${randomUUID()}`;
+  const tokens = { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 };
+  return HttpResponse.json({
+    content: [
+      {
+        type: "tool-call",
+        toolCallId,
+        toolName: tool.name,
+        input: "{}",
+        providerExecuted: true,
+      },
+      {
+        type: "tool-result",
+        toolCallId,
+        toolName: tool.name,
+        result: {
+          results: searchResults
+            .slice(0, tool.args?.maxResults)
+            .map(({ excerpt, title, url }) => ({
+              excerpts: [excerpt],
+              title,
+              url,
+            })),
+        },
+        providerExecuted: true,
+      },
+    ],
+    finishReason: { unified: "stop" },
+    usage: {
+      inputTokens: tokens,
+      outputTokens: { total: 0, text: 0, reasoning: 0 },
+    },
+    warnings: [],
+  });
 }

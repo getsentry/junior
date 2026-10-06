@@ -240,14 +240,16 @@ Global setup reports the Postgres, egress, and snapshot phases before cases
 start. Egress teardown stops the tunnel and closes its remaining HTTP
 connections.
 
-## Web Page Replay
+## Web Pages And Search
 
 - The fixture replays the requests that the `webFetch` tool sends.
   `src/fixture/web.ts` records each response under
   `.vitest-evals/recordings/webFetch/` and answers later requests for the same
   URL from the recording. A redirect is its own recording.
-- `webSearch` is not replayed. It asks a model through the AI Gateway, and the
-  model is real.
+- `webSearch` never reaches the real search provider. The fixture answers
+  the search request with the results that the test set with
+  `webSearchResults()` from `src/fixture/web.ts`. Without it, a search finds
+  nothing.
 - Use `pnpm evals:record` to record the pages again.
 - Git ignores new recordings. Add the ones that an eval needs with
   `git add -f`. Review them for stale fetches and secret-like values before

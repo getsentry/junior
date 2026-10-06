@@ -2,6 +2,7 @@ import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
+import { webSearchResults } from "@junior-evals/fixture/web";
 
 describe("Output Contract", () => {
   test("when asked for a structured overview, avoid hash markdown headings", async ({
@@ -30,6 +31,26 @@ describe("Output Contract", () => {
   test("when asked for documentation, link to each official starting page", async ({
     run,
   }) => {
+    webSearchResults([
+      {
+        title: "Using the Slack Web API",
+        url: "https://docs.slack.dev/apis/web-api/",
+        excerpt:
+          "The Web API is a collection of HTTP methods that underpin the majority of Slack app functionality.",
+      },
+      {
+        title: "Bolt for JavaScript",
+        url: "https://docs.slack.dev/tools/bolt-js/",
+        excerpt:
+          "Bolt for JavaScript is a framework for building Slack apps with JavaScript and TypeScript.",
+      },
+      {
+        title: "Block Kit",
+        url: "https://docs.slack.dev/block-kit/",
+        excerpt:
+          "Block Kit is a UI framework for Slack apps, built with blocks, block elements, and composition objects.",
+      },
+    ]);
     const conversation = await run(
       mention(
         "Where can I find the official documentation for the Slack Web API, Slack Bolt JS, and Slack Block Kit? Just point me at the three canonical starting pages.",
