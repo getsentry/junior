@@ -47,7 +47,7 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { coreTaskRegistrations } from "@/chat/plugins/core-tasks";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
@@ -67,6 +67,10 @@ export interface ScheduleSessionCompletedPluginTasksOptions {
 
 interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
+  send?: (
+    message: PluginTaskQueueMessage,
+    options?: { delaySeconds: number },
+  ) => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -436,6 +440,21 @@ function taskPluginContext(
       async load() {
         return await loadPluginRun(sessionParams);
       },
+    },
+    async requeue(delaySeconds) {
+      const retry = (message.retry ?? 0) + 1;
+      if (
+        !Number.isInteger(delaySeconds) ||
+        delaySeconds < 1 ||
+        delaySeconds > 3_600 ||
+        retry > 144
+      ) {
+        throw new Error("Plugin task retry delay or count is invalid");
+      }
+      await (options.send ?? sendVercelPluginTask)(
+        { ...message, retry },
+        { delaySeconds },
+      );
     },
     state: createPluginState(pluginName),
   };

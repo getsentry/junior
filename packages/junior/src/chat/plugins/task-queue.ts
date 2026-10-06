@@ -38,6 +38,7 @@ export const pluginTaskQueueMessageSchema = z
     name: z.string().min(1),
     params: pluginTaskParamsSchema,
     plugin: z.string().min(1),
+    retry: z.number().int().min(1).max(144).optional(),
   })
   .strict();
 
@@ -54,6 +55,7 @@ const pluginTaskSign = {
     message.name,
     message.params.conversationId,
     message.params.sessionId,
+    ...(message.retry === undefined ? [] : [String(message.retry)]),
   ],
 };
 
@@ -62,6 +64,7 @@ export function pluginTaskId(args: {
   name: string;
   params: PluginTaskParams;
   plugin: string;
+  retry?: number;
 }): string {
   const digest = createHash("sha256")
     .update(args.plugin)
@@ -71,6 +74,7 @@ export function pluginTaskId(args: {
     .update(args.params.conversationId)
     .update("\0")
     .update(args.params.sessionId)
+    .update(args.retry === undefined ? "" : `\0${args.retry}`)
     .digest("hex")
     .slice(0, 32);
   return `plugin-task_${digest}`;
@@ -119,6 +123,7 @@ function pluginTaskCallback() {
 /** Send one plugin task through the shared signed delivery path. */
 export async function sendVercelPluginTask(
   message: PluginTaskQueueMessage,
+  options?: { delaySeconds: number },
 ): Promise<void> {
   await createVercelQueueClient().send(
     PLUGIN_TASK_QUEUE_TOPIC,
@@ -126,6 +131,7 @@ export async function sendVercelPluginTask(
     {
       idempotencyKey: pluginTaskId(message),
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
+      ...(options ? { delaySeconds: options.delaySeconds } : undefined),
     },
   );
 }

@@ -274,6 +274,19 @@ describe("dashboard canonical-event Markdown export", () => {
           sentryEventUrl:
             "https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef",
         }),
+        event(7, {
+          type: "compaction",
+          modelProfile: "handoff",
+          modelId: "anthropic/claude-opus-5.5",
+          details: {
+            reason: "distillation",
+            throughSeq: 4,
+            estimatedInputTokens: 220_000,
+            replacementInputTokens: 90_000,
+            expectedCalls: 2,
+            priced: false,
+          },
+        }),
       ]),
     );
 
@@ -287,6 +300,8 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("- Estimated input tokens: 361000");
     expect(markdown).toContain("- Compaction trigger: 360000");
     expect(markdown).toContain("- Input limit: 380000");
+    expect(markdown).toContain("- Covered through event: 4");
+    expect(markdown).toContain("- Price gate passed: no");
     expect(markdown).toContain("#### Continuation summary");
     expect(markdown).toContain(
       "Keep the release state and continue monitoring CI.",

@@ -15,11 +15,11 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
 import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
-import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 

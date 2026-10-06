@@ -292,6 +292,12 @@ describe("plugin task Vercel queue integration", () => {
     ).resolves.toBeUndefined();
     expect(processPluginTask).toHaveBeenCalledTimes(1);
 
+    const signedRetry = signPluginTaskQueueMessage({ ...message, retry: 1 });
+    await expect(
+      handler({ ...signedRetry, retry: 2 }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processPluginTask).toHaveBeenCalledTimes(1);
+
     processPluginTask.mockRejectedValueOnce(new Error("task failed"));
     await expect(handler(signedMessage, metadata)).rejects.toThrow(
       "task failed",
@@ -340,6 +346,24 @@ describe("plugin task Vercel queue integration", () => {
       {
         idempotencyKey: pluginTaskId(message),
         retentionSeconds: 3600,
+      },
+    );
+
+    const retryMessage = { ...message, retry: 1 };
+    await sendVercelPluginTask(retryMessage, { delaySeconds: 600 });
+    expect(pluginTaskId(retryMessage)).not.toBe(pluginTaskId(message));
+    expect(send).toHaveBeenLastCalledWith(
+      PLUGIN_TASK_QUEUE_TOPIC,
+      {
+        ...retryMessage,
+        signedAtMs: expect.any(Number),
+        signatureVersion: "v1",
+        signature: expect.any(String),
+      },
+      {
+        idempotencyKey: pluginTaskId(retryMessage),
+        retentionSeconds: 3600,
+        delaySeconds: 600,
       },
     );
   });

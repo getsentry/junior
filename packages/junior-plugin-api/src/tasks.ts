@@ -93,6 +93,8 @@ export interface PluginTaskContext extends PluginContext {
   run: {
     load(): Promise<PluginRunContext>;
   };
+  /** Send this task again after a delay. The current attempt then completes. */
+  requeue?(delaySeconds: number): Promise<void>;
   state: PluginState;
 }
 

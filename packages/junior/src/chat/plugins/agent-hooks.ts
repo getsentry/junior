@@ -63,7 +63,7 @@ import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { coreTaskRegistrations } from "@/chat/plugins/core-tasks";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {

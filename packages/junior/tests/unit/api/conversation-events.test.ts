@@ -938,6 +938,14 @@ describe("conversation report event projection", () => {
         modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
+        details: {
+          reason: "distillation",
+          throughSeq: 5,
+          estimatedInputTokens: 220_000,
+          replacementInputTokens: 90_000,
+          expectedCalls: 2,
+          priced: false,
+        },
         replacementHistory: [
           {
             item: {
@@ -978,6 +986,16 @@ describe("conversation report event projection", () => {
           },
         ],
       }),
+      event(3, {
+        type: "distillation",
+        generation: 0,
+        sourceHistoryVersion: 1,
+        fromSeq: 1,
+        throughSeq: 5,
+        observations: "Private derived context.",
+        modelId: "openai/gpt-6-luna",
+        costUsd: 0.001,
+      }),
     ];
 
     expect(
@@ -991,6 +1009,14 @@ describe("conversation report event projection", () => {
         modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         summary: "Continue monitoring CI.",
+        details: {
+          reason: "distillation",
+          throughSeq: 5,
+          estimatedInputTokens: 220_000,
+          replacementInputTokens: 90_000,
+          expectedCalls: 2,
+          priced: false,
+        },
       },
       {
         type: "handoff",
@@ -1009,6 +1035,7 @@ describe("conversation report event projection", () => {
     expect(redacted).not.toContain("Private retained user message.");
     expect(redacted).not.toContain("Continue monitoring CI.");
     expect(redacted).not.toContain("Fix the remaining test.");
+    expect(redacted).not.toContain("Private derived context.");
   });
 
   it("emits only safe structural lifecycle, context, and child references", () => {
