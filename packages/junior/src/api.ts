@@ -22,6 +22,15 @@ import {
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
 import { logException } from "./chat/logging";
+import {
+  distillationAvailableForUser,
+  readDistillationPreference,
+  updateDistillationPreference,
+} from "./chat/distillation/preference";
+import {
+  contextDistillationPreferenceSchema,
+  updateContextDistillationPreferenceSchema,
+} from "./api/schema/user";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import {
@@ -73,6 +82,55 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
+
+  app.get("/api/me/distillation", async (c) => {
+    const viewer = c.get("viewer");
+    if (!viewer) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+    return jsonResponse(contextDistillationPreferenceSchema, {
+      available: distillationAvailableForUser(viewer.id),
+      enabled: await readDistillationPreference(viewer.id),
+    });
+  });
+  app.patch("/api/me/distillation", async (c) => {
+    const viewer = c.get("viewer");
+    if (!viewer) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+    const body: unknown = await c.req.json().catch(() => undefined);
+    const parsed = updateContextDistillationPreferenceSchema.safeParse(body);
+    if (!parsed.success) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
+    }
+    const enabled = await updateDistillationPreference(
+      viewer.id,
+      parsed.data.enabled,
+    );
+    if (enabled === undefined) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "User not found." },
+        { status: 404 },
+      );
+    }
+    return jsonResponse(contextDistillationPreferenceSchema, {
+      available: distillationAvailableForUser(viewer.id),
+      enabled,
+    });
+  });
 
   app.route(
     "/api/conversations",

@@ -9,7 +9,11 @@ import {
   type ConversationWorkQueue,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
-import { apiErrorSchema } from "@sentry/junior/api/schema";
+import {
+  apiErrorSchema,
+  contextDistillationPreferenceSchema,
+  updateContextDistillationPreferenceSchema,
+} from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
@@ -59,8 +63,11 @@ const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
-/** Process-local display names for mock reporting only. */
-const mockDisplayNamesByEmail = new Map<string, string>();
+/** Process-local User settings for mock reporting only. */
+const mockUserSettingsByEmail = new Map<
+  string,
+  { displayName?: string; contextDistillationEnabled?: boolean }
+>();
 
 /**
  * Clear process-local mock reporting state so tests sharing a worker do not
@@ -70,7 +77,7 @@ const mockDisplayNamesByEmail = new Map<string, string>();
  * the module state than the one the running server reads.
  */
 export function resetMockDashboardState(): void {
-  mockDisplayNamesByEmail.clear();
+  mockUserSettingsByEmail.clear();
   resetMockConversationArchiveState();
 }
 
@@ -342,7 +349,7 @@ function mockViewerFromSession(session: DashboardSession) {
   const email = verifiedDashboardSessionEmail(session);
   if (!email) return undefined;
   const displayName =
-    mockDisplayNamesByEmail.get(email) ??
+    mockUserSettingsByEmail.get(email)?.displayName ??
     session.user.name?.trim() ??
     undefined;
   return {
@@ -620,6 +627,34 @@ export function createDashboardApp(
   }
   if (options.mockConversations) {
     app.route("/api", createMockReportingApi());
+    app.get("/api/me/distillation", (c) =>
+      jsonResponse(contextDistillationPreferenceSchema, {
+        available: true,
+        enabled:
+          mockUserSettingsByEmail.get(c.get("viewer")!.email)
+            ?.contextDistillationEnabled ?? false,
+      }),
+    );
+    app.patch("/api/me/distillation", async (c) => {
+      const body: unknown = await c.req.json().catch(() => undefined);
+      const parsed = updateContextDistillationPreferenceSchema.safeParse(body);
+      if (!parsed.success) {
+        return jsonResponse(
+          apiErrorSchema,
+          { error: "Invalid request body." },
+          { status: 400 },
+        );
+      }
+      const email = c.get("viewer")!.email;
+      mockUserSettingsByEmail.set(email, {
+        ...mockUserSettingsByEmail.get(email),
+        contextDistillationEnabled: parsed.data.enabled,
+      });
+      return jsonResponse(contextDistillationPreferenceSchema, {
+        available: true,
+        enabled: parsed.data.enabled,
+      });
+    });
   }
   app.route(
     "/",
@@ -679,7 +714,10 @@ export function createDashboardApp(
     const session = c.get("authSession");
     // Mock reporting keeps profile edits process-local and out of SQL.
     if (options.mockConversations) {
-      mockDisplayNamesByEmail.set(viewer.email, parsed.data.displayName);
+      mockUserSettingsByEmail.set(viewer.email, {
+        ...mockUserSettingsByEmail.get(viewer.email),
+        displayName: parsed.data.displayName,
+      });
       return jsonResponse(dashboardIdentitySchema, {
         user: {
           email: session.user.email,

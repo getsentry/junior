@@ -1,9 +1,14 @@
 import type { Actor } from "@sentry/junior-plugin-api";
+import { and, eq } from "drizzle-orm";
 import { botConfig } from "@/chat/config";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { instructionActors } from "@/chat/conversations/provenance";
+import { webActorFromEmail } from "@/chat/conversations/web-input";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { juniorIdentities } from "@/db/schema";
+import { readDistillationPreference } from "./preference";
 
 /** Restrict a personal rollout to one linked user across the whole Conversation. */
 export function allowsDistillationForUsers(
@@ -11,13 +16,36 @@ export function allowsDistillationForUsers(
   currentUserId: string | undefined,
   instructionUserIds: readonly (string | undefined)[],
 ): boolean {
-  if (allowedUserIds.length === 0) return true;
   return (
     currentUserId !== undefined &&
-    allowedUserIds.includes(currentUserId) &&
+    (allowedUserIds.length === 0 || allowedUserIds.includes(currentUserId)) &&
     instructionUserIds.length > 0 &&
     instructionUserIds.every((userId) => userId === currentUserId)
   );
+}
+
+async function linkedUserId(actor: Actor): Promise<string | undefined> {
+  if (actor.platform !== "web") {
+    return (await readActorIdentity(actor))?.user?.id;
+  }
+  const email = actor.email && normalizeIdentityEmail(actor.email);
+  if (!email || webActorFromEmail(email).userId !== actor.userId) {
+    return undefined;
+  }
+  const [row] = await getDb()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "junior"),
+        eq(juniorIdentities.providerTenantId, ""),
+        eq(juniorIdentities.providerSubjectId, email),
+        eq(juniorIdentities.emailVerified, true),
+      ),
+    )
+    .limit(1);
+  return row?.userId ?? undefined;
 }
 
 /** Check the current Actor and all authored instructions before observing or replacing history. */
@@ -27,7 +55,6 @@ export async function mayDistillConversation(
   provenance: readonly ConversationMessageProvenance[],
 ): Promise<boolean> {
   const allowed = botConfig.contextDistillationUserIds;
-  if (allowed.length === 0) return true;
   const conversation = await getConversationStore().get({ conversationId });
   if (conversation?.visibility !== "private") return false;
   if (
@@ -38,12 +65,12 @@ export async function mayDistillConversation(
   ) {
     return false;
   }
-  const currentUserId = (await readActorIdentity(actor))?.user?.id;
-  if (!currentUserId || !allowed.includes(currentUserId)) return false;
+  const currentUserId = await linkedUserId(actor);
+  if (!currentUserId || !(await readDistillationPreference(currentUserId))) {
+    return false;
+  }
   const instructionUserIds = await Promise.all(
-    instructionActors([...provenance]).map(
-      async (author) => (await readActorIdentity(author))?.user?.id,
-    ),
+    instructionActors([...provenance]).map(linkedUserId),
   );
   return allowsDistillationForUsers(allowed, currentUserId, instructionUserIds);
 }

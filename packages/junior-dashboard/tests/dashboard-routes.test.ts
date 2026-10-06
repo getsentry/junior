@@ -375,6 +375,7 @@ describe("dashboard routes", () => {
       "/api/conversations/slack%3AC1%3A123",
       "/api/config",
       "/api/me",
+      "/api/me/distillation",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(401);

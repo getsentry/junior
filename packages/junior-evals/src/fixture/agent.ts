@@ -158,6 +158,8 @@ export interface FixtureAgent {
   /** Stop new deliveries and wait for running work. */
   close(): Promise<void>;
   run: RunAgent;
+  /** Save a User's choice through the same authenticated API as Settings. */
+  setDistillationPreference(email: string, enabled: boolean): Promise<void>;
 }
 
 /** Create the Junior app for one test and the calls that drive it. */
@@ -753,7 +755,20 @@ export async function createFixtureAgent(
     );
   };
 
-  return { run, close };
+  const setDistillationPreference = async (email: string, enabled: boolean) => {
+    const response = await api.request(
+      "http://junior.test/api/me/distillation",
+      {
+        ...jsonRequest(email, { enabled }),
+        method: "PATCH",
+      },
+    );
+    if (response.status !== 200) {
+      throw new Error(`Could not save the User's choice: ${response.status}`);
+    }
+  };
+
+  return { run, close, setDistillationPreference };
 }
 
 function isAutomationInput(input: Input): input is AutomationInput {

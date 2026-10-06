@@ -1,4 +1,4 @@
-import { text, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, text, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
 import { timestamptz } from "./timestamps";
 
 export const juniorUsers = pgTable(
@@ -8,6 +8,9 @@ export const juniorUsers = pgTable(
     primaryEmail: text("primary_email").notNull(),
     primaryEmailNormalized: text("primary_email_normalized").notNull(),
     displayName: text("display_name"),
+    contextDistillationEnabled: boolean("context_distillation_enabled")
+      .notNull()
+      .default(false),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

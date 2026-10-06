@@ -38,18 +38,21 @@ describe("Priced Conversation context", () => {
   test("repairs a scoped lookup after checking a long CI run", async ({
     agent,
   }) => {
-    const { run } = await agent({
+    const { run, setDistillationPreference } = await agent({
       defaultProfile: "standard",
       profiles: { standard: "openai/gpt-6-astra" },
     });
+    await setDistillationPreference("testuser@example.com", true);
     const conversation = await run(
       mention(
         "Check why the resource rollout failed. Read project/src/resource-access.ts and its test, then run the focused test. Tell me what needs to change, but do not edit yet.",
+        { channelType: "im" },
       ),
       {
         history: [
           mention(
             "Check the resource rollout across organizations and projects. Review the CI results before shipping.",
+            { channelType: "im" },
           ),
           reply("The CI run is complete, but one shard failed.", {
             toolHistory: priorCiResults(),

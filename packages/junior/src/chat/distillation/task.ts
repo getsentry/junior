@@ -330,6 +330,7 @@ async function observe(args: {
   promptName: string;
 }): Promise<{ observations: string; costUsd: number }> {
   const inputTokens = Math.ceil((args.system.length + args.input.length) / 4);
+  // Pi disables thinking when reasoning is unset for Luna completions.
   const result = await completeText({
     modelId: LUNA_MODEL_ID,
     promptName: args.promptName,
@@ -487,19 +488,17 @@ export async function distillCompletedTurn(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  if (botConfig.contextDistillationUserIds.length > 0) {
-    const projection = await loadConversationProjection({
-      conversationId: run.conversationId,
-    });
-    if (
-      !(await mayDistillConversation(
-        run.conversationId,
-        run.actor,
-        projection.provenance,
-      ))
-    )
-      return;
-  }
+  const projection = await loadConversationProjection({
+    conversationId: run.conversationId,
+  });
+  if (
+    !(await mayDistillConversation(
+      run.conversationId,
+      run.actor,
+      projection.provenance,
+    ))
+  )
+    return;
   await context.state.withLock(
     `distillation:${run.conversationId}`,
     LOCK_TTL_MS,

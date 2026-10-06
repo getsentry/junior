@@ -194,6 +194,10 @@ export type {
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {
+  contextDistillationPreferenceSchema,
+  updateContextDistillationPreferenceSchema,
+} from "./schema/user";
+export {
   healthReportSchema,
   pluginOperationalReportFeedSchema,
   pluginOperationalReportSchema,

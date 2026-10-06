@@ -34,7 +34,9 @@ declare module "vitest" {
 
 interface AgentFixtures {
   /** Create the test's agent with `createApp()` options. */
-  agent: (options?: JuniorAppOptions) => Promise<{ run: RunAgent }>;
+  agent: (
+    options?: JuniorAppOptions,
+  ) => Promise<Pick<FixtureAgent, "run" | "setDistillationPreference">>;
   /** Path of the module with the suite's default `createApp()` options. */
   agentOptionsModule: string | undefined;
   /** Start a new Conversation on the test's agent. */
@@ -62,6 +64,7 @@ export const test = baseTest.extend<AgentFixtures>({
       return {
         run: (input, callOptions) =>
           runEvalWork(() => agent.run(input, callOptions)),
+        setDistillationPreference: agent.setDistillationPreference,
       };
     });
     await created?.close();

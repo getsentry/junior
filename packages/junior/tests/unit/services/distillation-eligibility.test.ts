@@ -20,5 +20,10 @@ describe("personal Conversation distillation", () => {
       false,
     );
     expect(allowsDistillationForUsers(allowed, "user-one", [])).toBe(false);
+    expect(allowsDistillationForUsers([], "user-one", ["user-one"])).toBe(true);
+    expect(allowsDistillationForUsers([], "user-one", ["user-two"])).toBe(
+      false,
+    );
+    expect(allowsDistillationForUsers([], undefined, [undefined])).toBe(false);
   });
 });

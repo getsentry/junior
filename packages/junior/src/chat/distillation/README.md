@@ -77,7 +77,10 @@ together. Numeric event details record whether price or capacity caused the
 replacement. A failed or stale worker never changes model history.
 
 `JUNIOR_CONTEXT_DISTILLATION_ENABLED` defaults to `false`. The flag controls
-both background observations and their use on new Turns. Worker costs appear
+both background observations and their use on new Turns. Each User must also
+opt in on the dashboard Settings page. The choice is saved even when the flag
+is off. Turning the choice off blocks later worker runs and replacements. A
+Batch that was already sent can still finish and incur a cost. Worker costs appear
 under the `distillation` operation in Conversation auxiliary costs. Cache
 token counts for assistant model calls remain separate. Evaluate completed
 tasks, reply quality, latency, and both costs before wider use. No
@@ -86,14 +89,13 @@ The batch flag also defaults to `false`. It has no effect while distillation is
 off. A direct-call eval cannot measure the delay or quality of batch results.
 
 For a personal production trial, set `JUNIOR_CONTEXT_DISTILLATION_USER_IDS` to
-the linked Junior user UUID and enable distillation in the same deployment.
-The worker and new-Turn replacement require confirmed private visibility. They
-also check that the current Actor and every authored instruction in active
-history belong to that linked user. Unknown or unlinked authors block the
-personal trial. When the user-ID list is empty, the
-enabled flag keeps its deployment-wide meaning for controlled evals. Do not
-enable it without the user-ID list for a personal production trial. The
-Conversation reporting API records observer and Batch costs as auxiliary
+the linked Junior User UUID and enable distillation in the same deployment.
+The User must opt in on Settings. With an empty list, all linked Users can
+opt in. The worker and new-Turn replacement require confirmed private
+visibility. They also check that the current Actor and every authored
+instruction in active history belong to the opted-in User. Unknown or
+unlinked authors block distillation. The Conversation reporting API records
+observer and Batch costs as auxiliary
 operations. Add those costs to assistant usage for each completed task; the
 personal spend total alone does not separate observer costs or priced history
 replacements.

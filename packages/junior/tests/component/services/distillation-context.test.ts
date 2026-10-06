@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import { closeDb, getConversationEventStore } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
+import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readDistillationPreference,
+  updateDistillationPreference,
+} from "@/chat/distillation/preference";
+import { mayDistillConversation } from "@/chat/distillation/eligibility";
 import {
   commitMessages,
   loadConversationProjection,
@@ -42,7 +53,10 @@ describe("Conversation distillation context", () => {
 
   it("uses a priced observation while retaining recent work and the new instruction's author", async () => {
     const conversationId = "local:distillation:priced-context";
-    const actor = { platform: "web" as const, userId: "user-one" };
+    const email = "distillation@example.com";
+    const actor = webActorFromEmail(email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) throw new Error("No linked user");
     const first = [
       user("Inspect the old result.", 1),
       assistant(`Old result: ${"x".repeat(80_000)}`, 2),
@@ -51,6 +65,12 @@ describe("Conversation distillation context", () => {
       conversationId,
       messages: first,
       newMessageProvenance: { authority: "instruction", actor },
+    });
+    await getConversationStore().recordActivity({
+      conversationId,
+      actor: { email },
+      destination: { platform: "local", conversationId },
+      visibility: "private",
     });
     const firstProjection = await loadConversationProjection({
       conversationId,
@@ -111,6 +131,20 @@ describe("Conversation distillation context", () => {
         },
       }),
     ).resolves.toBeUndefined();
+    // An existing observation never opts the User into later replacements.
+    await expect(compactWithDistillations(args)).resolves.toBeUndefined();
+    await updateDistillationPreference(viewer.id, true);
+    expect(await readDistillationPreference(viewer.id)).toBe(true);
+    expect(
+      (await getConversationStore().get({ conversationId }))?.visibility,
+    ).toBe("private");
+    expect(
+      await mayDistillConversation(
+        conversationId,
+        actor,
+        projection.provenance,
+      ),
+    ).toBe(true);
     const replacement = await compactWithDistillations(args);
     expect(replacement).toBeDefined();
     const events = await store.loadCurrentHistory(conversationId);

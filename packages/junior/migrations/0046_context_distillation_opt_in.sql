@@ -1,0 +1,1 @@
+ALTER TABLE "junior_users" ADD COLUMN "context_distillation_enabled" boolean DEFAULT false NOT NULL;

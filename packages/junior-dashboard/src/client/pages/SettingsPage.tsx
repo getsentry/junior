@@ -1,5 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
+import { contextDistillationPreferenceSchema } from "@sentry/junior/api/schema";
 
 import {
   dashboardIdentitySchema,
@@ -10,11 +11,13 @@ import { Field } from "../components/Field";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { TextInput } from "../components/TextInput";
-import { patch } from "../http";
+import { fetchDashboardJson, patch } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
+const distillationQueryKey = ["me", "distillation"] as const;
+const distillationPath = "/api/me/distillation";
 
 type SettingsPageProps = {
   identity: DashboardIdentity;
@@ -23,6 +26,22 @@ type SettingsPageProps = {
 /** Let the signed-in user manage their dashboard profile. */
 export function SettingsPage({ identity }: SettingsPageProps) {
   const queryClient = useQueryClient();
+  const distillation = useQuery({
+    queryKey: distillationQueryKey,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        contextDistillationPreferenceSchema,
+        distillationPath,
+        signal,
+      ),
+  });
+  const updateDistillation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      patch(contextDistillationPreferenceSchema, distillationPath, { enabled }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(distillationQueryKey, saved);
+    },
+  });
   const [displayName, setDisplayName] = useState(identity.user.name ?? "");
   useEffect(() => {
     setDisplayName(identity.user.name ?? "");
@@ -56,7 +75,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       <section className="mx-auto w-full max-w-3xl">
         <h1 className="m-0 text-2xl font-bold">Settings</h1>
         <p className="mt-2 mb-0 max-w-2xl text-sm text-dashboard-text-muted">
-          Manage how your account appears in the dashboard.
+          Manage your account and Conversation settings.
         </p>
 
         <form className="mt-6" onSubmit={submit}>
@@ -96,6 +115,54 @@ export function SettingsPage({ identity }: SettingsPageProps) {
             </div>
           </Card>
         </form>
+
+        <Card className="mt-6" padding="md" variant="raised">
+          <h2 className="m-0 text-lg font-bold">Conversation context</h2>
+          <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+            Junior can make short observations from older parts of your private
+            Conversations. It uses them only when its cost check predicts a
+            saving. Your current instructions and recent work stay in context.
+          </p>
+          {distillation.isPending ? (
+            <p className="mt-4 text-sm text-dashboard-text-muted" role="status">
+              Loading your preference…
+            </p>
+          ) : distillation.isError ? (
+            <div className="mt-4">
+              <InlineError>
+                Could not load your preference. Try again.
+              </InlineError>
+            </div>
+          ) : (
+            <>
+              <label className="mt-5 flex items-start gap-3 text-sm">
+                <input
+                  checked={distillation.data.enabled}
+                  className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
+                  disabled={updateDistillation.isPending}
+                  onChange={(event) =>
+                    updateDistillation.mutate(event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                <span>Allow distillation for my private Conversations</span>
+              </label>
+              {!distillation.data.available ? (
+                <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+                  You can save your choice now. Distillation will not run until
+                  it is available for your account.
+                </p>
+              ) : null}
+              {updateDistillation.isError ? (
+                <div className="mt-3">
+                  <InlineError>
+                    Could not save your preference. Try again.
+                  </InlineError>
+                </div>
+              ) : null}
+            </>
+          )}
+        </Card>
       </section>
     </div>
   );
