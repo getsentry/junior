@@ -6,17 +6,22 @@
 
 Use these crops:
 
-- **Avatar crop:** a close view of the head, cap, all three antennas, and hoodie collar. The eye and smile must be clear at small sizes. Omit the phone, hands, and arms. Use it for the logo and avatar.
-- **Profile avatar:** the avatar crop on a solid square. The face is large and centered, and the hoodie touches the bottom edge. Keep the eye and smile inside a circle for round avatar frames.
-- **Head crop:** head, cap, and top antenna only, centered in a transparent square. It stops at the bottom edge of the head. Omit the side antennas so that the face fills the square. Use it for favicons, because the avatar crop is not readable at 16px.
+- **Avatar crop:** head and shoulders. It shows the cap, all three antennas, the head, the hoodie top, and both shoulder joints. The arms continue out of the frame. Remove the raised hand and the music player. Use it for the logo, the avatars, the favicons, and the Slack reactions.
+- **Profile avatar:** the avatar crop on a solid square. Keep the eye and smile inside a circle for round avatar frames.
+
+Every crop shows at least the head and shoulders. Do not use a head-only crop, even for favicons.
+
+Cut the character only at the frame edges. Do not erase parts with straight lines inside the frame. To remove the hand and the music player, crop first, then keep only the parts that connect to the head inside the frame.
+
+Do not dither the palette when you compress these images. Dithering adds colored dots to flat areas at small sizes.
 
 | Image                                                     | Crop           | Size    |
 | --------------------------------------------------------- | -------------- | ------- |
 | `packages/docs/public/junior-character.png`               | Full body      | 576x920 |
 | `packages/docs/public/junior-mark.png`                    | Avatar         | 192x192 |
-| `packages/docs/public/favicon.png`                        | Head           | 96x96   |
+| `packages/docs/public/favicon.png`                        | Avatar         | 96x96   |
 | `packages/junior-dashboard/src/assets/junior-avatar.png`  | Avatar         | 512x512 |
-| `packages/junior-dashboard/src/assets/junior-favicon.png` | Head           | 96x96   |
+| `packages/junior-dashboard/src/assets/junior-favicon.png` | Avatar         | 96x96   |
 | `brand/junior-avatar-512-cream.png`                       | Profile avatar | 512x512 |
 | `brand/junior-avatar-512-dark.png`                        | Profile avatar | 512x512 |
 
