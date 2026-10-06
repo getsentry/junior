@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention, person, threadMessage } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { test } from "@junior-evals/fixture/test";
 
@@ -22,10 +22,13 @@ describe("Slack Turn Steering", () => {
       onProgress: sendDuringFirstModelRequest([
         mention("include the rollback owner: Dana"),
       ]),
-      criteria: rubric({
+    });
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: ["A reply says Dana is the rollback owner."],
       }),
-    });
+    );
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
@@ -77,10 +80,13 @@ describe("Slack Turn Steering", () => {
             author: person("U0RIO", "Rio"),
           }),
         ]),
-        criteria: rubric({
-          pass: ["The summary names Dana as the rollback owner."],
-        }),
       },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The summary names Dana as the rollback owner."],
+      }),
     );
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual([

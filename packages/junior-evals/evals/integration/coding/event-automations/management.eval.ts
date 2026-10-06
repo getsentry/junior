@@ -6,7 +6,7 @@ import {
   insertEventAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -38,18 +38,19 @@ describe("Event automation management", () => {
       mention(
         "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply explains available GitHub resource types and gives representative supported events.",
-            "The reply distinguishes temporary thread watches from durable channel event automations.",
-          ],
-          fail: [
-            "Do not claim that a watch, event automation, or scheduled automation was created.",
-            "Do not ask the user to provide an event type before showing what is available.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply explains available GitHub resource types and gives representative supported events.",
+          "The reply distinguishes temporary thread watches from durable channel event automations.",
+        ],
+        fail: [
+          "Do not claim that a watch, event automation, or scheduled automation was created.",
+          "Do not ask the user to provide an event type before showing what is available.",
+        ],
+      }),
     );
 
     expect(
@@ -81,18 +82,19 @@ describe("Event automation management", () => {
       mention(
         "Whenever a reviewer requests changes on GitHub PR getsentry/junior#691, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms that an event automation was created for requested review changes on the pull request.",
-            "The reply describes summarizing the feedback and posting a fix plan when the event occurs.",
-          ],
-          fail: [
-            "Do not claim a polling schedule or recurring timer was created.",
-            "Do not claim creator credentials were authorized.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms that an event automation was created for requested review changes on the pull request.",
+          "The reply describes summarizing the feedback and posting a fix plan when the event occurs.",
+        ],
+        fail: [
+          "Do not claim a polling schedule or recurring timer was created.",
+          "Do not claim creator credentials were authorized.",
+        ],
+      }),
     );
 
     const creates = completedToolCalls("createEventAutomation", conversation);
@@ -121,18 +123,19 @@ describe("Event automation management", () => {
       mention(
         "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms that one event automation will react when the issue is closed or reopened.",
-            "The reply accurately describes summarizing the issue state change in this channel.",
-          ],
-          fail: [
-            "Do not create separate tasks for closed and reopened.",
-            "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms that one event automation will react when the issue is closed or reopened.",
+          "The reply accurately describes summarizing the issue state change in this channel.",
+        ],
+        fail: [
+          "Do not create separate tasks for closed and reopened.",
+          "Do not claim that `watchEvents`, a polling schedule, or a recurring timer was created instead of the event automation.",
+        ],
+      }),
     );
 
     const creates = completedToolCalls("createEventAutomation", conversation);
@@ -159,19 +162,20 @@ describe("Event automation management", () => {
       mention(
         "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms one repository-wide event automation for issue closures and reopenings.",
-            "The reply accurately says matching issue state changes will be summarized in this channel.",
-          ],
-          fail: [
-            "Do not narrow the task to one issue number.",
-            "Do not create separate tasks for closed and reopened issues.",
-            "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms one repository-wide event automation for issue closures and reopenings.",
+          "The reply accurately says matching issue state changes will be summarized in this channel.",
+        ],
+        fail: [
+          "Do not narrow the task to one issue number.",
+          "Do not create separate tasks for closed and reopened issues.",
+          "Do not claim that `watchEvents` or a polling schedule was created instead of the event automation.",
+        ],
+      }),
     );
 
     const creates = completedToolCalls("createEventAutomation", conversation);
@@ -203,40 +207,43 @@ describe("Event automation management", () => {
       mention("Show me the event automations configured for this channel.", {
         channel,
       }),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply identifies the issue event automation created for this channel even though the request comes from another thread.",
-          ],
-          fail: [
-            "Do not confuse the event automation with a temporary watch or scheduled automation.",
-          ],
-        }),
-      },
+    );
+    await expect(listing.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply identifies the issue event automation created for this channel even though the request comes from another thread.",
+        ],
+        fail: [
+          "Do not confuse the event automation with a temporary watch or scheduled automation.",
+        ],
+      }),
     );
     const update = await listing.continue(
       mention(
         "Change the issue task so it only reacts when the issue is reopened and posts a reopening summary.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms that the task now reacts only to issue reopenings.",
-          ],
-          fail: ["Do not create a replacement event automation."],
-        }),
-      },
+    );
+    await expect(update.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms that the task now reacts only to issue reopenings.",
+        ],
+        fail: ["Do not create a replacement event automation."],
+      }),
     );
     const removal = await listing.continue(
       mention("Delete that event automation now."),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms that the same event automation was deleted and no longer exists.",
-          ],
-          fail: ["Do not create a replacement event automation."],
-        }),
-      },
+    );
+    await expect(removal.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms that the same event automation was deleted and no longer exists.",
+        ],
+        fail: ["Do not create a replacement event automation."],
+      }),
     );
 
     expect(
@@ -294,17 +301,18 @@ describe("Event automation management", () => {
         "Is the GitHub issue event automation in this channel currently able to receive events?",
         { channel },
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply says the task remains stored but its GitHub trigger is not currently available, so it cannot receive matching events until that plugin event is enabled again.",
-          ],
-          fail: [
-            "Do not claim the task can currently receive GitHub events.",
-            "Do not delete or replace the task.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says the task remains stored but its GitHub trigger is not currently available, so it cannot receive matching events until that plugin event is enabled again.",
+        ],
+        fail: [
+          "Do not claim the task can currently receive GitHub events.",
+          "Do not delete or replace the task.",
+        ],
+      }),
     );
 
     expect(

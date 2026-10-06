@@ -36,15 +36,18 @@ the agent. A test touches the product in three places only:
 ```ts
 import { describe, expect } from "vitest";
 import { mention, reply } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
   test("when asked about the prior turn, recall it", async ({ run }) => {
     const conversation = await run(mention("what did i just ask?"), {
       history: [mention("I need the budget by Friday."), reply("Got it.")],
-      criteria: rubric({ pass: ["Recalls the budget and Friday."] }),
     });
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({ pass: ["Recalls the budget and Friday."] }),
+    );
     expect(conversation.replies).toHaveLength(1);
   });
 });
@@ -148,8 +151,15 @@ describe("Thread Continuity", () => {
   calls, and reactions. `completedToolCalls()` returns the completed calls of
   one tool, and `completedMcpToolCalls()` returns those of one MCP tool.
   `toolCallsOf()` and `mcpToolCallsOf()` return the calls in any state.
-  `toolOutput()` parses a tool result. Use `criteria` for wording. Do not
-  assert on stored rows or runtime objects.
+  `toolOutput()` parses a tool result. Do not assert on stored rows or
+  runtime objects.
+- Judge wording with the vitest-evals matcher:
+  `await expect(conversation.evalRun).toSatisfyJudge(RubricJudge, rubric({ pass, fail }))`.
+  `conversation.evalRun` is the vitest-evals run of that call. `RubricJudge`
+  scores the replies of the call and reads the earlier messages of the
+  Conversation as context. `rubric()` adds the passing threshold. Other
+  vitest-evals judges work the same way; pass `judgeHarness` from
+  `src/fixture/judge.ts` to a judge that asks a model.
 
 `scripts/check-test-architecture.mjs` enforces the fixture rules. Its baseline
 in `scripts/test-architecture-baseline.json` lists the files that break each
@@ -296,14 +306,14 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 ## Authoring Rules
 
 - Write cases that run the agent with the agent test fixture (see **Agent Test Fixture**).
-- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
+- Put full-runtime integration cases that must never regress under `evals/integration/**`. Prefer deterministic assertions; keep a rubric only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/`. Put a case that needs the plugins or skills of a suite in the directory of that suite.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
-- Put semantic, model-dependent expectations in `criteria`.
+- Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
 - Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, and `turns`.
-- When an eval judges nondeterministic visible output, express `criteria` with `rubric({ pass, fail })`.
+- When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.
 - `fail` should list forbidden outputs or failure conditions.
@@ -368,17 +378,17 @@ Avoid:
 ```typescript
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Routing", () => {
   test("when explicitly mentioned, post one direct reply", async ({ run }) => {
-    const conversation = await run(mention("Summarize this"), {
-      criteria: rubric({
-        pass: ["The assistant answers the user's summary request."],
-      }),
-    });
+    const conversation = await run(mention("Summarize this"));
 
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({ pass: ["The assistant answers the user's summary request."] }),
+    );
     expect(conversation.replies).toHaveLength(1);
   });
 });

@@ -5,7 +5,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
 
@@ -37,17 +37,20 @@ describe("Sentry Skill Workflows", () => {
       mention("what's up with the latest Sentry issues in getsentry?"),
       {
         history: [mention("are you working"), reply("Yes—I'm working.")],
-        criteria: rubric({
-          pass: [
-            "The reply reports latest Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
-          ],
-          fail: [
-            "Do not claim no skills, MCP tools, or Sentry tools are configured.",
-            "Do not tell the user to manually open Sentry, run sentry-cli themselves, or provide an auth token.",
-            "Do not ask the user to reconnect Sentry when the issue list is available.",
-          ],
-        }),
       },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply reports latest Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
+        ],
+        fail: [
+          "Do not claim no skills, MCP tools, or Sentry tools are configured.",
+          "Do not tell the user to manually open Sentry, run sentry-cli themselves, or provide an auth token.",
+          "Do not ask the user to reconnect Sentry when the issue list is available.",
+        ],
+      }),
     );
 
     expect(
@@ -69,8 +72,10 @@ describe("Sentry Skill Workflows", () => {
       task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
     });
 
-    const digest = await run(heartbeat(), {
-      criteria: rubric({
+    const digest = await run(heartbeat());
+    await expect(digest.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The delivered scheduled-automation message reports Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
           "The scheduled run uses the available connected Sentry account without asking the user to authorize, reconnect, or provide a token.",
@@ -81,7 +86,7 @@ describe("Sentry Skill Workflows", () => {
           "Do not merely confirm that the recurring task exists.",
         ],
       }),
-    });
+    );
 
     expect(issueListCommands(digest)).not.toHaveLength(0);
   });

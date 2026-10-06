@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { test } from "@junior-evals/fixture/test";
 
@@ -13,22 +13,23 @@ describe("Memory Management", () => {
   }) => {
     await insertMemory({ content: RISKS_FIRST, visibility: "private" });
 
-    await run(
+    const conversation = await run(
       mention("How should I structure my next PR summary?", {
         channelType: "im",
       }),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant uses memory to say the user prefers PR summaries with risks first.",
-            "The assistant does not ask the user to restate the preference.",
-          ],
-          fail: [
-            "Do not answer as if no relevant preference exists.",
-            "Do not mention hidden storage fields, scope keys, or Slack ids.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant uses memory to say the user prefers PR summaries with risks first.",
+          "The assistant does not ask the user to restate the preference.",
+        ],
+        fail: [
+          "Do not answer as if no relevant preference exists.",
+          "Do not mention hidden storage fields, scope keys, or Slack ids.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toContainEqual(
@@ -45,21 +46,22 @@ describe("Memory Management", () => {
   }) => {
     await insertMemory({ content: RISKS_FIRST, visibility: "private" });
 
-    await run(
+    const conversation = await run(
       mention("For PR summaries, I still want risk notes first.", {
         channelType: "im",
       }),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant acknowledges that PR summaries should continue to put risks first.",
-            "The assistant does not mention hidden storage fields, scope keys, or Slack ids.",
-          ],
-          fail: [
-            "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant acknowledges that PR summaries should continue to put risks first.",
+          "The assistant does not mention hidden storage fields, scope keys, or Slack ids.",
+        ],
+        fail: [
+          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([
@@ -79,8 +81,12 @@ describe("Memory Management", () => {
       visibility: "private",
     });
 
-    await run(mention("Please forget that I prefer terse PR summaries."), {
-      criteria: rubric({
+    const conversation = await run(
+      mention("Please forget that I prefer terse PR summaries."),
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The assistant understands the forget request and removes the matching remembered preference.",
           "The assistant does not ask the user for hidden ids or scope fields.",
@@ -90,7 +96,7 @@ describe("Memory Management", () => {
           "Do not ask the user for Slack ids, scope keys, or subject ids.",
         ],
       }),
-    });
+    );
 
     // A forgotten memory is archived, so the person can no longer recall it.
     expect(await readMemories()).toEqual([]);

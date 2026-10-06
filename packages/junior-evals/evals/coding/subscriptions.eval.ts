@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { githubWebhook, mention } from "@junior-evals/fixture/inputs";
 import { insertWatch } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
@@ -78,18 +78,19 @@ describe("Watches", () => {
       mention(
         `Watch the Production deployment of getsentry/junior-prod for commit ${commitSha}. It may not exist yet; tell me when it succeeds, fails, or reports an error.`,
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms the exact deployment target will be monitored through event-based updates.",
-            "The reply makes clear that the watch is temporary and says when it expires.",
-          ],
-          fail: [
-            "Do not claim a polling task or recurring schedule was created.",
-            "Do not ask the user to wait and check GitHub manually.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms the exact deployment target will be monitored through event-based updates.",
+          "The reply makes clear that the watch is temporary and says when it expires.",
+        ],
+        fail: [
+          "Do not claim a polling task or recurring schedule was created.",
+          "Do not ask the user to wait and check GitHub manually.",
+        ],
+      }),
     );
 
     expect(
@@ -127,18 +128,19 @@ describe("Watches", () => {
       mention(
         `Check ${pullRequest} every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.`,
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
-            "The reply makes clear that the watch is temporary and says when it expires.",
-          ],
-          fail: [
-            "Do not ask the user to monitor GitHub manually.",
-            "Do not claim a recurring five-minute polling task or schedule was created.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
+          "The reply makes clear that the watch is temporary and says when it expires.",
+        ],
+        fail: [
+          "Do not ask the user to monitor GitHub manually.",
+          "Do not claim a recurring five-minute polling task or schedule was created.",
+        ],
+      }),
     );
 
     const watches = completedToolCalls("watchEvents", conversation);
@@ -208,8 +210,10 @@ describe("Watches", () => {
       "No checks watch: this run does not test delivery",
     ).toContain("pull_request.checks.failed");
 
-    const delivery = await conversation.continue(checkSuiteWebhook("failure"), {
-      criteria: rubric({
+    const delivery = await conversation.continue(checkSuiteWebhook("failure"));
+    await expect(delivery.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           `The reply says GitHub PR ${pullRequest} has a failed CI/checks result.`,
           'The reply mentions the failing check "test" or commit abcdef1.',
@@ -223,7 +227,7 @@ describe("Watches", () => {
           "Do not claim to have changed code, pushed a fix, or changed the pull request; the user asked for a summary and next steps only.",
         ],
       }),
-    });
+    );
 
     // Read-only inspection is a valid way to explain a failure.
     expect(delivery.replies).toHaveLength(1);
@@ -243,8 +247,10 @@ describe("Watches", () => {
       "No checks watch: this run does not test delivery",
     ).toContain("pull_request.checks.failed");
 
-    const delivery = await conversation.continue(checkSuiteWebhook("failure"), {
-      criteria: rubric({
+    const delivery = await conversation.continue(checkSuiteWebhook("failure"));
+    await expect(delivery.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The assistant handles the failed checks without asking a human to authorize GitHub.",
           "The assistant reports that the fix is committed and pushed to the existing pull request branch.",
@@ -254,7 +260,7 @@ describe("Watches", () => {
           "Do not stop after describing a plan or editing the file without committing and pushing it.",
         ],
       }),
-    });
+    );
 
     // `verify.sh` of the fixture skill prints this line when the remote
     // branch has the fix.
@@ -278,8 +284,10 @@ describe("Watches", () => {
       "No merge watch: this run does not test delivery",
     ).toContain("pull_request.merged");
 
-    const delivery = await conversation.continue(mergedWebhook(), {
-      criteria: rubric({
+    const delivery = await conversation.continue(mergedWebhook());
+    await expect(delivery.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           `The reply says GitHub PR ${pullRequest} was merged.`,
           "The reply frames the merge as the outcome this thread was waiting for.",
@@ -291,7 +299,7 @@ describe("Watches", () => {
           "Do not treat the event notification as a new user request.",
         ],
       }),
-    });
+    );
 
     expect(delivery.replies).toHaveLength(1);
   });
@@ -315,7 +323,10 @@ describe("Watches", () => {
           "The deployment owner is Alice. Tell the thread who owns the deployment.",
         ),
       ]),
-      criteria: rubric({
+    });
+    await expect(delivery.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "A reply says Alice owns the deployment.",
           "The user's direct instruction is the focus of the final reply.",
@@ -325,7 +336,7 @@ describe("Watches", () => {
           "Do not finish with a reply that addresses only the GitHub notification.",
         ],
       }),
-    });
+    );
 
     expect(delivery.turns).toHaveLength(2);
     expect(delivery.replies.at(-1)?.text).toMatch(/Alice/i);

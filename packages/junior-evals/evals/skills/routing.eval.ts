@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
 
@@ -17,17 +17,18 @@ describe("Skill Invocation Control", () => {
   }) => {
     const conversation = await run(
       mention("$weather-lookup check the weather in San Francisco."),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant posts a reply containing a weather report for San Francisco from the weather-lookup skill.",
-            "The reply includes the simulated data: 72°F or 22°C.",
-          ],
-          fail: [
-            "Do not refuse to load the weather-lookup skill when the user explicitly asks for it.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant posts a reply containing a weather report for San Francisco from the weather-lookup skill.",
+          "The reply includes the simulated data: 72°F or 22°C.",
+        ],
+        fail: [
+          "Do not refuse to load the weather-lookup skill when the user explicitly asks for it.",
+        ],
+      }),
     );
 
     // The skill name already put the skill in the turn.
@@ -37,21 +38,22 @@ describe("Skill Invocation Control", () => {
   test("auto-selects an available skill when contextually relevant", async ({
     run,
   }) => {
-    await run(
+    const conversation = await run(
       mention(
         "Can you double-check what the source handbook says about capability support verification?",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant posts an answer based on the source-handbook content.",
-          ],
-          fail: [
-            "Do not answer with generic capability advice that omits the handbook's verification rule.",
-            "Do not refuse the request when the handbook content is available.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant posts an answer based on the source-handbook content.",
+        ],
+        fail: [
+          "Do not answer with generic capability advice that omits the handbook's verification rule.",
+          "Do not refuse the request when the handbook content is available.",
+        ],
+      }),
     );
   });
 

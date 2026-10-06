@@ -9,7 +9,6 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { assert } from "vitest";
 import type { HarnessRun, TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
@@ -36,12 +35,7 @@ import {
   WEB_VIEWER_EMAIL,
   type LoadedConversation,
 } from "./history";
-import {
-  JUDGE_THRESHOLD,
-  judgeReplies,
-  type Rubric,
-  type VisibleMessage,
-} from "./judge";
+import type { VisibleMessage } from "./judge";
 import { createInProcessQueue } from "./queue";
 import type { RecordedConversation } from "./recorded";
 import {
@@ -76,7 +70,6 @@ const IDLE_TIMEOUT_MS = 60_000;
 export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
 
 export interface CallOptions {
-  criteria?: Rubric;
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
   onProgress?: (
@@ -115,10 +108,8 @@ export type RunAgent = (
 
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
-  signal: AbortSignal;
   task: {
     meta: {
-      eval?: unknown;
       harness?: { name: string; run: HarnessRun };
     };
   };
@@ -213,12 +204,6 @@ export async function createFixtureAgent(
     gatewayRequests: gateway.requestCounts(),
   });
   const startedAtMs = Date.now();
-  // Every judged call of the test, for the eval report.
-  const judgeScores: Array<{
-    metadata: Record<string, string>;
-    name: string;
-    score: number;
-  }> = [];
 
   const waitForIdle = async (): Promise<void> => {
     const startedAtMs = Date.now();
@@ -522,6 +507,7 @@ export async function createFixtureAgent(
     const usage = currentUsage();
     const evalRun = toHarnessRun({
       conversationId: record.conversationId,
+      earlier,
       usage,
       messages: visibleMessages,
       startedAtMs,
@@ -535,32 +521,6 @@ export async function createFixtureAgent(
       name: "junior",
       run: combinedRun(calls, usage, startedAtMs),
     };
-    if (options.criteria) {
-      const judged = await judgeReplies({
-        criteria: options.criteria,
-        current: visibleMessages,
-        earlier,
-        signal: context.signal,
-      });
-      judgeScores.push({
-        name: "RubricJudge",
-        score: judged.score,
-        metadata: { answer: judged.answer, rationale: judged.rationale },
-      });
-      context.task.meta.eval = {
-        avgScore:
-          judgeScores.reduce((sum, entry) => sum + entry.score, 0) /
-          judgeScores.length,
-        scores: judgeScores,
-        thresholdFailed: judgeScores.some(
-          (entry) => entry.score < JUDGE_THRESHOLD,
-        ),
-      };
-      assert(
-        judged.score >= JUDGE_THRESHOLD,
-        `Rubric score ${judged.score} is below ${JUDGE_THRESHOLD}: ${judged.rationale}`,
-      );
-    }
     return conversationResult(record, {
       evalRun,
       files,
@@ -653,6 +613,7 @@ export async function createFixtureAgent(
     return conversationResult(forkRecord, {
       evalRun: toHarnessRun({
         conversationId: forkRecord.conversationId,
+        earlier: forkRecord.visibleMessages,
         usage: currentUsage(),
         messages: [],
         startedAtMs,

@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -17,19 +17,20 @@ describe("User Memory", () => {
     );
     const recalled = await asked.continue(
       mention("What do you remember about how I like PR summaries?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant says it remembers a preference for terse PR summaries.",
-            "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
-          ],
-          fail: [
-            "Do not say the memory failed to save.",
-            "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-            "Do not claim no relevant preference was remembered.",
-          ],
-        }),
-      },
+    );
+    await expect(recalled.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant says it remembers a preference for terse PR summaries.",
+          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not say the memory failed to save.",
+          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+          "Do not claim no relevant preference was remembered.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([
@@ -59,8 +60,10 @@ describe("User Memory", () => {
       });
     }
 
-    const conversation = await run(mention("what time is it"), {
-      criteria: rubric({
+    const conversation = await run(mention("what time is it"));
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
           "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
@@ -71,7 +74,7 @@ describe("User Memory", () => {
           "Do not claim that no relevant memory exists.",
         ],
       }),
-    });
+    );
 
     expect(await readMemories()).toContainEqual(
       expect.objectContaining({
@@ -98,21 +101,22 @@ describe("User Memory", () => {
         channelType: "im",
       }),
     );
-    await asked.continue(
+    const conversation = await asked.continue(
       mention("What do you remember about my opinion on Python types?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant remembers that the user dislikes Python types or type annotations.",
-            "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
-          ],
-          fail: [
-            "Do not ask the user to rephrase the already first-person memory request.",
-            "Do not claim no relevant preference was remembered.",
-            "Do not store a memory about a third party.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant remembers that the user dislikes Python types or type annotations.",
+          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not ask the user to rephrase the already first-person memory request.",
+          "Do not claim no relevant preference was remembered.",
+          "Do not store a memory about a third party.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([
@@ -130,23 +134,24 @@ describe("User Memory", () => {
     const existing = "Prefers PR summaries with risks first.";
     await insertMemory({ content: existing, visibility: "private" });
 
-    await run(
+    const conversation = await run(
       mention(
         "Please remember that I want risk notes at the start of PR summaries.",
         { channelType: "im" },
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant confirms that the preference is already remembered or remains remembered.",
-            "The assistant does not imply that a second or additional memory was created.",
-          ],
-          fail: [
-            "Do not claim that a new or additional memory was created when the preference was already remembered.",
-            "Do not expose hidden memory ids, scope keys, actor ids, or Slack ids.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant confirms that the preference is already remembered or remains remembered.",
+          "The assistant does not imply that a second or additional memory was created.",
+        ],
+        fail: [
+          "Do not claim that a new or additional memory was created when the preference was already remembered.",
+          "Do not expose hidden memory ids, scope keys, actor ids, or Slack ids.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([
