@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
 import { observations } from "./agent-run-model-handoff-state";
 
 export { observations } from "./agent-run-model-handoff-state";
@@ -8,7 +9,10 @@ vi.mock("@/chat/config", async (importOriginal) => {
   const config = actual.readChatConfig({
     ...process.env,
     AI_HANDOFF_MODEL: "openai/gpt-5.6-sol",
-    AI_MODEL_PROFILES: JSON.stringify({ coding: "openai/gpt-5.4" }),
+    AI_MODEL_PROFILES: JSON.stringify({
+      standard: "xai/grok-4.5",
+      coding: "openai/gpt-5.4",
+    }),
   });
   return { ...actual, botConfig: config.bot };
 });
@@ -28,7 +32,11 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
         },
       };
     },
-    completeText: async (args: { signal?: AbortSignal }) => {
+    completeText: async (args: {
+      messages: PiMessage[];
+      signal?: AbortSignal;
+    }) => {
+      observations.summaryMessages = structuredClone(args.messages);
       observations.handoffStatusBeforeSummary =
         observations.statuses.includes("Switching models");
       observations.summaryCalls += 1;
@@ -45,7 +53,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
           args.signal?.addEventListener("abort", abort, { once: true });
         });
       }
-      return { text: "Implement the requested change and verify it." };
+      return { text: observations.summaryText };
     },
   };
 });
@@ -54,6 +62,11 @@ vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn:
     () => async (model: any, context: any, options: any) => {
       observations.providerCalls += 1;
+      observations.handoffDescriptions.push(
+        (context.tools ?? []).find(
+          (tool: { name: string }) => tool.name === "handoff",
+        )?.description ?? "",
+      );
       observations.reasoningLevels.push(options?.reasoning ?? "unset");
       const call = observations.providerCalls;
       const routedToHandoff =
@@ -196,8 +209,11 @@ export async function resetHandoffTestState(): Promise<void> {
   observations.afterHandoffProfiles = [];
   observations.afterHandoffToolNames = [];
   observations.initialModelId = "";
+  observations.summaryMessages = [];
+  observations.summaryText = "Implement the requested change and verify it.";
   observations.initialImagePart = undefined;
   observations.initialHandoffProfiles = [];
+  observations.handoffDescriptions = [];
   observations.initialToolNames = [];
   observations.mixedBatch = false;
   observations.progressTool = false;

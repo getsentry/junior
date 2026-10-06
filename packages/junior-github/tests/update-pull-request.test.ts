@@ -70,7 +70,7 @@ describe("updatePullRequest", () => {
       base: "release",
       number: 691,
       state: "open",
-      objectAnnotations: [{ status: "open" }],
+      objectAnnotations: [{ status: "open", description: "Updated body" }],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {

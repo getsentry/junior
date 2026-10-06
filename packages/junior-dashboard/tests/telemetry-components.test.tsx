@@ -76,14 +76,11 @@ function conversation(
   };
 }
 
-function renderTranscript(
-  detail: ConversationTranscript,
-  view: "raw" | "rich" = "rich",
-): string {
+function renderTranscript(detail: ConversationTranscript): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view={view} />
+        <ConversationTranscriptView conversation={detail} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -526,7 +523,16 @@ describe("dashboard canonical-event components", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(
       conversationDetailQueryKey("conversation-1"),
-      conversation([], { status: "active" }),
+      conversation(
+        [
+          event(0, {
+            type: "turn_lifecycle",
+            turnId: "turn-1",
+            state: "started",
+          }),
+        ],
+        { status: "active" },
+      ),
     );
     const failedClient = conversationQueryClient();
     failedClient.setQueryData(
@@ -542,55 +548,56 @@ describe("dashboard canonical-event components", () => {
     expect(failedHtml).not.toContain(">error</span>");
   });
 
-  it("renders conversation resource links without pull request assumptions", () => {
+  it("labels linked object types for assistive technology without guessing from URLs", () => {
     const html = renderToStaticMarkup(
       <ConversationAnnotations
         detail={conversation([], {
           annotations: [
             {
               kind: "resource_link",
-              key: "getsentry/junior#1081",
-              label: "getsentry/junior#1081",
+              objectType: "task",
+              key: "issue",
+              label: "Issue",
               plugin: "github",
-              status: "open",
-              url: "https://github.com/getsentry/junior/issues/1081",
+              status: "closed",
+              url: "https://example.com/issue",
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:01.000Z",
             },
-          ],
-        })}
-      />,
-    );
-
-    expect(html).toContain("getsentry/junior#1081");
-    expect(html).toContain('title="Open"');
-    expect(html).not.toContain("Linked resources");
-    expect(html).not.toContain("Pull requests");
-    expect(html).not.toContain("Open pull request");
-  });
-
-  it("renders open pull request resource links with the pull request icon", () => {
-    const html = renderToStaticMarkup(
-      <ConversationAnnotations
-        detail={conversation([], {
-          annotations: [
             {
               kind: "resource_link",
-              key: "getsentry/junior#1081",
-              label: "getsentry/junior#1081",
+              key: "pr",
+              label: "PR",
               plugin: "github",
-              status: "open",
-              url: "https://github.com/getsentry/junior/pull/1081",
+              status: "closed",
+              url: "https://example.com/change",
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+            {
+              kind: "resource_link",
+              key: "other",
+              label: "Other",
+              plugin: "example",
+              url: "https://github.com/example/repo/pull/1",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+          sidebarAnnotations: [
+            {
+              key: "pr",
+              label: "repo",
+              objectType: "code_change",
+              status: "closed",
             },
           ],
         })}
       />,
     );
-
-    expect(html).toContain("getsentry/junior#1081");
-    expect(html).toContain('title="Open pull request"');
+    expect(html).toContain('aria-label="Ticket: closed"');
+    expect(html).toContain('aria-label="Code change: closed"');
+    expect(html).toContain('aria-label="Item"');
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {
@@ -810,7 +817,6 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="View turn context"');
-    expect(html).toContain("hidden justify-end md:flex");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Release notes live in Notion.");
     expect(html).not.toContain("memory-1");
@@ -831,22 +837,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Junior could not deliver this message.");
     expect(html).not.toContain("Model connection failed");
     expect(html).not.toContain("Internal error");
-  });
-
-  it("does not invent an object for an empty raw message", () => {
-    const html = renderTranscript(
-      conversation([
-        event(0, {
-          type: "message",
-          messageId: "assistant-1",
-          role: "assistant",
-          text: "",
-        }),
-      ]),
-      "raw",
-    );
-
-    expect(html).not.toContain("{}");
   });
 
   it("renders one in-progress row for a tool start", () => {
@@ -879,7 +869,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("missing result");
   });
 
-  it("replaces the running treatment with details on the same completed row", () => {
+  it("keeps completed tool details unmounted until opened", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
@@ -917,15 +907,15 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain("arguments");
-    expect(html).toContain("result");
+    expect(html).not.toContain("arguments");
+    expect(html).not.toContain("result");
     expect(html).toContain("regression");
-    expect(html).toContain("matches");
+    expect(html).not.toContain("matches");
     expect(html).not.toContain("running");
     expect(html).not.toContain("completed");
   });
 
-  it("renders a terminal tool error with its result details", () => {
+  it("shows a terminal tool failure without mounting its result", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
@@ -952,10 +942,9 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain("search");
-    expect(html).toContain("error");
-    expect(html).toContain("result");
-    expect(html).toContain("timed out");
+    expect(html).toContain('aria-label="search (failed)"');
+    expect(html).not.toContain("result");
+    expect(html).not.toContain("timed out");
     expect(html).not.toContain("running");
   });
 
@@ -992,7 +981,6 @@ describe("dashboard canonical-event components", () => {
           <ConversationTranscriptView
             conversation={conversation(events)}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
@@ -1087,7 +1075,6 @@ describe("dashboard canonical-event components", () => {
               }),
             ])}
             onOpenSubagentTranscript={() => {}}
-            view="rich"
           />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
@@ -1543,23 +1530,13 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain('aria-label="Conversations per day"');
-    expect(systemHtml).toContain("Cached input share");
-    expect(systemHtml).toContain("75.0%");
-    expect(systemHtml).toContain("Input token cache");
+    expect(systemHtml).toContain("Missing data in 1 of 1");
+    expect(systemHtml).toContain("Input cache");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
-    expect(systemHtml).toContain(
-      'class="inline-flex h-full min-w-0 flex-1 items-end"',
-    );
-    expect(systemHtml).toContain(
-      'class="flex w-full min-w-0 flex-col justify-end',
-    );
-    expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
-      systemHtml.indexOf("Input token cache"),
-    );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
@@ -1575,20 +1552,6 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
 
-    data.conversationStats!.metricDays[0] = {
-      ...data.conversationStats!.metricDays[0],
-      cachedInputTokens: 9_999,
-      inputTokens: 1,
-    };
-    const nearCompleteCacheHtml = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/system"]}>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-    expect(nearCompleteCacheHtml).toContain("&lt;100%");
-    expect(nearCompleteCacheHtml).toContain(
-      "9.9k read · 0 written · 1 uncached",
-    );
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");

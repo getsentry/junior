@@ -9,6 +9,7 @@ import {
   normalizeCheckSuiteEvents,
   type GitHubCheckSuiteFacts,
 } from "./check-suite.js";
+import { isBotLogin } from "./ownership.js";
 
 export type {
   GitHubCheckSuiteFacts,
@@ -294,14 +295,16 @@ const issueCommentWebhookSchema = z.object({
 function normalizeIssueCommentEvents(
   deliveryId: string,
   body: unknown,
+  botEmail: string | undefined,
 ): EventInput[] {
   const parsed = issueCommentWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "created") return [];
+  const author = parsed.data.comment.user?.login;
+  if (isBotLogin(author, botEmail)) return [];
   const input = {
     number: parsed.data.issue.number,
     repo: parsed.data.repository.full_name,
   };
-  const author = parsed.data.comment.user?.login;
   if (parsed.data.issue.pull_request) {
     const eventType = "pull_request.comment.created";
     const resource = gitHubPullRequestResource(input);
@@ -455,9 +458,11 @@ const pullRequestReviewCommentWebhookSchema = z.object({
 function normalizePullRequestReviewCommentEvent(
   deliveryId: string,
   body: unknown,
+  botEmail: string | undefined,
 ): EventInput[] {
   const parsed = pullRequestReviewCommentWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "created") return [];
+  if (isBotLogin(parsed.data.comment.user?.login, botEmail)) return [];
   const eventType = "pull_request.review_comment.created";
   const repo = parsed.data.repository.full_name;
   const resource = gitHubPullRequestResource({
@@ -521,9 +526,11 @@ const pullRequestReviewWebhookSchema = z.object({
 function normalizePullRequestReviewEvent(
   deliveryId: string,
   body: unknown,
+  botEmail: string | undefined,
 ): EventInput[] {
   const parsed = pullRequestReviewWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "submitted") return [];
+  if (isBotLogin(parsed.data.review.user?.login, botEmail)) return [];
   const reviewState = parsed.data.review.state.toUpperCase();
   const eventType =
     reviewState === "APPROVED"
@@ -816,10 +823,15 @@ function normalizeReleaseEvent(
   );
 }
 
-/** Read the check suite target used to load missing suite facts. */
-/** Normalize one verified GitHub delivery into conversation events. */
+/**
+ * Normalize one verified GitHub delivery into conversation events.
+ *
+ * Comments and reviews written by the configured bot are dropped, so Junior
+ * does not react to or act on its own feedback.
+ */
 export function normalizeGitHubEvents(args: {
   body: unknown;
+  botEmail?: string;
   checkSuiteFacts?: GitHubCheckSuiteFacts;
   deliveryId: string;
   eventName: string;
@@ -834,11 +846,23 @@ export function normalizeGitHubEvents(args: {
     case "issues":
       return normalizeIssueEvents(args.deliveryId, args.body);
     case "pull_request_review":
-      return normalizePullRequestReviewEvent(args.deliveryId, args.body);
+      return normalizePullRequestReviewEvent(
+        args.deliveryId,
+        args.body,
+        args.botEmail,
+      );
     case "issue_comment":
-      return normalizeIssueCommentEvents(args.deliveryId, args.body);
+      return normalizeIssueCommentEvents(
+        args.deliveryId,
+        args.body,
+        args.botEmail,
+      );
     case "pull_request_review_comment":
-      return normalizePullRequestReviewCommentEvent(args.deliveryId, args.body);
+      return normalizePullRequestReviewCommentEvent(
+        args.deliveryId,
+        args.body,
+        args.botEmail,
+      );
     case "check_suite":
       return normalizeCheckSuiteEvents(
         args.deliveryId,

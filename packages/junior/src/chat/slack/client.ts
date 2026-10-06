@@ -528,7 +528,9 @@ export async function withSlackRetries<T>(
       const baseLogAttributes: Record<string, string | number | boolean> = {
         "app.slack.action": action,
         "app.slack.error_code": mapped.code,
-        ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : undefined),
+        ...(mapped.apiError
+          ? { "app.slack.api_error": mapped.apiError }
+          : undefined),
         ...(mapped.detail ? { "app.slack.detail": mapped.detail } : undefined),
         ...(mapped.detailLine !== undefined
           ? { "app.slack.detail_line": mapped.detailLine }
@@ -595,7 +597,14 @@ export async function withSlackRetries<T>(
  * is workspace-scoped and no installation token can be resolved, so a write
  * never goes out with another workspace's credentials.
  */
-export function getSlackClient(): WebClient {
+export function getSlackClient(options?: { timeoutMs: number }): WebClient {
+  if (options) {
+    return new WebClient(resolveSlackToken(), {
+      retryConfig: { retries: 0 },
+      rejectRateLimitedCalls: true,
+      timeout: options.timeoutMs,
+    });
+  }
   return getClient();
 }
 

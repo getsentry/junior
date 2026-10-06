@@ -1,163 +1,115 @@
-import { describeEval } from "vitest-evals";
-import { expect } from "vitest";
-import { getDb } from "@/chat/db";
-import { readScheduledAutomation } from "@/chat/scheduled-automations/tasks";
-import { mention, rubric, slackEvals } from "../../../src/helpers";
+import { describe, expect } from "vitest";
+import { mention } from "@junior-evals/fixture/inputs";
 import {
-  scheduledAutomationCreateCalls,
-  scheduledAutomationDeleteCalls,
-  scheduledAutomationListCalls,
-  scheduledAutomationUpdateCalls,
-  seedScheduledAutomation,
-} from "./helpers";
+  insertScheduledAutomation,
+  slackChannel,
+} from "@junior-evals/fixture/insert";
+import { rubric } from "@junior-evals/fixture/judge";
+import { completedToolCalls } from "@junior-evals/fixture/results";
+import { test } from "@junior-evals/fixture/test";
 
-describeEval("Schedule Destination Updates", slackEvals, (it) => {
-  it("when asked what is scheduled here, list only the active channel", async ({
+const alice = {
+  fullName: "Alice Example",
+  userId: "UALICE",
+  userName: "alice",
+};
+
+describe("Schedule Destination Updates", () => {
+  test("when asked what is scheduled here, list only the active channel", async ({
     run,
   }) => {
-    const author = {
-      user_id: "UALICE",
-      user_name: "alice",
-      full_name: "Alice Example",
-    };
-    const here = {
-      channel_type: "channel" as const,
-      channel_id: "CSCHEDHERE",
-      id: "thread-scheduler-list-here",
-      thread_ts: "1700000000.901000",
-    };
-    const elsewhere = {
-      channel_id: "CSCHEDELSE",
-    };
-    await seedScheduledAutomation({
-      createdBy: {
-        slackUserId: author.user_id,
-        userName: author.user_name,
-        fullName: author.full_name,
-      },
-      id: "sched_here_planning",
-      taskText: "Post a planning reminder in this channel.",
-      thread: here,
+    const here = slackChannel();
+    await insertScheduledAutomation({
+      createdBy: alice,
+      destination: here,
+      task: "Post a planning reminder in this channel.",
     });
-    await seedScheduledAutomation({
-      createdBy: {
-        slackUserId: author.user_id,
-        userName: author.user_name,
-        fullName: author.full_name,
-      },
-      id: "sched_elsewhere_ops",
-      taskText: "Post the ops handoff digest.",
-      thread: elsewhere,
+    await insertScheduledAutomation({
+      createdBy: alice,
+      destination: slackChannel(),
+      task: "Post the ops handoff digest.",
     });
 
-    const result = await run({
-      initialEvents: [
-        mention("@bot what scheduled automations are in this channel?", {
-          thread: here,
-          author,
-        }),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply mentions the planning reminder scheduled in this channel.",
-        ],
-        fail: [
-          "Do not claim the ops handoff digest is scheduled in this channel.",
-          "Do not ask the user to provide a channel ID.",
-        ],
+    const conversation = await run(
+      mention("what scheduled automations are in this channel?", {
+        author: alice,
+        channel: here,
       }),
-    });
+      {
+        criteria: rubric({
+          pass: [
+            "The reply mentions the planning reminder scheduled in this channel.",
+          ],
+          fail: [
+            "Do not claim the ops handoff digest is scheduled in this channel.",
+            "Do not ask the user to provide a channel ID.",
+          ],
+        }),
+      },
+    );
 
-    const listCalls = scheduledAutomationListCalls(result.session);
-    expect(listCalls.length).toBeGreaterThan(0);
-    for (const call of listCalls) {
-      expect(
-        call.arguments?.channel_id == null ||
-          call.arguments?.channel_id === here.channel_id,
-      ).toBe(true);
+    const lists = completedToolCalls(
+      "slackScheduleListAutomations",
+      conversation,
+    );
+    expect(lists.length).toBeGreaterThan(0);
+    for (const list of lists) {
+      expect([undefined, null, here.channelId]).toContain(
+        (list.input as { channel_id?: unknown } | undefined)?.channel_id,
+      );
     }
-    expect(scheduledAutomationUpdateCalls(result.session)).toEqual([]);
+    expect(
+      completedToolCalls("slackScheduleUpdateAutomation", conversation),
+    ).toEqual([]);
   });
 
-  it("when asked once in the destination channel, update the requester task to deliver here", async ({
+  test("when asked once in the destination channel, update the requester task to deliver here", async ({
     run,
   }) => {
-    const author = {
-      user_id: "UALICE",
-      user_name: "alice",
-      full_name: "Alice Example",
-    };
-    const source = {
-      channel_id: "CSOURCEPLAN",
-    };
-    const target = {
-      channel_type: "group" as const,
-      channel_id: "GTARGETPLAN",
-      id: "thread-scheduler-move-here",
-      thread_ts: "1700000000.902000",
-    };
-    const taskId = "sched_move_planning_reminder";
-    await seedScheduledAutomation({
-      createdBy: {
-        slackUserId: author.user_id,
-        userName: author.user_name,
-        fullName: author.full_name,
-      },
+    const source = slackChannel();
+    const { id } = await insertScheduledAutomation({
+      createdBy: alice,
       credentialMode: "creator",
-      id: taskId,
-      taskText: "Post a weekly planning reminder in this channel.",
-      thread: source,
+      destination: source,
+      task: "Post a weekly planning reminder in this channel.",
     });
 
-    const result = await run({
-      initialEvents: [
-        mention(
-          `@bot move my weekly planning reminder from <#${source.channel_id}> here`,
-          {
-            thread: target,
-            author,
-          },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The reply confirms the weekly planning reminder now runs in the current destination conversation.",
-        ],
-        fail: [
-          "Do not ask the user to open the source channel and list tasks first.",
-          "Do not ask the user to copy or paste the task text.",
-          "Do not ask for another confirmation after the move request.",
-        ],
-      }),
-    });
-
-    expect(scheduledAutomationListCalls(result.session).length).toBeGreaterThan(
-      0,
+    const conversation = await run(
+      mention(
+        `move my weekly planning reminder from <#${source.channelId}> here`,
+        { author: alice, channel: slackChannel() },
+      ),
+      {
+        criteria: rubric({
+          pass: [
+            "The reply confirms the weekly planning reminder now runs in the current destination conversation.",
+          ],
+          fail: [
+            "Do not ask the user to open the source channel and list tasks first.",
+            "Do not ask the user to copy or paste the task text.",
+            "Do not ask for another confirmation after the move request.",
+          ],
+        }),
+      },
     );
-    const updateCalls = scheduledAutomationUpdateCalls(result.session);
-    expect(updateCalls).toHaveLength(1);
-    expect(updateCalls[0]!.arguments).toMatchObject({
-      automationId: taskId,
+
+    expect(
+      completedToolCalls("slackScheduleListAutomations", conversation).length,
+    ).toBeGreaterThan(0);
+    const updates = completedToolCalls(
+      "slackScheduleUpdateAutomation",
+      conversation,
+    );
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.input).toMatchObject({
+      automationId: id,
       destination: "here",
     });
-    expect(scheduledAutomationCreateCalls(result.session)).toEqual([]);
-    expect(scheduledAutomationDeleteCalls(result.session)).toEqual([]);
-
-    const stored = await readScheduledAutomation(getDb(), taskId);
-    expect(stored).toMatchObject({
-      id: taskId,
-      credentialMode: "creator",
-      destination: {
-        platform: "slack",
-        teamId: "TEVAL",
-        channelId: target.channel_id,
-      },
-      conversationAccess: {
-        audience: "group",
-        visibility: "private",
-      },
-      task: { text: "Post a weekly planning reminder in this channel." },
-      createdBy: { slackUserId: author.user_id },
-    });
+    expect(
+      completedToolCalls("slackScheduleCreateAutomation", conversation),
+    ).toEqual([]);
+    expect(
+      completedToolCalls("slackScheduleDeleteAutomation", conversation),
+    ).toEqual([]);
   });
 });

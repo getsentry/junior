@@ -125,6 +125,7 @@ export interface PluginManifestConfig {
     url?: string;
     headers?: Record<string, string | null> | null;
     auth?: PluginMcpConfig["auth"];
+    oauthClient?: PluginMcpConfig["oauthClient"];
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
   } | null;
@@ -155,6 +156,8 @@ export interface PluginDefinition {
 }
 
 export interface InlinePluginManifestDefinition {
+  /** Local manifest directory when the plugin does not come from a package. */
+  dir?: string;
   manifest: PluginManifest;
   packageName?: string;
 }

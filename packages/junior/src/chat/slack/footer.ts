@@ -1,47 +1,9 @@
+import type { KnownBlock, PlainTextElement } from "@slack/types";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
-
-interface SlackMrkdwnTextObject {
-  text: string;
-  type: "mrkdwn";
-}
-
-interface SlackPlainTextObject {
-  text: string;
-  type: "plain_text";
-}
-
-/** Slack-flavored Markdown block — accepts a standard Markdown subset and Slack renders it natively. */
-interface SlackMarkdownBlock {
-  text: string;
-  type: "markdown";
-}
-
-interface SlackSectionBlock {
-  text: SlackMrkdwnTextObject | SlackPlainTextObject;
-  type: "section";
-  accessory?: {
-    type: "button";
-    text: SlackPlainTextObject;
-    url: string;
-    action_id: string;
-    style?: "primary";
-  };
-}
-
-interface SlackContextBlock {
-  elements: Array<SlackMrkdwnTextObject | SlackPlainTextObject>;
-  type: "context";
-}
-
-export type SlackMessageBlock =
-  | { type: "divider" }
-  | SlackMarkdownBlock
-  | SlackSectionBlock
-  | SlackContextBlock;
 
 interface SlackReplyFooterItem {
   label: string;
@@ -102,13 +64,11 @@ export function buildSlackReplyFooter(args: {
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
-): SlackMessageBlock[] | undefined {
-  const blocks: SlackMessageBlock[] = text.trim()
-    ? [{ type: "markdown", text }]
-    : [];
+): KnownBlock[] | undefined {
+  const blocks: KnownBlock[] = text.trim() ? [{ type: "markdown", text }] : [];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
-    const attributionElements: SlackPlainTextObject[] = footer.attribution
+    const attributionElements: PlainTextElement[] = footer.attribution
       ? [
           {
             type: "plain_text",

@@ -33,6 +33,7 @@ import {
 } from "./event-actor";
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { encodeHistoryPayload } from "../history-payload";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -97,15 +98,16 @@ function insertFromEvent(
   actorIdentityId?: string,
 ): ConversationEventInsert {
   const stripped = stripPayloadAuthorIdentityId(event.data);
-  const { type, ...payload } = conversationEventDataSchema.parse(stripped);
+  const data = conversationEventDataSchema.parse(stripped);
+  const encoded = encodeHistoryPayload(data);
   return {
     conversationId,
     seq,
     historyVersion,
-    schemaVersion: 1,
+    schemaVersion: encoded.schemaVersion,
     idempotencyKey: event.idempotencyKey ?? null,
-    type,
-    payload: sanitizePostgresJson(payload),
+    type: data.type,
+    payload: sanitizePostgresJson(encoded.payload),
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };

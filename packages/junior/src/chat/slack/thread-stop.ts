@@ -83,6 +83,19 @@ export async function stopSlackThread(args: {
   return { applied: result.value };
 }
 
+/** Return whether a Slack message was superseded by a thread stop. */
+export async function isSlackMessageStopped(args: {
+  messageCreatedAtMs: number;
+  state: StateAdapter;
+  threadId: string;
+}): Promise<boolean> {
+  const current = await getWatermarks(args.state, args.threadId);
+  return (
+    current.stopAtMs !== undefined &&
+    current.stopAtMs >= args.messageCreatedAtMs
+  );
+}
+
 /**
  * Subscribe for a mention unless a later Slack stop already opted out.
  *

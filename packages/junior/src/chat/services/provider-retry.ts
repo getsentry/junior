@@ -36,8 +36,12 @@ export function nextProviderRetry(args: {
   const providerError = createProviderError(errorMessage, {
     retryable: true,
   });
+  // The SDK classifier does not recognize capacity messages. Junior's own
+  // classification carries that signal so no dependency patch is needed.
   const hasRetrySignal =
-    isRetryableAssistantError(args.failure) || providerError.status === 408;
+    isRetryableAssistantError(args.failure) ||
+    providerError.status === 408 ||
+    providerError.kind === "capacity";
   if (!hasRetrySignal || !providerError.retryable) {
     return undefined;
   }

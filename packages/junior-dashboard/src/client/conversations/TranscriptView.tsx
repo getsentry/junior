@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { Button } from "../components/Button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
+import { ConversationEventLog } from "./ConversationEventLog";
 import {
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
@@ -24,8 +25,10 @@ export function Transcript(props: {
   loadingPreviousPage?: boolean;
   pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
+  onSelectedEventSeqChange?(seq: number | undefined): void;
   responding?: boolean;
   search?: string;
+  selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -35,6 +38,7 @@ export function Transcript(props: {
 }) {
   const view = props.view ?? "rich";
   const search = props.search ?? "";
+  const historyLabel = view === "raw" ? "events" : "messages";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
@@ -43,7 +47,11 @@ export function Transcript(props: {
     juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
-    version: transcriptBottomVersion(props.transcript),
+    view,
+    versions: {
+      rich: transcriptBottomVersion(props.transcript, "rich"),
+      raw: transcriptBottomVersion(props.transcript, "raw"),
+    },
   });
 
   if (!props.transcript) {
@@ -77,8 +85,8 @@ export function Transcript(props: {
               type="button"
             >
               {props.loadingPreviousPage
-                ? "Loading earlier messages…"
-                : "Show earlier messages"}
+                ? `Loading earlier ${historyLabel}…`
+                : `Show earlier ${historyLabel}`}
             </button>
             <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
           </div>
@@ -91,12 +99,20 @@ export function Transcript(props: {
             Earlier events could not be loaded.
           </div>
         ) : null}
-        <ConversationTranscriptView
-          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          conversation={props.transcript}
-          responding={props.responding ?? props.live ?? false}
-          view={view}
-        />
+        {view === "raw" ? (
+          <ConversationEventLog
+            key={props.transcript.conversationId}
+            conversation={props.transcript}
+            onSelectedSeqChange={props.onSelectedEventSeqChange}
+            selectedSeq={props.selectedEventSeq}
+          />
+        ) : (
+          <ConversationTranscriptView
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={props.transcript}
+            responding={props.responding ?? props.live ?? false}
+          />
+        )}
         <div
           aria-hidden="true"
           className="h-px"

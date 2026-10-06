@@ -1,6 +1,8 @@
-import type { MessageCard } from "@sentry/junior/api/schema";
+import type { ObjectType } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
+  MessageAttachment,
+  MessageCard,
   PluginOperationalReportFeed,
   Plugin,
   SkillReport,
@@ -81,15 +83,8 @@ export type TranscriptViewStructuredEventPart = {
   version: number;
 };
 
-export type TranscriptViewDeliveredAttachment = {
-  bytes: number;
-  contentType: string;
-  filename: string;
-  id: string;
-};
-
 export type TranscriptViewAttachmentsDeliveredPart = {
-  attachments: TranscriptViewDeliveredAttachment[];
+  attachments: MessageAttachment[];
   type: "attachments_delivered";
 };
 
@@ -117,6 +112,7 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Whether the source message addressed Junior directly. */
@@ -138,6 +134,7 @@ export type TranscriptViewMessage = {
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
   sentryEventUrl?: string;
+  attachments?: MessageAttachment[];
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

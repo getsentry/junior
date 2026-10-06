@@ -19,10 +19,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { automationRevision } from "@/chat/automations/revision";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   getEventAutomation,
   saveEventAutomation,
+  setEventAutomationStatus,
 } from "@/chat/event-automations/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
@@ -93,7 +95,7 @@ describe("event automations", () => {
     vi.restoreAllMocks();
   });
 
-  it("delivers the last saved automation card and retains it in web history", async () => {
+  it("delivers the current automation card and retains its reference in web history", async () => {
     const conversationId = "local:automation-card";
     const links = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -106,9 +108,15 @@ describe("event automations", () => {
         nowMs: 1,
         visibility: "public",
       });
-      const created = await createTask("Review fixes.");
+      const taskContext = { ...context(), conversationId };
+      const created = await createTask(
+        "Review fixes.",
+        undefined,
+        undefined,
+        taskContext,
+      );
       const updated = await execute(
-        createUpdateEventAutomationTool(context(), EVENT_CATALOG),
+        createUpdateEventAutomationTool(taskContext, EVENT_CATALOG),
         {
           automationId: created.automation.id,
           credentialMode: "system",
@@ -216,7 +224,16 @@ describe("event automations", () => {
       expect(report.events).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            data: expect.objectContaining({ type: "message", cards }),
+            data: expect.objectContaining({
+              type: "message",
+              cards: [
+                {
+                  kind: "object",
+                  plugin: "junior",
+                  key: created.automation.id,
+                },
+              ],
+            }),
           }),
         ]),
       );
@@ -248,18 +265,39 @@ describe("event automations", () => {
       teamId,
     };
 
+    const db = fixture.sql.db();
+    const firstTask = (await getEventAutomation(db, first.automation.id))!;
+    const paused = await setEventAutomationStatus(
+      db,
+      firstTask.id,
+      "paused",
+      automationRevision(firstTask),
+    );
+    expect(await ingestEventAutomations(event, options)).toEqual({
+      dispatched: 1,
+    });
+    expect(queue.sentRecords()).toHaveLength(1);
+    await setEventAutomationStatus(
+      db,
+      paused.id,
+      "active",
+      automationRevision(paused),
+    );
+
     const concurrent = await Promise.all([
-      ingestEventAutomations(event, options),
-      ingestEventAutomations(event, options),
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
     ]);
     expect(
       concurrent.reduce((total, result) => total + result.dispatched, 0),
     ).toBe(2);
-    await expect(ingestEventAutomations(event, options)).resolves.toEqual({
+    await expect(
+      ingestEventAutomations({ ...event, eventKey: "after-resume" }, options),
+    ).resolves.toEqual({
       dispatched: 0,
     });
 
-    expect(queue.sentRecords()).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(3);
     const dispatches = await Promise.all(
       queue.sentRecords().map(async ({ conversationId }) => {
         const id = conversationId.replace(/^agent-dispatch:/, "");
@@ -309,6 +347,7 @@ describe("event automations", () => {
       This is a task, not a message from a person.
 
       About: GitHub PR getsentry/junior#1174
+      Created by: <@U123>. Where the instructions say "me" or "my", write this mention.
       Instructions: Address the requested changes.
 
       Trusted summary: A reviewer requested changes.

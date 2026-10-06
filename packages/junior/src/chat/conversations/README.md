@@ -44,6 +44,25 @@ facts:
 Tool calls remain ordered content inside the `assistant_message` that produced
 them; the corresponding results are separate `tool_result` events.
 
+Version-two agent history items store message fields as JSON strings in
+`payload.message`. User provenance stays outside the string. Handoff and
+compaction store each replacement `item` as a JSON string. Encoding happens
+before SQL sanitization to preserve nested key order and NUL characters.
+Replay decodes all message fields; it does not rebuild them from a field list.
+
+SQL reports still read `model`, `provider`, `usage`, and `toolCallId` from the
+payload. Replay ignores these copies. No second history store is added.
+
+Version-one rows remain readable, but cannot recover data already lost. Stop
+old workers before deploying version-two writers. Old releases cannot replay
+version-two events. Rollback requires a compatible reader. No database schema
+migration is required.
+
+The agent history integration test checks stored messages and Pi's serialized
+request prefix through real Postgres. Only model HTTP responses are faked.
+The comparison excludes cache markers, not message fields or key order.
+Stable request prefixes do not guarantee provider cache hits.
+
 `message_updated` records later delivery or hydration state for an existing
 message. It updates that message's projection without pretending the same chat
 message arrived twice. `message_handled` remains the compact lifecycle fact
@@ -110,6 +129,44 @@ same Slack workspace. Oversized
 event data is represented by identifying fields and its original JSON byte
 size. The complete event array also has a fixed byte budget and reports omitted
 events through its pagination contract.
+
+## Conversation Forks
+
+`forkConversation` creates a new web root Conversation from a copy of a source
+Conversation. The copy ends at one completed assistant reply. The reply must have a saved agent message (`message:<id>:agent`).
+Fallback replies and unfinished tool calls cannot be a fork point.
+
+The fork uses the history version at the fork point. A later compaction in the
+source does not change the fork. Compacted history cannot recover discarded
+context.
+
+Anyone who can read the source content can fork it. The requester owns the new
+root. Source authors do not become participants. The fork keeps the source
+visibility. API retries with the same requester and key return the same
+fork. All fork writes are in one transaction.
+
+`forked_from_conversation_id` links the fork to its source. This link is not a
+delegation parent. Deleting the source clears the link. Detail reads show only
+the source and fork links that the viewer can read. Detail reads also report
+`canFork`. It is false for child Conversations and for viewers who cannot read
+the content.
+
+The fork copies the source event rows through the reply, so it shows the same
+Messages and event log. Copied rows keep their seq, history version, author,
+key, and time. Seq references in compactions and summaries stay valid. Updates
+of copied Messages and the end of copied Turns are copied too. Events with
+credentials, approvals, provider connections, Guardian reviews, or plugin state
+are not copied.
+
+A `fork:note` event follows the copied rows. It tells the agent what was not
+copied. A fork of a fork does not copy the source note, so each fork has one
+note after all its copied rows. Usage and cost reports skip the rows before it, so copied model calls
+count only in the source. The fork does not start a Turn. The dashboard sends
+the first message of the user to the fork with the normal message API.
+
+A fork does not copy the Sandbox, files, attachment files, Location, active work,
+pending messages, credentials, approvals, subagents, Watches, or Automations.
+The normal runtime creates a new Sandbox when the fork needs one.
 
 ## Stored Event Compatibility
 
@@ -179,8 +236,8 @@ Conversation. The provider owns its key, type, title, status, and optional field
 It is not the authoritative object store.
 
 Successful plugin tools return `objectAnnotations`. Core assigns the plugin
-owner, saves the annotations, and includes their snapshots in the tool result's
-`objectCards`. Hosted MCP hooks can return the same annotations. Raw MCP responses
+owner, saves the annotations, and replaces them with owned `objectCards` in the
+tool result. Hosted MCP hooks can return the same annotations. Raw MCP responses
 cannot set cards. Automation tools use the same saved object contract.
 
 `annotations.upsert` is storage-only. Webhook updates do not queue a card or
@@ -191,13 +248,104 @@ Pending cards come from committed successful tool results, not a scan of changed
 annotation rows. The latest selection per owner/key wins. Failed or timed-out
 results do not replace earlier cards. Removal results suppress earlier selections.
 A visible Message consumes its cards. A new Turn does not inherit cards from a
-silent Turn. Store each delivered snapshot in the Message so background updates
-do not rewrite stored history. The web transcript shows this snapshot. Slack can
-refresh its preview from newer detail responses; it does not change the stored
-Message. Existing Automation cards remain readable.
+silent Turn. Delivery resolves the selected objects from saved annotations.
+Store only `{ kind, plugin, key }` references in Message `objectCards` metadata
+and report those references in transcript events. The Conversation supplies the
+scope; references cannot select another Conversation.
+
+The web transcript resolves each reference from the latest annotations in
+Conversation detail. Annotation changes refresh cards even when Message events
+and older history pages do not change. Copy, search, and export use the same
+resolved facts. If an annotation is missing, show its key and an unavailable
+notice, not stale facts. Slack detail requests also read saved annotations;
+Slack controls when a posted preview refreshes.
+
+Tool results and assistant text stay immutable. Message cards do not keep a
+second copy of those historical facts.
 
 Plugins must return only facts appropriate to disclose in the current
 Conversation. This contract does not expand provider permissions or make a
 private object public. Detail views of saved annotations use Conversation access,
 not the original actor's provider credentials. Live provider details and actions
 are not part of this contract.
+
+### Object facts
+
+Plugins select facts from the successful provider response, before core saves
+an annotation. `object-facts.ts` in the plugin API defines the shared vocabulary
+and field order. It contains no provider fields or Slack layout. Both Slack and
+the web card use these facts. The Slack detail panel reads the latest saved
+annotation, not a new provider response. The web transcript labels cards as
+latest saved state, not live provider state.
+
+- Code change details and web cards show the source branch and lifecycle status.
+  Slack previews omit both. GitHub also saves up to 4,000 characters of the PR
+  description, without runtime attribution, session footers, or HTML comments.
+  Slack previews show only this description, with at most 500 characters and six
+  source lines, and an ellipsis when shortened. Slack's `long` field option
+  controls width, not automatic collapse. The Slack detail panel shows the full
+  saved description. The source link opens the original description. The web
+  card uses its existing details toggle.
+- Task details show assignees and priority, then project, cycle, due date, and
+  labels. Slack previews show only a description, when present. An empty assignee
+  list means unassigned. An absent list means unknown.
+- Deployments use the `deployment` object type. Vercel selects project, target, revision, and
+  branch from its existing deployment response. It never copies environment
+  values. A missing target stays unknown.
+- Automations use the existing card and detail page. Slack previews show only
+  the trigger and warning. The existing Automation record owns full details
+  and actions.
+- Other Items remain useful with just a title and source link.
+
+The `facts` object has a 4 KiB serialized UTF-8 limit. Text and lists also have
+schema bounds. Producers select at most five entries per list and shorten
+optional display text. They do not shorten object keys or source URLs. This
+limit applies to new facts, not to the entire annotation, which also contains
+identity and existing bounded fields. No new table or cache is needed.
+
+`sourceUpdatedAt` is the provider's update time, not the database write time.
+A silent status-only update does not claim to refresh every other fact. New
+full responses replace the facts; missing values do not retain old values.
+
+All added facts must be safe for the Conversation audience, just like Message
+text. Slack detail access still checks the workspace and Conversation. This
+change adds no provider fetches or write actions. Source links let the provider
+check access to larger details.
+
+#### Release safety
+
+New Messages store references, not card snapshots. Readers reduce older object
+and Automation cards to references without rewriting stored history. An older
+Automation without a saved annotation shows the unavailable notice. No database
+migration or new table is needed.
+
+Drain workers and deploy the API and dashboard together. Reload old dashboard
+tabs. Old strict readers cannot read reference-only cards. Rollback requires a
+reader that accepts references after new Messages have been saved. Tool-result
+facts keep their existing format for agent replay.
+
+### Object visual language
+
+`object-presentation.ts` in the plugin API owns native type labels, lifecycle
+icons, and semantic tones. Tickets keep the stored type `task`. Code changes,
+Automations, Deployments, and Items each have a distinct icon. Warnings change
+the tone, not the object identity. Provider plugins supply types; core and the
+web do not parse provider URLs to guess a type. The GitHub sidebar hook handles
+old untyped links. Stored deployment Items remain readable as Deployments.
+
+`ObjectIcon` renders the shared Octicons paths in the web. Cards, conversation
+links, sidebar badges, and typed event rows use this component. A plugin's
+sidebar hook can choose compact labels. Other typed annotations use the default
+projection, including core Automations. Unknown event types keep the event icon.
+
+Slack uses the same paths as fixed PNG assets through `product_icon`. The
+versioned dashboard route is public and serves only this fixed icon set. It
+contains no object facts. Local or headless installs omit image URLs. Type
+labels remain in Work Objects and fallback text. Slack owns the card layout;
+a successful post does not prove that its client rendered a Work Object.
+
+Run `node scripts/generate-object-icons.mjs` to rebuild SVG paths and PNGs from
+the pinned Octicons package. It needs the Playwright Chromium browser. Format
+the generated TypeScript files after generation. Keep the Octicons license with
+the paths. Change the asset path version if an existing image changes. Review
+`/dev/transcripts` at desktop and mobile widths after icon changes.

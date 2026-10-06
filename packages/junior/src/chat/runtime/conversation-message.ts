@@ -1,3 +1,4 @@
+import { getSlackFileId } from "@/chat/slack/attachments";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import type {
@@ -56,6 +57,10 @@ export function toConversationMessage(
     },
     meta: {
       attachmentCount: args.entry.attachments.length,
+      slackFileIds: args.entry.attachments.flatMap((attachment) => {
+        const id = getSlackFileId(attachment);
+        return id ? [id] : [];
+      }),
       explicitMention: args.explicitMention,
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,

@@ -47,6 +47,23 @@ describe("generateShortTitle", () => {
     expect(completeText).toHaveBeenCalledOnce();
   });
 
+  it("propagates cancellation instead of treating it as a title fallback", async () => {
+    const controller = new AbortController();
+    const reason = new Error("turn stopped");
+    const completeText = vi.fn(async ({ signal }) => {
+      expect(signal).toBe(controller.signal);
+      controller.abort(reason);
+      throw reason;
+    });
+    await expect(
+      resolveTaskTitle({
+        completeText: completeText as never,
+        instruction: "Post a digest",
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+  });
+
   it("returns undefined when generation fails", async () => {
     const completeText = vi.fn(async () => {
       throw new Error("gateway unavailable");

@@ -255,6 +255,13 @@ function buildUserTurnInput(args: {
       continue;
     }
 
+    if (attachment.attachmentId) {
+      userContentParts.push({
+        type: "text",
+        text: `Stored attachment: ${JSON.stringify({ attachment_id: attachment.attachmentId, filename: attachment.filename, media_type: attachment.mediaType })}. Use loadAttachment to access the original file.`,
+      });
+    }
+
     if (isVisionImageMediaType(attachment.mediaType)) {
       if (!attachment.data) {
         throw new Error("Image attachment is missing image data");

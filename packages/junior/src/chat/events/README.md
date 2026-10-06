@@ -85,6 +85,37 @@ Watches route events back into an existing conversation.
   the subscription intent or stored event automation instruction. Keep it separate
   from trusted data and untrusted provider content.
 
+## Timer Watches
+
+`watchTimer({ afterMs, intent })` returns a Watch id and `firesAtMs`. It stores
+one temporary Watch in the current Conversation. It does not hold a process or
+Sandbox open. Use an Event Watch when the required Event is available.
+
+- Delays must be positive integers and cannot exceed 29 days. The Watch expires
+  24 hours after its deadline, within the existing 30-day limit.
+- The Conversation and tool-call id determine the timer id. Replaying a call
+  returns its stored deadline without resetting an active or terminal Watch.
+  This protection lasts while the Watch record is retained.
+- `timer-index.ts` owns the Redis sorted set of pending timer ids. The score is
+  the next eligible dispatch time. Heartbeat claims at most 25 ids and moves
+  their scores forward by two minutes. No scan of all Watches is needed.
+- Registration writes indexes before the record while holding the Watch and
+  Conversation index locks. A crash can leave a missing record in the due
+  index, but cannot leave a saved timer outside that index. Heartbeat checks
+  the record under the same Watch lock before removing a stale entry.
+- `timers.ts` publishes a terminal `junior / timer.fired` Event with a stable
+  Event key. Existing ingestion owns mailbox delivery and duplicate suppression.
+  A failed dispatch remains eligible after the claim expires.
+- Timers keep normal Event batching and run as the system Actor. They do not
+  retain the creator's credentials. The minute heartbeat, Event batching,
+  queue load, and active Turns can delay execution beyond the deadline.
+- Existing list, stop, and thread opt-out actions cover timers. Cancellation
+  before delivery prevents input. It cannot recall input already delivered.
+- Heartbeat removes missing, expired, or terminal entries from the due index.
+  Expired timers do not start a Turn. Automated-turn limits still apply.
+
+There is no recurrence, reset API, separate Automation, or delayed timer queue.
+
 The plugin-facing types and publisher contract live in
 `packages/junior-plugin-api/src/events.ts`. Watch storage and ingestion live in
 this directory.

@@ -169,6 +169,20 @@ delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 
+- Verify Slack authors before storage, routing, or reactions. Require a user ID
+  and a matching workspace-valued `user_team`, or verify membership through
+  `users.info`. Event delivery and message origin do not prove membership.
+  Cache lookups by workspace and user for five minutes (members) or 30 seconds
+  (non-members). Reads do not extend expiry. An explicit external `user_team`
+  overrides cached membership. Lookup and state errors reach the retryable
+  webhook boundary. See `ingress/workspace-membership.ts` for field rules and
+  Slack references.
+- Keep documented minimal Slack message fixtures unchanged. Add optional fields
+  only in targeted cases with an upstream payload or fixture reference.
+- Use `@slack/types` for events and blocks, and `@slack/web-api` for API calls.
+  Local schemas cover upstream omissions and validate fields read by ingress
+  and Chat SDK. Preserve other event fields. Do not cast `Message<unknown>.raw`.
+  Slash-command handlers receive validated workspace, channel, and user ids.
 - Each completed tool-free visible assistant message is delivered before the
   run advances; assistant delivery settles before the turn is finalized.
 - Empty assistant output after a history replacement is retried once from the
@@ -206,10 +220,12 @@ delegation without becoming the execution actor or a general task owner.
   cursor keeps a durable tool-call total so compaction or handoff cannot reset
   the limit by rewriting history. When that total is already too high, the turn
   stops with the shared execution-limit reply.
-- A conversation also has a consecutive automated-turn limit. Resource-event
-  watches count on the Conversation. Event-task dispatches count on the
-  Destination. After the limit, further automated wakes stay quiet until a user
+- A conversation also has a consecutive automated-turn limit. The count is kept
+  on the Conversation only. Watches check the limit before they wake the
+  Conversation. After the limit, further watch wakes stay quiet until a user
   message clears the pause. The Turn that hits the limit posts a plain notice.
+  Event-automation dispatches do not use this limit. Each dispatch runs in its
+  own Conversation, and the limit is not counted for a Destination.
 - Once destination accepts a tool-free assistant reply, the turn is finished for
   that reply. Hard timeout must complete the turn. It must not park a shorter
   history. Soft yield after a pure assistant tail already cannot park; soft yield
@@ -236,19 +252,44 @@ delegation without becoming the execution actor or a general task owner.
   remains context-authority on resume, and may be replaced before a later model
   sample without replaying the actor's instruction. Ambient thread history in
   that context message is evidence only; only `<current-instruction>` authorizes
-  work.
+  work. Active compaction and handoff keep the latest committed instruction
+  verbatim, with its author and source event. The generated summary follows it
+  as escaped text inside `<thread-context authority="evidence-only">`, not as a
+  new instruction. Runtime-owned open plan state and completed handoff facts
+  stay outside that block. Steering messages are drained after handoff and pass
+  through the normal capacity check.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
   in explicitly. Every execution attempt that enters review reaches Guardian;
   prior rejections are context rather than binding decisions. Each Guardian
   decision is committed to the conversation event log before the reviewed
-  action can continue. `ask` and `deny` become expected tool failures, and three
-  consecutive rejections interrupt the execution slice.
+  action can continue. `ask` and `deny` become expected tool failures. After
+  three consecutive rejections, the rejection tells the agent to stop retrying
+  and explain the risk to the user. It does not end the execution slice.
 - Guardian receives a projection of credential authority, never signed
   credential bindings, plus bounded user, assistant, tool-call, and tool-result
   evidence selected with the Codex Guardian transcript rules. It cannot override
   deterministic context checks, and unavailable review fails closed.
+
+## Model profiles and steering
+
+`model-profile.ts` owns the default model ids, fixed reasoning levels, and
+task-fit descriptions. Apps can replace them through `createApp()`.
+`services/turn-router.ts` selects a profile for each new Turn when handoff is
+enabled. It selects reasoning independently, then applies any fixed level from
+the selected profile. A saved Turn route, or a later handoff in that Turn, wins
+on resume. A previous Turn's handoff does not pin a new request to that profile.
+When handoff is disabled, the agent keeps the active profile and configured
+reasoning without calling the router.
+
+`tools/handoff/tool.ts` owns in-turn switch rules. Its description includes the
+active profile and the other available profiles. `agent/handoff.ts` refreshes
+that description after each switch. The system prompt points to this contract
+before skill selection; it does not repeat the task-fit descriptions.
+
+The system prompt owns when a plan helps. The `updatePlan` tool owns plan input
+and status rules.
 
 ## Task agent input
 
@@ -271,12 +312,13 @@ watch). Call sites pass facts only. Unit snapshots in
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.    |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`              |
 | 3   | `About:`            | no       | One-line resource label.                                    |
-| 4   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
-| 5   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
-| 6   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
-| 7   | Verified details    | no       | Trusted structured fields as JSON.                          |
-| 8   | External text       | no       | Untrusted provider text; information only.                  |
-| 9   | Outcome             | yes      | Stored outcome rule. Always last.                           |
+| 4   | `Created by:`       | no       | Creator mention, and the rule to write it for "me" or "my". |
+| 5   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
+| 6   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
+| 7   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
+| 8   | Verified details    | no       | Trusted structured fields as JSON.                          |
+| 9   | External text       | no       | Untrusted provider text; information only.                  |
+| 10  | Outcome             | yes      | Stored outcome rule. Always last.                           |
 
 **Message outcome** (exact lines)
 
@@ -348,29 +390,8 @@ this directory.
 
 ## Message cards
 
-Object annotations hold the latest saved facts for a Conversation. Message cards
-hold the facts selected for one reply. Delivery saves each card in Message
-metadata. The web transcript renders that saved snapshot. Slack previews can
-refresh from detail responses without changing the stored Message. Each surface
-owns its layout and uses the same privacy rules as message text.
+Message cards reference the latest saved annotations in their Conversation.
+They do not fetch provider state or change agent history. Each surface owns its
+layout and uses the same privacy rules as Message text.
 
-See `conversations/README.md` for annotation storage, card selection, and silent
-updates. `conversations/cards.ts` also reads older Automation cards so stored
-Messages remain usable.
-
-### Deployment and recovery
-
-New object cards use `objectCards` in Message metadata and tool results. The
-legacy `cards` field stays Automation-only. The reader combines both formats;
-the transcript API and renderers still use one `cards` list.
-
-The previous release ignores `objectCards` and unknown annotation kinds. A
-rollback hides new cards and annotations without deleting them or breaking
-transcript reads. Restore this release to show those saved facts again. Existing
-Automation cards remain readable in both releases. No migration is required.
-
-Drain active workers before changing releases. Old workers cannot deliver new
-object cards from a resumed Turn. Deploy or roll back the API and dashboard
-together. Existing dashboard tabs must reload because their old response schema
-does not accept the new card or annotation kind. Rollback does not undo provider
-changes or remove Slack messages already posted.
+See `conversations/README.md` for storage, card selection, and release safety.

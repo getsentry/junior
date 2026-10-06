@@ -6,7 +6,7 @@ import { isRecord } from "@/chat/coerce";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 
-/** Save object annotations and return their Message card snapshots. */
+/** Save object annotations and retain returned facts in the tool result. */
 export async function saveObjectAnnotations(
   conversationId: string,
   plugin: string,
@@ -43,7 +43,8 @@ export async function annotateToolResult(
     plugin,
     details.objectAnnotations,
   );
-  const annotated = { ...details, objectCards: cards };
+  const { objectAnnotations: _annotations, ...rest } = details;
+  const annotated = { ...rest, objectCards: cards };
   if (isRecord(result.details)) return { ...result, details: annotated };
   return annotated;
 }

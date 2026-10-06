@@ -25,8 +25,8 @@ fixed behavior that code must control.
 | [Amplitude](/extend/amplitude-plugin/)         | Product analytics queries                     |
 | [Cloudflare](/extend/cloudflare-plugin/)       | Cloudflare resources and APIs                 |
 | [Datadog](/extend/datadog-plugin/)             | Logs, metrics, and incidents                  |
+| [TTS](/extend/tts-plugin/)                     | Gemini narration through Vercel AI Gateway    |
 | [GitHub](/extend/github-plugin/)               | Repository, issue, and pull-request workflows |
-| [GoCD](/extend/gocd-plugin/)                   | Pipeline, stage, and job results              |
 | [Hex](/extend/hex-plugin/)                     | Hex projects and runs                         |
 | [Linear](/extend/linear-plugin/)               | Issues, projects, and issue webhooks          |
 | [Maintenance](/extend/maintenance-plugin/)     | Repository maintenance workflows              |

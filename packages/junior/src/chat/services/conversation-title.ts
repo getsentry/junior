@@ -118,8 +118,8 @@ async function ensureConversationTitleOnce(args: {
 }
 
 /**
- * Fire-and-forget title work after durable human transcript writes.
- * This is the only entry that starts generation.
+ * Start title work after durable human transcript writes. This is the only
+ * entry that starts generation; `settleConversationTitleWork` joins it.
  */
 export function scheduleConversationTitle(args: {
   conversation: ThreadConversationState;
@@ -134,6 +134,16 @@ export function scheduleConversationTitle(args: {
   }).catch((error) => {
     logException(error, "conversation.title.task.failed");
   });
+}
+
+/**
+ * Wait for title generation started for one Conversation. The queue worker
+ * gives this to `waitUntil` so title work has an owner.
+ */
+export async function settleConversationTitleWork(
+  conversationId: string,
+): Promise<void> {
+  await inFlightTitles.get(conversationId);
 }
 
 /**

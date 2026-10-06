@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 
 import { DashboardShell } from "./client/App";
 import { getDashboardAgentName } from "./client/agentName";
@@ -79,12 +79,15 @@ const queryClient = new QueryClient({
   },
 });
 
+const router = createBrowserRouter(
+  [{ path: "*", element: <DashboardShell /> }],
+  { basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/" },
+);
+
 createRoot(root).render(
   <DashboardErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/"}>
-        <DashboardShell />
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   </DashboardErrorBoundary>,
 );

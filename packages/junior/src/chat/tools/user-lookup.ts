@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { SlackActionError } from "@/chat/slack/client";
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { parseSlackUserId, type SlackTeamId } from "@/chat/slack/ids";
 import {
   lookupSlackUserProfile,
@@ -57,10 +58,6 @@ function explicitUserLookupError(error: SlackActionError): string | undefined {
     return "User lookup is not available for this workspace or app installation.";
   }
   return undefined;
-}
-
-function slackMention(userId: string): string {
-  return `<@${userId}>`;
 }
 
 function asMatch(user: UserLookupProfile): UserLookupMatch {

@@ -1,3 +1,4 @@
+import { AutomationEditPage } from "./pages/automations/AutomationEditPage";
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
@@ -30,6 +31,8 @@ import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
+import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
+import { RepositoryPage } from "./pages/code/RepositoryPage";
 import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -47,6 +50,7 @@ import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
 import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
 import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
+import { AutomationVersionsPage } from "./pages/automations/AutomationVersionsPage";
 import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
   AutomationsPageLayout,
@@ -136,7 +140,10 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell className={dashboardShellBgClass} enabled={workspace}>
+      <VisualViewportShell
+        className={dashboardShellBgClass}
+        enabled={workspace}
+      >
         <DashboardChrome
           banner={
             <>
@@ -201,357 +208,399 @@ export function DashboardShell() {
           }
         />
         <Routes>
-        <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
-        <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
-        <Route
-          element={
-            loading ? (
-              <AutomationsPageLayout>
-                <AutomationsRouteLoading
-                  description="Terminal runs for one scheduled or event automation."
-                  label="Loading automation executions"
-                  title="Automation executions"
-                  variant="list"
-                />
-              </AutomationsPageLayout>
-            ) : loggedIn ? (
-              <AutomationsPageLayout>
-                <AutomationExecutionsPage enabled={loggedIn} />
-              </AutomationsPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/automations/:kind/:automationId/executions"
-        />
-        <Route
-          element={
-            loading ? (
-              <AutomationsPageLayout>
-                <AutomationsRouteLoading
-                  description="Newest runs across your automations and automations in public destinations."
-                  label="Loading automation runs"
-                  title="Runs"
-                  variant="list"
-                />
-              </AutomationsPageLayout>
-            ) : loggedIn ? (
-              <AutomationsPageLayout>
-                <AutomationRunsPage enabled={loggedIn} />
-              </AutomationsPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/automations/runs"
-        />
-        <Route
-          element={
-            loading ? (
-              <AutomationsPageLayout>
-                <AutomationsRouteLoading
-                  description="Find and manage automations across your linked workspaces."
-                  label="Loading automations"
-                  title="All automations"
-                  variant="list"
-                />
-              </AutomationsPageLayout>
-            ) : loggedIn ? (
-              <AutomationsPageLayout>
-                <AutomationsPage enabled={loggedIn} view="list" />
-              </AutomationsPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/automations/list"
-        />
-        <Route
-          element={
-            loading ? (
-              <AutomationsPageLayout>
-                <AutomationsRouteLoading
-                  description="Find and manage automations across your linked workspaces."
-                  label="Loading automations"
-                  title="All automations"
-                  variant="list"
-                />
-              </AutomationsPageLayout>
-            ) : loggedIn ? (
-              <AutomationsPageLayout>
-                <AutomationsPage enabled={loggedIn} view="list" />
-              </AutomationsPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/automations/:automationId"
-        />
-        <Route
-          element={
-            loading ? (
-              <AutomationsPageLayout>
-                <AutomationsRouteLoading
-                  description="Scheduled and event-driven work created by users."
-                  label="Loading automations"
-                  title="Automations"
+          <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
+          <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Terminal runs for one scheduled or event automation."
+                    label="Loading automation executions"
+                    title="Automation executions"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationExecutionsPage enabled={loggedIn} />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:kind/:automationId/executions"
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Saved settings for this automation, newest first."
+                    label="Loading version history"
+                    title="Version history"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationVersionsPage enabled={loggedIn} />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:kind/:automationId/versions"
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Newest runs across your automations and automations in public destinations."
+                    label="Loading automation runs"
+                    title="Runs"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationRunsPage enabled={loggedIn} />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/runs"
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Find and manage automations across your linked workspaces."
+                    label="Loading automations"
+                    title="All automations"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationsPage enabled={loggedIn} view="list" />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/list"
+          />
+          <Route
+            path="/automations/:kind/:automationId/edit"
+            element={
+              loading || loggedIn ? (
+                <AutomationEditPage enabled={loggedIn} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Find and manage automations across your linked workspaces."
+                    label="Loading automations"
+                    title="All automations"
+                    variant="list"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationsPage enabled={loggedIn} view="list" />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations/:automationId"
+          />
+          <Route
+            element={
+              loading ? (
+                <AutomationsPageLayout>
+                  <AutomationsRouteLoading
+                    description="Scheduled and event-driven work created by users."
+                    label="Loading automations"
+                    title="Automations"
+                    variant="stats"
+                  />
+                </AutomationsPageLayout>
+              ) : loggedIn ? (
+                <AutomationsPageLayout>
+                  <AutomationsPage enabled={loggedIn} view="overview" />
+                </AutomationsPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/automations"
+          />
+          <Route
+            element={<LegacySystemRedirect section="locations" />}
+            path="/locations"
+          />
+          <Route
+            element={<LegacySystemRedirect section="locations" />}
+            path="/locations/:locationId"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemRouteLoading
+                  description="Public destinations and their conversation activity."
+                  label="Loading locations"
+                  title="Locations"
                   variant="stats"
                 />
-              </AutomationsPageLayout>
-            ) : loggedIn ? (
-              <AutomationsPageLayout>
-                <AutomationsPage enabled={loggedIn} view="overview" />
-              </AutomationsPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/automations"
-        />
-        <Route
-          element={<LegacySystemRedirect section="locations" />}
-          path="/locations"
-        />
-        <Route
-          element={<LegacySystemRedirect section="locations" />}
-          path="/locations/:locationId"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemRouteLoading
-                description="Public destinations and their conversation activity."
-                label="Loading locations"
-                title="Locations"
-                variant="stats"
-              />
-            ) : (
-              <LocationsPage />
-            )
-          }
-          path="/system/locations"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading location" />
-              </SystemPageLayout>
-            ) : (
-              <LocationDetailPage />
-            )
-          }
-          path="/system/locations/:locationId"
-        />
-        <Route
-          element={
-            loading ? (
-              <ConversationWorkspaceLoading detail={false} />
-            ) : data ? (
-              <ConversationWorkspace />
-            ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            )
-          }
-          path="/"
-        />
-        <Route element={<CodePage />} path="/code" />
-        <Route
-          element={<Navigate replace to="/" />}
-          path="/conversations/new"
-        />
-        <Route
-          element={
-            loading ? (
-              <ConversationWorkspaceLoading detail />
-            ) : data ? (
-              <ConversationWorkspace />
-            ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            )
-          }
-          path="/conversations/:conversationId"
-        />
-        <Route element={<Navigate replace to="/" />} path="/conversations" />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading components" />
-            ) : !data ? (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            ) : data.config.componentGallery ? (
-              <ComponentsPage />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/dev/*"
-        />
-        <Route
-          element={<LegacySystemRedirect section="people" />}
-          path="/people"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading profile" />
-            ) : (
-              <PersonProfilePage />
-            )
-          }
-          path="/people/:email"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemRouteLoading
-                description="People, activity, and model spend."
-                label="Loading people"
-                title="People"
-                variant="stats"
-              />
-            ) : (
-              <PeoplePage />
-            )
-          }
-          path="/system/people"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemRouteLoading
-                description="Repository recipes Junior can switch into."
-                label="Loading Workspaces"
-                title="Workspaces"
-                variant="list"
-              />
-            ) : (
-              <WorkspacesPage />
-            )
-          }
-          path="/system/workspaces"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading Workspace" />
-              </SystemPageLayout>
-            ) : (
-              <WorkspaceFormPage />
-            )
-          }
-          path="/system/workspaces/new"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading Workspace" />
-              </SystemPageLayout>
-            ) : (
-              <WorkspaceFormPage />
-            )
-          }
-          path="/system/workspaces/:workspaceId"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemRouteLoading
-                description="Runtime health, model usage, and loaded capabilities."
-                label="Loading system"
-                title="System"
-                variant="overview"
-              />
-            ) : data ? (
-              <SystemRoute coreData={data} />
-            ) : (
-              <SystemPageLayout>
+              ) : (
+                <LocationsPage />
+              )
+            }
+            path="/system/locations"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading location" />
+                </SystemPageLayout>
+              ) : (
+                <LocationDetailPage />
+              )
+            }
+            path="/system/locations/:locationId"
+          />
+          <Route
+            element={
+              loading ? (
+                <ConversationWorkspaceLoading detail={false} />
+              ) : data ? (
+                <ConversationWorkspace />
+              ) : (
                 <LoadingView
                   label={query.error?.message ?? "Dashboard unavailable"}
                 />
-              </SystemPageLayout>
-            )
-          }
-          path="/system/*"
-        />
-        <Route
-          element={
-            loading ? (
-              <PageRouteLoading
-                description="Manage your Junior profile and preferences."
-                label="Loading settings"
-                title="Settings"
-              />
-            ) : loggedIn ? (
-              <SettingsPage identity={data!.me} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/settings"
-        />
-        <Route
-          element={
-            loading ? (
-              <PageRouteLoading
-                description="Create and revoke personal API tokens."
-                label="Loading API tokens"
-                title="API tokens"
-                variant="list"
-              />
-            ) : loggedIn ? (
-              <PersonalTokensPage />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/settings/api-tokens"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <MemoryRouteLoading label="Loading memories" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/library"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <MemoryRouteLoading label="Loading memory" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/:memoryId?"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading page" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <PluginUserPageRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/plugins/:pluginName/:pageId/*"
-        />
-        <Route element={<Navigate replace to="/" />} path="*" />
+              )
+            }
+            path="/"
+          />
+          <Route element={<CodePage />} path="/code" />
+          {codeRepositoryTabs.map((tab) => (
+            <Route
+              element={<RepositoryPage tab={tab} />}
+              key={tab}
+              path={
+                tab === "overview"
+                  ? "/code/:repositoryId"
+                  : `/code/:repositoryId/${tab}`
+              }
+            />
+          ))}
+          <Route
+            element={<Navigate replace to="/" />}
+            path="/conversations/new"
+          />
+          <Route
+            element={
+              loading ? (
+                <ConversationWorkspaceLoading detail />
+              ) : data ? (
+                <ConversationWorkspace />
+              ) : (
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              )
+            }
+            path="/conversations/:conversationId"
+          />
+          <Route element={<Navigate replace to="/" />} path="/conversations" />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading components" />
+              ) : !data ? (
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              ) : data.config.componentGallery ? (
+                <ComponentsPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/dev/*"
+          />
+          <Route
+            element={<LegacySystemRedirect section="people" />}
+            path="/people"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading profile" />
+              ) : (
+                <PersonProfilePage />
+              )
+            }
+            path="/people/:email"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemRouteLoading
+                  description="People, activity, and model spend."
+                  label="Loading people"
+                  title="People"
+                  variant="stats"
+                />
+              ) : (
+                <PeoplePage />
+              )
+            }
+            path="/system/people"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemRouteLoading
+                  description="Repository recipes Junior can switch into."
+                  label="Loading Workspaces"
+                  title="Workspaces"
+                  variant="list"
+                />
+              ) : (
+                <WorkspacesPage />
+              )
+            }
+            path="/system/workspaces"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading Workspace" />
+                </SystemPageLayout>
+              ) : (
+                <WorkspaceFormPage />
+              )
+            }
+            path="/system/workspaces/new"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading Workspace" />
+                </SystemPageLayout>
+              ) : (
+                <WorkspaceFormPage />
+              )
+            }
+            path="/system/workspaces/:workspaceId"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemRouteLoading
+                  description="Runtime health, model usage, and loaded capabilities."
+                  label="Loading system"
+                  title="System"
+                  variant="overview"
+                />
+              ) : data ? (
+                <SystemRoute coreData={data} />
+              ) : (
+                <SystemPageLayout>
+                  <LoadingView
+                    label={query.error?.message ?? "Dashboard unavailable"}
+                  />
+                </SystemPageLayout>
+              )
+            }
+            path="/system/*"
+          />
+          <Route
+            element={
+              loading ? (
+                <PageRouteLoading
+                  description="Manage your Junior profile and preferences."
+                  label="Loading settings"
+                  title="Settings"
+                />
+              ) : loggedIn ? (
+                <SettingsPage identity={data!.me} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings"
+          />
+          <Route
+            element={
+              loading ? (
+                <PageRouteLoading
+                  description="Create and revoke personal API tokens."
+                  label="Loading API tokens"
+                  title="API tokens"
+                  variant="list"
+                />
+              ) : loggedIn ? (
+                <PersonalTokensPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings/api-tokens"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <MemoryRouteLoading label="Loading memories" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <MemoryPermalinkRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/memories/library"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <MemoryRouteLoading label="Loading memory" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <MemoryPermalinkRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/memories/:memoryId?"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <LoadingView label="Loading page" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <PluginUserPageRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/plugins/:pluginName/:pageId/*"
+          />
+          <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
         <span
           aria-hidden="true"

@@ -1,4 +1,16 @@
-import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
+import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
+import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
+import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
+import {
+  eventAutomationPrincipalSchema,
+  eventAutomationSchema,
+  eventAutomationTriggerSchema,
+} from "@/chat/event-automations/types";
+import {
+  scheduledAutomationEditSchema,
+  eventAutomationEditSchema,
+} from "@/chat/automations/edit-schema";
+import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 const automationDestinationSchema = z
@@ -21,14 +33,17 @@ export const automationRunWindowsSchema = z
   .strict();
 
 const automationSummaryBaseSchema = z.object({
+  credentialMode: z.enum(["creator", "system"]),
   createdAt: z.string().datetime(),
   createdBy: z.string().min(1),
+  createdByAvatarUrl: z.string().url().optional(),
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
+  lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
   ownedByViewer: z.boolean(),
   runs: automationRunWindowsSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
@@ -42,17 +57,21 @@ export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
     kind: z.literal("scheduled"),
     nextRunAt: z.string().datetime().optional(),
     schedule: z.string().min(1),
-    status: z.enum(["active", "blocked", "completed"]),
+    timezone: z.string().min(1),
+    statusReason: z.string().optional(),
+    status: z.enum(["active", "blocked", "paused", "completed"]),
   })
   .strict();
 
 export const eventAutomationSummarySchema = automationSummaryBaseSchema
   .extend({
     events: z.array(z.string().min(1)).min(1),
+    match: eventMatchSchema.optional(),
     kind: z.literal("event"),
     resource: z.string().min(1),
     source: z.string().min(1),
     triggerAvailable: z.boolean(),
+    status: z.enum(["active", "paused"]),
   })
   .strict();
 
@@ -80,6 +99,23 @@ export const automationExecutionDaySchema = z
 export const automationListQuerySchema = z
   .object({
     q: z.string().trim().max(200).optional(),
+    scope: z.enum(["all", "mine", "public", "attention"]).default("all"),
+    type: z.enum(["all", "scheduled", "event"]).default("all"),
+    state: z
+      .enum(["all", "active", "blocked", "paused", "completed", "unavailable"])
+      .default("all"),
+    creator: z.string().max(300).optional(),
+    destination: z.string().max(300).optional(),
+    sort: z.enum(["newest", "oldest", "title"]).default("newest"),
+    page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  })
+  .strict();
+
+const automationFilterOptionSchema = z
+  .object({
+    value: z.string(),
+    label: z.string(),
   })
   .strict();
 
@@ -89,7 +125,19 @@ export const automationListSchema = z
     executionHours: z.array(automationExecutionDaySchema).optional(),
     executionSixHours: z.array(automationExecutionDaySchema).optional(),
     automations: z.array(automationSummarySchema),
-    truncated: z.boolean(),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    counts: z
+      .object({
+        all: z.number().int().nonnegative(),
+        mine: z.number().int().nonnegative(),
+        public: z.number().int().nonnegative(),
+        private: z.number().int().nonnegative(),
+      })
+      .strict(),
+    creators: z.array(automationFilterOptionSchema),
+    destinations: z.array(automationFilterOptionSchema),
   })
   .strict();
 
@@ -158,6 +206,71 @@ export const automationRunListSchema = z
   })
   .strict();
 
+const automationDefinitionFields = {
+  title: z.string().nullable(),
+  instruction: z.string(),
+};
+
+const automationVersionFields = {
+  version: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+  /** Null for versions saved by the upgrade, because the editor is unknown. */
+  editedBy: eventAutomationPrincipalSchema.nullable(),
+};
+
+/** One saved Automation definition. Newer versions have larger numbers. */
+export const automationVersionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...automationVersionFields,
+      kind: z.literal("scheduled"),
+      definition: scheduledAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          schedule: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...automationVersionFields,
+      kind: z.literal("event"),
+      definition: eventAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          trigger: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
+    })
+    .strict(),
+]);
+
+/** Newest versions first. */
+export const automationVersionListSchema = z
+  .object({
+    versions: z.array(automationVersionSchema),
+    /** Newest version that matches the current definition. Null when none match. */
+    activeVersion: z.number().int().positive().nullable(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const automationVersionParamsSchema = automationParamsSchema
+  .extend({ version: z.coerce.number().int().positive() })
+  .strict();
+
+export type AutomationVersion = z.output<typeof automationVersionSchema>;
+export type AutomationVersionList = z.output<
+  typeof automationVersionListSchema
+>;
+
 export type AutomationExecutionDay = z.output<
   typeof automationExecutionDaySchema
 >;
@@ -173,3 +286,94 @@ export type AutomationRunList = z.output<typeof automationRunListSchema>;
 export type AutomationRunWindows = z.output<typeof automationRunWindowsSchema>;
 export type AutomationSummary = z.output<typeof automationSummarySchema>;
 export type AutomationList = z.output<typeof automationListSchema>;
+
+export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
+
+const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+/** Make a saved version active. The revision is the edit read revision. */
+export const automationVersionActivateSchema = z
+  .object({ revision: automationRevisionSchema })
+  .strict();
+
+/** Pause and resume do not start work. */
+export const automationLifecycleSchema = z
+  .object({
+    action: z.enum(["pause", "resume"]),
+    revision: automationRevisionSchema,
+  })
+  .strict();
+
+const automationEditBaseSchema = scheduledAutomationSchema
+  .pick({ destination: true, createdBy: true })
+  .extend({
+    id: z.string().min(1),
+    revision: automationRevisionSchema,
+    title: z.string().nullable(),
+    instruction: z.string(),
+    credentialMode: z.enum(["system", "creator"]),
+    outcomes: z.array(taskOutcomeSchema).max(5),
+    /** Creator-only rules apply when false. */
+    ownedByViewer: z.boolean(),
+  });
+
+/** Edit values for owners and public readers. Read schemas also retain legacy values. */
+export const automationEditSchema = z.discriminatedUnion("kind", [
+  automationEditBaseSchema
+    .merge(scheduledAutomationSchema.pick({ schedule: true }))
+    .extend({
+      kind: z.literal("scheduled"),
+      nextRunAtMs: z.number().optional(),
+      status: z.enum(["active", "blocked", "paused", "completed"]),
+    })
+    .strict(),
+  automationEditBaseSchema
+    .extend({
+      kind: z.literal("event"),
+      trigger: eventAutomationTriggerSchema,
+      triggerAvailable: z.boolean(),
+      status: z.enum(["active", "paused"]),
+    })
+    .strict(),
+]);
+
+/** Partial edits require the revision returned by the edit read. */
+export const automationUpdateSchema = z.discriminatedUnion("kind", [
+  scheduledAutomationEditSchema
+    .omit({ status: true })
+    .extend({
+      kind: z.literal("scheduled"),
+      revision: automationRevisionSchema,
+    })
+    .strict(),
+  eventAutomationEditSchema
+    .extend({
+      kind: z.literal("event"),
+      revision: automationRevisionSchema,
+    })
+    .strict(),
+]);
+
+export const automationEditErrorSchema = z
+  .object({
+    error: z.string(),
+    code: z.enum(["invalid_edit", "conflict", "not_found"]),
+    fields: z.record(z.string(), z.array(z.string())).optional(),
+  })
+  .strict();
+
+export type AutomationEdit = z.output<typeof automationEditSchema>;
+export type AutomationUpdate = z.output<typeof automationUpdateSchema>;
+
+/** Catalog metadata only; callbacks and provider connections stay on the server. */
+export const automationEventCatalogSchema = z.array(
+  pluginEventTypeSchema.safeExtend({ namespace: z.string() }),
+);
+export const automationScheduleIntentSchema = scheduleIntentSchema;
+export const automationSchedulePreviewSchema = scheduledAutomationSchema
+  .pick({ schedule: true })
+  .extend({ nextRunAtMs: z.number() })
+  .strict();
+export type AutomationScheduleIntent = z.output<
+  typeof automationScheduleIntentSchema
+>;

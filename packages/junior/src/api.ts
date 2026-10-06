@@ -22,6 +22,8 @@ import {
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
 import { logException } from "./chat/logging";
+import type { ConversationWorkQueue } from "./chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -35,11 +37,19 @@ export {
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
-export type { JuniorApiVariables };
+export type { ConversationWorkQueue, JuniorApiVariables };
 export { jsonResponse };
 
+/** Options that `createApp()` passes through the dashboard. */
+export interface JuniorApiOptions {
+  /** Queue for accepted web input. Defaults to Vercel Queues. */
+  conversationWorkQueue?: ConversationWorkQueue;
+}
+
 /** Create Junior's production REST API for authenticated dashboard consumers. */
-export function createJuniorApi(): Hono<JuniorApiEnv> {
+export function createJuniorApi(
+  options: JuniorApiOptions = {},
+): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/api/health", async () =>
@@ -68,6 +78,7 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
     "/api/conversations",
     createConversationRoutes({
       attachmentStorage: createVercelAttachmentStorage(),
+      queue: options.conversationWorkQueue ?? getVercelConversationWorkQueue(),
     }),
   );
   app.route("/api/code", createCodeRoutes());

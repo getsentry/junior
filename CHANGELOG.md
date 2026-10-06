@@ -1,4 +1,231 @@
 # Changelog
+## 0.236.0
+
+### New Features ✨
+
+#### Automations
+
+- Let public readers edit and make versions active by @sentry-junior in [#2037](https://github.com/getsentry/junior/pull/2037)
+- Add version history for Automation definitions by @sentry-junior in [#2036](https://github.com/getsentry/junior/pull/2036)
+
+#### Other
+
+- (brand) Improve Junior avatars and add Slack reactions by @dcramer in [#1997](https://github.com/getsentry/junior/pull/1997)
+- (conversations) Add web conversation forks by @sentry-junior in [#1422](https://github.com/getsentry/junior/pull/1422)
+- (dashboard) Link to event log entries by @sentry-junior in [#2000](https://github.com/getsentry/junior/pull/2000)
+- (github) Assign new pull requests to the requester by @sentry-junior in [#1966](https://github.com/getsentry/junior/pull/1966)
+- (sandbox) List repository skills with AGENTS.md instructions by @sentry-junior in [#1999](https://github.com/getsentry/junior/pull/1999)
+- Support explicit OAuth client configs by @jonahsnider in [#2005](https://github.com/getsentry/junior/pull/2005)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Tell the agent that "me" in a task means its creator by @dcramer in [#2028](https://github.com/getsentry/junior/pull/2028)
+- Name the creator exactly in automation instructions by @dcramer in [#2009](https://github.com/getsentry/junior/pull/2009)
+
+#### Other
+
+- (github) Ignore Junior's own PR comments and reviews by @sentry-junior in [#2007](https://github.com/getsentry/junior/pull/2007)
+- (tools) Record tool calls that a turn deadline preempts by @dcramer in [#2019](https://github.com/getsentry/junior/pull/2019)
+
+### Documentation 📚
+
+#### Chat
+
+- Remove stale Destination automated-turn limit claim by @dcramer in [#2016](https://github.com/getsentry/junior/pull/2016)
+- Update the Guardian rejection-limit rule by @dcramer in [#2015](https://github.com/getsentry/junior/pull/2015)
+
+#### Other
+
+- (brand) Add 512px profile avatars and color guidelines by @sentry-junior in [#1993](https://github.com/getsentry/junior/pull/1993)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the conversation evals to the agent test fixture by @dcramer in [#2027](https://github.com/getsentry/junior/pull/2027)
+- Move the memory evals to the agent test fixture by @dcramer in [#2026](https://github.com/getsentry/junior/pull/2026)
+- Move the GitHub evals into the coding suite by @dcramer in [#2023](https://github.com/getsentry/junior/pull/2023)
+- Move the handoff evals to the agent test fixture by @dcramer in [#2022](https://github.com/getsentry/junior/pull/2022)
+- Move the watch evals to the agent test fixture by @dcramer in [#2021](https://github.com/getsentry/junior/pull/2021)
+- Move the conversation integration evals to the agent test fixture by @dcramer in [#2018](https://github.com/getsentry/junior/pull/2018)
+- Move the event automation evals to the agent test fixture by @dcramer in [#2013](https://github.com/getsentry/junior/pull/2013)
+- Move the scheduler evals to the agent test fixture by @dcramer in [#2010](https://github.com/getsentry/junior/pull/2010)
+- Add the agent test fixture and move the first slice by @dcramer in [#2006](https://github.com/getsentry/junior/pull/2006)
+
+#### Other
+
+- (gocd) Remove the GoCD plugin by @joshuarli in [#2020](https://github.com/getsentry/junior/pull/2020)
+- (guardian) Cover repeated PR scope asks after the user steers by @sentry-junior in [#2012](https://github.com/getsentry/junior/pull/2012)
+
+## 0.235.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add repository pages to Code by @sentry-junior in [#1991](https://github.com/getsentry/junior/pull/1991)
+- Show Automations as cards instead of table rows by @sentry-junior in [#1990](https://github.com/getsentry/junior/pull/1990)
+- Use segmented pill links for page navigation by @sentry-junior in [#1986](https://github.com/getsentry/junior/pull/1986)
+
+#### Other
+
+- (brand) Replace Junior logo and mascot with new illustration by @sentry-junior in [#1992](https://github.com/getsentry/junior/pull/1992)
+- (operator) Add opt-in runOperatorSql tool by @sentry-junior in [#1989](https://github.com/getsentry/junior/pull/1989)
+- (skills) Add reusable demo video workflow by @sentry-junior in [#1985](https://github.com/getsentry/junior/pull/1985)
+
+## 0.234.0
+
+### New Features ✨
+
+#### Automations
+
+- Add pause controls and attention view by @sentry-junior in [#1982](https://github.com/getsentry/junior/pull/1982)
+- Add safe creator-only edit API by @sentry-junior in [#1980](https://github.com/getsentry/junior/pull/1980)
+- Search and page the full accessible collection by @sentry-junior in [#1978](https://github.com/getsentry/junior/pull/1978)
+
+#### Other
+
+- (dashboard) Make automation rows easy to scan by @sentry-junior in [#1976](https://github.com/getsentry/junior/pull/1976)
+- (tts) Add Gemini narration through Vercel AI Gateway by @sentry-junior in [#1969](https://github.com/getsentry/junior/pull/1969)
+
+## 0.233.0
+
+### New Features ✨
+
+- (dashboard) Show event model configuration and call usage by @sentry-junior in [#1946](https://github.com/getsentry/junior/pull/1946)
+
+### Bug Fixes 🐛
+
+- (annotations) Restore Linear cards and ticket descriptions by @sentry-junior in [#1968](https://github.com/getsentry/junior/pull/1968)
+
+## 0.232.0
+
+### New Features ✨
+
+- (dashboard) Add conversation share actions by @sentry-junior in [#1962](https://github.com/getsentry/junior/pull/1962)
+
+### Bug Fixes 🐛
+
+- (slack) Keep annotation previews compact by @sentry-junior in [#1963](https://github.com/getsentry/junior/pull/1963)
+
+## 0.231.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Preserve mobile scroll position on live updates by @sentry-junior in [#1961](https://github.com/getsentry/junior/pull/1961)
+- Preserve the author on queued web messages by @sentry-junior in [#1957](https://github.com/getsentry/junior/pull/1957)
+- Correct Slack mark geometry by @sentry-junior in [#1959](https://github.com/getsentry/junior/pull/1959)
+
+#### Other
+
+- (agent) Reduce prompt cache writes by @sentry-junior in [#1956](https://github.com/getsentry/junior/pull/1956)
+- (chat) Attach files in web conversations by @sentry-junior in [#1960](https://github.com/getsentry/junior/pull/1960)
+
+## 0.230.0
+
+### New Features ✨
+
+- (cards) Show PR descriptions with branch and status by @sentry-junior in [#1950](https://github.com/getsentry/junior/pull/1950)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Align transcript cells and wrap attachments by @sentry-junior in [#1953](https://github.com/getsentry/junior/pull/1953)
+- Use a button surface for the Sentry link by @sentry-junior in [#1951](https://github.com/getsentry/junior/pull/1951)
+
+#### Other
+
+- (cards) Resolve Message cards from saved annotations by @sentry-junior in [#1955](https://github.com/getsentry/junior/pull/1955)
+
+### Internal Changes 🔧
+
+- (dashboard) Reduce transcript work and downloads by @sentry-junior in [#1954](https://github.com/getsentry/junior/pull/1954)
+- (guardian) Cover historical clone approval requests by @sentry-junior in [#1952](https://github.com/getsentry/junior/pull/1952)
+
+## 0.229.0
+
+### Bug Fixes 🐛
+
+- (chat) Preserve the active request through handoff by @sentry-junior in [#1938](https://github.com/getsentry/junior/pull/1938)
+
+## 0.228.0
+
+### New Features ✨
+
+- (objects) Distinguish native object types across web and Slack by @sentry-junior in [#1949](https://github.com/getsentry/junior/pull/1949)
+
+### Bug Fixes 🐛
+
+- (slack) Verify message authors with payload fields and a lookup fallback by @sentry-junior in [#1948](https://github.com/getsentry/junior/pull/1948)
+
+## 0.227.0
+
+### New Features ✨
+
+- (chat) Add images to web chat by @sentry-junior in [#1933](https://github.com/getsentry/junior/pull/1933)
+- (dashboard) Make cache trends easier to inspect by @sentry-junior in [#1942](https://github.com/getsentry/junior/pull/1942)
+- (watches) Add heartbeat-backed timer watches by @sentry-junior in [#1937](https://github.com/getsentry/junior/pull/1937)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Match cost totals to the model breakdown by @sentry-junior in [#1944](https://github.com/getsentry/junior/pull/1944)
+- Hide the composer in the event log by @sentry-junior in [#1940](https://github.com/getsentry/junior/pull/1940)
+
+#### Other
+
+- (cards) Limit object cards to four attributes by @sentry-junior in [#1941](https://github.com/getsentry/junior/pull/1941)
+- (slack) Require workspace membership for messages by @sentry-junior in [#1936](https://github.com/getsentry/junior/pull/1936)
+
+### Internal Changes 🔧
+
+- (release) Verify GitHub packages before publishing by @sentry-junior in [#1935](https://github.com/getsentry/junior/pull/1935)
+- (slack) Reuse SDK types and validate input by @sentry-junior in [#1943](https://github.com/getsentry/junior/pull/1943)
+
+## 0.226.0
+
+### New Features ✨
+
+- (annotations) Enrich Slack and web cards with bounded object facts by @sentry-junior in [#1929](https://github.com/getsentry/junior/pull/1929)
+- (dashboard) Add a scannable conversation event log by @sentry-junior in [#1931](https://github.com/getsentry/junior/pull/1931)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep message handoffs visible and consistent by @sentry-junior in [#1932](https://github.com/getsentry/junior/pull/1932)
+- Simplify conversation details by @sentry-junior in [#1930](https://github.com/getsentry/junior/pull/1930)
+
+#### Other
+
+- (chat) Preserve agent history through SQL storage by @sentry-junior in [#1926](https://github.com/getsentry/junior/pull/1926)
+- (slack) Acknowledge mentions before queued work starts by @sentry-junior in [#1927](https://github.com/getsentry/junior/pull/1927)
+
+## 0.225.0
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Enforce Work Object payload contracts by @sentry-junior in [#1922](https://github.com/getsentry/junior/pull/1922)
+- Ignore stop commands addressed to others by @sentry-junior in [#1923](https://github.com/getsentry/junior/pull/1923)
+
+#### Other
+
+- (agent) Align prompt steering and route each new turn by @sentry-junior in [#1917](https://github.com/getsentry/junior/pull/1917)
+- (evals) Stabilize eval runs and split the harness by concern by @sentry-junior in [#1903](https://github.com/getsentry/junior/pull/1903)
+- (tests) Remove durable queue timeout race by @sentry-junior in [#1925](https://github.com/getsentry/junior/pull/1925)
+
+### Internal Changes 🔧
+
+- Use a shared Evals workflow label by @sentry-junior in [#1920](https://github.com/getsentry/junior/pull/1920)
+
 ## 0.224.0
 
 ### New Features ✨

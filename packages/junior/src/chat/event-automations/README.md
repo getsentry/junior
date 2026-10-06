@@ -19,10 +19,10 @@ Each matching automation receives an independent idempotent agent dispatch. A
 failure for one automation does not stop other matching automations. The ingress
 boundary receives the combined failure so the provider can retry. Dispatch
 identity binds the automation, plugin namespace, and provider event key. A
-provider retry does not run the same automation twice. A destination may still
-stop further event-automation dispatches after too many automated turns with no user
-message. The Turn that hits the limit posts a plain notice, and later matching
-events stay quiet until a user message clears that pause.
+provider retry does not run the same automation twice. Dispatches do not use the
+consecutive automated-turn limit. Each dispatch runs in its own Conversation, and
+the limit is not counted for a Destination. A shared Destination count paused
+unrelated automations in the same channel.
 
 Event automations target channels or DMs, not threads. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
@@ -34,10 +34,14 @@ automation by id from another destination in the same workspace. Private
 automations stay local to their destination. Watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
-can provide a real provider-to-workspace binding. An automation matched before a concurrent update or deletion runs from that
-snapshot. Later events use the current stored automation. Deletion removes the
-stored automation. Event automations have no separate pause state or run
-history.
+can provide a real provider-to-workspace binding.
+
+An Automation matched before a concurrent edit, pause, or deletion may still run.
+Paused rows do not match new events. Resume does not replay events received during
+the pause. Provider retries still use the event key to prevent duplicate runs.
+Deletion keeps the row and execution history.
+
+Deploy all workers before using pause. Older workers still match paused rows.
 
 The dispatched agent input uses shared framing from `task-input.ts`. See
 `chat/README.md` for the input format. The stored automation text remains the

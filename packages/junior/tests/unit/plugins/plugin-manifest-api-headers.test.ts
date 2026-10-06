@@ -501,6 +501,73 @@ describe("plugin manifest API headers", () => {
     ).toThrow(message);
   });
 
+  it("parses a pre-registered MCP OAuth client", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "env-vars:",
+        "  EXAMPLE_CLIENT_ID:",
+        "  EXAMPLE_CLIENT_SECRET:",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  oauth-client:",
+        "    client-id-env: EXAMPLE_CLIENT_ID",
+        "    client-secret-env: EXAMPLE_CLIENT_SECRET",
+        "    scope: example.readonly",
+        "    authorize-params:",
+        "      access_type: offline",
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.mcp?.oauthClient).toEqual({
+      clientIdEnv: "EXAMPLE_CLIENT_ID",
+      clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+      scope: "example.readonly",
+      authorizeParams: { access_type: "offline" },
+    });
+  });
+
+  it.each([
+    [
+      "combined with bot auth",
+      [
+        "  auth:",
+        "    issuer: https://junior.example.com",
+        "    key-id: junior-1",
+        "    private-key-env: EXAMPLE_CLIENT_SECRET",
+      ],
+      "Plugin example mcp must not declare both auth and oauth-client",
+    ],
+    [
+      "with its secret exposed to command env",
+      ["command-env:", '  EXAMPLE_TOKEN: "${EXAMPLE_CLIENT_SECRET}"'],
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_CLIENT_SECRET, but credential/API header env vars must stay host-only",
+    ],
+  ])("rejects an MCP OAuth client %s", (_name, extraLines, message) => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "env-vars:",
+          "  EXAMPLE_CLIENT_ID:",
+          "  EXAMPLE_CLIENT_SECRET:",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  oauth-client:",
+          "    client-id-env: EXAMPLE_CLIENT_ID",
+          "    client-secret-env: EXAMPLE_CLIENT_SECRET",
+          ...extraLines,
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(message);
+  });
+
   it("rejects command env references that reuse MCP header env vars", () => {
     expect(() =>
       parsePluginManifest(

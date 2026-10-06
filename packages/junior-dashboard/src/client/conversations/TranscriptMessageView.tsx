@@ -1,10 +1,10 @@
+import { ForkConversationButton } from "./ForkConversationButton";
+import { TranscriptAttachments } from "./TranscriptAttachment";
 import { ObjectCard } from "./ObjectCard";
 import { AutomationCard } from "../components/AutomationCard";
 import { memo, type ReactNode } from "react";
 
-import { HighlightedCode } from "../code";
 import {
-  detectLanguage,
   formatMessageTimestamp,
   transcriptMessageActorLabel,
   transcriptRoleKind,
@@ -13,14 +13,8 @@ import { cn } from "../styles";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
-import {
-  messageRawText,
-  type TranscriptViewMode,
-} from "./transcriptRenderModel";
-import {
-  TranscriptHeadingMeta,
-  TranscriptHeadingRow,
-} from "./TranscriptHeadingRow";
+import { messageRawText } from "./transcriptRenderModel";
+import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
 import { TranscriptText } from "./TranscriptText";
@@ -33,7 +27,6 @@ export const TranscriptMessageView = memo(
   function TranscriptMessageView(props: {
     message: TranscriptViewMessage;
     conversation: ConversationTranscript;
-    view: TranscriptViewMode;
   }) {
     const rawText = messageRawText(props.message);
     const role = props.message.role;
@@ -45,12 +38,7 @@ export const TranscriptMessageView = memo(
         onCopy={(event) => {
           const selection = event.currentTarget.ownerDocument.getSelection();
           if (
-            !shouldCopyRawTranscript(
-              props.view,
-              rawText,
-              selection,
-              event.currentTarget,
-            )
+            !shouldCopyRawTranscript(rawText, selection, event.currentTarget)
           ) {
             return;
           }
@@ -59,59 +47,43 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          meta={
-            props.message.role === "assistant"
-              ? [
-                  <TranscriptTimestamp
-                    key="timestamp"
-                    value={props.message.timestamp}
-                  />,
-                ]
-              : [formatMessageTimestamp(props.message.timestamp)]
-          }
+          action={messageAction(props.message, props.conversation)}
           message={props.message}
           conversation={props.conversation}
         />
-        {props.view === "raw" ? (
-          <HighlightedCode code={rawText} language={detectLanguage(rawText)} />
-        ) : (
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-            {props.message.parts.map((part, index) =>
-              part.type === "text" ? (
-                <TranscriptText
-                  key={index}
-                  role={role}
-                  text={part.text ?? ""}
-                />
-              ) : null,
-            )}
-          </div>
-        )}
-        {props.view === "rich" &&
-          props.message.cards?.map((card) => {
-            switch (card.kind) {
-              case "object":
-                return (
-                  <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
-                );
-              case "automation":
-                return (
-                  <AutomationCard key={`${card.kind}:${card.id}`} card={card} />
-                );
-            }
-          })}
-        {props.view === "rich" &&
-        props.message.role === "user" &&
-        props.message.contexts?.length ? (
-          <TranscriptTurnContextView contexts={props.message.contexts} />
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+          {props.message.parts.map((part, index) =>
+            part.type === "text" ? (
+              <TranscriptText key={index} role={role} text={part.text ?? ""} />
+            ) : null,
+          )}
+        </div>
+        {props.message.attachments?.length ? (
+          <TranscriptAttachments
+            attachments={props.message.attachments}
+            conversationId={props.conversation.conversationId}
+          />
         ) : null}
+        {props.message.cards?.map((card) => {
+          switch (card.kind) {
+            case "object":
+              return (
+                <ObjectCard key={`${card.plugin}:${card.key}`} card={card} />
+              );
+            case "automation":
+              return (
+                <AutomationCard key={`${card.kind}:${card.id}`} card={card} />
+              );
+          }
+        })}
       </TranscriptMessageShell>
     );
   },
   (previous, next) =>
-    previous.view === next.view &&
     previous.message === next.message &&
+    previous.conversation.conversationId === next.conversation.conversationId &&
     previous.conversation.surface === next.conversation.surface &&
+    previous.conversation.canFork === next.conversation.canFork &&
     previous.conversation.actorIdentity === next.conversation.actorIdentity,
 );
 
@@ -120,102 +92,82 @@ export function RedactedMessageView(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const meta =
-    props.message.role === "assistant"
-      ? [
-          <TranscriptTimestamp
-            key="timestamp"
-            value={props.message.timestamp}
-          />,
-        ]
-      : [formatMessageTimestamp(props.message.timestamp)];
-
   return (
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
     >
       <TranscriptMessageHeader
-        meta={meta}
         message={props.message}
         conversation={props.conversation}
       />
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
         {props.message.parts.map((_part, index) => (
-          <RedactedMetadataRow key={index} />
+          <div className="py-1" key={index}>
+            <RedactedMarker />
+          </div>
         ))}
       </div>
     </TranscriptMessageShell>
   );
 }
 
+function messageAction(
+  message: TranscriptViewMessage,
+  conversation: ConversationTranscript,
+): ReactNode {
+  if (message.role === "user" && message.contexts?.length) {
+    return <TranscriptTurnContextView contexts={message.contexts} />;
+  }
+  if (
+    conversation.canFork &&
+    message.role === "assistant" &&
+    message.messageId &&
+    !message.pending
+  ) {
+    return (
+      <ForkConversationButton
+        conversationId={conversation.conversationId}
+        messageId={message.messageId}
+      />
+    );
+  }
+  return undefined;
+}
+
 function TranscriptMessageHeader(props: {
-  meta?: ReactNode[];
+  action?: ReactNode;
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
   const showSlack = showsSlackSourceIcon(props.message, props.conversation);
-  const meta = props.meta ?? [];
+  const timestamp = formatMessageTimestamp(props.message.timestamp);
   const roleLabel = transcriptMessageActorLabel(
     props.conversation,
     props.message,
   );
 
   return (
-    <TranscriptHeadingRow
-      left={
-        <span className={transcriptRoleLabelClass(props.message.role)}>
-          {roleLabel}
-        </span>
-      }
-      leftClassName={transcriptRoleClass(props.message.role)}
-      right={
-        showSlack || meta.length ? (
-          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-xs leading-snug text-dashboard-text-muted md:leading-none">
-            {showSlack ? (
-              <span className="inline-flex shrink-0" title="Slack">
-                <SlackMark className="size-3.5" />
-              </span>
-            ) : null}
-            {showSlack && meta.length ? (
-              <span aria-hidden="true">·</span>
-            ) : null}
-            {meta.map((item, index) => (
-              <span className="contents" key={index}>
-                {index > 0 ? <span aria-hidden="true">·</span> : null}
-                {item}
-              </span>
-            ))}
-          </TranscriptHeadingMeta>
-        ) : undefined
-      }
-    />
-  );
-}
-
-function RedactedMetadataRow(props: { meta?: string }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 max-md:grid-cols-1">
-      <RedactedMarker />
-      {props.meta ? (
-        <span className="min-w-0 break-words text-right text-dashboard-text-muted max-md:text-left">
-          {props.meta}
+    <TranscriptMessageHeading action={props.action}>
+      <span className={transcriptRoleLabelClass(props.message.role)}>
+        {roleLabel}
+      </span>
+      {showSlack || timestamp ? (
+        <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">
+          {showSlack ? (
+            <span className="inline-flex shrink-0 self-center" title="Slack">
+              <SlackMark className="size-3.5" />
+            </span>
+          ) : null}
+          {showSlack && timestamp ? <span aria-hidden="true">·</span> : null}
+          {props.message.role === "assistant" ? (
+            <TranscriptTimestamp value={props.message.timestamp} />
+          ) : (
+            timestamp
+          )}
         </span>
       ) : null}
-    </div>
-  );
-}
-
-function transcriptRoleClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "text-xs leading-snug",
-    kind === "assistant" && "text-cyan-100/70",
-    kind === "user" && "text-dashboard-text-muted",
-    kind === "system" && "text-amber-200/80",
-    kind === "tool" && "text-dashboard-text-muted",
-    kind === "other" && "text-dashboard-text-muted",
+    </TranscriptMessageHeading>
   );
 }
 
@@ -223,7 +175,7 @@ function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full truncate font-sans text-sm font-semibold leading-tight",
+    "inline-block max-w-full truncate font-sans text-sm font-semibold leading-6",
     kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",

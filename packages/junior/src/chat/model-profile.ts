@@ -20,6 +20,22 @@ export interface ModelProfileConfig {
   reasoningLevel?: TurnReasoningLevel;
 }
 
+/** Shared model profiles used when the app does not configure its own. */
+export const DEFAULT_MODEL_PROFILES = {
+  standard: {
+    modelId: "openai/gpt-6-luna",
+    description:
+      "Use for lookups, explanations, summaries, routine tool use, and focused source checks, including reading a single code file. Avoid for implementation, debugging, code review, architecture decisions, or research across several systems.",
+    reasoningLevel: "high",
+  },
+  handoff: {
+    modelId: "anthropic/claude-opus-5.5",
+    description:
+      "Use for implementation, debugging, code review, architecture decisions, and research across several systems. Include verification of unfinished work. Avoid for routine lookups, short explanations, or a new routine request after completed work.",
+    reasoningLevel: "high",
+  },
+} as const satisfies Readonly<Record<string, ModelProfileConfig>>;
+
 /** App-level profile input: a model id string or a full profile config. */
 export type ModelProfileInput = string | ModelProfileConfig;
 

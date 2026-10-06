@@ -316,6 +316,20 @@
       "when": 1790115429065,
       "tag": "0044_event_automation_channel_destinations",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1790854495309,
+      "tag": "0045_conversation_forks",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791217124543,
+      "tag": "0046_automation_versions",
+      "breakpoints": true
     }
   ]
 }

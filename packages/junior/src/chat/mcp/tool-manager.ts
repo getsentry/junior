@@ -12,6 +12,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import {
   missingToolAnnotationKeys,
   type PluginMcpToolResult,
+  type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
@@ -260,6 +261,7 @@ function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
 
 export interface McpToolSuccessHookInput {
   arguments: Record<string, unknown>;
+  content?: PluginMcpContent[];
   provider: string;
   structuredContent?: unknown;
   toolName: string;
@@ -315,6 +317,8 @@ export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
     args: Record<string, unknown>,
     options?: {
       conversationPrivacy?: ConversationPrivacy;
+      /** Cancels the provider request when the host preempts the call. */
+      signal?: AbortSignal;
       toolCallId?: string;
     },
   ) => Promise<ManagedMcpToolResult>;
@@ -571,7 +575,11 @@ export class McpToolManager {
           {},
           async () => {
             try {
-              const result = await client.callTool(tool.name, resolvedArgs);
+              const result = await client.callTool(
+                tool.name,
+                resolvedArgs,
+                options?.signal,
+              );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }
@@ -599,6 +607,7 @@ export class McpToolManager {
               };
               const cards = await this.options.onToolSuccess?.({
                 arguments: resolvedArgs,
+                content: toAgentToolContent(result),
                 provider: plugin.manifest.name,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }

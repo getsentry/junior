@@ -111,7 +111,11 @@ describe("subscribed reply decision", () => {
       decideSubscribedThreadReply({
         botUserName: "junior",
         modelId: "router-model",
-        input: makeInput({ rawText: text, text }),
+        input: makeInput({
+          rawText: text,
+          text,
+          isExplicitMention: text.startsWith("<@U0APP>"),
+        }),
         completeObject,
         logClassifierFailure: vi.fn(),
       }),

@@ -1,3 +1,12 @@
+import { FormNotice } from "../../components/FormNotice";
+import { Select } from "../../components/Select";
+import { ObjectFixtures } from "./ObjectFixtures";
+import { ChartFixtures } from "./ChartFixtures";
+import { SegmentedNavFixture, SegmentedTabsFixture } from "./SegmentedFixtures";
+import {
+  ConversationFixture,
+  MessageAttachmentsFixture,
+} from "./ConversationFixture";
 import { ObjectCard } from "../../conversations/ObjectCard";
 import { AutomationCard } from "../../components/AutomationCard";
 import {
@@ -10,15 +19,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, Navigate, Route, Routes } from "react-router";
-import type {
-  ConversationMetricDay,
-  LocationActivityDayReport,
-  PeopleActivityDayReport,
-} from "@sentry/junior/api/schema";
 
 import { Button, ToggleButton } from "../../components/Button";
-import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
@@ -27,12 +31,12 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Drawer } from "../../components/Drawer";
 import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
-import { CardHeader } from "../../components/layout/CardHeader";
 import { DashboardChromeProvider } from "../../components/layout/DashboardChrome";
 import { DashboardHeader } from "../../components/layout/DashboardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { ActorAvatar } from "../../components/ActorAvatar";
 import { ParticipantAvatarStack } from "../../components/ParticipantAvatarStack";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
@@ -44,10 +48,6 @@ import { TranscriptMessageShell } from "../../conversations/TranscriptMessageShe
 import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
-import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
-import { ContributionGrid } from "../people/ContributionGrid";
-import { PeopleActivityChart } from "../people/PeopleActivityChart";
-import { ConversationActivityChart } from "../system/ConversationActivityChart";
 
 export type GallerySectionId = "foundations" | "charts" | "transcripts";
 
@@ -133,38 +133,6 @@ Findings:
 - the dashboard preserves single breaks as \`<br>\`
 
 See https://docs.sentry.io for product docs.`;
-
-const METRIC_DAYS: ConversationMetricDay[] = fixtureDates(14).map(
-  (date, index) => ({
-    conversations: 4 + ((index * 5) % 17),
-    costUsd: 0.7 + ((index * 7) % 11) * 0.18,
-    date,
-    durationMs: 90_000 + ((index * 41) % 13) * 24_000,
-    tokens: 18_000 + ((index * 17) % 19) * 2_300,
-  }),
-);
-
-const PEOPLE_DAYS: PeopleActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    activePeople: 4 + ((index * 7) % 13),
-    conversations: 18 + ((index * 11) % 31),
-    date,
-  }),
-);
-
-const LOCATION_DAYS: LocationActivityDayReport[] = fixtureDates(30).map(
-  (date, index) => ({
-    date,
-    privateConversations: 3 + ((index * 5) % 12),
-    publicConversations: 12 + ((index * 9) % 28),
-  }),
-);
-
-const CONTRIBUTION_DAYS = fixtureDates(70).map((date, index) => ({
-  conversations: index % 9 === 0 ? 0 : 1 + ((index * 7) % 18),
-  date,
-  durationMs: index % 9 === 0 ? 0 : 45_000 + ((index * 13) % 20) * 18_000,
-}));
 
 type ToolCallFixture = {
   description: string;
@@ -334,6 +302,7 @@ function FoundationsGalleryPage() {
   const [pressed, setPressed] = useState(true);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [nestedDrawerOpen, setNestedDrawerOpen] = useState(false);
 
   return (
     <GalleryShell
@@ -341,6 +310,34 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Editor controls">
+        <Field
+          label="Instruction"
+          htmlFor="gallery-instruction"
+          error="Enter an instruction."
+        >
+          <TextArea
+            prose
+            id="gallery-instruction"
+            aria-invalid
+            aria-describedby="gallery-instruction-error"
+          />
+        </Field>
+        <Field label="Repeat" htmlFor="gallery-repeat">
+          <TextInput
+            size="comfortable"
+            aria-label="Resource identifier"
+            defaultValue="getsentry/junior#42"
+          />
+          <Select id="gallery-repeat">
+            <option>Every week</option>
+          </Select>
+        </Field>
+        <Button tone="primary">Save changes</Button>
+        <FormNotice title="This automation changed while you were editing.">
+          Your edits are still here. Review the latest version before saving.
+        </FormNotice>
+      </Fixture>
       <Fixture title="Conversation navigation">
         <DashboardChromeProvider>
           <DashboardHeader
@@ -354,6 +351,12 @@ function FoundationsGalleryPage() {
             workspaceActive
           />
         </DashboardChromeProvider>
+      </Fixture>
+      <Fixture title="Segmented tabs">
+        <SegmentedTabsFixture />
+      </Fixture>
+      <Fixture title="Segmented page links">
+        <SegmentedNavFixture />
       </Fixture>
       <Fixture title="Narrow details drawer">
         <Button onClick={() => setDrawerOpen(true)}>Open details</Button>
@@ -377,6 +380,34 @@ function FoundationsGalleryPage() {
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
               Linked work, the Brief, participants, and usage.
             </p>
+            <Button onClick={() => setNestedDrawerOpen(true)}>
+              Open nested details
+            </Button>
+            {nestedDrawerOpen
+              ? createPortal(
+                  <Drawer
+                    closeLabel="Close nested details"
+                    dismissLabel="Dismiss nested details"
+                    header={
+                      <h2
+                        id="gallery-nested-title"
+                        className="m-0 text-lg font-semibold"
+                      >
+                        Event details
+                      </h2>
+                    }
+                    onClose={() => setNestedDrawerOpen(false)}
+                    openKey="gallery-nested"
+                    titleId="gallery-nested-title"
+                  >
+                    <p className="m-0 text-sm text-dashboard-text-muted">
+                      Escape closes this drawer and returns focus to the parent
+                      drawer.
+                    </p>
+                  </Drawer>,
+                  document.body,
+                )
+              : null}
           </Drawer>
         ) : null}
       </Fixture>
@@ -546,17 +577,32 @@ function FoundationsGalleryPage() {
           />
         </div>
       </Fixture>
-      <Fixture title="Status chips">
-        <div className="flex flex-wrap items-center gap-2">
+      <Fixture title="Status labels">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <StatusChip tone="neutral">private</StatusChip>
           <StatusChip tone="success">completed</StatusChip>
           <StatusChip tone="danger">failed</StatusChip>
           <StatusChip tone="warning">blocked</StatusChip>
           <StatusChip tone="info">preference</StatusChip>
           <StatusChip tone="accent">knowledge</StatusChip>
-          <StatusChip size="compact" tone="success">
-            public
+          <StatusChip size="compact" tone="warning">
+            Trigger unavailable
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Actor avatars">
+        <div className="flex items-center gap-4">
+          <ActorAvatar
+            name="Ada Lovelace"
+            imageUrl="/_junior/dashboard/avatar.png"
+            size="detail"
+          />
+          <ActorAvatar name="Grace Hopper" size="detail" />
+          <ActorAvatar
+            name="Alan Turing"
+            imageUrl="/missing-avatar.png"
+            size="list"
+          />
         </div>
       </Fixture>
       <Fixture title="Participant avatars">
@@ -657,17 +703,7 @@ function ChartsGalleryPage() {
       sectionId="charts"
       title="Charts"
     >
-      <ConversationActivityChart days={METRIC_DAYS} />
-      <SystemMetricCharts days={METRIC_DAYS} />
-      <PeopleActivityChart days={PEOPLE_DAYS} />
-      <LocationDirectoryActivityChart days={LOCATION_DAYS} />
-      <Card>
-        <CardHeader
-          description="Daily conversation intensity over ten weeks."
-          title="Contribution activity"
-        />
-        <ContributionGrid days={CONTRIBUTION_DAYS} />
-      </Card>
+      <ChartFixtures />
     </GalleryShell>
   );
 }
@@ -679,6 +715,15 @@ function TranscriptsGalleryPage() {
       sectionId="transcripts"
       title="Transcripts"
     >
+      <Fixture title="Conversation spacing">
+        <ConversationFixture />
+      </Fixture>
+      <Fixture title="Message attachments (mock reporting)">
+        <MessageAttachmentsFixture />
+      </Fixture>
+      <Fixture title="Object visual language">
+        <ObjectFixtures />
+      </Fixture>
       <Fixture title="Object annotations">
         <ObjectCard
           card={{
@@ -688,7 +733,22 @@ function TranscriptsGalleryPage() {
             key: "getsentry/junior#1200",
             label: "getsentry/junior#1200",
             title: "Use object annotations for reply cards",
-            status: "draft",
+            status: "open",
+            displayType: "Pull request",
+            sourceUpdatedAt: "2026-09-25T13:45:00Z",
+            facts: {
+              type: "code_change",
+              author: "alex",
+              review: "changes_requested",
+              checks: { passed: 12, failed: 1, pending: 0 },
+              reviewers: ["sam"],
+              mergeable: false,
+              sourceBranch: "feature/object-cards",
+              targetBranch: "main",
+              changedFiles: 8,
+              additions: 120,
+              deletions: 30,
+            },
             url: "https://github.com/getsentry/junior/pull/1200",
           }}
         />
@@ -701,7 +761,47 @@ function TranscriptsGalleryPage() {
             label: "ENG-123",
             title: "Keep background annotation updates out of the next reply",
             status: "In Progress",
+            facts: {
+              type: "task",
+              assignees: ["Sam"],
+              priority: "High",
+              project: "Conversation quality",
+              cycle: "September",
+              dueDate: "2026-09-30",
+              labels: ["UX", "Reliability"],
+            },
             url: "https://linear.app/example/issue/ENG-123",
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "deployment",
+            displayType: "Deployment",
+            plugin: "vercel",
+            key: "dpl_example",
+            label: "dpl_example",
+            title: "junior-docs.vercel.app",
+            status: "READY",
+            url: "https://junior-docs.vercel.app",
+            facts: {
+              type: "deployment",
+              environment: "production",
+              project: "junior-docs",
+              revision: "ca37e26a9",
+              branch: "main",
+            },
+          }}
+        />
+        <ObjectCard
+          card={{
+            kind: "object",
+            objectType: "item",
+            plugin: "example",
+            key: "note",
+            label: "note",
+            title: "A saved item without a source link",
+            url: null,
           }}
         />
       </Fixture>
@@ -733,6 +833,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "sched_0123456789abcdef0123456789abcdef",
             title: "Drink water reminder",
+            status: "active",
             instruction: "Remind the user to drink water in this conversation.",
             trigger: "Sep 23, 2026, 9:30 AM · America/Los_Angeles",
             warning: null,
@@ -754,6 +855,7 @@ function TranscriptsGalleryPage() {
           card={{
             id: "scheduled-1",
             title: "Weekly release digest",
+            status: "blocked",
             instruction:
               "Summarize the week's releases and send me the digest.",
             trigger: "Every Friday at 09:00 · America/Los_Angeles",
@@ -869,12 +971,5 @@ function TokenSwatchRow(props: {
         ))}
       </div>
     </div>
-  );
-}
-
-function fixtureDates(count: number): string[] {
-  const start = Date.UTC(2026, 4, 1);
-  return Array.from({ length: count }, (_, index) =>
-    new Date(start + index * 86_400_000).toISOString().slice(0, 10),
   );
 }

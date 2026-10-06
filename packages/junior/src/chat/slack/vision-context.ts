@@ -1,3 +1,4 @@
+import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
 import type { completeText } from "@/chat/pi/client";
@@ -245,15 +246,6 @@ function buildStoredAttachmentPromptText(args: {
     "Use loadAttachment with this id to access the original file.",
     "</attachment>",
   ].join("\n");
-}
-
-function getSlackFileId(attachment: Attachment): string | undefined {
-  const metadataId = attachment.fetchMetadata?.fileId;
-  if (metadataId) return metadataId;
-  const match = (attachment.url ?? attachment.fetchMetadata?.url ?? "").match(
-    /(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/i,
-  );
-  return match?.[1];
 }
 
 function getCachedImageSummaries(args: {

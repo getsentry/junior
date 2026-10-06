@@ -1,3 +1,4 @@
+import { objectIconPath, type ObjectIconName } from "@sentry/junior-plugin-api";
 export interface DashboardConversationLinkOptions {
   basePath?: string;
   baseURL?: string;
@@ -84,4 +85,18 @@ export function getDashboardConversationLink(
 /** Build the dashboard task detail URL when the core dashboard is enabled. */
 export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
+}
+
+/** Public icon asset URL. Headless and local installs keep text-only identity. */
+export function getDashboardObjectIconLink(
+  icon: ObjectIconName,
+): string | undefined {
+  if (!dashboardConversationLinkOptions) return undefined;
+  const url = new URL(
+    objectIconPath(icon),
+    resolveDashboardBaseURL(dashboardConversationLinkOptions),
+  );
+  if (url.protocol !== "https:" || url.hostname === "localhost")
+    return undefined;
+  return url.href;
 }

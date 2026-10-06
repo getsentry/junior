@@ -67,6 +67,7 @@ describe("updateIssue", () => {
       state: "open",
       target: "updateIssue",
       title: "Updated title",
+      objectAnnotations: [{ description: "Updated body" }],
       subscribable: {
         identifier: "getsentry/junior#691",
       },

@@ -1,16 +1,10 @@
-import {
-  memo,
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
   ConversationPendingMessagesReport,
+  InputImage,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -20,20 +14,24 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import { conversationIsResponding } from "./transcript";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationBrief } from "./ConversationBrief";
+import {
+  CONVERSATION_EVENT_PARAM,
+  parseConversationEventSeq,
+} from "./conversationRoutes";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
-  ConversationIdentity,
   ConversationPrivacyChip,
   ConversationStats,
   hasConversationAnnotations,
-  hasConversationIdentity,
   hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
@@ -45,6 +43,10 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Card } from "../components/layout/Card";
+import {
+  conversationParticipants,
+  ParticipantAvatarStack,
+} from "../components/ParticipantAvatarStack";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
 import { Transcript } from "./TranscriptView";
@@ -71,7 +73,15 @@ export function ConversationPage(props: {
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
-  const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The URL owns the open event log entry so readers can share that link.
+  const selectedEventSeq = parseConversationEventSeq(
+    searchParams.get(CONVERSATION_EVENT_PARAM),
+  );
+  const [viewState, setView] = useState<TranscriptViewMode>(() =>
+    selectedEventSeq === undefined ? "rich" : "raw",
+  );
+  const view = selectedEventSeq === undefined ? viewState : "raw";
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
@@ -87,21 +97,21 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const participants = conversationParticipants(conversation);
+  const identity =
+    participants.length > 0 ? (
+      <ParticipantAvatarStack participants={participants} size="detail" />
+    ) : null;
   const conversationDetail = detail.data;
   useEffect(() => {
     if (!conversation) return;
     onRead?.(conversation.id, conversation.lastSeenAt);
   }, [conversation, onRead]);
-  // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
-  // composer keystrokes stay urgent without changing visible transcript content.
-  // Fall back to the latest detail on first load so the body is never blank while
-  // the deferred value catches up from undefined.
-  const deferredTranscript = useDeferredValue(detail.data);
-  const transcript = deferredTranscript ?? detail.data;
+  const transcript = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
-  // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
+  // History and mailbox use the same deferred server snapshot.
   const live = conversationIsLive(visualStatus, detail.data);
   // Key on the event array, not the whole detail object. Metadata-only polls
   // reuse events via structural sharing, so the footer keeps a stable id list.
@@ -113,6 +123,48 @@ export function ConversationPage(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
+  const setSelectedEventSeq = useCallback(
+    (seq: number | undefined) => {
+      // Keep the event log after close, even when a link opened the page.
+      setView("raw");
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (seq === undefined) next.delete(CONVERSATION_EVENT_PARAM);
+          else next.set(CONVERSATION_EVENT_PARAM, String(seq));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const onViewChange = useCallback(
+    (value: TranscriptViewMode) => {
+      if (value !== "raw" && selectedEventSeq !== undefined) {
+        setSelectedEventSeq(undefined);
+      }
+      setView(value);
+    },
+    [selectedEventSeq, setSelectedEventSeq],
+  );
+  // A linked event can be older than the first page. Load earlier pages until
+  // it is present or history ends.
+  const loadPreviousPageRef = useRef(detail.loadPreviousPage);
+  loadPreviousPageRef.current = detail.loadPreviousPage;
+  const oldestLoadedSeq = transcript?.events[0]?.seq;
+  const linkedEventMissing =
+    selectedEventSeq !== undefined &&
+    oldestLoadedSeq !== undefined &&
+    selectedEventSeq < oldestLoadedSeq;
+  const loadLinkedEvent =
+    linkedEventMissing &&
+    detail.hasPreviousPage &&
+    !detail.isLoadingPreviousPage &&
+    !detail.historyError;
+  useEffect(() => {
+    if (loadLinkedEvent) loadPreviousPageRef.current();
+  }, [loadLinkedEvent, oldestLoadedSeq]);
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -141,6 +193,20 @@ export function ConversationPage(props: {
           <section className="min-w-0">
             <ConversationHeader
               conversationId={conversationId}
+              forks={
+                detail.data?.forkedFromConversationId ||
+                detail.data?.forks?.length ? (
+                  <ConversationForkLinks
+                    forkedFromConversationId={
+                      detail.data.forkedFromConversationId
+                    }
+                    forkedFromTitle={detail.data.forkedFromTitle}
+                    forks={detail.data.forks}
+                  />
+                ) : null
+              }
+              lastActivityAt={conversation?.lastSeenAt}
+              sentryConversationUrl={detail.data?.sentryConversationUrl}
               copyAction={
                 <CopyMarkdownButton
                   key={conversationDetail?.conversationId ?? "loading"}
@@ -181,40 +247,17 @@ export function ConversationPage(props: {
               }}
               brief={
                 detail.data?.brief ? (
-                  <ConversationBrief brief={detail.data.brief} />
-                ) : null
-              }
-              identity={
-                hasConversationIdentity({
-                  conversation,
-                  conversationId,
-                  detail: detail.data,
-                }) ? (
-                  <ConversationIdentity
-                    conversation={conversation}
-                    conversationId={conversationId}
-                    detail={detail.data}
+                  <ConversationBrief
+                    brief={detail.data.brief}
+                    variant="summary"
                   />
                 ) : null
               }
+              identity={identity}
               live={live}
               meta={
                 <ConversationHeaderMeta
-                  identity={
-                    hasConversationIdentity({
-                      conversation,
-                      conversationId,
-                      detail: detail.data,
-                      variant: "compact",
-                    }) ? (
-                      <ConversationIdentity
-                        conversation={conversation}
-                        conversationId={conversationId}
-                        detail={detail.data}
-                        variant="compact"
-                      />
-                    ) : null
-                  }
+                  identity={identity}
                   stats={
                     hasConversationStats({
                       conversation,
@@ -231,7 +274,7 @@ export function ConversationPage(props: {
                 />
               }
               onSearchChange={setSearch}
-              onViewChange={setView}
+              onViewChange={onViewChange}
               privacy={
                 <ConversationPrivacyChip
                   visibility={conversation?.visibility}
@@ -253,7 +296,13 @@ export function ConversationPage(props: {
               view={view}
             />
 
-            <div className="mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7">
+            <div
+              className={
+                view === "raw"
+                  ? "w-full pt-5 md:pt-7"
+                  : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
+              }
+            >
               {detail.isPending ? (
                 <TranscriptLoading />
               ) : detail.error && !detail.data ? (
@@ -275,10 +324,14 @@ export function ConversationPage(props: {
                     live={live}
                     loadingPreviousPage={detail.isLoadingPreviousPage}
                     onLoadPreviousPage={detail.loadPreviousPage}
+                    onSelectedEventSeqChange={setSelectedEventSeq}
                     pinRequestVersion={pinRequestVersion}
-                    responding={!detail.error && live}
+                    responding={
+                      !detail.error && conversationIsResponding(transcript)
+                    }
                     onOpenSubagentTranscript={onOpenSubagentTranscript}
                     search={search}
+                    selectedEventSeq={selectedEventSeq}
                     transcript={transcript}
                     view={view}
                   />
@@ -288,7 +341,7 @@ export function ConversationPage(props: {
           </section>
         }
         dock={
-          detail.data?.isParticipant ? (
+          view === "rich" && detail.data?.isParticipant ? (
             <ConversationReplyFooter
               conversationId={conversationId}
               // Only pass committed ids for mailbox de-dupe. The full transcript is
@@ -357,19 +410,22 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   const onSubmit = useCallback(
-    async (message: string, idempotencyKey: string) => {
+    async (message: string, idempotencyKey: string, images?: InputImage[]) => {
       await appendMessageRef.current.mutateAsync({
         idempotencyKey,
         message,
+        images,
       });
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
-    if (!message.idempotencyKey || !message.text) return;
+    if (!message.idempotencyKey || (!message.text && !message.images?.length))
+      return;
     void appendMessageRef.current.mutateAsync({
       idempotencyKey: message.idempotencyKey,
-      message: message.text,
+      message: message.text ?? "",
+      images: message.images,
     });
   }, []);
   const onSubmitStart = useCallback(() => {

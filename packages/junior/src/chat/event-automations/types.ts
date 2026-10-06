@@ -21,7 +21,7 @@ export const eventAutomationPrincipalSchema = z
   .strict();
 
 /** Validate one persisted event-automation selector and its presentation metadata. */
-const eventAutomationTriggerSchema = z
+export const eventAutomationTriggerSchema = z
   .object({
     events: z.array(eventTypeSchema).min(1),
     label: z.string().min(1),

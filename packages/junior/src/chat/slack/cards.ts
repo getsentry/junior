@@ -1,12 +1,7 @@
 import { renderSlackObjectCard } from "./object-card";
-import type { ChatPostMessageArguments } from "@slack/web-api";
+import type { SlackEntity } from "./work-object";
 import type { MessageCard } from "@/chat/conversations/cards";
 import { renderSlackAutomationCard } from "./automation-card";
-
-/** Slack owns the layout of these native object previews. */
-export type SlackEntity = NonNullable<
-  NonNullable<ChatPostMessageArguments["metadata"]>["entities"]
->[number];
 
 /** Text is the accessible fallback, or the visible content without an entity. */
 export interface SlackCard {

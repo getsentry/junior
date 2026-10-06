@@ -667,6 +667,7 @@ describe("plugin heartbeat", () => {
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toContain("[task]");
     expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
+    expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
     expect(dispatchRecord?.input).toContain(
       "Instructions: Post a digest. Summarize the latest state.",
     );

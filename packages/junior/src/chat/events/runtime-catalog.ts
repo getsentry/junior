@@ -10,7 +10,16 @@ import { workspaceSnapshotEvents } from "@/chat/sandbox/snapshot/events";
  */
 export function getEventCatalog(): EventCatalog {
   const catalog: Record<string, EventCatalog[string]> = {
-    [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
+    [CORE_EVENT_NAMESPACE]: {
+      resourceTypes: [
+        ...workspaceSnapshotEvents().resourceTypes,
+        {
+          type: "timer",
+          supportedEvents: ["timer.fired"],
+          suggestedEvents: [],
+        },
+      ],
+    },
   };
   for (const plugin of getPlugins()) {
     const registration = plugin.events;
@@ -19,7 +28,7 @@ export function getEventCatalog(): EventCatalog {
     }
     if (plugin.manifest.name === CORE_EVENT_NAMESPACE) {
       throw new Error(
-        `Plugin "${CORE_EVENT_NAMESPACE}" cannot register events; that namespace is reserved for core Workspace snapshots`,
+        `Plugin "${CORE_EVENT_NAMESPACE}" cannot register events; that namespace is reserved for core events`,
       );
     }
     catalog[plugin.manifest.name] = registration;

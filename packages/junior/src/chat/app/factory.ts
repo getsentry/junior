@@ -44,6 +44,8 @@ export interface CreateSlackRuntimeOptions {
   pausedTurns?: PausedTurns;
   sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
+  /** Keeps background work started by a turn alive. */
+  waitUntil?: (task: Promise<unknown>) => void;
 }
 
 function clearSkippedTurnIfActive(
@@ -97,6 +99,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,
     sendPluginTask: options.sendPluginTask,
+    waitUntil: options.waitUntil,
   });
 
   const runtime = createSlackTurnRuntime<

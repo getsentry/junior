@@ -33,7 +33,10 @@ function baseContext(
 }
 
 describe("linear afterMcpTool annotations", () => {
-  it("logs and skips annotation when the response schema does not match", async () => {
+  it.each([
+    { structuredContent: { issue: { title: "Incomplete" } } },
+    { content: [{ type: "text" as const, text: "Created an issue" }] },
+  ])("skips annotation for an invalid result: %j", async (result) => {
     const warn = vi.fn();
     const upsert = vi.fn(async () => undefined);
     const plugin = linearPlugin();
@@ -56,9 +59,7 @@ describe("linear afterMcpTool annotations", () => {
           info() {},
           warn,
         },
-        result: {
-          structuredContent: { issue: { title: "Incomplete" } },
-        },
+        result,
       }),
     );
 

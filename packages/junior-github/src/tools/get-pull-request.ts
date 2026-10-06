@@ -1,3 +1,5 @@
+import { githubObjectAnnotation } from "../annotations.js";
+import { githubObjectFacts } from "../object-facts.js";
 import {
   type PluginEgress,
   definePluginTool,
@@ -127,6 +129,21 @@ export function createGitHubGetPullRequestTool(ctx: {
         url: providerResult.html_url,
       };
       return {
+        objectAnnotations: [
+          githubObjectAnnotation({
+            repo: repo.ref,
+            number: data.number,
+            title: data.title,
+            url: data.url,
+            objectType: "code_change",
+            status: data.merged
+              ? "merged"
+              : data.state === "open" && data.draft
+                ? "draft"
+                : data.state,
+            ...githubObjectFacts("code_change", parsed),
+          }),
+        ],
         target: "getPullRequest",
         ...data,
       };

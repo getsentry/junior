@@ -1,3 +1,5 @@
+import { ObjectIcon } from "../components/ObjectIcon";
+import { objectPresentation } from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -21,10 +23,6 @@ import {
   automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../components/ParticipantAvatarStack";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
@@ -140,7 +138,13 @@ export function ConversationSidebarAnnotations(props: {
               className="flex min-w-0 items-center gap-1.5"
               key={`${annotation.key}:${index}`}
             >
-              {annotation.icon ? (
+              {annotation.objectType ? (
+                <ObjectIcon
+                  {...annotation}
+                  objectType={annotation.objectType}
+                  size={14}
+                />
+              ) : annotation.icon ? (
                 <SidebarAnnotationIcon icon={annotation.icon} />
               ) : null}
               <span className="min-w-0 truncate">{details[index]}</span>
@@ -216,9 +220,17 @@ function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-36 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.group.annotations.map((annotation) =>
-        annotation.icon ? (
+        annotation.objectType ? (
+          <ObjectIcon
+            {...annotation}
+            objectType={annotation.objectType}
+            key={annotation.key}
+            decorative
+            size={14}
+          />
+        ) : annotation.icon ? (
           <SidebarAnnotationIcon
             decorative
             icon={annotation.icon}
@@ -253,7 +265,7 @@ function SidebarAnnotationStatusChip(props: {
         // layout at 18px while punching a surface-colored ring through the chip
         // underneath — classic avatar-facepile silhouette.
         "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
-        props.stacked && "-ml-2",
+        props.stacked && "-ml-1",
       )}
       style={{
         boxShadow: `0 0 0 2px ${props.cutoutColor}`,
@@ -261,7 +273,14 @@ function SidebarAnnotationStatusChip(props: {
       }}
       title={tone?.label}
     >
-      {props.annotation.icon ? (
+      {props.annotation.objectType ? (
+        <ObjectIcon
+          {...props.annotation}
+          objectType={props.annotation.objectType}
+          decorative
+          size={12}
+        />
+      ) : props.annotation.icon ? (
         <SidebarAnnotationIcon
           decorative
           icon={props.annotation.icon}
@@ -294,12 +313,24 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
+  objectType?: SidebarAnnotation["objectType"];
+  status?: string;
 }): string {
+  const identity = annotation.objectType
+    ? [
+        objectPresentation({ objectType: annotation.objectType }).label,
+        annotation.status,
+      ]
+        .filter(Boolean)
+        .join(": ")
+    : "";
   // Prefer the plugin key when it carries a fuller resource identity than the
   // compact label (for example owner/repo#123 vs repo).
-  return annotation.key.includes("/") || annotation.key.includes("#")
-    ? annotation.key
-    : annotation.label;
+  const label =
+    annotation.key.includes("/") || annotation.key.includes("#")
+      ? annotation.key
+      : annotation.label;
+  return [identity, label].filter(Boolean).join(" · ");
 }
 
 type SidebarAnnotationIconName = NonNullable<
@@ -376,24 +407,35 @@ export function ConversationAnnotations(props: {
     <div
       className={cn(
         "flex gap-x-4 gap-y-2",
-        props.layout === "strip" ? "overflow-x-auto" : "flex-wrap",
+        props.layout === "strip" ? "overflow-x-auto" : "flex-col",
       )}
     >
       {links.map((link) => (
         <a
-          className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline hover:text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          className={cn(
+            "inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md font-sans leading-snug text-dashboard-text no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+            props.layout === "strip"
+              ? "px-1 py-0.5 text-xs hover:text-cyan-100"
+              : "min-h-10 border border-dashboard-border px-3 py-2 text-sm hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover",
+          )}
           href={link.url ?? undefined}
           key={`${link.plugin}:${link.key}`}
           rel="noreferrer"
           target="_blank"
           title={link.kind === "object" ? link.title : resourceLinkTitle(link)}
         >
-          {link.status && link.status in RESOURCE_STATUS_ICON ? (
-            <ResourceStatus
-              status={link.status as ResourceLinkStatus}
-              url={link.url ?? ""}
-            />
-          ) : null}
+          <ObjectIcon
+            objectType={
+              link.objectType ??
+              props.detail?.sidebarAnnotations?.find(
+                (annotation) => annotation.key === link.key,
+              )?.objectType ??
+              "item"
+            }
+            status={link.status}
+            facts={link.kind === "object" ? link.facts : undefined}
+            size={16}
+          />
           <span className="min-w-0 break-words">{link.label}</span>
         </a>
       ))}
@@ -419,105 +461,6 @@ function resourceLinkTitle(link: {
   return [link.label, link.plugin, statusLabel, link.description]
     .filter(Boolean)
     .join(" · ");
-}
-
-const RESOURCE_STATUS_ICON = {
-  open: "circle-dot",
-  draft: "circle-dashed",
-  closed: "circle-x",
-  merged: "git-merge",
-  warning: "triangle-alert",
-} as const satisfies Record<ResourceLinkStatus, SidebarAnnotationIconName>;
-
-function isPullRequestUrl(url: string): boolean {
-  try {
-    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
-}
-
-function resourceStatusIcon(
-  status: ResourceLinkStatus,
-  url: string,
-): SidebarAnnotationIconName {
-  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
-  return RESOURCE_STATUS_ICON[status];
-}
-
-function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
-  return (
-    <SidebarAnnotationIcon
-      icon={resourceStatusIcon(props.status, props.url)}
-      size={15}
-    />
-  );
-}
-
-/** True when identity has content for the requested presentation. */
-export function hasConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}): boolean {
-  const variant = props.variant ?? "full";
-  const participants = conversationParticipants(props.conversation);
-  if (variant === "compact") return participants.length > 0;
-  const id = props.conversationId ?? props.conversation?.id;
-  return Boolean(
-    participants.length > 0 || id || props.detail?.sentryConversationUrl,
-  );
-}
-
-/** Render the conversation owner, optionally with id and Sentry deep link. */
-export function ConversationIdentity(props: {
-  conversation: Conversation | undefined;
-  conversationId: string | undefined;
-  detail: ConversationDetailReport | undefined;
-  variant?: "compact" | "full";
-}) {
-  if (!hasConversationIdentity(props)) return null;
-  const variant = props.variant ?? "full";
-  const participants = conversationParticipants(props.conversation);
-  const id = props.conversationId ?? props.conversation?.id;
-  const participantStack =
-    participants.length > 0 ? (
-      <ParticipantAvatarStack participants={participants} size="detail" />
-    ) : null;
-  if (variant === "compact") return participantStack;
-  const sentryLink = props.detail?.sentryConversationUrl ? (
-    <a
-      className="text-dashboard-text no-underline hover:underline"
-      href={props.detail.sentryConversationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
-      View in Sentry
-    </a>
-  ) : null;
-
-  return (
-    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-      {participantStack}
-      {id ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
-          {participantStack ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          <span className="min-w-0 max-w-[18rem] truncate">{id}</span>
-        </span>
-      ) : null}
-      {sentryLink ? (
-        <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {participantStack || id ? (
-            <span className="text-dashboard-text-muted/50">·</span>
-          ) : null}
-          {sentryLink}
-        </span>
-      ) : null}
-    </span>
-  );
 }
 
 function LocationLink(props: { label: string; locationUrl?: string }) {

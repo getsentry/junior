@@ -1,0 +1,3 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "forked_from_conversation_id" text;--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_forked_from_conversation_id_junior_conversations_conversation_id_fk" FOREIGN KEY ("forked_from_conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "junior_conversations_forked_from_idx" ON "junior_conversations" USING btree ("forked_from_conversation_id");

@@ -12,10 +12,18 @@
     "noEmit": true,
     "paths": {
       "@/*": ["../junior/src/*"],
+      "@junior-evals/fixture/*": ["./src/fixture/*"],
       "@junior-tests/*": ["../junior/tests/*"],
+      "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior-memory": ["../junior-memory/src/index.ts"],
       "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"]
     }
   },
-  "include": ["*.ts", "evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "*.ts",
+    "evals/**/*.ts",
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../junior/src/virtual-modules.d.ts"
+  ]
 }

@@ -49,9 +49,7 @@ describe("Workspace snapshot events", () => {
 
   it("registers core snapshot events for catalog search and guidance", () => {
     const registration = workspaceSnapshotEvents();
-    const catalog = {
-      [WORKSPACE_SNAPSHOT_NAMESPACE]: registration,
-    };
+    const catalog = getEventCatalog();
 
     expect(
       pluginSupportsEvent(
@@ -78,7 +76,10 @@ describe("Workspace snapshot events", () => {
       ),
     ).toContain("Report the snapshot failure");
 
-    const runtime = getEventCatalog();
-    expect(runtime[WORKSPACE_SNAPSHOT_NAMESPACE]).toEqual(registration);
+    expect(
+      catalog[WORKSPACE_SNAPSHOT_NAMESPACE]?.resourceTypes.filter(
+        (resource) => resource.type === WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+      ),
+    ).toEqual(registration.resourceTypes);
   });
 });

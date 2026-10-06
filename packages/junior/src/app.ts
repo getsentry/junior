@@ -1,8 +1,5 @@
 // Core owns host-level route ordering for Junior. ACP mounts before plugin
-// routes. Dashboard-enabled apps reject plugin route patterns that can shadow
-// dashboard or auth paths before the dashboard app is mounted.
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+// routes, and plugin routes mount before the dashboard (see dashboard-routes).
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -10,11 +7,16 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
-  configureFunctionMaxDurationSeconds,
-  getSlackReactionConfig,
+  resetRuntimeConfig,
+  restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
+  setCrossActorMidRunMode,
   setProfiles,
+  setRuntimeLimits,
+  snapshotRuntimeConfig,
   type BotModelConfig,
+  type CrossActorMidRunMode,
+  type RuntimeLimits,
   setSlackReactionConfig,
 } from "@/chat/config";
 import type { ModelProfileInput } from "@/chat/model-profile";
@@ -51,7 +53,6 @@ import {
 import type {
   PluginRegistration,
   PluginRouteMethod,
-  User,
 } from "@sentry/junior-plugin-api";
 import {
   pluginCatalogConfigFromEnv,
@@ -75,15 +76,22 @@ import {
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
+  consumeConversationQueueMessage,
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
+import type {
+  ConversationQueueMessage,
+  ConversationWorkQueue,
+} from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
+  type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
+import { processPluginTask } from "@/chat/plugins/task-runner";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,
@@ -107,6 +115,14 @@ import {
   handleAcpAuthorizationPage,
 } from "@/api/acp/authorization-page";
 import { JUNIOR_VERSION } from "./version";
+import {
+  createDashboardRouteRegistrations,
+  validateDashboardRouteOwnership,
+  type AuthenticatedRoute,
+  type CreateDashboardApp,
+  type HostRouteRegistration,
+  type JuniorDashboardOptions,
+} from "./dashboard-routes";
 
 export { defineJuniorPlugins } from "./plugins";
 export { JUNIOR_VERSION };
@@ -116,6 +132,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
+export type { JuniorDashboardOptions } from "./dashboard-routes";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Generate a durable Brief after each completed Turn. This costs one
@@ -138,17 +155,46 @@ export interface JuniorAppOptions extends BotModelConfig {
    * `modelId` and optional `description` and `reasoningLevel` settings.
    */
   profiles?: Readonly<Record<string, ModelProfileInput>>;
+  /** Turn and conversation limits. Unset limits keep their defaults. */
+  limits?: RuntimeLimits;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
     processingReactionEmoji?: string;
     /** Slack emoji shown after a turn completes. Defaults to `white_check_mark`. */
     completedReactionEmoji?: string;
+    /**
+     * What a mention from another person does while a turn runs: `follow_up`
+     * waits for its own turn, `steer` joins the running turn. Defaults to
+     * `JUNIOR_CROSS_ACTOR_MID_RUN_MODE` or `follow_up`.
+     */
+    crossActorMidRunMode?: CrossActorMidRunMode;
   };
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
   /** Queue consumer wiring for the durable conversation worker. */
   conversationWork?: ConversationWorkCallbackOptions;
+  /**
+   * Replace the Vercel Queue transport for conversation work, for example
+   * with an in-process queue. `consume` runs one message through this app's
+   * worker. Every app route and worker sends to the returned queue.
+   */
+  conversationWorkQueue?: (
+    consume: (
+      message: ConversationQueueMessage,
+      delivery: { messageId: string },
+    ) => Promise<void>,
+  ) => ConversationWorkQueue;
+  /**
+   * Replace the Vercel Queue transport for plugin tasks, for example with an
+   * in-process queue. `consume` runs one task through this app's task runner.
+   * Completed Slack turns send their plugin tasks to the returned queue.
+   * Mailbox turns, such as web turns, run their plugin tasks in the worker
+   * and do not use this queue.
+   */
+  pluginTaskQueue?: (
+    consume: (message: PluginTaskQueueMessage) => Promise<void>,
+  ) => { send(message: PluginTaskQueueMessage): Promise<void> };
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -161,37 +207,6 @@ export interface JuniorAppOptions extends BotModelConfig {
     egressTracePropagationDomains?: string[];
   };
   waitUntil?: WaitUntilFn;
-}
-
-export interface JuniorDashboardOptions {
-  /** Browser auth route prefix used by Better Auth. */
-  authPath?: string;
-  /** Require a dashboard browser session before serving dashboard pages and APIs. */
-  authRequired?: boolean;
-  /** Exact Google account emails allowed to open the dashboard. */
-  allowedEmails?: string[];
-  /** Google Workspace domains allowed to open the dashboard. */
-  allowedGoogleDomains?: string[];
-  /** Browser route prefix for the dashboard shell. */
-  basePath?: string;
-  /** Public deployment origin used for auth callbacks and external links. */
-  baseURL?: string;
-  /** Expose the config-gated component gallery for local visual QA. */
-  componentGallery?: boolean;
-  /** Disable dashboard route mounting while preserving serializable config shape. */
-  disabled?: boolean;
-  /** Replace Conversation route responses with dashboard visual-QA fixtures. */
-  mockConversations?: boolean;
-  /** Browser session lifetime in seconds. */
-  sessionMaxAgeSeconds?: number;
-  /** Additional trusted origins accepted by Better Auth. */
-  trustedOrigins?: string[];
-}
-
-interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
-  agentName?: string;
-  authenticatedRoutes?: readonly AuthenticatedRoute[];
-  pluginRoutes?: PluginApiRouteRegistration[];
 }
 
 /** Resolve the public deployment URL used by ACP browser authorization. */
@@ -211,14 +226,6 @@ function resolveAcpBaseURL(
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
-interface DashboardApp {
-  fetch(request: Request): Promise<Response> | Response;
-}
-
-type CreateDashboardApp = (
-  options: JuniorDashboardRuntimeOptions,
-) => DashboardApp;
-
 interface JuniorVirtualConfig {
   functionMaxDurationSeconds?: number;
   createDashboardApp?: CreateDashboardApp;
@@ -227,20 +234,6 @@ interface JuniorVirtualConfig {
   plugins?: PluginCatalogConfig;
   pluginRuntimeRegistrations: string[];
 }
-
-interface HostRouteRegistration {
-  handler(request: Request): Promise<Response> | Response;
-  method?: PluginRouteMethod | readonly PluginRouteMethod[];
-  path: string;
-}
-
-interface AuthenticatedRoute {
-  handler(request: Request, user: User): Promise<Response> | Response;
-  method?: PluginRouteMethod | readonly PluginRouteMethod[];
-  path: string;
-}
-
-const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
 /** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
 async function defaultWaitUntil(): Promise<WaitUntilFn> {
@@ -373,288 +366,6 @@ function validateBuildIncludesPluginRuntimeRegistrations(
   );
 }
 
-async function createDashboardRouteRegistrations(args: {
-  authenticatedRoutes: readonly AuthenticatedRoute[];
-  dashboard: JuniorDashboardOptions | undefined;
-  createDashboardApp: CreateDashboardApp | undefined;
-  pluginRoutes: PluginApiRouteRegistration[];
-}): Promise<HostRouteRegistration[]> {
-  if (!args.dashboard || args.dashboard.disabled) {
-    return [];
-  }
-
-  const createDashboardApp =
-    args.createDashboardApp ?? (await loadDashboardAppFactory());
-  return dashboardRouteRegistrations({
-    authenticatedRoutes: args.authenticatedRoutes,
-    dashboard: args.dashboard,
-    createDashboardApp,
-    pluginRoutes: args.pluginRoutes,
-  });
-}
-
-async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
-  try {
-    const appRequire = createRequire(`${process.cwd()}/package.json`);
-    const mod = await import(
-      pathToFileURL(appRequire.resolve(DASHBOARD_PACKAGE_NAME)).href
-    );
-    return dashboardAppFactoryFromModule(mod);
-  } catch (error) {
-    if (isMissingDashboardPackage(error)) {
-      throw new Error(
-        'createApp({ dashboard }) requires installing "@sentry/junior-dashboard"',
-        { cause: error },
-      );
-    }
-    throw error;
-  }
-}
-
-function dashboardAppFactoryFromModule(mod: unknown): CreateDashboardApp {
-  if (
-    !mod ||
-    typeof mod !== "object" ||
-    typeof (mod as { createDashboardApp?: unknown }).createDashboardApp !==
-      "function"
-  ) {
-    throw new Error(
-      '@sentry/junior-dashboard must export a "createDashboardApp" function',
-    );
-  }
-  return (mod as { createDashboardApp: CreateDashboardApp }).createDashboardApp;
-}
-
-function isMissingDashboardPackage(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const code = (error as { code?: string }).code;
-  return (
-    (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
-    error.message.includes("@sentry/junior-dashboard")
-  );
-}
-
-function stripTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 1 && value.charCodeAt(end - 1) === 47) {
-    end -= 1;
-  }
-  return end === value.length ? value : value.slice(0, end);
-}
-
-function normalizeDashboardPath(
-  path: string | undefined,
-  fallback: string,
-): string {
-  const value = path?.trim() || fallback;
-  const withSlash = value.startsWith("/") ? value : `/${value}`;
-  return stripTrailingSlashes(withSlash);
-}
-
-/** List every route path core forwards to the dashboard app and reserves from plugin routes. */
-function dashboardHostRoutePaths(
-  dashboard: JuniorDashboardOptions,
-  authenticatedRoutes: readonly AuthenticatedRoute[] = [],
-): string[] {
-  const basePath = normalizeDashboardPath(dashboard.basePath, "/");
-  const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
-  const pagePath = (suffix: string) =>
-    basePath === "/" ? `/${suffix}` : `${basePath}/${suffix}`;
-  const conversationsPath = pagePath("conversations");
-  const peoplePath = pagePath("people");
-  const pagePaths = [
-    basePath,
-    pagePath("code"),
-    conversationsPath,
-    `${conversationsPath}/*`,
-    pagePath("locations"),
-    `${pagePath("locations")}/*`,
-    peoplePath,
-    `${peoplePath}/*`,
-    pagePath("automations"),
-    `${pagePath("automations")}/*`,
-    pagePath("tasks"),
-    `${pagePath("tasks")}/*`,
-    pagePath("memories"),
-    `${pagePath("memories")}/*`,
-    pagePath("system"),
-    `${pagePath("system")}/*`,
-    pagePath("plugins"),
-    `${pagePath("plugins")}/*`,
-    pagePath("settings"),
-    `${pagePath("settings")}/*`,
-  ];
-  if (dashboard.componentGallery) {
-    pagePaths.push(pagePath("dev"), `${pagePath("dev")}/*`);
-  }
-  const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
-
-  return [
-    ...pagePaths,
-    "/favicon.ico",
-    "/_junior/dashboard/avatar.png",
-    "/_junior/dashboard/client.js",
-    "/_junior/dashboard/icon-512.png",
-    "/_junior/dashboard/manifest.webmanifest",
-    loginPath,
-    "/api/health",
-    "/api/runtime",
-    "/api/plugins",
-    "/api/plugins/*",
-    "/api/plugin-reports",
-    "/api/user-pages",
-    "/api/user-pages/*",
-    "/api/automations",
-    "/api/automations/*",
-    "/api/skills",
-    "/api/code",
-    "/api/stats",
-    "/api/conversations",
-    "/api/conversations/*",
-    "/api/locations",
-    "/api/locations/*",
-    "/api/people",
-    "/api/people/*",
-    "/api/personal-tokens",
-    "/api/personal-tokens/*",
-    "/api/workspaces",
-    "/api/workspaces/*",
-    "/api/config",
-    "/api/me",
-    ...authenticatedRoutes.map((route) => route.path),
-    authPath,
-    `${authPath}/*`,
-  ];
-}
-
-function routePrefixCoversPath(routePrefix: string, path: string): boolean {
-  return (
-    routePrefix === "/" ||
-    path === routePrefix ||
-    path.startsWith(`${routePrefix}/`)
-  );
-}
-
-function routeSegments(path: string): string[] {
-  return normalizeDashboardPath(path, "/").split("/").filter(Boolean);
-}
-
-function routeSegmentMatches(pattern: string, value: string): boolean {
-  return pattern === value || pattern === "*" || pattern.startsWith(":");
-}
-
-function routePatternMatchesConcretePath(
-  pattern: string,
-  concretePath: string,
-): boolean {
-  const patternSegments = routeSegments(pattern);
-  const pathSegments = routeSegments(concretePath);
-  for (let index = 0; index < patternSegments.length; index += 1) {
-    const segment = patternSegments[index];
-    if (segment === "**" || segment === "*") {
-      return true;
-    }
-    const value = pathSegments[index];
-    if (!value || !routeSegmentMatches(segment, value)) {
-      return false;
-    }
-  }
-  return patternSegments.length === pathSegments.length;
-}
-
-function routePatternExamples(routePath: string): string[] {
-  const normalized = normalizeDashboardPath(routePath, "/");
-  if (!normalized.endsWith("/*") && !normalized.endsWith("/**")) {
-    return [normalized];
-  }
-  const prefix = normalizeDashboardPath(
-    normalized.endsWith("/*")
-      ? normalized.slice(0, -2)
-      : normalized.slice(0, -3),
-    "/",
-  );
-  return [
-    prefix,
-    prefix === "/" ? "/__dashboard__" : `${prefix}/__dashboard__`,
-  ];
-}
-
-function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
-  if (
-    ownedPath.endsWith("/*") &&
-    routePrefixCoversPath(ownedPath.slice(0, -2), routePath)
-  ) {
-    return true;
-  }
-  return routePatternExamples(ownedPath).some((example) =>
-    routePatternMatchesConcretePath(routePath, example),
-  );
-}
-
-function dashboardOwnedRoutePath(
-  routePath: string,
-  dashboard: JuniorDashboardOptions,
-  authenticatedRoutes: readonly AuthenticatedRoute[] = [],
-): boolean {
-  return dashboardHostRoutePaths(dashboard, authenticatedRoutes).some((path) =>
-    routePatternOverlaps(path, routePath),
-  );
-}
-
-function dashboardRouteRegistrations(args: {
-  authenticatedRoutes: readonly AuthenticatedRoute[];
-  dashboard: JuniorDashboardOptions;
-  createDashboardApp: CreateDashboardApp;
-  pluginRoutes: PluginApiRouteRegistration[];
-}): HostRouteRegistration[] {
-  let app: DashboardApp | undefined;
-  const fetch = (request: Request) => {
-    const dashboardOptions: JuniorDashboardRuntimeOptions = {
-      ...args.dashboard,
-      agentName: botConfig.userName,
-      authenticatedRoutes: args.authenticatedRoutes,
-      pluginRoutes: args.pluginRoutes,
-    };
-    app ??= args.createDashboardApp(dashboardOptions);
-    if (!app || typeof app.fetch !== "function") {
-      throw new Error("createDashboardApp() must return an app with fetch()");
-    }
-    return app.fetch(request);
-  };
-
-  return dashboardHostRoutePaths(args.dashboard, args.authenticatedRoutes).map(
-    (path) => ({
-      handler: fetch,
-      path,
-    }),
-  );
-}
-
-function validateDashboardRouteOwnership(args: {
-  authenticatedRoutes?: readonly AuthenticatedRoute[];
-  dashboard: JuniorDashboardOptions | undefined;
-  routes: PluginRouteRegistration[];
-}): void {
-  if (!args.dashboard || args.dashboard.disabled) {
-    return;
-  }
-  for (const route of args.routes) {
-    if (
-      dashboardOwnedRoutePath(
-        route.path,
-        args.dashboard,
-        args.authenticatedRoutes,
-      )
-    ) {
-      throw new Error(
-        `Plugin "${route.pluginName}" route "${route.path}" conflicts with core dashboard routes`,
-      );
-    }
-  }
-}
-
 /** Mount HTTP handlers before core routes claim those paths. */
 function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   for (const route of routes) {
@@ -678,11 +389,6 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
-  if (virtualConfig?.functionMaxDurationSeconds !== undefined) {
-    configureFunctionMaxDurationSeconds(
-      virtualConfig.functionMaxDurationSeconds,
-    );
-  }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
@@ -699,12 +405,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousBotConfig = { ...botConfig };
+  const previousRuntimeConfig = snapshotRuntimeConfig();
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
-  const previousSlackReactionConfig = getSlackReactionConfig();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousBriefsConfig = setBriefsConfig(options?.briefs);
@@ -714,8 +419,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
-    Object.assign(botConfig, previousBotConfig);
-    setSlackReactionConfig(previousSlackReactionConfig);
+    restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
     setBriefsConfig(previousBriefsConfig);
@@ -724,7 +428,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const events = createEventAppPublisher({
-    conversationWork: () => getConversationWorkOptions(),
+    conversationWork: () => ({
+      ...getConversationWorkOptions(),
+      queue: conversationWorkQueue,
+    }),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
@@ -736,14 +443,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
+    // Start from the defaults so this app cannot inherit an earlier app's
+    // models, profiles, limits, or Slack settings.
+    resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     if (options?.profiles || options?.defaultProfile) {
       setProfiles(options.profiles, options.defaultProfile);
     }
-    if (options) {
-      setBotModelConfig(options);
-    }
-    if (options?.slack) {
-      setSlackReactionConfig(options.slack);
+    setBotModelConfig(options ?? {});
+    setRuntimeLimits(options?.limits);
+    setSlackReactionConfig(options?.slack ?? {});
+    if (options?.slack?.crossActorMidRunMode) {
+      setCrossActorMidRunMode(options.slack.crossActorMidRunMode);
     }
     if (shouldValidatePluginCatalog) {
       pluginCatalogRuntime.getSignature();
@@ -763,7 +473,16 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
-  const conversationWorkQueue = getVercelConversationWorkQueue();
+  const conversationWorkQueue: ConversationWorkQueue =
+    options?.conversationWork?.queue ??
+    options?.conversationWorkQueue?.((message, delivery) =>
+      consumeConversationQueueMessage(message, {
+        ...getConversationWorkOptions(),
+        messageId: delivery.messageId,
+      }),
+    ) ??
+    getVercelConversationWorkQueue();
+  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
   const attachmentStorage = createVercelAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
@@ -777,12 +496,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     visionContext: { attachmentStorage },
   };
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
-  const getConversationWorkOptions = () => {
+  const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
       options?.conversationWork ??
       createProductionConversationWorkOptions({
         agentRunner,
+        queue: conversationWorkQueue,
+        ...(pluginTaskQueue
+          ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
+          : undefined),
         services: runtimeServiceOverrides,
+        waitUntil: (task) => waitUntil(task),
       });
     return conversationWorkOptions;
   };
@@ -805,7 +529,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         conversations: createAcpConversations({
           conversationStore: work.conversationStore,
           eventStore: getConversationEventStore(),
-          queue: work.queue ?? getVercelConversationWorkQueue(),
+          queue: conversationWorkQueue,
           state,
         }),
         onError: (error, event, attributes) =>
@@ -844,6 +568,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     throw error;
   }
   const slackWebhookServices = createProductionSlackWebhookServices({
+    queue: conversationWorkQueue,
     services: runtimeServiceOverrides,
   });
 
@@ -870,6 +595,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     app,
     await createDashboardRouteRegistrations({
       authenticatedRoutes,
+      conversationWorkQueue,
       dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
@@ -889,13 +615,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      conversationWorkQueue: getVercelConversationWorkQueue(),
+      conversationWorkQueue,
     });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      conversationWorkQueue: getVercelConversationWorkQueue(),
+      conversationWorkQueue,
     });
   });
 
@@ -941,7 +667,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil);
+    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
   });
 
   app.get("/api/internal/retention", (c) => {

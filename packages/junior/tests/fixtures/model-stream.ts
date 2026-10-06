@@ -12,7 +12,7 @@ type FixedModelOutput =
       type: "text";
       text: string;
       onRequest?: () => void;
-      waitFor?: Promise<unknown>;
+      waitFor?: Promise<unknown> | "abort";
     }
   | {
       type: "toolCall";
@@ -58,9 +58,19 @@ function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   if (!onRequest && !waitFor) {
     return message;
   }
-  return async () => {
+  return async (_context, options) => {
     onRequest?.();
-    if (waitFor) {
+    if (waitFor === "abort") {
+      const signal = options?.signal;
+      if (!signal) {
+        throw new Error("Waiting for abort requires a model request signal");
+      }
+      if (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+    } else if (waitFor) {
       await waitFor;
     }
     return message;

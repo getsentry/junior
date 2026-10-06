@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PluginContext } from "./context";
 import { objectAnnotationSchema } from "./object-annotations";
+import { objectTypeSchema } from "./object-presentation";
 
 function usesHttpProtocol(value: string): boolean {
   try {
@@ -11,9 +12,16 @@ function usesHttpProtocol(value: string): boolean {
   }
 }
 
+/**
+ * Link an object to a Conversation when the owner has no typed object preview.
+ * Keep a stable key, compact label, source URL, and optional short context or
+ * status. Do not fetch a full object merely to save a link. Rich preview intent
+ * belongs to objectAnnotationSchema, not a second set of resource-link fields.
+ */
 export const resourceLinkAnnotationSchema = z
   .object({
     kind: z.literal("resource_link"),
+    objectType: objectTypeSchema.optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
     url: z
@@ -60,6 +68,8 @@ export const conversationSidebarIconSchema = z.enum([
 export const conversationSidebarAnnotationSchema = z
   .object({
     icon: conversationSidebarIconSchema.optional(),
+    objectType: objectTypeSchema.optional(),
+    status: z.string().trim().min(1).max(100).optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
   })

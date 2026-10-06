@@ -1,6 +1,8 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { cancelHumanFacingPendingMessages } from "@/chat/task-execution/store";
+import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
+import { getProductionSlackAdapter } from "@/chat/app/production";
 import { throwApiError } from "../http";
 import type {
   CancelConversationPendingMessagesBody,
@@ -41,6 +43,10 @@ export async function cancelConversationPendingMessagesForViewer(
         ? { receivedBeforeMs: Date.parse(body.receivedBefore) }
         : undefined),
       conversationStore: getConversationStore(),
+    });
+    await clearSlackPendingReactions({
+      getSlackAdapter: getProductionSlackAdapter,
+      messages: result.cancelledMessages,
     });
     return {
       cancelledCount: result.cancelledInboundMessageIds.length,

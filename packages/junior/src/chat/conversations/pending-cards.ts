@@ -1,22 +1,24 @@
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
-  readMessageCards,
-  messageCardKey,
-  messageCardRefSchema,
+  readMessageCardRefs,
+  removedCardSchema,
+  resolveMessageCards,
   type MessageCard,
+  type MessageCardRef,
 } from "./cards";
 
-/** Read undelivered card snapshots across resume and history replacement. */
+/** Select undelivered cards and load their latest saved facts. */
 export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
-  const cards = new Map<string, MessageCard>();
+  const cards = new Map<string, MessageCardRef>();
   const deleted = new Set<string>();
   let beforeSeq: number | undefined;
   // Tools are committed before Delivery. A visible assistant Message consumes
   // the cards; a new Turn must not inherit cards from an earlier silent Turn.
-  while (true) {
+  selection: while (true) {
     const page = await getConversationEventStore().query(conversationId, {
       beforeSeq,
       limit: 100,
@@ -28,7 +30,7 @@ export async function loadPendingMessageCards(
         data.type === "turn_started" ||
         (data.type === "message" && data.role === "assistant")
       ) {
-        return [...cards.values()].reverse();
+        break selection;
       }
       if (
         data.type !== "tool_result" ||
@@ -39,19 +41,23 @@ export async function loadPendingMessageCards(
         continue;
       if (data.details.timed_out === true) continue;
       if (Array.isArray(data.details.removedCards)) {
-        for (const ref of messageCardRefSchema
+        for (const ref of removedCardSchema
           .array()
           .parse(data.details.removedCards)) {
           deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      for (const card of readMessageCards(data.details)) {
-        const key = messageCardKey(card);
+      for (const card of readMessageCardRefs(data.details)) {
+        const key = JSON.stringify([card.plugin, card.key]);
         if (!deleted.has(key) && !cards.has(key)) cards.set(key, card);
       }
     }
-    if (!page.hasOlder || page.events.length === 0)
-      return [...cards.values()].reverse();
+    if (!page.hasOlder || page.events.length === 0) break;
     beforeSeq = page.events[0]!.seq;
   }
+  if (cards.size === 0) return [];
+  return resolveMessageCards(
+    [...cards.values()].reverse(),
+    await listConversationAnnotations(getDb(), conversationId),
+  );
 }

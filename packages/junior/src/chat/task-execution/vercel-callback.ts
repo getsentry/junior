@@ -22,6 +22,7 @@ import {
   type ConversationWorkerContext,
 } from "./worker";
 import { verifyConversationQueueMessage } from "./queue-signing";
+import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
 export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
@@ -35,6 +36,8 @@ export interface ProcessConversationQueueMessageOptions {
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
   softYieldAfterMs?: number;
   state?: StateAdapter;
+  /** Keep background work started by a turn, such as titles, alive. */
+  waitUntil?: (task: Promise<unknown>) => void;
 }
 
 export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
@@ -69,14 +72,42 @@ export async function processConversationQueueMessage(
   options: ProcessConversationQueueMessageOptions,
 ): Promise<ConversationWorkProcessResult> {
   const parsed = parseConversationQueueMessage(message);
-  return await processConversationWork(parsed, {
-    checkInIntervalMs: options.checkInIntervalMs,
-    conversationStore: options.conversationStore,
-    nowMs: options.nowMs,
-    queue: options.queue ?? getVercelConversationWorkQueue(),
-    run: options.run,
-    softYieldAfterMs: options.softYieldAfterMs,
-    state: options.state,
+  try {
+    return await processConversationWork(parsed, {
+      checkInIntervalMs: options.checkInIntervalMs,
+      conversationStore: options.conversationStore,
+      nowMs: options.nowMs,
+      queue: options.queue ?? getVercelConversationWorkQueue(),
+      run: options.run,
+      softYieldAfterMs: options.softYieldAfterMs,
+      state: options.state,
+    });
+  } finally {
+    // Turns start title work in the background. The worker owns it.
+    options.waitUntil?.(settleConversationTitleWork(parsed.conversationId));
+  }
+}
+
+/**
+ * Run one queue message through the worker without a Vercel push callback.
+ * In-process queues use this. The callback's kill switch, request deadline,
+ * and permanent rejection rules apply; signature checks do not.
+ */
+export async function consumeConversationQueueMessage(
+  message: ConversationQueueMessage,
+  options: VercelConversationWorkCallbackOptions & { messageId: string },
+): Promise<void> {
+  const nowMs = Date.now();
+  await conversationWorkCallback(options).consume(message, {
+    consumerGroup: "in_process",
+    createdAt: new Date(nowMs),
+    deliveryCount: 1,
+    expiresAt: new Date(
+      nowMs + CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS * 1000,
+    ),
+    messageId: options.messageId,
+    region: "local",
+    topicName: resolveConversationWorkQueueTopic(options),
   });
 }
 

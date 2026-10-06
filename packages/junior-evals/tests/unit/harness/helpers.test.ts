@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import { getHarnessRunFromError, toolCalls } from "vitest-evals/harness";
 
 const { runError, runEvalScenarioMock } = vi.hoisted(() => ({
   runError: new Error("stop after capturing harness options"),
@@ -12,7 +13,7 @@ vi.mock("../../../src/behavior-harness", () => ({
 }));
 
 import {
-  hasImageAttachment,
+  lastTurnReplies,
   serializeVisibleTranscript,
   slackHarness,
   visibleAssistantText,
@@ -20,12 +21,12 @@ import {
 } from "../../../src/helpers";
 
 it("selects visible assistant text and image attachments without assertions", () => {
-  const session = {
+  const session: Parameters<typeof visibleThreadReplies>[0] = {
     events: [
       {
         type: "message",
         role: "assistant",
-        content: "Shared it.",
+        content: "",
         metadata: {
           event_type: "thread_post",
           files: [{ filename: "result.png", isImage: true }],
@@ -38,11 +39,14 @@ it("selects visible assistant text and image attachments without assertions", ()
         metadata: { event_type: "reaction_added" },
       },
     ],
-  } as never;
+  };
 
-  expect(visibleThreadReplies(session)).toHaveLength(1);
-  expect(visibleAssistantText(session)).toBe("Shared it.\n");
-  expect(hasImageAttachment(session)).toBe(true);
+  expect(visibleThreadReplies(session)).toEqual([session.events[0]]);
+  expect(lastTurnReplies(session)).toEqual([session.events[0]]);
+  expect(visibleAssistantText(session)).toBe("\n");
+  expect(JSON.parse(serializeVisibleTranscript(session))).toEqual([
+    { role: "assistant", content: "[attached image: result.png]" },
+  ]);
 });
 
 it("includes visible Slack author names in rubric transcripts", () => {
@@ -88,7 +92,7 @@ it("includes visible Slack author names in rubric transcripts", () => {
   ]);
 });
 
-it("includes captured Slack posts in the rubric-visible transcript", async () => {
+it("preserves Slack posts and tool outcomes in the normalized session", async () => {
   runEvalScenarioMock.mockResolvedValueOnce({
     authorizationCompletions: [],
     canvases: [],
@@ -112,7 +116,11 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       },
     ],
     slackAdapter: { promptCalls: [], statusCalls: [], titleCalls: [] },
-    toolInvocations: [],
+    toolInvocations: [
+      { tool: "readFile", completed: true, result: { content: "Paris" } },
+      { tool: "webFetch", completed: true, error: "HTTP 503" },
+      { tool: "listDir", arguments: { path: "/vercel/sandbox" } },
+    ],
   } as never);
 
   const run = await slackHarness.run(
@@ -136,6 +144,19 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       content: "Paris",
     }),
   );
+  expect(toolCalls(run.session)).toMatchObject([
+    { name: "readFile", status: "ok", result: { content: "Paris" } },
+    { name: "webFetch", status: "error", error: { message: "HTTP 503" } },
+    {
+      name: "listDir",
+      status: "pending",
+      arguments: { path: "/vercel/sandbox" },
+    },
+  ]);
+  expect(JSON.parse(serializeVisibleTranscript(run.session))).toEqual([
+    { role: "user", content: "What is the capital of France?" },
+    { role: "assistant", content: "Paris" },
+  ]);
   expect(
     run.session.events.find(
       (event) => event.type === "message" && event.role === "assistant",
@@ -161,5 +182,32 @@ it("forwards the Vitest abort signal to the eval scenario", async () => {
   expect(runEvalScenarioMock).toHaveBeenCalledWith(
     { initialEvents: [], events: undefined, overrides: undefined },
     { logRecords: [], signal: controller.signal },
+  );
+});
+
+it("keeps the transcript when post-run status validation fails", async () => {
+  runEvalScenarioMock.mockResolvedValueOnce({
+    authorizationCompletions: [],
+    canvases: [],
+    channelPosts: [],
+    conversationIds: [],
+    logRecords: [],
+    modelIds: [],
+    posts: [],
+    reactions: [],
+    sessionMessages: [{ role: "assistant", content: "Finished" }],
+    slackAdapter: {
+      promptCalls: [],
+      titleCalls: [],
+      statusCalls: [{ channelId: "CEVAL", threadTs: "1", text: "Working" }],
+    },
+    toolInvocations: [],
+  } as never);
+  const error = await slackHarness
+    .run({ initialEvents: [] }, { artifacts: {}, setArtifact: vi.fn() })
+    .catch((error) => error);
+  expect(error.message).toContain("status pending");
+  expect(getHarnessRunFromError(error)?.session.events).toContainEqual(
+    expect.objectContaining({ content: "Finished" }),
   );
 });

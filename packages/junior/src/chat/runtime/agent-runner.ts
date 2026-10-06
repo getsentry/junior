@@ -58,6 +58,21 @@ export function createAgentRunner(
             }
           : undefined),
       };
+      if (run.instruction.storedAttachments?.length) {
+        // Image storage loads runtime config. Keep it behind execution so the
+        // local CLI can set its defaults before config is first read.
+        const { loadInputImages } = await import("@/chat/attachments/images");
+        const storage = nextRun.environment?.attachmentStorage;
+        if (!storage) throw new Error("Attachment storage is unavailable.");
+        nextRun.instruction = {
+          ...run.instruction,
+          attachments: await loadInputImages({
+            attachments: run.instruction.storedAttachments,
+            conversationId: run.conversationId,
+            storage,
+          }),
+        };
+      }
       return await execute(nextRun, streamFn);
     },
   };

@@ -37,7 +37,6 @@ import {
   type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
-import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -76,11 +75,9 @@ export class AgentHistoryBranchError extends Error {
   }
 }
 
-/** Match the exact JSONB shape used for prefix comparison and replay. */
+/** Snapshot Pi's JSON message without changing text or nested object order. */
 function normalizeDurableMessage(message: PiMessage): PiMessage {
-  return piMessageSchema.parse(
-    JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
-  );
+  return piMessageSchema.parse(JSON.parse(JSON.stringify(message)));
 }
 
 /**

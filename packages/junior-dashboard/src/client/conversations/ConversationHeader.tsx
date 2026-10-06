@@ -32,8 +32,12 @@ export function ConversationHeader(props: {
   archive: ConversationArchiveAction;
   brief?: ReactNode;
   conversationId: string;
+  /** Links to the fork source and to forks of this conversation. */
+  forks?: ReactNode;
   identity: ReactNode;
   linkedWork?: ReactNode;
+  lastActivityAt?: string;
+  sentryConversationUrl?: string;
   live: boolean;
   meta?: ReactNode;
   onSearchChange(value: string): void;
@@ -109,6 +113,7 @@ export function ConversationHeader(props: {
         <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-white/[0.08] bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={menuCopyAction}
             detailsOpen={detailsOpen}
             layout="menu"
@@ -146,7 +151,10 @@ export function ConversationHeader(props: {
   );
 
   const showMobileHeader =
-    searchOpenVisible || props.archive.error || Boolean(props.linkedWork);
+    searchOpenVisible ||
+    props.archive.error ||
+    Boolean(props.linkedWork) ||
+    Boolean(props.forks);
 
   const liveIndicator = props.live ? (
     <span
@@ -180,9 +188,13 @@ export function ConversationHeader(props: {
                 {props.meta}
               </div>
             ) : null}
+            {props.forks ? (
+              <div className="mt-1.5 min-w-0">{props.forks}</div>
+            ) : null}
           </div>
           <ConversationHeaderActions
             archive={props.archive}
+            conversationId={props.conversationId}
             copyAction={props.copyAction}
             detailsOpen={detailsOpen}
             onDetailsClick={() => setDetailsOpen(true)}
@@ -192,6 +204,9 @@ export function ConversationHeader(props: {
             view={props.view}
           />
         </div>
+        {props.forks ? (
+          <div className="px-4 py-2 md:hidden">{props.forks}</div>
+        ) : null}
         {props.linkedWork ? (
           <div
             aria-label="Linked work"
@@ -233,6 +248,8 @@ export function ConversationHeader(props: {
           brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
+          lastActivityAt={props.lastActivityAt}
+          sentryConversationUrl={props.sentryConversationUrl}
           onClose={() => setDetailsOpen(false)}
           privacy={props.privacy}
           stats={props.stats}

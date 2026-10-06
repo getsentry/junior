@@ -19,13 +19,27 @@ name, through dashboard settings.
   signed-in user menu. Core-rendered lists own metrics, search query state,
   cursor pagination, record inspection, destructive confirmation, and
   authenticated plugin REST actions.
-- Conversation detail is a bounded TanStack Query resource that polls while
-  active. Earlier event pages use a separate infinite query loaded on demand.
-  The client derives one ordered transcript from those immutable responses;
-  paginated reads never write into another resource's cache.
-- The server adapts canonical runtime events into normalized reporting events.
-  The dashboard reduces tool and subagent observations by stable identity into
-  one row without interpreting Pi messages or host-only lifecycle shapes.
+- Conversation detail and mailbox use one TanStack Query snapshot. Read the
+  mailbox first, then history: workers commit input before they acknowledge it.
+  Publish both in one render so input moves from queue to transcript without a
+  gap. Poll every 2 seconds while active or waiting for input, and every 10
+  seconds while idle so other Sources can wake the open Conversation.
+- Detail polls use an ETag (a hash of the response, except `generatedAt`).
+  After checking access, the server returns `304` for unchanged content. The
+  client reuses its parsed detail but always refreshes the mailbox. Local detail
+  edits clear the ETag. This saves transfer and parsing, not database reads.
+- Local sends stay visible until a server snapshot contains their Message id.
+  Web ingress and the browser share one Message id function. The browser derives
+  the id before the first local render and before POST starts. This also
+  removes duplicates when a poll arrives before the accept response. Only Turn
+  lifecycle events enable the thinking indicator; queued work is not thinking.
+- Earlier event pages use a separate infinite query loaded on demand. The client
+  derives one ordered transcript from those immutable responses; paginated reads
+  never write into another resource's cache.
+- The server adapts canonical runtime events into privacy-safe reporting events.
+  The transcript combines tool and subagent updates. The event log keeps each
+  event in sequence order, with readable details and optional raw JSON.
+  Search covers loaded pages; earlier events load on demand.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure
@@ -45,7 +59,8 @@ Assert the user-visible outcome or external contract named by the journey.
 
 Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
 `test` from `./test` so every page gets the fixed current time and common API
-stubs. Keep one Playwright spec per user-facing route. After the page has loaded,
+stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
+length limit requires it. After the page has loaded,
 call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
 desktop and mobile image. Page behavior does not belong in a cross-page aggregate
 spec. Tests under `tests/` cover modules and component integration without
@@ -62,6 +77,18 @@ Dashboard E2E writes screenshots to
 `.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
 on the default branch. On a pull request, it compares the new set with the
 saved set and links the report from the pull request.
+
+## Browser assets
+
+`client/code-languages.ts` lists languages and aliases with explicit imports.
+Load these grammars, the engine, and the `github-dark` theme on demand. Do not
+import Shiki's full bundle: it includes unused themes.
+
+The server embeds `client.js` and its chunks. Both dashboard and core routes
+must serve them. Cache content-hashed chunks privately; keep the entry uncached.
+If highlighting cannot load, show plain text without reloading the page.
+
+Mount and format tool payloads only when opened or searched.
 
 ## Type scale
 

@@ -16,18 +16,18 @@ description: Internal provider workflows
 
 ## Optional
 
-| Field                  | Purpose                     | Rules                                                                               |
-| ---------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
-| `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`                                         |
-| `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                                                       |
-| `domains`              | header injection domains    | required with `api-headers`                                                         |
-| `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                                                   |
-| `credentials`          | token delivery              | `oauth-bearer` in `plugin.yaml`; code plugins can own egress credentials with hooks |
-| `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer` in `plugin.yaml`                          |
-| `target`               | target/config metadata      | `config-key` must be in `config-keys`                                               |
-| `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                   |
-| `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                             |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools` and `auth`   |
+| Field                  | Purpose                     | Rules                                                                                             |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
+| `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`                                                       |
+| `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                                                                     |
+| `domains`              | header injection domains    | required with `api-headers`                                                                       |
+| `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                                                                 |
+| `credentials`          | token delivery              | `oauth-bearer` in `plugin.yaml`; code plugins can own egress credentials with hooks               |
+| `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer` in `plugin.yaml`                                        |
+| `target`               | target/config metadata      | `config-key` must be in `config-keys`                                                             |
+| `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                                 |
+| `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                                           |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools`, `auth`, or `oauth-client` |
 
 ## OAuth bearer
 
@@ -133,6 +133,34 @@ mcp:
   trust `issuer` and must get the public key for `key-id` from a JWKS URL that
   you publish.
 
+## MCP pre-registered OAuth client
+
+Use `mcp.oauth-client` when the MCP authorization server does not support
+dynamic client registration. Each user still authorizes with OAuth.
+
+```yaml
+env-vars:
+  EXAMPLE_MCP_CLIENT_ID:
+  EXAMPLE_MCP_CLIENT_SECRET:
+
+mcp:
+  url: https://mcp.example.com/mcp
+  oauth-client:
+    client-id-env: EXAMPLE_MCP_CLIENT_ID
+    client-secret-env: EXAMPLE_MCP_CLIENT_SECRET
+    scope: example.readonly
+    authorize-params:
+      access_type: offline
+```
+
+- Register the client with the redirect URI
+  `<JUNIOR_BASE_URL>/api/oauth/callback/mcp/<plugin-name>`.
+- `scope` replaces the scopes that the MCP server advertises. Use it to keep a
+  plugin read-only.
+- `authorize-params` adds provider-specific parameters to the authorization
+  URL. `client_id`, `scope`, `state`, `redirect_uri`, and `response_type` are
+  reserved.
+
 ## Parser traps
 
 - `api-headers` requires `domains`.
@@ -144,7 +172,10 @@ mcp:
   the placeholder.
 - API-header env refs must not declare defaults.
 - `command-env` env refs must not reuse API-header, MCP header, credential,
-  OAuth, or `mcp.auth.private-key-env` env vars.
+  OAuth, `mcp.auth.private-key-env`, or `mcp.oauth-client` env vars.
+- `mcp.oauth-client` env vars must be declared in `env-vars` and must not
+  declare defaults.
+- `mcp` must not declare both `auth` and `oauth-client`.
 - `Authorization` is reserved inside `oauth-bearer` `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

@@ -1,0 +1,883 @@
+import {
+  claimDueScheduledRun,
+  advanceScheduledAutomationAfterRun,
+  markScheduledRunFailed,
+} from "@/chat/scheduled-automations/runs";
+import { createSlackSource } from "@sentry/junior-plugin-api";
+import { githubPlugin } from "@sentry/junior-github";
+import { Hono } from "hono";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { createJuniorApi } from "@/api";
+import type { JuniorApiEnv } from "@/api/route";
+import {
+  automationEditSchema,
+  automationVersionListSchema,
+} from "@/api/schema/automation";
+import { getDb, getConversationStore } from "@/chat/db";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  createEventAutomation,
+  getEventAutomation,
+} from "@/chat/event-automations/store";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import {
+  readScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
+import { createSlackScheduleUpdateAutomationTool } from "@/chat/scheduled-automations/tools/update";
+import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+import {
+  execute,
+  context as eventContext,
+} from "../../fixtures/event-automations";
+import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+
+const destination = {
+  platform: "slack" as const,
+  channelId: "C123",
+  teamId: "T123",
+};
+const originalInstruction = "Post the weekly issue digest.";
+
+async function setup(kind: "scheduled" | "event") {
+  const fixture = createConfiguredJuniorSqlFixture();
+  await migrateSchema(fixture.sql);
+  for (const [slackUserId, email, teamId] of [
+    ["U123", "creator@example.com", "T123"],
+    ["U456", "reader@example.com", "T123"],
+    ["U123", "foreign@example.com", "TFOREIGN"],
+  ]) {
+    await getConversationStore().recordActivity({
+      conversationId: `slack:${teamId}:${slackUserId}:edit`,
+      actor: { platform: "slack", slackUserId, email, teamId },
+      destination: { ...destination, teamId },
+      channelName: "automations",
+      visibility: "public",
+    });
+  }
+  const user = await resolveViewerUser("creator@example.com");
+  if (!user) throw new Error("Missing creator");
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    const viewer = await resolveViewerUser(
+      context.req.header("test-viewer") ?? user.email,
+    );
+    if (!viewer) throw new Error("Missing viewer");
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  const id = `${kind}_edit_api`;
+  const common = {
+    id,
+    createdAtMs: Date.now(),
+    createdBy: { slackUserId: "U123" },
+    credentialMode: "creator" as const,
+    destination,
+    task: { text: originalInstruction },
+    title: "My custom title",
+    // Keep an existing Destination that the new editor cannot create.
+    outcomes: [
+      {
+        action: "send_message" as const,
+        destination: { ...destination, channelId: "DRETAINED" },
+      },
+    ],
+  };
+  if (kind === "scheduled") {
+    await saveScheduledAutomation(getDb(), {
+      ...common,
+      creatorIdentityId: user.identities.find(
+        (identity) => identity.provider === "slack",
+      )!.id,
+      conversationAccess: { audience: "channel", visibility: "public" },
+      updatedAtMs: Date.now(),
+      status: "blocked",
+      statusReason: "Missing credentials",
+      nextRunAtMs: Date.now() + 86400000,
+      schedule: {
+        kind: "recurring",
+        timezone: "UTC",
+        description: "Every day",
+        recurrence: {
+          frequency: "daily",
+          interval: 1,
+          time: { hour: 9, minute: 0 },
+          startDate: "2026-01-01",
+        },
+      },
+    });
+  } else {
+    await createEventAutomation(getDb(), {
+      ...common,
+      destinationVisibility: "public",
+      trigger: {
+        namespace: "unavailable",
+        resourceType: "issue",
+        identifier: "issue-42",
+        label: "Old issue",
+        events: ["issue.closed"],
+        match: { retainedCondition: ["one", "two"] },
+      },
+    });
+  }
+  const url = `/api/automations/${kind}/${id}`;
+  const read = async () => {
+    const response = await app.request(`${url}/edit`);
+    expect(response.status).toBe(200);
+    return automationEditSchema.parse(await response.json());
+  };
+  const patch = (body: unknown, viewer = user.email) =>
+    app.request(url, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "test-viewer": viewer },
+      body: JSON.stringify(body),
+    });
+  const lifecycle = async (
+    action: "pause" | "resume",
+    revision?: string,
+    viewer = user.email,
+  ) =>
+    app.request(`${url}/lifecycle`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "test-viewer": viewer },
+      body: JSON.stringify({
+        action,
+        revision: revision ?? (await read()).revision,
+      }),
+    });
+  return { app, fixture, id, url, read, patch, lifecycle, user };
+}
+
+describe("Automation edit API", () => {
+  afterEach(() => {
+    setPlugins([]);
+    vi.unstubAllEnvs();
+  });
+
+  test.each(["scheduled", "event"] as const)(
+    "pauses and resumes %s work without changing authority or history",
+    async (kind) => {
+      const { app, fixture, id, url, read, patch, lifecycle } =
+        await setup(kind);
+      try {
+        if (kind === "scheduled") {
+          const task = (await readScheduledAutomation(getDb(), id))!;
+          await saveScheduledAutomation(getDb(), {
+            ...task,
+            status: "active",
+            statusReason: undefined,
+            nextRunAtMs: Date.now() - 1000,
+          });
+        }
+        await recordAutomationExecution(kind, id, {
+          executionId: "past-failure",
+          status: "failed",
+          nowMs: Date.now() - 5000,
+        });
+        const initial = await read();
+        expect(
+          (await lifecycle("pause", initial.revision, "reader@example.com"))
+            .status,
+        ).toBe(404);
+        expect(
+          (await lifecycle("pause", initial.revision, "foreign@example.com"))
+            .status,
+        ).toBe(404);
+        expect((await lifecycle("pause", initial.revision)).status).toBe(200);
+        const paused = await read();
+        expect(paused).toMatchObject({
+          status: "paused",
+          credentialMode: "creator",
+          outcomes: initial.outcomes,
+        });
+        expect(
+          (
+            await patch({
+              kind,
+              revision: initial.revision,
+              instruction: "Stale edit",
+            })
+          ).status,
+        ).toBe(409);
+        const listed = await app.request("/api/automations?state=paused");
+        expect(await listed.json()).toMatchObject({
+          total: 1,
+          automations: [{ id, status: "paused" }],
+        });
+        expect(
+          await (await app.request("/api/automations?scope=attention")).json(),
+        ).toMatchObject({ total: 0 });
+        expect(
+          await (await app.request(`${url}/executions`)).json(),
+        ).toMatchObject({
+          executions: [{ executionId: "past-failure", status: "failed" }],
+        });
+        expect(
+          (await lifecycle("resume", (await read()).revision)).status,
+        ).toBe(200);
+        const resumed = await read();
+        expect(resumed).toMatchObject({
+          status: "active",
+          credentialMode: initial.credentialMode,
+          outcomes: initial.outcomes,
+          id,
+        });
+        // Lifecycle changes are not definition changes.
+        expect(
+          await (await app.request(`${url}/versions`)).json(),
+        ).toMatchObject({ versions: [{ version: 1 }] });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test("resumes future schedule times without restarting completed work", async () => {
+    const { fixture, id, read, lifecycle } = await setup("scheduled");
+    try {
+      const task = (await readScheduledAutomation(getDb(), id))!;
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "active",
+        statusReason: undefined,
+        nextRunAtMs: Date.now() - 1000,
+      });
+      // Use a real claim to cover work that started before pause.
+      const run = (await claimDueScheduledRun(getDb(), { nowMs: Date.now() }))!;
+      expect(run).toMatchObject({ taskId: id });
+      expect((await lifecycle("pause")).status).toBe(200);
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+      ).toBeUndefined();
+      await markScheduledRunFailed(getDb(), {
+        runId: run.id,
+        completedAtMs: Date.now(),
+        errorMessage: "Run failed after pause",
+      });
+      await advanceScheduledAutomationAfterRun(getDb(), {
+        nowMs: Date.now(),
+        status: "failed",
+        run,
+      });
+      expect((await read()).status).toBe("paused");
+      expect((await lifecycle("resume")).status).toBe(200);
+      const resumed = (await readScheduledAutomation(getDb(), id))!;
+      expect(resumed.nextRunAtMs).toBeGreaterThan(Date.now());
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: Date.now() }),
+      ).toBeUndefined();
+      expect(
+        await claimDueScheduledRun(getDb(), { nowMs: resumed.nextRunAtMs! }),
+      ).toMatchObject({ taskId: id });
+      await saveScheduledAutomation(getDb(), {
+        ...resumed,
+        status: "completed",
+        nextRunAtMs: undefined,
+      });
+      expect((await lifecycle("resume")).status).toBe(400);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("keeps blocked requirements through pause and refuses to replay a missed one-off", async () => {
+    const { fixture, id, read, lifecycle } = await setup("scheduled");
+    try {
+      expect((await lifecycle("pause")).status).toBe(200);
+      expect((await lifecycle("resume")).status).toBe(200);
+      expect(await readScheduledAutomation(getDb(), id)).toMatchObject({
+        status: "blocked",
+        statusReason: "Missing credentials",
+      });
+      expect((await lifecycle("resume")).status).toBe(200);
+      const task = (await readScheduledAutomation(getDb(), id))!;
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "paused",
+        nextRunAtMs: Date.now() - 1000,
+        schedule: {
+          kind: "one_off",
+          description: "Yesterday",
+          timezone: "UTC",
+        },
+      });
+      const result = await lifecycle("resume");
+      expect(result.status).toBe(400);
+      expect(await result.json()).toMatchObject({
+        fields: { schedule: expect.any(Array) },
+      });
+      expect((await read()).status).toBe("paused");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("previews schedules without saving and exposes only durable Event choices", async () => {
+    const { app, fixture, url, read } = await setup("scheduled");
+    try {
+      const initial = await read();
+      const preview = (timezone: string, viewer = "creator@example.com") =>
+        app.request(`${url}/preview`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "test-viewer": viewer,
+          },
+          body: JSON.stringify({
+            kind: "recurring",
+            frequency: "weekly",
+            weekdays: ["monday"],
+            time: "09:00",
+            timezone,
+          }),
+        });
+      const result = await preview("Europe/Vienna");
+      expect(result.status).toBe(200);
+      expect(await result.json()).toMatchObject({
+        nextRunAtMs: expect.any(Number),
+        schedule: {
+          timezone: "Europe/Vienna",
+          recurrence: { weekdays: [1], time: { hour: 9, minute: 0 } },
+        },
+      });
+      expect(
+        (await preview("Europe/Vienna", "reader@example.com")).status,
+      ).toBe(200);
+      expect(
+        (await preview("Europe/Vienna", "foreign@example.com")).status,
+      ).toBe(404);
+      expect((await preview("Not/AZone")).status).toBe(400);
+      expect(await read()).toEqual(initial);
+      vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+      setPlugins([githubPlugin()]);
+      const catalog = await app.request("/api/automations/event-catalog");
+      expect(catalog.status).toBe(200);
+      const choices = await catalog.json();
+      expect(choices).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            namespace: "github",
+            type: "issue",
+            supportedEvents: expect.arrayContaining(["issue.closed"]),
+          }),
+        ]),
+      );
+      expect(
+        choices.some(
+          (choice: { namespace: string }) => choice.namespace === "junior",
+        ),
+      ).toBe(false);
+      const summary = await app.request(`/api/automations/${initial.id}`, {
+        headers: { "test-viewer": "reader@example.com" },
+      });
+      expect(await summary.json()).toMatchObject({
+        credentialMode: "creator",
+        ownedByViewer: false,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test.each(["scheduled", "event"] as const)(
+    "edits %s Automations without losing fields, titles, authority, or history",
+    async (kind) => {
+      const { app, fixture, id, url, read, patch, user } = await setup(kind);
+      try {
+        const initial = await read();
+        await recordAutomationExecution(kind, id, {
+          executionId: "retained-run",
+          nowMs: Date.now(),
+          status: "completed",
+        });
+        const edited = await patch({
+          kind,
+          revision: initial.revision,
+          instruction: "Post the revised digest.",
+        });
+        expect(edited.status).toBe(200);
+        const saved = automationEditSchema.parse(await edited.json());
+        expect(saved).toMatchObject({
+          ...initial,
+          revision: expect.any(String),
+          instruction: "Post the revised digest.",
+        });
+        expect(saved.revision).not.toBe(initial.revision);
+
+        // Slack and web use the same edit rules; neither regenerates a saved title.
+        if (kind === "scheduled") {
+          await execute(
+            createSlackScheduleUpdateAutomationTool({
+              actor: { platform: "slack", teamId: "T123", userId: "U123" },
+              source: createSlackSource({
+                ...destination,
+                visibility: "public",
+              }),
+              conversationId: "slack:T123:U123:edit",
+              users: {
+                resolveActor: async () => ({
+                  user,
+                  identity: user.identities[0]!,
+                }),
+              },
+            }),
+            {
+              automationId: id,
+              instruction: "Edited from Slack.",
+              title: "Title from Slack",
+            },
+          );
+          await execute(
+            createSlackScheduleUpdateAutomationTool({
+              actor: { platform: "slack", teamId: "T123", userId: "U123" },
+              source: createSlackSource({
+                ...destination,
+                visibility: "public",
+              }),
+              conversationId: "slack:T123:U123:edit",
+              users: {
+                resolveActor: async () => ({
+                  user,
+                  identity: user.identities[0]!,
+                }),
+              },
+            }),
+            { automationId: id, instruction: "Edited again from Slack." },
+          );
+        } else {
+          await execute(
+            createUpdateEventAutomationTool(
+              {
+                ...eventContext("U123", "C123", "public", undefined, "T123"),
+                conversationId: "slack:T123:U123:edit",
+              },
+              getEventCatalog(),
+            ),
+            {
+              automationId: id,
+              instruction: "Edited from Slack.",
+              title: "Title from Slack",
+            },
+          );
+          await execute(
+            createUpdateEventAutomationTool(
+              {
+                ...eventContext("U123", "C123", "public", undefined, "T123"),
+                conversationId: "slack:T123:U123:edit",
+              },
+              getEventCatalog(),
+            ),
+            { automationId: id, instruction: "Edited again from Slack." },
+          );
+        }
+        const stale = await patch({
+          kind,
+          revision: saved.revision,
+          title: "Stale save",
+          credentialMode: "system",
+          outcomes: [],
+        });
+        expect(stale.status).toBe(409);
+        expect(await stale.json()).toMatchObject({ code: "conflict" });
+        const fromSlack = await read();
+        expect(fromSlack).toMatchObject({
+          title: "Title from Slack",
+          instruction: "Edited again from Slack.",
+          credentialMode: "creator",
+          outcomes: initial.outcomes,
+        });
+
+        // One save wins; the other must fail even when both read the same revision.
+        const responses = await Promise.all(
+          ["First", "Second"].map((title) =>
+            patch({ kind, revision: fromSlack.revision, title }),
+          ),
+        );
+        expect(responses.map((response) => response.status).sort()).toEqual([
+          200, 409,
+        ]);
+        const current = await read();
+        const retainedOutcomes = await patch({
+          kind,
+          revision: current.revision,
+          outcomes: [
+            ...current.outcomes,
+            { action: "send_message", destination: "current_conversation" },
+            { action: "send_message", destination: "task_creator" },
+          ],
+          credentialMode: "system",
+        });
+        expect(retainedOutcomes.status).toBe(200);
+        const outcomes = automationEditSchema.parse(
+          await retainedOutcomes.json(),
+        );
+        expect(outcomes.outcomes).toEqual([
+          initial.outcomes[0],
+          { action: "send_message", destination },
+          {
+            action: "send_message",
+            destination: { ...destination, channelId: expect.any(String) },
+          },
+        ]);
+        expect(
+          getCapturedSlackApiCalls("conversations.open").at(-1)?.params,
+        ).toMatchObject({ users: "U123" });
+        expect(outcomes.credentialMode).toBe("system");
+        const executions = await app.request(`${url}/executions`);
+        expect(await executions.json()).toMatchObject({
+          executions: [{ executionId: "retained-run", status: "completed" }],
+        });
+        // Each saved definition change is a version. Rejected saves add none.
+        const versionsResponse = await app.request(`${url}/versions`, {
+          headers: { "test-viewer": "reader@example.com" },
+        });
+        expect(versionsResponse.status).toBe(200);
+        const { versions } = automationVersionListSchema.parse(
+          await versionsResponse.json(),
+        );
+        expect(
+          versions.map(({ version, editedBy, definition }) => [
+            version,
+            editedBy?.slackUserId,
+            definition.instruction,
+            definition.title,
+            definition.credentialMode,
+          ]),
+        ).toEqual([
+          [6, "U123", "Edited again from Slack.", current.title, "system"],
+          [5, "U123", "Edited again from Slack.", current.title, "creator"],
+          [
+            4,
+            "U123",
+            "Edited again from Slack.",
+            "Title from Slack",
+            "creator",
+          ],
+          [3, "U123", "Edited from Slack.", "Title from Slack", "creator"],
+          [2, "U123", "Post the revised digest.", "My custom title", "creator"],
+          [1, "U123", originalInstruction, "My custom title", "creator"],
+        ]);
+        expect(versions[0]!.definition.outcomes).toEqual(outcomes.outcomes);
+
+        // Making an old version active saves it again as the newest version.
+        const activate = (version: number, revision: string, viewer?: string) =>
+          app.request(`${url}/versions/${version}/activate`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "test-viewer": viewer ?? user.email,
+            },
+            body: JSON.stringify({ revision }),
+          });
+        expect((await activate(1, current.revision)).status).toBe(409);
+        const restored = await activate(1, outcomes.revision);
+        expect(restored.status).toBe(200);
+        expect(automationEditSchema.parse(await restored.json())).toMatchObject(
+          {
+            title: "My custom title",
+            instruction: originalInstruction,
+            credentialMode: "creator",
+            outcomes: initial.outcomes,
+          },
+        );
+        const afterRestore = automationVersionListSchema.parse(
+          await (await app.request(`${url}/versions`)).json(),
+        );
+        expect(afterRestore.activeVersion).toBe(7);
+        expect(afterRestore.versions[0]!.definition).toEqual(
+          versions.at(-1)!.definition,
+        );
+        // The creator DM removed by that restore can come back.
+        const dmRestore = await activate(6, (await read()).revision);
+        expect(dmRestore.status).toBe(200);
+        expect(
+          automationEditSchema.parse(await dmRestore.json()).outcomes,
+        ).toEqual(outcomes.outcomes);
+
+        // A public reader can edit, but cannot use the creator's accounts.
+        const readerView = automationEditSchema.parse(
+          await (
+            await app.request(`${url}/edit`, {
+              headers: { "test-viewer": "reader@example.com" },
+            })
+          ).json(),
+        );
+        expect(readerView.ownedByViewer).toBe(false);
+        const readerEdit = await patch(
+          { kind, revision: readerView.revision, instruction: "Reader edit." },
+          "reader@example.com",
+        );
+        expect(readerEdit.status).toBe(200);
+        const readerSaved = automationEditSchema.parse(await readerEdit.json());
+        expect(readerSaved).toMatchObject({
+          instruction: "Reader edit.",
+          credentialMode: "system",
+          ownedByViewer: false,
+        });
+        const readerRestore = await activate(
+          7,
+          readerSaved.revision,
+          "reader@example.com",
+        );
+        expect(readerRestore.status).toBe(400);
+        expect(await readerRestore.json()).toMatchObject({
+          fields: { credentialMode: expect.any(Array) },
+        });
+        const afterReader = automationVersionListSchema.parse(
+          await (await app.request(`${url}/versions`)).json(),
+        );
+        expect(
+          afterReader.versions
+            .slice(0, 2)
+            .map(({ version, editedBy }) => [version, editedBy?.slackUserId]),
+        ).toEqual([
+          [9, "U456"],
+          [8, "U123"],
+        ]);
+        expect(afterReader.activeVersion).toBe(9);
+        expect(
+          (
+            await app.request(`${url}/versions`, {
+              headers: { "test-viewer": "foreign@example.com" },
+            })
+          ).status,
+        ).toBe(404);
+        const stored =
+          kind === "scheduled"
+            ? await readScheduledAutomation(getDb(), id)
+            : await getEventAutomation(getDb(), id);
+        expect(stored).toMatchObject(
+          initial.kind === "scheduled"
+            ? {
+                status: "blocked",
+                statusReason: "Missing credentials",
+                nextRunAtMs: initial.nextRunAtMs,
+              }
+            : { trigger: initial.trigger },
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test.each(["scheduled", "event"] as const)(
+    "rejects unauthorized and invalid %s edits without partial changes",
+    async (kind) => {
+      const { app, fixture, url, read, patch } = await setup(kind);
+      try {
+        const initial = await read();
+        const input = {
+          kind,
+          revision: initial.revision,
+          title: "Must not save",
+          credentialMode: "system",
+        };
+        expect(
+          (
+            await app.request(`${url}/edit`, {
+              headers: { "test-viewer": "foreign@example.com" },
+            })
+          ).status,
+        ).toBe(404);
+        expect((await patch(input, "foreign@example.com")).status).toBe(404);
+        // Public readers can edit, but creator-only fields stay creator-only.
+        for (const [field, value] of [
+          ["credentialMode", "creator"],
+          ["outcomes", []],
+        ] as const) {
+          const response = await patch(
+            { kind, revision: initial.revision, [field]: value },
+            "reader@example.com",
+          );
+          expect(response.status).toBe(400);
+          expect(await response.json()).toMatchObject({
+            fields: { [field]: expect.any(Array) },
+          });
+        }
+        expect(
+          (
+            await createJuniorApi().request(url, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(input),
+            })
+          ).status,
+        ).toBe(401);
+        const invalid = await patch({ ...input, instruction: " " });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toMatchObject({
+          code: "invalid_edit",
+          fields: { instruction: expect.any(Array) },
+        });
+        const newDestination = await patch({
+          ...input,
+          outcomes: [
+            {
+              action: "send_message",
+              destination: { ...destination, channelId: "CPRIVATE" },
+            },
+          ],
+        });
+        expect(newDestination.status).toBe(400);
+        expect(await newDestination.json()).toMatchObject({
+          fields: { outcomes: expect.any(Array) },
+        });
+        const badTrigger = await patch({
+          ...input,
+          ...(kind === "scheduled"
+            ? {
+                schedule: {
+                  kind: "recurring",
+                  frequency: "daily",
+                  time: "09:00",
+                  timezone: "Not/AZone",
+                },
+              }
+            : {
+                trigger: {
+                  namespace: "junior",
+                  resourceType: "timer",
+                  identifier: "test",
+                  label: "Invalid",
+                  events: ["timer.fired"],
+                },
+              }),
+        });
+        expect(badTrigger.status).toBe(400);
+        expect(await badTrigger.json()).toMatchObject({
+          fields: {
+            [kind === "scheduled" ? "schedule" : "trigger"]: expect.any(Array),
+          },
+        });
+        expect(await read()).toEqual(initial);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test("compiles schedules without resuming blocked or completed work", async () => {
+    const { app, fixture, id, url, read, patch } = await setup("scheduled");
+    try {
+      const initial = await read();
+      const response = await patch({
+        kind: "scheduled",
+        revision: initial.revision,
+        schedule: {
+          kind: "recurring",
+          frequency: "weekly",
+          weekdays: ["monday"],
+          time: "10:30",
+          timezone: "America/Los_Angeles",
+        },
+      });
+      expect(response.status).toBe(200);
+      const saved = automationEditSchema.parse(await response.json());
+      expect(saved).toMatchObject({
+        status: "blocked",
+        schedule: {
+          timezone: "America/Los_Angeles",
+          recurrence: {
+            frequency: "weekly",
+            weekdays: [1],
+            time: { hour: 10, minute: 30 },
+          },
+        },
+      });
+      // A restored Schedule compiles again and keeps the block.
+      const restored = await app.request(`${url}/versions/1/activate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ revision: saved.revision }),
+      });
+      expect(restored.status).toBe(200);
+      expect(automationEditSchema.parse(await restored.json())).toMatchObject({
+        status: "blocked",
+        schedule: initial.kind === "scheduled" ? initial.schedule : {},
+        nextRunAtMs: expect.any(Number),
+      });
+      const task = await readScheduledAutomation(getDb(), id);
+      if (!task) throw new Error("Missing scheduled Automation");
+      await saveScheduledAutomation(getDb(), {
+        ...task,
+        status: "completed",
+        nextRunAtMs: undefined,
+        schedule: {
+          kind: "one_off",
+          timezone: "UTC",
+          description: "Completed reminder",
+        },
+      });
+      const completed = await read();
+      expect(
+        (
+          await patch({
+            kind: "scheduled",
+            revision: completed.revision,
+            schedule: {
+              kind: "one_off",
+              timing: { type: "after", value: 1, unit: "hour" },
+            },
+          })
+        ).status,
+      ).toBe(400);
+      expect(await read()).toEqual(completed);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("validates replacement event selectors through the registered plugin", async () => {
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
+    setPlugins([githubPlugin()]);
+    const { fixture, read, patch } = await setup("event");
+    try {
+      const initial = await read();
+      if (initial.kind !== "event")
+        throw new Error("Expected event Automation");
+      const retained = await patch({
+        kind: "event",
+        revision: initial.revision,
+        trigger: initial.trigger,
+        title: "Retained selector",
+      });
+      expect(retained.status).toBe(200);
+      const current = await read();
+      const trigger = {
+        namespace: "github",
+        resourceType: "pull_request",
+        identifier: "GETSENTRY/JUNIOR#42",
+        label: "PR 42",
+        events: ["pull_request.merged"],
+        match: { headBranch: "main" },
+      };
+      const invalid = await patch({
+        kind: "event",
+        revision: current.revision,
+        trigger: { ...trigger, match: { unknownField: "not allowed" } },
+      });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({
+        fields: { trigger: expect.any(Array) },
+      });
+      const response = await patch({
+        kind: "event",
+        revision: current.revision,
+        trigger,
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        trigger: { ...trigger, identifier: "getsentry/junior#42" },
+        triggerAvailable: true,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+});

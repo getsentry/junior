@@ -80,6 +80,7 @@ describe("event wake delay", () => {
         event: {
           eventKey: `check-${sequence}`,
           eventType: "check_suite.completed",
+          objectType: "code_change",
           identifier: "getsentry/junior#1563",
           namespace: "github",
           occurredAtMs: receivedAtMs,
@@ -166,6 +167,15 @@ describe("event wake delay", () => {
     ).resolves.toEqual({ status: "completed" });
     expect(agentRuns).toHaveLength(2);
 
+    const savedEvents =
+      await getConversationEventStore().loadHistory(conversationId);
+    expect(
+      savedEvents.find(
+        (event) =>
+          event.data.type === "message" &&
+          event.data.meta?.eventType === "check_suite.completed",
+      )?.data,
+    ).toMatchObject({ meta: { eventObjectType: "code_change" } });
     const userMessages = (
       await getConversationEventStore().loadHistory(conversationId)
     ).flatMap((event) =>

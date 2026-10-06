@@ -19,6 +19,7 @@ import { juniorEventAutomations } from "./schema/event-automations";
 import { juniorIdentities } from "./schema/identities";
 import { juniorStats } from "./schema/stats";
 import { juniorAutomationExecutions } from "./schema/automation-executions";
+import { juniorAutomationVersions } from "./schema/automation-versions";
 import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
@@ -49,6 +50,7 @@ export {
   juniorSnapshots,
   juniorStats,
   juniorAutomationExecutions,
+  juniorAutomationVersions,
   juniorSchedulerRuns,
   juniorSchedulerTasks,
   juniorUsers,
@@ -78,6 +80,7 @@ export const juniorSqlSchema = {
   juniorSnapshots,
   juniorStats,
   juniorAutomationExecutions,
+  juniorAutomationVersions,
   juniorSchedulerRuns,
   juniorSchedulerTasks,
   juniorUsers,

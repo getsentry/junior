@@ -176,11 +176,13 @@ describe("sendSlackReply", () => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "Reminder &lt;@U123&gt;\nEvery Monday",
+        text: "Automation\nReminder &lt;@U123&gt;\nEvery Monday",
       },
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
-    expect(posts[1]?.params.text).toBe("Reminder &lt;@U123&gt;\nEvery Monday");
+    expect(posts[1]?.params.text).toBe(
+      "Automation\nReminder &lt;@U123&gt;\nEvery Monday",
+    );
     for (const post of posts) {
       expect(JSON.stringify(post.params)).not.toContain(card.instruction);
     }

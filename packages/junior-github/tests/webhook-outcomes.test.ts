@@ -1672,6 +1672,7 @@ describe("GitHub-owned issue outcomes", () => {
         {
           annotation: {
             kind: "resource_link",
+            objectType: "task",
             key: "getsentry/junior#990",
             label: "getsentry/junior#990",
             status: "closed",
@@ -1813,6 +1814,66 @@ describe("GitHub-owned pull request outcomes", () => {
         repo: "getsentry/junior",
       });
       expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("ignores comments and reviews written by the Junior bot", async () => {
+    const fixture = await createGitHubFixture();
+    const published: EventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {});
+    const bot = { login: "Sentry-Junior[bot]" };
+    const deliveries = [
+      {
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 946,
+            pull_request: { url: "https://api.github.com/pulls/946" },
+          },
+          comment: { body: "fixed", id: 101, user: bot },
+        },
+      },
+      {
+        eventName: "pull_request_review_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          comment: { body: "nit", id: 202, user: bot },
+        },
+      },
+      {
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          review: { body: "looks good", state: "COMMENTED", user: bot },
+        },
+      },
+    ];
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+      );
+      for (const delivery of deliveries) {
+        const response = await route.handler(
+          signedRequest(delivery.body, delivery.eventName),
+        );
+        expect(await response.text()).toBe("Ignored");
+      }
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
+      expect(published).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -2192,6 +2253,7 @@ describe("GitHub-owned pull request outcomes", () => {
           {
             annotation: {
               kind: "resource_link",
+              objectType: "code_change",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
               status: "merged",
@@ -2202,6 +2264,7 @@ describe("GitHub-owned pull request outcomes", () => {
           {
             annotation: {
               kind: "resource_link",
+              objectType: "code_change",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
               status: "merged",
@@ -2214,10 +2277,12 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(published).toEqual([
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior#946",
         }),
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior",
         }),
         expect.objectContaining({
@@ -2232,10 +2297,12 @@ describe("GitHub-owned pull request outcomes", () => {
         // storage remains idempotent.
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior#946",
         }),
         expect.objectContaining({
           eventType: "pull_request.opened",
+          objectType: "code_change",
           identifier: "getsentry/junior",
         }),
         expect.objectContaining({

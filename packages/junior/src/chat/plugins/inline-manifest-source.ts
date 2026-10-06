@@ -65,6 +65,19 @@ export function mcpAuthSource(
   };
 }
 
+/** Convert a camelCase `mcp.oauthClient` block to its plugin.yaml source keys. */
+export function mcpOauthClientSource(
+  oauthClient: NonNullable<PluginMcpConfig["oauthClient"]>,
+): ManifestSource {
+  const result: ManifestSource = {
+    "client-id-env": oauthClient.clientIdEnv,
+    "client-secret-env": oauthClient.clientSecretEnv,
+  };
+  setDefined(result, "scope", oauthClient.scope);
+  setDefined(result, "authorize-params", oauthClient.authorizeParams);
+  return result;
+}
+
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   if (mcp === undefined || !isRecord(mcp)) {
     return mcp;
@@ -75,6 +88,11 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   setDefined(result, "url", mcp.url);
   setDefined(result, "headers", mcp.headers);
   setDefined(result, "auth", mcp.auth && mcpAuthSource(mcp.auth));
+  setDefined(
+    result,
+    "oauth-client",
+    mcp.oauthClient && mcpOauthClientSource(mcp.oauthClient),
+  );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
   return result;

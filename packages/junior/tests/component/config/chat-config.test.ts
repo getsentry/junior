@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_MODEL_PROFILES } from "@/chat/model-profile";
 
 const mocks = vi.hoisted(() => ({ logWarn: vi.fn() }));
 
@@ -55,7 +56,8 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
-      description: expect.stringContaining("Use for default assistant work"),
+      description: DEFAULT_MODEL_PROFILES.standard.description,
+      reasoningLevel: "high",
     });
     expect(botConfig.fastModelId).toBe("anthropic/claude-opus-4.6");
   });
@@ -98,8 +100,9 @@ describe("chat config", () => {
 
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
-      modelId: "xai/grok-4.5",
-      description: expect.stringContaining("Use for default assistant work"),
+      modelId: "openai/gpt-6-luna",
+      description: DEFAULT_MODEL_PROFILES.standard.description,
+      reasoningLevel: "high",
     });
   });
 
@@ -137,14 +140,13 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles).toEqual({
       standard: {
-        modelId: "xai/grok-4.5",
-        description: expect.stringContaining("Use for default assistant work"),
+        modelId: "openai/gpt-6-luna",
+        description: DEFAULT_MODEL_PROFILES.standard.description,
+        reasoningLevel: "high",
       },
       handoff: {
         modelId: "anthropic/claude-opus-5.5",
-        description: expect.stringContaining(
-          "Use for coding and difficult multi-step work",
-        ),
+        description: DEFAULT_MODEL_PROFILES.handoff.description,
         reasoningLevel: "high",
       },
     });
@@ -156,9 +158,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.handoff).toEqual({
       modelId: "openai/gpt-5.4",
-      description: expect.stringContaining(
-        "Use for coding and difficult multi-step work",
-      ),
+      description: DEFAULT_MODEL_PROFILES.handoff.description,
       reasoningLevel: "high",
     });
   });
@@ -172,14 +172,13 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles).toEqual({
       standard: {
-        modelId: "xai/grok-4.5",
-        description: expect.stringContaining("Use for default assistant work"),
+        modelId: "openai/gpt-6-luna",
+        description: DEFAULT_MODEL_PROFILES.standard.description,
+        reasoningLevel: "high",
       },
       handoff: {
         modelId: "anthropic/claude-opus-5.5",
-        description: expect.stringContaining(
-          "Use for coding and difficult multi-step work",
-        ),
+        description: DEFAULT_MODEL_PROFILES.handoff.description,
         reasoningLevel: "high",
       },
       coding: { modelId: "openai/gpt-5.4" },
@@ -407,9 +406,16 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("leaves visionModelId unset when AI_VISION_MODEL is absent", async () => {
+  it("uses the shared vision default when AI_VISION_MODEL is absent", async () => {
     process.env.AI_MODEL = "anthropic/claude-opus-4.6";
     delete process.env.AI_VISION_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.visionModelId).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("disables vision when AI_VISION_MODEL is explicitly empty", async () => {
+    process.env.AI_VISION_MODEL = "";
 
     const { botConfig } = await loadConfig();
     expect(botConfig.visionModelId).toBeUndefined();
@@ -422,7 +428,8 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
-      description: expect.stringContaining("Use for default assistant work"),
+      description: DEFAULT_MODEL_PROFILES.standard.description,
+      reasoningLevel: "high",
     });
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });

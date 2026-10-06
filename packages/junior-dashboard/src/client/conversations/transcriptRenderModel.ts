@@ -234,7 +234,14 @@ export function messageRawText(message: TranscriptViewMessage): string {
     })
     .filter((part) => part.trim().length > 0)
     .join("\n\n");
-  return [body, ...(message.cards ?? []).map(messageCardText)]
+  return [
+    body,
+    ...(message.attachments ?? []).map(
+      (attachment) =>
+        `[attachment] ${attachment.filename} (${attachment.contentType}, ${attachment.bytes} bytes)`,
+    ),
+    ...(message.cards ?? []).map(messageCardText),
+  ]
     .filter(Boolean)
     .join("\n\n");
 }

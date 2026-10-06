@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.224.0",
+  "version": "0.236.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -84,6 +84,7 @@
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/node": "catalog:",
     "@sinclair/typebox": "^0.34.49",
+    "@slack/types": "^2.21.1",
     "@slack/web-api": "^7.16.0",
     "@vercel/blob": "^2.6.1",
     "@vercel/functions": "^3.6.0",
@@ -93,6 +94,7 @@
     "ai": "^6.0.190",
     "chat": "4.29.0",
     "commander": "^14.0.3",
+    "diff": "^8.0.4",
     "drizzle-orm": "catalog:",
     "hono": "^4.12.27",
     "jiti": "^2.7.0",

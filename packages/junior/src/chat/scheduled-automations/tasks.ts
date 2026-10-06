@@ -1,11 +1,12 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { requireAutomationRevision } from "@/chat/automations/revision";
+import { recordAutomationVersion } from "@/chat/automations/versions";
+import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import {
   slackDestinationSchema,
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorDestinations } from "@/db/schema/destinations";
 import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
@@ -24,9 +25,6 @@ const retainedScheduledAutomationSchema = scheduledAutomationSchema
     // Retained rows can predate the channel-only Destination invariant.
     destination: slackDestinationSchema,
     outcomes: z.array(taskOutcomeSchema).max(5),
-    // TODO(dcramer): Remove paused decoding and SQL list filtering after
-    // v0.129.x workers are unsupported and cannot overlap an upgrade.
-    status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
     version: z.number().optional(),
   })
   .strict();
@@ -97,19 +95,6 @@ export function parseScheduledAutomationRow(
         ? fallbackTitle.data
         : undefined;
   const title = titleSource?.trim() || undefined;
-  if (status === "paused") {
-    const {
-      nextRunAtMs: _nextRunAtMs,
-      runNowAtMs: _runNowAtMs,
-      ...retained
-    } = task;
-    return {
-      ...retained,
-      creatorIdentityId,
-      status: "deleted",
-      ...(title ? { title } : undefined),
-    } satisfies ScheduledAutomation;
-  }
   return {
     ...task,
     creatorIdentityId,
@@ -231,7 +216,7 @@ async function readListedScheduledAutomations(
     .from(juniorSchedulerTasks)
     .where(
       and(
-        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+        notInArray(juniorSchedulerTasks.status, ["deleted"]),
         teamId === undefined
           ? undefined
           : eq(juniorSchedulerTasks.teamId, teamId),
@@ -265,6 +250,7 @@ async function writeScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
   current: ScheduledAutomation | undefined,
+  editedBy?: ScheduledAutomation["createdBy"],
 ): Promise<void> {
   // Reactivation forgets the blocked slot so the same occurrence can dispatch.
   if (
@@ -288,6 +274,7 @@ async function writeScheduledAutomation(
     await skipPendingRunsForDeletedTask(db, task);
   }
   await upsertScheduledAutomation(db, task);
+  await recordAutomationVersion(db, "scheduled", task, current, editedBy);
 }
 
 async function skipPendingRunsForDeletedTask(
@@ -342,15 +329,22 @@ export async function createScheduledAutomation(
   });
 }
 
-/** Save a scheduled automation and clear its blocked occurrence on reactivation. */
+/**
+ * Save a scheduled automation and clear its blocked occurrence on reactivation.
+ * Pass `editedBy` when a person changes the definition so its version names them.
+ */
 export async function saveScheduledAutomation(
   db: JuniorDatabase,
   task: ScheduledAutomation,
+  expectedRevision?: string,
+  editedBy?: ScheduledAutomation["createdBy"],
 ): Promise<ScheduledAutomation> {
   const next = requireStoredTask(task);
   await withScheduledAutomationLock(db, task.id, async (tx) => {
     const current = await readScheduledAutomation(tx, task.id);
-    await writeScheduledAutomation(tx, next, current);
+    if (expectedRevision !== undefined)
+      requireAutomationRevision(current, expectedRevision);
+    await writeScheduledAutomation(tx, next, current, editedBy);
   });
   return next;
 }
@@ -362,50 +356,4 @@ export async function saveScheduledAutomationInLock(
   current: ScheduledAutomation | undefined,
 ): Promise<void> {
   await writeScheduledAutomation(db, requireStoredTask(task), current);
-}
-
-/** List scheduled automations whose current Slack destination is public. */
-export async function listPublicScheduledAutomationsForTeams(
-  db: JuniorDatabase,
-  teamIds: string[],
-  input: { limit: number; query?: string },
-): Promise<ScheduledAutomation[]> {
-  if (teamIds.length === 0) return [];
-  const rows = await db
-    .select({
-      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-      record: juniorSchedulerTasks.record,
-      title: juniorSchedulerTasks.title,
-    })
-    .from(juniorSchedulerTasks)
-    .innerJoin(
-      juniorDestinations,
-      and(
-        eq(juniorDestinations.provider, "slack"),
-        eq(juniorDestinations.providerTenantId, juniorSchedulerTasks.teamId),
-        sql`${juniorDestinations.providerDestinationId} = ${juniorSchedulerTasks.record}->'destination'->>'channelId'`,
-      ),
-    )
-    .where(
-      and(
-        inArray(juniorSchedulerTasks.teamId, teamIds),
-        notInArray(juniorSchedulerTasks.status, [
-          "completed",
-          "deleted",
-          "paused",
-        ]),
-        input.query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${input.query}) > 0`
-          : undefined,
-        eq(juniorDestinations.visibility, "public"),
-      ),
-    )
-    .orderBy(
-      desc(juniorSchedulerTasks.createdAtMs),
-      desc(juniorSchedulerTasks.id),
-    )
-    .limit(input.limit);
-  return rows
-    .map(parseScheduledAutomationRow)
-    .filter(isListedScheduledAutomation);
 }

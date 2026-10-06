@@ -1,0 +1,119 @@
+/** Automation versions keep each saved definition so people can see how it changed. */
+import { and, desc, eq, sql } from "drizzle-orm";
+import {
+  automationVersionSchema,
+  type AutomationVersion,
+} from "@/api/schema/automation";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorAutomationVersions } from "@/db/schema/automation-versions";
+import type { EventAutomation } from "@/chat/event-automations/types";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import { canonicalJson } from "./revision";
+
+type VersionedAutomation = ScheduledAutomation | EventAutomation;
+
+/** Return the versioned part of an Automation. Lifecycle and run state are excluded. */
+export function automationDefinition(task: VersionedAutomation) {
+  const common = {
+    title: task.title?.trim() || null,
+    instruction: task.task.text,
+    credentialMode: task.credentialMode,
+    destination: task.destination,
+    outcomes: task.outcomes,
+  };
+  return "schedule" in task
+    ? { ...common, schedule: task.schedule }
+    : { ...common, trigger: task.trigger };
+}
+
+/** Compare definition values after key sorting. */
+export function sameDefinitionValue(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+  );
+}
+
+/**
+ * Save a version when the definition changed. Call this in the same
+ * transaction and lock as the Automation write. Without `current`, the
+ * Automation is new, so the creator saves version 1.
+ */
+export async function recordAutomationVersion(
+  db: JuniorDatabase,
+  kind: "scheduled" | "event",
+  task: VersionedAutomation,
+  current: VersionedAutomation | undefined,
+  editedBy?: EventAutomation["createdBy"],
+): Promise<void> {
+  const definition = automationDefinition(task);
+  if (current && sameDefinitionValue(automationDefinition(current), definition))
+    return;
+  await db.insert(juniorAutomationVersions).values({
+    kind,
+    automationId: task.id,
+    version: sql`(
+      SELECT coalesce(max(${juniorAutomationVersions.version}), 0) + 1
+      FROM ${juniorAutomationVersions}
+      WHERE ${juniorAutomationVersions.kind} = ${kind}
+        AND ${juniorAutomationVersions.automationId} = ${task.id}
+    )`,
+    createdAtMs: Date.now(),
+    editedBy: editedBy ?? (current ? null : task.createdBy),
+    definition,
+  });
+}
+
+function parseVersionRow(
+  kind: "scheduled" | "event",
+  row: typeof juniorAutomationVersions.$inferSelect,
+): AutomationVersion {
+  return automationVersionSchema.parse({
+    kind,
+    version: row.version,
+    createdAt: new Date(row.createdAtMs).toISOString(),
+    editedBy: row.editedBy,
+    definition: row.definition,
+  });
+}
+
+/** Read one saved definition. */
+export async function readAutomationVersion(
+  db: JuniorDatabase,
+  kind: "scheduled" | "event",
+  automationId: string,
+  version: number,
+): Promise<AutomationVersion | undefined> {
+  const [row] = await db
+    .select()
+    .from(juniorAutomationVersions)
+    .where(
+      and(
+        eq(juniorAutomationVersions.kind, kind),
+        eq(juniorAutomationVersions.automationId, automationId),
+        eq(juniorAutomationVersions.version, version),
+      ),
+    )
+    .limit(1);
+  return row ? parseVersionRow(kind, row) : undefined;
+}
+
+/** Read saved definitions, newest first. */
+export async function listAutomationVersions(
+  db: JuniorDatabase,
+  kind: "scheduled" | "event",
+  automationId: string,
+  limit: number,
+): Promise<AutomationVersion[]> {
+  const rows = await db
+    .select()
+    .from(juniorAutomationVersions)
+    .where(
+      and(
+        eq(juniorAutomationVersions.kind, kind),
+        eq(juniorAutomationVersions.automationId, automationId),
+      ),
+    )
+    .orderBy(desc(juniorAutomationVersions.version))
+    .limit(limit);
+  return rows.map((row) => parseVersionRow(kind, row));
+}

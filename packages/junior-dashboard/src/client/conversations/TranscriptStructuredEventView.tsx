@@ -1,6 +1,7 @@
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptSummary } from "./TranscriptSummary";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 
@@ -80,9 +81,7 @@ export function TranscriptStructuredEventView(props: {
   }
   return (
     <details className={`group/plugin-event ${surfaceClass}`}>
-      <summary className="cursor-pointer list-none transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
-        {header}
-      </summary>
+      <TranscriptSummary flush>{header}</TranscriptSummary>
       {body}
     </details>
   );

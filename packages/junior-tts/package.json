@@ -1,0 +1,21 @@
+{
+  "name": "@sentry/junior-tts",
+  "version": "0.236.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-tts"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

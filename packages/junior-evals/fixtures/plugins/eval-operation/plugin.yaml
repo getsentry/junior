@@ -1,9 +1,0 @@
-name: eval-operation
-display-name: Eval Operation
-description: Eval-only operation reconciliation fixture
-
-mcp:
-  url: https://eval-mcp.example.test/mcp
-  allowed-tools:
-    - release-push
-    - release-status

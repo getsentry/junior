@@ -1,3 +1,5 @@
+import { slackEventsApiEnvelope } from "./slack/factories/events";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -65,7 +67,10 @@ interface QueueSendHold {
  */
 export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   #idempotentMessageIds = new Map<string, string>();
-  #queuedMessages: ConversationQueueMessage[] = [];
+  #queuedMessages: Array<{
+    message: ConversationQueueMessage;
+    availableAtMs: number;
+  }> = [];
   #rejectSends = false;
   #sendHolds: QueueSendHold[] = [];
   #sendAttempts: ConversationQueueSendRecord[] = [];
@@ -85,7 +90,7 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
   }
 
   queuedMessages(): ConversationQueueMessage[] {
-    return this.#queuedMessages.map((message) => ({ ...message }));
+    return this.#queuedMessages.map(({ message }) => ({ ...message }));
   }
 
   rejectSends(): void {
@@ -131,7 +136,10 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       return { messageId: duplicateMessageId };
     }
     const messageId = `queue-${this.#sentRecords.length + 1}`;
-    this.#queuedMessages.push({ ...message });
+    this.#queuedMessages.push({
+      message: { ...message },
+      availableAtMs: Date.now() + Math.max(0, options?.delayMs ?? 0),
+    });
     this.#sentRecords.push(record);
     if (options?.idempotencyKey) {
       this.#idempotentMessageIds.set(options.idempotencyKey, messageId);
@@ -144,12 +152,26 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
     return { messageId };
   }
 
+  /** Deliver the next payload immediately when a test controls the clock. */
   takeMessage(): ConversationQueueMessage {
-    const message = this.#queuedMessages.shift();
-    if (!message) {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
       throw new Error("Expected queued conversation work payload");
     }
-    return message;
+    return entry.message;
+  }
+
+  /** Honor queue delays when running evals against the real clock. */
+  async takeReadyMessage(
+    signal?: AbortSignal,
+  ): Promise<ConversationQueueMessage> {
+    const entry = this.#queuedMessages.shift();
+    if (!entry) {
+      throw new Error("Expected queued conversation work payload");
+    }
+    const waitMs = entry.availableAtMs - Date.now();
+    if (waitMs > 0) await delay(waitMs, undefined, { signal });
+    return entry.message;
   }
 }
 
@@ -293,7 +315,7 @@ export function slackWebhookRequest(body: unknown): Request {
   }).event(body);
 }
 
-/** Build the minimal Slack Events API envelope used by durable ingress tests. */
+/** Build the canonical Slack envelope with durable ingress test defaults. */
 export function slackEnvelope(input: {
   channel?: string;
   eventType?: "app_mention" | "message";
@@ -302,22 +324,13 @@ export function slackEnvelope(input: {
   ts?: string;
   user?: string;
 }) {
-  const channel = input.channel ?? "C123";
-  const ts = input.ts ?? "1712345.0001";
-  return {
-    team_id: "T123",
-    type: "event_callback",
-    event: {
-      type: input.eventType ?? "app_mention",
-      user: input.user ?? "U123",
-      text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
-      channel,
-      ts,
-      event_ts: ts,
-      channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
-    },
-  };
+  return slackEventsApiEnvelope({
+    ...input,
+    channel: input.channel ?? "C123",
+    ts: input.ts ?? "1712345.0001",
+    user: input.user ?? "U123",
+    text: input.text ?? `<@${SLACK_BOT_USER_ID}> hello`,
+  });
 }
 
 /** Create a manually-resolved promise for coordinating async worker tests. */

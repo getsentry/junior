@@ -216,7 +216,7 @@ export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessa
 /** Result of requesting that the current Conversation run stop. */
 export type StopConversationWorkResult =
   | { status: "no_work" }
-  | { runId: string; status: "requested" };
+  | { runId: string; status: "requested"; pendingMessages: InboundMessage[] };
 
 /** Result of clearing one stop observed by the matching leased run. */
 export interface CompleteConversationStopResult {
@@ -1778,18 +1778,16 @@ export async function stopConversationWork(args: {
     }
 
     const runId = current.execution.runId ?? randomUUID();
-    const inboundMessageIds = current.execution.pendingMessages
-      .filter(isHumanFacingMessage)
-      .map((message) => message.inboundMessageId);
+    const pendingMessages =
+      current.execution.pendingMessages.filter(isHumanFacingMessage);
+    const inboundMessageIds = pendingMessages.map(
+      (message) => message.inboundMessageId,
+    );
     if (current.execution.runId === undefined) {
       await writeConversation(
         state,
         lock,
-        withExecutionUpdate(
-          current,
-          { ...current.execution, runId },
-          nowMs,
-        ),
+        withExecutionUpdate(current, { ...current.execution, runId }, nowMs),
       );
     }
     await fenceConversationMutation(state, lock, args.conversationId);
@@ -1798,7 +1796,7 @@ export async function stopConversationWork(args: {
       { inboundMessageIds, runId } satisfies ConversationStop,
       JUNIOR_THREAD_STATE_TTL_MS,
     );
-    return { runId, status: "requested" };
+    return { runId, status: "requested", pendingMessages };
   });
 }
 
@@ -1863,7 +1861,10 @@ export async function cancelHumanFacingPendingMessages(args: {
   receivedBeforeMs?: number;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<{ cancelledInboundMessageIds: string[] }> {
+}): Promise<{
+  cancelledInboundMessageIds: string[];
+  cancelledMessages: InboundMessage[];
+}> {
   const nowMs = args.nowMs ?? now();
   const requestedIds =
     args.inboundMessageIds === undefined
@@ -1872,10 +1873,11 @@ export async function cancelHumanFacingPendingMessages(args: {
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
-      return { cancelledInboundMessageIds: [] };
+      return { cancelledInboundMessageIds: [], cancelledMessages: [] };
     }
 
     const cancelledInboundMessageIds: string[] = [];
+    const cancelledMessages: InboundMessage[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
       const isRequested =
@@ -1886,13 +1888,14 @@ export async function cancelHumanFacingPendingMessages(args: {
         message.receivedAtMs <= args.receivedBeforeMs;
       if (isHumanFacingMessage(message) && isRequested && isInSnapshot) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
+        cancelledMessages.push(message);
         continue;
       }
       pendingMessages.push(message);
     }
 
     if (cancelledInboundMessageIds.length === 0) {
-      return { cancelledInboundMessageIds };
+      return { cancelledInboundMessageIds, cancelledMessages };
     }
 
     const becomesIdle =
@@ -1918,7 +1921,7 @@ export async function cancelHumanFacingPendingMessages(args: {
       ),
     );
 
-    return { cancelledInboundMessageIds };
+    return { cancelledInboundMessageIds, cancelledMessages };
   });
 }
 

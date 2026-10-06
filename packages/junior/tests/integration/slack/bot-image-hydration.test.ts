@@ -251,7 +251,7 @@ describe("bot image hydration", () => {
     );
   });
 
-  it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
+  it("does not hydrate thread images when AI_VISION_MODEL is explicitly empty", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {

@@ -1,6 +1,11 @@
+import {
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes-schema";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
 import {
   createEventAutomation,
   getEventAutomation,
@@ -24,11 +29,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import {
-  resolveTaskOutcomes,
-  taskOutcomeInputSchema,
-  type TaskOutcomeInput,
-} from "@/chat/task-outcomes";
+import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -76,7 +77,7 @@ export function createEventAutomationTool(
       "Create a durable event automation in the active Slack channel or DM, never a thread. It executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
-        instruction: z.string().trim().min(1).max(4000),
+        instruction: automationInstructionToolSchema,
         title: z
           .string()
           .trim()
@@ -160,6 +161,7 @@ export function createEventAutomationTool(
         }
       }
       const title = await resolveTaskTitle({
+        signal: options.signal,
         completeText,
         instruction: input.instruction,
         title: input.title,

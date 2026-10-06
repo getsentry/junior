@@ -78,6 +78,54 @@
       "rules": {
         "no-restricted-imports": "off"
       }
+    },
+    {
+      "files": ["tests/integration/**", "tests/component/**"],
+      "rules": {
+        "anti-slop/no-module-mocking": "error"
+      }
+    },
+    {
+      "files": [
+        "tests/component/agent/sandbox.test.ts",
+        "tests/component/app-sandbox-trace-config.test.ts",
+        "tests/component/auth/mcp-auth-runtime-slack.test.ts",
+        "tests/component/auth/plugin-auth-runtime-slack.test.ts",
+        "tests/component/briefs/conversation-brief-task.test.ts",
+        "tests/component/cli/chat-cli.test.ts",
+        "tests/component/cli/local-chat-composition.test.ts",
+        "tests/component/config/chat-config.test.ts",
+        "tests/component/handlers/sandbox-egress-proxy.test.ts",
+        "tests/component/memory-plugin-storage.test.ts",
+        "tests/component/misc/sandbox-executor.test.ts",
+        "tests/component/plugins/amplitude-plugin.test.ts",
+        "tests/component/plugins/notion-plugin.test.ts",
+        "tests/component/plugins/plugin-prompt-hooks.test.ts",
+        "tests/component/plugins/plugin-registry-packages.test.ts",
+        "tests/component/plugins/plugin-registry.test.ts",
+        "tests/component/plugins/plugin-run-actors.test.ts",
+        "tests/component/runtime/agent-run-agent-continue.test.ts",
+        "tests/component/runtime/agent-run-error-path.test.ts",
+        "tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
+        "tests/component/runtime/agent-run-model-handoff-fixture.ts",
+        "tests/component/runtime/agent-run-provider-retry.test.ts",
+        "tests/component/runtime/agent-run-sandbox.test.ts",
+        "tests/component/runtime/agent-run-tool-timeout-continuation.test.ts",
+        "tests/component/sandbox/snapshot/resolve.test.ts",
+        "tests/component/sandbox/snapshot/workspace.test.ts",
+        "tests/component/skills-plugin-provider.test.ts",
+        "tests/component/slack/footer-sentry-link.test.ts",
+        "tests/component/slack/inbound-telemetry.test.ts",
+        "tests/component/task-execution/checkpoint.test.ts",
+        "tests/component/task-execution/conversation-index-redis.test.ts",
+        "tests/component/tools/load-skill.test.ts",
+        "tests/component/tool-support/pi-tool-adapter.test.ts",
+        "tests/component/vercel-queue-dev.test.ts",
+        "tests/component/workspace-tools.test.ts"
+      ],
+      "rules": {
+        "anti-slop/no-module-mocking": "off"
+      }
     }
   ]
 }

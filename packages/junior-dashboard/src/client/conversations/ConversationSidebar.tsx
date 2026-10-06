@@ -92,7 +92,7 @@ export function ConversationSidebar(props: {
           : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-emphasis bg-dashboard-surface-panel",
       )}
     >
-      <div className="px-5 pb-4 pt-5">
+      <div className="px-5 py-3">
         <div className="flex items-center justify-between gap-2">
           <h2
             className={cn(
@@ -117,7 +117,7 @@ export function ConversationSidebar(props: {
           </div>
         </div>
       </div>
-      <div className="px-4 pb-3">
+      <div className="px-4 pb-2">
         <SearchInput
           label="Search your conversations"
           onChange={props.onQueryChange}
@@ -159,8 +159,8 @@ export function ConversationSidebar(props: {
               entry.kind === "section" ? (
                 <h3
                   className={cn(
-                    "m-0 px-3 pb-2 font-sans text-xs font-medium text-dashboard-text-muted",
-                    entry.first ? "pt-1.5" : "pt-4",
+                    "m-0 px-3 pb-1 font-sans text-xs font-medium text-dashboard-text-muted",
+                    entry.first ? "pt-1" : "pt-3",
                   )}
                 >
                   {entry.label}
@@ -224,7 +224,7 @@ function ConversationRowsLoading() {
       <span className="sr-only">Loading your conversations</span>
       <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 7 }, (_, index) => (
-        <div className="grid gap-2 rounded-lg px-3 py-3" key={index}>
+        <div className="grid gap-1 rounded-lg px-3 py-2" key={index}>
           <Skeleton
             className={cn("h-4", index % 3 === 0 ? "w-4/5" : "w-3/5")}
           />
@@ -293,7 +293,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-lg px-3 py-3 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover max-sm:pr-10",
+          "block min-w-0 rounded-lg px-3 py-2 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover max-sm:pr-10",
           props.selected && "bg-dashboard-surface-active",
         )}
         to={conversationPath(props.conversation.id)}
@@ -310,7 +310,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
             {title}
           </div>
           {hasMeta ? (
-            <div className="col-start-2 row-start-2 mt-1.5 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
+            <div className="col-start-2 row-start-2 mt-1 flex min-w-0 items-center gap-1.5 font-sans text-xs leading-tight text-dashboard-text-muted">
               {showLocation ? (
                 <span className="truncate">{location}</span>
               ) : null}

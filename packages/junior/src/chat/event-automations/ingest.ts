@@ -4,6 +4,7 @@
  * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
  */
+import { slackMention } from "@/chat/slack/mrkdwn";
 import { createHash } from "node:crypto";
 import {
   EVENT_SUMMARY_MAX_LENGTH,
@@ -60,6 +61,7 @@ function eventInput(task: EventAutomation, event: Event): string {
   );
   return renderTaskInput({
     about: task.trigger.label,
+    creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     guidance,
