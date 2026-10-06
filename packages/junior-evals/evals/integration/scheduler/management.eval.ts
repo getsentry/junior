@@ -4,7 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -34,17 +34,18 @@ describe("Schedule Management", () => {
     );
     const confirmation = await proposal.continue(
       mention("Yes, apply that schedule change now.", { author: alice }),
-      {
-        criteria: rubric({
-          pass: [
-            "After the requested confirmation, the reply confirms that the scheduled automation now runs every Tuesday at 10am Pacific.",
-          ],
-          fail: [
-            "Do not claim the task still runs on Monday at 9am.",
-            "Do not ask for another confirmation after the user says to apply the change.",
-          ],
-        }),
-      },
+    );
+    await expect(confirmation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "After the requested confirmation, the reply confirms that the scheduled automation now runs every Tuesday at 10am Pacific.",
+        ],
+        fail: [
+          "Do not claim the task still runs on Monday at 9am.",
+          "Do not ask for another confirmation after the user says to apply the change.",
+        ],
+      }),
     );
 
     expect(

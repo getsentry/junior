@@ -1,7 +1,7 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { test } from "@junior-evals/fixture/test";
 
@@ -35,20 +35,21 @@ describe("Shared Memory", () => {
       });
     }
 
-    await run(
+    const result = await run(
       mention("What do you remember about how CI works in getsentry/junior?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant says getsentry/junior CI runs package tests with pnpm.",
-            "The answer stays scoped to getsentry/junior.",
-          ],
-          fail: [
-            "Do not mention getsentry/sentry autofix, a dashboard workflow, or single-tenant repository access.",
-            "Do not blend generic engineering memories into the answer.",
-          ],
-        }),
-      },
+    );
+    await expect(result.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant says getsentry/junior CI runs package tests with pnpm.",
+          "The answer stays scoped to getsentry/junior.",
+        ],
+        fail: [
+          "Do not mention getsentry/sentry autofix, a dashboard workflow, or single-tenant repository access.",
+          "Do not blend generic engineering memories into the answer.",
+        ],
+      }),
     );
   });
 
@@ -60,8 +61,12 @@ describe("Shared Memory", () => {
         "Please remember that for flaky webhook triage, inspect delivery headers before retrying the job.",
       ),
     );
-    await asked.continue(mention("How should flaky webhook triage be done?"), {
-      criteria: rubric({
+    const conversation = await asked.continue(
+      mention("How should flaky webhook triage be done?"),
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The assistant says flaky webhook triage should inspect delivery headers before retrying the job.",
           "The assistant treats the procedure as shared process knowledge, not as the actor's personal preference.",
@@ -72,7 +77,7 @@ describe("Shared Memory", () => {
           "Do not describe the stored fact as a actor preference.",
         ],
       }),
-    });
+    );
 
     const memories = await readMemories();
     expect(memories).toContainEqual(conversationMemory(/headers/i));
@@ -87,21 +92,22 @@ describe("Shared Memory", () => {
         "For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.",
       ),
     );
-    await taught.continue(
+    const conversation = await taught.continue(
       mention("How should sandbox timeout triage be done?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant says sandbox timeout triage should inspect heartbeat gaps before increasing the timeout.",
-            "The assistant does not require the user to explicitly say remember before using durable memory.",
-            "The assistant does not mention hidden scope, actor, Slack, or subject identifiers.",
-          ],
-          fail: [
-            "Do not answer as if no relevant sandbox timeout triage procedure exists.",
-            "Do not claim passive memory requires an explicit remember command.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant says sandbox timeout triage should inspect heartbeat gaps before increasing the timeout.",
+          "The assistant does not require the user to explicitly say remember before using durable memory.",
+          "The assistant does not mention hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not answer as if no relevant sandbox timeout triage procedure exists.",
+          "Do not claim passive memory requires an explicit remember command.",
+        ],
+      }),
     );
 
     const memories = await readMemories();
@@ -117,8 +123,12 @@ describe("Shared Memory", () => {
         "For this team, branch QA runbooks require risk notes before summary notes. Please acknowledge.",
       ),
     );
-    await taught.continue(mention("What do branch QA runbooks require?"), {
-      criteria: rubric({
+    const conversation = await taught.continue(
+      mention("What do branch QA runbooks require?"),
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "The assistant says branch QA runbooks require risk notes before summary notes.",
           "The assistant does not require an explicit remember command before using durable memory.",
@@ -129,7 +139,7 @@ describe("Shared Memory", () => {
           "Do not claim passive memory requires an explicit remember command.",
         ],
       }),
-    });
+    );
 
     const memories = await readMemories();
     expect(memories).toContainEqual(conversationMemory(/risk/i));
@@ -139,22 +149,23 @@ describe("Shared Memory", () => {
   test("when organic conversation reports a point-in-time analytics answer, store no memory", async ({
     run,
   }) => {
-    await run(
+    const conversation = await run(
       mention(
         "The analytics query says today's signup conversion rate is 8.4%.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant treats the analytics value as a point-in-time answer, not durable memory.",
-            "The assistant does not claim it saved the conversion rate as memory.",
-          ],
-          fail: [
-            "Do not store the current conversion-rate value as memory.",
-            "Do not describe point-in-time analytics answers as durable operational knowledge.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant treats the analytics value as a point-in-time answer, not durable memory.",
+          "The assistant does not claim it saved the conversion rate as memory.",
+        ],
+        fail: [
+          "Do not store the current conversion-rate value as memory.",
+          "Do not describe point-in-time analytics answers as durable operational knowledge.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([]);
@@ -163,20 +174,21 @@ describe("Shared Memory", () => {
   test("when asked to remember another person's personal preference, store nothing", async ({
     run,
   }) => {
-    await run(
+    const conversation = await run(
       mention("Please remember that David prefers terse PR summaries."),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant does not store David's personal preference as a actor memory.",
-            "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
-          ],
-          fail: [
-            "Do not claim David's preference was saved as a memory.",
-            "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant does not store David's personal preference as a actor memory.",
+          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
+        ],
+        fail: [
+          "Do not claim David's preference was saved as a memory.",
+          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+        ],
+      }),
     );
 
     expect(await readMemories()).toEqual([]);

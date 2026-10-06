@@ -44,7 +44,7 @@ interface AgentFixtures {
 /** Vitest `test` with the agent fixtures. */
 export const test = baseTest.extend<AgentFixtures>({
   agentOptionsModule: [undefined, { injected: true }],
-  agent: async ({ agentOptionsModule, signal, task }, use) => {
+  agent: async ({ agentOptionsModule, task }, use) => {
     let created: FixtureAgent | undefined;
     await use(async (options = {}) => {
       if (created) {
@@ -54,10 +54,7 @@ export const test = baseTest.extend<AgentFixtures>({
         ? ((await import(agentOptionsModule)) as { default: JuniorAppOptions })
             .default
         : {};
-      created = await createFixtureAgent(
-        { ...defaults, ...options },
-        { signal, task },
-      );
+      created = await createFixtureAgent({ ...defaults, ...options }, { task });
       const agent = created;
       return {
         run: (input, callOptions) =>

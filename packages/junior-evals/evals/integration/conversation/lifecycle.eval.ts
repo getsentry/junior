@@ -2,7 +2,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
   toolOutput,
@@ -48,18 +48,19 @@ describe("Lifecycle and Resilience", () => {
       mention(
         "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The final reply reports that the remote release status is shipped.",
-            "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
-          ],
-          fail: [
-            "The reply only reports that the work was interrupted or timed out.",
-            "The assistant asks the user to retry instead of completing the task.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The final reply reports that the remote release status is shipped.",
+          "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
+        ],
+        fail: [
+          "The reply only reports that the work was interrupted or timed out.",
+          "The assistant asks the user to retry instead of completing the task.",
+        ],
+      }),
     );
 
     const [interruptedPush] = completedMcpToolCalls(

@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -10,17 +10,18 @@ describe("Slack User Status", () => {
   }) => {
     const conversation = await run(
       mention("Am I marked out of office in Slack right now?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant clearly says the user does not currently have a custom Slack status set.",
-          ],
-          fail: [
-            "Do not claim that Junior's Slack user lookup tool omits status fields or cannot read Slack status.",
-            "Do not claim that a users.profile:read scope or connector configuration change is required.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant clearly says the user does not currently have a custom Slack status set.",
+        ],
+        fail: [
+          "Do not claim that Junior's Slack user lookup tool omits status fields or cannot read Slack status.",
+          "Do not claim that a users.profile:read scope or connector configuration change is required.",
+        ],
+      }),
     );
 
     // `U0TEST` is the default Slack person of the fixture.

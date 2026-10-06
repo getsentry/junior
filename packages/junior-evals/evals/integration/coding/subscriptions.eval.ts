@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -22,8 +22,10 @@ describe("Watches", () => {
 
     // A bare "stop" opts Junior out of the thread before any turn runs. This
     // follow-up needs the conversation to mean "stop the watch".
-    const stopped = await conversation.continue(mention("you can stop now"), {
-      criteria: rubric({
+    const stopped = await conversation.continue(mention("you can stop now"));
+    await expect(stopped.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: [
           "Junior understands from the conversation that the terse follow-up asks it to stop monitoring the pull request.",
           "Junior briefly confirms that monitoring stopped.",
@@ -33,7 +35,7 @@ describe("Watches", () => {
           "Do not ask which resource the user meant when the active monitoring target is clear from the conversation.",
         ],
       }),
-    });
+    );
 
     expect(
       completedToolCalls("stopWatchingResources", stopped).map((call) => ({

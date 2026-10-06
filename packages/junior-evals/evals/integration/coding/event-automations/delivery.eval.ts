@@ -4,7 +4,7 @@ import {
   insertEventAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Event automation delivery", () => {
@@ -34,19 +34,20 @@ describe("Event automation delivery", () => {
           user: { login: "reviewer" },
         },
       }),
-      {
-        criteria: rubric({
-          pass: [
-            "The delivered reply says review changes were requested on GitHub PR getsentry/junior#691.",
-            "The reply summarizes the request to add regression coverage and suggests a safe next step.",
-          ],
-          fail: [
-            "Do not delete the event automation, say that it was deleted, or recommend deleting it.",
-            "Do not present this as confirmation that a new event automation was created.",
-            "Do not ask what resource or event occurred.",
-          ],
-        }),
-      },
+    );
+    await expect(delivery.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The delivered reply says review changes were requested on GitHub PR getsentry/junior#691.",
+          "The reply summarizes the request to add regression coverage and suggests a safe next step.",
+        ],
+        fail: [
+          "Do not delete the event automation, say that it was deleted, or recommend deleting it.",
+          "Do not present this as confirmation that a new event automation was created.",
+          "Do not ask what resource or event occurred.",
+        ],
+      }),
     );
 
     expect(delivery.replies).toHaveLength(1);

@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Skills", () => {
@@ -15,12 +15,17 @@ describe("Skills", () => {
         ],
       });
 
-    const first = await run(mention("/incident-brief Checkout latency"), {
-      criteria: brief("Checkout latency"),
-    });
+    const first = await run(mention("/incident-brief Checkout latency"));
+    await expect(first.evalRun).toSatisfyJudge(
+      RubricJudge,
+      brief("Checkout latency"),
+    );
     const second = await first.continue(
       mention("/incident-brief Search errors"),
-      { criteria: brief("Search errors") },
+    );
+    await expect(second.evalRun).toSatisfyJudge(
+      RubricJudge,
+      brief("Search errors"),
     );
 
     expect(first.replies).toHaveLength(1);

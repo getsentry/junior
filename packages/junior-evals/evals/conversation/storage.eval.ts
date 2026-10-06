@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -16,18 +16,19 @@ describe("Conversation Storage", () => {
     );
     const conversation = await run(
       mention("Who did we name as the rollback owner in the earlier thread?"),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant answers that Priya was named as the rollback owner.",
-            "The answer is based on a search of the earlier public Junior conversation in the same Slack workspace.",
-          ],
-          fail: [
-            "Do not claim the earlier decision is unavailable.",
-            "Do not ask the user to paste the earlier thread.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant answers that Priya was named as the rollback owner.",
+          "The answer is based on a search of the earlier public Junior conversation in the same Slack workspace.",
+        ],
+        fail: [
+          "Do not claim the earlier decision is unavailable.",
+          "Do not ask the user to paste the earlier thread.",
+        ],
+      }),
     );
 
     expect(

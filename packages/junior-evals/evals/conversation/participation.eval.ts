@@ -5,7 +5,7 @@ import {
   reply,
   threadMessage,
 } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 const SAM = person("USAM", "Sam");
@@ -49,12 +49,15 @@ describe("Passive Behavior", () => {
           mention("I need the budget by Friday."),
           reply("You need the budget by Friday."),
         ],
-        criteria: rubric({
-          pass: [
-            "The reply plainly restates that the budget is needed by Friday.",
-          ],
-        }),
       },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply plainly restates that the budget is needed by Friday.",
+        ],
+      }),
     );
 
     expect(conversation.replies).toHaveLength(1);
@@ -141,12 +144,15 @@ describe("Passive Behavior", () => {
           ),
           reply("The deploy changed three services."),
         ],
-        criteria: rubric({
-          pass: [
-            "The reply expands the summary using the supplied changes: request timeouts, payment retry backoff, and session refresh. It does not invent other changes.",
-          ],
-        }),
       },
+    );
+    await expect(conversation.evalRun).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply expands the summary using the supplied changes: request timeouts, payment retry backoff, and session refresh. It does not invent other changes.",
+        ],
+      }),
     );
 
     expect(conversation.replies).toHaveLength(1);
