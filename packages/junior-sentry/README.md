@@ -1,6 +1,6 @@
 # @sentry/junior-sentry
 
-Sentry investigations (per-user OAuth) and signed issue webhooks (internal integration) for Junior.
+Sentry investigations (per-user OAuth plus optional org read access) and signed issue webhooks (internal integration) for Junior.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-sentry
@@ -31,6 +31,10 @@ Verified CLI surface (check live `sentry --help` before blocking):
 - `sentry trace list|view|logs`
 - `sentry alert metrics list|view|create|edit|delete`
 - `sentry api <endpoint>` fallback
+
+## Org read access
+
+Set `SENTRY_READ_TOKEN` to a read-only internal integration token. Junior then uses it for Sentry API reads (`GET`, `HEAD`, `OPTIONS`), including Explore queries, scheduled tasks, and event automations. Writes and `/api/0/users/` requests still use the requesting user's OAuth token.
 
 ## Issue webhooks
 
