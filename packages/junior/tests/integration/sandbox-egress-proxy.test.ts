@@ -417,7 +417,7 @@ describe("sandbox egress proxy integration", () => {
     });
   });
 
-  it("lets OAuth broker plugins add hook grants and defer other requests to the broker", async () => {
+  it("uses OAuth broker credentials when a credential hook returns no grant", async () => {
     delete process.env.OAUTH_BROKER_ACCESS_TOKEN;
     await registerOAuthBrokerPlugin({
       grantForEgress: (ctx) =>
