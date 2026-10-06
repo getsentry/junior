@@ -1,15 +1,22 @@
 /**
  * Sentry plugin runtime boundary.
  *
- * This package owns per-user Sentry OAuth, CLI setup, internal-integration
- * issue webhook normalization, and Sentry resource identities. Junior core owns
- * watches and event automations.
+ * This package owns per-user Sentry OAuth, org-wide read access, CLI setup,
+ * internal-integration issue webhook normalization, and Sentry resource
+ * identities. Junior core owns watches and event automations.
  */
 import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
+import {
+  SENTRY_API_DOMAINS,
+  SENTRY_READ_ORG_ENV,
+  SENTRY_READ_TOKEN_ENV,
+  issueSentryCredential,
+  sentryGrantForEgress,
+} from "./org-read.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
 
@@ -42,7 +49,7 @@ export function sentryPlugin(): PluginRegistration {
       credentials: {
         authTokenEnv: "SENTRY_AUTH_TOKEN",
         authTokenPlaceholder: "host_managed_credential",
-        domains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
+        domains: [...SENTRY_API_DOMAINS],
         type: "oauth-bearer",
       },
       description:
@@ -51,6 +58,8 @@ export function sentryPlugin(): PluginRegistration {
       envVars: {
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
+        [SENTRY_READ_ORG_ENV]: {},
+        [SENTRY_READ_TOKEN_ENV]: {},
         SENTRY_WEBHOOK_ORG: {},
         SENTRY_WEBHOOK_SECRET: {},
       },
@@ -72,6 +81,8 @@ export function sentryPlugin(): PluginRegistration {
       ],
     },
     hooks: {
+      grantForEgress: sentryGrantForEgress,
+      issueCredential: issueSentryCredential,
       routes(ctx) {
         return [
           createSentryWebhookRoute({

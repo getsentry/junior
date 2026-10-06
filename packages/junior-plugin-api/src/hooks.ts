@@ -74,6 +74,12 @@ export interface PluginHooks {
     | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
     | { objectAnnotations: ObjectAnnotation[] }
     | void;
+  /**
+   * Select the grant for one sandbox egress request.
+   *
+   * When the manifest also declares generic `credentials` or `apiHeaders`,
+   * return undefined to use those credentials for this request.
+   */
   grantForEgress?(
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
