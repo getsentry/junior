@@ -20,7 +20,27 @@ This folder keeps behavioral due-occurrence delivery quality:
 
 - delivering due one-off and recurring scheduled automation occurrences
 - addressing the known task creator without a name lookup
-- reporting a due automation that cannot work as blocked instead of posting
+- delivering a reminder in the creator's direct message as the reminder itself
+- reminders that mention nobody when the task names nobody
+
+## Automation run failures
+
+Each failure seen in production has one realistic case:
+
+- Reminders sent to a direct message read as failure notes or third-person
+  text (#2014): the direct message case in `delivery.eval.ts`.
+- Reminders mention people that the task does not name (#554): the channel
+  reminder cases in `delivery.eval.ts`.
+- Status reports instead of the deliverable (#2014): the rubrics of the
+  reminder cases, and the no-outcome case in
+  `evals/integration/scheduler/delivery.eval.ts`.
+- "me" does not reach the creator (#2014): the creator mention case in
+  `evals/integration/scheduler/delivery.eval.ts`.
+- Unattended runs ask questions, or post when a condition is not met, and the
+  silence marker leaks into Slack (#2014, #1741): the condition cases in
+  `evals/integration/coding/event-automations/delivery.eval.ts`.
+- Runs find missing credentials and ask the channel to connect them (#2014):
+  the missing account case in `evals/sentry/skills.eval.ts`.
 
 Run the suites with:
 

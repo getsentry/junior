@@ -59,33 +59,44 @@ describe("Event automation delivery", () => {
     );
   });
 
-  test("when the task condition does not match the event, post nothing", async ({
-    run,
-  }) => {
-    await insertEventAutomation({
-      destination: slackChannel(),
+  test.for([
+    {
+      silence: "in words",
       task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise post nothing.",
-      trigger: reviewTrigger,
-    });
+    },
+    {
+      // Tasks written before declared results spell out the silence marker.
+      silence: "with the old marker",
+      task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise reply with exactly [[NO_REPLY]].",
+    },
+  ])(
+    "when the task condition does not match the event, post nothing (silence $silence)",
+    async ({ task }, { run }) => {
+      await insertEventAutomation({
+        destination: slackChannel(),
+        task,
+        trigger: reviewTrigger,
+      });
 
-    const delivery = await run(
-      githubWebhook("pull_request_review", {
-        action: "submitted",
-        pull_request: { number: 691 },
-        repository: { full_name: "getsentry/junior" },
-        review: {
-          body: "Please rename `parseRows` to `readRows` before merging.",
-          state: "changes_requested",
-          user: { login: "reviewer" },
-        },
-      }),
-    );
+      const delivery = await run(
+        githubWebhook("pull_request_review", {
+          action: "submitted",
+          pull_request: { number: 691 },
+          repository: { full_name: "getsentry/junior" },
+          review: {
+            body: "Please rename `parseRows` to `readRows` before merging.",
+            state: "changes_requested",
+            user: { login: "reviewer" },
+          },
+        }),
+      );
 
-    expect(delivery.replies).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", delivery).map(
-        (call) => call.input,
-      ),
-    ).toEqual([expect.objectContaining({ result: "no_action" })]);
-  });
+      expect(delivery.replies).toEqual([]);
+      expect(
+        completedToolCalls("finishAutomationRun", delivery).map(
+          (call) => call.input,
+        ),
+      ).toEqual([expect.objectContaining({ result: "no_action" })]);
+    },
+  );
 });

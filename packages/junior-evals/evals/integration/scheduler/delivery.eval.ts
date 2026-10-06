@@ -31,15 +31,15 @@ describe("Scheduled Delivery", () => {
       destination: slackChannel(),
       due: true,
       once: true,
-      silent: true,
+      sendTo: [],
       task: "Check the current UTC time.",
     });
 
-    const silentRun = await run(heartbeat());
+    const silent = await run(heartbeat());
 
-    expect(silentRun.replies).toEqual([]);
+    expect(silent.replies).toEqual([]);
     expect(
-      completedToolCalls("finishAutomationRun", silentRun).map(
+      completedToolCalls("finishAutomationRun", silent).map(
         (call) => call.input,
       ),
     ).toEqual([expect.objectContaining({ result: "no_action" })]);

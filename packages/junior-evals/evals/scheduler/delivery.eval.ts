@@ -3,9 +3,9 @@ import { heartbeat } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
+  slackDirectMessage,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -38,6 +38,8 @@ describe("Scheduled Delivery", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+    // The task names nobody, so the reminder mentions nobody.
+    expect(delivery.replies[0]!.text).not.toMatch(/<@[UW]/);
   });
 
   test("when a recurring scheduled automation becomes due, deliver that occurrence", async ({
@@ -68,30 +70,37 @@ describe("Scheduled Delivery", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]!.text).not.toMatch(/<@[UW]/);
   });
 
-  test("when a due automation needs a service Junior cannot reach, report it as blocked instead of posting", async ({
+  test("when a due reminder goes to its creator's DM, deliver the reminder itself", async ({
     run,
   }) => {
     await insertScheduledAutomation({
       credentialMode: "system",
       destination: slackChannel(),
       due: true,
-      task: "Post the number of open PagerDuty incidents for the payments service.",
+      once: true,
+      sendTo: [slackDirectMessage()],
+      task: "Remind me to revisit the launch checklist before Thursday's review.",
     });
 
     const delivery = await run(heartbeat());
-
-    expect(delivery.replies).toEqual([]);
-    expect(
-      completedToolCalls("finishAutomationRun", delivery).map(
-        (call) => call.input,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        reason: expect.any(String),
-        result: "blocked",
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "Junior posts one reminder to revisit the launch checklist before Thursday's review.",
+          "The reminder speaks to its recipient directly, by mention or as you, not about them in the third person.",
+        ],
+        fail: [
+          "Do not say that Junior could not send a direct message or can only reply in another conversation.",
+          "Do not ask someone else to pass the reminder on.",
+          "Do not ask the user a question or for confirmation.",
+        ],
       }),
-    ]);
+    );
+
+    expect(delivery.replies).toHaveLength(1);
   });
 });
