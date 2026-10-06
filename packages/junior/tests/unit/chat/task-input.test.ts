@@ -34,14 +34,10 @@ describe("renderTaskInput", () => {
       ],
     });
 
-    expect(silent.split("\n").slice(-2)).toEqual([
+    expect(silent.split("\n").at(-1)).toBe(
       "End with `finishAutomationRun`. This automation posts nothing.",
-      "Use `no_action` when the work is done. Use `blocked` only when the creator must fix something.",
-    ]);
-    expect(sends.split("\n").slice(-2)).toEqual([
-      "End with `finishAutomationRun`. Use `send_message` with the finished message, following any format in the instructions.",
-      "Use `no_action` when nothing should be sent. Use `blocked` only when the creator must fix something.",
-    ]);
+    );
+    expect(sends.split("\n").at(-1)).toBe("End with `finishAutomationRun`.");
     expect(`${silent}\n${sends}`).not.toContain("[[NO_REPLY]]");
   });
 

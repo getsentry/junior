@@ -1,23 +1,13 @@
 import { z } from "zod";
-import {
-  automationResultSchema,
-  type AutomationResult,
-} from "@/chat/automation-result";
+import { automationResultSchema } from "@/chat/automation-result";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const finishAutomationRunOutputSchema = juniorToolOutputSchema.extend({
-  result: z.enum(["send_message", "no_action", "blocked"]),
-  message: z.string().optional(),
-  reason: z.string().optional(),
-});
-
-const SEND_MESSAGE_DESCRIPTION =
-  "End this automation run with exactly one result. This must be the only tool call in its message, and the run ends after it. Use `send_message` with `message` set to the finished deliverable when the instruction calls for a visible result now. The runtime sends that text to the stored destinations, so write the reminder, digest, alert, or answer itself, not a report about the run. Use `no_action` with `reason` when the work is done without a visible result, or when a condition in the instruction is not met or cannot be verified. Use `blocked` with `reason` only for a real problem that the automation owner must fix, such as missing access or a broken instruction. Your final assistant text is never delivered.";
-
-const SILENT_DESCRIPTION =
-  "End this automation run with exactly one result. This must be the only tool call in its message, and the run ends after it. This automation has no message outcome, so nothing is posted. Use `no_action` with `reason` when the work is done, or when a condition in the instruction is not met or cannot be verified. Use `blocked` with `reason` only for a real problem that the automation owner must fix, such as missing access or a broken instruction. Your final assistant text is never delivered.";
+const RESULT_GUIDANCE = [
+  "Use `no_action` when nothing should be posted, including when a condition in the instruction is not met or cannot be verified.",
+  "Use `blocked` only for a problem the automation creator must fix, such as missing access or an instruction that cannot work.",
+].join(" ");
 
 /** Create the tool that ends one Automation run with a declared result. */
 export function createFinishAutomationRunTool(options: {
@@ -34,29 +24,29 @@ export function createFinishAutomationRunTool(options: {
       readOnlyHint: false,
     },
     description: options.sendsMessage
-      ? SEND_MESSAGE_DESCRIPTION
-      : SILENT_DESCRIPTION,
+      ? `End this automation run. Use \`send_message\` with the finished reminder, digest, alert, or answer; the runtime posts it to the stored destinations. ${RESULT_GUIDANCE}`
+      : `End this automation run. This automation posts nothing. ${RESULT_GUIDANCE}`,
     inputSchema: z.object({
-      result: z.enum(results).describe("The result of this run."),
+      result: z.enum(results),
       ...(options.sendsMessage
         ? {
             message: z
               .string()
               .optional()
-              .describe(
-                "Required for send_message. The exact text to send, in Slack Markdown.",
-              ),
+              .describe("Required for send_message. The text to post."),
           }
         : undefined),
       reason: z
         .string()
         .optional()
         .describe(
-          "Required for no_action and blocked. One short sentence for the automation owner.",
+          "Required for no_action and blocked. One sentence for the creator.",
         ),
     }),
-    outputSchema: finishAutomationRunOutputSchema,
-    execute: async (input): Promise<AutomationResult> => {
+    outputSchema: juniorToolOutputSchema.extend({
+      result: z.enum(["send_message", "no_action", "blocked"]),
+    }),
+    execute: async (input) => {
       const parsed = automationResultSchema.safeParse(input);
       if (!parsed.success) {
         throw new ToolInputError(

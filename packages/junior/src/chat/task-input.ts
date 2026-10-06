@@ -17,16 +17,11 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
       "Briefly report what you did or what is needed next.",
     ];
   }
-  if (outcomes.length === 0) {
-    return [
-      `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. This automation posts nothing.`,
-      "Use `no_action` when the work is done. Use `blocked` only when the creator must fix something.",
-    ];
-  }
-  return [
-    `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Use \`send_message\` with the finished message, following any format in the instructions.`,
-    "Use `no_action` when nothing should be sent. Use `blocked` only when the creator must fix something.",
-  ];
+  return outcomes.length === 0
+    ? [
+        `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. This automation posts nothing.`,
+      ]
+    : [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
 }
 
 function oneLine(value: string): string {

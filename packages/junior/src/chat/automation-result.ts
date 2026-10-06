@@ -5,7 +5,7 @@
  * result. The run does not deliver its final assistant text. The work owner
  * reads the declared result and applies the stored outcomes.
  */
-import type { Source, TaskOutcome } from "@sentry/junior-plugin-api";
+import type { Source } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -44,18 +44,6 @@ export function isAutomationSource(source: Source): boolean {
   );
 }
 
-/**
- * Return whether a successful Automation run sends a message.
- *
- * Missing outcomes are legacy dispatch records. They send to the dispatch
- * Destination, so they still send a message.
- */
-export function automationSendsMessage(
-  outcomes: readonly TaskOutcome[] | undefined,
-): boolean {
-  return outcomes === undefined || outcomes.length > 0;
-}
-
 /** Read the last successful declared result from agent history items. */
 export function readAutomationResult(
   messages: readonly unknown[],
@@ -77,22 +65,14 @@ export function readAutomationResult(
   return undefined;
 }
 
-/** Dispatch outcome and error text recorded for one finished agent run. */
-export interface RunDispatchOutcome {
-  errorMessage?: string;
-  outcome: "blocked" | "completed" | "failed";
-}
-
 /**
- * Map one finished agent run to its dispatch outcome.
- *
- * A declared `blocked` result is a problem the automation creator must fix.
- * It is recorded as a blocked dispatch with the declared reason.
+ * Map one finished agent run to its dispatch outcome. A declared `blocked`
+ * result becomes a blocked dispatch with the declared reason.
  */
 export function runDispatchOutcome(result: {
   automation?: AutomationResult;
   diagnostics: { errorMessage?: string; outcome: string };
-}): RunDispatchOutcome {
+}): { errorMessage?: string; outcome: "blocked" | "completed" | "failed" } {
   if (result.diagnostics.outcome !== "success") {
     return {
       errorMessage:
@@ -111,10 +91,8 @@ const MISSING_RESULT_REMINDER =
   "This automation run has not ended. Your text was not delivered. Call `finishAutomationRun` now with one result.";
 
 /**
- * Return agent history with one reminder when the model stopped without a
- * declared result. Return undefined when no reminder applies.
- *
- * The run gets one reminder. A second stop without a result fails the run.
+ * Return agent history plus a reminder when the model stopped without a
+ * declared result, or undefined when the run already declared one.
  */
 export function remindMissingAutomationResult(
   messages: readonly PiMessage[],

@@ -290,7 +290,6 @@ async function executeAgentRunInPrivacyContext(
   const conversationId = run.conversationId;
   const turnId = run.turnId;
   const runId = run.runId;
-  // Automation runs end only with a declared result.
   const requireAutomationResult = isAutomationSource(run.source);
   const input = {
     actor: run.instruction.actor,
@@ -1124,9 +1123,10 @@ async function executeAgentRunInPrivacyContext(
         // A declared Automation result is the last step of the run.
         if (
           toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME &&
-          !(override && "isError" in override ? override.isError : isError)
+          !isError &&
+          !override
         ) {
-          return { ...override, terminate: true };
+          return { terminate: true };
         }
         return override;
       },

@@ -349,17 +349,13 @@ const SLACK_ACTION_RULES = [
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 
-// Automation runs replace the interactive task, conversation, and Slack action
-// rules. Nobody reads the run while it executes, and only the declared result
-// is delivered.
+// Replaces the task-execution, conversation, and Slack action rules for
+// Scheduled automation and Event automation runs.
 const AUTOMATION_RUN_RULES = [
-  "- This run comes from a stored automation, not from a person. The stored instruction is the job. Its creator approved it when they created the automation.",
+  "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
   "- Nobody reads this run while it executes. Do not ask questions, ask for approval, or offer options. Infer conservatively and do the work now.",
-  "- When the instruction has a condition, check it first. When the condition is not met, or you cannot verify it, end with `no_action`.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Before you retry work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
-  `- Your assistant text is never delivered. End the run with exactly one \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` call, alone in its message.`,
-  "- `send_message` sends its `message` text to the stored outcome destinations. Do not post the result with another tool.",
-  "- Use `blocked` only for a real problem that the automation creator must fix, such as missing access, a missing tool, or an instruction that cannot work. A blocked scheduled automation stops until someone resumes it.",
+  `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
 ];
 
 const SAFETY_RULES = [
@@ -382,35 +378,25 @@ function buildBehaviorSection(
   platform: PromptPlatform,
   mode: PromptMode,
 ): string {
-  if (mode === "automation") {
-    return [
-      renderRuleSection("tool-policy", TOOL_POLICY_RULES),
-      renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
-      renderRuleSection("skill-policy", SKILL_POLICY_RULES),
-      renderRuleSection("planning", PLANNING_RULES),
-      renderRuleSection("automation-run", AUTOMATION_RUN_RULES),
-      renderRuleSection("safety", SAFETY_RULES),
-      renderRuleSection("failure-handling", FAILURE_RULES),
-    ].join("\n\n");
-  }
-  const sections = [
+  const runSections =
+    mode === "automation"
+      ? [renderRuleSection("automation-run", AUTOMATION_RUN_RULES)]
+      : [
+          renderRuleSection("task-execution", TASK_EXECUTION_RULES),
+          renderRuleSection("conversation", CONVERSATION_RULES),
+          ...(platform === "slack"
+            ? [renderRuleSection("slack-actions", SLACK_ACTION_RULES)]
+            : []),
+        ];
+  return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
     renderRuleSection("planning", PLANNING_RULES),
-    renderRuleSection("task-execution", TASK_EXECUTION_RULES),
-    renderRuleSection("conversation", CONVERSATION_RULES),
+    ...runSections,
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
-  ];
-  if (platform === "slack") {
-    sections.splice(
-      6,
-      0,
-      renderRuleSection("slack-actions", SLACK_ACTION_RULES),
-    );
-  }
-  return sections.join("\n\n");
+  ].join("\n\n");
 }
 
 function buildAutomationOutputSection(platform: PromptPlatform): string {
@@ -418,8 +404,7 @@ function buildAutomationOutputSection(platform: PromptPlatform): string {
     platform === "slack"
       ? `<output format="slack-markdown">`
       : `<output format="markdown">`,
-    "- The `send_message` text is the finished deliverable: the reminder, digest, alert, or answer itself. Do not describe the run or your process.",
-    "- Follow any format in the instruction. Otherwise keep the message as short as the job allows.",
+    "- Follow any format in the instruction. Otherwise keep the message as short as the job allows, and do not describe the run.",
     platform === "slack"
       ? "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables."
       : "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
@@ -591,10 +576,7 @@ function buildDispatchSection(
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
   const deliveryLines = isAutomationSource(params.source)
-    ? [
-        `- dispatch.delivery: only the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` result is delivered; assistant text is not`,
-        ...formatOutcomeLines(params.outcomes),
-      ]
+    ? formatOutcomeLines(params.outcomes)
     : [
         "- dispatch.delivery: the runtime delivers the final answer to the destination",
         "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
