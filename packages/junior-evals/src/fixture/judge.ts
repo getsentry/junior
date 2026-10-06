@@ -2,7 +2,9 @@
  * Rubric judge for replies people saw. The judge reads only user-visible
  * text. Tool calls and stored rows stay outside its prompt.
  */
+import { createJudgeHarness } from "vitest-evals";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import { runEvalWork } from "../eval-work";
 
 /** Pass and fail conditions in product language. */
 export interface Rubric {
@@ -128,6 +130,18 @@ async function completeJudge(args: {
   });
   return text;
 }
+
+/**
+ * Judge harness for `toSatisfyJudge()`. Pass it as `judgeHarness` when a
+ * vitest-evals judge asks a model, such as `FactualityJudge`.
+ */
+export const judgeHarness = createJudgeHarness({
+  name: "junior-judge-model",
+  run: ({ prompt, system }, { signal }) =>
+    runEvalWork(() =>
+      completeJudge({ prompt, signal, system: system ?? JUDGE_SYSTEM }),
+    ),
+});
 
 /** Score the replies of one call. Earlier messages are context only. */
 export async function judgeReplies(args: {
