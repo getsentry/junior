@@ -6,6 +6,7 @@ import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { codingSuite } from "./src/suites/coding";
 import { memorySuite } from "./src/suites/memory";
+import { sentrySuite } from "./src/suites/sentry";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -77,6 +78,8 @@ const projectTest = {
 const codingSuiteRoot = "evals/coding";
 // The directory of the memory suite. See `src/suites/memory.ts`.
 const memorySuiteRoot = "evals/memory";
+// The directory of the Sentry suite. See `src/suites/sentry.ts`.
+const sentrySuiteRoot = "evals/sentry";
 
 export default defineConfig({
   resolve,
@@ -102,6 +105,7 @@ export default defineConfig({
             "evals/router/**",
             `${codingSuiteRoot}/**`,
             `${memorySuiteRoot}/**`,
+            `${sentrySuiteRoot}/**`,
           ],
         },
       },
@@ -119,6 +123,14 @@ export default defineConfig({
           ...projectTest,
           ...memorySuite,
           include: [`${memorySuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...sentrySuite,
+          include: [`${sentrySuiteRoot}/**/*.eval.ts`],
         },
       },
     ],

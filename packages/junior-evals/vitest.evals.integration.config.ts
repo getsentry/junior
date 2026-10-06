@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
+import { authSuite } from "./src/suites/auth";
 import { codingSuite } from "./src/suites/coding";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
@@ -72,6 +73,8 @@ const projectTest = {
   testTimeout: EVAL_TEST_TIMEOUT_MS,
 } satisfies InlineConfig;
 
+// The directory of the auth suite. See `src/suites/auth.ts`.
+const authSuiteRoot = "evals/integration/auth";
 // The integration directory of the coding suite. See `src/suites/coding.ts`.
 const codingSuiteRoot = "evals/integration/coding";
 
@@ -97,7 +100,19 @@ export default defineConfig({
             "evals/integration/**/*.eval.ts",
             "src/fixture/**/*.eval.ts",
           ],
-          exclude: [...configDefaults.exclude, `${codingSuiteRoot}/**`],
+          exclude: [
+            ...configDefaults.exclude,
+            `${authSuiteRoot}/**`,
+            `${codingSuiteRoot}/**`,
+          ],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...authSuite,
+          include: [`${authSuiteRoot}/**/*.eval.ts`],
         },
       },
       {

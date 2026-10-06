@@ -7,8 +7,10 @@
  * needs a new kind of setup data.
  */
 import { randomUUID } from "node:crypto";
+import { onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
@@ -250,4 +252,30 @@ export async function insertMemory(args: {
       ? await store.createConversationMemory(input)
       : await store.createMemory(input);
   return { id: memory.id };
+}
+
+/**
+ * Store the OAuth credential that a Slack person has for a plugin.
+ * Credentials are in the state store, which tests share, so the credential is
+ * removed when the test finishes.
+ */
+export async function insertCredential(args: {
+  accessToken: string;
+  author?: SlackAuthor;
+  /** Store an access token that is expired, so its next use refreshes it. */
+  expired?: boolean;
+  /** The plugin name, such as `sentry`. */
+  provider: string;
+  refreshToken: string;
+  scope: string;
+}): Promise<void> {
+  const { userId } = resolveAuthor(args.author);
+  const store = createUserTokenStore();
+  await store.set(userId, args.provider, {
+    accessToken: args.accessToken,
+    expiresAt: args.expired ? Date.now() - 1 : Date.now() + 60 * 60 * 1000,
+    refreshToken: args.refreshToken,
+    scope: args.scope,
+  });
+  onTestFinished(() => store.delete(userId, args.provider));
 }

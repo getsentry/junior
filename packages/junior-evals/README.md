@@ -28,8 +28,9 @@ the agent. A test touches the product in three places only:
 
 1. Inputs through app routes: `mention()` and `threadMessage()` post signed
    Slack Events API webhooks, `webMessage()` posts to the conversations API,
-   `heartbeat()` calls the heartbeat route, and `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route.
+   `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
+   signed GitHub webhook to the GitHub plugin route, and `completeAuth()`
+   calls the OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
@@ -74,6 +75,13 @@ describe("Thread Continuity", () => {
   plugin in the test.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
+- The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
+  settings. Its evals are in `evals/sentry/`.
+- The `auth` suite has two eval plugins and their skills: the MCP server of
+  `eval-auth` needs OAuth, and the HTTP API of `eval-oauth` needs an OAuth
+  token. `src/suites/auth.ts` has its settings. Its evals are in
+  `evals/integration/auth/`. `global-setup.ts` registers the same plugins,
+  because the eval egress process adds credentials to sandbox requests.
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
   A call fails when the agent is not idle within 60 seconds. The product
@@ -109,6 +117,17 @@ describe("Thread Continuity", () => {
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
+- A turn that needs authorization sends the person a private link and stays
+  `started`. The link is in an ephemeral message, or in a normal message when
+  the Conversation is a direct message.
+  `conversation.continue(completeAuth(provider))` opens that link, the mocked
+  provider redirects to the callback route of the app, and the call returns
+  the resumed turn. A link in a channel message is not private, so the call
+  fails.
+- `insertCredential()` stores the OAuth credential that a Slack person has
+  for a plugin. `expired: true` makes its next use refresh it.
+  Credentials are in the state store, which tests share, so the fixture
+  removes the credentials of a test when the test finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
   needs the memory plugin to recall it. `subjectType: "conversation"` stores a
   memory about the conversation. `visibility: "private"` stores a memory that

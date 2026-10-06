@@ -20,6 +20,7 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
+import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
@@ -278,6 +279,25 @@ export async function createFixtureAgent(
         throw new Error(`run(${input.kind}) starts its own Conversation`);
       }
       await postAutomationInput(input);
+      return;
+    }
+    if (input.kind === "complete_auth") {
+      const { userId } = slack.registerAuthor(
+        input.author ?? DEFAULT_SLACK_AUTHOR,
+      );
+      await completeAuthorization({
+        app,
+        links: slack.authorizationLinks({
+          // In a direct message, Junior sends the link as a normal message.
+          directMessageChannel:
+            record.surface === "slack" && record.channelType === "im"
+              ? record.channelId
+              : undefined,
+          userId,
+        }),
+        provider: input.provider,
+        userId,
+      });
       return;
     }
     const started = record.started;
@@ -693,6 +713,9 @@ export async function createFixtureAgent(
         throw new Error(`run(${first.kind}) takes no other input or history`);
       }
       return await runAutomation(first, options);
+    }
+    if (first.kind === "complete_auth") {
+      throw new Error("completeAuth() continues a Conversation");
     }
     return await converse(
       newConversation(first, options.history),
