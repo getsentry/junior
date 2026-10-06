@@ -866,7 +866,7 @@ describe("github plugin", () => {
       {
         repo: "getsentry/junior",
         title: "Typed issue",
-        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**.\n<!-- junior-request-attribution:end -->",
         labels: ["bug"],
       },
       { toolCallId: "call-create-issue-accumulate" },
@@ -874,7 +874,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -1475,7 +1475,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("assigns pull requests to the linked requester and preserves attribution", async () => {
+  it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
@@ -1545,7 +1545,7 @@ Conversation: \`local:test:old-conversation\`
     });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer.\n<!-- junior-request-attribution:end -->",
     });
   });
 
