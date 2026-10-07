@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-07T19:38:01.341Z",
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when directly mentioned during a watch delivery, answer the mention in its own turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "c7a703b865eb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0cf24d5d0ef42486016ac69f96637087d18c251bcc4cf5c994\",\"reasoningEncryptedContent\":\"gAAAAABqxp-Z0s5v0925X7gQg_XoVAwxerh7603-T07ygN7BcfsrZ5k-R2CZtSV__r_hDyW-LzBnGOH76ukLYh-FsPxBwIuhHwPLQPNwPNVKJUIlWwYyO6TFxZsrUaL3ig3MXQUiexrS1mS_7XXdYxEXSg2og2GjclEwVSrxn80R_NGhz4WGCfCTTjk7D-P81FS2_KnUlgJ7dQkriw55tXB1VpSjU5Vk6_NxlNP-xAE2MzZwSPa6F5NoKxh1FfmxV6L1S3RC3CWP-7zr7DirBDbiuOW1VvPyFn0DvEQTd3EIf3naWr_LZk-I5bODP4zQ7h07-dYceesEGh39thS0FjRW1McpleMAqr5UhT92FqyvjoDQ1aS-YIl-7GHsImosTdf5-fXDnvw2xVRVczzWBWO5ea8jLKAkXPCsUgTTKss51kfiOfwB7Rp6LlUmeAGsh8rtoR2wGM8hbndWVFWZnVSk8OF3WVLUW-PxvlOjmL8yucPWZIVqv9PQ2P5GgG3TC_PJ6v91bJmSiCwz3RHrjwQozQd8MQa999sV8cN9KwaX5Y4BxvsDDYjooRtsuvnND9Xw_yoB1EPRNfxDvP_ZNhxm5oNXumJWzXyZCeL8sJxteC8qij2EN13NJlkWg3a_vhsnygVil9qIF2NFAj_AQ3CQqwbuMou-724qUXtLZO1UqMQKOESqJeQYF8rviTQGhhQgbDVHyZSVu7zYW4MWp1Ow8F0AIZpOs4U7K9eNZPc8Ow32BPtJFIIiFTHsDgLvWe4igEwtRI5YxNr1ATke-RBauk2J22aXCVgl_scrfMs-Kp1biWa3UgmWYvrHbWlthzPwNU9u0MHqFTWXwhOkztodyXzK_1J2JqCpZxUq3s_70FE1mkwHnrQwgeFruIWXrPuTBVYclqKMQTrU-HdrusRoX51-lm7zop7Drb0WSRlZHtoKfSQNQ8PLy5PvRvZKTTglQ_mWh-qmwXjvCof-IWkgJsi-w6T_5pcisHu0vUFpcgpiOLxoPcwjMEqlrr8lgNKPWLwgNsfPKC4Fzvf6JvpdxIi4dUFV6hwvPyLACTnj4PqMgyTLycdrDcp6ecrOwp-WZNzxeVSuNL2QSyNTiiOFDXzao9g6QuzYcgE21kcvq-fq3WKmY76gfv5ApzhJX8uwrNqN726WvSOJD5vmYDDn2EqhKEdAJpwb5Rk2u5aoDq6nCx0euQbn-HX2fOkO-wEilP3Iij1nwQUWMrn3_RDfpVxAffPqdAqazP9ohUNCM0_i3JoSld5CIZxE2vHxCwvWeimHR3Leao5riIEUM-kHtiCinGD5Fa8d4od6HC6uMHKRXtoaOl69541lUDGJacKTHXaUS8CBNxkh51mmA3S86QphkWbSvEstQV2Gz0Q3cAmqxhBmzUWk5AhuNhB480G1TV5X0F_aTAuWDBfy7RCHUtLN3G-Ncp2K9pwXfCnG703dpWYJv_pOtMmEs4cpWqD_3GoH-ZuMSOGhfvhjnPCSkxnZyGMw3Sjq_r-aXGpVeZVJexZp1q4hXxjW0Zs_LvrtmeCzsOJSCkuU2HEaEe3CituoBwVYLOROV4MTP0bzn70UbkLiqfXhNAsN5M1ei5I0MO2uh8BCo7fBaE2B-17HnEiqvgDn3EFqoTDjw68SPJP303g33DxRrmbNRQvDKAEYGMPCKj74IMcdLZOCrrdbrNU1DWQQy9OPPcMRKb0CAo4mXSKxm1PaSR_GRtneEf-bQcedvnH1IODvpWeQ6KLy7nSiDYoImpMLg-YItUTZIgbqIMHFJAVnOjkhINuAR8a6LSqcpBrcPhDSCCyTBFzotJyN1MXOB-PqLGuyMa9mxJU_nItHz-XJ9KcSuXTkZRkZjRjfr73A1jL8WRdYmh-8fF5ONRxfLlDNDYCCFWmRDOmcUp_xDnwAYwzZXNRj3VD189NnXkMTa6Ff-yDq34JS0exNzZlY8HEFZ-1KkvFkcXjuInCYrpnbyDLO9vo6mBZss5DiWYJvKqZ6gJcNxaMMvjHyBxjnZb8GAQe-TAoNVydyJa6X4IvRmrG-ixd18DKtKPZomjJiZtbb9I1ivOHtKZzvKIm_2HnqjVi3-QhwEIobabj0HSbpRD9y9OThFdTkJX6dVeDvvtvia9nUmZqjCPB82-TxhkYqX4aVdd82G27P1VdzvyLEjKJXO_w_M99ENaeaZHBr-jZOUT0zkZFU7fABBafGe2kOoLAjLkbC9kMxm0ZxE1LamxZIOXMWRQ-zwsSS_qWDUVk8HrnQfvdKuDHpP2SYEuLiEOpFTmG_Zd82uRIsAG6gwu4fNjFmHBJIMiumzLUqwSUHAkpicrNKSdJ0ui5opz17dQekRSEEoY1lrHH0jEEmEhq6jsILTbRozDrJH4U5mj8IHu8dUenbQ-e9nqtTQz0QPhPaORHELBfCzH1aCxEIGocYgxQ3waEi4BfArNq-VtiTA6M1EtKl9pfV_wa5JOijtwyRcKrSUge3mmFN13l3bKfz3ewtfRSmTMiP1SdSDQiG1xWLGnPwnbX9YxkN1wswuui2f8ZxfLJdwucshDRNfD3HI2L8be0mGPX6ZtT8R6PeC-1SrXTNFXDqkgBFiC8KfiiQTDimyC7IzVTmHL0=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.93,\\\"reason\\\":\\\"The request is a deterministic, one-step thread reply using the provided owner name: Alice.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0cf24d5d0ef42486016ac69f989b8487d1bfa75a75ba1b6c11\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1029,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1026},\"outputTokens\":{\"total\":229,\"text\":47,\"reasoning\":182},\"raw\":{\"input_tokens\":1029,\"input_tokens_details\":{\"cache_write_tokens\":1026,\"cached_tokens\":0},\"output_tokens\":229,\"output_tokens_details\":{\"reasoning_tokens\":182},\"total_tokens\":1258}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0cf24d5d0ef42486016ac69f95d3f487d1a707e0d4fa876be7\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791401877737,\"endTime\":1791401881299,\"providerRequestId\":\"req_4f0cc2d58ea849488c5a910c9865f6d5\",\"statusCode\":200,\"providerResponseId\":\"resp_0cf24d5d0ef42486016ac69f95d3f487d1a707e0d4fa876be7\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"4b280989f2737d1b9dc8fe67d4f36545\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00024305\",\"marketCost\":\"0.00024305\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00024305\",\"inferenceCost\":\"0.00024305\",\"inputInferenceCost\":\"0.00012855\",\"outputInferenceCost\":\"0.0001145\",\"generationId\":\"gen_01M4BXYR6CBECF8XDR88J1QYZ2\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

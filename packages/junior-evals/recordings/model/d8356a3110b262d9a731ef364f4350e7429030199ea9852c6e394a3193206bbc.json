@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-07T19:35:38.469Z",
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watch asks for a fix and the PR checks fail, commit and push the fix without a person",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4fc22ed872f0",
+      "maxOutputTokens": "26d228663f13",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "7310d426fab4",
+      "prompt[1]": "813517756df8",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_4c371ef0326858f8b898f8166c23bf3f\",\"reasoningEncryptedContent\":\"rsn_rru6BQHgUc/VWS5vRIAlHwIFeFU/1AJDEdH793zVGn2mlMY/BvNbU+1VWEsp8Di2GJsvAF8AAQAVYXdzLWNyeXB0by1wdWJsaWMta2V5AERBZ0x1bE85andETTE3SW5HbUI3dzhBcUZ3bGFRcGVKWjdsQ0lleFh2Q0FSdlhOVTlBejFCQ2JweVNYNlc1NXJRVXc9PQABABFhd3Mta21zLWhpZXJhcmNoeQAKYmVybS1zdG9yZQBcl8CW8iGRtxwOvmKKELwIT9iZQgsnkZTa3jjkHwTyexPQO0PepR8jRQ3zVYQ+UMBFIA7WM9CLYg0yUk5KK+SjDzIMI3BcwLida4VBDEt66fSfoqRTv09vF4INaWsCAAAQAP0zn/5cD0gLpm5/RKyWtIBXB/EAdCweDGQeNcMkMQFjjDemOkn64Ksl+/Hka9sLEf////8AAAABAAAAAAAAAAAAAAABAAACAYUfEg6kFIQZSqHurDx9h2DWVEtVO7kO0vYFpTL/4ZyYh6uxSY6n36oI0uErGTdDGRRR447MszzzmU6s0wA+ux9Ybk8togrNDpJl3Q2nA+GgC/nh1+oq7bgcnFkw/P/MO/wZPAymYK0k3kC6EHauBR77nbpdcdC+nEyre84d/QW/vV74IIx9RKf60k0QihYzgipyms2/N7EepaHtqMF3GViXqLj7hzL8RdLdS4D+zgPenW7FcuTv0h5ZzY2HYUCTebVmgND4VeFlKhiJQ4gBL+Cr/IGIaIy67lYYO0BX9K8GdMPezQ5COTljipG+s9RrG965XfkpmbIcosq9wxbTJlQzG8WwyNQ4yJ63pErEsoBiXQYz/IcINBalZaryVRnaeW2yS2h7EW7jJdJpFChgUJRjwSF6gVgQp+hjGEmMqYqISSV9CRkruafn9aClV24bYd9Jk6aKMkBBB+O0r0gW4XDL+tW1HqOuRCgEFqXEZnCAXVqb3hwJdbkyf13xh0QBBzmmFuIVcQJ7EOT1OgD9dULvboSdwsLVtIoh8Yy8DrMv5EXDr8+939UEN30Qae0i9nKZOfOTYa3Q42OIhj6/5669rlWHj7hl4G4NNyO5ppaFX0ieQfdwtylfRybUajJz9jOnB8BpGHCB3TlMpbgz4HY/kMLGHFR0AOX5pwV7hRISBF4GG7Ir3tp8C8GZmlI3sksAZzBlAjAz026BuHEV0rG1rxd4SZp5umhH0k7tVGvlF7zanWlK4eBNF29M2MP7Ga/0Tyl4nKECMQDgDphtxIUg/BJysPEZrIcnHaMFJ4c2XUNeDEDvjHMYRiB4SOtwhs0+gkN/U6bHqH4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"relevantIds\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_5c30f37bff4b54d289d136bbc5e00e1e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":955,\"noCache\":955,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":112,\"text\":15,\"reasoning\":97},\"raw\":{\"input_tokens\":955,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":112,\"output_tokens_details\":{\"reasoning_tokens\":97},\"total_tokens\":1067}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_c3bmpnwg7olzfth673ypmqvw2yhefseanfq3wtjhf22z6kybgpnq\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: bedrock(system) → azure(system) → openai(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"bedrock\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791401737202,\"endTime\":1791401738432,\"providerRequestId\":\"91a7a3ef-0201-4d2b-ba54-b2b2dfeed18f\",\"statusCode\":200}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"d51a520f6aab06a466666eecdf61d488\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001515\",\"marketCost\":\"0.0001515\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001515\",\"inferenceCost\":\"0.0001515\",\"inputInferenceCost\":\"0.0000955\",\"outputInferenceCost\":\"0.000056\",\"generationId\":\"gen_01M4BXTEYT094NBK0BQ7VCJ9HA\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
