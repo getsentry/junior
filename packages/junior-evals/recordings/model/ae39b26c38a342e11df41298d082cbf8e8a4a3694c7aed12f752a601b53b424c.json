@@ -1,8 +1,23 @@
 {
   "writtenAt": "2026-10-07T05:25:23.174Z",
+  "session": "evals/coding/files.eval.ts > Coding File Tools > when making a targeted source edit, update the value and report the changed path",
   "request": {
     "method": "POST",
-    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model"
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "c7e0bb8a9e64",
+      "headers": "e6f1332f8681"
+    }
   },
   "response": {
     "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_03e12e2b0bcd474c016ac5d7c2003887d29c0f30233600e6ab\",\"reasoningEncryptedContent\":\"gAAAAABqxdfDyKgood38W65xB5oep6DxE-_qfSzTayAicUB6fFw5cC-5vv9dnsh16lWwL5MLskrHKQY1AuGG06ce3BinHDG_BpxsHJkrbiIFu64zKD2REy0xQegW6zy19PclFDiqKWqIAbiiBh8ym83Kgsq_Sc-6moi23yiDSk_MDZGtgW2mbIcM2en4huaNt5prhHWab1qhaQ2gqsMD-Scglp6J_fNDog6dI9zcTZHPbVhMQU1eLiSDjOLojsfLFq0v-m14x2luTDz_NoTodynoUBaQd47dC_M4ujCBwsT5WbdFYUtjypNBzeUTwke7xhVkq88tm9PEwBxGYIskfFM3c5VUnYnlKmTodce_uwWzHYfdkexHKqVeuNDOzXAuTnxxs5DXkBO7xdT3fplb0jmwXnYql6myC3nYatPNkV2V8K6-C2ri4WxilLFdgY8zAnAo5abk5wo_wz31bfFk-mYvUeQrG6Oc6SDPVvcgHW-s_T_JjKbiAkMrb_hzGtW9amyU9TEX9Xe_ekQoABz24uFNt7UtYK983qL8iBktVYAoSyED2AuT70-6GLMr7NQu2q5l-HAh4whbJo_bNYFb3IbsLrJmSiT-oHdTgmTfpkfh13tive31kw4ko9lEzTwvbl6T2p9bXKJXgtiImYk-8TYmLRm7upcKv55rkU0yr4y0iA-yerC9JTnp01D7Qm1FX76hcM9ZSrpLDcU6Rx6YZdkhkl_nH-_W4IDhbdY2YRhCKdiCFE80JD5W9trRnEfAUpHbAeAxaQnRrm2ssPD64-3vjpO0C5KrKil2oa--jr7GZaZwT7vA6LcQtc085kEIdBWFMhcbUYgExZ4O1yF5AHtd4_hbnurDeZGb4PGYjzA1EWsfwh3joJsn6_g7YLgN4FeEpu7wmLKfJQvlrDHCXCkKp3MYHvBkrYza2bT2-vqOYblJ6ycdunFo4bAxxtZk-WbIU8br7lnxkhZH5XV-jRD7MdRqbzAGAv-3-u1aqRgPyTOlrdJVAdSr5YR6TwwdWQCwNPYWFsPCktn-hEbk9Rjhexw8zhnNscnbzDHi7QYMEQvMxUFQo07PPeDE-DEDz4qocDnXDQ33HYs0z4vU75v9eBdFNetsYOAwAOdtkqx6_PhcmcbAQOM4HLcI2Zs4D1xFwtG05V9b2VHemA6xMhsjmcQjltVAZvK4X_2WkeNo6t6tijbe5YHQFGUBWOGlWVyLdlCxJWB2uh-F24X2AUrK4pVy_KNlhrJGs505QKi6GVbQl5yK5jXsXNOEVNxl4Ujo4J5o-dDvXkq9ww_Ul4Woayl-uCky9UQjMS4q4kCGiHgvqUVUs7JT9dFBtK6MUmdotJOW7881n3nNUjtYyu86Q_2qtkNZvESBMFgjfYjQ8CK2H9poR8Gx-Igv4xskzdzgOOvXFP281Gg5-n9Bt3lEJGc6fHO6T5TMn_yK4Ibp6sLYklSBhg0=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"xhigh\\\",\\\"profile\\\":\\\"handoff\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Changing a default in the codebase is an implementation task; the requested reply should identify the changed file.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_03e12e2b0bcd474c016ac5d7c2703087d2ab9a3431dce95efa\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":608,\"noCache\":608,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":85,\"text\":52,\"reasoning\":33},\"raw\":{\"input_tokens\":608,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":85,\"output_tokens_details\":{\"reasoning_tokens\":33},\"total_tokens\":693}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_03e12e2b0bcd474c016ac5d7c19f2487d2b845aab4eb97fd24\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350721549,\"endTime\":1791350723135,\"providerRequestId\":\"req_1caa3e2b728c44b694739cd2820fc138\",\"statusCode\":200,\"providerResponseId\":\"resp_03e12e2b0bcd474c016ac5d7c19f2487d2b845aab4eb97fd24\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"f0656233757557eb8c0dbfb323013891\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001033\",\"marketCost\":\"0.0001033\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001033\",\"inferenceCost\":\"0.0001033\",\"inputInferenceCost\":\"0.0000608\",\"outputInferenceCost\":\"0.0000425\",\"generationId\":\"gen_01M4AD5JZPEDNTKA1PS7YWZGQP\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",

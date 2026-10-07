@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-07T19:08:25.418Z",
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when one GitHub issue has multiple requested states, create one event automation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "c2d182085f80",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_09bd0f497435519a016ac698a746c887d192052d22df7854b0\",\"reasoningEncryptedContent\":\"gAAAAABqxpiposqjgXOFPWAFaSyDlsp0ZX2li2PilY2fTrdp8osL6IpVp9qkrJohM85VsVY-XgEQ9XAaqAF0YaQ_H9Ms-brcaRy73tixYAPJo6G3jYjLcTIJeSxAGbdB0Re0bWQCmrJ-SSYpfezBlYOxqyKGJ_7ACKOm0d8L-aTXBk_dqop2YyhhpazEtFDcFZXitw8a9WxNZoEOp1GzCA1cYfPW28EsD7c0e381L_bbYxoPJZXv6Ptfo60YTUk7wEoIcoT6-VthrM8P6bAVHDGemVeceuNrgWzFg1gtOa0qnBr-DWfqFaQbtF66RgtKRTCtEk9D6nmdWX2PC9xWPuRt_KL8X3T5gw7wj4IzSWjBy_g6BJHe3jtF_uYmyc6tvDAQV-bmszNE-CeZGSt4qYIVG49RBnOuqNIeANPO5jXd42m8g3_OrmN_GAGrBHrzhkoyIaqROgL5iUB2EtTP1qomX-xiBYbSUnbyQer7WuAm3b8-dcZApwuWta1hG7cJ_CDRPF4LoXozYZ9scgrdqqt2bzJb7xtoOE3j_8mo9WimUHmwmcikBwZ2yWBugu7lp0xEr6ckGm2UgLj9Z1iUIOTbpxgDtc8Zpyd9N4B1xdui-BqinVTz-VuYhsSdH0iQu0mMQFC-HA9RYeVWBWg-kBfPJWQojDWVYr6bc10qWfcogqRyBxVRy0PcintUVxl2z0dOhnNBrSoWXVJeuV6FdB6ojoOYAj1xo2LRhrLHMr4XT78RcH32cK5PnRynR7_yQrl5BIy4lHJG4PRdI7pbrSpvlWYPr4fJ4VeU0HrTGX7-c1z7LKe8fPJYI4DGB0v7E_LfodrEYoSYXqyRRXvTahzF5QW4_U8UAnZE128Mb1ke7Xaeoh9_OJEcgNojX71xU1bGfgNpw-ybUTItDH4WK2qRjVwSULlDkMEQN-iZybT9zAeptzvsnVeAM3x7vR-MRidzLpcd1Y4Zzxtzkh0YVRJUQvzwBrptjcRKbUATvGmTsOccPQGfyzWQT964dfI26L58ClckgQ5OdcquuBrRkle8NnwPlum7DyFDZISTcaTsDarUQrZCvrwb_GnNGnNnjWjQ0GQn6tBW1ZNLklEAH2I4GbetOmcQu_4lgbYoZA5W12uWRyPKOYalNBaXhA_ljnpdEUTKvPEvHdtgrk3i9Sl4lnrryX_ziUhtTocxBgl6-WczpBcRNKtlRnO6LCMJfiZcZnyfkkdfnNvkUU-ztvjDHbfGv6pm7e2YktVzcTfyaDj55P54hG9DujsHduf1wYLQEbcR8GsH5XrS3MAIcYx4RvCfSxvaanhr81vdBlzKA6425BS8Ht6OU47U8X1yZ4c3uKL0Vup_da3p1333rirEiednXO3uE4hzY9xpUAfsQnXtySOBeXDzDQNYd-twygJ9pAL975LcsIPmX88K9XL6QoZWuWGHuukJuFHusMNkvpKtWJItva2O-mWgwMkU3jrS_cLaOkUwIe_gR_ab8dsY5eo7OQ_SwPM768ev9mz6BxVmMxKwqG6RlVtQ8JY0139yhWz8J3x6rWRZ8Ki4Sn76qSvVFYQjlOj1vgTzgZJCWBtPBYlSsCLta13fKW4SlPWrRWvXtGBlawRR6D9iCok4jE1bJ5gal6N2xu4M-LpOICy9vQpiC8SR0IdyZ5AlKaQE9XE64XdCuD29cETJTMTF-oJW0LypCNj79iU14PT4YcJNvL3dv4TMvnNvmzd66Z8cXW_qMMyLbicRBLxP6dW_m6Ksscjz7CaL9Att5jb49FHob-SqxBzMbb__m-Ak3fWzpY0DhyasUzYev0xTM21VSuG5aJ5v5qimN8loVUM0qJ12PQ_39xCjaEmp5E0nr8my6Dxjbn3Czm2CbrHkdMafAdz45dUIB9JyPNWDgvylQlAW_SrVujUHe3i9gk7dGBqKXPVBvfvI018ENlWhv2ByEjPdxCuV13QXkFxstUrdaZFyp1FO0zcrjv5hqwbGuHV9INBqmnR3uA7W410MaizD0etEAVPOdiTZb4uE9jH_wSlahirLW6WVh2vsdkL_LlIE7pl9N_n_3zy9iDF_3FQJQHu5ZNVtroDTK91R-qbWr18NKbzT53c0M2sfhNBFmZaYpTwj9cpKCzt04GFbM1cOgkALfF_kJXHTosNY-VxVonUi3jih52wb-IKTXS2ZXXjHn_4MA3Ex0BjHvGblH9OXAyuz8-92thnKylp19LPIyxLeTMAJdsgIR6ia2ienrMokcOtHfmSOUwMDgEmix3UqfYqDLeewFkqHh8rfMfWg2gf8uz8ipkT3jzcooet72bqZBZjThiNkXtPHJlPnK57lbZPSsQNPybnrX-n2DhC4xRtdVrSP_h1U2pcEIb3wNsYGhplCLl1PH57GzEWJbYInmeyNf_agNbgk4UwaUlzXWJOlWq2mLE3327hIN7eJ3IZ80ynN0Zar6Rbz3ny8NUuTIk7bnGJaSTCwuvkzBU123uW9ONdWrOv9NIVGO_3N1iwcy8r23COgg5929VVQnA50SNMudJlZAICzbeynWNMs9mdM9VA2WFjYOThE4DZe6PI3H3zFI7GwqJS16aqf-A-4cBFlC9KY4vugXcyvXs94B67MGrqk1NU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"An active event automation monitors getsentry/junior#208 for issue closures and reopenings and posts a concise summary with the state change, actor, time, issue title and link, and close reason when available.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[1]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_09bd0f497435519a016ac698a8bf4087d1a0ec7eebcf39955e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1901,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1898},\"outputTokens\":{\"total\":260,\"text\":78,\"reasoning\":182},\"raw\":{\"input_tokens\":1901,\"input_tokens_details\":{\"cache_write_tokens\":1898,\"cached_tokens\":0},\"output_tokens\":260,\"output_tokens_details\":{\"reasoning_tokens\":182},\"total_tokens\":2161}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_09bd0f497435519a016ac698a6b9a087d1be26abee0f635618\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400102645,\"endTime\":1791400105376,\"providerRequestId\":\"req_6abb5d3d818f4b0faa184638661d093d\",\"statusCode\":200,\"providerResponseId\":\"resp_09bd0f497435519a016ac698a6b9a087d1be26abee0f635618\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"71ad800ffc8d368c869f3d466869804d\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00036755\",\"marketCost\":\"0.00036755\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00036755\",\"inferenceCost\":\"0.00036755\",\"inputInferenceCost\":\"0.00023755\",\"outputInferenceCost\":\"0.00013\",\"generationId\":\"gen_01M4BW8JQ2YHXE87VYHA1GE57N\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

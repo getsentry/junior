@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-07T19:10:55.163Z",
+  "session": "evals/integration/scheduler/credentials.eval.ts > Scheduled Credentials > when scheduled work may need user-bound authorization, use the creator default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "8adff97cabcc",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d0c6be12dd706da016ac6993c8cc487d1abd1ff7a380e2e0d\",\"reasoningEncryptedContent\":\"gAAAAABqxpk_y2xwcL5GTto7cxLNBNdoTHGoiB5maqtO7xknwg8pMlA7oEPnacf0uxn9J1VEgbyC4v9gyMsjIiN7W3ySt51ZpXYZIq4lWdjf1R5t6gZnYir4io_AUVD4T4N1F4cNWiKkifLOAPLF45ZKd_azDmPJvBXVV4btVK0HllUbOE8EpMOJtq-UTPbyaxumsPolpgc9jgGIV2BrKAEtB3V5u2KOD2nDTYWuNxgZs3NWPc_NOKBA1xLnTvVwAeXaGAhDa4GvntHcffE9R61nzRAQlsfRvZ1qYzF6NHqWJqRr3A7PVDcnf051CuumiC0mgWwWHBsoACnLVXpRgGnzjcXJ7lU2OjKAhkhBNroXtmNfyJbVkjsEcZ3Kz4dIJHWJSy1U1wvdq7cu6U-dfqCfnpJPtLjTZ8AbQIN47W8D02iIMd0B-Lfll77VA-fQpl100CVzjxGUoo5dLva3A0UowSgMDIdeHR-BCIRrhMPvsrT5sCT2d5aRtZVZ3PsDfTyJCCdjdf1B0pGnOfwzGxo0e64Hj6qYhF4rGu5q5AjGi34G9UvMX8_jYEivXdMESj8bGr9-wLB1-XB5QGkeTHdHbe1UOi47z5gXveN65DuU5r2G3Qxi4gOWLNBXJAvinC9mcCXp_Qz47UI1cRRSotgapoK3iKp2aBek6bRPbDDM4Vv_qXMxlXGG-9UaqrMrjBovh799lyhBiG0xKfKo8LtvdJ41zT0i0wDjDNBQSXQIotj4OOt8-LTpwVcw8euW8jdOBlwhl32qmWwZJl_yIRCFJsDrcjXKCQx99glOHl-ih5BbSKX1Y9uVjF61bdQs16zF0iFlx1dSF0880J_JDutIPeq9MwwTlLVemoEorTaKmmJjMV8CTbndTGaVpJDzNu5VkZybjTrxQVq1Iav60bYdOD82Gl3SEqttDUKE8Nc_TyUB_j6dIWXLDCB78EUyecQ-s7P-xP8Q-zkHIp0Wufklov3A9kkxsQYIvh8M9NzQwSYEugaleVxcjI9fmnWHGgszoiGkmtpfL-fDSyJ-oQTdMM4jyVHXM6VXUo3tUEbjsNbsXjgYWZgUCMZh4q8jqwhZCWx6yJZP3-i3PMHGreaoIZpttON27PJCs7P8pQx3ynLNSomugnmbn5F3fYtiCWySaztcrIzYPugInfiXowa-BP2VbhVUd4qqbKddILussVx8MoK504s8eKf4IzPTm618X0_toO57HXsv9w3lv99CLrLFp9jXHPgwxdFhY_KvzD8YyayOcmUV7ghRcOV1a12zJMdYZZIKJMehXsJj3cBnqvwCVYSd7LdXOU9T9sqdx0B7c-94fZsSjlwYf8zT2usFGRkThrXhXWLtAZ0unXOwVtGW0bECLhe5cEtvbnhc20Ccb1Rd4tlzU4vvlphFY8V4imKF_sIG5OemNlE4t6MWRVPkylh1IfykrmEbUdieh3hFnk-n8_5ZwRrOkTPg1bLsDUP3FY7dxO8t7qNnZIKX92fDnvSOYhSvRQ-lNrRWMoOhuogC56B4AnnvfHAZUd_p5YNabyT1GbJQc_PSFI--5C8hiPevLBkyU9cgOlvzeiZ6DnMCzcf-tEUGspfowQEY13MpzrFTFfQxFGeGMKyDTggM-k_ErPRyrz4qI6uO1VdBpEGf0YFa7O1fm8BVyWfsfnPFiyFQjiQM-AjPGsBPI5NPjgdzEzUz1kk4li_23zWJYqDRI8DKaTOTbupEUGS23uTUfCPtI_cJyF0tS8MKLAshfv4b_13pjjKuF8BmsawGSFsXZ1qFG5VtfusBO4pAg7Wwga3Q4ebmJPjdHivB38akP1-3uvCoXmoOGQN1iX02sk9xowegmrpOkQlQ1RmSdiwsbdFRvqRer3iMIBqpg9ocLZEtMPlwkXY8Fmt3LP_6dRLs56VnlFmq17nkm7YUyT7rneGJMJVXwzxUJiiDdk5vZzP6MWX4i9QdkVeKAgHkZEQX2T4hDb7KasDs3455s_q9plk8pxzvmdC1nZSXwJyb-0KUDyrNcL1a_2m0TYLV-RRq6I39pklFr2SippnL8tFXlDLLgyTWepK3ifa45h5tqIE-TMxXDeo5hMVHNsNlyRV95ZTqLKtztNBWCTvZOSL3rtaBW-1u-wouHa-voX4IybU9ajoHH1IU6kN6lJJdqI_WhETo7qP3dMuvL4vh96xoqRRgTpx_MpmGmovA3Z1iSEqH3t8nNo_eWe9qS47umx7cXbxGON4i896tWvvQEWyHbpHvUYbEPYDTEPKYS80GHHPkKdu6WrkZszP0bUqpkRIBlPKhsbCgv-eAVRlhk_m2h0xAhCH0vzWCeqICpQUND8rLhDAFUwzQKWNqv-GlQbAEOzq6fp2ToOIEhTUxQy_QKQZme8o-nKMb5KA9yc02wqcrYwkwxZkWBc8RPgoJaQkFw5rJppMfTly8r8MFvhNJsYoygB2j1kRlAHA8r2yApIyst2J7jv_PhojhysRvwbA5Sa04jN3a2NWYl0anTKu7LW0ps0McBESwUXWpp7YEjgjhxVt63qhcj2zPFNsWWcKSQmY=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested this recurring Monday digest in the current Slack channel, and the schedule, organization, and posting destination match that scope.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d0c6be12dd706da016ac6993e2a9087d196e3be953812f103\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2746,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":922},\"outputTokens\":{\"total\":224,\"text\":53,\"reasoning\":171},\"raw\":{\"input_tokens\":2746,\"input_tokens_details\":{\"cache_write_tokens\":922,\"cached_tokens\":1821},\"output_tokens\":224,\"output_tokens_details\":{\"reasoning_tokens\":171},\"total_tokens\":2970}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d0c6be12dd706da016ac6993c045887d18e4c1beb4053bd8b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400251927,\"endTime\":1791400255120,\"providerRequestId\":\"req_834656a784704c72a62aee9bbb2b3995\",\"statusCode\":200,\"providerResponseId\":\"resp_0d0c6be12dd706da016ac6993c045887d18e4c1beb4053bd8b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"256a5bf0c553de16e61f587748ebeec2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00024576\",\"marketCost\":\"0.00024576\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00024576\",\"inferenceCost\":\"0.00024576\",\"inputInferenceCost\":\"0.00013376\",\"outputInferenceCost\":\"0.000112\",\"generationId\":\"gen_01M4BWD4FW1B0GE0PT0ZQZC2P1\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

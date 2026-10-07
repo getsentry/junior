@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-07T19:08:55.079Z",
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for nightly fix PRs, omit success notifications by default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "c720f49534ff",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_021f56c7f6f91b44016ac698c48ccc87d19b51ce652a4b23b8\",\"reasoningEncryptedContent\":\"gAAAAABqxpjGauNgEpz0d4B1SmXJ-iAFw6gxfFf3GqQTq7oJTBwnQJ2vWTamArK2YYeofUEGLMMdPCufmCZDLV6-3sOI11Gw99sVuwtZA6l6--JlMSGcB4Szc4ODETG7tHsr3IHoPQR180hu7s9D_2-EXtzXaOnlEsdKVTxhCGxPY4Tt15vMUQJS8BAyQsPJ86m3BoGDQkgJdgSYkYHlpLoJqkH6s-E2VHKnkrFVE4ywPeFbN9ZdUA5i418fm66qrjN-IhxqCitLveAEVjg4_Eu-r1i3RzHur_pOljyFBnMfuKVZWwaVpXXZIynXJ42xJuS9Ql2_uq6xvNBucg6GNlS8q4FRlh9iaSssEGG-GgQD9jfC9HkfA3kNNDA5QZEANarWW3HTGz2MbZvzfrUuzOSo-7HkxoVbOnI6qrBEbgU61XQ_--IlG8hX-OPJyigf_JXBgkQV5qhGm50BzZ4wuW2rqIo8KcUMuogyg0XqeP6D3x5kURHFm2pGukxQ3kdC4qUc-E4VRJk6TtNDdJ0T4X1331Yz2QL08CAPlKjTbq_5o2dVjml-OjdKgOi35QfuxeCcFtoyw6NmfCIVOEtQ0NLNsW0vaTol9AA8km7ZnDr5wtfMTZf7ZAtnftIfW2SnxHiytv-u-lzu-tw9BH9S0PN-CuxzDzNBaD9Mvygx05xk87CIZiVl6kNlQ-2uG5u_Tr6qQZDEMwZG2xWSlUjnYfraazJZmb_AnVJeCWlB7VNDJQyEKegs0E0hbqexJNCs3E3Vq3c_-O4lRhKu91nbGQC0tdojHDnB__nb0fy3pSUe4QQ9BOFYJbmKF_2pNpDnkXcjKn7Ayd7sP5ULNSf-KOw5W5TVjQZNiaIhV0uoWethecq9sgEZ6E0x5_MiXmti_hruVwPSeG60ndfhV0j0dN-CqeDLBrDmO7J9xjLmytLFf3spd6zoXngZxNTXw_6rtPkn_SaARKpNTHto6nn4eLhjoOs0OFzzRl-tovSZdSgJwWslHgTcxQnByvwqpRAOWtb73DrWpPnD9pbn01aA45nAUdEnixhmbxvvJzxBlrfzstoooVmDTKHhqyx14ttOF0x3ggxMWRZKAdZbQni2bJixCJuVXqFtXXewj9mqyRkiwG-SQN7pFIspuTcw0dCdB_Xnwo1Ql8P2UYLyQiOexuNLkQ_lRmCtm8twbGjmmoVKulFDYKsoj9FgjiV1S4XX6I2CMro2zJECslp9XEPfyVnNngZsCtKtRYFoNqPplrUdjsQxboPAHZiDVFscU0coJakwvyITh_laWwNn7HDw-qJBA0dOcaXNQX9VikGWjgzfMJTUnv0Mtl9l_l2F1u4kxihDBctWjoOvpWQrbN-AsfNLck3BuxTi9A2kdROeOWi-C3NpGNiDEkVT9_dNcHDDVdGJHVjRE22iO3CIO29dq2b9WU45WaHvsgKkILi7n8TlN4z_VvIjbhr0uXtngZXvckhjWjouGYRTy41cX5OP6FIevbmk9zwYffQjcE9aJBkaCzp4av9Q0okqc5-rRo-Bpkm10cwY1Gt5K3aXfmwFwLGA2dAztBR1W-yB0hYuL4hOhK1S9_iqn2s5okxZLx0WWlQYvmX3vJJNoPYU-gQnfHlwB3b9bTd9wZT5cHOmFpb_I4xfvurlo6XpRiUXK_so1phgmVOriCTdmF5Wq8dUadzqXv9AWyume5Za0KhDaN8H71TW1wQGLxxfMqAd8-Ja_ctGY-4EkhGwyYTShnHqTUY9NjF3ni3CFIe4-XDGo1kHVvQtUH5sBoE23YSzKaOqKZWgeT2wOaLCFlUiTeTkxs0pTy7MguYmb2BueopEpc2r8vOhdNdEm9r3jVnOo35VC9z90gAMWuMQXVGV6lLNATQemwOh6dym64fr30ZHda-BeUYOSilA7Liu4WwwXtfvmlDOg2FwCLJr_txMzll3PDHcXGP5st3WkNpDKr3BxtPXqYUzz_yrTMmB3Okuyok2cnOwxumxCnBdPS6O7RHfYQXEwuPm9uEd8BwjdYFQMYnCjfHd3c9kqwn3SD1rC8s8wSqarV5qpv5I37ri_NNMld1aIZ6MwZSmlZP_YuMw2jdBlPWtwkRwMk4yOkpAkF6-qTRapSypsZ-ivgUilpG2Ic7D_da84ssLGIY9EqoZXC3j5F448OZcGJq-BbN6Q4LWOEJxz_dIcFWC375BQMVJLTn7lWEOvX_CcbhTbNr5slk6kWMqD6KpogFw2uzvfMr2d6mwb-ldInm3aNZN68JUkkwwmw0ZicKgqgodhYgsL6IvbdYECz-J_f4Zfji40kzMZkpoD-ZCytfUx5tSfJ_CrtWF3aVqGnKZDMwhUWDcUKtUIxpW_6lTReoN14aKrME2YEQtJZDX9pHt2OlCzLm_Lsc73lVsedNG-46fb1LkdQs7iAhQBYrGCvjbX_TILYnnqswLvPrXAluvlCK86XpbUr8R9kuSYu73CDxuirftfob42TMfGZb13qYhnfngXDOLLyu-_WEm6SX7AfbXeGClZe59hHr-WB1T9TBlns7GZ_BRprLS8jfbVcc5xR6joS7nRM-oWWbLZo-2Nx4VWMXfo6ATqlUAf72bjw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested this nightly automation for getsentry/junior, and it is scoped to opening non-duplicate PRs for identifiable CI fixes without merging them.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_021f56c7f6f91b44016ac698c64cc487d1a228210d1ad59c36\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2863,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1039},\"outputTokens\":{\"total\":229,\"text\":59,\"reasoning\":170},\"raw\":{\"input_tokens\":2863,\"input_tokens_details\":{\"cache_write_tokens\":1039,\"cached_tokens\":1821},\"output_tokens\":229,\"output_tokens_details\":{\"reasoning_tokens\":170},\"total_tokens\":3092}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_021f56c7f6f91b44016ac698c41dac87d193cfaaa97dcc7389\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400132035,\"endTime\":1791400135038,\"providerRequestId\":\"req_a5e13686dfa6432788ebfa4f2bb79bb7\",\"statusCode\":200,\"providerResponseId\":\"resp_021f56c7f6f91b44016ac698c41dac87d193cfaaa97dcc7389\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"c31a20241f29760c34c6aa9de73dbbf2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000262885\",\"marketCost\":\"0.000262885\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000262885\",\"inferenceCost\":\"0.000262885\",\"inputInferenceCost\":\"0.000148385\",\"outputInferenceCost\":\"0.0001145\",\"generationId\":\"gen_01M4BW9FDKP7PS6WHAAAGBWFNN\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

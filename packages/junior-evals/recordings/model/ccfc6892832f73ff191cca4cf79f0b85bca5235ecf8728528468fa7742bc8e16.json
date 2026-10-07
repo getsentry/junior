@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-07T19:11:42.823Z",
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when a default repo is set in one turn, reuse it in the next turn without asking again",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "17f315dadb63",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_031c727720215b35016ac6996d10c487d194a9f1e89538c42b\",\"reasoningEncryptedContent\":\"gAAAAABqxplusCCMCxnK2tQtY2AK8rahWwgyaDghKmYQSS5BwmGksuOwuvs23hr1g7icS8K1mDsG0nF36ui4mlUxTisFT-m891bMTD_41gQmYYB4HPRkED-q_T9PrF4SK4juqJj80l08iQct1kSc3VzkOj2u8GxMqo79T54zmFbew9kYu7dW8nPFfnj-x0EDHXB9YqTrgI2NLJQeaYgGFCKaQ8bEgSRyxbs2kYXm2ahAtw7EKao15wPb88L9LiANLGUDHSG6Z9P2cwaReMaE7eHPnBfe-tnZ3-gB9MLYmuRR06Pc7wRdTJ7n7E_yIQideA0aLSv84TB7ykNAWiSNRnX3y4gY1M_25vPB-hOhq1W6XzW40rrWIZZQW3hAhKpUwIw9ARVK27twdk4504Vs7XCT6Xtps6wC_kQGSh3D1WE81x4fRrB6SsBACNfvpMlDFqOvFkHFALhyRMUg5i5INaDgkGhz7Ip8FDs3vJ8G8nJIjs7MHcsyh2NAHp-WoM_fOIsuhhwQv3ehWpl2DT1Sok0hy_Lj2drUu4Sb3zqJH0bvhjfmCrC5Vy_NkFtdezCp0RmQZl-D7BkUm6KNF9iNAB-zlYLZ9G9qrbePF2P64oYz9PXkulQKMh52dfgN7fTOlBKJPek4hkZdG3oxcY3Y5405eh14x-SvyNUV-3R1JrovLmMnBunv54_mzswi_f_qpV_igInKw-oqU15Gawyom3K3xXRCvrNWyCfbRrvC8g0L8KXANqHUBrSqMKlz7d2FjKdlW5UUWPw4pJRphmwYNzvHn3ztJNV05oRBUxIX8-pbMb87o0ZF6fIxHiDAPoitShWgNsWlm7VB1qM-s53dAqDiA1M-kUWAEetw2DN17-IjIrj9945H0nuBKAXK0ypMBXWhKXCKFAAPFyVdU7PJLHzdjjq0kutortgyE4j7JvzMnxQLcj0r2BLrR7GX3eH-Do5AwsCJdOiV4Bi3alVhXU17x6EYHVm_hk-OM9XiS1O9s6WsFsmb1lthdx8IEc6NNG1Sqx6Fx8wskWId2F9-6NXLZZ2IMYVSC7d6dIZ5yIpamd-q_8PRicLk37vD97wMUMOvbQ2jPN5OhCMxphAB_AouZ5VYBSm8mMYvym66Tm7Ubwaff7NnCQl0wj8l_i7way-3hxmuwP0l8hRqjamLeHmUDghmKb1pA-85LitskiC2D5Q8M85m53N95kH-d_5N_V-zltPeoSPKK334LHVW3LzB_ABqX9mPZLOGuvzrlBSyJI3wfZamlQf9mUkL92RQtlvIIup1KriyhPe_54hMVhSKR0NXOjrjbxYOKeLstERgYTBjH_jhLLSD1FYM5aY5d5cG5mNftcVRtIaAnuAKbSuc5OKaxnOawolfgROnDxfwp-Dux1XoFMlvnLsf-fbOXZtJxfAiU6BkjgLtNuEmZP2BSeKLX6ftrflDMs3g1UIGh1z-JYZMC4hRHKVDEcEKRest6YfFSzPJGYu9jf6a-pEr-JqNplQIkO-etWCnBXsnWrjd_r4OTXuanizsOaF8QkmMCdNvel-FGCuWEs2q2wUL5qRzxI4IkZDHLyQHEQMMJicP5S0suk9JY1yWQqorKhf-DS6MZYbJo8bFBq2cH4Wv022j_DVm1-YhzxxF3yyzxDH9tGLY1x3fcQjcsuhr5e2Ht0JH7nbPf2RJGfZiJPxXlaA29J8BF9GSTw2GgpW-vEWLGYQSOs-mnVSEWHHIDbUxkvf4q2aF4e3NhxZA4UfhZHGFF-PcZgxJmbtp5n2bE52hE3L_LS9RFlekuKVHVJZBmxS7nCW2PhojEIENnmUBulyLHb7Bh7UWyFBg8TIo40kpGtNjN5MV-qE9gdJticlUSW5opiE1-9pJMQViQ5bk0p8CxBKKPikruWX-UVo-QAmp3-Yb_YPQmSi6-r5FRqYgCyr8nEIwwRa0hPbhh8ATZxiRcaqhNP0xjsy77tbQKzDPXn9GewrM9qdjg1TLjH8y9UtY5GtATWIUGCcuhHFfmz0PrKAO21h6xfc6fOKtjCc_RVwcsX6jPcgdkWEp4WETK8Ha3QBqdhOnUgf2aA1drv8AuMFIYUum1ABigmLkzyy2iNecCSVPUSHkARqXJvygMB5F5iy7wpFfFKjIiCFNwuS5DZI6PvLEYy3qh7ox7NiBvPE6DRHxppTdYlUcxfBcQovSIxvmEmRXRp7vwqsDZ144nK8qT6QaT6SSYSzvwX3uRK-aDkQ=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"Issue commands default to getsentry/junior.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_031c727720215b35016ac6996e4a1087d19313b01779de1c58\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1527,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1524},\"outputTokens\":{\"total\":180,\"text\":45,\"reasoning\":135},\"raw\":{\"input_tokens\":1527,\"input_tokens_details\":{\"cache_write_tokens\":1524,\"cached_tokens\":0},\"output_tokens\":180,\"output_tokens_details\":{\"reasoning_tokens\":135},\"total_tokens\":1707}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_031c727720215b35016ac6996cb1d487d1b2f2324d36f86036\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400300622,\"endTime\":1791400302784,\"providerRequestId\":\"req_aabea0a528cc4be1a750d78e892fd60b\",\"statusCode\":200,\"providerResponseId\":\"resp_031c727720215b35016ac6996cb1d487d1b2f2324d36f86036\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"d8e5ef0a6d3b859aa3aa1864a02f0d29\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002808\",\"marketCost\":\"0.0002808\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002808\",\"inferenceCost\":\"0.0002808\",\"inputInferenceCost\":\"0.0001908\",\"outputInferenceCost\":\"0.00009\",\"generationId\":\"gen_01M4BWEM1MHSVEX2TMJ18011P6\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-07T19:08:11.317Z",
+  "session": "evals/skills/providers.eval.ts > Skill Providers > when an MCP-backed skill handles a lookup, return the provider-backed answer",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "174daef40c84",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_09a5dd959025e62f016ac6989a3a4887d18bf9d2f292b50534\",\"reasoningEncryptedContent\":\"gAAAAABqxpibfQ89qpAa90PgB1LYaR9eDDDhmOh8fpxbbwUONzTHIIpPRA2pYYzgwqoLdie6EqF71Hd2OgTmeFqogoANx7j1wuhOV6nzxZmgkHHPdD2MyjkZbBzmb9vlp7iROqH4xJeATnujQ6MSq7YXOC68RZYQTvbX0MVZ_45KtLMGwd8_65Jp8z17xizlx3VqzUzT5fyNrNW2ED3QKbw1OOj2xCyL7b8pD7Pva2MyfB9Alg30hq8v95HrqfMVoUhFfk-gY4KstteIV0MPI2iuFQm6Fcx546VF2q9Nh3ILa3wv2i1Ln5Ab-bQeOmSyYxPXYG0qTgUzbbTGbn-NyjDpxCtBZXsIISPpgRTOBn-dcoMARt7fK1OPd04EzFUJxLkUvrmjGbWpFAJXUvGcY2mh1aFTodtKsx1V0pbND045FHdu3cHA5fS08l1D3XDxAauMTd3nZXpjBlceF0_tYeIlRZ-ZxDIPZcLJxiqdPkHokyxCBJx5d7lZ28vlDucWmYJox42TBunNxpucy3Pt9amLOXl6miI9k6Uurancq_1Lpk319BqQSkU6Qg1i5HITYUMgEVe50Hwi6O40-T8p1TELLkVeOcuySJW7eNt0c1PvFtgkA1uq8-KOyLeFK6hoxtjeFTvX31O4s4dBClIzDFtyPhIf0B0_77_dfOgQbW2EpPngasj0QzUe-_RRz4e1zqWr7OniwL_LSr0QRy9CORa9FDOy6ChykyOnRXSXFPcHgfdYYSGxI1M-8CFkK8jRP11cUmhsgnHnvK4dDczuUtV7uF-ibhuR_F6QQ6YHt9D31FKW7N2ht-CZTXYj0OX0w8NU-jm167_z4AmBDykyD5AyBw7S3AGRxqkZLgMcAdmgI9sA3rzBDyF95dvjEwvUkKn2ILIm3EGpCQdctyGDIl9NSCM1tuBhVtKJZf7wgWDuwbe7H7DYHQ49C45HJAJKRpCvlSQWl2V4fzo-Q99Owj-Nur9oxqo8l16jiepfqBmgaLBOn98mYf5UQlM5UT_LWXPLC54HlMwVvI3vNTEDF5cOo7NCstEGpKL4l8kBREXaBxld5za1UewRboFNjNbVEbOzHA2YHxs7E_2-W_20RI0mIo5zmnYwz6H5-nU8WE7HkaRBrU2XyiwAJOidYgK_8imTXh-XZQADYIyFOU8Jr4zTGYoKx6e6l2ofhl2vQIjs4iLie1CpKhffg8nyIdTmHfiFeyQ4BU16mq0Ju17mMf7ta8XZARUsYgUI9_ogKTyISBE3iI0a_y1QWkpkHefeadwFOcSa_oimE18BeLSkkc0ir9dzCKPdoWrnvHXjNfjq6CtwTTletFA0P0RpqdFvyxJ7Fvf0zLYbDpj7Zlz_OWpZ7Y3lm4xe_lMtay-M5jbbvWUR3u35y5ymk-62RIW9SwHriU7W7LTi7dULhxUiXZ8TeKnGnPDLcTlq0iXEAxk54AEkdMbGQIJyl6teJM5jxXhuFG0SNung6BauSi-nNMbSBcg2D0Hikk17plgUnwLJHusgCEyQ_VEpe_jt7P4hGxbWmkYlKgU5\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested a handbook search about US holidays, and this action performs that bounded lookup.\\\",\\\"riskLevel\\\":\\\"low\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_09a5dd959025e62f016ac6989aa54c87d1b490e5098e39f4f0\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":3779,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1955},\"outputTokens\":{\"total\":88,\"text\":45,\"reasoning\":43},\"raw\":{\"input_tokens\":3779,\"input_tokens_details\":{\"cache_write_tokens\":1955,\"cached_tokens\":1821},\"output_tokens\":88,\"output_tokens_details\":{\"reasoning_tokens\":43},\"total_tokens\":3867}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_09a5dd959025e62f016ac698986ca087d1a701d5698e1f0e56\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400088326,\"endTime\":1791400091280,\"providerRequestId\":\"req_64cf219854764ed19c3a54e2db2d0e7d\",\"statusCode\":200,\"providerResponseId\":\"resp_09a5dd959025e62f016ac698986ca087d1a701d5698e1f0e56\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"a1579c42b0e4e4c1871194295925a931\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000306885\",\"marketCost\":\"0.000306885\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000306885\",\"inferenceCost\":\"0.000306885\",\"inputInferenceCost\":\"0.000262885\",\"outputInferenceCost\":\"0.000044\",\"generationId\":\"gen_01M4BW84QQHNA4G3PM2TCQHE5W\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

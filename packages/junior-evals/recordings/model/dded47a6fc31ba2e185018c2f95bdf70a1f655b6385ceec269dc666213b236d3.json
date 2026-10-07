@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-07T19:05:52.456Z",
+  "session": "evals/integration/auth/oauth.eval.ts > OAuth Workflows > when MCP auth pauses a turn, resume and reuse the stored credential on the next turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "2ad666c2e1e6",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_04b6ddcc44b858f8016ac6980e648887d1b2719fc6fb98906c\",\"reasoningEncryptedContent\":\"gAAAAABqxpgQDN6Mjzi_I8A1WCMrXh2szCyD-JOnOqQVwFPkw6hSb0j2Tl1FmREb1niFnRTSIZ5XIggtcPmOLisnnbgoBFqxnFKjnUzLQHNb3PMenmghU8XhNGt8lyTigOERdsi9EyiWxNGJiKMT9Qkyy7YoBp8CJHR9RUxMw9dYMcbLapdCVgCd6h_oPGWCj3-qIxYG8mX9FIgTGRHQ2UePNrgFrP59yxxzZNN1XsmSM3FmEwwo6FS_kNsIhWXIWGDftH0g0X-yb7Sxt0noGfToBzS58vrnJ2KGb1mM25cUiyy6pWEk8tOW_K7G5BLFrY0Eq1yKLJE6dI2rk2HgZhim_KKaeN8vHL1gWvN1F4WKDUnJdyQB1R3zlioCKgJhzO5nQA0Oh1TMk83EijMOuRwpJvclq0Y4D4h12sRQE3VDqld1Bb0ol_gvU_Hpo7c0er8u1aYELleFykdLbeD9R2E-YAdITGRd29T5LGnEID-WL3htVyPZ8pXv7hQam0B8TLDedC0EYW0fNgub367etIrmp8moBSnh4p4vpISSRCF_TCetENRaaDuARTePQ538izZ6zmB5e5FDSJRrq7JCZ3VnBjFq7RoHD1ehmolFdGz70XwgulKy57dgGVB3z-al4OgjmPnOHNUtFbzwhezibPCEpk4QKnGItLzisL7sSeFFfL27mIVLvqbGNl7O3Sq9CyFteUlSbR6SHt5u1fuZ8QvN_PWotxR9TGKgN4ylUXovWB7pld9Ssmv6k2g72hH-YjjrN0PLbHHr1WIcSbsueK4FgPQhTO4cgegdIygdV792dgy4oU6NFyyqtQQ-QmmCFQgFM-i6vf59OsnldFruWqsGST2zALaMI_G5j1s9D7XcLaqkrVjoafmuKTXkmws4qXDSnoCDK_e-ujwRTn7V9rNG0YQZ4WP4YWd4cUgZoRf6h6HfqWC2j6L-oK1JLTgDZU8X475t9ezxmJKbNt19pq3OFVeXOuP9Wl_msn7fLD7ljYMuAzlvGF1VvwqSYO7ASoXEVBLsHOmy4fe0juVfidO8-ObxEU9CsK_jTwj37oIGVqFk0bWKbvlswuRLPV9JCKn7WwCv8axW-mIGCM4qwXLyj_8VUqhcI8xSTTXcClmGlFaI4x8czUyDZ5QKWTmBVVf5jJO0hqwDcFbG4BxVpYIBrMzi2ZNds5kDibaDfNPki3VuqsqpbK1VtCpkE4aDoozv5A5rA0HlmnRyB5a4SjEafoIOpzC3I34t0NwXR5xrZ9jfya4DVs85RM2CrCINTSMbQra_tY5VdedSrCEAm9jyI7fLcbixHiOX8u2gr9i1ET8VR9Zq7AU-tGDYPp_BNRPR_Rn39hS5e0HbE-cu49ZhRopSdfKeagOd6WBzM-rHG_tqAKYjDzL2XTnrEc0eFlGdqDdy3Izk6ZjHupZki_0g26MFAD6bDhZ20sTFiS66TVS8E28UxDomPmg-nSKC5Wa60vILDLTSZqAudYmZ8Y9416__aGxQzVF-GD9yb5wEOfVEbxgxL_zz_9bZByiQYOKocAF-KaApnQAzGTfFsmIpF8UfBs-_i22jOtIe64tXjLz3cEHVMql95OCUd0LMuu81VH9A-oOtPQ19frzroNgAZzRPqbZMQI9A13LIgJpgojmRYIR0VO4DVoS0M3z9Z4vJpZJXxkJfzfxBhRjIYTvXkCm0i8Gw1SQ9Q6SlYXq5REG1deY8QeBPqnxbAUIvrwjSmf0o1agezBe54a7yjnPQ_bqTkToV_xmjsvoWB2XXvnFq8WnRUSCZ1o8msJ9RJJESx4Xwz_kNe5gfHlLYVwY2M932puIm00SzA2O5C6QslVOyO3_XJ6_Onk6LoEgzYV8Y-DXLeJWMAKxuzFn6Z48oWr8BelqWW8iwKOtd2aXhtoNUF8BE7OLzluKIPJe4YM6CqJf6kOLkg76lf9yY_-0sMhBTNL4LByaRJeKVHj6YfkAHcw9R7Yko4EUWojmhbzFIfPeEyQ3ed_ASHhWD6L0JlwRknoTOjbauEe_QhTx8B4Y65HY9dj3XZXx3oeQ0RpWNtLhjytgR1mNaYfuWGMc0kAuRN4M-YbRuXfKUMmOE5_WjThKk9Wz49n89cfiww3hryorNSBWAQDElhn4Ci7hjwe2pFEL2ws_BN50B-Cv9DCJfb9qIUy6sLaizhyigrbmLeXCscVpub5kgUtr8pHzWrV0l_I_l9qSvPAJTIie01BWOyafkSRw166HFt3Fz8C5urEqU1_NVddjMJlS6_hTX1o9l2599Yx-cw71q-IQyDm9xPd04rr19BRiUiOiDg8OsHN1NUFt4CRmuJPGLW6S3balnUBNQOO7QTpqx2aKL9MissLmYTwLE8476INQH-eS6SsO2OcSC2On-hfFQ9UCsHsiRBaFUfNDLeRc1QZiaYfLKOfj2w9Pkdnqz0Eb_FEAxG27Asjv-rQ9mVBxsQ6ZfHplFa5z1OmNBJwDTT2S9wXmHNlDbyOh-kHgRA2xHTAAjqTO0XU1k\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested connecting through eval-auth, and this narrowly scoped call submits only their lookup request without exposing credentials.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_04b6ddcc44b858f8016ac6980fe29087d19f1648539f79a9a3\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":3409,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1585},\"outputTokens\":{\"total\":212,\"text\":49,\"reasoning\":163},\"raw\":{\"input_tokens\":3409,\"input_tokens_details\":{\"cache_write_tokens\":1585,\"cached_tokens\":1821},\"output_tokens\":212,\"output_tokens_details\":{\"reasoning_tokens\":163},\"total_tokens\":3621}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_04b6ddcc44b858f8016ac6980d6c5c87d18f3769b345325528\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791399949335,\"endTime\":1791399952415,\"providerRequestId\":\"req_2858ba6fcb134790849193abc67974b9\",\"statusCode\":200,\"providerResponseId\":\"resp_04b6ddcc44b858f8016ac6980d6c5c87d18f3769b345325528\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"b3b5342377277594d305752dd28a0eed\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000322635\",\"marketCost\":\"0.000322635\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000322635\",\"inferenceCost\":\"0.000322635\",\"inputInferenceCost\":\"0.000216635\",\"outputInferenceCost\":\"0.000106\",\"generationId\":\"gen_01M4BW3WX6SRTDF3DKGE9ECMYG\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

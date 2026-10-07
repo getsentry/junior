@@ -1,8 +1,23 @@
 {
   "writtenAt": "2026-10-07T05:26:23.345Z",
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for a terse one-off reminder, create it without recurrence",
   "request": {
     "method": "POST",
-    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model"
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "60e6a63be63c",
+      "headers": "e6f1332f8681"
+    }
   },
   "response": {
     "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_00b5825a9fbb570d016ac5d7fe306087d28362ea199d5cace1\",\"reasoningEncryptedContent\":\"gAAAAABqxdf_DbE0y_nV1zFJt6WJSnDzefuQRB1D72Z8HC3R45n2HTYsVIMNfzA0UMlUSYiNzeH38MMbZZbTEa1wUfbgOBVhiEDU_aI5-Q5rOblWYqMn0adsmUFPsF6JpEDrZLSWYKefjBni-Q9WyIRtqBf-EPbsBroIme1Ba_0_W5ZVwxzO4pTJW8lkCrBedwLVBxHj1PJQ7ZkDDMi-GtBphkRdfp4YZkvVuAxmYFc35f3WFekTwyrp6tahlkyLm7wyfWLfmJa9X5fSTuB8CpOfFA8QMEdmLz7JR6Qx_W2SDhc5L72mwWCQzYeaRBvNjvqeni7WAd7RDceK0_2WT5hXcZcM3hMGVuq2LLFNpQwlcvV0hIsEU4pvC6KiTh2lAZ2mXlgOQpd2TQ7JxDo6BQIL54O5lZKnvqzeaYvCZvkfOprFJSAi4TSxgAmZlfJ6KoykwRrvFTIpKP7bwimqK1QdjRnpaoyszSKMaHayZvXfre7gseFy8g7iTuW27z7QOclAc1yKYKxtOpc2OIhUpfy4Wcncj0xsweKAOxFo6gRhJucrbzKWXMviGWMahTcrKD2GzUs0MpDKX_yK1hFQWLs_wfCTHpIAXbAULf10UzVTtQEjciutCMqK7P1odKl6TDP3ePuzMKdy8-E-eoLrJ1n_LJltH5HcTBprSWTzsAUb89RqbWoCQSPSbJFkSXhuWzfNuEytRn_qUlKIbRYt5LmoA-z0MNJwbNYV1RDPsCcUeTzBOr3lb0VjcZy9Jk6PNAYzKNgdpQ1ihB_M3cS6ZlmybhIr4bEehpSobmYOdzmk0PGCykcRpXwoyh6hWJaWnd1jldtL7vmNbzKDF2DfK2LKcT0DEUgedq8T_ThME1rnLD9SNeePid6phF1kmDz-0d6fBfTFEjJxrOKS9CFuNxyau3f00zIMJ-rhBVAPGj2uCP_Xs1OW8VmJhHGRCNTWhbt9gjRloLvt5GnD9ZmBzamf8BPwqDk5wNExX96tWgOrV7OA3mzwIqHKO5eDGb0X_q50rG0PMlHNtYBMJmbl9GQH-3n8x30JiI77A6QQRG58EiGE2AxKd2fXuGM9-2Q75WtqPmlWFY0fnWmcBAuEMu9m6xUApsHgvg1TzZxHX81_jYMWo7af16NB-BH8s19rEZzZJXKeJ7WKGzqJ8bsXIsi8HWB2f68J1FbKzAdCYIgndRsGvJ55-fai61-XMV9Gh_BBr_gZXN475ZaUS4f7p_avqjbDZ0JOLns-1JrlXwOVom3EhYASD7adi8dAYY1-eS5A_zXfLfPXVFfmCC2TVo5iTHln_dGMjQUzBa3qjtXZhd9d6Y5lOUlLXxOcgRp77g_IZpwMcO2swrapg8CSnSK8JlssUMLtTIGCZwy4xvHMw-igUcXznqpQWA_C0RqFyymlJMEuThkU\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Setting a reminder is a routine assistant task that likely requires a tool.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_00b5825a9fbb570d016ac5d7fea91c87d294834a7ea9641914\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":590,\"noCache\":590,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":69,\"text\":43,\"reasoning\":26},\"raw\":{\"input_tokens\":590,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":69,\"output_tokens_details\":{\"reasoning_tokens\":26},\"total_tokens\":659}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_00b5825a9fbb570d016ac5d7fdb30087d2957366ce5411be9b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350781581,\"endTime\":1791350783304,\"providerRequestId\":\"req_3944bd9d573e46029250a7a2b07a48d9\",\"statusCode\":200,\"providerResponseId\":\"resp_00b5825a9fbb570d016ac5d7fdb30087d2957366ce5411be9b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"666d0c85746ea1f2c5df790b4cb3563c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000935\",\"marketCost\":\"0.0000935\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000935\",\"inferenceCost\":\"0.0000935\",\"inputInferenceCost\":\"0.000059\",\"outputInferenceCost\":\"0.0000345\",\"generationId\":\"gen_01M4AD7DKMD0VW2V629NPN7Q66\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
