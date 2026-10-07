@@ -348,7 +348,9 @@ process and has no Junior code, so it can move out of this repository.
 - After an `auto` run, the "commit recordings" job of the workflow commits
   the new recordings to the branch as "chore(evals): Update eval
   recordings" (`.github/actions/commit-eval-recordings`). The job takes only
-  recording files from the run artifacts and runs no pull request code. It
+  recording files from the run artifacts and runs no pull request code. The
+  job holds the bot key, so it loads this action from the base commit of the
+  pull request. A change to the action takes effect only after it merges. It
   pushes only when the branch is still at the tested commit, or at
   recording commits on top of it. It uses the release bot app, so the push
   starts CI again.

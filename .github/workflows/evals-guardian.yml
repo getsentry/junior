@@ -153,11 +153,23 @@ jobs:
     if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' && needs.select.outputs.mode == 'auto' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
+      # The job holds the bot key, so it runs the action from the base
+      # commit, never from the pull request.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
           sparse-checkout: .github/actions
-      - uses: ./.github/actions/commit-eval-recordings
+          path: trusted
+      - id: trusted
+        run: |
+          if [[ -f trusted/.github/actions/commit-eval-recordings/action.yml ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The base branch has no commit-eval-recordings action. The recordings stay in the run artifacts."
+          fi
+      - if: steps.trusted.outputs.exists == 'true'
+        uses: ./trusted/.github/actions/commit-eval-recordings
         with:
           suite: guardian
           app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
