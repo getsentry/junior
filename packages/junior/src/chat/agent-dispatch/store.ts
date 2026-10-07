@@ -413,8 +413,10 @@ async function recordEventAutomationExecution(
 }
 
 /**
- * Project a blocked turn to the plugin API. The first block also tells the
- * Automation creator, so a redelivered block does not notify twice.
+ * Project a blocked turn to the plugin API. The first block of an Event
+ * automation also tells its creator, so a redelivered block does not notify
+ * twice. The heartbeat tells a Scheduled automation creator after it stores
+ * the Scheduled automation as blocked.
  */
 export async function markDispatchBlocked(
   id: string,
@@ -445,8 +447,13 @@ export async function markDispatchBlocked(
     };
   });
   await recordEventAutomationExecution(previous, next, "blocked");
-  if (blocked && next) {
-    await notifyAutomationBlocked(next);
+  if (blocked && next && eventAutomationId && next.plugin === "junior") {
+    await notifyAutomationBlocked({
+      automationId: eventAutomationId,
+      dispatchId: next.id,
+      kind: "event",
+      reason: errorMessage,
+    });
   }
   return next;
 }

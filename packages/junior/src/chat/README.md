@@ -395,9 +395,11 @@ check, and Slack Delivery read that field. They do not check the Source.
   `blocked` with that reason. It does not run again until its creator resumes
   it. A declared message gets reply cleanup, and a message that is only the
   no-reply marker becomes `no_action`.
-- When a dispatch first becomes blocked, the creator gets one direct message
-  with the reason and a resume link (`automations/blocked-notice.ts`). The
-  notice is best-effort. The reason also shows on the dashboard and in the
+- When an Automation first becomes blocked, the creator gets one direct
+  message with the reason and a resume link (`automations/blocked-notice.ts`).
+  The notice goes after the Automation is stored as blocked: at dispatch block
+  for an Event automation, and at heartbeat reconcile for a Scheduled
+  automation. The notice is best-effort. The reason also shows on the dashboard and in the
   automation tools.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch. A failed run posts nothing to its outcomes. The failure shows

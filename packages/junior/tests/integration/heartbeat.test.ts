@@ -19,6 +19,7 @@ import { getDb } from "@/chat/db";
 import {
   getDispatchRecord,
   getDispatchStorageKey,
+  markDispatchBlocked,
   markDispatchCompleted,
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -781,6 +782,29 @@ describe("plugin heartbeat", () => {
     },
     30_000,
   );
+
+  it("tells the creator only after the heartbeat blocks a scheduled automation", async () => {
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(db, createTask());
+    const runHeartbeat = async () => {
+      const waitUntil = createWaitUntilCollector();
+      const url = "https://example.invalid/api/internal/heartbeat";
+      const headers = { authorization: "Bearer heartbeat-secret" };
+      await testHeartbeat(new Request(url, { headers }), waitUntil.fn);
+      await waitUntil.flush();
+    };
+    const notices = () => getCapturedSlackApiCalls("conversations.open");
+    await runHeartbeat();
+    const run = await readScheduledRun(db, `sched_plugin_1:${TEST_RUN_AT_MS}`);
+    await markDispatchBlocked(run!.dispatchId!, "Channel archived.");
+    // The Scheduled automation is still active, so no notice goes yet.
+    expect(notices()).toHaveLength(0);
+    await runHeartbeat();
+    await runHeartbeat();
+    const task = await readScheduledAutomation(db, "sched_plugin_1");
+    expect(task).toMatchObject({ status: "blocked" });
+    expect(notices()).toHaveLength(1);
+  }, 30_000);
 
   it("fails scheduled runs when their dispatch record disappeared", async () => {
     const fetchMock = vi.fn(async () => {

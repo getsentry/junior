@@ -14,6 +14,7 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import type { JuniorDatabase } from "@/db/db";
 import {
   advanceScheduledAutomationAfterRun,
@@ -217,6 +218,14 @@ async function applyDispatchResult(args: {
       nowMs: args.nowMs,
       run: args.run,
       status: "blocked",
+    });
+    // Notify only after the Scheduled automation is stored as blocked, so
+    // the dashboard shows the same state as the notice.
+    await notifyAutomationBlocked({
+      automationId: args.run.taskId,
+      dispatchId: args.dispatch.id,
+      kind: "scheduled",
+      reason: blocked.errorMessage ?? "Dispatch blocked.",
     });
     await recordScheduledExecution({
       nowMs: args.nowMs,

@@ -1,4 +1,3 @@
-import type { DispatchRecord } from "@/chat/agent-dispatch/types";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
@@ -15,12 +14,17 @@ interface BlockedAutomation {
   title: string;
 }
 
+/** Identify the Automation that a run blocked. */
+export interface BlockedAutomationRef {
+  automationId: string;
+  kind: "event" | "scheduled";
+}
+
 async function readBlockedAutomation(
-  dispatch: DispatchRecord,
+  ref: BlockedAutomationRef,
 ): Promise<BlockedAutomation | undefined> {
-  const { metadata, source } = dispatch;
-  if (source.kind === "scheduled_automation" && metadata?.taskId) {
-    const task = await readScheduledAutomation(getDb(), metadata.taskId);
+  if (ref.kind === "scheduled") {
+    const task = await readScheduledAutomation(getDb(), ref.automationId);
     return task
       ? {
           creatorSlackUserId: task.createdBy.slackUserId,
@@ -31,19 +35,15 @@ async function readBlockedAutomation(
         }
       : undefined;
   }
-  if (source.kind === "event_automation" && metadata?.eventAutomationId) {
-    const task = await getEventAutomation(getDb(), metadata.eventAutomationId);
-    return task
-      ? {
-          creatorSlackUserId: task.createdBy.slackUserId,
-          id: task.id,
-          title:
-            task.title ??
-            fallbackShortTitle(task.task.text, "Event automation"),
-        }
-      : undefined;
-  }
-  return undefined;
+  const task = await getEventAutomation(getDb(), ref.automationId);
+  return task
+    ? {
+        creatorSlackUserId: task.createdBy.slackUserId,
+        id: task.id,
+        title:
+          task.title ?? fallbackShortTitle(task.task.text, "Event automation"),
+      }
+    : undefined;
 }
 
 function buildBlockedNoticeText(
@@ -62,16 +62,16 @@ function buildBlockedNoticeText(
 
 /**
  * Tell an Automation's creator in a direct message that a run blocked it,
- * and why. Call this once, when the dispatch first becomes blocked. The
- * notice is best-effort: the Automation is already blocked, and the reason
+ * and why. Call this once, after the Automation itself is stored as blocked,
+ * so the dashboard matches the notice. The notice is best-effort: the reason
  * also shows on the dashboard and in the Automation tools.
  */
 export async function notifyAutomationBlocked(
-  dispatch: DispatchRecord,
+  ref: BlockedAutomationRef & { dispatchId: string; reason: string },
 ): Promise<void> {
   await runBestEffort(
     async () => {
-      const automation = await readBlockedAutomation(dispatch);
+      const automation = await readBlockedAutomation(ref);
       if (!automation) return;
       const opened = await withSlackRetries(
         () =>
@@ -87,16 +87,13 @@ export async function notifyAutomationBlocked(
       }
       await postSlackMessage({
         channelId,
-        text: buildBlockedNoticeText(
-          automation,
-          dispatch.errorMessage ?? "The automation run was blocked.",
-        ),
+        text: buildBlockedNoticeText(automation, ref.reason),
       });
     },
     "automation.blocked_notice.failed",
     {
-      "app.dispatch.id": dispatch.id,
-      "app.dispatch.source": dispatch.source.kind,
+      "app.task.type": ref.kind,
+      "app.dispatch.id": ref.dispatchId,
     },
   );
 }
