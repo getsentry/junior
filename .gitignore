@@ -19,7 +19,6 @@ packages/junior-evals/vitest-results*.json
 packages/junior-evals/behavioral-results*.json
 packages/junior-evals/integration-results*.json
 packages/junior-evals/guardian-results*.json
-packages/junior-evals/router-results*.json
 packages/junior-evals/eval-results/
 .env*
 test-results/

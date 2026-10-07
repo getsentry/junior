@@ -16,11 +16,12 @@ import {
   type RecordingRunStats,
 } from "./recording-proxy/recording-proxy";
 import { recordingProxyConfig } from "./recording-rules";
+import type { ProvidedContext } from "vitest";
 
 interface RecordingProject {
   provide(
     key: "recordingProxy",
-    value: { caCert: string; secret: string; url: string },
+    value: NonNullable<ProvidedContext["recordingProxy"]>,
   ): void;
 }
 
@@ -56,27 +57,25 @@ export async function startRecordingRun(
   });
 
   return async () => {
+    // The control API is on the proxy itself, so it must not use a proxy.
+    const control = new Agent();
     try {
-      // The control API is on the proxy itself, so it must not use a proxy.
-      const control = new Agent();
-      try {
-        const response = await request(`${proxy.url}/__recording-proxy/stats`, {
-          dispatcher: control,
-          headers: { authorization: `Bearer ${proxy.secret}` },
-        });
-        const stats = (await response.body.json()) as RecordingRunStats;
-        const line = describeRecordingRun(stats);
-        process.stdout.write(`[evals] Recordings: ${line}\n`);
-        if (process.env.GITHUB_STEP_SUMMARY) {
-          await appendFile(
-            process.env.GITHUB_STEP_SUMMARY,
-            `### Eval recordings\n\n${line}\n\n`,
-          );
-        }
-      } finally {
-        await control.close();
+      const response = await request(`${proxy.url}/__recording-proxy/stats`, {
+        dispatcher: control,
+        headers: { authorization: `Bearer ${proxy.secret}` },
+      });
+      const line = describeRecordingRun(
+        (await response.body.json()) as RecordingRunStats,
+      );
+      process.stdout.write(`[evals] Recordings: ${line}\n`);
+      if (process.env.GITHUB_STEP_SUMMARY) {
+        await appendFile(
+          process.env.GITHUB_STEP_SUMMARY,
+          `### Eval recordings\n\n${line}\n\n`,
+        );
       }
     } finally {
+      await control.close();
       await proxy.close();
     }
   };

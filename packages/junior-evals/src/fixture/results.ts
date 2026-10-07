@@ -11,7 +11,6 @@ import {
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
-import type { RecordingCounts } from "../recording-proxy/recording-proxy";
 
 /** Header that selects the signed-in person for a fixture API request. */
 export const VIEWER_HEADER = "x-fixture-viewer";
@@ -346,14 +345,10 @@ function toTranscriptEvents(
   ];
 }
 
-/**
- * Model spend the fixture can see: agent cost, AI Gateway requests, and the
- * requests that recordings answered.
- */
+/** Model spend the fixture can see: agent cost and AI Gateway requests. */
 export interface FixtureUsage {
   agentCostUsd: number;
   gatewayRequests: Record<string, number>;
-  recordings: RecordingCounts;
 }
 
 /** The vitest-evals run for one call. */
@@ -384,7 +379,6 @@ export function toHarnessRun(args: {
       metadata: {
         costUsd: args.usage.agentCostUsd,
         gatewayRequests: args.usage.gatewayRequests,
-        recordings: args.usage.recordings,
       },
     },
     timings: { totalMs: Date.now() - args.startedAtMs },
@@ -411,7 +405,6 @@ export function combinedRun(
       metadata: {
         costUsd: usage.agentCostUsd,
         gatewayRequests: usage.gatewayRequests,
-        recordings: usage.recordings,
       },
     },
     timings: { totalMs: Date.now() - startedAtMs },

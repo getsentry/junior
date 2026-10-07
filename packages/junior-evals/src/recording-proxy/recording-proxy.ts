@@ -42,11 +42,10 @@
  *
  * Control API, on the proxy URL:
  *
- * - `GET /__recording-proxy/sessions/<id>`: replay and live counts by rule.
  * - `POST /__recording-proxy/sessions/<id>/commit`: write the recordings.
  * - `POST /__recording-proxy/sessions/<id>/discard`: drop the recordings.
- * - `GET /__recording-proxy/stats`: the counts of the whole run, and how
- *   many recordings the run wrote new or changed.
+ * - `GET /__recording-proxy/stats`: replayed and live counts by rule, and
+ *   how many recordings the run wrote new or changed.
  *
  * This file uses only Node built-ins and the `openssl` command. It imports
  * nothing else, so it can move out of this repository. Run it with
@@ -96,17 +95,10 @@ export interface RecordingProxyConfig {
   rules: RecordingRule[];
 }
 
-/** Replay and live counts of a session, by rule name. */
-// A type alias, so the counts fit JSON metadata.
-export type RecordingCounts = Record<
-  string,
-  { live: number; replayed: number }
->;
-
 /** The totals of a proxy run, from `GET /__recording-proxy/stats`. */
 export interface RecordingRunStats {
-  /** Replayed and live requests of all sessions, by rule. */
-  counts: RecordingCounts;
+  /** Replayed and live requests, by rule name. */
+  counts: Record<string, { live: number; replayed: number }>;
   /** Recordings that a commit wrote and that were new or changed. */
   written: number;
   /** Recordings that a discard dropped, because their test failed. */
@@ -143,11 +135,6 @@ interface Recording {
     status: number;
     statusText: string;
   };
-}
-
-interface Session {
-  counts: RecordingCounts;
-  pending: Map<string, Recording>;
 }
 
 interface Target {
@@ -511,13 +498,12 @@ export async function startRecordingProxy(
   const certificates = await createCertificates(certificateDir);
   // Only a client with this secret can make the proxy send requests.
   const secret = randomBytes(24).toString("hex");
-  const sessions = new Map<string, Session>();
-  const emptyCounts = (): RecordingCounts =>
-    Object.fromEntries(
-      config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
-    );
+  // The pending recordings of each session, by file.
+  const sessions = new Map<string, Map<string, Recording>>();
   const stats: RecordingRunStats = {
-    counts: emptyCounts(),
+    counts: Object.fromEntries(
+      config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
+    ),
     written: 0,
     discarded: 0,
     passthrough: {},
@@ -525,13 +511,13 @@ export async function startRecordingProxy(
   const targets = new WeakMap<Socket, Target>();
   const sockets = new Set<Socket>();
 
-  const sessionFor = (id: string): Session => {
-    let session = sessions.get(id);
-    if (!session) {
-      session = { counts: emptyCounts(), pending: new Map() };
-      sessions.set(id, session);
+  const pendingFor = (id: string): Map<string, Recording> => {
+    let pending = sessions.get(id);
+    if (!pending) {
+      pending = new Map();
+      sessions.set(id, pending);
     }
-    return session;
+    return pending;
   };
 
   const keep = async (
@@ -539,7 +525,7 @@ export async function startRecordingProxy(
     file: string,
     recording: Recording,
   ) => {
-    if (sessionId) sessionFor(sessionId).pending.set(file, recording);
+    if (sessionId) pendingFor(sessionId).set(file, recording);
     else stats.written += await saveRecordings(new Map([[file, recording]]));
   };
 
@@ -584,10 +570,7 @@ export async function startRecordingProxy(
       return;
     }
 
-    const counts = [
-      stats.counts[rule.name],
-      target.session ? sessionFor(target.session).counts[rule.name] : undefined,
-    ].filter((entry) => entry !== undefined);
+    const counts = stats.counts[rule.name]!;
     const key = recordingKey(rule, {
       body: body.toString("utf8"),
       headers: incoming.headers,
@@ -598,14 +581,14 @@ export async function startRecordingProxy(
     if (rule.mode === "auto") {
       const recording = await readRecording(file);
       if (recording) {
-        for (const entry of counts) entry.replayed += 1;
+        counts.replayed += 1;
         await keep(target.session, file, recording);
         writeRecording(outgoing, recording, "replayed");
         return;
       }
     }
 
-    for (const entry of counts) entry.live += 1;
+    counts.live += 1;
     let clientGone = false;
     outgoing.on("close", () => {
       if (!outgoing.writableFinished) clientGone = true;
@@ -659,30 +642,19 @@ export async function startRecordingProxy(
       .slice(CONTROL_PREFIX.length)
       .split("/")
       .map(decodeURIComponent);
-    if (!id) {
+    if (
+      !id ||
+      incoming.method !== "POST" ||
+      (action !== "commit" && action !== "discard")
+    ) {
       outgoing.writeHead(404).end();
       return;
     }
-    if (incoming.method === "GET" && action === undefined) {
-      outgoing.writeHead(200, { "content-type": "application/json" });
-      outgoing.end(JSON.stringify(sessionFor(id).counts));
-      return;
-    }
-    if (incoming.method === "POST" && action === "commit") {
-      stats.written += await saveRecordings(sessionFor(id).pending);
-    }
-    if (incoming.method === "POST" && action === "discard") {
-      stats.discarded += sessionFor(id).pending.size;
-    }
-    if (
-      incoming.method === "POST" &&
-      (action === "commit" || action === "discard")
-    ) {
-      sessions.delete(id);
-      outgoing.writeHead(204).end();
-      return;
-    }
-    outgoing.writeHead(404).end();
+    const pending = pendingFor(id);
+    if (action === "commit") stats.written += await saveRecordings(pending);
+    else stats.discarded += pending.size;
+    sessions.delete(id);
+    outgoing.writeHead(204).end();
   };
 
   // Requests inside a tunnel. The tunnel gives the origin and the session.

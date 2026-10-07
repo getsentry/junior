@@ -171,7 +171,7 @@ export async function createFixtureAgent(
     void tracked.finally(() => background.delete(tracked));
   };
   const slack = installSlackMock(context.task.fullName);
-  const recordings = installRecordings();
+  installRecordings();
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebPassthrough();
@@ -214,10 +214,9 @@ export async function createFixtureAgent(
     [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
-  const currentUsage = async (): Promise<FixtureUsage> => ({
+  const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     gatewayRequests: gateway.requestCounts(),
-    recordings: await recordings.counts(),
   });
   const startedAtMs = Date.now();
 
@@ -462,7 +461,7 @@ export async function createFixtureAgent(
       context.task.meta.harness = {
         name: "junior",
         run: {
-          ...combinedRun(calls, await currentUsage(), startedAtMs),
+          ...combinedRun(calls, currentUsage(), startedAtMs),
           errors: [serializeError(error)],
         },
       };
@@ -537,7 +536,7 @@ export async function createFixtureAgent(
         0,
       ),
     );
-    const usage = await currentUsage();
+    const usage = currentUsage();
     const callRun = toHarnessRun({
       conversationId: record.conversationId,
       earlier,
@@ -648,7 +647,7 @@ export async function createFixtureAgent(
       ...toHarnessRun({
         conversationId: forkRecord.conversationId,
         earlier: forkRecord.visibleMessages,
-        usage: await currentUsage(),
+        usage: currentUsage(),
         messages: [],
         startedAtMs,
         toolCalls: [],

@@ -260,75 +260,60 @@ Evals record outside HTTP traffic in files in git and replay it. The
 recording proxy in `src/recording-proxy/` does this. It runs in its own
 process and has no Junior code, so it can move out of this repository.
 
-- Every eval suite uses the proxy: integration, behavioral, Guardian, and
-  turn router. Global setup starts it with `startRecordingRun()`
-  (`src/recording-run.ts`). Each test sends all HTTP traffic through it as
-  one session (`src/fixture/recordings.ts`). The fixture mocks, such as
-  Slack, still answer first.
-- `src/recording-rules.ts` is the one list of recorded traffic. To record
-  more traffic, add a rule there.
+- Every eval suite uses the proxy. Global setup starts it with
+  `startRecordingRun()` (`src/recording-run.ts`). Each test sends its HTTP
+  traffic through the proxy as one session (`src/fixture/recordings.ts`).
+  MSW mocks, such as Slack, answer first. Requests to `localhost` do not go
+  through the proxy.
+- `src/recording-rules.ts` is the one list of recorded traffic:
+  - `model`: every POST to the AI Gateway. This includes agent, title,
+    compaction, judge, Guardian, and turn router requests.
+  - `web`: the pages that `webFetch` reads. A redirect is its own recording.
 - The proxy sends requests only to the allowed origins in
-  `src/recording-rules.ts`. It refuses all other origins with HTTP 403. To
-  let an eval reach a new site, add its origin to that list.
-- `model`: every POST to the AI Gateway. This includes agent, title,
-  compaction, judge, Guardian, and turn router requests.
-  `JUNIOR_EVAL_MODEL_REPLAY` sets the mode.
-- `web`: the pages that `webFetch` reads. `VITEST_EVALS_REPLAY_MODE` sets the
-  mode. A redirect is its own recording.
-- Both modes are `auto` when unset. Set a mode to `off` to send every
-  request live, or to `record` to write all recordings again.
-- The recordings are in `recordings/<rule>/`.
-- A recording answers a request when the method, URL, body, and the
-  `keyHeaders` of the rule are the same. AI SDK gateway requests name the
-  model in the `ai-language-model-id` header, so that header is in the key.
+  `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
+- The recordings are in `recordings/<rule>/`. A recording answers a request
+  when the method, URL, body, and the `keyHeaders` of the rule are the same.
   The key ignores ISO times.
-- Other requests go live. When the test passes, the proxy writes every
-  recording that the test used. A failed test writes nothing. A 429 or 5xx
-  response is never recorded.
+- A request without a recording goes live. When the test passes, the proxy
+  writes every recording that the test used. A failed test writes nothing. A
+  429 or 5xx response is never recorded.
+- `VITEST_EVALS_REPLAY_MODE` sets the mode: `auto` (the default) replays and
+  records misses, `record` sends every request live and writes it again, and
+  `off` sends every request live and records nothing.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
-  You can commit the new recordings with your change.
+  You can commit the new recordings with your change. Do a check for
+  secret-like values before you commit them.
+- The Slack mock takes its timestamps and channel ids from the test name.
+  Thus the requests of a test are the same on each run.
+- The AI SDK sends no model request when it has no gateway credential. To
+  replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
 
 ### Check that recording works
 
-- At the end of each run, global setup prints one line, for example
-  `[evals] Recordings: model 12 replayed, 3 live; web 4 replayed, 0 live. 3
-recordings new or changed, 0 dropped from failed tests. Not recorded:
-none.` In GitHub Actions the line is also in the job summary.
-- `replayed` counts requests that a recording answered. `live` counts
-  requests that went to the provider and that a rule records.
-- `Not recorded` lists origins of allowed requests that matched no rule. If
-  `https://ai-gateway.vercel.sh` is in this list, a model request is missing
-  from the rules.
-- Run a suite two times. The second run must show `0 live` for each test
-  that passed in the first run.
-- The AI SDK sends no model request when it has no gateway credential. To
-  replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
-- Each eval workflow uploads the new and changed recordings of a run as an
-  artifact. The job summary shows the `gh run download` command that adds
-  them to your branch.
+- At the end of a run, global setup prints one line. In GitHub Actions, the
+  job summary also shows it:
+
+  ```text
+  [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed tests. Not recorded: none.
+  ```
+
+- `Not recorded` lists the origins of requests that matched no rule. If
+  `https://ai-gateway.vercel.sh` is in this list, a rule misses a model
+  request.
+- Run a suite two times. If all tests pass, the second run must show `0 live`.
+- Each eval workflow uploads the new recordings of a run as an artifact. The
+  job summary shows the `gh run download` command that adds them to your
+  branch.
 
 ### Nightly refresh
 
-- The "Eval recordings" workflow runs each night on `main`. It runs every
-  eval suite. It adds the new recordings, and it deletes the model
-  recordings that no passing test used. Then it opens or updates one pull
-  request.
+- The "Eval recordings" workflow runs every eval suite each night on `main`.
+  It adds the new recordings, and it deletes the recordings that no passing
+  test used. Then it opens or updates one pull request.
 - It deletes recordings only when every job finished. A failed integration,
   Guardian, or router eval fails the workflow. Behavioral evals allow some
   failed cases.
-- Run that workflow with `record` to write all recordings again. Locally,
-  set `JUNIOR_EVAL_MODEL_REPLAY=record`, or use
-  `pnpm --filter @sentry/junior-evals evals:integration:record`.
-
-### Inputs that must not change
-
-- The Slack mock takes its timestamps and channel ids from the test name, so
-  Conversation ids and requests are the same on each run.
-- Sandbox requests that use credentials go to the test HTTP fixtures in
-  global setup, so they never reach a live provider. Vercel Sandbox commands
-  are always live.
-- The eval report shows `recordings.<rule>.replayed` and
-  `recordings.<rule>.live` for each test.
+- Run the workflow with `record` to write all recordings again.
 
 ## Running
 

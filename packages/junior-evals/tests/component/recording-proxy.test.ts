@@ -57,11 +57,6 @@ async function session(
       source: response.headers["x-recording-proxy"],
     });
   }
-  const counts = await request(
-    `${running.url}/__recording-proxy/sessions/${id}`,
-    { dispatcher: control, headers: auth(running) },
-  );
-  const result = { counts: await counts.body.json(), responses };
   await (
     await request(`${running.url}/__recording-proxy/sessions/${id}/${end}`, {
       dispatcher: control,
@@ -70,7 +65,7 @@ async function session(
     })
   ).body.dump();
   await agent.close();
-  return result;
+  return responses;
 }
 
 function auth(running: RecordingProxy) {
@@ -120,13 +115,12 @@ describe("recording proxy", () => {
       { model: "m", messages: ["changed"] },
     ]);
 
-    expect(replay.responses).toEqual([
+    expect(replay).toEqual([
       { body: "data: 1\n\n", source: "replayed" },
       { body: "data: 2\n\n", source: "live" },
     ]);
-    expect(replay.counts).toEqual({ model: { live: 1, replayed: 1 } });
     expect(liveRequests).toBe(2);
-    // The run stats add up every session. A replayed recording is not new.
+    // A replayed recording is not new.
     const stats = await request(`${running.url}/__recording-proxy/stats`, {
       dispatcher: control,
       headers: auth(running),
@@ -167,12 +161,11 @@ describe("recording proxy", () => {
     await expect(
       request(`${origin}/v1/messages`, { dispatcher: agent, method: "POST" }),
     ).rejects.toThrow();
-    const counts = await request(
-      `${running.url}/__recording-proxy/sessions/x`,
-      { dispatcher: control },
-    );
-    expect(counts.statusCode).toBe(401);
-    await counts.body.dump();
+    const stats = await request(`${running.url}/__recording-proxy/stats`, {
+      dispatcher: control,
+    });
+    expect(stats.statusCode).toBe(401);
+    await stats.body.dump();
     expect(liveRequests).toBe(0);
     await agent.close();
   });
@@ -208,7 +201,7 @@ describe("recording proxy", () => {
     await session(running, [{ model: "m" }]);
     const second = await session(running, [{ model: "m" }]);
 
-    expect(second.responses).toEqual([{ body: "data: 2\n\n", source: "live" }]);
+    expect(second).toEqual([{ body: "data: 2\n\n", source: "live" }]);
     await expect(files()).resolves.toHaveLength(1);
   });
 });

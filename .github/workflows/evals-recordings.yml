@@ -1,9 +1,9 @@
 name: Eval recordings
 
-# Keeps the committed eval recordings current. Every eval suite runs on main
-# with the recording proxy. Missing responses go live and are recorded. A
-# last job adds the new recordings, deletes unused model recordings, and
-# opens one pull request. See "Recordings" in packages/junior-evals/README.md.
+# Keeps the committed eval recordings current. Every eval suite runs on main.
+# Missing responses go live and are recorded. The last job adds the new
+# recordings, deletes the recordings that no passing test used, and opens one
+# pull request. See "Recordings" in packages/junior-evals/README.md.
 
 on:
   schedule:
@@ -93,7 +93,6 @@ jobs:
       # changes them. The last job reads the exit code.
       - name: Run ${{ matrix.suite }} evals
         env:
-          JUNIOR_EVAL_MODEL_REPLAY: ${{ inputs.mode || 'auto' }}
           VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
           SUITE: ${{ matrix.suite }}
           SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
@@ -106,8 +105,8 @@ jobs:
           echo "$?" > "$RESULT_DIR/exit-code"
           # A passing test writes every recording it used, so the file time
           # shows which recordings this run used.
-          find "$RECORDINGS_DIR/model" -name '*.json' -newer "$RUNNER_TEMP/started" -printf '%f\n' \
-            > "$RESULT_DIR/used-model-recordings" 2>/dev/null || true
+          find "$RECORDINGS_DIR" -name '*.json' -newer "$RUNNER_TEMP/started" -printf '%P\n' \
+            > "$RESULT_DIR/used-recordings"
           mkdir -p "$RESULT_DIR/new"
           while IFS= read -r -d '' file; do
             if [[ -f "$file" ]]; then cp --parents -t "$RESULT_DIR/new" "$file"; fi
@@ -161,13 +160,13 @@ jobs:
             fi
             if [[ -d "$run/new" ]]; then cp -R "$run/new/." .; fi
           done
-          # Delete unused model recordings only when every job finished. A
-          # missing job would make all of its recordings look unused.
+          # Delete unused recordings only when every job finished. A missing
+          # job would make all of its recordings look unused.
           if [[ "${#runs[@]}" == "$EXPECTED_RUNS" ]]; then
-            cat "$RUNS"/*/used-model-recordings | sort -u > "$RUNNER_TEMP/used"
-            find "$RECORDINGS_DIR/model" -name '*.json' -printf '%f\n' | sort > "$RUNNER_TEMP/all"
+            cat "$RUNS"/*/used-recordings | sort -u > "$RUNNER_TEMP/used"
+            find "$RECORDINGS_DIR" -name '*.json' -printf '%P\n' | sort > "$RUNNER_TEMP/all"
             comm -23 "$RUNNER_TEMP/all" "$RUNNER_TEMP/used" \
-              | while IFS= read -r file; do rm "$RECORDINGS_DIR/model/$file"; done
+              | while IFS= read -r file; do rm "$RECORDINGS_DIR/$file"; done
           else
             echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
           fi

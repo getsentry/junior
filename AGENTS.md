@@ -52,13 +52,10 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Eval Recordings
 
-- Evals replay outside HTTP traffic, such as model responses and web pages, from `packages/junior-evals/recordings/`. Every eval suite records every AI Gateway model call.
-- A separate recording proxy (`packages/junior-evals/src/recording-proxy/`) records and replays the traffic. `packages/junior-evals/src/recording-rules.ts` is the one list of recorded traffic. To record more, add a rule.
-- The proxy reaches only the allowed origins in `recording-rules.ts`. To let an eval reach a new site, add its origin there.
-- A changed prompt, tool, skill, or model makes new requests. These requests go live.
-- You can commit new recordings with your change, but you do not have to. A nightly workflow records missing responses, deletes unused model recordings, and opens a pull request.
-- To write all recordings again, run the "Eval recordings" workflow with `record`.
-- Each run prints `[evals] Recordings: ...` with replayed and live counts. A second run of a passing test must show `0 live`.
+- Evals replay model calls and web pages from `packages/junior-evals/recordings/`. A recording proxy (`packages/junior-evals/src/recording-proxy/`) records and replays them.
+- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file.
+- A changed prompt, tool, skill, or model makes new requests, and these go live. You can commit the new recordings, but you do not have to. A nightly workflow records them and opens a pull request.
+- Each run prints `[evals] Recordings: ...`. A second run of passing tests must show `0 live`.
 - Details: "Recordings" in `packages/junior-evals/README.md`.
 
 ## Architecture

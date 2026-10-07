@@ -4,9 +4,8 @@
  * Global setup starts the recording proxy in `src/recording-proxy/` with
  * this configuration. The proxy knows nothing about Junior. This file is the
  * one place that decides which eval requests are recorded and replayed. To
- * record more traffic, add a rule. An environment variable sets the mode of
- * each rule. Unset means `auto`, so every eval suite records and replays.
- * Set it to `off` to send every request live without a recording.
+ * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode
+ * of every rule. Unset means `auto`.
  */
 import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
@@ -22,14 +21,11 @@ import type {
  */
 const ISO_TIME = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
 
-const RECORDING_RULES: Array<
-  Omit<RecordingRule, "mode"> & { modeEnv: string }
-> = [
+const RECORDING_RULES: Array<Omit<RecordingRule, "mode">> = [
   {
-    // Agent, title, and judge requests to the AI Gateway. The gateway
-    // observer mocks image generation and web search before the proxy.
+    // Every model request to the AI Gateway. The gateway observer mocks
+    // image generation and web search before the proxy.
     name: "model",
-    modeEnv: "JUNIOR_EVAL_MODEL_REPLAY",
     method: "POST",
     urlPrefix: "https://ai-gateway.vercel.sh/",
     ignore: [ISO_TIME],
@@ -44,7 +40,6 @@ const RECORDING_RULES: Array<
   {
     // Public pages that the `webFetch` tool reads.
     name: "web",
-    modeEnv: "VITEST_EVALS_REPLAY_MODE",
     method: "GET",
     headers: { "user-agent": USER_AGENT },
   },
@@ -57,7 +52,7 @@ const RECORDING_RULES: Array<
  * site, add its origin here.
  */
 const ALLOWED_ORIGINS = [
-  // Agent, title, and judge requests.
+  // Model requests.
   "https://ai-gateway.vercel.sh",
   // The Vercel Sandbox API and Vercel OIDC tokens.
   "https://vercel.com",
@@ -70,20 +65,20 @@ const ALLOWED_ORIGINS = [
 /** The committed recordings of the eval package. */
 const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
 
-function readMode(name: string): RecordingMode {
-  const value = process.env[name]?.trim() || "auto";
+function readMode(): RecordingMode {
+  const value = process.env.VITEST_EVALS_REPLAY_MODE?.trim() || "auto";
   if (value === "auto" || value === "off" || value === "record") return value;
-  throw new Error(`${name} must be off, auto, or record, got ${value}`);
+  throw new Error(
+    `VITEST_EVALS_REPLAY_MODE must be off, auto, or record, got ${value}`,
+  );
 }
 
 /** The recording proxy configuration of this eval run. */
 export function recordingProxyConfig(): RecordingProxyConfig {
+  const mode = readMode();
   return {
     directory: RECORDINGS_DIR,
     origins: ALLOWED_ORIGINS,
-    rules: RECORDING_RULES.map(({ modeEnv, ...rule }) => ({
-      ...rule,
-      mode: readMode(modeEnv),
-    })),
+    rules: RECORDING_RULES.map((rule) => ({ ...rule, mode })),
   };
 }
