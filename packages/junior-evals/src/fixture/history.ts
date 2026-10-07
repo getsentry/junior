@@ -5,7 +5,8 @@
  * product functions that turns use: the Conversation store, the turn
  * lifecycle service, agent history commits, and `commitAcceptedReply`. For
  * Slack it also adds the messages to the Slack mock and subscribes the thread
- * when Junior replied in it.
+ * when Junior replied in it. A message from another app is in the Slack mock
+ * only.
  */
 import { randomUUID } from "node:crypto";
 import { SlackFormatConverter } from "@chat-adapter/slack";
@@ -47,6 +48,7 @@ import {
   buildDeterministicTurnId,
 } from "@/chat/state/turn-id";
 import type {
+  AppMessage,
   HistoryItem,
   HistoryReply,
   HistoryToolCall,
@@ -58,12 +60,19 @@ import {
   recordedMessages,
   type RecordedConversation,
 } from "./recorded";
-import { lastEventSeq, readConversationDetail } from "./results";
+import {
+  BEFORE_FIRST_EVENT,
+  lastEventSeq,
+  readConversationDetail,
+} from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
+  SLACK_APP,
+  SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
   SLACK_TEAM_ID,
   type RequestApp,
+  appMessageContent,
   isAppMention,
   slackAuthorEmail,
   type SlackMock,
@@ -87,9 +96,21 @@ interface HistoryTurn {
   replies: HistoryReply[];
 }
 
-function groupTurns(items: HistoryItem[]): HistoryTurn[] {
+function groupTurns(items: HistoryItem[]): {
+  appMessages: AppMessage[];
+  turns: HistoryTurn[];
+} {
+  const appMessages: AppMessage[] = [];
   const turns: HistoryTurn[] = [];
   for (const item of items) {
+    if (item.kind === "app_message") {
+      // Junior stores a message that arrives after it joined the thread.
+      if (turns.length > 0) {
+        throw new Error("appMessage() comes before the first input");
+      }
+      appMessages.push(item);
+      continue;
+    }
     if (item.kind === "reply") {
       const turn = turns.at(-1);
       if (!turn) throw new Error("history must start with an input");
@@ -101,9 +122,15 @@ function groupTurns(items: HistoryItem[]): HistoryTurn[] {
     if (files?.length) {
       throw new Error("history takes no files; send the file in a call");
     }
+    // A real turn stores the text that it read from a forwarded message.
+    if (item.kind !== "web_message" && item.forwarded) {
+      throw new Error(
+        "history takes no forwarded message; send the input in a call",
+      );
+    }
     turns.push({ input: item, replies: [] });
   }
-  return turns;
+  return { appMessages, turns };
 }
 
 /**
@@ -398,7 +425,25 @@ export async function loadHistory(args: {
   if (isRecordedConversation(args.items)) {
     return await loadRecording({ ...args, recording: args.items });
   }
-  const turns = groupTurns(args.items);
+  const { appMessages, turns } = groupTurns(args.items);
+  if (appMessages.length > 0) {
+    if (conversation.surface !== "slack") {
+      throw new Error("appMessage() needs a Slack Conversation");
+    }
+    const app = args.slack.registerAuthor(SLACK_APP);
+    for (const [index, message] of appMessages.entries()) {
+      args.slack.addThreadMessage(conversation.channelId, {
+        attachments: [appMessageContent(message.text)],
+        bot_id: SLACK_APP_BOT_ID,
+        text: "",
+        thread_ts: conversation.threadTs,
+        ...(index === 0 ? { ts: conversation.threadTs } : undefined),
+        user: app.userId,
+      });
+    }
+  }
+  // Junior has no rows for a thread that only apps posted in.
+  if (turns.length === 0) return BEFORE_FIRST_EVENT;
   // Earlier turns happened before the call, one millisecond apart.
   let clockMs = Date.now() - args.items.length - 1;
   const tick = () => (clockMs += 1);
@@ -413,7 +458,7 @@ export async function loadHistory(args: {
     const message = historyUserMessage({
       conversation,
       createdAtMs: tick(),
-      first: index === 0,
+      first: index === 0 && appMessages.length === 0,
       input: turn.input,
       slack: args.slack,
     });

@@ -32,7 +32,9 @@ import type {
   HistoryItem,
   HistoryReply,
   Input,
+  MentionInput,
   MessageInput,
+  ThreadMessageInput,
 } from "./inputs";
 import {
   hasHistory,
@@ -58,6 +60,7 @@ import {
 } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
+  forwardedMessage,
   installSlackMock,
   isAppMention,
   postSlackMessageEvent,
@@ -329,7 +332,11 @@ export async function createFixtureAgent(
     const files = input.files?.length
       ? { files: input.files.map(slack.addFile) }
       : undefined;
+    const forwarded = input.forwarded
+      ? { attachments: [forwardedMessage(input.forwarded)] }
+      : undefined;
     slack.addThreadMessage(record.channelId, {
+      ...forwarded,
       ...files,
       text,
       thread_ts: record.threadTs,
@@ -339,6 +346,7 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
+      ...forwarded,
       ...files,
       mention,
       text,
@@ -373,14 +381,14 @@ export async function createFixtureAgent(
       (first.kind === "mention" ? first.channel?.channelId : undefined) ??
       slack.newChannelId(channelType);
     const threadTs = slack.nextTs();
-    // The person who posted the thread root reads the results.
-    const historyRoot = Array.isArray(history) ? history[0] : undefined;
-    const root =
-      historyRoot &&
-      historyRoot.kind !== "reply" &&
-      historyRoot.kind !== "web_message"
-        ? historyRoot
-        : first;
+    // The person who posted first in the thread reads the results.
+    const historyRoot = Array.isArray(history)
+      ? history.find(
+          (item): item is MentionInput | ThreadMessageInput =>
+            item.kind === "mention" || item.kind === "thread_message",
+        )
+      : undefined;
+    const root = historyRoot ?? first;
     const rootAuthor = slack.registerAuthor(
       root.author ?? DEFAULT_SLACK_AUTHOR,
     );

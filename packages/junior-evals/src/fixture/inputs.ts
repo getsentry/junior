@@ -44,6 +44,8 @@ export interface MentionInput {
   channelType?: "channel" | "im";
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
   text: string;
 }
 
@@ -53,6 +55,8 @@ export interface ThreadMessageInput {
   author?: SlackAuthor;
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
   text: string;
 }
 
@@ -112,7 +116,16 @@ export interface HistoryReply {
   toolHistory?: HistoryToolCall[];
 }
 
-export type HistoryItem = MessageInput | HistoryReply;
+/**
+ * A message that another Slack app posted before the first input in loaded
+ * history. It is in the Slack thread only.
+ */
+export interface AppMessage {
+  kind: "app_message";
+  text: string;
+}
+
+export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 
 /** Mention Junior in Slack. `run()` posts it to a new thread. */
 export function mention(
@@ -122,6 +135,7 @@ export function mention(
     channel?: MentionChannel;
     channelType?: "channel" | "im";
     files?: FileInput[];
+    forwarded?: string;
   } = {},
 ): MentionInput {
   return { kind: "mention", text, ...options };
@@ -130,7 +144,11 @@ export function mention(
 /** Post in the Slack thread without mentioning Junior. */
 export function threadMessage(
   text: string,
-  options: { author?: SlackAuthor; files?: FileInput[] } = {},
+  options: {
+    author?: SlackAuthor;
+    files?: FileInput[];
+    forwarded?: string;
+  } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };
 }
@@ -189,6 +207,15 @@ export function completeAuth(
   options: { author?: SlackAuthor } = {},
 ): CompleteAuthInput {
   return { kind: "complete_auth", provider, ...options };
+}
+
+/**
+ * A message from another Slack app for `history`, such as an alert that
+ * starts the thread. Junior took no turn for it and stored nothing, so a
+ * later turn reads it from Slack. It comes before the first input.
+ */
+export function appMessage(text: string): AppMessage {
+  return { kind: "app_message", text };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */
