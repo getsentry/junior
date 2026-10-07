@@ -7,6 +7,11 @@
  * requests the proxy records and replays. Other requests go live without a
  * change.
  *
+ * The proxy sends requests only to the `origins` of its configuration. It
+ * refuses a request to any other origin with HTTP 403 and sends nothing.
+ * The upstream request uses the host of the configured origin, never a host
+ * from the client.
+ *
  * The key of a request is the hash of its rule, method, URL, and body. JSON
  * bodies are compared with sorted keys. The `ignore` patterns of a rule
  * remove changing values, such as times, from the body before the hash.
@@ -76,6 +81,11 @@ export interface RecordingRule {
 export interface RecordingProxyConfig {
   /** The directory of the recordings. Each rule has a subdirectory. */
   directory: string;
+  /**
+   * The only origins that the proxy sends requests to, such as
+   * `https://ai-gateway.vercel.sh`. This is an allow list.
+   */
+  origins: string[];
   rules: RecordingRule[];
 }
 
@@ -142,6 +152,26 @@ const HOP_HEADERS = new Set([
 ]);
 const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 const AUTHORITY = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+):(\d{1,5})$/i;
+
+/** The `host:port` of an origin, with the default port of its scheme. */
+function authorityOf(origin: URL): string {
+  const port = origin.port || (origin.protocol === "https:" ? "443" : "80");
+  return `${origin.hostname}:${port}`;
+}
+
+/** Parse the allowed origins. A value that is not an origin is an error. */
+function parseOrigins(values: string[]): URL[] {
+  return values.map((value) => {
+    const origin = new URL(value);
+    if (
+      (origin.protocol !== "http:" && origin.protocol !== "https:") ||
+      origin.origin !== value.replace(/\/$/, "")
+    ) {
+      throw new Error(`Recording proxy origin must be an origin: ${value}`);
+    }
+    return origin;
+  });
+}
 
 /** Statuses that are never recorded, because they are temporary. */
 const isTemporaryStatus = (status: number) => status === 429 || status >= 500;
@@ -333,28 +363,46 @@ function readBody(stream: http.IncomingMessage): Promise<Buffer> {
 
 function forwardHeaders(
   headers: http.IncomingHttpHeaders,
-  url: URL,
+  origin: URL,
   body: Buffer,
 ): http.OutgoingHttpHeaders {
   const result: http.OutgoingHttpHeaders = {};
   for (const [name, value] of Object.entries(headers)) {
     if (value !== undefined && !HOP_HEADERS.has(name)) result[name] = value;
   }
-  result.host = url.host;
+  result.host = origin.host;
   if (body.length > 0) result["content-length"] = String(body.length);
   else delete result["content-length"];
   return result;
 }
 
+/**
+ * Send a request to an allowed origin. The host, port, and scheme come from
+ * the configuration. Only the path comes from the client.
+ */
 function sendUpstream(
-  url: URL,
+  origin: URL,
+  requestPath: string,
   method: string,
   headers: http.OutgoingHttpHeaders,
   body: Buffer,
 ): Promise<http.IncomingMessage> {
-  const client = url.protocol === "https:" ? https : http;
+  const client = origin.protocol === "https:" ? https : http;
+  // A URL keeps the brackets of an IPv6 host. A request option has none.
+  const hostname = origin.hostname.replace(/^\[|\]$/g, "");
   return new Promise((resolve, reject) => {
-    const request = client.request(url, { method, headers }, resolve);
+    const request = client.request(
+      {
+        protocol: origin.protocol,
+        hostname,
+        port: origin.port || undefined,
+        servername: isIP(hostname) ? undefined : hostname,
+        path: requestPath,
+        method,
+        headers,
+      },
+      resolve,
+    );
     request.on("error", reject);
     request.end(body);
   });
@@ -423,6 +471,8 @@ async function saveRecordings(recordings: Map<string, Recording>) {
 export async function startRecordingProxy(
   config: RecordingProxyConfig,
 ): Promise<RecordingProxy> {
+  const origins = parseOrigins(config.origins);
+  const allowedAuthorities = new Set(origins.map(authorityOf));
   const certificateDir = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
   const certificates = await createCertificates(certificateDir);
   // Only a client with this secret can make the proxy send requests.
@@ -463,14 +513,28 @@ export async function startRecordingProxy(
     const url = new URL(
       target.origin ? `${target.origin}${incoming.url}` : (incoming.url ?? ""),
     );
+    const allowed = origins.find((origin) => origin.origin === url.origin);
+    if (!allowed) {
+      process.stderr.write(`[recording-proxy] Refused ${url.origin}\n`);
+      outgoing.writeHead(403, { "content-type": "text/plain" });
+      outgoing.end(`Recording proxy: ${url.origin} is not an allowed origin\n`);
+      return;
+    }
+    const requestPath = `${url.pathname}${url.search}`;
     const body = await readBody(incoming);
-    const headers = forwardHeaders(incoming.headers, url, body);
+    const headers = forwardHeaders(incoming.headers, allowed, body);
     const rule = config.rules.find((entry) =>
       matches(entry, method, url.href, incoming.headers),
     );
 
     if (!rule) {
-      const response = await sendUpstream(url, method, headers, body);
+      const response = await sendUpstream(
+        allowed,
+        requestPath,
+        method,
+        headers,
+        body,
+      );
       outgoing.writeHead(response.statusCode ?? 502, response.statusMessage, {
         ...response.headers,
         "x-recording-proxy": "passthrough",
@@ -509,7 +573,7 @@ export async function startRecordingProxy(
     const recording = await toRecording(
       method,
       url.href,
-      await sendUpstream(url, method, headers, body),
+      await sendUpstream(allowed, requestPath, method, headers, body),
     );
     // Never record a temporary failure or a response the client aborted.
     if (!clientGone && !isTemporaryStatus(recording.response.status)) {
@@ -610,6 +674,11 @@ export async function startRecordingProxy(
       socket.end(
         "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n",
       );
+      return;
+    }
+    if (!allowedAuthorities.has(`${host.toLowerCase()}:${port}`)) {
+      process.stderr.write(`[recording-proxy] Refused ${host}:${port}\n`);
+      socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
     const session = credentials?.session;

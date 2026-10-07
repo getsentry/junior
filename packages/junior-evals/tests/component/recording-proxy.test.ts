@@ -20,6 +20,7 @@ const control = new Agent();
 async function start(mode: RecordingMode): Promise<RecordingProxy> {
   proxy = await startRecordingProxy({
     directory,
+    origins: [origin],
     rules: [
       {
         name: "model",
@@ -125,6 +126,24 @@ describe("recording proxy", () => {
     ]);
     expect(replay.counts).toEqual({ model: { live: 1, replayed: 1 } });
     expect(liveRequests).toBe(2);
+  });
+
+  it("sends no request to another origin", async () => {
+    const running = await start("auto");
+    const agent = new ProxyAgent({
+      uri: running.url,
+      token: `Basic ${Buffer.from(`session:${running.secret}`).toString("base64")}`,
+    });
+
+    // The same server under another name is another origin.
+    await expect(
+      request(`${origin.replace("127.0.0.1", "localhost")}/v1/messages`, {
+        dispatcher: agent,
+        method: "POST",
+      }),
+    ).rejects.toThrow("403");
+    expect(liveRequests).toBe(0);
+    await agent.close();
   });
 
   it("sends no request without the secret", async () => {

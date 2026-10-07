@@ -265,6 +265,9 @@ process and has no Junior code, so it can move out of this repository.
   Slack, still answer first.
 - `src/recording-rules.ts` is the one list of recorded traffic. To record
   more traffic, add a rule there.
+- The proxy sends requests only to the allowed origins in
+  `src/recording-rules.ts`. It refuses all other origins with HTTP 403. To
+  let an eval reach a new site, add its origin to that list.
 - `model`: AI Gateway model requests. `JUNIOR_EVAL_MODEL_REPLAY` sets the
   mode. The integration suite uses `auto`. Other suites use the live model.
 - `web`: the pages that `webFetch` reads. `VITEST_EVALS_REPLAY_MODE` sets the

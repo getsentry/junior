@@ -25,6 +25,10 @@ directory, so the proxy can move to its own package or repository.
 ## Config
 
 - `directory`: where the recordings are. Each rule has a subdirectory.
+- `origins`: the allow list, such as `https://ai-gateway.vercel.sh`. The
+  proxy sends requests only to these origins. It refuses all other origins
+  with HTTP 403. The upstream host always comes from this list, not from the
+  client.
 - `rules`: the traffic to record. A rule matches on `method`, `urlPrefix`,
   and `headers`. `ignore` lists regular expressions that the key ignores in
   the body, such as times. `mode` is `off`, `auto`, or `record`.

@@ -42,6 +42,23 @@ const RECORDING_RULES: Array<
   },
 ];
 
+/**
+ * The only origins that eval traffic can reach through the proxy. The proxy
+ * refuses all other origins. MSW mocks, such as Slack and GitHub, answer
+ * before the proxy, so they are not in this list. To let an eval reach a new
+ * site, add its origin here.
+ */
+const ALLOWED_ORIGINS = [
+  // Agent, title, and judge requests.
+  "https://ai-gateway.vercel.sh",
+  // The Vercel Sandbox API and Vercel OIDC tokens.
+  "https://vercel.com",
+  "https://api.vercel.com",
+  "https://oidc.vercel.com",
+  // Pages that `webFetch` evals read.
+  "https://docs.slack.dev",
+];
+
 /** The committed recordings of the eval package. */
 const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
 
@@ -55,6 +72,7 @@ function readMode(name: string): RecordingMode {
 export function recordingProxyConfig(): RecordingProxyConfig {
   return {
     directory: RECORDINGS_DIR,
+    origins: ALLOWED_ORIGINS,
     rules: RECORDING_RULES.map(({ modeEnv, ...rule }) => ({
       ...rule,
       mode: readMode(modeEnv),
