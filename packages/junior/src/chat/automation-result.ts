@@ -92,8 +92,8 @@ export function normalizeAutomationResult(
 /**
  * Map one finished agent run to its dispatch outcome. A declared
  * `misconfigured` result becomes a blocked dispatch with the declared reason.
- * A blocked dispatch suspends a Scheduled automation until its creator
- * resumes it.
+ * A blocked dispatch blocks its Scheduled automation or Event automation
+ * until its creator resumes it.
  */
 export function runDispatchOutcome(result: {
   automation?: AutomationResult;

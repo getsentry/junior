@@ -26,8 +26,7 @@ export function AutomationLifecycle({
   // Public readers can edit settings, but only the creator controls lifecycle.
   const canEdit = !completed;
   const canPause = automation.ownedByViewer && !completed;
-  const blockReason =
-    automation.kind === "scheduled" ? automation.statusReason : undefined;
+  const blockReason = automation.statusReason;
   const action = paused || blocked ? "resume" : "pause";
   const mutation = useMutation({
     mutationFn: async () => {

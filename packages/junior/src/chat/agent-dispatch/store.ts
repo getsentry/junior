@@ -10,10 +10,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { blockEventAutomation } from "@/chat/event-automations/store";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -417,6 +418,17 @@ export async function markDispatchBlocked(
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   const previous = await getDispatchRecord(id);
+  // Stop the Event automation before the dispatch becomes terminal, so a
+  // retry after a failed write still stops it. Scheduled automations stop
+  // when the heartbeat reads the blocked dispatch.
+  const eventAutomationId = previous?.metadata?.eventAutomationId;
+  if (
+    previous?.plugin === "junior" &&
+    eventAutomationId &&
+    !isTerminalDispatchStatus(previous.status)
+  ) {
+    await blockEventAutomation(getDb(), eventAutomationId, errorMessage);
+  }
   const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record

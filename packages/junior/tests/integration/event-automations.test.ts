@@ -1,4 +1,5 @@
 import {
+  changesRequestedEvent,
   context,
   createTask,
   execute,
@@ -17,7 +18,10 @@ import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  markDispatchBlocked,
+} from "@/chat/agent-dispatch/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { automationRevision } from "@/chat/automations/revision";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -367,6 +371,40 @@ describe("event automations", () => {
     `);
   });
 
+  it("blocks an event automation after a misconfigured run until its creator resumes it", async () => {
+    const { automation } = await createTask("Add the release-train label.");
+    const reason = "The release-train label no longer exists.";
+    const ingest = (eventKey: string) =>
+      ingestEventAutomations(changesRequestedEvent(eventKey), {
+        queue,
+        teamId,
+      });
+
+    expect(await ingest("github:misconfigured-1")).toEqual({ dispatched: 1 });
+    // The work owner blocks the dispatch when a run declares `misconfigured`.
+    const [{ conversationId }] = queue.sentRecords();
+    await markDispatchBlocked(
+      conversationId!.replace(/^agent-dispatch:/, ""),
+      reason,
+    );
+
+    const db = fixture.sql.db();
+    const blocked = await getEventAutomation(db, automation.id);
+    expect(blocked).toMatchObject({ status: "blocked", statusReason: reason });
+    expect(await ingest("github:misconfigured-2")).toEqual({ dispatched: 0 });
+
+    await setEventAutomationStatus(
+      db,
+      automation.id,
+      "active",
+      automationRevision(blocked!),
+    );
+    const resumed = await getEventAutomation(db, automation.id);
+    expect(resumed?.status).toBe("active");
+    expect(resumed).not.toHaveProperty("statusReason");
+    expect(await ingest("github:misconfigured-3")).toEqual({ dispatched: 1 });
+  });
+
   it.each([
     {
       channelId: "C123",
@@ -403,14 +441,7 @@ describe("event automations", () => {
       );
 
       await ingestEventAutomations(
-        {
-          eventKey: `github:dispatch-access-${channelId}`,
-          eventType: "pull_request.review.changes_requested",
-          occurredAtMs: Date.now(),
-          namespace: "github",
-          identifier: "getsentry/junior#1174",
-          trustedSummary: "A reviewer requested changes.",
-        },
+        changesRequestedEvent(`github:dispatch-access-${channelId}`),
         { queue, teamId },
       );
 
@@ -466,14 +497,7 @@ describe("event automations", () => {
       })
       .where(eq(juniorEventAutomations.id, task.id));
     await ingestEventAutomations(
-      {
-        eventKey: "github:stored-thread",
-        eventType: "pull_request.review.changes_requested",
-        occurredAtMs: Date.now(),
-        namespace: "github",
-        identifier: "getsentry/junior#1174",
-        trustedSummary: "A reviewer requested changes.",
-      },
+      changesRequestedEvent("github:stored-thread"),
       { queue, teamId },
     );
 
@@ -638,17 +662,10 @@ describe("event automations", () => {
     expect(created.automation.trigger.identifier).toBe("getsentry/junior#1174");
 
     await expect(
-      ingestEventAutomations(
-        {
-          eventKey: "github:mixed-case-match",
-          eventType: "pull_request.review.changes_requested",
-          occurredAtMs: Date.now(),
-          namespace: "github",
-          identifier: "getsentry/junior#1174",
-          trustedSummary: "A reviewer requested changes.",
-        },
-        { queue, teamId },
-      ),
+      ingestEventAutomations(changesRequestedEvent("github:mixed-case-match"), {
+        queue,
+        teamId,
+      }),
     ).resolves.toEqual({ dispatched: 1 });
   });
 
@@ -685,17 +702,10 @@ describe("event automations", () => {
     );
 
     await expect(
-      ingestEventAutomations(
-        {
-          eventKey: "github:workspace-match",
-          eventType: "pull_request.review.changes_requested",
-          occurredAtMs: Date.now(),
-          namespace: "github",
-          identifier: "getsentry/junior#1174",
-          trustedSummary: "A reviewer requested changes.",
-        },
-        { queue, teamId },
-      ),
+      ingestEventAutomations(changesRequestedEvent("github:workspace-match"), {
+        queue,
+        teamId,
+      }),
     ).resolves.toEqual({ dispatched: 1 });
 
     const [{ conversationId }] = queue.sentRecords();

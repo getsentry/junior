@@ -71,7 +71,8 @@ export const eventAutomationSummarySchema = automationSummaryBaseSchema
     resource: z.string().min(1),
     source: z.string().min(1),
     triggerAvailable: z.boolean(),
-    status: z.enum(["active", "paused"]),
+    statusReason: z.string().optional(),
+    status: z.enum(["active", "blocked", "paused"]),
   })
   .strict();
 
@@ -332,7 +333,7 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
       kind: z.literal("event"),
       trigger: eventAutomationTriggerSchema,
       triggerAvailable: z.boolean(),
-      status: z.enum(["active", "paused"]),
+      status: z.enum(["active", "blocked", "paused"]),
     })
     .strict(),
 ]);

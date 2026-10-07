@@ -387,11 +387,15 @@ kind selects this mode, and `automation-result.ts` owns the result contract.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.
   `misconfigured` records a blocked dispatch with the declared reason. A
-  blocked dispatch suspends a Scheduled automation until its creator resumes
+  blocked dispatch sets the Scheduled automation or Event automation to
+  `blocked` with that reason. It does not run again until its creator resumes
   it. A declared message gets reply cleanup, and a message that is only the
   no-reply marker becomes `no_action`.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch.
+- These rules apply only while the Source is an automation. A person who
+  replies to an automation message starts a normal chat Turn in the same
+  Conversation.
 
 Watches and other plugin dispatches keep the chat Turn contract.
 
