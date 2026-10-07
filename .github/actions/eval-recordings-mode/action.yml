@@ -21,6 +21,7 @@ runs:
         GH_TOKEN: ${{ github.token }}
         SUITE: ${{ inputs.suite }}
         PR: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         BRANCH: ${{ github.event.pull_request.head.ref }}
         WORKFLOW_REF: ${{ github.workflow_ref }}
         RUN_ID: ${{ github.run_id }}
@@ -31,16 +32,19 @@ runs:
           echo "mode=auto" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        # The recording commits at the head of the branch. One JSON string
-        # per commit message, oldest first.
-        gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" \
-          --jq '.[].commit.message | tojson' > "$RUNNER_TEMP/pr-commits"
+        # The recording commits at the tested commit, newest first. The run
+        # reads them from its own head SHA, not from the current branch: a
+        # recording commit pushed after this run started must not change its
+        # mode.
+        sha="$HEAD_SHA"
         chain=""
-        while IFS= read -r line; do
-          message="$(jq -r . <<< "$line")"
+        for _ in $(seq 1 20); do
+          commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha")"
+          message="$(jq -r .commit.message <<< "$commit")"
           [[ "$message" == "$PREFIX"* ]] || break
           chain+="$message"$'\n'
-        done < <(tac "$RUNNER_TEMP/pr-commits")
+          sha="$(jq -r '.parents[0].sha' <<< "$commit")"
+        done
         if [[ -z "$chain" ]]; then
           echo "mode=auto" >> "$GITHUB_OUTPUT"
           echo "Eval recordings mode: auto" >> "$GITHUB_STEP_SUMMARY"

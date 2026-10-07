@@ -6,8 +6,9 @@
  * they never run turns and they contain no assertions. Add one when a test
  * needs a new kind of setup data.
  */
-import { randomUUID } from "node:crypto";
-import { onTestFinished } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import { relative } from "node:path";
+import { expect, onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -33,12 +34,38 @@ export interface SlackChannel {
   teamId: string;
 }
 
-let channelSequence = 0;
+const fixtureIdCounts = new Map<string, number>();
+
+/**
+ * An id for setup data. It comes from the test and a count, so a test gets
+ * the same ids on each run. The ids reach model requests, for example in
+ * tool results, and recordings replay only equal requests. Different tests
+ * get different ids.
+ */
+function fixtureId(kind: string, length: number): string {
+  const { currentTestName, testPath } = expect.getState();
+  const test = `${testPath ? relative(process.cwd(), testPath) : ""} > ${currentTestName ?? ""}`;
+  const scope = `${test} > ${kind}`;
+  const count = (fixtureIdCounts.get(scope) ?? 0) + 1;
+  fixtureIdCounts.set(scope, count);
+  return createHash("sha256")
+    .update(`${scope} > ${count}`)
+    .digest("hex")
+    .slice(0, length);
+}
+
+/**
+ * A fixed Monday that weekly setup automations start on. A date from the
+ * clock would change the model requests each day.
+ */
+const FIXTURE_START_DATE = "2026-05-04";
+
+/** The Slack timestamp of the message that stored a setup memory. */
+const FIXTURE_MESSAGE_TS = "1780000000.000100";
 
 /** Return a new public Slack channel in the test workspace. */
 export function slackChannel(): SlackChannel {
-  channelSequence += 1;
-  const suffix = `${Date.now().toString(36)}${channelSequence}`.toUpperCase();
+  const suffix = fixtureId("channel", 9).toUpperCase();
   const destination = createSlackDestination({
     channelId: `CEVALSET${suffix}`,
     teamId: SLACK_TEAM_ID,
@@ -89,7 +116,7 @@ export async function insertScheduledAutomation(args: {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
   const nowMs = Date.now();
-  const id = `sched_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+  const id = `sched_${fixtureId("scheduled-automation", 20)}`;
   const automation: ScheduledAutomation = {
     id,
     conversationAccess: { audience: "channel", visibility: "public" },
@@ -117,7 +144,7 @@ export async function insertScheduledAutomation(args: {
           recurrence: {
             frequency: "weekly",
             interval: 1,
-            startDate: new Date(nowMs).toISOString().slice(0, 10),
+            startDate: FIXTURE_START_DATE,
             time: { hour: 9, minute: 0 },
             weekdays: [1],
           },
@@ -144,7 +171,7 @@ export async function insertEventAutomation(args: {
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
   await insertSlackIdentity(author);
-  const id = `evt_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+  const id = `evt_${fixtureId("event-automation", 20)}`;
   await createEventAutomation(getDb(), {
     id,
     createdAtMs: Date.now() - 60_000,
@@ -221,7 +248,7 @@ export async function insertMemory(args: {
     visibility === "private"
       ? channel.channelId.replace(/^C/, "D")
       : channel.channelId;
-  const messageTs = `${Math.floor(Date.now() / 1000)}.000100`;
+  const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
     {
