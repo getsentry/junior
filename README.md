@@ -31,6 +31,7 @@ Start here:
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
 | `@sentry/junior-tts`           | Gemini narration through Vercel AI Gateway with a reusable voice preset      |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
+| `@sentry/junior-headshot`      | Headshot background replacement with a solid color or bundled image          |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
 | `@sentry/junior-memory`        | Memory plugin package for long-term Junior memory storage                    |

@@ -1,0 +1,35 @@
+name: headshot
+display-name: Headshot
+description: Replace headshot backgrounds with a solid color or a bundled image
+
+runtime-dependencies:
+  - type: system
+    package: python3.11
+  - type: system
+    package: python3.11-pip
+
+# Loading the model downloads its weights. The small foreground estimate fills
+# the numba cache. Both stay in the snapshot so turns do not wait for them.
+runtime-postinstall:
+  - cmd: sh
+    args:
+      - -c
+      - |
+        set -eu
+        python3.11 -m venv "$HOME/.junior-headshot"
+        "$HOME/.junior-headshot/bin/pip" install --no-cache-dir \
+          "rembg[cpu]==2.0.85" \
+          "onnxruntime==1.30.0" \
+          "numpy==2.4.6" \
+          "pillow==12.3.0" \
+          "pymatting==1.1.16" \
+          "numba==0.68.0" \
+          "scipy==1.17.1" \
+          "scikit-image==0.26.0"
+        "$HOME/.junior-headshot/bin/python" -c '
+        import numpy as np
+        from pymatting import estimate_foreground_ml
+        from rembg import new_session
+        new_session("isnet-general-use")
+        estimate_foreground_ml(np.zeros((4, 4, 3)), np.zeros((4, 4)))
+        '
