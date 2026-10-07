@@ -79,6 +79,7 @@ import { buildTurnResult } from "@/chat/services/turn-result";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
   isAutomationSource,
+  readAutomationResult,
   remindMissingAutomationResult,
 } from "@/chat/automation-result";
 import { decideReply } from "@/chat/services/assistant-reply";
@@ -1228,6 +1229,15 @@ async function executeAgentRunInPrivacyContext(
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
+          // A declared Automation result is final. Each Automation run owns
+          // its dispatch Conversation, so a result in this history belongs to
+          // this run. A resumed slice returns it without calling the model.
+          if (
+            requireAutomationResult &&
+            readAutomationResult(agent!.state.messages)
+          ) {
+            return undefined;
+          }
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
           const contextMessage: PiMessage | undefined =
             shouldPromptAgent && promptContextContentParts.length > 0

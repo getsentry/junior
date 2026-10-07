@@ -128,9 +128,16 @@ describe("agent dispatch recovery", () => {
             message: "Resumed scheduled digest",
           },
         },
-        // A provider error on the resumed slice must not discard the saved
-        // result.
-        { type: "error", errorMessage: "Model provider quota exhausted" },
+        // The declared result is final. The resumed slice must not call the
+        // model again and replace it.
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Replaced scheduled digest",
+          },
+        },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
