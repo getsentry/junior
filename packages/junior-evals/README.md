@@ -247,47 +247,50 @@ Global setup reports the Postgres, egress, and snapshot phases before cases
 start. Egress teardown stops the tunnel and closes its remaining HTTP
 connections.
 
-## Web Pages And Search
+## Web Search
 
-- The fixture replays the requests that the `webFetch` tool sends.
-  `src/fixture/web.ts` records each response under
-  `.vitest-evals/recordings/webFetch/` and answers later requests for the same
-  URL from the recording. A redirect is its own recording.
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
   the results for one test.
-- Use `pnpm evals:record` to record the pages again.
-- Git ignores new recordings. Add the ones that an eval needs with
-  `git add -f`. Review them for stale fetches and secret-like values before
-  you commit.
 
-## Model Replay
+## Recordings
 
-The integration suite replays model responses from files in git. Other
-suites always use the live model.
+The fixture records outside HTTP traffic in files in git and replays it.
+MSW sees every request of the Junior process, so it is the proxy. There is
+no separate proxy process.
 
-- The recordings are in `recordings/model/`.
-- A recording answers a model request when the request body is the same.
-  The body has the model, the system prompt, the messages, the tools, and the
-  settings. The key ignores ISO times.
-- Other requests go to the live model. When the test passes, the fixture
-  writes every recording that the test used. A failed test writes nothing.
+- `RECORDING_RULES` in `src/fixture/recordings.ts` is the one list of
+  recorded traffic. Each rule names the requests it matches and the
+  environment variable with its mode. To record more traffic, add a rule.
+- `model`: AI Gateway model requests. `JUNIOR_EVAL_MODEL_REPLAY` sets the
+  mode. The integration suite uses `auto`. Other suites use the live model.
+- `web`: the pages that `webFetch` reads. `VITEST_EVALS_REPLAY_MODE` sets the
+  mode. The integration and behavioral suites use `auto`. A redirect is its
+  own recording.
+- The recordings are in `recordings/<rule>/`.
+- A recording answers a request when the method, URL, and body are the same.
+  For a model request, the body has the model, the system prompt, the
+  messages, the tools, and the settings. The key ignores ISO times.
+- Other requests go live. When the test passes, the fixture writes every
+  recording that the test used. A failed test writes nothing. A 429 or 5xx
+  response is never recorded.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
   You can commit the new recordings with your change.
 - The "Eval recordings" workflow runs each night on `main`. It records
-  missing responses and deletes the recordings that no test used. Then it
-  opens or updates one pull request. A failed eval stops the workflow, and
+  missing responses and deletes the model recordings that no test used. Then
+  it opens or updates one pull request. A failed eval stops the workflow, and
   the recordings do not change.
 - Run that workflow with `record` to write all recordings again. Locally,
-  use `pnpm --filter @sentry/junior-evals evals:integration:record`.
-- `JUNIOR_EVAL_MODEL_REPLAY` sets the mode: `auto`, `record`, or `off`.
-  `src/fixture/model-replay.ts` has the details.
+  use `pnpm --filter @sentry/junior-evals evals:integration:record` for
+  models and `pnpm evals:record` for web pages.
 - The Slack mock takes its timestamps and channel ids from the test name, so
   Conversation ids and requests are the same on each run.
-- Tool calls, such as Vercel Sandbox commands, are always live.
-- The eval report shows `modelReplay.replayed` and `modelReplay.live` for
-  each test.
+- Sandbox requests that use credentials go to the test HTTP fixtures in
+  global setup, so they never reach a live provider. Vercel Sandbox commands
+  are always live.
+- The eval report shows `recordings.<rule>.replayed` and
+  `recordings.<rule>.live` for each test.
 
 ## Running
 

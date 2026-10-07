@@ -1,16 +1,16 @@
 /**
  * AI Gateway observer for the agent test fixture.
  *
- * Model requests go to the real AI Gateway, or to `model-replay.ts` when
- * replay is on. This observer watches agent requests (the ones that offer
- * tools) and holds them while a test reacts. It never changes a model request
+ * Model requests go to the real AI Gateway, or to `recordings.ts` when
+ * the `model` rule is on. This observer watches agent requests (the ones that
+ * offer tools) and holds them while a test reacts. It never changes a model request
  * or its response. Two requests are not model requests. Image generation is a
  * third-party image API, so the observer answers it with a 1x1 PNG. `webSearch` is a third-party search
  * provider, so `web.ts` answers it with the results of the test.
  */
 import { http, HttpResponse, passthrough } from "msw";
 import { mswServer } from "@junior-tests/msw/server";
-import type { ModelReplay, ModelResponse } from "./model-replay";
+import type { Recordings } from "./recordings";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
@@ -94,7 +94,9 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 }
 
 /** Install the AI Gateway observer for the current test. */
-export function installGatewayObserver(replay: ModelReplay): GatewayObserver {
+export function installGatewayObserver(
+  recordings: Recordings,
+): GatewayObserver {
   const counts: Record<string, number> = {};
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
 
@@ -123,27 +125,23 @@ export function installGatewayObserver(replay: ModelReplay): GatewayObserver {
           ((await request.clone().json()) as { tools?: unknown[] }).tools
             ?.length,
         );
-      // Without replay, only agent requests need the response body.
-      if (!agentRequest && !replay.enabled) return passthrough();
+      // Without a recording rule, only agent requests need the response body.
+      if (!agentRequest && !recordings.matches(request)) return passthrough();
       if (agentRequest) await hook({ type: "model_request" });
-      let response: ModelResponse;
+      let response: Response;
       try {
-        response = await replay.send(request);
+        response = await recordings.fetch(request);
       } catch (error) {
         // The agent aborted the request, for example after a stop.
         if (request.signal.aborted) return Response.error();
         throw error;
       }
-      if (agentRequest && response.status >= 200 && response.status < 300) {
-        for (const toolRequest of toolRequests(response.body)) {
+      if (agentRequest && response.ok) {
+        for (const toolRequest of toolRequests(await response.clone().text())) {
           await hook({ type: "tool_request", ...toolRequest });
         }
       }
-      return new Response(response.body, {
-        headers: response.headers,
-        status: response.status,
-        statusText: response.statusText,
-      });
+      return response;
     }),
   );
 

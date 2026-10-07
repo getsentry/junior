@@ -50,13 +50,14 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
 - Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
 
-## Eval Model Recordings
+## Eval Recordings
 
-- Integration evals replay model responses from `packages/junior-evals/recordings/model/`.
-- A changed prompt, tool, skill, or model makes new requests. These requests use the live model.
-- You can commit new recordings with your change, but you do not have to. A nightly workflow records missing responses, deletes unused recordings, and opens a pull request.
-- To write all recordings again, run `pnpm --filter @sentry/junior-evals evals:integration:record`, or run the "Eval recordings" workflow with `record`.
-- Details: "Model Replay" in `packages/junior-evals/README.md`.
+- Evals replay outside HTTP traffic, such as model responses and web pages, from `packages/junior-evals/recordings/`.
+- `RECORDING_RULES` in `packages/junior-evals/src/fixture/recordings.ts` is the one list of recorded traffic. To record more, add a rule.
+- A changed prompt, tool, skill, or model makes new requests. These requests go live.
+- You can commit new recordings with your change, but you do not have to. A nightly workflow records missing responses, deletes unused model recordings, and opens a pull request.
+- To write all recordings again, run the "Eval recordings" workflow with `record`.
+- Details: "Recordings" in `packages/junior-evals/README.md`.
 
 ## Architecture
 

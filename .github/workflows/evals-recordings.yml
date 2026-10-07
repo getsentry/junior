@@ -1,7 +1,7 @@
 name: Eval recordings
 
-# Keeps the committed model recordings of the integration evals current.
-# See "Model Replay" in packages/junior-evals/README.md.
+# Keeps the committed recordings of the integration evals current.
+# See "Recordings" in packages/junior-evals/README.md.
 
 on:
   schedule:
@@ -57,7 +57,7 @@ jobs:
       VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
-      RECORDINGS_DIR: packages/junior-evals/recordings/model
+      RECORDINGS_DIR: packages/junior-evals/recordings
     steps:
       - name: Get auth token
         id: token
@@ -86,17 +86,20 @@ jobs:
       - name: Run integration evals
         env:
           JUNIOR_EVAL_MODEL_REPLAY: ${{ inputs.mode || 'auto' }}
+          VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
         run: |
           set -euo pipefail
-          mkdir -p "$RECORDINGS_DIR"
+          mkdir -p "$RECORDINGS_DIR/model"
           touch "$RUNNER_TEMP/started"
           pnpm --filter @sentry/junior-evals evals:integration
-          # A passing test writes every recording it used. Delete the others.
-          find "$RECORDINGS_DIR" -name '*.json' ! -newer "$RUNNER_TEMP/started" -delete
+          # A passing test writes every recording it used. Delete the other
+          # model recordings. Behavioral evals also use web recordings, so
+          # this run cannot tell which web recordings are unused.
+          find "$RECORDINGS_DIR/model" -name '*.json' ! -newer "$RUNNER_TEMP/started" -delete
       - name: Open pull request
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          BRANCH: evals/refresh-model-recordings
+          BRANCH: evals/refresh-recordings
         run: |
           set -euo pipefail
           git add -A "$RECORDINGS_DIR"
@@ -106,11 +109,11 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(evals): Refresh model recordings"
+          git commit -m "chore(evals): Refresh eval recordings"
           # This branch belongs to this workflow. Each run starts it again from main.
           git push --force origin "HEAD:refs/heads/$BRANCH"
           if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
             gh pr create --base main --head "$BRANCH" \
-              --title "chore(evals): Refresh model recordings" \
-              --body "The nightly eval recordings workflow wrote these model recordings. All integration evals passed in that run."
+              --title "chore(evals): Refresh eval recordings" \
+              --body "The nightly eval recordings workflow wrote these recordings. All integration evals passed in that run."
           fi

@@ -1,19 +1,17 @@
 {
   "writtenAt": "2026-10-06T01:43:32.774Z",
-  "toolName": "webFetch",
-  "input": {
+  "request": {
+    "method": "GET",
     "url": "https://docs.slack.dev/changelog/2025/10/7/chat-streaming"
   },
-  "output": {
+  "response": {
     "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Redirecting</title>\n</head>\n<body>\n<pre>Redirecting to /changelog/2025/10/7/chat-streaming/</pre>\n</body>\n</html>\n",
     "bodyEncoding": "utf8",
-    "contentType": "text/html; charset=UTF-8",
-    "location": "/changelog/2025/10/7/chat-streaming/",
-    "status": 301
-  },
-  "metadata": {
-    "cacheKey": "7eb98fe83aedbed53bb2b98579c5eca3f029f2db4ec8a9c558030940275eab8f",
-    "version": "web-page-v1",
-    "mode": "auto"
+    "headers": {
+      "content-type": "text/html; charset=UTF-8",
+      "location": "/changelog/2025/10/7/chat-streaming/"
+    },
+    "status": 301,
+    "statusText": ""
   }
 }

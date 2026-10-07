@@ -3,13 +3,12 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks, and the web pages that `webFetch` reads are
- * replayed. The fixture replaces only the Vercel Queue transports and
+ * third-party APIs are MSW mocks. Model responses and the web pages that
+ * `webFetch` reads can be replayed from `recordings.ts`. The fixture replaces only the Vercel Queue transports and
  * `waitUntil` with in-process versions, so it knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { onTestFinished } from "vitest";
 import {
   serializeError,
   type HarnessRun,
@@ -27,7 +26,7 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
-import { createModelReplay } from "./model-replay";
+import { installRecordings } from "./recordings";
 import type {
   AutomationInput,
   FileInput,
@@ -66,7 +65,6 @@ import {
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
 } from "./slack";
-import { installWebReplay } from "./web";
 
 /**
  * Every call fails when the agent is not idle within this budget. The budget
@@ -170,14 +168,9 @@ export async function createFixtureAgent(
     void tracked.finally(() => background.delete(tracked));
   };
   const slack = installSlackMock(context.task.fullName);
-  const modelReplay = createModelReplay();
-  // Only a passing test writes recordings, so a bad sample is never replayed.
-  onTestFinished(async ({ task }) => {
-    if (task.result?.state === "pass") await modelReplay.save();
-  });
-  const gateway = installGatewayObserver(modelReplay);
+  const recordings = installRecordings();
+  const gateway = installGatewayObserver(recordings);
   const blob = await installBlobMock();
-  installWebReplay();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
@@ -220,7 +213,7 @@ export async function createFixtureAgent(
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     gatewayRequests: gateway.requestCounts(),
-    modelReplay: modelReplay.counts(),
+    recordings: recordings.counts(),
   });
   const startedAtMs = Date.now();
 
