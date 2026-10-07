@@ -11,9 +11,10 @@
  * a tool, a skill, or the model changes the key, and that request and the
  * requests after it go to the live model.
  *
- * `JUNIOR_EVAL_MODEL_REPLAY` sets the mode:
+ * `JUNIOR_EVAL_MODEL_REPLAY` sets the mode. The integration suite uses
+ * `auto`. Other suites use `off`.
  *
- * - `off` (default): every request goes to the live model.
+ * - `off`: every request goes to the live model.
  * - `auto`: a request with a recording younger than the TTL gets the
  *   recorded response. Other requests go to the live model.
  * - `record`: every request goes to the live model. Use it to refresh the
@@ -21,11 +22,12 @@
  *
  * In `auto` and `record` mode, the fixture writes the live responses of a
  * test only when the test passes, so a bad sample is never replayed. The
- * recordings are in `.vitest-evals/recordings/model/`.
+ * recordings are in `recordings/model/`, and git tracks them.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { bypass } from "msw";
 
 type ModelReplayMode = "auto" | "off" | "record";
@@ -74,13 +76,10 @@ function readMode(): ModelReplayMode {
   );
 }
 
-function recordingDirectory(): string {
-  return path.resolve(
-    process.cwd(),
-    process.env.VITEST_EVALS_REPLAY_DIR ?? ".vitest-evals/recordings",
-    "model",
-  );
-}
+/** The committed model recordings of the eval package. */
+const MODEL_RECORDINGS_DIR = fileURLToPath(
+  new URL("../../recordings/model", import.meta.url),
+);
 
 /** JSON with sorted object keys, so equal bodies give equal keys. */
 function stableStringify(value: unknown): string {
@@ -143,9 +142,10 @@ async function readFreshRecording(
 }
 
 /** Create the model replay of one test. */
-export function createModelReplay(): ModelReplay {
+export function createModelReplay(
+  directory = MODEL_RECORDINGS_DIR,
+): ModelReplay {
   const mode = readMode();
-  const directory = recordingDirectory();
   const unsaved = new Map<string, ModelRecording>();
   const counts: ModelReplayCounts = { live: 0, replayed: 0 };
 

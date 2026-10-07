@@ -264,26 +264,28 @@ connections.
 
 ## Model Replay
 
-- `src/fixture/model-replay.ts` can answer model requests from recordings.
-  `JUNIOR_EVAL_MODEL_REPLAY` sets the mode. The default is `off`.
-- `auto` replays a recording that is younger than 7 days. Other requests go
-  to the live model.
-- `record` sends every request to the live model and writes new recordings.
-  Use it to refresh the recordings.
-- The key of a recording is the hash of the endpoint and the request body.
-  The body has the model, the system prompt, the messages, the tools, and the
-  settings. The key ignores ISO times.
-- A replayed response makes the agent send the same next request, so a full
-  turn can replay. A change to the prompt, a tool, a skill, or the model
-  changes the key, and that request and the requests after it are live.
-- Only a passing test writes recordings. A failed test writes nothing.
+The integration suite replays model responses from files in git. Other
+suites always use the live model.
+
+- The recordings are in `recordings/model/`. Commit them with your change.
+- A recording answers a model request when the request body is the same and
+  the recording is younger than 7 days. The body has the model, the system
+  prompt, the messages, the tools, and the settings. The key ignores ISO
+  times.
+- Other requests go to the live model. When the test passes, the fixture
+  writes their responses to `recordings/model/`. A failed test writes
+  nothing.
+- A change to a prompt, a tool, a skill, or the model makes new requests.
+  Run the affected evals and commit the new recordings.
+- `pnpm --filter @sentry/junior-evals evals:integration:record` sends every
+  request to the live model and writes all recordings again.
+- `JUNIOR_EVAL_MODEL_REPLAY` sets the mode: `auto`, `record`, or `off`.
+  `src/fixture/model-replay.ts` has the details.
 - The Slack mock takes its timestamps and channel ids from the test name, so
-  the Conversation ids and the requests are the same on each run.
-- Replay does not replace Vercel Sandbox or other tool calls. They stay live.
+  Conversation ids and requests are the same on each run.
+- Tool calls, such as Vercel Sandbox commands, are always live.
 - The eval report shows `modelReplay.replayed` and `modelReplay.live` for
   each test.
-- The recordings are in `.vitest-evals/recordings/model/`. Git ignores them.
-  The integration workflow keeps them in the GitHub Actions cache.
 
 ## Running
 

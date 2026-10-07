@@ -32,7 +32,6 @@ beforeEach(async () => {
   if (!address || typeof address === "string") throw new Error("No port");
   origin = `http://127.0.0.1:${address.port}`;
   directory = await mkdtemp(path.join(tmpdir(), "model-replay-"));
-  vi.stubEnv("VITEST_EVALS_REPLAY_DIR", directory);
 });
 
 afterEach(async () => {
@@ -44,7 +43,7 @@ afterEach(async () => {
 describe("model replay", () => {
   it("replays a saved response for the same request in auto mode", async () => {
     vi.stubEnv("JUNIOR_EVAL_MODEL_REPLAY", "auto");
-    const recorded = createModelReplay();
+    const recorded = createModelReplay(directory);
     await recorded.send(
       modelRequest({
         model: "m",
@@ -54,7 +53,7 @@ describe("model replay", () => {
     await recorded.save();
 
     // Same request with other key order and another clock time.
-    const replay = createModelReplay();
+    const replay = createModelReplay(directory);
     const response = await replay.send(
       modelRequest({
         messages: [
@@ -75,8 +74,8 @@ describe("model replay", () => {
 
   it("writes nothing until the test saves", async () => {
     vi.stubEnv("JUNIOR_EVAL_MODEL_REPLAY", "auto");
-    await createModelReplay().send(modelRequest({ model: "m" }));
-    await createModelReplay().send(modelRequest({ model: "m" }));
+    await createModelReplay(directory).send(modelRequest({ model: "m" }));
+    await createModelReplay(directory).send(modelRequest({ model: "m" }));
 
     expect(liveRequests).toBe(2);
     await expect(readdir(directory)).resolves.toEqual([]);
@@ -84,18 +83,18 @@ describe("model replay", () => {
 
   it("sends an expired recording to the live model", async () => {
     vi.stubEnv("JUNIOR_EVAL_MODEL_REPLAY", "auto");
-    const recorded = createModelReplay();
+    const recorded = createModelReplay(directory);
     await recorded.send(modelRequest({ model: "m" }));
     await recorded.save();
-    const [file] = await readdir(path.join(directory, "model"));
-    const recordingPath = path.join(directory, "model", file!);
+    const [file] = await readdir(directory);
+    const recordingPath = path.join(directory, file!);
     const recording = JSON.parse(await readFile(recordingPath, "utf8"));
     recording.writtenAt = new Date(
       Date.now() - 8 * 24 * 60 * 60 * 1000,
     ).toISOString();
     await writeFile(recordingPath, JSON.stringify(recording));
 
-    await createModelReplay().send(modelRequest({ model: "m" }));
+    await createModelReplay(directory).send(modelRequest({ model: "m" }));
 
     expect(liveRequests).toBe(2);
   });
@@ -103,14 +102,12 @@ describe("model replay", () => {
   it("refreshes a recording in record mode", async () => {
     vi.stubEnv("JUNIOR_EVAL_MODEL_REPLAY", "record");
     for (let run = 0; run < 2; run += 1) {
-      const replay = createModelReplay();
+      const replay = createModelReplay(directory);
       await replay.send(modelRequest({ model: "m" }));
       await replay.save();
     }
 
     expect(liveRequests).toBe(2);
-    await expect(readdir(path.join(directory, "model"))).resolves.toHaveLength(
-      1,
-    );
+    await expect(readdir(directory)).resolves.toHaveLength(1);
   });
 });
