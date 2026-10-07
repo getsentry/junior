@@ -92,6 +92,7 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
+          EVAL_RECORDING_REQUESTS_DIR: ${{ runner.temp }}/eval-recording-requests
         run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
       - name: Collect new recordings
         if: always() && !cancelled()

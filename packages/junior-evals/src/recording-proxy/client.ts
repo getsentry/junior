@@ -14,9 +14,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  RecordingMiss,
   RecordingProxyConfig,
   RecordingRunStats,
 } from "./recording-proxy";
+import { describeParts } from "./request-parts.ts";
 
 /** The address of a running proxy. Give it to other processes. */
 export interface RecordingProxyAddress {
@@ -35,8 +37,12 @@ export interface RecordingProxyControl {
    * `endSession()`. Only one session is open at a time.
    */
   startSession(name: string): Promise<void>;
-  /** End the session. A passed session writes its recordings. */
-  endSession(passed: boolean): Promise<void>;
+  /**
+   * End the session. A passed session writes its recordings. `missed`
+   * counts the requests of the session that `replay` mode failed, because
+   * they had no recording. A test with a miss must fail.
+   */
+  endSession(passed: boolean): Promise<{ missed: number }>;
   /** The totals of the run. */
   stats(): Promise<RecordingRunStats>;
 }
@@ -118,7 +124,9 @@ export function connectRecordingProxy(
       await callControl(address, "POST", "session", { name });
     },
     async endSession(passed) {
-      await callControl(address, "POST", "session/end", { passed });
+      return JSON.parse(
+        await callControl(address, "POST", "session/end", { passed }),
+      ) as { missed: number };
     },
     async stats() {
       return JSON.parse(
@@ -132,8 +140,8 @@ export function connectRecordingProxy(
 export function describeRecordingStats(stats: RecordingRunStats): string {
   const rules = Object.entries(stats.counts)
     .map(
-      ([rule, { live, replayed }]) =>
-        `${rule} ${replayed} replayed, ${live} live`,
+      ([rule, { live, missed, replayed }]) =>
+        `${rule} ${replayed} replayed, ${live} live${missed ? `, ${missed} missed` : ""}`,
     )
     .join("; ");
   const passthrough =
@@ -141,6 +149,28 @@ export function describeRecordingStats(stats: RecordingRunStats): string {
       .map(([origin, count]) => `${origin} ${count}`)
       .join(", ") || "none";
   return `${rules}. ${stats.written} recordings new or changed, ${stats.discarded} dropped from failed sessions. Not recorded: ${passthrough}.`;
+}
+
+/**
+ * Describe each request that had no recording, one line each. The first
+ * miss of a test is the one to fix. Each later miss of the test usually
+ * follows from it, because the live response differs from the recording.
+ */
+export function describeRecordingMisses(misses: RecordingMiss[]): string[] {
+  const seen = new Set<string | undefined>();
+  return misses
+    .filter((miss) => {
+      const first = !seen.has(miss.session);
+      seen.add(miss.session);
+      return first;
+    })
+    .map((miss) => {
+      const where = miss.session ?? "outside a test";
+      const why = miss.closest
+        ? `differs from ${miss.closest} at ${describeParts(miss.differs)}`
+        : "no recording to compare";
+      return `${where}: ${miss.rule} ${miss.file} ${why}`;
+    });
 }
 
 /**

@@ -6,11 +6,11 @@ import { ProxyAgent, request } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectRecordingProxy } from "../../src/recording-proxy/client";
 import {
-  pruneRecordings,
   startRecordingProxy,
   type RecordingMode,
   type RecordingProxyServer,
 } from "../../src/recording-proxy/recording-proxy";
+import { pruneRecordings } from "../../src/recording-proxy/recordings";
 
 let upstream: Server;
 let origin: string;
@@ -66,8 +66,8 @@ async function session(
   const control = connectRecordingProxy(running);
   await control.startSession("test");
   const responses = await send(bodies);
-  await control.endSession(passed);
-  return responses;
+  const { missed } = await control.endSession(passed);
+  return Object.assign(responses, { missed });
 }
 
 async function files(): Promise<string[]> {
@@ -105,6 +105,7 @@ describe("recording proxy", () => {
     await session(running, [
       { model: "m", messages: [{ content: "hi", at: "2026-10-07T03:18:03Z" }] },
     ]);
+    const [first] = await files();
 
     // Same request with other key order and another clock time.
     const replay = await session(running, [
@@ -115,17 +116,56 @@ describe("recording proxy", () => {
       { model: "m", messages: ["changed"] },
     ]);
 
-    expect(replay).toEqual([
+    expect([...replay]).toEqual([
       { body: "data: 1\n\n", source: "replayed" },
       { body: "data: 2\n\n", source: "live" },
     ]);
     expect(liveRequests).toBe(2);
     await expect(connectRecordingProxy(running).stats()).resolves.toEqual({
-      counts: { model: { live: 2, replayed: 1 } },
+      counts: { model: { live: 2, missed: 0, replayed: 1 } },
+      // The miss names the closest recording of the test and the part
+      // of the request that differs from it.
+      misses: [
+        expect.objectContaining({ session: "test" }),
+        {
+          rule: "model",
+          session: "test",
+          file: expect.stringMatching(/^model\/[0-9a-f]{64}\.json$/),
+          closest: `model/${first}`,
+          differs: ["messages[0]"],
+        },
+      ],
       written: 2,
       discarded: 0,
       passthrough: {},
     });
+  });
+
+  it("fails a request without a recording in replay mode and sends nothing", async () => {
+    const recording = await start("auto");
+    await session(recording, [{ model: "m" }]);
+    await recording.close();
+    const recorded = await files();
+
+    const running = await start("replay");
+    const replay = await session(running, [{ model: "m" }, { model: "other" }]);
+
+    expect([...replay]).toEqual([
+      { body: "data: 1\n\n", source: "replayed" },
+      {
+        body: expect.stringContaining("no model recording"),
+        source: "missed",
+      },
+    ]);
+    expect(replay.missed).toBe(1);
+    expect(liveRequests).toBe(1);
+    await expect(files()).resolves.toEqual(recorded);
+    await expect(connectRecordingProxy(running).stats()).resolves.toMatchObject(
+      {
+        counts: { model: { live: 0, missed: 1, replayed: 1 } },
+        misses: [{ closest: `model/${recorded[0]}`, differs: ["model"] }],
+      },
+    );
   });
 
   it("sends no request to another origin", async () => {
@@ -190,7 +230,7 @@ describe("recording proxy", () => {
     await session(running, [{ model: "m" }]);
     const second = await session(running, [{ model: "m" }]);
 
-    expect(second).toEqual([{ body: "data: 2\n\n", source: "live" }]);
+    expect([...second]).toEqual([{ body: "data: 2\n\n", source: "live" }]);
     await expect(files()).resolves.toHaveLength(1);
   });
 });

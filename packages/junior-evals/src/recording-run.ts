@@ -21,6 +21,7 @@ import {
 } from "undici";
 import "./eval-context";
 import {
+  describeRecordingMisses,
   describeRecordingStats,
   spawnRecordingProxy,
   type RecordingProxyAddress,
@@ -99,14 +100,28 @@ export async function startRecordingRun(
 
   return async () => {
     try {
-      const line = describeRecordingStats(await proxy.stats());
-      process.stdout.write(`[evals] Recordings: ${line}\n`);
+      const stats = await proxy.stats();
+      const line = describeRecordingStats(stats);
+      const misses = describeRecordingMisses(stats.misses);
+      process.stdout.write(
+        `[evals] Recordings: ${line}\n${misses.map((miss) => `[evals] No recording: ${miss}\n`).join("")}`,
+      );
       if (process.env.GITHUB_STEP_SUMMARY) {
+        const list = misses.length
+          ? `\n\nFirst request without a recording, per test:\n\n${misses.map((miss) => `- ${miss}`).join("\n")}`
+          : "";
         await appendFile(
           process.env.GITHUB_STEP_SUMMARY,
-          `### Eval recordings\n\n${line}\n\n`,
+          `### Eval recordings\n\n${line}${list}\n\n`,
         );
       }
+      // A failed test already fails the run. A miss outside a test, such as
+      // in global setup, must fail it too. A teardown error does not.
+      const missed = Object.values(stats.counts).reduce(
+        (total, count) => total + count.missed,
+        0,
+      );
+      if (missed > 0) process.exitCode = 1;
     } finally {
       [http.globalAgent, https.globalAgent] = previousAgents;
       setGlobalDispatcher(previousDispatcher);

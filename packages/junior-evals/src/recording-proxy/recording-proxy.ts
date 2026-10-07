@@ -12,6 +12,12 @@
  * bodies are compared with sorted keys. A rule can add request headers to
  * the key and remove changing values, such as times, from the body.
  *
+ * A recording also keeps a short hash of each part of its request
+ * (`request-parts.ts`). When a request has no recording, the proxy finds
+ * the closest recording and reports the parts that differ. In `replay`
+ * mode, a request without a recording fails with HTTP 412 and never goes
+ * live.
+ *
  * A session groups the requests of one test. One session is open at a
  * time. The proxy keeps the new recordings of a session in memory until the
  * session ends. A passed session writes them, and a failed session drops
@@ -26,21 +32,15 @@
  * - `POST /__recording-proxy/session` with `{"name": "..."}`: open a
  *   session.
  * - `POST /__recording-proxy/session/end` with `{"passed": true}`: end it.
+ *   Returns `{"missed": 0}`, the requests of the session that had no
+ *   recording in `replay` mode.
  * - `GET /__recording-proxy/stats`: the totals of the run.
  *
  * This file uses only Node built-ins and the `openssl` command, so it can
  * move out of this repository. `client.ts` starts it and talks to it.
  */
-import { execFile } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import { isIP, type Socket } from "node:net";
@@ -48,8 +48,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import tls from "node:tls";
 import { fileURLToPath } from "node:url";
+import { createCertificates } from "./certificates.ts";
+import {
+  createRecordingIndex,
+  pruneRecordings,
+  readRecording,
+  saveRecordings,
+  type Recording,
+} from "./recordings.ts";
+import {
+  describeParts,
+  normalizeBody,
+  requestParts,
+  type KeyedRequest,
+  type RequestParts,
+} from "./request-parts.ts";
 
-export type RecordingMode = "auto" | "off" | "record";
+export type RecordingMode = "auto" | "off" | "record" | "replay";
 
 /** One kind of traffic that the proxy records. */
 export interface RecordingRule {
@@ -79,6 +94,8 @@ export interface RecordingProxyConfig {
   /**
    * - `auto`: replay a request that has a recording. Send other requests
    *   live and record them.
+   * - `replay`: replay a request that has a recording. Fail other requests
+   *   with HTTP 412. Nothing goes live, and nothing is recorded.
    * - `record`: send every request live and record it again.
    * - `off`: record and replay nothing.
    */
@@ -91,12 +108,38 @@ export interface RecordingProxyConfig {
    * sessions used to this file. Give these files to `pruneRecordings()`.
    */
   usedFile?: string;
+  /**
+   * A directory for debugging misses. For each request that has no
+   * recording, the proxy writes the request as the key sees it, and its
+   * diagnosis, to `<requestDirectory>/<rule>/<key>.json`. Compare the
+   * files of two runs to see what changes. The files contain request
+   * bodies, such as prompts, so do not commit them.
+   */
+  requestDirectory?: string;
+}
+
+/** A request that a rule matched, but that had no recording. */
+export interface RecordingMiss {
+  rule: string;
+  /** The session of the request. */
+  session?: string;
+  /** The recording file that the request needed, relative to `directory`. */
+  file: string;
+  /** The recording with the most equal parts, relative to `directory`. */
+  closest?: string;
+  /** The parts that differ from `closest`. */
+  differs: string[];
 }
 
 /** The totals of a proxy run, from `GET /__recording-proxy/stats`. */
 export interface RecordingRunStats {
-  /** Replayed and live requests, by rule name. */
-  counts: Record<string, { live: number; replayed: number }>;
+  /**
+   * Replayed and live requests by rule name. `missed` counts the requests
+   * that `replay` mode failed, because they had no recording.
+   */
+  counts: Record<string, { live: number; missed: number; replayed: number }>;
+  /** The requests without a recording, in order. The first 500 are kept. */
+  misses: RecordingMiss[];
   /** Recordings that the proxy wrote and that were new or changed. */
   written: number;
   /** New recordings that the proxy dropped, because their session failed. */
@@ -119,24 +162,15 @@ export interface RecordingProxyServer {
   close(): Promise<void>;
 }
 
-interface Recording {
-  writtenAt: string;
-  request: { method: string; url: string };
-  response: {
-    body: string;
-    /** `base64` for a body that is not text, such as an image. */
-    bodyEncoding: "base64" | "utf8";
-    headers: Record<string, string>;
-    status: number;
-    statusText: string;
-  };
-}
-
 interface Session {
   name: string;
   /** Recordings by file. `undefined` marks a replayed recording. */
   recordings: Map<string, Recording | undefined>;
+  /** Requests that `replay` mode failed. */
+  missed: number;
 }
+
+const MAX_MISSES = 500;
 
 /** Change this to make every recording a miss. */
 const RECORDING_VERSION = "http-v1";
@@ -182,145 +216,26 @@ function parseOrigins(values: string[]): URL[] {
 /** Statuses that are never recorded, because they are temporary. */
 const isTemporaryStatus = (status: number) => status === 429 || status >= 500;
 
-function run(command: string, args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, (error, _stdout, stderr) => {
-      if (error) reject(new Error(`${command} failed: ${stderr || error}`));
-      else resolve();
-    });
-  });
-}
-
-/**
- * Create a certificate authority, and sign one certificate for each host
- * when a client first connects to it.
- */
-async function createCertificates(directory: string) {
-  const caKey = path.join(directory, "ca.key");
-  const caCertPath = path.join(directory, "ca.crt");
-  const hostKey = path.join(directory, "host.key");
-  await run("openssl", [
-    "req",
-    "-x509",
-    "-newkey",
-    "rsa:2048",
-    "-nodes",
-    "-keyout",
-    caKey,
-    "-out",
-    caCertPath,
-    "-days",
-    "7",
-    "-subj",
-    "/CN=Recording proxy CA",
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
-    "-addext",
-    "keyUsage=critical,keyCertSign,cRLSign",
-  ]);
-  await run("openssl", ["genrsa", "-out", hostKey, "2048"]);
-  const hostKeyPem = await readFile(hostKey, "utf8");
-  const contexts = new Map<string, Promise<tls.SecureContext>>();
-
-  const sign = async (host: string): Promise<tls.SecureContext> => {
-    const name = createHash("sha256").update(host).digest("hex").slice(0, 16);
-    const csr = path.join(directory, `${name}.csr`);
-    const extensions = path.join(directory, `${name}.ext`);
-    const cert = path.join(directory, `${name}.crt`);
-    const altName = isIP(host.replace(/^\[|\]$/g, ""))
-      ? `IP:${host.replace(/^\[|\]$/g, "")}`
-      : `DNS:${host}`;
-    await writeFile(
-      extensions,
-      `subjectAltName=${altName}\nextendedKeyUsage=serverAuth\n`,
-    );
-    await run("openssl", [
-      "req",
-      "-new",
-      "-key",
-      hostKey,
-      "-subj",
-      "/CN=Recording proxy host",
-      "-out",
-      csr,
-    ]);
-    await run("openssl", [
-      "x509",
-      "-req",
-      "-in",
-      csr,
-      "-CA",
-      caCertPath,
-      "-CAkey",
-      caKey,
-      "-set_serial",
-      `0x${randomBytes(8).toString("hex")}`,
-      "-days",
-      "7",
-      "-extfile",
-      extensions,
-      "-out",
-      cert,
-    ]);
-    return tls.createSecureContext({
-      cert: await readFile(cert, "utf8"),
-      key: hostKeyPem,
-    });
-  };
-
-  return {
-    caCert: await readFile(caCertPath, "utf8"),
-    contextFor(host: string): Promise<tls.SecureContext> {
-      let context = contexts.get(host);
-      if (!context) {
-        context = sign(host);
-        contexts.set(host, context);
-      }
-      return context;
-    },
-  };
-}
-
-/** JSON with sorted object keys, so equal bodies give equal keys. */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries
-    .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-    .join(",")}}`;
+/** The key headers of a request, in the order of the rule. */
+function keyHeaders(
+  rule: RecordingRule,
+  headers: http.IncomingHttpHeaders,
+): Record<string, string> {
+  return Object.fromEntries(
+    (rule.key?.headers ?? []).map((name) => [
+      name,
+      String(headers[name] ?? ""),
+    ]),
+  );
 }
 
 /** The recording key of a request. */
-export function recordingKey(
-  rule: Pick<RecordingRule, "key" | "name">,
-  request: {
-    body: string;
-    headers?: http.IncomingHttpHeaders;
-    method: string;
-    url: string;
-  },
-): string {
-  let body: string;
-  try {
-    body = request.body ? stableStringify(JSON.parse(request.body)) : "";
-  } catch {
-    body = request.body;
-  }
-  for (const pattern of rule.key?.ignore ?? []) {
-    body = body.replace(new RegExp(pattern, "g"), "<ignored>");
-  }
+function recordingKey(rule: RecordingRule, request: KeyedRequest): string {
   const parts = [RECORDING_VERSION, rule.name, request.method, request.url];
-  for (const name of rule.key?.headers ?? []) {
-    parts.push(`${name}: ${String(request.headers?.[name] ?? "")}`);
+  for (const [name, value] of Object.entries(request.headers)) {
+    parts.push(`${name}: ${value}`);
   }
-  parts.push(body);
+  parts.push(normalizeBody(request.body, rule.key?.ignore ?? []));
   return createHash("sha256").update(parts.join("\n")).digest("hex");
 }
 
@@ -404,6 +319,8 @@ function sendUpstream(
 async function toRecording(
   method: string,
   url: string,
+  parts: RequestParts,
+  session: string | undefined,
   response: http.IncomingMessage,
 ): Promise<Recording> {
   const body = await readBody(response);
@@ -416,7 +333,8 @@ async function toRecording(
   }
   return {
     writtenAt: new Date().toISOString(),
-    request: { method, url },
+    session,
+    request: { method, url, parts },
     response: {
       body: isText ? body.toString("utf8") : body.toString("base64"),
       bodyEncoding: isText ? "utf8" : "base64",
@@ -443,31 +361,6 @@ function writeRecording(
   target.end(body);
 }
 
-async function readRecording(file: string): Promise<Recording | undefined> {
-  try {
-    return JSON.parse(await readFile(file, "utf8")) as Recording;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Write recordings. Returns how many were new or changed. */
-async function saveRecordings(
-  recordings: Iterable<[string, Recording]>,
-): Promise<number> {
-  const changed = await Promise.all(
-    [...recordings].map(async ([file, recording]) => {
-      const content = `${JSON.stringify(recording, null, 2)}\n`;
-      const previous = await readFile(file, "utf8").catch(() => undefined);
-      if (previous === content) return false;
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, content);
-      return true;
-    }),
-  );
-  return changed.filter(Boolean).length;
-}
-
 /** Read a small JSON control request body. */
 async function readJson(incoming: http.IncomingMessage): Promise<unknown> {
   const body = (await readBody(incoming)).toString("utf8");
@@ -489,8 +382,12 @@ export async function startRecordingProxy(
   const used = new Set<string>();
   const stats: RecordingRunStats = {
     counts: Object.fromEntries(
-      config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
+      config.rules.map((rule) => [
+        rule.name,
+        { live: 0, missed: 0, replayed: 0 },
+      ]),
     ),
+    misses: [],
     written: 0,
     discarded: 0,
     passthrough: {},
@@ -499,21 +396,88 @@ export async function startRecordingProxy(
   const tunnelOrigins = new WeakMap<Socket, string>();
   const sockets = new Set<Socket>();
 
-  /** Keep a recording that a request used. */
-  const keep = async (file: string, recording: Recording, live: boolean) => {
+  // The request parts of the recordings, by rule name.
+  const indexes = new Map(
+    config.rules.map((rule) => [
+      rule.name,
+      createRecordingIndex(path.join(config.directory, rule.name)),
+    ]),
+  );
+  const relative = (file: string) => path.relative(config.directory, file);
+
+  /** Write recordings, and add them to the index. */
+  const save = async (recordings: Array<[string, Recording]>) => {
+    stats.written += await saveRecordings(recordings);
+    for (const [file, recording] of recordings) {
+      await indexes
+        .get(path.basename(path.dirname(file)))
+        ?.add(file, recording);
+    }
+  };
+
+  /**
+   * Report a request that has no recording. Compare it with the closest
+   * recording, from the same session when there is one.
+   */
+  const diagnose = async (
+    rule: RecordingRule,
+    file: string,
+    parts: RequestParts,
+    request: KeyedRequest,
+    current: Session | undefined,
+  ) => {
+    const closest = await indexes.get(rule.name)!.closest(parts, current?.name);
+    const miss: RecordingMiss = {
+      rule: rule.name,
+      session: current?.name,
+      file: relative(file),
+      closest: closest && relative(closest.candidate.file),
+      differs: closest?.differs ?? [],
+    };
+    if (stats.misses.length < MAX_MISSES) stats.misses.push(miss);
+    const where = current ? ` in "${current.name}"` : "";
+    const why = closest
+      ? `closest is ${miss.closest}, which differs at ${describeParts(miss.differs)}`
+      : "no recording to compare";
+    process.stderr.write(
+      `[recording-proxy] No ${rule.name} recording${where}: ${why}\n`,
+    );
+    if (config.requestDirectory) {
+      const normalized = normalizeBody(request.body, rule.key?.ignore ?? []);
+      let body: unknown = normalized;
+      try {
+        body = JSON.parse(normalized);
+      } catch {
+        // Keep the text of a body that is not JSON.
+      }
+      const target = path.join(config.requestDirectory, miss.file);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(
+        target,
+        `${JSON.stringify({ ...miss, request: { ...request, body } }, null, 2)}\n`,
+      );
+    }
+  };
+
+  /**
+   * Keep a recording that a request used. `write` marks a recording to
+   * write: a live one, or a replayed one that gets its request parts.
+   */
+  const keep = async (file: string, recording: Recording, write: boolean) => {
     if (session) {
-      // A live recording wins over a replay of the same file.
-      if (live || !session.recordings.has(file)) {
-        session.recordings.set(file, live ? recording : undefined);
+      // A recording to write wins over a replay of the same file.
+      if (write || !session.recordings.has(file)) {
+        session.recordings.set(file, write ? recording : undefined);
       }
       return;
     }
     used.add(file);
-    if (live) stats.written += await saveRecordings([[file, recording]]);
+    if (write) await save([[file, recording]]);
   };
 
-  const endSession = async (passed: boolean) => {
-    if (!session) return;
+  /** End the session. Returns its requests that `replay` mode failed. */
+  const endSession = async (passed: boolean): Promise<number> => {
+    if (!session) return 0;
     const ended = session;
     session = undefined;
     const live = [...ended.recordings].filter(
@@ -521,10 +485,11 @@ export async function startRecordingProxy(
     );
     if (!passed) {
       stats.discarded += live.length;
-      return;
+      return ended.missed;
     }
     for (const file of ended.recordings.keys()) used.add(file);
-    stats.written += await saveRecordings(live);
+    await save(live);
+    return ended.missed;
   };
 
   const handle = async (
@@ -533,6 +498,7 @@ export async function startRecordingProxy(
     tunnelOrigin: string | undefined,
   ) => {
     const method = incoming.method ?? "GET";
+    const current = session;
     const url = new URL(
       tunnelOrigin ? `${tunnelOrigin}${incoming.url}` : (incoming.url ?? ""),
     );
@@ -572,19 +538,51 @@ export async function startRecordingProxy(
     }
 
     const counts = stats.counts[rule.name]!;
-    const key = recordingKey(rule, {
+    const keyed: KeyedRequest = {
       body: body.toString("utf8"),
-      headers: incoming.headers,
+      headers: keyHeaders(rule, incoming.headers),
       method,
       url: url.href,
-    });
-    const file = path.join(config.directory, rule.name, `${key}.json`);
-    if (recordingMode === "auto") {
+    };
+    const file = path.join(
+      config.directory,
+      rule.name,
+      `${recordingKey(rule, keyed)}.json`,
+    );
+    const parts = requestParts(keyed, rule.key?.ignore ?? []);
+    if (recordingMode === "auto" || recordingMode === "replay") {
       const recording = await readRecording(file);
       if (recording) {
         counts.replayed += 1;
-        await keep(file, recording, false);
+        // An older recording has no request parts. Add them, so that miss
+        // diagnosis can compare with it. `replay` mode writes nothing.
+        const backfill = !recording.request.parts && recordingMode === "auto";
+        await keep(
+          file,
+          backfill
+            ? {
+                writtenAt: recording.writtenAt,
+                session: recording.session ?? current?.name,
+                request: { ...recording.request, parts },
+                response: recording.response,
+              }
+            : recording,
+          backfill,
+        );
         writeRecording(outgoing, recording, "replayed");
+        return;
+      }
+      await diagnose(rule, file, parts, keyed, current);
+      if (recordingMode === "replay") {
+        counts.missed += 1;
+        if (current) current.missed += 1;
+        outgoing.writeHead(412, {
+          "content-type": "text/plain",
+          "x-recording-proxy": "missed",
+        });
+        outgoing.end(
+          `Recording proxy: no ${rule.name} recording for this request in replay mode. Run in auto mode to record it.\n`,
+        );
         return;
       }
     }
@@ -599,6 +597,8 @@ export async function startRecordingProxy(
     const recording = await toRecording(
       method,
       url.href,
+      parts,
+      current?.name,
       await sendUpstream(allowed, requestPath, method, headers, body),
     );
     // Never record a temporary failure or a response the client aborted.
@@ -644,14 +644,19 @@ export async function startRecordingProxy(
         );
         await endSession(false);
       }
-      session = { name: String(name ?? ""), recordings: new Map() };
+      session = {
+        name: String(name ?? ""),
+        recordings: new Map(),
+        missed: 0,
+      };
       outgoing.writeHead(204).end();
       return;
     }
     if (incoming.method === "POST" && pathname === SESSION_END_PATH) {
       const { passed } = (await readJson(incoming)) as { passed?: unknown };
-      await endSession(passed === true);
-      outgoing.writeHead(204).end();
+      const missed = await endSession(passed === true);
+      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.end(JSON.stringify({ missed }));
       return;
     }
     outgoing.writeHead(404).end();
@@ -753,30 +758,6 @@ export async function startRecordingProxy(
       }
     },
   };
-}
-
-/**
- * Delete the recordings in `directory` that no used file lists. Each used
- * file comes from `usedFile` of one proxy run. Returns how many it deleted.
- * Give it the used files of every run that shares the directory, or it
- * deletes recordings that another run needs.
- */
-export async function pruneRecordings(
-  directory: string,
-  usedFiles: string[],
-): Promise<number> {
-  const used = new Set<string>();
-  for (const file of usedFiles) {
-    for (const line of (await readFile(file, "utf8")).split("\n")) {
-      if (line) used.add(line);
-    }
-  }
-  const recordings = (await readdir(directory, { recursive: true })).filter(
-    (file) => file.endsWith(".json"),
-  );
-  const unused = recordings.filter((file) => !used.has(file));
-  await Promise.all(unused.map((file) => rm(path.join(directory, file))));
-  return unused.length;
 }
 
 if (

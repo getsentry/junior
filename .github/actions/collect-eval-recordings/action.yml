@@ -1,8 +1,9 @@
 name: Collect eval recordings
 description: >
   Upload the eval recordings that a run wrote new or changed, so they can be
-  added to a branch without a second live run. See "Recordings" in
-  packages/junior-evals/README.md.
+  added to a branch without a second live run. Also upload the requests that
+  had no recording (EVAL_RECORDING_REQUESTS_DIR), to debug misses. See
+  "Recordings" in packages/junior-evals/README.md.
 inputs:
   name:
     description: Artifact name, unique in the workflow run.
@@ -41,3 +42,12 @@ runs:
         path: ${{ runner.temp }}/eval-recordings/
         if-no-files-found: ignore
         retention-days: 14
+    # These files contain request bodies, such as prompts. They are for
+    # debugging misses only. Never commit them.
+    - name: Upload requests without a recording
+      uses: actions/upload-artifact@v4
+      with:
+        name: requests-${{ inputs.name }}
+        path: ${{ runner.temp }}/eval-recording-requests/
+        if-no-files-found: ignore
+        retention-days: 3

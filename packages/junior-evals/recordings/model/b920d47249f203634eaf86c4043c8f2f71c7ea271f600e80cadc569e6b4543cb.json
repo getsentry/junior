@@ -1,8 +1,23 @@
 {
   "writtenAt": "2026-10-07T04:52:42.742Z",
+  "session": "evals/router/profiles.eval.ts > Task-fit Profile Selection > does not carry difficult work into a new routine request",
   "request": {
     "method": "POST",
-    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model"
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "05dd237447fd",
+      "headers": "e6f1332f8681"
+    }
   },
   "response": {
     "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_07d155494c2fba10016ac5d01995f887d2b8e477fabfd5b945\",\"reasoningEncryptedContent\":\"gAAAAABqxdAaFOruFeHUjo9jo0cBugaerD99RaWdjp0QujjGLAm-Fro3tWC0-6EOAzWKYOvyjl7-lSwrII00ml0Mp7xxZi-_sZIClrVmnljQS3yiwR-TlIdjYNfs7Oy4561_z75GmyfD50pb2CnEXYelDM6qL_hK8zQwBmjx8Fok1c8f6Fn8kWbYZFcLpnCwetEFavbJn4X6gI22Lml0DPQKKIbp5pISApACGpUvsSH2yHzatCCCUYo8f8mpfi8LnOh7kB7X2ADWhptsr9ogW1APagbECjaaJHMyCRWoO4Q53RtReqPaU6LLJwJKoaLa8a4N_VK7ruG5be4EQ0Y8ev9EeuMnPp8qa_XLArvoeLebLK9kL_BbZT_86YRDSeIsjc031hT30TM6CwbOXb9Pc7cQw82alsD6q6LM3oEmPSJ2qGOkeCULwjWuQOCtcDQmd6WudQbCrgWsZvhAyLFX2xLIq1yJGAjfZOCzOakiYwgV3tLElXRjIGPwK_CV9cu1G1QWH-2B-QYPdhXTSjwygyFtJsX0Hlg89hLNKGtqRZBKOc9kA6PmlcUAkX5DWuSwy3bJNtrzVoKHb-P1bMgMN7gyUum2s3rfGT54r2DUSe_XNVlZmu8myh1RmrTxMXb7WPkoSB5TWIwHb449v3CsABFbc5ugrXGCcS-EIXis0NmZHFZHZZIdhygGfFBZtWqLpZqHAGDOqrfU_HYVzhyJbKLQpU7YM-Kplv0jl24Tf82QXptp3yPdjejBDDNI5oDF63ggri7Bxtyr1U_ya7fFNz-bGI_qWvcH3GEha9HpWCw1HXw594MPRL0ty3Nk8BPtnDd-uZDl31S7NzwLHQkeXHvXwTY7UEwLmGorUqsFtP2NsKwf4D1X1QAEHhhcnuW0DYdSLdnRvUe6uQIJuhVkhwRPOZQdQ7vo_MjY3UNEghh0wL_JD1i4DaXmo8KzVl2SRTR3bUSufPgu5Funp414OPXOgVwtfxZj2NeA2lB4_MEtK50Db2WCUwUNju0sHfV8wScGbU4YGQV-SszIRuuHWfd6iCnkjtCmvufOSgBQgSxMUhexPq3ccvHxJIYu17Bdn0NDybMy1xfg9CHm6p4YIGmE4bghY3eiUwcO1tYvudI6iRcUMIpV1NS3UxOzvJzk9rlT-1ygf_0mr9GJk38TXI3u06BflWNcRSlqYPEkP16MypQGRxsZyRHfvWmALiqcwKehq73YesGahALJUy3kpjVtQaw7VrMM6LI-yxjW6WE-377KngrocihMqWEQdkoqLg4P6N657txsUb2TYsz74sdDhkRqeVb3-M2f7sadPPuHShjP7yX3Gu6ICMf0maKDBESQNfqrplj69_k0deAhyDKxTvLdd7G7IGy9asQiD-1eaI4PbX9p46oGsxcp8jVIYfdeSnK-6j1imMsNQ4nDuJuF6Dh0-TbIo9oQMQH3gra6SixoBXnUBrU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a separate, time-sensitive status-page lookup that requires checking a current external source.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_07d155494c2fba10016ac5d019fb8887d2b9e0120416909cb7\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":643,\"noCache\":643,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":76,\"text\":47,\"reasoning\":29},\"raw\":{\"input_tokens\":643,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":76,\"output_tokens_details\":{\"reasoning_tokens\":29},\"total_tokens\":719}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_07d155494c2fba10016ac5d019197087d28c15cb0e0190894e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791348761021,\"endTime\":1791348762643,\"providerRequestId\":\"req_15d276b368dd400087f2d5972b0829e4\",\"statusCode\":200,\"providerResponseId\":\"resp_07d155494c2fba10016ac5d019197087d28c15cb0e0190894e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"57d6a90df767aee940327e740210f9eb\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001023\",\"marketCost\":\"0.0001023\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001023\",\"inferenceCost\":\"0.0001023\",\"inputInferenceCost\":\"0.0000643\",\"outputInferenceCost\":\"0.000038\",\"generationId\":\"gen_01M4AB9RCTR3R67MXQ7F1GCXTJ\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",

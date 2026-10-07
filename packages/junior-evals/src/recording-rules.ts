@@ -4,10 +4,12 @@
  * Global setup starts the recording proxy in `src/recording-proxy/` with
  * this configuration. The proxy knows nothing about Junior. This file is the
  * one place that decides which eval requests are recorded and replayed. To
- * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode.
- * Unset means `auto`. `EVAL_RECORDINGS_USED_FILE` names a file where the
- * proxy lists the recordings that passing tests used. The nightly workflow
- * gives these files to `recording-proxy.ts prune`.
+ * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode:
+ * `auto` (the default), `replay`, `record`, or `off`.
+ * `EVAL_RECORDINGS_USED_FILE` names a file where the proxy lists the
+ * recordings that passing tests used. The prune workflow gives these files
+ * to `recording-proxy.ts prune`. `EVAL_RECORDING_REQUESTS_DIR` names a
+ * directory where the proxy writes each request that had no recording.
  */
 import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
@@ -77,9 +79,16 @@ const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
 
 function readMode(): RecordingMode {
   const value = process.env.VITEST_EVALS_REPLAY_MODE?.trim() || "auto";
-  if (value === "auto" || value === "off" || value === "record") return value;
+  if (
+    value === "auto" ||
+    value === "off" ||
+    value === "record" ||
+    value === "replay"
+  ) {
+    return value;
+  }
   throw new Error(
-    `VITEST_EVALS_REPLAY_MODE must be off, auto, or record, got ${value}`,
+    `VITEST_EVALS_REPLAY_MODE must be auto, replay, record, or off, got ${value}`,
   );
 }
 
@@ -91,5 +100,7 @@ export function recordingProxyConfig(): RecordingProxyConfig {
     allow: ALLOWED_ORIGINS,
     rules: RECORDING_RULES,
     usedFile: process.env.EVAL_RECORDINGS_USED_FILE?.trim() || undefined,
+    requestDirectory:
+      process.env.EVAL_RECORDING_REQUESTS_DIR?.trim() || undefined,
   };
 }
