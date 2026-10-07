@@ -96,6 +96,11 @@ function groupTurns(items: HistoryItem[]): HistoryTurn[] {
       turn.replies.push(item);
       continue;
     }
+    // A real turn stores what it read from a file. History has no such data.
+    const files = item.kind === "web_message" ? item.images : item.files;
+    if (files?.length) {
+      throw new Error("history takes no files; send the file in a call");
+    }
     turns.push({ input: item, replies: [] });
   }
   return turns;

@@ -97,6 +97,13 @@ describe("Thread Continuity", () => {
   channel type. Slack does not fix the order, and Junior stores the first
   event. Junior then asks Slack for the channel type and learns that the
   channel is public.
+- `mention()` and `threadMessage()` take `files`, and `webMessage()` takes
+  `images`. `file(name, mimeType, content)` is a file that a person uploaded.
+  The Slack mock serves its download and lists it in the thread history.
+  `unavailableFile(name, mimeType)` is a file whose download fails.
+  `ticketScreenshotPng()` in `src/fixture/images.ts` is a real PNG that shows
+  a ticket number. Only the pixels have the number, so a reply with
+  `TICKET_NUMBER` proves that Junior read the image.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
