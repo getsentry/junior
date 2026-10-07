@@ -92,7 +92,7 @@ describe("event catalog", () => {
     expect(identifier("release_source", "anything")).toBe("anything");
     expect(() => identifier("issue", "getsentry/junior")).toThrow(
       new ToolInputError(
-        'Identifier "getsentry/junior" is not a "github:issue" identifier. Use the format owner/repo#number. This identifier fits the resource type: repository.',
+        'Identifier "getsentry/junior" does not fit resourceType "issue" in namespace "github". Expected format: "owner/repo#number". If the identifier is correct, use one of these resourceType values: "repository".',
       ),
     );
   });

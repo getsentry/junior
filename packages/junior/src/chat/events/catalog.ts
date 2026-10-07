@@ -231,9 +231,11 @@ export function requireEventIdentifier(
   const fitting = resourceTypes.filter(fits).map((candidate) => candidate.type);
   throw new ToolInputError(
     [
-      `Identifier "${identifier}" is not a "${input.namespace}:${input.resourceType}" identifier. Use the format ${resourceType.identifier.format}.`,
+      `Identifier "${identifier}" does not fit resourceType "${input.resourceType}" in namespace "${input.namespace}". Expected format: "${resourceType.identifier.format}".`,
       ...(fitting.length > 0
-        ? [`This identifier fits the resource type: ${fitting.join(", ")}.`]
+        ? [
+            `If the identifier is correct, use one of these resourceType values: ${fitting.map((type) => `"${type}"`).join(", ")}.`,
+          ]
         : []),
     ].join(" "),
   );
