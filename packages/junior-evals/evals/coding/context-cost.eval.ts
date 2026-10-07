@@ -14,7 +14,7 @@ const SHARDS = 21;
 
 function priorCiResults(): HistoryToolCall[] {
   return Array.from({ length: SHARDS }, (_, shard) => {
-    const checks = shard === SHARDS - 1 ? 800 : 390;
+    const checks = shard === SHARDS - 1 ? 1_100 : 390;
     const lines = Array.from({ length: checks }, (_, check) => {
       const location = `tests/api/resources/test_access.py::test_resource_${shard + 1}_${check + 1}`;
       if (shard === SHARDS - 1 && check === 114) {
@@ -52,7 +52,7 @@ describe("Priced Conversation context", () => {
     });
     const conversation = await run(
       mention(
-        "Check why the resource rollout failed. Read project/src/resource-access.ts and its test, then run the focused test. Tell me what needs to change, but do not edit yet.",
+        "From the earlier CI result, which resource check failed and what needs to change before the rollout can ship? Do not edit yet.",
       ),
       {
         history: [
