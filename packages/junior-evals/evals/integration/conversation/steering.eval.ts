@@ -106,6 +106,7 @@ describe("Slack Turn Steering", () => {
     );
     expect(next.turns).toEqual([]);
     expect(next.replies).toEqual([]);
+    expect(next.reactions).toEqual([]);
   });
 
   test("when someone says stop during a turn, Junior stops and stays out of the thread", async ({

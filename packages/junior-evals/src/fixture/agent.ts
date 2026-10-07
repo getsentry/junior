@@ -34,6 +34,7 @@ import {
 } from "./gateway";
 import type {
   AutomationInput,
+  FileInput,
   HistoryItem,
   HistoryReply,
   Input,
@@ -115,6 +116,8 @@ export interface Conversation extends HarnessRun {
   files: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
+  compactions: number;
   turns: Turn[];
   continue(
     input: Input | Input[],
@@ -343,6 +346,9 @@ export async function createFixtureAgent(
           jsonRequest(record.viewerEmail, {
             idempotencyKey: started ? randomUUID() : record.idempotencyKey,
             message: input.text,
+            ...(input.images?.length
+              ? { images: input.images.map(webImage) }
+              : undefined),
           }),
         ),
       );
@@ -358,7 +364,11 @@ export async function createFixtureAgent(
     const ts = started ? slack.nextTs() : record.threadTs;
     const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
+    const files = input.files?.length
+      ? { files: input.files.map(slack.addFile) }
+      : undefined;
     slack.addThreadMessage(record.channelId, {
+      ...files,
       text,
       thread_ts: record.threadTs,
       ts,
@@ -367,6 +377,7 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
+      ...files,
       mention,
       text,
       ...(started ? { threadTs: record.threadTs } : undefined),
@@ -599,6 +610,7 @@ export async function createFixtureAgent(
     };
     return conversationResult(record, {
       ...callRun,
+      compactions: events.compactions,
       files,
       reactions,
       replies,
@@ -695,6 +707,7 @@ export async function createFixtureAgent(
         startedAtMs,
         toolCalls: [],
       }),
+      compactions: 0,
       files: [],
       reactions: [],
       replies: [],
@@ -811,6 +824,16 @@ function heartbeatSecret(): string {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }
   return secret;
+}
+
+/** An image as the dashboard sends it with a message. */
+function webImage(image: FileInput) {
+  if (!image.content) throw new Error(`Image ${image.name} needs content`);
+  return {
+    contentType: image.mimeType,
+    data: image.content.toString("base64"),
+    filename: image.name,
+  };
 }
 
 /** A JSON POST signed in as `viewerEmail`. */

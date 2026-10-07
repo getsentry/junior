@@ -97,6 +97,13 @@ describe("Thread Continuity", () => {
   channel type. Slack does not fix the order, and Junior stores the first
   event. Junior then asks Slack for the channel type and learns that the
   channel is public.
+- `mention()` and `threadMessage()` take `files`, and `webMessage()` takes
+  `images`. `file(name, mimeType, content)` is a file that a person uploaded.
+  The Slack mock serves its download and lists it in the thread history.
+  `unavailableFile(name, mimeType)` is a file whose download fails.
+  `ticketScreenshotPng()` in `src/fixture/images.ts` is a real PNG that shows
+  a ticket number. Only the pixels have the number, so a reply with
+  `TICKET_NUMBER` proves that Junior read the image.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
@@ -375,7 +382,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
-- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, and `turns`.
+- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `compactions`, and `turns`.
 - When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.

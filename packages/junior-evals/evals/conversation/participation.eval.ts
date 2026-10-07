@@ -61,6 +61,8 @@ describe("Passive Behavior", () => {
     );
 
     expect(conversation.replies).toHaveLength(1);
+    // A thread message gets the processing reaction only when Junior takes it.
+    expect(conversation.reactions).toEqual(["eyes", "white_check_mark"]);
   });
 
   test("when a casual pronoun question reads like coworker talk, stay out of the thread", async ({

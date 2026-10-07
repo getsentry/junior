@@ -69,18 +69,22 @@ describe("Slack Message Delivery", () => {
     run,
   }) => {
     const conversation = await run(mention("show me an image of a red panda"));
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "Any visible text is limited to at most one concise acknowledgement that the requested image was delivered.",
-        ],
-        fail: [
-          "Do not narrate image generation, file lookup, attachment paths, permission checks, retries, or other internal process steps.",
-          "Do not post multiple progress or troubleshooting messages before the image.",
-        ],
-      }),
-    );
+    // Junior can send the image with no text. The judge reads text only, so
+    // it has nothing to score then.
+    if (conversation.replies.length > 0) {
+      await expect(conversation).toSatisfyJudge(
+        RubricJudge,
+        rubric({
+          pass: [
+            "Any visible text is limited to at most one concise acknowledgement that the requested image was delivered.",
+          ],
+          fail: [
+            "Do not narrate image generation, file lookup, attachment paths, permission checks, retries, or other internal process steps.",
+            "Do not post multiple progress or troubleshooting messages before the image.",
+          ],
+        }),
+      );
+    }
 
     expect(completedToolCalls("imageGenerate", conversation)).toHaveLength(1);
     const sendFiles = completedToolCalls("sendFiles", conversation);
