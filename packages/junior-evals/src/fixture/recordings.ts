@@ -36,7 +36,11 @@ export function installRecordings(): Recordings {
   const control = new Agent();
   const session = `${proxy.url}/__recording-proxy/sessions/${sessionId}`;
   const call = async (method: "GET" | "POST", url: string) => {
-    const response = await request(url, { dispatcher: control, method });
+    const response = await request(url, {
+      dispatcher: control,
+      headers: { authorization: `Bearer ${proxy.secret}` },
+      method,
+    });
     if (response.statusCode >= 400) {
       await response.body.dump();
       throw new Error(
@@ -50,7 +54,7 @@ export function installRecordings(): Recordings {
   // One agent per test, so each tunnel carries the session of its test.
   const agent = new ProxyAgent({
     uri: proxy.url,
-    token: `Basic ${Buffer.from(`${sessionId}:`).toString("base64")}`,
+    token: `Basic ${Buffer.from(`${sessionId}:${proxy.secret}`).toString("base64")}`,
     requestTls: { ca: proxy.caCert },
   });
   setGlobalDispatcher(agent);

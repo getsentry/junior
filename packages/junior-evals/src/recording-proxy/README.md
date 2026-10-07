@@ -11,10 +11,13 @@ directory, so the proxy can move to its own package or repository.
 
 - Start it with `spawnRecordingProxy(config)`, or run
   `node recording-proxy.ts <config.json>`. The command writes one JSON line
-  with `url` and `caCert` when the proxy is ready.
+  with `url`, `caCert`, and `secret` when the proxy is ready.
 - Send traffic through `url` with `HTTPS_PROXY` or an undici `ProxyAgent`.
 - The client must trust `caCert`. The proxy signs a certificate for each
   HTTPS host, so it can read the requests.
+- Send proxy credentials with `secret` as the password. The control API
+  needs `Authorization: Bearer <secret>`. Without the secret, the proxy sends
+  no request. It listens only on 127.0.0.1.
 - Give each test its own session. Put the session id in the user name of the
   proxy credentials. Commit the session when the test passes, and discard it
   when the test fails.

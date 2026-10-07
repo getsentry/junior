@@ -42,7 +42,7 @@ async function session(
   const id = `session-${Math.random()}`;
   const agent = new ProxyAgent({
     uri: running.url,
-    token: `Basic ${Buffer.from(`${id}:`).toString("base64")}`,
+    token: `Basic ${Buffer.from(`${id}:${running.secret}`).toString("base64")}`,
   });
   const responses: Array<{ body: string; source: unknown }> = [];
   for (const body of bodies) {
@@ -58,17 +58,22 @@ async function session(
   }
   const counts = await request(
     `${running.url}/__recording-proxy/sessions/${id}`,
-    { dispatcher: control },
+    { dispatcher: control, headers: auth(running) },
   );
   const result = { counts: await counts.body.json(), responses };
   await (
     await request(`${running.url}/__recording-proxy/sessions/${id}/${end}`, {
       dispatcher: control,
+      headers: auth(running),
       method: "POST",
     })
   ).body.dump();
   await agent.close();
   return result;
+}
+
+function auth(running: RecordingProxy) {
+  return { authorization: `Bearer ${running.secret}` };
 }
 
 async function files(): Promise<string[]> {
@@ -120,6 +125,26 @@ describe("recording proxy", () => {
     ]);
     expect(replay.counts).toEqual({ model: { live: 1, replayed: 1 } });
     expect(liveRequests).toBe(2);
+  });
+
+  it("sends no request without the secret", async () => {
+    const running = await start("auto");
+    const agent = new ProxyAgent({
+      uri: running.url,
+      token: `Basic ${Buffer.from("session:wrong").toString("base64")}`,
+    });
+
+    await expect(
+      request(`${origin}/v1/messages`, { dispatcher: agent, method: "POST" }),
+    ).rejects.toThrow();
+    const counts = await request(
+      `${running.url}/__recording-proxy/sessions/x`,
+      { dispatcher: control },
+    );
+    expect(counts.statusCode).toBe(401);
+    await counts.body.dump();
+    expect(liveRequests).toBe(0);
+    await agent.close();
   });
 
   it("writes nothing for a discarded session", async () => {

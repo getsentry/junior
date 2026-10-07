@@ -147,6 +147,7 @@ export default async function setup(
       controlUrl: egress.controlUrl,
       recordingProxy: {
         caCert: recordingProxy.caCert,
+        secret: recordingProxy.secret,
         url: recordingProxy.url,
       },
       redisUrl,

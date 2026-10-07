@@ -6,7 +6,7 @@ export interface EvalInvocationContext {
   controlToken: string;
   controlUrl: string;
   /** The recording proxy. See `src/fixture/recordings.ts`. */
-  recordingProxy: { caCert: string; url: string };
+  recordingProxy: { caCert: string; secret: string; url: string };
   redisUrl: string;
   stateKeyPrefix: string;
   stateUrl: string;

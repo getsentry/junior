@@ -18,9 +18,14 @@
  *   requests go live, and the proxy records them.
  * - `record`: every request goes live, and the proxy records it again.
  *
+ * Clients must send proxy credentials with `secret` as the password, for
+ * example `http://<session>:<secret>@127.0.0.1:<port>`. The control API
+ * needs `Authorization: Bearer <secret>`. Without the secret, the proxy
+ * sends no request, so other local processes cannot use it as an open proxy.
+ * The proxy listens only on 127.0.0.1.
+ *
  * A session groups the requests of one test. The client names the session
- * with the user name of the proxy credentials, for example
- * `http://<session>@127.0.0.1:<port>`. The proxy keeps the recordings of a
+ * with the user name of the proxy credentials. The proxy keeps the recordings of a
  * session in memory until the client commits or discards the session through
  * the control API. Commit after a passing test, so a bad sample is never
  * replayed. A request without a session is written at once. A commit writes
@@ -42,7 +47,7 @@
  * `spawnRecordingProxy()` or `startRecordingProxy()`.
  */
 import { execFile, spawn } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
@@ -87,6 +92,11 @@ export interface RecordingProxy {
   url: string;
   /** The PEM certificate of the authority that signs intercepted hosts. */
   caCert: string;
+  /**
+   * The password of the proxy credentials and the bearer token of the
+   * control API. Without it, the proxy sends no request.
+   */
+  secret: string;
   close(): Promise<void>;
 }
 
@@ -288,11 +298,28 @@ function matches(
   );
 }
 
-function sessionFrom(header: string | undefined): string | undefined {
+/** Read `<session>:<secret>` proxy credentials. */
+function credentialsFrom(
+  header: string | undefined,
+): { secret: string; session?: string } | undefined {
   const [scheme, token] = header?.split(" ") ?? [];
   if (scheme?.toLowerCase() !== "basic" || !token) return undefined;
-  const user = Buffer.from(token, "base64").toString("utf8").split(":")[0];
-  return user ? decodeURIComponent(user) : undefined;
+  const decoded = Buffer.from(token, "base64").toString("utf8");
+  const separator = decoded.indexOf(":");
+  if (separator < 0) return undefined;
+  const user = decoded.slice(0, separator);
+  return {
+    secret: decoded.slice(separator + 1),
+    ...(user ? { session: decodeURIComponent(user) } : {}),
+  };
+}
+
+/** Compare secrets in constant time. */
+function sameSecret(actual: string | undefined, expected: string): boolean {
+  if (actual === undefined) return false;
+  const a = Buffer.from(actual);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 function readBody(stream: http.IncomingMessage): Promise<Buffer> {
@@ -398,6 +425,8 @@ export async function startRecordingProxy(
 ): Promise<RecordingProxy> {
   const certificateDir = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
   const certificates = await createCertificates(certificateDir);
+  // Only a client with this secret can make the proxy send requests.
+  const secret = randomBytes(24).toString("hex");
   const sessions = new Map<string, Session>();
   const targets = new WeakMap<Socket, Target>();
   const sockets = new Set<Socket>();
@@ -506,6 +535,10 @@ export async function startRecordingProxy(
     incoming: http.IncomingMessage,
     outgoing: http.ServerResponse,
   ) => {
+    if (!sameSecret(incoming.headers.authorization, `Bearer ${secret}`)) {
+      outgoing.writeHead(401).end();
+      return;
+    }
     const pathname = new URL(incoming.url ?? "/", "http://proxy").pathname;
     if (!pathname.startsWith(CONTROL_PREFIX)) {
       outgoing.writeHead(404).end();
@@ -551,9 +584,14 @@ export async function startRecordingProxy(
       return;
     }
     // An absolute-form request for a plain HTTP URL.
-    serve((request) => ({
-      session: sessionFrom(request.headers["proxy-authorization"]),
-    }))(incoming, outgoing);
+    const credentials = credentialsFrom(
+      incoming.headers["proxy-authorization"],
+    );
+    if (!sameSecret(credentials?.secret, secret)) {
+      outgoing.writeHead(407, { "proxy-authenticate": "Basic" }).end();
+      return;
+    }
+    serve(() => ({ session: credentials?.session }))(incoming, outgoing);
   });
   server.on("connection", (socket: Socket) => {
     sockets.add(socket);
@@ -567,7 +605,14 @@ export async function startRecordingProxy(
       return;
     }
     const [, host, port] = authority as unknown as [string, string, string];
-    const session = sessionFrom(request.headers["proxy-authorization"]);
+    const credentials = credentialsFrom(request.headers["proxy-authorization"]);
+    if (!sameSecret(credentials?.secret, secret)) {
+      socket.end(
+        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n",
+      );
+      return;
+    }
+    const session = credentials?.session;
     socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
     const start = async (first: Buffer) => {
       // A TLS handshake starts with byte 0x16. Anything else is plain HTTP.
@@ -615,6 +660,7 @@ export async function startRecordingProxy(
   return {
     url: `http://127.0.0.1:${address.port}`,
     caCert: certificates.caCert,
+    secret,
     async close() {
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
@@ -648,20 +694,22 @@ export async function spawnRecordingProxy(
     ],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
-  const ready = await new Promise<{ caCert: string; url: string }>(
-    (resolve, reject) => {
-      let output = "";
-      child.once("error", reject);
-      child.once("exit", (code) =>
-        reject(new Error(`Recording proxy exited with code ${code}`)),
-      );
-      child.stdout.on("data", (chunk: Buffer) => {
-        output += chunk.toString("utf8");
-        const line = output.split("\n")[0];
-        if (output.includes("\n") && line) resolve(JSON.parse(line));
-      });
-    },
-  );
+  const ready = await new Promise<{
+    caCert: string;
+    secret: string;
+    url: string;
+  }>((resolve, reject) => {
+    let output = "";
+    child.once("error", reject);
+    child.once("exit", (code) =>
+      reject(new Error(`Recording proxy exited with code ${code}`)),
+    );
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+      const line = output.split("\n")[0];
+      if (output.includes("\n") && line) resolve(JSON.parse(line));
+    });
+  });
   return {
     ...ready,
     async close() {
@@ -687,7 +735,7 @@ if (
   ) as RecordingProxyConfig;
   const proxy = await startRecordingProxy(config);
   process.stdout.write(
-    `${JSON.stringify({ caCert: proxy.caCert, url: proxy.url })}\n`,
+    `${JSON.stringify({ caCert: proxy.caCert, secret: proxy.secret, url: proxy.url })}\n`,
   );
   const stop = () => {
     proxy.close().finally(() => process.exit(0));
