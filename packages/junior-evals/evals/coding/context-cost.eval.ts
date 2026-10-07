@@ -14,7 +14,8 @@ const SHARDS = 21;
 
 function priorCiResults(): HistoryToolCall[] {
   return Array.from({ length: SHARDS }, (_, shard) => {
-    const checks = shard === SHARDS - 1 ? 950 : 390;
+    // Keep the diagnosis Turn below the capacity trigger. The repair adds new work.
+    const checks = shard === SHARDS - 1 ? 160 : 390;
     const lines = Array.from({ length: checks }, (_, check) => {
       const location = `tests/api/resources/test_access.py::test_resource_${shard + 1}_${check + 1}`;
       if (shard === SHARDS - 1 && check === 114) {
