@@ -66,16 +66,7 @@ describe("Priced Conversation context", () => {
       },
     );
     expect(conversation.turns.at(-1)?.status).toBe("succeeded");
-    const firstTurnUsage = (
-      conversation.usage?.metadata?.distillation as
-        | Record<
-            string,
-            { historyComplete: boolean; capacityCompactionCount: number }
-          >
-        | undefined
-    )?.[conversation.conversationId];
-    expect(firstTurnUsage?.historyComplete).toBe(true);
-    expect(firstTurnUsage?.capacityCompactionCount).toBe(0);
+    expect(conversation.compactions).toBe(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
