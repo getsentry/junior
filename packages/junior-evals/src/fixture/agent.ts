@@ -29,7 +29,7 @@ import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import { installRecordings } from "./recordings";
-import { installWebPassthrough } from "./web";
+import { installWebReplay } from "./web";
 import type {
   AutomationInput,
   FileInput,
@@ -174,7 +174,7 @@ export async function createFixtureAgent(
   installRecordings();
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
-  installWebPassthrough();
+  installWebReplay();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),

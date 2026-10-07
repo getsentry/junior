@@ -1,0 +1,16 @@
+{
+  "writtenAt": "2026-10-07T05:28:48.905Z",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true"
+  },
+  "response": {
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4ADBVYD5WGV6J6AFE7EDT8X\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"four\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":5,\"cache_creation_input_tokens\":602,\"cache_read_input_tokens\":11263},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_08d9f6016bf2d1f3016ac5d88f83ec87d281dd1edfc54901d5\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350927384,\"endTime\":1791350928864,\"providerRequestId\":\"req_aaa8404ce3e44c5a9bb665af092dcae9\",\"statusCode\":200,\"providerResponseId\":\"resp_08d9f6016bf2d1f3016ac5d88f83ec87d281dd1edfc54901d5\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"6add4b046dc1dd4a4bad19a808b21614\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00019068\",\"marketCost\":\"0.00019068\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00019068\",\"inferenceCost\":\"0.00019068\",\"inputInferenceCost\":\"0.00018818\",\"outputInferenceCost\":\"0.0000025\",\"generationId\":\"gen_01M4ADBVYD5WGV6J6AFE7EDT8X\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

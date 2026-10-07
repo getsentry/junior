@@ -1,0 +1,16 @@
+{
+  "writtenAt": "2026-10-07T05:30:44.697Z",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true"
+  },
+  "response": {
+    "body": "{\"error\":{\"message\":\"The image data you provided does not represent a valid image. Please check your input and try again with one of the supported image formats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].\",\"type\":\"AI_APICallError\",\"param\":{\"error\":\"The image data you provided does not represent a valid image. Please check your input and try again with one of the supported image formats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].\",\"statusCode\":400,\"name\":\"AI_APICallError\",\"message\":\"The image data you provided does not represent a valid image. Please check your input and try again with one of the supported image formats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].\",\"isRetryable\":false,\"type\":\"AI_APICallError\"}},\"providerMetadata\":{\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.6-sol\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"canonicalSlug\":\"openai/gpt-5.6-sol\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.6-sol\",\"success\":false,\"providerAttemptCount\":3,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":false,\"error\":\"The image data you provided does not represent a valid image. Please check your input and try again with one of the supported image formats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].\",\"startTime\":1791351044121,\"endTime\":1791351044312,\"providerRequestId\":\"req_cbd5f232345c453e9eb86c17a0769710\",\"statusCode\":400},{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":false,\"error\":\"Invalid or unsupported image format\",\"startTime\":1791351044316,\"endTime\":1791351044466,\"providerRequestId\":\"88ad6ef4-1672-411b-92f6-723a64ed3599\",\"statusCode\":400},{\"provider\":\"azure\",\"credentialType\":\"system\",\"success\":false,\"error\":\"The image data you provided does not represent a valid image. Please check your input and try again with one of the supported image formats: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].\",\"startTime\":1791351044470,\"endTime\":1791351044650,\"providerRequestId\":\"00f6fbde-5f5c-4cc6-add0-9d1f226da3a1\",\"statusCode\":400}]}],\"totalProviderAttemptCount\":3,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"bbdfdb7886811a76aa933c2edc5bde24\",\"clientSessionIdSource\":\"fingerprint\"},\"generationId\":\"gen_01M4ADFDZTYW4FFG8P0PDGNDSB\"}}}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 400,
+    "statusText": "Bad Request"
+  }
+}

@@ -10,20 +10,22 @@
  * replays them. See `src/recording-rules.ts`.
  */
 import { randomUUID } from "node:crypto";
-import { http, HttpResponse, passthrough } from "msw";
+import { bypass, http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
-/** Let the pages that `webFetch` reads reach the recording proxy. */
-export function installWebPassthrough(): void {
+/** Send the pages that `webFetch` reads to the recording proxy. */
+export function installWebReplay(): void {
   mswServer.use(
-    http.get("*", ({ request }) =>
+    http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
-      request.headers.get("user-agent") === USER_AGENT
-        ? passthrough()
-        : undefined,
-    ),
+      if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
+      // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
+      // uses the proxy dispatcher of the test. `webFetch` follows redirects
+      // itself, so each redirect is its own request.
+      return fetch(bypass(request, { redirect: "manual" }));
+    }),
   );
 }
 

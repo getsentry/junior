@@ -1,0 +1,16 @@
+{
+  "writtenAt": "2026-10-07T05:27:24.199Z",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model"
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"relevantIds\\\":[\\\"049e2935-f1a5-4581-abba-7ded4fadc87d\\\"]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d37a00bad26450e016ac5d83bb60887d2899edc345b2dc81d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":238,\"noCache\":238,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":35,\"text\":35,\"reasoning\":0},\"raw\":{\"input_tokens\":238,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":35,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":273}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d37a00bad26450e016ac5d83ad57c87d285cdb35064876ff3\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350842731,\"endTime\":1791350844166,\"providerRequestId\":\"req_41448421976a4c23bda76ca9d6b3f8ce\",\"statusCode\":200,\"providerResponseId\":\"resp_0d37a00bad26450e016ac5d83ad57c87d285cdb35064876ff3\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"e06a3893a55a03a99204cbd2374d1148\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000413\",\"marketCost\":\"0.0000413\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000413\",\"inferenceCost\":\"0.0000413\",\"inputInferenceCost\":\"0.0000238\",\"outputInferenceCost\":\"0.0000175\",\"generationId\":\"gen_01M4AD99ARNQE0XYRA4FD5W3MR\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
