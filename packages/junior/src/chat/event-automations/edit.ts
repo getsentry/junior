@@ -6,7 +6,7 @@ import {
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
 import {
-  normalizeCatalogEventIdentifier,
+  requireEventIdentifier,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -50,11 +50,7 @@ export async function editEventAutomation(
         );
         trigger = {
           ...input.trigger,
-          identifier: normalizeCatalogEventIdentifier(
-            catalog,
-            input.trigger.namespace,
-            input.trigger.identifier,
-          ),
+          identifier: requireEventIdentifier(catalog, input.trigger),
           events: [...new Set(input.trigger.events)],
           match,
         };

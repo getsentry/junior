@@ -23,7 +23,10 @@ import {
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
-import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import {
+  appendGitHubRequesterAttribution,
+  linkedGitHubLogin,
+} from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -345,9 +348,7 @@ async function assignPullRequestRequester(
   if (!ctx.actor || ctx.actor.platform === "system") return;
   try {
     const requester = await ctx.users.resolveActor();
-    const assignee = requester?.user?.identities
-      .find((identity) => identity.provider === "github")
-      ?.handle?.trim();
+    const assignee = linkedGitHubLogin(requester?.user);
     if (!assignee) return;
     const repo = parseRepo(input.repo);
     const response = await ctx.egress.fetch({

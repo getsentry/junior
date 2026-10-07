@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
+import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import {
   createEventAutomation,
   getEventAutomation,
@@ -21,7 +22,7 @@ import {
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { completeText } from "@/chat/pi/client";
 import {
-  normalizeCatalogEventIdentifier,
+  requireEventIdentifier,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import {
@@ -129,10 +130,12 @@ export function createEventAutomationTool(
     async execute(input, options) {
       const { actor, destination, source } =
         requireEventAutomationSlackContext(context);
+      requireRequesterMention(input.instruction, actor);
       const match = requireSupportedEventAutomationTrigger(
         catalog,
         input.trigger,
       );
+      const identifier = requireEventIdentifier(catalog, input.trigger);
       const id = buildEventAutomationId({
         channelId: destination.channelId,
         teamId: destination.teamId,
@@ -186,11 +189,7 @@ export function createEventAutomationTool(
         ...(title ? { title } : undefined),
         trigger: {
           namespace: input.trigger.namespace,
-          identifier: normalizeCatalogEventIdentifier(
-            catalog,
-            input.trigger.namespace,
-            input.trigger.identifier,
-          ),
+          identifier,
           resourceType: input.trigger.resourceType,
           label: input.trigger.label,
           events: [...new Set(input.trigger.events)],
