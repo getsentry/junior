@@ -1,0 +1,63 @@
+{
+  "writtenAt": "2026-10-07T19:34:39.663Z",
+  "session": "evals/integration/conversation/attachments.eval.ts > Conversation Attachments > when a web message has an image, the reply uses the image",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "d4735e3a265e",
+      "messages[0]": "95fc74ff7e21",
+      "messages[1]": "6af3c773fb17",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "d4243d8c92c5",
+      "tools.length": "35135aaa6cc2",
+      "tools[0]": "d098cd1dd937",
+      "tools[1]": "12dba46828ca",
+      "tools[2]": "a1056c279456",
+      "tools[3]": "c40e21f9ef0d",
+      "tools[4]": "d3dd7b468c8f",
+      "tools[5]": "f116e66fefdf",
+      "tools[6]": "6653a0a0a3a9",
+      "tools[7]": "3b6ca120b0fb",
+      "tools[8]": "c7dc1bc2c04d",
+      "tools[9]": "f9054d6c4f64",
+      "tools[10]": "f47ca0d0af13",
+      "tools[11]": "37bbd2f6c311",
+      "tools[12]": "5802c8f4c428",
+      "tools[13]": "ae045899dc37",
+      "tools[14]": "218843320f4d",
+      "tools[15]": "0667eb3022b2",
+      "tools[16]": "93f913ef2874",
+      "tools[17]": "cb8897349d4d",
+      "tools[18]": "95c787875e54",
+      "tools[19]": "23162886a934",
+      "tools[20]": "9da7c42a547b",
+      "tools[21]": "ed13dd55d6be",
+      "tools[22]": "06ea3d798e31",
+      "tools[23]": "98cd636f11ec",
+      "tools[24]": "00fbcd9a6ca2",
+      "tools[25]": "b3d118e01068",
+      "tools[26]": "0186c3b7d153",
+      "tools[27]": "e4e3f296282f",
+      "tools[28]": "ec59e4ad36dd",
+      "thinking": "e871cb1e753e"
+    }
+  },
+  "response": {
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4BXRM1DY94P1SJ11XFPRAQS\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"The\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" ticket\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" number\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" is\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" **\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"472\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"9\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"**\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\".\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":13,\"cache_creation_input_tokens\":381,\"cache_read_input_tokens\":5517},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0a7bcf800d774d82016ac69eccf76487d1966f63e51506a943\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791401676872,\"endTime\":1791401679630,\"providerRequestId\":\"req_07cc8d09d44a47f080d01129f70a6e0c\",\"statusCode\":200,\"providerResponseId\":\"resp_0a7bcf800d774d82016ac69eccf76487d1966f63e51506a943\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"68c8101779640fcae2357bfea44e392c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000109595\",\"marketCost\":\"0.000109595\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000109595\",\"inferenceCost\":\"0.000109595\",\"inputInferenceCost\":\"0.000103095\",\"outputInferenceCost\":\"0.0000065\",\"generationId\":\"gen_01M4BXRM1DY94P1SJ11XFPRAQS\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
