@@ -53,7 +53,7 @@ describe("Priced Conversation context", () => {
     });
     const conversation = await run(
       mention(
-        "From the earlier CI result, which resource check failed and what needs to change before the rollout can ship? Do not edit yet.",
+        "Read project/src/resource-access.ts. From the earlier CI result, which resource check failed and what needs to change before the rollout can ship? Do not edit yet.",
       ),
       {
         history: [
@@ -78,7 +78,30 @@ describe("Priced Conversation context", () => {
       }),
     );
 
-    const repaired = await conversation.continue(
+    const newResult = await conversation.continue(
+      mention(
+        "The resource access suite has a new CI artifact. Run `node project/ci-log.mjs` to review it, then tell me whether it changes the diagnosis. Do not edit yet.",
+      ),
+    );
+    expect(newResult.turns.at(-1)?.status).toBe("succeeded");
+    expect(
+      completedToolCalls("bash", newResult).some((call) => {
+        const command = (call.input as { command?: unknown }).command;
+        const output = toolOutput(call) as {
+          exit_code?: number;
+          stdout?: string;
+        };
+        return (
+          typeof command === "string" &&
+          command.includes("ci-log.mjs") &&
+          output.exit_code === 0 &&
+          typeof output.stdout === "string" &&
+          output.stdout.length >= 25_000
+        );
+      }),
+    ).toBe(true);
+
+    const repaired = await newResult.continue(
       mention(
         "Fix the lookup so it checks organization, project, and resource id. Run resource-access.test.ts again, then tell me whether the rollout is ready to ship.",
       ),

@@ -202,10 +202,11 @@ On a draft PR to `main`, the `trigger-context-cost-evals` label runs the
 scoped-lookup coding case with the feature off and on at the same revision.
 Both runs upload a `context-cost-*` result. The case uses Astra because a
 later Turn can make observation work worthwhile at its current cache prices.
-It uses three live Turns: diagnose a failed CI run, repair the scoped lookup,
-then recall an audit reference from an earlier CI result. The reference is
-unique to the run and absent from the source tree. Require a completed repair,
-passing focused test, exact reference, and honest release note in both runs.
+It uses four live Turns: diagnose a failed CI run, read a later CI artifact,
+repair the scoped lookup, then recall an audit reference from an earlier CI
+result. The reference is unique to the run and absent from the source tree.
+Require a completed repair, passing focused test, exact reference, and honest
+release note in both runs.
 The older CI shards bring the first live Turn near the default 360k capacity
 trigger. Require no capacity compaction in that Turn. Require a later capacity
 compaction in the off run and observations with a `priced: true` history
