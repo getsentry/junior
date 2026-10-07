@@ -181,4 +181,34 @@ describe("searchMcpTools", () => {
     expect(result.tools).toEqual([]);
     expect(manager.activateProvider).not.toHaveBeenCalled();
   });
+
+  it("offers the configured providers when the provider name is not one of them", async () => {
+    const manager = buildManager();
+    manager.activateProvider.mockResolvedValue(false);
+    manager.getActiveToolCatalog.mockReturnValue([]);
+    const searchMcpTools = createSearchMcpToolsTool(manager);
+
+    // A display name finds the provider whose name or description has it.
+    await expect(
+      searchMcpTools.execute!({ provider: "Linear issues" }, {}),
+    ).resolves.toMatchObject({
+      available_providers: [
+        { provider: "linear", description: "Linear issues", active: false },
+      ],
+      tools: [],
+    });
+    // A name that matches nothing gets every configured provider.
+    await expect(
+      searchMcpTools.execute!({ provider: "tracker" }, {}),
+    ).resolves.toMatchObject({
+      available_providers: [
+        expect.objectContaining({ provider: "demo" }),
+        expect.objectContaining({ provider: "linear" }),
+      ],
+    });
+    // A configured provider with no tools gets no suggestions.
+    await expect(
+      searchMcpTools.execute!({ provider: "linear" }, {}),
+    ).resolves.toMatchObject({ available_providers: [] });
+  });
 });
