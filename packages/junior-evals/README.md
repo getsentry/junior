@@ -104,13 +104,15 @@ describe("Thread Continuity", () => {
   `ticketScreenshotPng()` in `src/fixture/images.ts` is a real PNG that shows
   a ticket number. Only the pixels have the number, so a reply with
   `TICKET_NUMBER` proves that Junior read the image.
-- `mention()` and `threadMessage()` take `attachments`. These are Slack
-  message attachments, such as a forwarded alert, and they are not files. The
-  fixture sends them on the event as Slack does.
-- `appMessage(text, { attachments })` is a message from another Slack app for
-  `history`, such as an alert that starts the thread. It comes before the
-  first input. Junior took no turn for it and stored nothing, so the message
-  is in the Slack mock only, and a later turn reads it from Slack.
+- `mention()` and `threadMessage()` take `forwarded`, the text of a message
+  that the person forwarded with their own message.
+- `appMessage(text)` is a message from another Slack app for `history`, such
+  as an alert that starts the thread. It comes before the first input. Junior
+  took no turn for it and stored nothing, so the message is in the Slack mock
+  only, and a later turn reads it from Slack.
+- Slack sends a forwarded message and the content of an app message outside
+  the message text. The fixture builds those Slack shapes, so a test gives
+  only the text.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.

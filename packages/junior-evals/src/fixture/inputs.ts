@@ -34,17 +34,9 @@ export interface FileInput {
   name: string;
 }
 
-/**
- * A Slack message attachment, as Slack sends it on an event. Apps post alerts
- * and previews as attachments, and a forwarded message arrives as one.
- */
-export type SlackAttachment = Record<string, unknown>;
-
 /** An `app_mention` through the Slack Events API webhook. */
 export interface MentionInput {
   kind: "mention";
-  /** Attachments on the message, such as a forwarded alert. */
-  attachments?: SlackAttachment[];
   author?: SlackAuthor;
   /** The channel for a new thread. Defaults to a new channel. */
   channel?: MentionChannel;
@@ -52,17 +44,19 @@ export interface MentionInput {
   channelType?: "channel" | "im";
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
   text: string;
 }
 
 /** A thread message without a mention through the Slack Events API webhook. */
 export interface ThreadMessageInput {
   kind: "thread_message";
-  /** Attachments on the message, such as a forwarded alert. */
-  attachments?: SlackAttachment[];
   author?: SlackAuthor;
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
   text: string;
 }
 
@@ -128,7 +122,6 @@ export interface HistoryReply {
  */
 export interface AppMessage {
   kind: "app_message";
-  attachments?: SlackAttachment[];
   text: string;
 }
 
@@ -138,11 +131,11 @@ export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 export function mention(
   text: string,
   options: {
-    attachments?: SlackAttachment[];
     author?: SlackAuthor;
     channel?: MentionChannel;
     channelType?: "channel" | "im";
     files?: FileInput[];
+    forwarded?: string;
   } = {},
 ): MentionInput {
   return { kind: "mention", text, ...options };
@@ -152,9 +145,9 @@ export function mention(
 export function threadMessage(
   text: string,
   options: {
-    attachments?: SlackAttachment[];
     author?: SlackAuthor;
     files?: FileInput[];
+    forwarded?: string;
   } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };
@@ -221,11 +214,8 @@ export function completeAuth(
  * starts the thread. Junior took no turn for it and stored nothing, so a
  * later turn reads it from Slack. It comes before the first input.
  */
-export function appMessage(
-  text: string,
-  options: { attachments?: SlackAttachment[] } = {},
-): AppMessage {
-  return { kind: "app_message", text, ...options };
+export function appMessage(text: string): AppMessage {
+  return { kind: "app_message", text };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */

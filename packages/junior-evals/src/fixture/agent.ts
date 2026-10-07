@@ -60,6 +60,7 @@ import {
 } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
+  forwardedMessage,
   installSlackMock,
   isAppMention,
   postSlackMessageEvent,
@@ -331,11 +332,11 @@ export async function createFixtureAgent(
     const files = input.files?.length
       ? { files: input.files.map(slack.addFile) }
       : undefined;
-    const attachments = input.attachments?.length
-      ? { attachments: input.attachments }
+    const forwarded = input.forwarded
+      ? { attachments: [forwardedMessage(input.forwarded)] }
       : undefined;
     slack.addThreadMessage(record.channelId, {
-      ...attachments,
+      ...forwarded,
       ...files,
       text,
       thread_ts: record.threadTs,
@@ -345,7 +346,7 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
-      ...attachments,
+      ...forwarded,
       ...files,
       mention,
       text,

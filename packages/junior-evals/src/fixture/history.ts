@@ -72,6 +72,7 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_TEAM_ID,
   type RequestApp,
+  appMessageContent,
   isAppMention,
   slackAuthorEmail,
   type SlackMock,
@@ -121,10 +122,10 @@ function groupTurns(items: HistoryItem[]): {
     if (files?.length) {
       throw new Error("history takes no files; send the file in a call");
     }
-    // A real turn stores the text that it read from an attachment.
-    if (item.kind !== "web_message" && item.attachments?.length) {
+    // A real turn stores the text that it read from a forwarded message.
+    if (item.kind !== "web_message" && item.forwarded) {
       throw new Error(
-        "history takes no attachments on an input; send the input in a call",
+        "history takes no forwarded message; send the input in a call",
       );
     }
     turns.push({ input: item, replies: [] });
@@ -432,11 +433,9 @@ export async function loadHistory(args: {
     const app = args.slack.registerAuthor(SLACK_APP);
     for (const [index, message] of appMessages.entries()) {
       args.slack.addThreadMessage(conversation.channelId, {
-        ...(message.attachments
-          ? { attachments: message.attachments }
-          : undefined),
+        attachments: [appMessageContent(message.text)],
         bot_id: SLACK_APP_BOT_ID,
-        text: message.text,
+        text: "",
         thread_ts: conversation.threadTs,
         ...(index === 0 ? { ts: conversation.threadTs } : undefined),
         user: app.userId,

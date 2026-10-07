@@ -21,7 +21,7 @@ import {
   TEST_BOT_USER_ID,
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
-import type { FileInput, SlackAttachment, SlackAuthor } from "./inputs";
+import type { FileInput, SlackAuthor } from "./inputs";
 
 export const SLACK_TEAM_ID = "TEVAL";
 export const SLACK_BOT_USER_ID = TEST_BOT_USER_ID;
@@ -37,6 +37,28 @@ export const SLACK_APP = {
   userName: "alerts",
 } as const satisfies Required<SlackAuthor>;
 export const SLACK_APP_BOT_ID = "B0ALERTS";
+
+/**
+ * Content under a Slack message that is not in its text. Slack calls it an
+ * attachment; it is not a file.
+ */
+type SlackAttachment = Record<string, unknown>;
+
+/**
+ * A forwarded message, as Slack sends it on the message of the person who
+ * forwarded it.
+ */
+export function forwardedMessage(text: string): SlackAttachment {
+  return { is_share: true, text };
+}
+
+/**
+ * The content of an app message. Apps such as alert tools post their content
+ * in blocks under an empty message, so the message text does not have it.
+ */
+export function appMessageContent(text: string): SlackAttachment {
+  return { blocks: [{ type: "section", text: { type: "mrkdwn", text } }] };
+}
 
 /** An uploaded file, as Slack describes it in events and thread history. */
 export type SlackFile = {
@@ -359,8 +381,8 @@ let eventSequence = 0;
  * has the channel type, and an `app_mention` event, which has none. Slack does
  * not fix their order, and Junior stores the first one. The fixture sends
  * `app_mention` first, so each mention turn must learn the channel type from
- * Slack and not from the event. Both events have the attachments and the
- * uploaded files, and the `message` event has the `file_share` subtype.
+ * Slack and not from the event. Both events have the forwarded message and
+ * the uploaded files, and the `message` event has the `file_share` subtype.
  */
 export async function postSlackMessageEvent(
   app: RequestApp,
