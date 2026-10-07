@@ -1,12 +1,15 @@
 import { z } from "zod";
-import { automationResultSchema } from "@/chat/automation-result";
+import {
+  automationResultSchema,
+  normalizeAutomationResult,
+} from "@/chat/automation-result";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const RESULT_GUIDANCE = [
   "Use `no_action` when nothing should be posted, including when a condition in the instruction is not met or cannot be verified.",
-  "Use `blocked` only for a problem the automation creator must fix, such as missing access or an instruction that cannot work.",
+  "Use `misconfigured` only when the automation cannot work until its creator changes it, such as a missing account or access, a target that no longer exists, or an instruction that cannot be done. This suspends the automation. Do not use it for a temporary failure or a condition that is not met.",
 ].join(" ");
 
 /** Create the tool that ends one Automation run with a declared result. */
@@ -14,8 +17,8 @@ export function createFinishAutomationRunTool(options: {
   sendsMessage: boolean;
 }) {
   const results = options.sendsMessage
-    ? (["send_message", "no_action", "blocked"] as const)
-    : (["no_action", "blocked"] as const);
+    ? (["send_message", "no_action", "misconfigured"] as const)
+    : (["no_action", "misconfigured"] as const);
   return zodTool({
     annotations: {
       destructiveHint: false,
@@ -40,11 +43,11 @@ export function createFinishAutomationRunTool(options: {
         .string()
         .optional()
         .describe(
-          "Required for no_action and blocked. One sentence for the creator.",
+          "Required for no_action and misconfigured. One sentence for the creator.",
         ),
     }),
     outputSchema: juniorToolOutputSchema.extend({
-      result: z.enum(["send_message", "no_action", "blocked"]),
+      result: z.enum(["send_message", "no_action", "misconfigured"]),
     }),
     execute: async (input) => {
       const parsed = automationResultSchema.safeParse(input);
@@ -55,7 +58,7 @@ export function createFinishAutomationRunTool(options: {
             : `${input.result} requires a non-empty reason.`,
         );
       }
-      return parsed.data;
+      return normalizeAutomationResult(parsed.data);
     },
   });
 }

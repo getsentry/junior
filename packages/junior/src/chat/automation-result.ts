@@ -7,6 +7,7 @@
  */
 import type { Source } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   isAssistantMessage,
@@ -14,6 +15,7 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
 } from "@/chat/pi/transcript";
+import { sanitizeAssistantText } from "@/chat/services/assistant-reply";
 
 /** Model-facing tool that ends an Automation run. */
 export const FINISH_AUTOMATION_RUN_TOOL_NAME = "finishAutomationRun";
@@ -22,14 +24,18 @@ export const FINISH_AUTOMATION_RUN_TOOL_NAME = "finishAutomationRun";
 export const automationResultSchema = z.discriminatedUnion("result", [
   z.object({
     result: z.literal("send_message"),
-    message: z.string().trim().min(1),
+    // The declared message gets the same cleanup as a chat reply.
+    message: z
+      .string()
+      .transform(sanitizeAssistantText)
+      .pipe(z.string().min(1)),
   }),
   z.object({
     result: z.literal("no_action"),
     reason: z.string().trim().min(1),
   }),
   z.object({
-    result: z.literal("blocked"),
+    result: z.literal("misconfigured"),
     reason: z.string().trim().min(1),
   }),
 ]);
@@ -72,8 +78,22 @@ export function readAutomationResult(
 }
 
 /**
- * Map one finished agent run to its dispatch outcome. A declared `blocked`
- * result becomes a blocked dispatch with the declared reason.
+ * Return the declared result to save. A message that is only the old
+ * no-reply marker posts nothing, so it becomes `no_action`.
+ */
+export function normalizeAutomationResult(
+  result: AutomationResult,
+): AutomationResult {
+  return result.result === "send_message" && isNoReplyMarker(result.message)
+    ? { result: "no_action", reason: "The message was the no-reply marker." }
+    : result;
+}
+
+/**
+ * Map one finished agent run to its dispatch outcome. A declared
+ * `misconfigured` result becomes a blocked dispatch with the declared reason.
+ * A blocked dispatch suspends a Scheduled automation until its creator
+ * resumes it.
  */
 export function runDispatchOutcome(result: {
   automation?: AutomationResult;
@@ -87,7 +107,7 @@ export function runDispatchOutcome(result: {
       outcome: "failed",
     };
   }
-  if (result.automation?.result === "blocked") {
+  if (result.automation?.result === "misconfigured") {
     return { errorMessage: result.automation.reason, outcome: "blocked" };
   }
   return { outcome: "completed" };

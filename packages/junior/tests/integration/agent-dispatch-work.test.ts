@@ -33,7 +33,7 @@ vi.hoisted(() => {
 function finishRun(
   args:
     | { result: "send_message"; message: string }
-    | { result: "no_action" | "blocked"; reason: string },
+    | { result: "no_action" | "misconfigured"; reason: string },
 ) {
   return {
     type: "toolCall" as const,
@@ -258,29 +258,42 @@ describe("agent dispatch conversation work", () => {
 
   it.each([
     {
+      name: "no_action",
       declared: finishRun({ result: "no_action", reason: "Maintenance done" }),
-      expected: { status: "completed" },
+      outcomes: [],
+      expected: { outcomes: [], status: "completed" },
     },
     {
+      name: "misconfigured",
       declared: finishRun({
-        result: "blocked",
+        result: "misconfigured",
         reason: "The maintenance repo was archived.",
       }),
+      outcomes: [],
       expected: {
         errorMessage: "The maintenance repo was archived.",
+        outcomes: [],
         status: "blocked",
       },
     },
+    {
+      // Instructions written before declared results still ask for the
+      // no-reply marker. A message outcome must not post it.
+      name: "no-reply marker",
+      declared: finishRun({ result: "send_message", message: "[[NO_REPLY]]" }),
+      outcomes: undefined,
+      expected: { status: "completed" },
+    },
   ])(
-    "records a declared $declared.arguments.result result without posting",
-    async ({ declared, expected }) => {
+    "records a declared $name result without posting",
+    async ({ name, declared, outcomes, expected }) => {
       const dispatch = await createDispatch(
-        `silent-${declared.arguments.result}`,
+        `silent-${name}`,
         undefined,
         undefined,
         undefined,
         "Apply the requested maintenance.",
-        [],
+        outcomes,
       );
       const agentRunner = createModelAgentRunner(createModelStream([declared]));
       const runAgent = vi.spyOn(agentRunner, "run");
@@ -295,10 +308,9 @@ describe("agent dispatch conversation work", () => {
       });
 
       expect(slackApiOutbox.messages()).toEqual([]);
-      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-        ...expected,
-        outcomes: [],
-      });
+      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject(
+        expected,
+      );
       expect(runAgent).toHaveBeenCalledOnce();
       expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
     },

@@ -386,7 +386,10 @@ kind selects this mode, and `automation-result.ts` owns the result contract.
 - The run has no Delivery port, so final assistant text is never delivered.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.
-  `blocked` records a blocked dispatch with the declared reason.
+  `misconfigured` records a blocked dispatch with the declared reason. A
+  blocked dispatch suspends a Scheduled automation until its creator resumes
+  it. A declared message gets reply cleanup, and a message that is only the
+  no-reply marker becomes `no_action`.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch.
 
