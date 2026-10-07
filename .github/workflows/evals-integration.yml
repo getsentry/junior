@@ -130,11 +130,25 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
+      # Model replay: see "Model Replay" in packages/junior-evals/README.md.
+      - name: Restore model recordings
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/junior-evals/.vitest-evals/recordings/model
+          key: evals-model-integration-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: evals-model-integration-${{ matrix.shard }}-
       - name: Run integration evals
         env:
+          JUNIOR_EVAL_MODEL_REPLAY: auto
           VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
         run: pnpm --filter @sentry/junior-evals evals:integration --shard=${{ matrix.shard }}/2
+      - name: Save model recordings
+        if: always() && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: packages/junior-evals/.vitest-evals/recordings/model
+          key: evals-model-integration-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload integration eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@v4

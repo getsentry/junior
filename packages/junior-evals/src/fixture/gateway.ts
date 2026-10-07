@@ -1,15 +1,16 @@
 /**
  * AI Gateway observer for the agent test fixture.
  *
- * Every model request goes to the real AI Gateway. This observer only watches
- * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a model request or its response. Two requests are
- * not model requests. Image generation is a third-party image API, so the
- * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
+ * Model requests go to the real AI Gateway, or to `model-replay.ts` when
+ * replay is on. This observer watches agent requests (the ones that offer
+ * tools) and holds them while a test reacts. It never changes a model request
+ * or its response. Two requests are not model requests. Image generation is a
+ * third-party image API, so the observer answers it with a 1x1 PNG. `webSearch` is a third-party search
  * provider, so `web.ts` answers it with the results of the test.
  */
-import { bypass, http, HttpResponse, passthrough } from "msw";
+import { http, HttpResponse, passthrough } from "msw";
 import { mswServer } from "@junior-tests/msw/server";
+import type { ModelReplay, ModelResponse } from "./model-replay";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
@@ -93,7 +94,7 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 }
 
 /** Install the AI Gateway observer for the current test. */
-export function installGatewayObserver(): GatewayObserver {
+export function installGatewayObserver(replay: ModelReplay): GatewayObserver {
   const counts: Record<string, number> = {};
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
 
@@ -112,36 +113,34 @@ export function installGatewayObserver(): GatewayObserver {
           ],
         });
       }
+      if (request.method !== "POST") return passthrough();
       const hook = progressHook;
-      if (!hook || !request.url.startsWith(GATEWAY_MESSAGES_URL)) {
-        return passthrough();
-      }
-      const payload = (await request.clone().json()) as { tools?: unknown[] };
-      if (!payload.tools?.length) {
-        // Titles and other side calls do not offer tools.
-        return passthrough();
-      }
-      await hook({ type: "model_request" });
-      let response: Response;
+      // Titles and other side calls do not offer tools.
+      const agentRequest =
+        hook !== undefined &&
+        request.url.startsWith(GATEWAY_MESSAGES_URL) &&
+        Boolean(
+          ((await request.clone().json()) as { tools?: unknown[] }).tools
+            ?.length,
+        );
+      // Without replay, only agent requests need the response body.
+      if (!agentRequest && !replay.enabled) return passthrough();
+      if (agentRequest) await hook({ type: "model_request" });
+      let response: ModelResponse;
       try {
-        response = await fetch(bypass(request));
+        response = await replay.send(request);
       } catch (error) {
         // The agent aborted the request, for example after a stop.
         if (request.signal.aborted) return Response.error();
         throw error;
       }
-      const body = await response.text();
-      if (response.ok) {
-        for (const toolRequest of toolRequests(body)) {
+      if (agentRequest && response.status >= 200 && response.status < 300) {
+        for (const toolRequest of toolRequests(response.body)) {
           await hook({ type: "tool_request", ...toolRequest });
         }
       }
-      // fetch() already decoded the body, so drop the encoding headers.
-      const headers = new Headers(response.headers);
-      headers.delete("content-encoding");
-      headers.delete("content-length");
-      return new Response(body, {
-        headers,
+      return new Response(response.body, {
+        headers: response.headers,
         status: response.status,
         statusText: response.statusText,
       });

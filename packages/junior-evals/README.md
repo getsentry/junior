@@ -262,6 +262,29 @@ connections.
   `git add -f`. Review them for stale fetches and secret-like values before
   you commit.
 
+## Model Replay
+
+- `src/fixture/model-replay.ts` can answer model requests from recordings.
+  `JUNIOR_EVAL_MODEL_REPLAY` sets the mode. The default is `off`.
+- `auto` replays a recording that is younger than 7 days. Other requests go
+  to the live model.
+- `record` sends every request to the live model and writes new recordings.
+  Use it to refresh the recordings.
+- The key of a recording is the hash of the endpoint and the request body.
+  The body has the model, the system prompt, the messages, the tools, and the
+  settings. The key ignores ISO times.
+- A replayed response makes the agent send the same next request, so a full
+  turn can replay. A change to the prompt, a tool, a skill, or the model
+  changes the key, and that request and the requests after it are live.
+- Only a passing test writes recordings. A failed test writes nothing.
+- The Slack mock takes its timestamps and channel ids from the test name, so
+  the Conversation ids and the requests are the same on each run.
+- Replay does not replace Vercel Sandbox or other tool calls. They stay live.
+- The eval report shows `modelReplay.replayed` and `modelReplay.live` for
+  each test.
+- The recordings are in `.vitest-evals/recordings/model/`. Git ignores them.
+  The integration workflow keeps them in the GitHub Actions cache.
+
 ## Running
 
 - `pnpm evals` / `pnpm evals:behavioral`: Run the behavioral suite

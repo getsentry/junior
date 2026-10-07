@@ -9,6 +9,7 @@
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import { onTestFinished } from "vitest";
 import {
   serializeError,
   type HarnessRun,
@@ -26,6 +27,7 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { createModelReplay } from "./model-replay";
 import type {
   AutomationInput,
   FileInput,
@@ -118,6 +120,8 @@ export type RunAgent = (
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
   task: {
+    /** The file, describe blocks, and name of the test. */
+    fullName: string;
     meta: {
       harness?: { name: string; run: HarnessRun };
     };
@@ -165,8 +169,13 @@ export async function createFixtureAgent(
     background.add(tracked);
     void tracked.finally(() => background.delete(tracked));
   };
-  const slack = installSlackMock();
-  const gateway = installGatewayObserver();
+  const slack = installSlackMock(context.task.fullName);
+  const modelReplay = createModelReplay();
+  // Only a passing test writes recordings, so a bad sample is never replayed.
+  onTestFinished(async ({ task }) => {
+    if (task.result?.state === "pass") await modelReplay.save();
+  });
+  const gateway = installGatewayObserver(modelReplay);
   const blob = await installBlobMock();
   installWebReplay();
   const app = await createApp({
@@ -211,6 +220,7 @@ export async function createFixtureAgent(
   const currentUsage = (): FixtureUsage => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     gatewayRequests: gateway.requestCounts(),
+    modelReplay: modelReplay.counts(),
   });
   const startedAtMs = Date.now();
 
