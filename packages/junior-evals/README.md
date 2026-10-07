@@ -268,7 +268,9 @@ process and has no Junior code, so it can move out of this repository.
   setup sets `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY`,
   and `NODE_EXTRA_CA_CERTS`. The test workers and child processes inherit
   them. `NO_PROXY` in `src/recording-rules.ts` lists the hosts that skip the
-  proxy: loopback and the Cloudflare Quick Tunnel.
+  proxy: loopback and the Cloudflare Quick Tunnel. Some clients, such as
+  `@vercel/sandbox`, give `fetch` their own agent. `src/fetch-dispatcher.ts`
+  removes it, so these requests also use the proxy.
 - In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
   only loopback, DNS, and Cloudflare. Any other connection that does not use
   the proxy fails at once. The proxy itself starts outside the jail. Add a

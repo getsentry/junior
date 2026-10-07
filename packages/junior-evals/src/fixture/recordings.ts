@@ -19,6 +19,7 @@ import {
 import { inject, onTestFinished } from "vitest";
 import { installEvalAiGatewayDispatcher } from "../eval-ai-gateway-dispatcher";
 import "../eval-context";
+import { useGlobalDispatcherForFetch } from "../fetch-dispatcher";
 import { NO_PROXY } from "../recording-rules";
 
 /** Send the HTTP traffic of the current test through the recording proxy. */
@@ -39,6 +40,8 @@ export function installRecordings(): void {
     requestTls: { ca: proxy.caCert },
   });
   setGlobalDispatcher(agent);
+  // MSW starts before each test file, so this runs after it.
+  useGlobalDispatcherForFetch();
   const restoreTimeouts = installEvalAiGatewayDispatcher();
 
   onTestFinished(async ({ task }) => {

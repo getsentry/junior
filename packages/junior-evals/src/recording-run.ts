@@ -100,10 +100,12 @@ async function routeTrafficThroughProxy(
 
   // This process started before the variables, so set its agents here.
   const previousDispatcher = getGlobalDispatcher();
+  // undici drops credentials without a user name from a proxy URL.
   const dispatcher = new EnvHttpProxyAgent({
-    httpProxy: proxyEnv.HTTP_PROXY,
-    httpsProxy: proxyEnv.HTTPS_PROXY,
+    httpProxy: proxy.url,
+    httpsProxy: proxy.url,
     noProxy: NO_PROXY,
+    token: `Basic ${Buffer.from(`:${proxy.secret}`).toString("base64")}`,
     requestTls: { ca: proxy.caCert },
   });
   setGlobalDispatcher(dispatcher);

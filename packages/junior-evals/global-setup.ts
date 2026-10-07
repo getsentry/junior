@@ -15,6 +15,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
+import { useGlobalDispatcherForFetch } from "./src/fetch-dispatcher";
 import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
@@ -115,6 +116,8 @@ export default async function setup(
     stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    // The Vercel Sandbox client gives `fetch` its own agent.
+    useGlobalDispatcherForFetch();
     process.stdout.write("[evals] Starting public egress\n");
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,
