@@ -15,6 +15,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { blockEventAutomation } from "@/chat/event-automations/store";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -411,7 +412,10 @@ async function recordEventAutomationExecution(
   });
 }
 
-/** Project a blocked turn to the plugin API. */
+/**
+ * Project a blocked turn to the plugin API. The first block also tells the
+ * Automation creator, so a redelivered block does not notify twice.
+ */
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
@@ -429,17 +433,21 @@ export async function markDispatchBlocked(
   ) {
     await blockEventAutomation(getDb(), eventAutomationId, errorMessage);
   }
-  const next = await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : {
-          ...record,
-          errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : undefined),
-          status: "blocked",
-        },
-  );
+  let blocked = false;
+  const next = await transitionDispatch(id, (record) => {
+    if (isTerminalDispatchStatus(record.status)) return record;
+    blocked = true;
+    return {
+      ...record,
+      errorMessage,
+      ...(resultMessageTs ? { resultMessageTs } : undefined),
+      status: "blocked",
+    };
+  });
   await recordEventAutomationExecution(previous, next, "blocked");
+  if (blocked && next) {
+    await notifyAutomationBlocked(next);
+  }
   return next;
 }
 

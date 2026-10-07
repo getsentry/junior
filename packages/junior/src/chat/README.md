@@ -378,11 +378,15 @@ this directory.
 
 ## Automation runs
 
-Scheduled automation and Event automation runs are not chat Turns. The Source
-kind selects this mode, and `automation-result.ts` owns the result contract.
+Scheduled automation and Event automation runs are not chat Turns. The
+dispatch layer selects this mode once: `buildDispatchRoutingContext` sets
+`dispatch.declaresResult` for an automation Source. Prompt, tools, the result
+check, and Slack Delivery read that field. They do not check the Source.
+`automation-result.ts` owns the result contract.
 
 - The system prompt uses `<automation-run>` rules instead of the task,
-  conversation, and Slack action rules.
+  conversation, and Slack action rules. The run context lists each outcome and
+  says if it is the creator's direct message or a channel.
 - The run has no Delivery port, so final assistant text is never delivered.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.
@@ -391,9 +395,16 @@ kind selects this mode, and `automation-result.ts` owns the result contract.
   `blocked` with that reason. It does not run again until its creator resumes
   it. A declared message gets reply cleanup, and a message that is only the
   no-reply marker becomes `no_action`.
+- When a dispatch first becomes blocked, the creator gets one direct message
+  with the reason and a resume link (`automations/blocked-notice.ts`). The
+  notice is best-effort. The reason also shows on the dashboard and in the
+  automation tools.
 - A run that stops without a result gets one reminder. A second stop fails
-  the dispatch.
-- These rules apply only while the Source is an automation. A person who
+  the dispatch. A failed run posts nothing to its outcomes. The failure shows
+  on the dispatch and in the execution history. `finishedRunReply` decides
+  what a finished run posts, for first runs and resumed runs.
+- The `app.automation.result` span attribute records the declared result.
+- These rules apply only while the dispatch declares a result. A person who
   replies to an automation message starts a normal chat Turn in the same
   Conversation.
 

@@ -32,12 +32,14 @@ import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   logException,
+  setSpanAttributes,
   setTags,
   withLogContext,
   type LogContext,
 } from "@/chat/logging";
 import {
   finalizeFailedTurnReplyWithEvent,
+  getAgentTurnDiagnosticsAttributes,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -646,6 +648,7 @@ async function resumeSlackTurnInContext(
           logException,
         });
         const reply = finalized.reply;
+        setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
         const dispatchResult = runDispatchOutcome(reply);
         const dispatchErrorMessage = run.dispatch
           ? dispatchResult.errorMessage

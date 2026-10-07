@@ -13,7 +13,11 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitAssistantMessage } from "@/chat/task-execution/assistant-message";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { sendSlackReply } from "@/chat/slack/reply";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
+import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +79,7 @@ function jsonSchemaAllowsNull(schema: unknown): boolean {
 describe("event automations", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
+    resetSlackApiMockState();
     fixture = createConfiguredJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     queue = createConversationWorkQueueTestAdapter();
@@ -371,7 +376,7 @@ describe("event automations", () => {
     `);
   });
 
-  it("blocks an event automation after a misconfigured run until its creator resumes it", async () => {
+  it("blocks an event automation after a misconfigured run and tells its creator once", async () => {
     const { automation } = await createTask("Add the release-train label.");
     const reason = "The release-train label no longer exists.";
     const ingest = (eventKey: string) =>
@@ -382,12 +387,29 @@ describe("event automations", () => {
 
     expect(await ingest("github:misconfigured-1")).toEqual({ dispatched: 1 });
     // The work owner blocks the dispatch when a run declares `misconfigured`.
+    // A redelivered block must not notify the creator again.
     const [{ conversationId }] = queue.sentRecords();
-    await markDispatchBlocked(
-      conversationId!.replace(/^agent-dispatch:/, ""),
-      reason,
-    );
+    const dispatchId = conversationId!.replace(/^agent-dispatch:/, "");
+    await markDispatchBlocked(dispatchId, reason);
+    await markDispatchBlocked(dispatchId, reason);
 
+    // Nothing posts to the Destination. The creator gets one private notice.
+    expect(
+      getCapturedSlackApiCalls("conversations.open").map(
+        ({ params }) => params.users,
+      ),
+    ).toEqual(["U123"]);
+    expect(
+      slackApiOutbox.messages().map(({ params }) => ({
+        channel: params.channel,
+        text: params.text,
+      })),
+    ).toEqual([
+      {
+        channel: expect.stringMatching(/^D/),
+        text: expect.stringContaining(reason),
+      },
+    ]);
     const db = fixture.sql.db();
     const blocked = await getEventAutomation(db, automation.id);
     expect(blocked).toMatchObject({ status: "blocked", statusReason: reason });

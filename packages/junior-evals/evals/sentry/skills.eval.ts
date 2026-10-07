@@ -105,7 +105,13 @@ describe("Sentry Skill Workflows", () => {
 
     // Nobody can connect Sentry during the run. The run does not wait for
     // authorization, and the channel gets no question, link, or apology.
-    expect(digest.replies).toEqual([]);
+    // When the run blocks, only its creator gets the blocked notice, in a
+    // direct message.
+    expect(
+      digest.replies.filter(
+        (posted) => !/^Your automation \*.+\* is blocked\./.test(posted.text),
+      ),
+    ).toEqual([]);
     expect(digest.turns.map((turn) => turn.status)).not.toContain("started");
   });
 });
