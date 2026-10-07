@@ -11,8 +11,8 @@
 import { randomUUID } from "node:crypto";
 import {
   Agent,
+  EnvHttpProxyAgent,
   getGlobalDispatcher,
-  ProxyAgent,
   request,
   setGlobalDispatcher,
 } from "undici";
@@ -52,8 +52,12 @@ export function installRecordings(): Recordings {
 
   const previous = getGlobalDispatcher();
   // One agent per test, so each tunnel carries the session of its test.
-  const agent = new ProxyAgent({
-    uri: proxy.url,
+  // Local fixture servers, such as the blob server, are not outside
+  // traffic, so their requests do not go through the proxy.
+  const agent = new EnvHttpProxyAgent({
+    httpProxy: proxy.url,
+    httpsProxy: proxy.url,
+    noProxy: "localhost,127.0.0.1,::1",
     token: `Basic ${Buffer.from(`${sessionId}:${proxy.secret}`).toString("base64")}`,
     requestTls: { ca: proxy.caCert },
   });
