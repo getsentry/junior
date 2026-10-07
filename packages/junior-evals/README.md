@@ -348,12 +348,17 @@ process and has no Junior code, so it can move out of this repository.
 - After an `auto` run, the "commit recordings" job of the workflow commits
   the new recordings to the branch as "chore(evals): Update eval
   recordings" (`.github/actions/commit-eval-recordings`). The job takes only
-  recording files from the run artifacts and runs no pull request code. The
-  job holds the bot key, so it loads this action from the base commit of the
-  pull request. A change to the action takes effect only after it merges. It
+  recording files from the run artifacts and runs no pull request code. It
   pushes only when the branch is still at the tested commit, or at
-  recording commits on top of it. It uses the release bot app, so the push
-  starts CI again.
+  recording commits on top of it.
+- The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
+  no other secret. The token expires when the job ends, and it can do only
+  what a person who can push a branch here can already do.
+- GitHub does not start the checks of a `GITHUB_TOKEN` push by itself. It
+  holds them until a person with write access selects "Approve workflows to
+  run" on the pull request. Then the normal checks run on the recordings
+  commit, including `ci / required`. If GitHub shows no held runs, close and
+  reopen the pull request, or push another commit.
 - A run on a recordings commit uses strict `replay`. A green run shows that
   the committed recordings cover every model request. Strict runs write
   nothing, so they never start another commit.
@@ -361,7 +366,7 @@ process and has no Junior code, so it can move out of this repository.
   for the earlier run of that suite. A recordings commit does not cancel
   runs that are still recording, because each bot that pushes has its own
   concurrency group.
-- Pull requests from forks get no token. Their new recordings stay in the
+- Pull requests from forks get a read-only token. Their new recordings stay in the
   `eval-recordings-*` artifacts. The job summary shows the `gh run download`
   command that adds them to a branch.
 - A failed test writes no recordings. Its strict run fails again with

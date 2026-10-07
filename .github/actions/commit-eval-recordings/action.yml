@@ -3,18 +3,14 @@ description: >
   Commit the new eval recordings of a pull request run to its branch. It
   takes only recording files from the run artifacts and runs no code from
   the pull request. It pushes only when the branch is still at the tested
-  commit, or at recording commits on top of it. The push starts the evals
-  again, and the eval-recordings-mode action makes that run strict. See
-  "Recordings" in packages/junior-evals/README.md.
+  commit, or at recording commits on top of it. It pushes with the
+  GITHUB_TOKEN of the job, which needs `contents: write`. GitHub starts the
+  runs of that push only after a person with write access approves them.
+  The eval-recordings-mode action makes those runs strict. See "Recordings"
+  in packages/junior-evals/README.md.
 inputs:
   suite:
     description: The eval suite, such as `integration`.
-    required: true
-  app-id:
-    description: The client ID of the GitHub App that pushes.
-    required: true
-  private-key:
-    description: The private key of the GitHub App that pushes.
     required: true
 runs:
   using: composite
@@ -30,7 +26,6 @@ runs:
       shell: bash
       env:
         NEW: ${{ runner.temp }}/new-recordings
-        APP_ID: ${{ inputs.app-id }}
       run: |
         set -euo pipefail
         mkdir -p "$NEW"
@@ -46,25 +41,15 @@ runs:
           count=$((count + 1))
         done < <(find "$NEW" -type f -print0)
         echo "New ${{ inputs.suite }} recordings: $count"
-        # Without the app, the recordings stay in the run artifacts.
-        if [[ "$count" != "0" && -n "$APP_ID" ]]; then
+        if [[ "$count" != "0" ]]; then
           echo "push=true" >> "$GITHUB_OUTPUT"
         fi
-    - name: Get auth token
-      id: token
-      if: steps.files.outputs.push == 'true'
-      uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
-      with:
-        app-id: ${{ inputs.app-id }}
-        private-key: ${{ inputs.private-key }}
-        permission-contents: write
     - name: Check out the branch
       if: steps.files.outputs.push == 'true'
       uses: actions/checkout@v4
       with:
         repository: ${{ github.event.pull_request.head.repo.full_name }}
         ref: ${{ github.event.pull_request.head.ref }}
-        token: ${{ steps.token.outputs.token }}
         path: recordings-branch
         fetch-depth: 50
     - name: Commit and push
@@ -112,7 +97,9 @@ runs:
         Eval-Suite: $SUITE
         EOF
           if git push --quiet origin "HEAD:refs/heads/$BRANCH"; then
-            echo "Pushed $(git rev-parse --short HEAD)." >> "$GITHUB_STEP_SUMMARY"
+            # GitHub holds the runs of a GITHUB_TOKEN push until a person
+            # approves them.
+            echo "Pushed $(git rev-parse --short HEAD). To start its checks, select \"Approve workflows to run\" on the pull request." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "The push failed. Trying again."

@@ -111,20 +111,14 @@ jobs:
     needs: run
     if: ${{ always() && !cancelled() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # GITHUB_TOKEN pushes the branch and opens the pull request.
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       RECORDINGS_DIR: packages/junior-evals/recordings
     steps:
-      - name: Get auth token
-        id: token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
-        with:
-          app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
       - uses: actions/checkout@v4
-        with:
-          token: ${{ steps.token.outputs.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.0"
@@ -166,7 +160,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Open pull request
         env:
-          GH_TOKEN: ${{ steps.token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           BRANCH: evals/prune-recordings
         run: |
           set -euo pipefail
@@ -181,7 +175,11 @@ jobs:
           # This branch belongs to this workflow. Each run starts it again from main.
           git push --force origin "HEAD:refs/heads/$BRANCH"
           if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
+            # GitHub holds the checks of a GITHUB_TOKEN pull request until a
+            # person approves them. The repository can also forbid such pull
+            # requests. Then a person opens it from the branch.
             gh pr create --base main --head "$BRANCH" \
               --title "chore(evals): Delete unused eval recordings" \
-              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed. See the workflow run summary for failed evals."
+              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed. See the workflow run summary for failed evals." ||
+              echo "::warning::Could not open the pull request. Open it from the $BRANCH branch."
           fi
