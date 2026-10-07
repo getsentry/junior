@@ -8,12 +8,13 @@ import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
-// Five older shards form observation-sized groups. The last shard stays raw.
-const SHARDS = 6;
+// Older shards form observation-sized groups. The last shard stays raw.
+// The default 400k context limit triggers capacity compaction at 360k.
+const SHARDS = 21;
 
 function priorCiResults(): HistoryToolCall[] {
   return Array.from({ length: SHARDS }, (_, shard) => {
-    const checks = shard === SHARDS - 1 ? 530 : 390;
+    const checks = shard === SHARDS - 1 ? 800 : 390;
     const lines = Array.from({ length: checks }, (_, check) => {
       const location = `tests/api/resources/test_access.py::test_resource_${shard + 1}_${check + 1}`;
       if (shard === SHARDS - 1 && check === 114) {
@@ -65,6 +66,16 @@ describe("Priced Conversation context", () => {
       },
     );
     expect(conversation.turns.at(-1)?.status).toBe("succeeded");
+    const firstTurnUsage = (
+      conversation.usage?.metadata?.distillation as
+        | Record<
+            string,
+            { historyComplete: boolean; capacityCompactionCount: number }
+          >
+        | undefined
+    )?.[conversation.conversationId];
+    expect(firstTurnUsage?.historyComplete).toBe(true);
+    expect(firstTurnUsage?.capacityCompactionCount).toBe(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({

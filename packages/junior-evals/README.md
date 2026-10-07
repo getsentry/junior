@@ -199,13 +199,14 @@ It uses three live Turns: diagnose a failed CI run, repair the scoped lookup,
 then recall an audit reference from an earlier CI result. The reference is
 unique to the run and absent from the source tree. Require a completed repair,
 passing focused test, exact reference, and honest release note in both runs.
-Check capacity compaction counts in the off run. Require observations and a
-`priced: true` history replacement in the on run before using the pair as
-cost evidence. Re-run the pair to check variation. The separate long CI
-continuity case routes Luna. At the default
-context cap and current prices, its worker cannot pass the 20% check. Keep an
-uneconomical skip as a valid price decision. Do not lower the price check to
-make an eval activate.
+The older CI shards bring the first live Turn near the default 360k capacity
+trigger. Require no capacity compaction in that Turn. Require a later capacity
+compaction in the off run and observations with a `priced: true` history
+replacement in the on run before using the pair as cost evidence. Re-run the
+pair to check variation. The separate long CI continuity case routes Luna. At
+the default context cap and current prices, its worker cannot pass the 20%
+check. Keep an uneconomical skip as a valid price decision. Do not lower the
+price check to make an eval activate.
 
 The `context batch / probe` CI job sends one synthetic Gateway Batch. It
 reports only its state and numeric cost. A pending result proves submission,

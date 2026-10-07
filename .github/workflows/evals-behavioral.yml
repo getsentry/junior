@@ -329,6 +329,16 @@ jobs:
             | .[]
             | select(.historyComplete == true and .observationCount > 0 and any(.replacements[]?; .priced == true))
           ] | length > 0' packages/junior-evals/context-cost-on.json >/dev/null
+      - name: Require ordinary capacity compaction
+        if: matrix.mode == 'off'
+        run: |
+          jq -e '[
+            .testResults[].assertionResults[]
+            | select(.fullName | contains("repairs a scoped lookup after checking a long CI run"))
+            | .meta.harness.run.usage.metadata.distillation // {}
+            | .[]
+            | select(.historyComplete == true and .capacityCompactionCount > 0)
+          ] | length > 0' packages/junior-evals/context-cost-off.json >/dev/null
       - name: Require eval pass
         if: steps.run.outcome != 'success'
         run: exit 1
