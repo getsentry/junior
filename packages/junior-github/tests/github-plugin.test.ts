@@ -866,7 +866,7 @@ describe("github plugin", () => {
       {
         repo: "getsentry/junior",
         title: "Typed issue",
-        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**.\n<!-- junior-request-attribution:end -->",
         labels: ["bug"],
       },
       { toolCallId: "call-create-issue-accumulate" },
@@ -874,7 +874,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -1475,7 +1475,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("assigns pull requests to the linked requester and preserves attribution", async () => {
+  it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
@@ -1500,14 +1500,14 @@ Conversation: \`local:test:old-conversation\`
               id: "github-identity",
               provider: "github",
               providerSubjectId: "1473041",
-              handle: "dcramer",
+              handle: "dcramer_sentry",
             },
           ],
         },
       }),
       egressFetch: async ({ operation }) =>
         operation === "github.pull.assign"
-          ? Response.json({ assignees: [{ login: "dcramer" }] })
+          ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
           : new Response(
               JSON.stringify({
                 number: 692,
@@ -1541,11 +1541,11 @@ Conversation: \`local:test:old-conversation\`
       "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
     );
     await expect(assignment.request.json()).resolves.toEqual({
-      assignees: ["dcramer"],
+      assignees: ["dcramer_sentry"],
     });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
 
