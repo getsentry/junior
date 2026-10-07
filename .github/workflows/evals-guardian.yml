@@ -29,6 +29,13 @@ jobs:
         with:
           filters: |
             relevant:
+              - '.github/actions/collect-eval-recordings/**'
+              - 'packages/junior-evals/recordings/**'
+              - 'packages/junior-evals/src/recording-proxy/**'
+              - 'packages/junior-evals/src/recording-rules.ts'
+              - 'packages/junior-evals/src/recording-run.ts'
+              - 'packages/junior-evals/src/recording-setup.ts'
+              - 'packages/junior-evals/src/fixture/recordings.ts'
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
@@ -85,6 +92,11 @@ jobs:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
         run: pnpm --filter @sentry/junior-evals evals:guardian
+      - name: Collect new recordings
+        if: always() && !cancelled()
+        uses: ./.github/actions/collect-eval-recordings
+        with:
+          name: eval-recordings-guardian
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'

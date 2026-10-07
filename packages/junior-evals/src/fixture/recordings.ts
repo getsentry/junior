@@ -28,7 +28,7 @@ export interface Recordings {
 
 /** Send the HTTP traffic of the current test through the recording proxy. */
 export function installRecordings(): Recordings {
-  const proxy = inject("juniorEvalContext")?.recordingProxy;
+  const proxy = inject("recordingProxy");
   if (!proxy) return { counts: async () => ({}) };
 
   const sessionId = randomUUID();

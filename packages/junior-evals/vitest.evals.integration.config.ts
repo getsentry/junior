@@ -44,8 +44,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
   );
 }
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
-// Replay committed model responses. See "Recordings" in the README.
-process.env.JUNIOR_EVAL_MODEL_REPLAY ??= "auto";
 
 const resolve = {
   alias: {

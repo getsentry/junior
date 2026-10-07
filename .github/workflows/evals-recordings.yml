@@ -1,7 +1,9 @@
 name: Eval recordings
 
-# Keeps the committed recordings of the integration evals current.
-# See "Recordings" in packages/junior-evals/README.md.
+# Keeps the committed eval recordings current. Every eval suite runs on main
+# with the recording proxy. Missing responses go live and are recorded. A
+# last job adds the new recordings, deletes unused model recordings, and
+# opens one pull request. See "Recordings" in packages/junior-evals/README.md.
 
 on:
   schedule:
@@ -22,10 +24,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  refresh:
-    name: recordings / refresh
+  run:
+    name: recordings / ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 60
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: integration, shard: 1, shards: 2 }
+          - { suite: integration, shard: 2, shards: 2 }
+          - { suite: behavioral, shard: 1, shards: 4 }
+          - { suite: behavioral, shard: 2, shards: 4 }
+          - { suite: behavioral, shard: 3, shards: 4 }
+          - { suite: behavioral, shard: 4, shards: 4 }
+          - { suite: guardian, shard: 1, shards: 1 }
+          - { suite: router, shard: 1, shards: 1 }
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -59,6 +73,61 @@ jobs:
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
       RECORDINGS_DIR: packages/junior-evals/recordings
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        if: matrix.suite == 'integration' || matrix.suite == 'behavioral'
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      # A test writes recordings only when it passes, so a failed test never
+      # changes them. The last job reads the exit code.
+      - name: Run ${{ matrix.suite }} evals
+        env:
+          JUNIOR_EVAL_MODEL_REPLAY: ${{ inputs.mode || 'auto' }}
+          VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
+          SUITE: ${{ matrix.suite }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: |
+          set -uo pipefail
+          RESULT_DIR="$RUNNER_TEMP/eval-recordings-run"
+          mkdir -p "$RESULT_DIR"
+          touch "$RUNNER_TEMP/started"
+          pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
+          echo "$?" > "$RESULT_DIR/exit-code"
+          # A passing test writes every recording it used, so the file time
+          # shows which recordings this run used.
+          find "$RECORDINGS_DIR/model" -name '*.json' -newer "$RUNNER_TEMP/started" -printf '%f\n' \
+            > "$RESULT_DIR/used-model-recordings" 2>/dev/null || true
+          mkdir -p "$RESULT_DIR/new"
+          while IFS= read -r -d '' file; do
+            if [[ -f "$file" ]]; then cp --parents -t "$RESULT_DIR/new" "$file"; fi
+          done < <(git ls-files --others --modified --exclude-standard -z -- "$RECORDINGS_DIR")
+      - name: Upload run result
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-recordings-run-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/eval-recordings-run/
+          if-no-files-found: error
+          retention-days: 7
+
+  refresh:
+    name: recordings / refresh
+    needs: run
+    if: ${{ always() && !cancelled() }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      RECORDINGS_DIR: packages/junior-evals/recordings
+    steps:
       - name: Get auth token
         id: token
         uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
@@ -70,32 +139,45 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.token.outputs.token }}
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: Install cloudflared
-        run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error \
-            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
-            --output "$RUNNER_TEMP/cloudflared"
-          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
-          chmod +x "$RUNNER_TEMP/cloudflared"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/cloudflared" version
-      # A failed eval stops the job, so a bad run never changes the recordings.
-      - name: Run integration evals
+      - name: Download run results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: eval-recordings-run-*
+          path: ${{ runner.temp }}/runs
+      - name: Apply recordings
+        id: apply
         env:
-          JUNIOR_EVAL_MODEL_REPLAY: ${{ inputs.mode || 'auto' }}
-          VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
+          RUNS: ${{ runner.temp }}/runs
+          EXPECTED_RUNS: "8"
         run: |
           set -euo pipefail
-          mkdir -p "$RECORDINGS_DIR/model"
-          touch "$RUNNER_TEMP/started"
-          pnpm --filter @sentry/junior-evals evals:integration
-          # A passing test writes every recording it used. Delete the other
-          # model recordings. Behavioral evals also use web recordings, so
-          # this run cannot tell which web recordings are unused.
-          find "$RECORDINGS_DIR/model" -name '*.json' ! -newer "$RUNNER_TEMP/started" -delete
+          shopt -s nullglob
+          runs=("$RUNS"/*/)
+          failed=()
+          for run in "${runs[@]}"; do
+            name="$(basename "$run")"
+            if [[ "$(cat "$run/exit-code" 2>/dev/null || echo missing)" != "0" ]]; then
+              failed+=("${name#eval-recordings-run-}")
+            fi
+            if [[ -d "$run/new" ]]; then cp -R "$run/new/." .; fi
+          done
+          # Delete unused model recordings only when every job finished. A
+          # missing job would make all of its recordings look unused.
+          if [[ "${#runs[@]}" == "$EXPECTED_RUNS" ]]; then
+            cat "$RUNS"/*/used-model-recordings | sort -u > "$RUNNER_TEMP/used"
+            find "$RECORDINGS_DIR/model" -name '*.json' -printf '%f\n' | sort > "$RUNNER_TEMP/all"
+            comm -23 "$RUNNER_TEMP/all" "$RUNNER_TEMP/used" \
+              | while IFS= read -r file; do rm "$RECORDINGS_DIR/model/$file"; done
+          else
+            echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
+          fi
+          echo "failed=${failed[*]}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Eval recordings"
+            echo
+            echo "- Jobs finished: ${#runs[@]} of $EXPECTED_RUNS"
+            echo "- Jobs with failed evals: ${failed[*]:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Open pull request
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
@@ -115,5 +197,18 @@ jobs:
           if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
             gh pr create --base main --head "$BRANCH" \
               --title "chore(evals): Refresh eval recordings" \
-              --body "The nightly eval recordings workflow wrote these recordings. All integration evals passed in that run."
+              --body "The nightly eval recordings workflow wrote these recordings. Only passing tests write recordings. See the workflow run summary for failed evals."
           fi
+      # Behavioral evals allow some failed cases. Other suites must pass.
+      - name: Fail on failed evals
+        env:
+          FAILED: ${{ steps.apply.outputs.failed }}
+        run: |
+          set -euo pipefail
+          for job in $FAILED; do
+            if [[ "$job" != behavioral-* ]]; then
+              echo "::error::The $job evals failed."
+              exit_code=1
+            fi
+          done
+          exit "${exit_code:-0}"

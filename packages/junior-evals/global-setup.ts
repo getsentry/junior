@@ -15,11 +15,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import {
-  spawnRecordingProxy,
-  type RecordingProxy,
-} from "./src/recording-proxy/recording-proxy";
-import { recordingProxyConfig } from "./src/recording-rules";
+import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
 import {
@@ -29,9 +25,10 @@ import {
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
-type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
-  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
-};
+type EvalGlobalProject = Parameters<typeof setupPostgres>[0] &
+  Parameters<typeof startRecordingRun>[0] & {
+    provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
+  };
 
 /** Set up shared Postgres and public sandbox egress for one eval invocation. */
 export default async function setup(
@@ -44,7 +41,7 @@ export default async function setup(
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
-  let recordingProxy: RecordingProxy | undefined;
+  let stopRecordings: (() => Promise<void>) | undefined;
   let mswListening = false;
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
   const fixtureEnv = {
@@ -66,7 +63,7 @@ export default async function setup(
     const errors: unknown[] = [];
     for (const task of [
       async () => await egress?.close(),
-      async () => await recordingProxy?.close(),
+      async () => await stopRecordings?.(),
       async () => {
         if (mswListening) mswServer.close();
       },
@@ -115,8 +112,7 @@ export default async function setup(
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);
     previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
-    // The proxy runs in its own process, so the mocks here cannot answer it.
-    recordingProxy = await spawnRecordingProxy(recordingProxyConfig());
+    stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
     process.stdout.write("[evals] Starting public egress\n");
@@ -145,11 +141,6 @@ export default async function setup(
       baseUrl: egress.baseUrl,
       controlToken: egress.controlToken,
       controlUrl: egress.controlUrl,
-      recordingProxy: {
-        caCert: recordingProxy.caCert,
-        secret: recordingProxy.secret,
-        url: recordingProxy.url,
-      },
       redisUrl,
       stateKeyPrefix,
       stateUrl: egress.stateUrl,

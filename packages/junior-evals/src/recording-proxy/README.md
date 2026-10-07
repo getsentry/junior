@@ -31,7 +31,12 @@ directory, so the proxy can move to its own package or repository.
   client.
 - `rules`: the traffic to record. A rule matches on `method`, `urlPrefix`,
   and `headers`. `ignore` lists regular expressions that the key ignores in
-  the body, such as times. `mode` is `off`, `auto`, or `record`.
+  the body, such as times. `keyHeaders` lists request headers that are part
+  of the key. `mode` is `off`, `auto`, or `record`.
+
+`GET /__recording-proxy/stats` returns the totals of the run: replayed and
+live counts by rule, how many recordings were new or changed, how many were
+dropped, and the origins of requests that matched no rule.
 
 The comment at the top of `recording-proxy.ts` has the full behavior and the
 control API.

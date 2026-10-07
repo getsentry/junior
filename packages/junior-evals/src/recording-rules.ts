@@ -5,7 +5,8 @@
  * this configuration. The proxy knows nothing about Junior. This file is the
  * one place that decides which eval requests are recorded and replayed. To
  * record more traffic, add a rule. An environment variable sets the mode of
- * each rule. Unset means `off`.
+ * each rule. Unset means `auto`, so every eval suite records and replays.
+ * Set it to `off` to send every request live without a recording.
  */
 import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
@@ -30,8 +31,15 @@ const RECORDING_RULES: Array<
     name: "model",
     modeEnv: "JUNIOR_EVAL_MODEL_REPLAY",
     method: "POST",
-    urlPrefix: "https://ai-gateway.vercel.sh/v1/",
+    urlPrefix: "https://ai-gateway.vercel.sh/",
     ignore: [ISO_TIME],
+    // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
+    // model in a header, not in the body.
+    keyHeaders: [
+      "ai-language-model-id",
+      "ai-language-model-streaming",
+      "ai-model-id",
+    ],
   },
   {
     // Public pages that the `webFetch` tool reads.
@@ -63,7 +71,7 @@ const ALLOWED_ORIGINS = [
 const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
 
 function readMode(name: string): RecordingMode {
-  const value = process.env[name]?.trim() || "off";
+  const value = process.env[name]?.trim() || "auto";
   if (value === "auto" || value === "off" || value === "record") return value;
   throw new Error(`${name} must be off, auto, or record, got ${value}`);
 }

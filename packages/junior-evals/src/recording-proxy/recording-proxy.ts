@@ -45,6 +45,8 @@
  * - `GET /__recording-proxy/sessions/<id>`: replay and live counts by rule.
  * - `POST /__recording-proxy/sessions/<id>/commit`: write the recordings.
  * - `POST /__recording-proxy/sessions/<id>/discard`: drop the recordings.
+ * - `GET /__recording-proxy/stats`: the counts of the whole run, and how
+ *   many recordings the run wrote new or changed.
  *
  * This file uses only Node built-ins and the `openssl` command. It imports
  * nothing else, so it can move out of this repository. Run it with
@@ -76,6 +78,11 @@ export interface RecordingRule {
   headers?: Record<string, string>;
   /** Regular expression sources. The key ignores their matches in the body. */
   ignore?: string[];
+  /**
+   * Request headers that are part of the key, with lowercase names. Use
+   * this when a header changes the response, such as a model id header.
+   */
+  keyHeaders?: string[];
 }
 
 export interface RecordingProxyConfig {
@@ -95,6 +102,21 @@ export type RecordingCounts = Record<
   string,
   { live: number; replayed: number }
 >;
+
+/** The totals of a proxy run, from `GET /__recording-proxy/stats`. */
+export interface RecordingRunStats {
+  /** Replayed and live requests of all sessions, by rule. */
+  counts: RecordingCounts;
+  /** Recordings that a commit wrote and that were new or changed. */
+  written: number;
+  /** Recordings that a discard dropped, because their test failed. */
+  discarded: number;
+  /**
+   * Requests that matched no rule, by origin. These went live and were not
+   * recorded. Use this to find traffic that a rule misses.
+   */
+  passthrough: Record<string, number>;
+}
 
 /** A running recording proxy. */
 export interface RecordingProxy {
@@ -137,6 +159,7 @@ interface Target {
 /** Change this to make every recording a miss. */
 const RECORDING_VERSION = "http-v1";
 const CONTROL_PREFIX = "/__recording-proxy/sessions/";
+const STATS_PATH = "/__recording-proxy/stats";
 /** Response headers that a recording keeps. Other headers change each run. */
 const RECORDED_HEADERS = ["content-type", "location"];
 /** Headers for one connection, which the proxy must not forward. */
@@ -293,8 +316,13 @@ function stableStringify(value: unknown): string {
 
 /** The recording key of a request. */
 export function recordingKey(
-  rule: Pick<RecordingRule, "ignore" | "name">,
-  request: { body: string; method: string; url: string },
+  rule: Pick<RecordingRule, "ignore" | "keyHeaders" | "name">,
+  request: {
+    body: string;
+    headers?: http.IncomingHttpHeaders;
+    method: string;
+    url: string;
+  },
 ): string {
   let body: string;
   try {
@@ -305,13 +333,12 @@ export function recordingKey(
   for (const pattern of rule.ignore ?? []) {
     body = body.replace(new RegExp(pattern, "g"), "<ignored>");
   }
-  return createHash("sha256")
-    .update(
-      [RECORDING_VERSION, rule.name, request.method, request.url, body].join(
-        "\n",
-      ),
-    )
-    .digest("hex");
+  const parts = [RECORDING_VERSION, rule.name, request.method, request.url];
+  for (const name of rule.keyHeaders ?? []) {
+    parts.push(`${name}: ${String(request.headers?.[name] ?? "")}`);
+  }
+  parts.push(body);
+  return createHash("sha256").update(parts.join("\n")).digest("hex");
 }
 
 function matches(
@@ -458,13 +485,20 @@ async function readRecording(file: string): Promise<Recording | undefined> {
   }
 }
 
-async function saveRecordings(recordings: Map<string, Recording>) {
-  await Promise.all(
+/** Write recordings. Returns how many were new or changed. */
+async function saveRecordings(
+  recordings: Map<string, Recording>,
+): Promise<number> {
+  const changed = await Promise.all(
     [...recordings].map(async ([file, recording]) => {
+      const content = `${JSON.stringify(recording, null, 2)}\n`;
+      const previous = await readFile(file, "utf8").catch(() => undefined);
       await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, `${JSON.stringify(recording, null, 2)}\n`);
+      await writeFile(file, content);
+      return previous !== content;
     }),
   );
+  return changed.filter(Boolean).length;
 }
 
 /** Start the proxy in this process. */
@@ -478,18 +512,23 @@ export async function startRecordingProxy(
   // Only a client with this secret can make the proxy send requests.
   const secret = randomBytes(24).toString("hex");
   const sessions = new Map<string, Session>();
+  const emptyCounts = (): RecordingCounts =>
+    Object.fromEntries(
+      config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
+    );
+  const stats: RecordingRunStats = {
+    counts: emptyCounts(),
+    written: 0,
+    discarded: 0,
+    passthrough: {},
+  };
   const targets = new WeakMap<Socket, Target>();
   const sockets = new Set<Socket>();
 
   const sessionFor = (id: string): Session => {
     let session = sessions.get(id);
     if (!session) {
-      session = {
-        counts: Object.fromEntries(
-          config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
-        ),
-        pending: new Map(),
-      };
+      session = { counts: emptyCounts(), pending: new Map() };
       sessions.set(id, session);
     }
     return session;
@@ -501,7 +540,7 @@ export async function startRecordingProxy(
     recording: Recording,
   ) => {
     if (sessionId) sessionFor(sessionId).pending.set(file, recording);
-    else await saveRecordings(new Map([[file, recording]]));
+    else stats.written += await saveRecordings(new Map([[file, recording]]));
   };
 
   const handle = async (
@@ -528,6 +567,7 @@ export async function startRecordingProxy(
     );
 
     if (!rule) {
+      stats.passthrough[url.origin] = (stats.passthrough[url.origin] ?? 0) + 1;
       const response = await sendUpstream(
         allowed,
         requestPath,
@@ -544,11 +584,13 @@ export async function startRecordingProxy(
       return;
     }
 
-    const counts = target.session
-      ? sessionFor(target.session).counts[rule.name]
-      : undefined;
+    const counts = [
+      stats.counts[rule.name],
+      target.session ? sessionFor(target.session).counts[rule.name] : undefined,
+    ].filter((entry) => entry !== undefined);
     const key = recordingKey(rule, {
       body: body.toString("utf8"),
+      headers: incoming.headers,
       method,
       url: url.href,
     });
@@ -556,14 +598,14 @@ export async function startRecordingProxy(
     if (rule.mode === "auto") {
       const recording = await readRecording(file);
       if (recording) {
-        if (counts) counts.replayed += 1;
+        for (const entry of counts) entry.replayed += 1;
         await keep(target.session, file, recording);
         writeRecording(outgoing, recording, "replayed");
         return;
       }
     }
 
-    if (counts) counts.live += 1;
+    for (const entry of counts) entry.live += 1;
     let clientGone = false;
     outgoing.on("close", () => {
       if (!outgoing.writableFinished) clientGone = true;
@@ -604,6 +646,11 @@ export async function startRecordingProxy(
       return;
     }
     const pathname = new URL(incoming.url ?? "/", "http://proxy").pathname;
+    if (incoming.method === "GET" && pathname === STATS_PATH) {
+      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.end(JSON.stringify(stats));
+      return;
+    }
     if (!pathname.startsWith(CONTROL_PREFIX)) {
       outgoing.writeHead(404).end();
       return;
@@ -622,7 +669,10 @@ export async function startRecordingProxy(
       return;
     }
     if (incoming.method === "POST" && action === "commit") {
-      await saveRecordings(sessionFor(id).pending);
+      stats.written += await saveRecordings(sessionFor(id).pending);
+    }
+    if (incoming.method === "POST" && action === "discard") {
+      stats.discarded += sessionFor(id).pending.size;
     }
     if (
       incoming.method === "POST" &&

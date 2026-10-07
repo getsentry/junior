@@ -260,35 +260,68 @@ Evals record outside HTTP traffic in files in git and replay it. The
 recording proxy in `src/recording-proxy/` does this. It runs in its own
 process and has no Junior code, so it can move out of this repository.
 
-- Global setup starts the proxy. Each test sends all HTTP traffic through it
-  as one session (`src/fixture/recordings.ts`). The fixture mocks, such as
+- Every eval suite uses the proxy: integration, behavioral, Guardian, and
+  turn router. Global setup starts it with `startRecordingRun()`
+  (`src/recording-run.ts`). Each test sends all HTTP traffic through it as
+  one session (`src/fixture/recordings.ts`). The fixture mocks, such as
   Slack, still answer first.
 - `src/recording-rules.ts` is the one list of recorded traffic. To record
   more traffic, add a rule there.
 - The proxy sends requests only to the allowed origins in
   `src/recording-rules.ts`. It refuses all other origins with HTTP 403. To
   let an eval reach a new site, add its origin to that list.
-- `model`: AI Gateway model requests. `JUNIOR_EVAL_MODEL_REPLAY` sets the
-  mode. The integration suite uses `auto`. Other suites use the live model.
+- `model`: every POST to the AI Gateway. This includes agent, title,
+  compaction, judge, Guardian, and turn router requests.
+  `JUNIOR_EVAL_MODEL_REPLAY` sets the mode.
 - `web`: the pages that `webFetch` reads. `VITEST_EVALS_REPLAY_MODE` sets the
-  mode. The integration and behavioral suites use `auto`. A redirect is its
-  own recording.
+  mode. A redirect is its own recording.
+- Both modes are `auto` when unset. Set a mode to `off` to send every
+  request live, or to `record` to write all recordings again.
 - The recordings are in `recordings/<rule>/`.
-- A recording answers a request when the method, URL, and body are the same.
-  For a model request, the body has the model, the system prompt, the
-  messages, the tools, and the settings. The key ignores ISO times.
+- A recording answers a request when the method, URL, body, and the
+  `keyHeaders` of the rule are the same. AI SDK gateway requests name the
+  model in the `ai-language-model-id` header, so that header is in the key.
+  The key ignores ISO times.
 - Other requests go live. When the test passes, the proxy writes every
   recording that the test used. A failed test writes nothing. A 429 or 5xx
   response is never recorded.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
   You can commit the new recordings with your change.
-- The "Eval recordings" workflow runs each night on `main`. It records
-  missing responses and deletes the model recordings that no test used. Then
-  it opens or updates one pull request. A failed eval stops the workflow, and
-  the recordings do not change.
+
+### Check that recording works
+
+- At the end of each run, global setup prints one line, for example
+  `[evals] Recordings: model 12 replayed, 3 live; web 4 replayed, 0 live. 3
+recordings new or changed, 0 dropped from failed tests. Not recorded:
+none.` In GitHub Actions the line is also in the job summary.
+- `replayed` counts requests that a recording answered. `live` counts
+  requests that went to the provider and that a rule records.
+- `Not recorded` lists origins of allowed requests that matched no rule. If
+  `https://ai-gateway.vercel.sh` is in this list, a model request is missing
+  from the rules.
+- Run a suite two times. The second run must show `0 live` for each test
+  that passed in the first run.
+- The AI SDK sends no model request when it has no gateway credential. To
+  replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
+- Each eval workflow uploads the new and changed recordings of a run as an
+  artifact. The job summary shows the `gh run download` command that adds
+  them to your branch.
+
+### Nightly refresh
+
+- The "Eval recordings" workflow runs each night on `main`. It runs every
+  eval suite. It adds the new recordings, and it deletes the model
+  recordings that no passing test used. Then it opens or updates one pull
+  request.
+- It deletes recordings only when every job finished. A failed integration,
+  Guardian, or router eval fails the workflow. Behavioral evals allow some
+  failed cases.
 - Run that workflow with `record` to write all recordings again. Locally,
-  use `pnpm --filter @sentry/junior-evals evals:integration:record` for
-  models and `pnpm evals:record` for web pages.
+  set `JUNIOR_EVAL_MODEL_REPLAY=record`, or use
+  `pnpm --filter @sentry/junior-evals evals:integration:record`.
+
+### Inputs that must not change
+
 - The Slack mock takes its timestamps and channel ids from the test name, so
   Conversation ids and requests are the same on each run.
 - Sandbox requests that use credentials go to the test HTTP fixtures in

@@ -126,6 +126,17 @@ describe("recording proxy", () => {
     ]);
     expect(replay.counts).toEqual({ model: { live: 1, replayed: 1 } });
     expect(liveRequests).toBe(2);
+    // The run stats add up every session. A replayed recording is not new.
+    const stats = await request(`${running.url}/__recording-proxy/stats`, {
+      dispatcher: control,
+      headers: auth(running),
+    });
+    await expect(stats.body.json()).resolves.toEqual({
+      counts: { model: { live: 2, replayed: 1 } },
+      written: 2,
+      discarded: 0,
+      passthrough: {},
+    });
   });
 
   it("sends no request to another origin", async () => {
