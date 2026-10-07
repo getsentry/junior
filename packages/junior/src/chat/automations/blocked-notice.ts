@@ -4,9 +4,11 @@ import { getEventAutomation } from "@/chat/event-automations/store";
 import { runBestEffort } from "@/chat/logging";
 import { readScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { fallbackShortTitle } from "@/chat/services/short-title";
-import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import {
+  openSlackDirectMessage,
+  postSlackMessage,
+} from "@/chat/slack/outbound";
 
 interface BlockedAutomation {
   creatorSlackUserId: string;
@@ -73,20 +75,8 @@ export async function notifyAutomationBlocked(
     async () => {
       const automation = await readBlockedAutomation(ref);
       if (!automation) return;
-      const opened = await withSlackRetries(
-        () =>
-          getSlackClient().conversations.open({
-            users: automation.creatorSlackUserId,
-          }),
-        3,
-        { action: "conversations.open" },
-      );
-      const channelId = opened.channel?.id;
-      if (!channelId) {
-        throw new Error("Slack did not return a direct message channel.");
-      }
       await postSlackMessage({
-        channelId,
+        channelId: await openSlackDirectMessage(automation.creatorSlackUserId),
         text: buildBlockedNoticeText(automation, ref.reason),
       });
     },

@@ -369,7 +369,7 @@ async function persistBlockedDispatchTurn(
   await markDispatchBlocked(
     dispatch.id,
     error instanceof AuthorizationFlowDisabledError
-      ? `Dispatch requires ${error.provider} authorization.`
+      ? `This run needs a connected ${error.provider} account.`
       : error.message,
   );
 }

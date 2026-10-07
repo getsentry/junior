@@ -413,10 +413,10 @@ async function recordEventAutomationExecution(
 }
 
 /**
- * Project a blocked turn to the plugin API. The first block of an Event
- * automation also tells its creator, so a redelivered block does not notify
- * twice. The heartbeat tells a Scheduled automation creator after it stores
- * the Scheduled automation as blocked.
+ * Project a blocked turn to the plugin API. An Event automation is blocked
+ * first, so a retry after a failed write still blocks it. Its creator is told
+ * when the block is first stored. The heartbeat blocks a Scheduled automation
+ * and tells its creator.
  */
 export async function markDispatchBlocked(
   id: string,
@@ -424,37 +424,31 @@ export async function markDispatchBlocked(
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   const previous = await getDispatchRecord(id);
-  // Stop the Event automation before the dispatch becomes terminal, so a
-  // retry after a failed write still stops it. Scheduled automations stop
-  // when the heartbeat reads the blocked dispatch.
   const eventAutomationId = previous?.metadata?.eventAutomationId;
   if (
     previous?.plugin === "junior" &&
     eventAutomationId &&
-    !isTerminalDispatchStatus(previous.status)
+    !isTerminalDispatchStatus(previous.status) &&
+    (await blockEventAutomation(getDb(), eventAutomationId, errorMessage))
   ) {
-    await blockEventAutomation(getDb(), eventAutomationId, errorMessage);
-  }
-  let blocked = false;
-  const next = await transitionDispatch(id, (record) => {
-    if (isTerminalDispatchStatus(record.status)) return record;
-    blocked = true;
-    return {
-      ...record,
-      errorMessage,
-      ...(resultMessageTs ? { resultMessageTs } : undefined),
-      status: "blocked",
-    };
-  });
-  await recordEventAutomationExecution(previous, next, "blocked");
-  if (blocked && next && eventAutomationId && next.plugin === "junior") {
     await notifyAutomationBlocked({
       automationId: eventAutomationId,
-      dispatchId: next.id,
+      dispatchId: id,
       kind: "event",
       reason: errorMessage,
     });
   }
+  const next = await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : {
+          ...record,
+          errorMessage,
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
+          status: "blocked",
+        },
+  );
+  await recordEventAutomationExecution(previous, next, "blocked");
   return next;
 }
 

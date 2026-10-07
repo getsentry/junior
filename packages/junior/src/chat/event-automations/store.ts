@@ -454,14 +454,15 @@ export async function setEventAutomationStatus(
  * Stop an event automation after a run reports a problem that only its
  * creator can fix. An active automation becomes blocked. A paused automation
  * stays paused and keeps the reason, so resume returns it to blocked.
- * Deleted automations do not change.
+ * Deleted automations do not change. Returns true only when this call
+ * stored the block, so a redelivered block can skip the creator notice.
  */
 export async function blockEventAutomation(
   db: JuniorDatabase,
   id: string,
   reason: string,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const updated = await db
     .update(juniorEventAutomations)
     .set({
       status: sql`case when ${juniorEventAutomations.status} = 'active' then 'blocked' else ${juniorEventAutomations.status} end`,
@@ -470,7 +471,15 @@ export async function blockEventAutomation(
     .where(
       and(
         eq(juniorEventAutomations.id, id),
-        inArray(juniorEventAutomations.status, ["active", "paused"]),
+        or(
+          eq(juniorEventAutomations.status, "active"),
+          and(
+            eq(juniorEventAutomations.status, "paused"),
+            sql`${juniorEventAutomations.statusReason} is distinct from ${reason}`,
+          ),
+        ),
       ),
-    );
+    )
+    .returning({ id: juniorEventAutomations.id });
+  return updated.length > 0;
 }

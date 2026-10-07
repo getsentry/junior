@@ -26,6 +26,7 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
+import { isDmChannel } from "@/chat/slack/client";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import type {
   Destination,
@@ -541,8 +542,8 @@ function formatOutcomeLines(outcomes: TaskOutcome[] | undefined): string[] {
   }
   return outcomes.map((outcome, index) => {
     const { channelId, threadTs } = outcome.destination;
-    // An Automation only sends to a direct message with its creator.
-    const recipient = channelId.startsWith("D")
+    // The only direct message an Automation can send to is its creator's.
+    const recipient = isDmChannel(channelId)
       ? "the creator's direct message"
       : "a slack channel";
     const target = [

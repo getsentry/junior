@@ -397,18 +397,20 @@ check, and Slack Delivery read that field. They do not check the Source.
   no-reply marker becomes `no_action`.
 - When an Automation first becomes blocked, the creator gets one direct
   message with the reason and a resume link (`automations/blocked-notice.ts`).
-  The notice goes after the Automation is stored as blocked: at dispatch block
-  for an Event automation, and at heartbeat reconcile for a Scheduled
-  automation. The notice is best-effort. The reason also shows on the dashboard and in the
-  automation tools.
+  The notice goes only after the Automation is stored as blocked: at dispatch
+  block for an Event automation, and at heartbeat reconcile for a Scheduled
+  automation. The notice is best-effort. The reason also shows on the
+  dashboard and in the automation tools.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch. A failed run posts nothing to its outcomes. The failure shows
-  on the dispatch and in the execution history. `finishedRunReply` decides
-  what a finished run posts, for first runs and resumed runs.
+  on the dispatch, in the execution history, and as the last run status on
+  the dashboard. `finishedRunReply` decides what a finished run posts, for
+  first runs and resumed runs.
 - The `app.automation.result` span attribute records the declared result.
-- These rules apply only while the dispatch declares a result. A person who
-  replies to an automation message starts a normal chat Turn in the same
-  Conversation.
+- Each run has its own dispatch Conversation, `agent-dispatch:{id}`. A person
+  who replies to the posted message starts a normal chat Turn in the Slack
+  thread Conversation. That Turn sees the thread, including the posted
+  message. It does not see the tool calls of the run.
 
 Watches and other plugin dispatches keep the chat Turn contract.
 
