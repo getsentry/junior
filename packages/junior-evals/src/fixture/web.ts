@@ -4,12 +4,28 @@
  * The `webSearch` tool asks a search provider through the AI Gateway. This
  * module always answers that request itself, so no test reaches the real
  * provider. A search finds nothing unless the test calls
- * `mockWebSearchResults()`. The pages that the `webFetch` tool reads are
- * recorded by `recordings.ts`.
+ * `mockWebSearchResults()`.
+ *
+ * The pages that the `webFetch` tool reads go to the recording proxy, which
+ * replays them. See `src/recording-rules.ts`.
  */
 import { randomUUID } from "node:crypto";
-import { HttpResponse } from "msw";
+import { http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
+import { USER_AGENT } from "@/chat/tools/web/constants";
+import { mswServer } from "@junior-tests/msw/server";
+
+/** Let the pages that `webFetch` reads reach the recording proxy. */
+export function installWebPassthrough(): void {
+  mswServer.use(
+    http.get("*", ({ request }) =>
+      // Only `webFetch` sends this user agent.
+      request.headers.get("user-agent") === USER_AGENT
+        ? passthrough()
+        : undefined,
+    ),
+  );
+}
 
 /** One result of the mocked search provider. */
 export interface WebSearchResult {

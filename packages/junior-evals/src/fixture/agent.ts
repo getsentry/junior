@@ -3,9 +3,11 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks. Model responses and the web pages that
- * `webFetch` reads can be replayed from `recordings.ts`. The fixture replaces only the Vercel Queue transports and
- * `waitUntil` with in-process versions, so it knows when the agent is idle.
+ * third-party APIs are MSW mocks. Other HTTP traffic goes through the
+ * recording proxy, which can replay model responses and the web pages that
+ * `webFetch` reads. See `recordings.ts`. The fixture replaces only the
+ * Vercel Queue transports and `waitUntil` with in-process versions, so it
+ * knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -27,6 +29,7 @@ import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import { installRecordings } from "./recordings";
+import { installWebPassthrough } from "./web";
 import type {
   AutomationInput,
   FileInput,
@@ -169,8 +172,9 @@ export async function createFixtureAgent(
   };
   const slack = installSlackMock(context.task.fullName);
   const recordings = installRecordings();
-  const gateway = installGatewayObserver(recordings);
+  const gateway = installGatewayObserver();
   const blob = await installBlobMock();
+  installWebPassthrough();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
@@ -210,10 +214,10 @@ export async function createFixtureAgent(
     [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
-  const currentUsage = (): FixtureUsage => ({
+  const currentUsage = async (): Promise<FixtureUsage> => ({
     agentCostUsd: [...agentCostUsd.values()].reduce((a, b) => a + b, 0),
     gatewayRequests: gateway.requestCounts(),
-    recordings: recordings.counts(),
+    recordings: await recordings.counts(),
   });
   const startedAtMs = Date.now();
 
@@ -458,7 +462,7 @@ export async function createFixtureAgent(
       context.task.meta.harness = {
         name: "junior",
         run: {
-          ...combinedRun(calls, currentUsage(), startedAtMs),
+          ...combinedRun(calls, await currentUsage(), startedAtMs),
           errors: [serializeError(error)],
         },
       };
@@ -533,7 +537,7 @@ export async function createFixtureAgent(
         0,
       ),
     );
-    const usage = currentUsage();
+    const usage = await currentUsage();
     const callRun = toHarnessRun({
       conversationId: record.conversationId,
       earlier,
@@ -644,7 +648,7 @@ export async function createFixtureAgent(
       ...toHarnessRun({
         conversationId: forkRecord.conversationId,
         earlier: forkRecord.visibleMessages,
-        usage: currentUsage(),
+        usage: await currentUsage(),
         messages: [],
         startedAtMs,
         toolCalls: [],

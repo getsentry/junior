@@ -53,7 +53,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 ## Eval Recordings
 
 - Evals replay outside HTTP traffic, such as model responses and web pages, from `packages/junior-evals/recordings/`.
-- `RECORDING_RULES` in `packages/junior-evals/src/fixture/recordings.ts` is the one list of recorded traffic. To record more, add a rule.
+- A separate recording proxy (`packages/junior-evals/src/recording-proxy/`) records and replays the traffic. `packages/junior-evals/src/recording-rules.ts` is the one list of recorded traffic. To record more, add a rule.
 - A changed prompt, tool, skill, or model makes new requests. These requests go live.
 - You can commit new recordings with your change, but you do not have to. A nightly workflow records missing responses, deletes unused model recordings, and opens a pull request.
 - To write all recordings again, run the "Eval recordings" workflow with `record`.

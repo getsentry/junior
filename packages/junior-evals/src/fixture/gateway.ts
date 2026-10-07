@@ -1,16 +1,15 @@
 /**
  * AI Gateway observer for the agent test fixture.
  *
- * Model requests go to the real AI Gateway, or to `recordings.ts` when
- * the `model` rule is on. This observer watches agent requests (the ones that
- * offer tools) and holds them while a test reacts. It never changes a model request
- * or its response. Two requests are not model requests. Image generation is a
- * third-party image API, so the observer answers it with a 1x1 PNG. `webSearch` is a third-party search
+ * Every model request goes to the real AI Gateway. This observer only watches
+ * agent requests (the ones that offer tools) and holds them while a test
+ * reacts. It never changes a model request or its response. Two requests are
+ * not model requests. Image generation is a third-party image API, so the
+ * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
  * provider, so `web.ts` answers it with the results of the test.
  */
-import { http, HttpResponse, passthrough } from "msw";
+import { bypass, http, HttpResponse, passthrough } from "msw";
 import { mswServer } from "@junior-tests/msw/server";
-import type { Recordings } from "./recordings";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
@@ -94,9 +93,7 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 }
 
 /** Install the AI Gateway observer for the current test. */
-export function installGatewayObserver(
-  recordings: Recordings,
-): GatewayObserver {
+export function installGatewayObserver(): GatewayObserver {
   const counts: Record<string, number> = {};
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
 
@@ -115,33 +112,39 @@ export function installGatewayObserver(
           ],
         });
       }
-      if (request.method !== "POST") return passthrough();
       const hook = progressHook;
-      // Titles and other side calls do not offer tools.
-      const agentRequest =
-        hook !== undefined &&
-        request.url.startsWith(GATEWAY_MESSAGES_URL) &&
-        Boolean(
-          ((await request.clone().json()) as { tools?: unknown[] }).tools
-            ?.length,
-        );
-      // Without a recording rule, only agent requests need the response body.
-      if (!agentRequest && !recordings.matches(request)) return passthrough();
-      if (agentRequest) await hook({ type: "model_request" });
+      if (!hook || !request.url.startsWith(GATEWAY_MESSAGES_URL)) {
+        return passthrough();
+      }
+      const payload = (await request.clone().json()) as { tools?: unknown[] };
+      if (!payload.tools?.length) {
+        // Titles and other side calls do not offer tools.
+        return passthrough();
+      }
+      await hook({ type: "model_request" });
       let response: Response;
       try {
-        response = await recordings.fetch(request);
+        response = await fetch(bypass(request));
       } catch (error) {
         // The agent aborted the request, for example after a stop.
         if (request.signal.aborted) return Response.error();
         throw error;
       }
-      if (agentRequest && response.ok) {
-        for (const toolRequest of toolRequests(await response.clone().text())) {
+      const body = await response.text();
+      if (response.ok) {
+        for (const toolRequest of toolRequests(body)) {
           await hook({ type: "tool_request", ...toolRequest });
         }
       }
-      return response;
+      // fetch() already decoded the body, so drop the encoding headers.
+      const headers = new Headers(response.headers);
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+      return new Response(body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
     }),
   );
 

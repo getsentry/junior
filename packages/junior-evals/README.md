@@ -256,13 +256,15 @@ connections.
 
 ## Recordings
 
-The fixture records outside HTTP traffic in files in git and replays it.
-MSW sees every request of the Junior process, so it is the proxy. There is
-no separate proxy process.
+Evals record outside HTTP traffic in files in git and replay it. The
+recording proxy in `src/recording-proxy/` does this. It runs in its own
+process and has no Junior code, so it can move out of this repository.
 
-- `RECORDING_RULES` in `src/fixture/recordings.ts` is the one list of
-  recorded traffic. Each rule names the requests it matches and the
-  environment variable with its mode. To record more traffic, add a rule.
+- Global setup starts the proxy. Each test sends all HTTP traffic through it
+  as one session (`src/fixture/recordings.ts`). The fixture mocks, such as
+  Slack, still answer first.
+- `src/recording-rules.ts` is the one list of recorded traffic. To record
+  more traffic, add a rule there.
 - `model`: AI Gateway model requests. `JUNIOR_EVAL_MODEL_REPLAY` sets the
   mode. The integration suite uses `auto`. Other suites use the live model.
 - `web`: the pages that `webFetch` reads. `VITEST_EVALS_REPLAY_MODE` sets the
@@ -272,7 +274,7 @@ no separate proxy process.
 - A recording answers a request when the method, URL, and body are the same.
   For a model request, the body has the model, the system prompt, the
   messages, the tools, and the settings. The key ignores ISO times.
-- Other requests go live. When the test passes, the fixture writes every
+- Other requests go live. When the test passes, the proxy writes every
   recording that the test used. A failed test writes nothing. A 429 or 5xx
   response is never recorded.
 - A change to a prompt, a tool, a skill, or the model makes new requests.

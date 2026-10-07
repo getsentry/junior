@@ -11,7 +11,7 @@ import {
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
 import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
-import type { RecordingCounts } from "./recordings";
+import type { RecordingCounts } from "../recording-proxy/recording-proxy";
 
 /** Header that selects the signed-in person for a fixture API request. */
 export const VIEWER_HEADER = "x-fixture-viewer";
