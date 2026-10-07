@@ -74,6 +74,28 @@ function proxyLauncher(): string[] {
 }
 
 /**
+ * Create a `fetch` dispatcher that sends requests through the proxy, in the
+ * given session or without one.
+ *
+ * Use it instead of the proxy variables for `fetch`. undici drops proxy
+ * credentials without a user name, so with the variables alone the proxy
+ * refuses requests without a session with HTTP 407.
+ */
+export function createProxyDispatcher(
+  proxy: Pick<RecordingProxy, "caCert" | "secret" | "url">,
+  session = "",
+): EnvHttpProxyAgent {
+  const credentials = `${encodeURIComponent(session)}:${proxy.secret}`;
+  return new EnvHttpProxyAgent({
+    httpProxy: proxy.url,
+    httpsProxy: proxy.url,
+    noProxy: NO_PROXY,
+    token: `Basic ${Buffer.from(credentials).toString("base64")}`,
+    requestTls: { ca: proxy.caCert },
+  });
+}
+
+/**
  * Send all HTTP traffic of this process and of the processes it starts
  * through the proxy. Returns a function that undoes it.
  */
@@ -100,14 +122,7 @@ async function routeTrafficThroughProxy(
 
   // This process started before the variables, so set its agents here.
   const previousDispatcher = getGlobalDispatcher();
-  // undici drops credentials without a user name from a proxy URL.
-  const dispatcher = new EnvHttpProxyAgent({
-    httpProxy: proxy.url,
-    httpsProxy: proxy.url,
-    noProxy: NO_PROXY,
-    token: `Basic ${Buffer.from(`:${proxy.secret}`).toString("base64")}`,
-    requestTls: { ca: proxy.caCert },
-  });
+  const dispatcher = createProxyDispatcher(proxy);
   setGlobalDispatcher(dispatcher);
   const previousAgents = [http.globalAgent, https.globalAgent] as const;
   http.globalAgent = new http.Agent({ proxyEnv });

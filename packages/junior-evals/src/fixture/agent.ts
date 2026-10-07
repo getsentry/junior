@@ -28,7 +28,6 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
-import { installRecordings } from "./recordings";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -171,7 +170,6 @@ export async function createFixtureAgent(
     void tracked.finally(() => background.delete(tracked));
   };
   const slack = installSlackMock(context.task.fullName);
-  installRecordings();
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebReplay();

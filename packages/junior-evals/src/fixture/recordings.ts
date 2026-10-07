@@ -11,7 +11,6 @@
 import { randomUUID } from "node:crypto";
 import {
   Agent,
-  EnvHttpProxyAgent,
   getGlobalDispatcher,
   request,
   setGlobalDispatcher,
@@ -20,7 +19,7 @@ import { inject, onTestFinished } from "vitest";
 import { installEvalAiGatewayDispatcher } from "../eval-ai-gateway-dispatcher";
 import "../eval-context";
 import { useGlobalDispatcherForFetch } from "../fetch-dispatcher";
-import { NO_PROXY } from "../recording-rules";
+import { createProxyDispatcher } from "../recording-run";
 
 /** Send the HTTP traffic of the current test through the recording proxy. */
 export function installRecordings(): void {
@@ -30,15 +29,9 @@ export function installRecordings(): void {
   const sessionId = randomUUID();
   const previous = getGlobalDispatcher();
   // One agent per test, so each tunnel carries the session of its test.
-  // Other traffic of the worker uses the proxy variables of the run
-  // (`src/recording-run.ts`), without a session.
-  const agent = new EnvHttpProxyAgent({
-    httpProxy: proxy.url,
-    httpsProxy: proxy.url,
-    noProxy: NO_PROXY,
-    token: `Basic ${Buffer.from(`${sessionId}:${proxy.secret}`).toString("base64")}`,
-    requestTls: { ca: proxy.caCert },
-  });
+  // Other traffic of the worker uses the agent of `src/recording-setup.ts`,
+  // without a session.
+  const agent = createProxyDispatcher(proxy, sessionId);
   setGlobalDispatcher(agent);
   // MSW starts before each test file, so this runs after it.
   useGlobalDispatcherForFetch();

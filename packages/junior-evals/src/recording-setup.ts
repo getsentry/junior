@@ -1,12 +1,19 @@
 /**
- * Per-test recording session for eval suites without the agent fixture.
+ * Per-test recording sessions for every eval suite.
  *
- * The Guardian and turn router evals call the model directly. This setup
- * file sends the traffic of each test through the recording proxy as one
- * session, the same as `createFixtureAgent()` does for the other suites.
+ * Each test opens its session before its first request, so the recording
+ * proxy also records requests that a test makes before it runs the agent,
+ * such as embeddings for stored memories. Traffic outside a test uses the
+ * proxy without a session.
  */
-import { beforeEach } from "vitest";
+import { setGlobalDispatcher } from "undici";
+import { beforeEach, inject } from "vitest";
 import { installRecordings } from "./fixture/recordings";
+import { createProxyDispatcher } from "./recording-run";
+
+const proxy = inject("recordingProxy");
+// The proxy variables of the run do not work for `fetch` without a session.
+if (proxy) setGlobalDispatcher(createProxyDispatcher(proxy));
 
 beforeEach(() => {
   installRecordings();
