@@ -1,53 +1,50 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readdir, readFile, rm, stat, utimes } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Agent, ProxyAgent, request } from "undici";
+import { ProxyAgent, request } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { connectRecordingProxy } from "../../src/recording-proxy/client";
 import {
+  pruneRecordings,
   startRecordingProxy,
   type RecordingMode,
-  type RecordingProxy,
+  type RecordingProxyServer,
 } from "../../src/recording-proxy/recording-proxy";
 
 let upstream: Server;
 let origin: string;
 let liveRequests: number;
 let directory: string;
-let proxy: RecordingProxy | undefined;
-const control = new Agent();
+let proxy: RecordingProxyServer | undefined;
+let agent: ProxyAgent | undefined;
 
-async function start(mode: RecordingMode): Promise<RecordingProxy> {
+async function start(
+  mode: RecordingMode,
+  usedFile?: string,
+): Promise<RecordingProxyServer> {
   proxy = await startRecordingProxy({
     directory,
-    origins: [origin],
+    mode,
+    allow: [origin],
     rules: [
       {
         name: "model",
-        mode,
-        method: "POST",
-        urlPrefix: `${origin}/v1/`,
-        ignore: [String.raw`\d{4}-\d{2}-\d{2}T[\d:.]+Z`],
+        match: { method: "POST", url: `${origin}/v1/` },
+        key: { ignore: [String.raw`\d{4}-\d{2}-\d{2}T[\d:.]+Z`] },
       },
     ],
+    usedFile,
   });
+  agent = new ProxyAgent({ uri: proxy.url });
   return proxy;
 }
 
-/** Send one test session through the proxy, then commit or discard it. */
-async function session(
-  running: RecordingProxy,
-  bodies: unknown[],
-  end: "commit" | "discard" = "commit",
-) {
-  const id = `session-${Math.random()}`;
-  const agent = new ProxyAgent({
-    uri: running.url,
-    token: `Basic ${Buffer.from(`${id}:${running.secret}`).toString("base64")}`,
-  });
+/** Send requests through the proxy. */
+async function send(bodies: unknown[], target = `${origin}/v1/messages`) {
   const responses: Array<{ body: string; source: unknown }> = [];
   for (const body of bodies) {
-    const response = await request(`${origin}/v1/messages`, {
+    const response = await request(target, {
       body: JSON.stringify(body),
       dispatcher: agent,
       method: "POST",
@@ -57,19 +54,20 @@ async function session(
       source: response.headers["x-recording-proxy"],
     });
   }
-  await (
-    await request(`${running.url}/__recording-proxy/sessions/${id}/${end}`, {
-      dispatcher: control,
-      headers: auth(running),
-      method: "POST",
-    })
-  ).body.dump();
-  await agent.close();
   return responses;
 }
 
-function auth(running: RecordingProxy) {
-  return { authorization: `Bearer ${running.secret}` };
+/** Send the requests of one test session, then end it. */
+async function session(
+  running: RecordingProxyServer,
+  bodies: unknown[],
+  passed = true,
+) {
+  const control = connectRecordingProxy(running);
+  await control.startSession("test");
+  const responses = await send(bodies);
+  await control.endSession(passed);
+  return responses;
 }
 
 async function files(): Promise<string[]> {
@@ -93,6 +91,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await agent?.close();
+  agent = undefined;
   await proxy?.close();
   proxy = undefined;
   await new Promise<void>((resolve) => upstream.close(() => resolve()));
@@ -100,7 +100,7 @@ afterEach(async () => {
 });
 
 describe("recording proxy", () => {
-  it("replays a committed session for the same requests in auto mode", async () => {
+  it("replays a passed session for the same requests in auto mode", async () => {
     const running = await start("auto");
     await session(running, [
       { model: "m", messages: [{ content: "hi", at: "2026-10-07T03:18:03Z" }] },
@@ -120,12 +120,7 @@ describe("recording proxy", () => {
       { body: "data: 2\n\n", source: "live" },
     ]);
     expect(liveRequests).toBe(2);
-    // A replayed recording is not new.
-    const stats = await request(`${running.url}/__recording-proxy/stats`, {
-      dispatcher: control,
-      headers: auth(running),
-    });
-    await expect(stats.body.json()).resolves.toEqual({
+    await expect(connectRecordingProxy(running).stats()).resolves.toEqual({
       counts: { model: { live: 2, replayed: 1 } },
       written: 2,
       discarded: 0,
@@ -134,69 +129,63 @@ describe("recording proxy", () => {
   });
 
   it("sends no request to another origin", async () => {
-    const running = await start("auto");
-    const agent = new ProxyAgent({
-      uri: running.url,
-      token: `Basic ${Buffer.from(`session:${running.secret}`).toString("base64")}`,
-    });
+    await start("auto");
 
     // The same server under another name is another origin.
     await expect(
-      request(`${origin.replace("127.0.0.1", "localhost")}/v1/messages`, {
-        dispatcher: agent,
-        method: "POST",
-      }),
+      send([{}], `${origin.replace("127.0.0.1", "localhost")}/v1/messages`),
     ).rejects.toThrow("403");
     expect(liveRequests).toBe(0);
-    await agent.close();
   });
 
-  it("sends no request without the secret", async () => {
+  it("refuses control requests without the token", async () => {
     const running = await start("auto");
-    const agent = new ProxyAgent({
-      uri: running.url,
-      token: `Basic ${Buffer.from("session:wrong").toString("base64")}`,
-    });
 
     await expect(
-      request(`${origin}/v1/messages`, { dispatcher: agent, method: "POST" }),
-    ).rejects.toThrow();
-    const stats = await request(`${running.url}/__recording-proxy/stats`, {
-      dispatcher: control,
-    });
-    expect(stats.statusCode).toBe(401);
-    await stats.body.dump();
-    expect(liveRequests).toBe(0);
-    await agent.close();
+      connectRecordingProxy({ url: running.url, token: "wrong" }).stats(),
+    ).rejects.toThrow("HTTP 401");
   });
 
-  it("writes nothing for a discarded session", async () => {
+  it("writes nothing for a failed session", async () => {
     const running = await start("auto");
-    await session(running, [{ model: "m" }], "discard");
-    await session(running, [{ model: "m" }], "discard");
+    await session(running, [{ model: "m" }], false);
+    await session(running, [{ model: "m" }], false);
 
     expect(liveRequests).toBe(2);
     await expect(files()).resolves.toEqual([]);
   });
 
-  it("writes a replayed recording again with the same content", async () => {
-    const running = await start("auto");
+  it("lists used recordings and prunes the others", async () => {
+    const usedFile = path.join(
+      directory,
+      "..",
+      `${path.basename(directory)}.used`,
+    );
+    const running = await start("auto", usedFile);
     await session(running, [{ model: "m" }]);
     const [file] = await files();
-    const recordingPath = path.join(directory, "model", file!);
-    const content = await readFile(recordingPath, "utf8");
-    const old = new Date("2026-01-01T00:00:00Z");
-    await utimes(recordingPath, old, old);
+    const content = await readFile(
+      path.join(directory, "model", file!),
+      "utf8",
+    );
+    await writeFile(path.join(directory, "model", "stale.json"), "{}\n");
 
+    // A replay neither writes the file again nor makes it unused.
     await session(running, [{ model: "m" }]);
+    await running.close();
+    proxy = undefined;
 
-    // The nightly workflow deletes recordings that a run did not write.
-    expect((await stat(recordingPath)).mtimeMs).toBeGreaterThan(old.getTime());
-    await expect(readFile(recordingPath, "utf8")).resolves.toBe(content);
+    await expect(readFile(usedFile, "utf8")).resolves.toBe(`model/${file}\n`);
+    await expect(pruneRecordings(directory, [usedFile])).resolves.toBe(1);
+    await expect(files()).resolves.toEqual([file]);
+    await expect(
+      readFile(path.join(directory, "model", file!), "utf8"),
+    ).resolves.toBe(content);
     expect(liveRequests).toBe(1);
+    await rm(usedFile);
   });
 
-  it("refreshes a recording in record mode", async () => {
+  it("records again in record mode", async () => {
     const running = await start("record");
     await session(running, [{ model: "m" }]);
     const second = await session(running, [{ model: "m" }]);

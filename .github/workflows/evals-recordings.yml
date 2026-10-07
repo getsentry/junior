@@ -94,20 +94,18 @@ jobs:
       - name: Run ${{ matrix.suite }} evals
         env:
           VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
+          # The recording proxy lists the recordings that passing tests used.
+          EVAL_RECORDINGS_USED_FILE: ${{ runner.temp }}/eval-recordings-run/used-recordings
           SUITE: ${{ matrix.suite }}
           SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
         run: |
           set -uo pipefail
           RESULT_DIR="$RUNNER_TEMP/eval-recordings-run"
           mkdir -p "$RESULT_DIR"
-          touch "$RUNNER_TEMP/started"
           # The jail rejects connections that skip the recording proxy.
           packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
           echo "$?" > "$RESULT_DIR/exit-code"
-          # A passing test writes every recording it used, so the file time
-          # shows which recordings this run used.
-          find "$RECORDINGS_DIR" -name '*.json' -newer "$RUNNER_TEMP/started" -printf '%P\n' \
-            > "$RESULT_DIR/used-recordings"
+          touch "$EVAL_RECORDINGS_USED_FILE"
           mkdir -p "$RESULT_DIR/new"
           while IFS= read -r -d '' file; do
             if [[ -f "$file" ]]; then cp --parents -t "$RESULT_DIR/new" "$file"; fi
@@ -139,6 +137,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.token.outputs.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
       - name: Download run results
         uses: actions/download-artifact@v4
         with:
@@ -164,10 +165,9 @@ jobs:
           # Delete unused recordings only when every job finished. A missing
           # job would make all of its recordings look unused.
           if [[ "${#runs[@]}" == "$EXPECTED_RUNS" ]]; then
-            cat "$RUNS"/*/used-recordings | sort -u > "$RUNNER_TEMP/used"
-            find "$RECORDINGS_DIR" -name '*.json' -printf '%P\n' | sort > "$RUNNER_TEMP/all"
-            comm -23 "$RUNNER_TEMP/all" "$RUNNER_TEMP/used" \
-              | while IFS= read -r file; do rm "$RECORDINGS_DIR/$file"; done
+            node --experimental-strip-types --disable-warning=ExperimentalWarning \
+              packages/junior-evals/src/recording-proxy/recording-proxy.ts \
+              prune "$RECORDINGS_DIR" "$RUNS"/*/used-recordings
           else
             echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
           fi

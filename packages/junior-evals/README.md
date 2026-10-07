@@ -260,10 +260,11 @@ Evals record outside HTTP traffic in files in git and replay it. The
 recording proxy in `src/recording-proxy/` does this. It runs in its own
 process and has no Junior code, so it can move out of this repository.
 
-- Every eval suite uses the proxy. Global setup starts it with
-  `startRecordingRun()` (`src/recording-run.ts`). Each test sends its HTTP
-  traffic through the proxy as one session (`src/fixture/recordings.ts`).
-  MSW mocks, such as Slack, answer first.
+- The proxy owns every read and write of recordings. Junior gives it the
+  rules (`src/recording-rules.ts`) and tells it when each test starts and
+  ends (`src/recording-setup.ts`). Global setup starts it with
+  `startRecordingRun()` (`src/recording-run.ts`). MSW mocks, such as Slack,
+  answer before the proxy.
 - All other HTTP traffic of the run also goes through the proxy. Global
   setup sets `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY`,
   and `NODE_EXTRA_CA_CERTS`. The test workers and child processes inherit
@@ -282,11 +283,11 @@ process and has no Junior code, so it can move out of this repository.
 - The proxy sends requests only to the allowed origins in
   `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
 - The recordings are in `recordings/<rule>/`. A recording answers a request
-  when the method, URL, body, and the `keyHeaders` of the rule are the same.
+  when the method, URL, body, and the `key.headers` of the rule are the same.
   The key ignores ISO times.
 - A request without a recording goes live. When the test passes, the proxy
-  writes every recording that the test used. A failed test writes nothing. A
-  429 or 5xx response is never recorded.
+  writes its new recordings. A failed test writes nothing. A 429 or 5xx
+  response is never recorded. A replay does not write the file again.
 - `VITEST_EVALS_REPLAY_MODE` sets the mode: `auto` (the default) replays and
   records misses, `record` sends every request live and writes it again, and
   `off` sends every request live and records nothing.
@@ -304,7 +305,7 @@ process and has no Junior code, so it can move out of this repository.
   job summary also shows it:
 
   ```text
-  [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed tests. Not recorded: none.
+  [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed sessions. Not recorded: none.
   ```
 
 - `Not recorded` lists the origins of requests that matched no rule. If
@@ -318,8 +319,10 @@ process and has no Junior code, so it can move out of this repository.
 ### Nightly refresh
 
 - The "Eval recordings" workflow runs every eval suite each night on `main`.
-  It adds the new recordings, and it deletes the recordings that no passing
-  test used. Then it opens or updates one pull request.
+  It adds the new recordings. Each job sets `EVAL_RECORDINGS_USED_FILE`, so
+  the proxy lists the recordings that passing tests used. Then
+  `recording-proxy.ts prune` deletes the recordings that no list has, and the
+  workflow opens or updates one pull request.
 - It deletes recordings only when every job finished. A failed integration,
   Guardian, or router eval fails the workflow. Behavioral evals allow some
   failed cases.

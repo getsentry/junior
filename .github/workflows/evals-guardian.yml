@@ -35,7 +35,7 @@ jobs:
               - 'packages/junior-evals/src/recording-rules.ts'
               - 'packages/junior-evals/src/recording-run.ts'
               - 'packages/junior-evals/src/recording-setup.ts'
-              - 'packages/junior-evals/src/fixture/recordings.ts'
+              - 'packages/junior-evals/src/fetch-dispatcher.ts'
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'

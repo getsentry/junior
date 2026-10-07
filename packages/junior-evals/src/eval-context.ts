@@ -15,6 +15,6 @@ declare module "vitest" {
     juniorEvalContext?: EvalInvocationContext;
     juniorPostgresHarness?: PostgresHarnessConfig;
     /** The recording proxy of every eval suite. See `src/recording-run.ts`. */
-    recordingProxy?: { caCert: string; secret: string; url: string };
+    recordingProxy?: { caCert: string; token: string; url: string };
   }
 }

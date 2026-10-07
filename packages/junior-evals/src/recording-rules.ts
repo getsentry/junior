@@ -4,8 +4,10 @@
  * Global setup starts the recording proxy in `src/recording-proxy/` with
  * this configuration. The proxy knows nothing about Junior. This file is the
  * one place that decides which eval requests are recorded and replayed. To
- * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode
- * of every rule. Unset means `auto`.
+ * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode.
+ * Unset means `auto`. `EVAL_RECORDINGS_USED_FILE` names a file where the
+ * proxy lists the recordings that passing tests used. The nightly workflow
+ * gives these files to `recording-proxy.ts prune`.
  */
 import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
@@ -21,27 +23,27 @@ import type {
  */
 const ISO_TIME = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
 
-const RECORDING_RULES: Array<Omit<RecordingRule, "mode">> = [
+const RECORDING_RULES: RecordingRule[] = [
   {
     // Every model request to the AI Gateway. The gateway observer mocks
     // image generation and web search before the proxy.
     name: "model",
-    method: "POST",
-    urlPrefix: "https://ai-gateway.vercel.sh/",
-    ignore: [ISO_TIME],
-    // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
-    // model in a header, not in the body.
-    keyHeaders: [
-      "ai-language-model-id",
-      "ai-language-model-streaming",
-      "ai-model-id",
-    ],
+    match: { method: "POST", url: "https://ai-gateway.vercel.sh/" },
+    key: {
+      // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
+      // model in a header, not in the body.
+      headers: [
+        "ai-language-model-id",
+        "ai-language-model-streaming",
+        "ai-model-id",
+      ],
+      ignore: [ISO_TIME],
+    },
   },
   {
     // Public pages that the `webFetch` tool reads.
     name: "web",
-    method: "GET",
-    headers: { "user-agent": USER_AGENT },
+    match: { method: "GET", headers: { "user-agent": USER_AGENT } },
   },
 ];
 
@@ -83,10 +85,11 @@ function readMode(): RecordingMode {
 
 /** The recording proxy configuration of this eval run. */
 export function recordingProxyConfig(): RecordingProxyConfig {
-  const mode = readMode();
   return {
     directory: RECORDINGS_DIR,
-    origins: ALLOWED_ORIGINS,
-    rules: RECORDING_RULES.map((rule) => ({ ...rule, mode })),
+    mode: readMode(),
+    allow: ALLOWED_ORIGINS,
+    rules: RECORDING_RULES,
+    usedFile: process.env.EVAL_RECORDINGS_USED_FILE?.trim() || undefined,
   };
 }

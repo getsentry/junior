@@ -1,60 +1,46 @@
 /**
- * A recording HTTP proxy for tests.
+ * The server of the recording proxy. See `README.md` in this directory.
  *
- * Clients send their traffic through this proxy with `HTTPS_PROXY` or an
- * undici `ProxyAgent`. The proxy intercepts HTTPS with its own certificate
- * authority, so a client must trust `caCert`. A list of rules decides which
- * requests the proxy records and replays. Other requests go live without a
- * change.
- *
- * The proxy sends requests only to the `origins` of its configuration. It
- * refuses a request to any other origin with HTTP 403 and sends nothing.
- * The upstream request uses the host of the configured origin, never a host
- * from the client.
+ * The proxy is a forward proxy for tests. It intercepts HTTPS with its own
+ * certificate authority. Rules decide which requests it records and
+ * replays. Other requests go live without a change. It sends requests only
+ * to the `allow` origins. It refuses other origins with HTTP 403 and sends
+ * nothing. The upstream host always comes from `allow`, never from the
+ * client.
  *
  * The key of a request is the hash of its rule, method, URL, and body. JSON
- * bodies are compared with sorted keys. The `ignore` patterns of a rule
- * remove changing values, such as times, from the body before the hash.
+ * bodies are compared with sorted keys. A rule can add request headers to
+ * the key and remove changing values, such as times, from the body.
  *
- * Modes of a rule:
- *
- * - `off`: the rule does nothing.
- * - `auto`: a request with a recording gets the recorded response. Other
- *   requests go live, and the proxy records them.
- * - `record`: every request goes live, and the proxy records it again.
- *
- * Clients must send proxy credentials with `secret` as the password, for
- * example `http://<session>:<secret>@127.0.0.1:<port>`. The control API
- * needs `Authorization: Bearer <secret>`. Without the secret, the proxy
- * sends no request, so other local processes cannot use it as an open proxy.
- * The proxy listens only on 127.0.0.1.
- *
- * A session groups the requests of one test. The client names the session
- * with the user name of the proxy credentials. The proxy keeps the recordings of a
- * session in memory until the client commits or discards the session through
- * the control API. Commit after a passing test, so a bad sample is never
- * replayed. A request without a session is written at once. A commit writes
- * replayed recordings again with the same content, so file times show which
- * recordings a run used.
+ * A session groups the requests of one test. One session is open at a
+ * time. The proxy keeps the new recordings of a session in memory until the
+ * session ends. A passed session writes them, and a failed session drops
+ * them, so a bad sample is never replayed. A request outside a session is
+ * written at once.
  *
  * Each response has an `x-recording-proxy` header: `replayed`, `live` (a
  * live response that a rule records), or `passthrough` (no rule matched).
  *
- * Control API, on the proxy URL:
+ * Control API, on the proxy URL, with `Authorization: Bearer <token>`:
  *
- * - `POST /__recording-proxy/sessions/<id>/commit`: write the recordings.
- * - `POST /__recording-proxy/sessions/<id>/discard`: drop the recordings.
- * - `GET /__recording-proxy/stats`: replayed and live counts by rule, and
- *   how many recordings the run wrote new or changed.
+ * - `POST /__recording-proxy/session` with `{"name": "..."}`: open a
+ *   session.
+ * - `POST /__recording-proxy/session/end` with `{"passed": true}`: end it.
+ * - `GET /__recording-proxy/stats`: the totals of the run.
  *
- * This file uses only Node built-ins and the `openssl` command. It imports
- * nothing else, so it can move out of this repository. Run it with
- * `node recording-proxy.ts <config.json>`, or start it from code with
- * `spawnRecordingProxy()` or `startRecordingProxy()`.
+ * This file uses only Node built-ins and the `openssl` command, so it can
+ * move out of this repository. `client.ts` starts it and talks to it.
  */
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import { isIP, type Socket } from "node:net";
@@ -67,41 +53,53 @@ export type RecordingMode = "auto" | "off" | "record";
 
 /** One kind of traffic that the proxy records. */
 export interface RecordingRule {
+  /** The name of the rule. Its recordings are in `<directory>/<name>/`. */
   name: string;
-  mode: RecordingMode;
-  /** Match only this method, such as `POST`. */
-  method?: string;
-  /** Match only URLs that start with this text. */
-  urlPrefix?: string;
-  /** Match only requests with these header values. Names are lowercase. */
-  headers?: Record<string, string>;
-  /** Regular expression sources. The key ignores their matches in the body. */
-  ignore?: string[];
-  /**
-   * Request headers that are part of the key, with lowercase names. Use
-   * this when a header changes the response, such as a model id header.
-   */
-  keyHeaders?: string[];
+  /** The requests of the rule. Each field that is set must match. */
+  match: {
+    /** The method, such as `POST`. */
+    method?: string;
+    /** The start of the URL, such as `https://ai-gateway.vercel.sh/`. */
+    url?: string;
+    /** Header values. Names are lowercase. */
+    headers?: Record<string, string>;
+  };
+  /** How to build the key. The method, URL, and body are always in it. */
+  key?: {
+    /** Request headers that are also in the key. Names are lowercase. */
+    headers?: string[];
+    /** Regular expression sources. The key ignores their matches in the body. */
+    ignore?: string[];
+  };
 }
 
 export interface RecordingProxyConfig {
   /** The directory of the recordings. Each rule has a subdirectory. */
   directory: string;
   /**
-   * The only origins that the proxy sends requests to, such as
-   * `https://ai-gateway.vercel.sh`. This is an allow list.
+   * - `auto`: replay a request that has a recording. Send other requests
+   *   live and record them.
+   * - `record`: send every request live and record it again.
+   * - `off`: record and replay nothing.
    */
-  origins: string[];
+  mode: RecordingMode;
+  /** The only origins that the proxy sends requests to. */
+  allow: string[];
   rules: RecordingRule[];
+  /**
+   * A file. When the proxy stops, it writes the recordings that passed
+   * sessions used to this file. Give these files to `pruneRecordings()`.
+   */
+  usedFile?: string;
 }
 
 /** The totals of a proxy run, from `GET /__recording-proxy/stats`. */
 export interface RecordingRunStats {
   /** Replayed and live requests, by rule name. */
   counts: Record<string, { live: number; replayed: number }>;
-  /** Recordings that a commit wrote and that were new or changed. */
+  /** Recordings that the proxy wrote and that were new or changed. */
   written: number;
-  /** Recordings that a discard dropped, because their test failed. */
+  /** New recordings that the proxy dropped, because their session failed. */
   discarded: number;
   /**
    * Requests that matched no rule, by origin. These went live and were not
@@ -110,17 +108,14 @@ export interface RecordingRunStats {
   passthrough: Record<string, number>;
 }
 
-/** A running recording proxy. */
-export interface RecordingProxy {
+/** A proxy that runs in this process. */
+export interface RecordingProxyServer {
   /** The proxy URL, such as `http://127.0.0.1:1234`. */
   url: string;
   /** The PEM certificate of the authority that signs intercepted hosts. */
   caCert: string;
-  /**
-   * The password of the proxy credentials and the bearer token of the
-   * control API. Without it, the proxy sends no request.
-   */
-  secret: string;
+  /** The bearer token of the control API. */
+  token: string;
   close(): Promise<void>;
 }
 
@@ -137,15 +132,16 @@ interface Recording {
   };
 }
 
-interface Target {
-  /** The origin of a tunnel. Absolute-form requests have no origin. */
-  origin?: string;
-  session?: string;
+interface Session {
+  name: string;
+  /** Recordings by file. `undefined` marks a replayed recording. */
+  recordings: Map<string, Recording | undefined>;
 }
 
 /** Change this to make every recording a miss. */
 const RECORDING_VERSION = "http-v1";
-const CONTROL_PREFIX = "/__recording-proxy/sessions/";
+const SESSION_PATH = "/__recording-proxy/session";
+const SESSION_END_PATH = "/__recording-proxy/session/end";
 const STATS_PATH = "/__recording-proxy/stats";
 /** Response headers that a recording keeps. Other headers change each run. */
 const RECORDED_HEADERS = ["content-type", "location"];
@@ -303,7 +299,7 @@ function stableStringify(value: unknown): string {
 
 /** The recording key of a request. */
 export function recordingKey(
-  rule: Pick<RecordingRule, "ignore" | "keyHeaders" | "name">,
+  rule: Pick<RecordingRule, "key" | "name">,
   request: {
     body: string;
     headers?: http.IncomingHttpHeaders;
@@ -317,11 +313,11 @@ export function recordingKey(
   } catch {
     body = request.body;
   }
-  for (const pattern of rule.ignore ?? []) {
+  for (const pattern of rule.key?.ignore ?? []) {
     body = body.replace(new RegExp(pattern, "g"), "<ignored>");
   }
   const parts = [RECORDING_VERSION, rule.name, request.method, request.url];
-  for (const name of rule.keyHeaders ?? []) {
+  for (const name of rule.key?.headers ?? []) {
     parts.push(`${name}: ${String(request.headers?.[name] ?? "")}`);
   }
   parts.push(body);
@@ -329,37 +325,20 @@ export function recordingKey(
 }
 
 function matches(
-  rule: RecordingRule,
+  { match }: RecordingRule,
   method: string,
   url: string,
   headers: http.IncomingHttpHeaders,
 ): boolean {
-  if (rule.mode === "off") return false;
-  if (rule.method && rule.method !== method) return false;
-  if (rule.urlPrefix && !url.startsWith(rule.urlPrefix)) return false;
-  return Object.entries(rule.headers ?? {}).every(
+  if (match.method && match.method !== method) return false;
+  if (match.url && !url.startsWith(match.url)) return false;
+  return Object.entries(match.headers ?? {}).every(
     ([name, value]) => headers[name] === value,
   );
 }
 
-/** Read `<session>:<secret>` proxy credentials. */
-function credentialsFrom(
-  header: string | undefined,
-): { secret: string; session?: string } | undefined {
-  const [scheme, token] = header?.split(" ") ?? [];
-  if (scheme?.toLowerCase() !== "basic" || !token) return undefined;
-  const decoded = Buffer.from(token, "base64").toString("utf8");
-  const separator = decoded.indexOf(":");
-  if (separator < 0) return undefined;
-  const user = decoded.slice(0, separator);
-  return {
-    secret: decoded.slice(separator + 1),
-    ...(user ? { session: decodeURIComponent(user) } : {}),
-  };
-}
-
-/** Compare secrets in constant time. */
-function sameSecret(actual: string | undefined, expected: string): boolean {
+/** Compare tokens in constant time. */
+function sameToken(actual: string | undefined, expected: string): boolean {
   if (actual === undefined) return false;
   const a = Buffer.from(actual);
   const b = Buffer.from(expected);
@@ -474,32 +453,40 @@ async function readRecording(file: string): Promise<Recording | undefined> {
 
 /** Write recordings. Returns how many were new or changed. */
 async function saveRecordings(
-  recordings: Map<string, Recording>,
+  recordings: Iterable<[string, Recording]>,
 ): Promise<number> {
   const changed = await Promise.all(
     [...recordings].map(async ([file, recording]) => {
       const content = `${JSON.stringify(recording, null, 2)}\n`;
       const previous = await readFile(file, "utf8").catch(() => undefined);
+      if (previous === content) return false;
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, content);
-      return previous !== content;
+      return true;
     }),
   );
   return changed.filter(Boolean).length;
 }
 
-/** Start the proxy in this process. */
+/** Read a small JSON control request body. */
+async function readJson(incoming: http.IncomingMessage): Promise<unknown> {
+  const body = (await readBody(incoming)).toString("utf8");
+  return body ? JSON.parse(body) : {};
+}
+
+/** Start the proxy in this process. Most callers use `client.ts`. */
 export async function startRecordingProxy(
   config: RecordingProxyConfig,
-): Promise<RecordingProxy> {
-  const origins = parseOrigins(config.origins);
+): Promise<RecordingProxyServer> {
+  const origins = parseOrigins(config.allow);
   const allowedAuthorities = new Set(origins.map(authorityOf));
+  const recordingMode = config.mode;
   const certificateDir = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
   const certificates = await createCertificates(certificateDir);
-  // Only a client with this secret can make the proxy send requests.
-  const secret = randomBytes(24).toString("hex");
-  // The pending recordings of each session, by file.
-  const sessions = new Map<string, Map<string, Recording>>();
+  const token = randomBytes(24).toString("hex");
+  let session: Session | undefined;
+  // Recordings that passed sessions or requests outside a session used.
+  const used = new Set<string>();
   const stats: RecordingRunStats = {
     counts: Object.fromEntries(
       config.rules.map((rule) => [rule.name, { live: 0, replayed: 0 }]),
@@ -508,35 +495,46 @@ export async function startRecordingProxy(
     discarded: 0,
     passthrough: {},
   };
-  const targets = new WeakMap<Socket, Target>();
+  // The origin of each tunnel. Absolute-form requests have no origin.
+  const tunnelOrigins = new WeakMap<Socket, string>();
   const sockets = new Set<Socket>();
 
-  const pendingFor = (id: string): Map<string, Recording> => {
-    let pending = sessions.get(id);
-    if (!pending) {
-      pending = new Map();
-      sessions.set(id, pending);
+  /** Keep a recording that a request used. */
+  const keep = async (file: string, recording: Recording, live: boolean) => {
+    if (session) {
+      // A live recording wins over a replay of the same file.
+      if (live || !session.recordings.has(file)) {
+        session.recordings.set(file, live ? recording : undefined);
+      }
+      return;
     }
-    return pending;
+    used.add(file);
+    if (live) stats.written += await saveRecordings([[file, recording]]);
   };
 
-  const keep = async (
-    sessionId: string | undefined,
-    file: string,
-    recording: Recording,
-  ) => {
-    if (sessionId) pendingFor(sessionId).set(file, recording);
-    else stats.written += await saveRecordings(new Map([[file, recording]]));
+  const endSession = async (passed: boolean) => {
+    if (!session) return;
+    const ended = session;
+    session = undefined;
+    const live = [...ended.recordings].filter(
+      (entry): entry is [string, Recording] => entry[1] !== undefined,
+    );
+    if (!passed) {
+      stats.discarded += live.length;
+      return;
+    }
+    for (const file of ended.recordings.keys()) used.add(file);
+    stats.written += await saveRecordings(live);
   };
 
   const handle = async (
     incoming: http.IncomingMessage,
     outgoing: http.ServerResponse,
-    target: Target,
+    tunnelOrigin: string | undefined,
   ) => {
     const method = incoming.method ?? "GET";
     const url = new URL(
-      target.origin ? `${target.origin}${incoming.url}` : (incoming.url ?? ""),
+      tunnelOrigin ? `${tunnelOrigin}${incoming.url}` : (incoming.url ?? ""),
     );
     const allowed = origins.find((origin) => origin.origin === url.origin);
     if (!allowed) {
@@ -548,9 +546,12 @@ export async function startRecordingProxy(
     const requestPath = `${url.pathname}${url.search}`;
     const body = await readBody(incoming);
     const headers = forwardHeaders(incoming.headers, allowed, body);
-    const rule = config.rules.find((entry) =>
-      matches(entry, method, url.href, incoming.headers),
-    );
+    const rule =
+      recordingMode === "off"
+        ? undefined
+        : config.rules.find((entry) =>
+            matches(entry, method, url.href, incoming.headers),
+          );
 
     if (!rule) {
       stats.passthrough[url.origin] = (stats.passthrough[url.origin] ?? 0) + 1;
@@ -578,11 +579,11 @@ export async function startRecordingProxy(
       url: url.href,
     });
     const file = path.join(config.directory, rule.name, `${key}.json`);
-    if (rule.mode === "auto") {
+    if (recordingMode === "auto") {
       const recording = await readRecording(file);
       if (recording) {
         counts.replayed += 1;
-        await keep(target.session, file, recording);
+        await keep(file, recording, false);
         writeRecording(outgoing, recording, "replayed");
         return;
       }
@@ -602,15 +603,15 @@ export async function startRecordingProxy(
     );
     // Never record a temporary failure or a response the client aborted.
     if (!clientGone && !isTemporaryStatus(recording.response.status)) {
-      await keep(target.session, file, recording);
+      await keep(file, recording, true);
     }
     writeRecording(outgoing, recording, "live");
   };
 
   const serve =
-    (targetOf: (incoming: http.IncomingMessage) => Target) =>
+    (originOf: (incoming: http.IncomingMessage) => string | undefined) =>
     (incoming: http.IncomingMessage, outgoing: http.ServerResponse) => {
-      handle(incoming, outgoing, targetOf(incoming)).catch((error: unknown) => {
+      handle(incoming, outgoing, originOf(incoming)).catch((error: unknown) => {
         if (!outgoing.headersSent) {
           outgoing.writeHead(502, { "content-type": "text/plain" });
         }
@@ -624,7 +625,7 @@ export async function startRecordingProxy(
     incoming: http.IncomingMessage,
     outgoing: http.ServerResponse,
   ) => {
-    if (!sameSecret(incoming.headers.authorization, `Bearer ${secret}`)) {
+    if (!sameToken(incoming.headers.authorization, `Bearer ${token}`)) {
       outgoing.writeHead(401).end();
       return;
     }
@@ -634,32 +635,31 @@ export async function startRecordingProxy(
       outgoing.end(JSON.stringify(stats));
       return;
     }
-    if (!pathname.startsWith(CONTROL_PREFIX)) {
-      outgoing.writeHead(404).end();
+    if (incoming.method === "POST" && pathname === SESSION_PATH) {
+      const { name } = (await readJson(incoming)) as { name?: unknown };
+      if (session) {
+        // A client that stopped early never ended its session.
+        process.stderr.write(
+          `[recording-proxy] Session "${session.name}" did not end, so its new recordings were dropped\n`,
+        );
+        await endSession(false);
+      }
+      session = { name: String(name ?? ""), recordings: new Map() };
+      outgoing.writeHead(204).end();
       return;
     }
-    const [id, action] = pathname
-      .slice(CONTROL_PREFIX.length)
-      .split("/")
-      .map(decodeURIComponent);
-    if (
-      !id ||
-      incoming.method !== "POST" ||
-      (action !== "commit" && action !== "discard")
-    ) {
-      outgoing.writeHead(404).end();
+    if (incoming.method === "POST" && pathname === SESSION_END_PATH) {
+      const { passed } = (await readJson(incoming)) as { passed?: unknown };
+      await endSession(passed === true);
+      outgoing.writeHead(204).end();
       return;
     }
-    const pending = pendingFor(id);
-    if (action === "commit") stats.written += await saveRecordings(pending);
-    else stats.discarded += pending.size;
-    sessions.delete(id);
-    outgoing.writeHead(204).end();
+    outgoing.writeHead(404).end();
   };
 
-  // Requests inside a tunnel. The tunnel gives the origin and the session.
+  // Requests inside a tunnel. The tunnel gives the origin.
   const tunnelServer = http.createServer(
-    serve((incoming) => targets.get(incoming.socket) ?? {}),
+    serve((incoming) => tunnelOrigins.get(incoming.socket)),
   );
   const server = http.createServer((incoming, outgoing) => {
     if (incoming.url?.startsWith("/")) {
@@ -670,14 +670,7 @@ export async function startRecordingProxy(
       return;
     }
     // An absolute-form request for a plain HTTP URL.
-    const credentials = credentialsFrom(
-      incoming.headers["proxy-authorization"],
-    );
-    if (!sameSecret(credentials?.secret, secret)) {
-      outgoing.writeHead(407, { "proxy-authenticate": "Basic" }).end();
-      return;
-    }
-    serve(() => ({ session: credentials?.session }))(incoming, outgoing);
+    serve(() => undefined)(incoming, outgoing);
   });
   server.on("connection", (socket: Socket) => {
     sockets.add(socket);
@@ -691,28 +684,20 @@ export async function startRecordingProxy(
       return;
     }
     const [, host, port] = authority as unknown as [string, string, string];
-    const credentials = credentialsFrom(request.headers["proxy-authorization"]);
-    if (!sameSecret(credentials?.secret, secret)) {
-      socket.end(
-        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n",
-      );
-      return;
-    }
     if (!allowedAuthorities.has(`${host.toLowerCase()}:${port}`)) {
       process.stderr.write(`[recording-proxy] Refused ${host}:${port}\n`);
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
-    const session = credentials?.session;
     socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
     const start = async (first: Buffer) => {
       // A TLS handshake starts with byte 0x16. Anything else is plain HTTP.
       if (first[0] !== 0x16) {
         socket.unshift(first);
-        targets.set(socket, {
-          origin: `http://${host}${port === "80" ? "" : `:${port}`}`,
-          session,
-        });
+        tunnelOrigins.set(
+          socket,
+          `http://${host}${port === "80" ? "" : `:${port}`}`,
+        );
         tunnelServer.emit("connection", socket);
         socket.resume();
         return;
@@ -725,10 +710,10 @@ export async function startRecordingProxy(
         ALPNProtocols: ["http/1.1"],
       });
       secure.on("error", () => secure.destroy());
-      targets.set(secure, {
-        origin: `https://${host}${port === "443" ? "" : `:${port}`}`,
-        session,
-      });
+      tunnelOrigins.set(
+        secure,
+        `https://${host}${port === "443" ? "" : `:${port}`}`,
+      );
       tunnelServer.emit("connection", secure);
     };
     const onFirst = (first: Buffer) => {
@@ -751,106 +736,76 @@ export async function startRecordingProxy(
   return {
     url: `http://127.0.0.1:${address.port}`,
     caCert: certificates.caCert,
-    secret,
+    token,
     async close() {
+      await endSession(false);
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
         for (const socket of sockets) socket.destroy();
       });
       tunnelServer.close();
       await rm(certificateDir, { force: true, recursive: true });
+      if (config.usedFile) {
+        const files = [...used]
+          .map((file) => path.relative(config.directory, file))
+          .sort();
+        await writeFile(config.usedFile, files.map((f) => `${f}\n`).join(""));
+      }
     },
   };
 }
 
-/** Proxy variables. The proxy itself must not send traffic to a proxy. */
-const PROXY_VARIABLES = new Set([
-  "http_proxy",
-  "https_proxy",
-  "no_proxy",
-  "node_use_env_proxy",
-]);
-
 /**
- * Start the proxy in a child process, so the traffic of the caller cannot
- * reach it through mocks in the same process.
- *
- * `launcher` is a command that runs the proxy, such as
- * `["sudo", "-n", "--"]`. Use it when the caller runs where only the
- * proxy can reach the network.
+ * Delete the recordings in `directory` that no used file lists. Each used
+ * file comes from `usedFile` of one proxy run. Returns how many it deleted.
+ * Give it the used files of every run that shares the directory, or it
+ * deletes recordings that another run needs.
  */
-export async function spawnRecordingProxy(
-  config: RecordingProxyConfig,
-  { launcher = [] }: { launcher?: string[] } = {},
-): Promise<RecordingProxy> {
-  const configDir = await mkdtemp(
-    path.join(tmpdir(), "recording-proxy-config-"),
+export async function pruneRecordings(
+  directory: string,
+  usedFiles: string[],
+): Promise<number> {
+  const used = new Set<string>();
+  for (const file of usedFiles) {
+    for (const line of (await readFile(file, "utf8")).split("\n")) {
+      if (line) used.add(line);
+    }
+  }
+  const recordings = (await readdir(directory, { recursive: true })).filter(
+    (file) => file.endsWith(".json"),
   );
-  const configPath = path.join(configDir, "config.json");
-  await writeFile(configPath, JSON.stringify(config));
-  const command = [
-    ...launcher,
-    process.execPath,
-    "--experimental-strip-types",
-    "--disable-warning=ExperimentalWarning",
-    fileURLToPath(import.meta.url),
-    configPath,
-  ];
-  const env = Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([name]) => !PROXY_VARIABLES.has(name.toLowerCase()),
-    ),
-  );
-  const child = spawn(command[0]!, command.slice(1), {
-    env,
-    stdio: ["ignore", "pipe", "inherit"],
-  });
-  const ready = await new Promise<{
-    caCert: string;
-    secret: string;
-    url: string;
-  }>((resolve, reject) => {
-    let output = "";
-    child.once("error", reject);
-    child.once("exit", (code) =>
-      reject(new Error(`Recording proxy exited with code ${code}`)),
-    );
-    child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString("utf8");
-      const line = output.split("\n")[0];
-      if (output.includes("\n") && line) resolve(JSON.parse(line));
-    });
-  });
-  return {
-    ...ready,
-    async close() {
-      if (child.exitCode === null && child.signalCode === null) {
-        await new Promise<void>((resolve) => {
-          child.once("exit", () => resolve());
-          child.kill("SIGTERM");
-        });
-      }
-      await rm(configDir, { force: true, recursive: true });
-    },
-  };
+  const unused = recordings.filter((file) => !used.has(file));
+  await Promise.all(unused.map((file) => rm(path.join(directory, file))));
+  return unused.length;
 }
 
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  const configPath = process.argv[2];
-  if (!configPath) throw new Error("Usage: recording-proxy.ts <config.json>");
-  const config = JSON.parse(
-    await readFile(configPath, "utf8"),
-  ) as RecordingProxyConfig;
-  const proxy = await startRecordingProxy(config);
-  process.stdout.write(
-    `${JSON.stringify({ caCert: proxy.caCert, secret: proxy.secret, url: proxy.url })}\n`,
-  );
-  const stop = () => {
-    proxy.close().finally(() => process.exit(0));
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  const [command, ...args] = process.argv.slice(2);
+  if (command === "prune") {
+    const [directory, ...usedFiles] = args;
+    if (!directory || usedFiles.length === 0) {
+      throw new Error(
+        "Usage: recording-proxy.ts prune <directory> <used-file>...",
+      );
+    }
+    const count = await pruneRecordings(directory, usedFiles);
+    process.stdout.write(`Deleted ${count} unused recordings\n`);
+  } else {
+    if (!command) throw new Error("Usage: recording-proxy.ts <config.json>");
+    const config = JSON.parse(
+      await readFile(command, "utf8"),
+    ) as RecordingProxyConfig;
+    const proxy = await startRecordingProxy(config);
+    process.stdout.write(
+      `${JSON.stringify({ caCert: proxy.caCert, token: proxy.token, url: proxy.url })}\n`,
+    );
+    const stop = () => {
+      proxy.close().finally(() => process.exit(0));
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  }
 }
