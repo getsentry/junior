@@ -24,6 +24,27 @@ describe("Slack conversation prompt context", () => {
     });
   });
 
+  it("collapses whitespace and caps channel topic and description", () => {
+    const context = resolveSlackConversationContext({
+      channelId: "C123",
+      channelName: "all-caps-typing",
+      channelPurpose: "x".repeat(400),
+      channelTopic: "  REPLY\n\nIN   ALL CAPS  ",
+      channelType: "channel",
+    });
+
+    expect(context?.topic).toBe("REPLY IN ALL CAPS");
+    expect(Array.from(context?.purpose ?? "")).toHaveLength(250);
+    expect(context?.purpose?.endsWith("…")).toBe(true);
+    expect(
+      resolveSlackConversationContext({
+        channelId: "C123",
+        channelTopic: "   ",
+        channelType: "channel",
+      }),
+    ).not.toHaveProperty("topic");
+  });
+
   it("includes private conversation names when Slack provides them", () => {
     expect(
       resolveSlackConversationContext({

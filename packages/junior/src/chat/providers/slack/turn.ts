@@ -155,7 +155,7 @@ import {
   collectAttachments,
   inboundMessageActor,
   inboundMessageProvenance,
-  resolveChannelName,
+  resolveChannelMetadata,
   resolveSlackChannelType,
   saveSteeringMessages,
   steeringMessageKey,
@@ -283,10 +283,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
 
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(thread, message);
-    const channelName =
+    const channelMetadata =
       !options.execution && channelId
-        ? await resolveChannelName(thread)
+        ? await resolveChannelMetadata(thread)
         : undefined;
+    const channelName = channelMetadata?.name;
     const destination = requireSlackDestination(
       options.destination,
       "Slack reply execution",
@@ -297,6 +298,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
     const slackConversation = resolveSlackConversationContext({
       channelId,
       channelName,
+      channelPurpose: channelMetadata?.purpose,
+      channelTopic: channelMetadata?.topic,
       channelType: slackChannelType,
     });
     const destinationVisibility = await resolveDestinationVisibility({

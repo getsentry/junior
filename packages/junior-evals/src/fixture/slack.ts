@@ -14,6 +14,7 @@ import {
   authTestOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
+  conversationsInfoOk,
   conversationsRepliesPage,
   usersInfoOk,
 } from "@junior-tests/fixtures/slack/factories/api";
@@ -21,7 +22,7 @@ import {
   TEST_BOT_USER_ID,
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
-import type { FileInput, SlackAuthor } from "./inputs";
+import type { FileInput, SlackAuthor, SlackChannelInfo } from "./inputs";
 
 export const SLACK_TEAM_ID = "TEVAL";
 export const SLACK_BOT_USER_ID = TEST_BOT_USER_ID;
@@ -82,6 +83,8 @@ export interface SlackMock {
     message: Omit<SlackThreadMessage, "ts"> & { ts?: string },
   ): string;
   newChannelId(channelType: "channel" | "im"): string;
+  /** Set the topic and description that `conversations.info` returns. */
+  setChannelInfo(channel: string, info: SlackChannelInfo): void;
   nextTs(): string;
   posts(): SlackPost[];
   registerAuthor(author: SlackAuthor): Required<SlackAuthor>;
@@ -157,6 +160,7 @@ export function installSlackMock(): SlackMock {
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],
   ]);
   const posts: SlackPost[] = [];
+  const channelInfo = new Map<string, SlackChannelInfo>();
   // An ephemeral message has the person who saw it.
   const authorizationLinks: Array<{
     channel: string;
@@ -261,6 +265,27 @@ export function installSlackMock(): SlackMock {
         );
       },
     ),
+    http.post(
+      "https://slack.com/api/conversations.info",
+      async ({ request }) => {
+        // Read a clone. Channels without fixture info fall through to the
+        // shared handler, and that handler must read the original body.
+        const channel = (await readSlackParams(request.clone())).channel ?? "";
+        const info = channelInfo.get(channel);
+        if (!info) return undefined;
+        const body = conversationsInfoOk({ channelId: channel });
+        return HttpResponse.json({
+          ...body,
+          channel: {
+            ...body.channel,
+            ...(info.topic ? { topic: { value: info.topic } } : undefined),
+            ...(info.purpose
+              ? { purpose: { value: info.purpose } }
+              : undefined),
+          },
+        });
+      },
+    ),
     http.get(
       "https://files.slack.com/files-pri/:fileKey/:name",
       ({ params }) => {
@@ -315,6 +340,9 @@ export function installSlackMock(): SlackMock {
     },
     nextTs,
     posts: () => [...posts],
+    setChannelInfo(channel, info) {
+      channelInfo.set(channel, info);
+    },
     registerAuthor(author) {
       const userId = author.userId ?? DEFAULT_SLACK_AUTHOR.userId;
       const known = authors.get(userId);

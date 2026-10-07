@@ -24,6 +24,13 @@ export interface MentionChannel {
   channelId: string;
 }
 
+/** Channel fields that any channel member can edit in Slack. */
+export interface SlackChannelInfo {
+  topic?: string;
+  /** Slack shows this field as the channel description. */
+  purpose?: string;
+}
+
 /**
  * A file that a person uploaded with a message. Without `content`, the
  * download from Slack fails.
@@ -40,6 +47,8 @@ export interface MentionInput {
   author?: SlackAuthor;
   /** The channel for a new thread. Defaults to a new channel. */
   channel?: MentionChannel;
+  /** The topic and description of a new channel. */
+  channelInfo?: SlackChannelInfo;
   /** `im` starts a direct message Conversation. */
   channelType?: "channel" | "im";
   /** Files that the person uploaded with the message. */
@@ -120,6 +129,7 @@ export function mention(
   options: {
     author?: SlackAuthor;
     channel?: MentionChannel;
+    channelInfo?: SlackChannelInfo;
     channelType?: "channel" | "im";
     files?: FileInput[];
   } = {},
