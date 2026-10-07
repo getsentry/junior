@@ -223,10 +223,8 @@ describe("agent dispatch conversation work", () => {
     },
     {
       second: { type: "text" as const, text: "Second draft" },
-      expected: {
-        posted: [expect.stringContaining("I ran into an internal error")],
-        status: "failed",
-      },
+      // The failure shows on the Automation, not in its outcomes.
+      expected: { posted: [], status: "failed" },
     },
   ])(
     "reminds once when the run stops without a result ($expected.status)",

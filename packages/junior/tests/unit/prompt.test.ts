@@ -82,6 +82,7 @@ describe("prompt builders", () => {
       availableSkills: [],
       activeMcpCatalogs: [],
       dispatch: {
+        declaresResult: true,
         source: { kind: "scheduled_automation" },
         destination: {
           platform: "slack",
@@ -94,8 +95,16 @@ describe("prompt builders", () => {
             destination: {
               platform: "slack",
               teamId: "T123",
-              channelId: "D456",
+              channelId: "C123",
               threadTs: "1700000000.000100",
+            },
+          },
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: "T123",
+              channelId: "D456",
             },
           },
         ],
@@ -103,7 +112,10 @@ describe("prompt builders", () => {
     });
 
     expect(prompt).toContain(
-      "- dispatch.outcome.1: send_message to slack channel_id=D456 thread_ts=1700000000.000100",
+      "- dispatch.outcome.1: send_message to a slack channel (channel_id=C123 thread_ts=1700000000.000100)",
+    );
+    expect(prompt).toContain(
+      "- dispatch.outcome.2: send_message to the creator's direct message (channel_id=D456)",
     );
   });
 

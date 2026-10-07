@@ -43,6 +43,44 @@ export const automationResultSchema = z.discriminatedUnion("result", [
 /** One declared result for an Automation run. */
 export type AutomationResult = z.output<typeof automationResultSchema>;
 
+/** Dispatch facts that decide what a run posts. */
+type RunDispatch =
+  | { declaresResult?: boolean; outcomes?: readonly unknown[] }
+  | undefined;
+
+/**
+ * Return whether a run gets Delivery. A silent dispatch does not. An
+ * Automation run does not either: it posts only its declared message, after
+ * the run.
+ */
+export function runGetsDelivery(dispatch: RunDispatch): boolean {
+  return dispatch?.outcomes?.length !== 0 && !dispatch?.declaresResult;
+}
+
+/**
+ * Return the text to post after a run ends, if any. A chat Turn already
+ * delivered a successful reply, so it posts only its failure reply. An
+ * Automation run posts only a declared message. It never posts a failure
+ * reply to its outcomes. The failed execution shows on the Automation.
+ */
+export function finishedRunReply(
+  result: {
+    automation?: AutomationResult;
+    diagnostics: { outcome: string };
+    text: string;
+  },
+  dispatch: RunDispatch,
+): string | undefined {
+  if (!dispatch?.declaresResult) {
+    return result.diagnostics.outcome === "success" ? undefined : result.text;
+  }
+  return result.diagnostics.outcome === "success" &&
+    result.automation?.result === "send_message" &&
+    dispatch.outcomes?.length !== 0
+    ? result.text
+    : undefined;
+}
+
 /** Return whether this Source starts an Automation run. */
 export function isAutomationSource(source: Source): boolean {
   return (

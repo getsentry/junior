@@ -34,10 +34,7 @@ import type {
   SystemActor,
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
-import {
-  FINISH_AUTOMATION_RUN_TOOL_NAME,
-  isAutomationSource,
-} from "@/chat/automation-result";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -543,13 +540,16 @@ function formatOutcomeLines(outcomes: TaskOutcome[] | undefined): string[] {
     return ["- dispatch.outcomes: none; successful work posts nothing"];
   }
   return outcomes.map((outcome, index) => {
+    const { channelId, threadTs } = outcome.destination;
+    // An Automation only sends to a direct message with its creator.
+    const recipient = channelId.startsWith("D")
+      ? "the creator's direct message"
+      : "a slack channel";
     const target = [
-      `channel_id=${escapeXml(outcome.destination.channelId)}`,
-      ...(outcome.destination.threadTs
-        ? [`thread_ts=${escapeXml(outcome.destination.threadTs)}`]
-        : []),
+      `channel_id=${escapeXml(channelId)}`,
+      ...(threadTs ? [`thread_ts=${escapeXml(threadTs)}`] : []),
     ].join(" ");
-    return `- dispatch.outcome.${index + 1}: ${outcome.action} to slack ${target}`;
+    return `- dispatch.outcome.${index + 1}: ${outcome.action} to ${recipient} (${target})`;
   });
 }
 
@@ -557,6 +557,7 @@ function buildDispatchSection(
   params:
     | {
         actor?: SystemActor;
+        declaresResult?: boolean;
         destination: Destination;
         metadata?: Record<string, string>;
         outcomes?: TaskOutcome[];
@@ -575,7 +576,7 @@ function buildDispatchSection(
       ([key, value]) =>
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
-  const deliveryLines = isAutomationSource(params.source)
+  const deliveryLines = params.declaresResult
     ? formatOutcomeLines(params.outcomes)
     : [
         "- dispatch.delivery: the runtime delivers the final answer to the destination",
@@ -604,6 +605,7 @@ function buildContextSection(params: {
   configuration?: Record<string, unknown>;
   dispatch?: {
     actor?: SystemActor;
+    declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
     outcomes?: TaskOutcome[];
@@ -740,6 +742,7 @@ type TurnContextPromptInput = {
   };
   dispatch?: {
     actor?: SystemActor;
+    declaresResult?: boolean;
     destination: Destination;
     metadata?: Record<string, string>;
     outcomes?: TaskOutcome[];

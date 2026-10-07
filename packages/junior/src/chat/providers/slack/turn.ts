@@ -147,8 +147,9 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
-  isAutomationSource,
+  finishedRunReply,
   runDispatchOutcome,
+  runGetsDelivery,
 } from "@/chat/automation-result";
 import type {
   DispatchTurnContext,
@@ -1143,12 +1144,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            // Automation runs deliver only their declared result after the
-            // run. Silent work has no Delivery.
-            ...(options.execution?.dispatch?.outcomes?.length === 0 ||
-            isAutomationSource(source)
-              ? undefined
-              : { delivery: deliverAssistantMessage }),
+            ...(runGetsDelivery(options.execution?.dispatch)
+              ? { delivery: deliverAssistantMessage }
+              : undefined),
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,
@@ -1184,12 +1182,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               finalResult = finalized.reply;
               failureEventId = finalized.eventId;
               failureReason = finalized.failureReason;
-              await deliverAssistantMessage(finalResult.text);
-            } else if (
-              finalResult.automation?.result === "send_message" &&
-              options.execution?.dispatch?.outcomes?.length !== 0
-            ) {
-              await deliverAssistantMessage(finalResult.text);
+            }
+            const reply = finishedRunReply(
+              finalResult,
+              options.execution?.dispatch,
+            );
+            if (reply !== undefined) {
+              await deliverAssistantMessage(reply);
             }
             const turnResult = runDispatchOutcome(finalResult);
             runResultHandled = true;

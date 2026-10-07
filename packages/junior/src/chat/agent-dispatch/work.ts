@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore } from "@/chat/db";
+import { isAutomationSource } from "@/chat/automation-result";
 import {
   getConversationTurnBoundaryError,
   isCooperativeTurnYieldError,
@@ -87,6 +88,9 @@ export function buildDispatchRoutingContext(
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
       outcomes: dispatch.outcomes,
+      ...(isAutomationSource(dispatch.source)
+        ? { declaresResult: true }
+        : undefined),
     },
     surface: "api",
   };

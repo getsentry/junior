@@ -80,7 +80,6 @@ import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evide
 import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
 import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { isAutomationSource } from "@/chat/automation-result";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -392,7 +391,7 @@ export async function wireAgentTools(
       ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
-    ...(isAutomationSource(runSource)
+    ...(args.run.dispatch?.declaresResult
       ? {
           // Legacy dispatches without outcomes send to their Destination.
           automation: {

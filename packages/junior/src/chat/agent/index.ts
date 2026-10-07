@@ -78,7 +78,6 @@ import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
-  isAutomationSource,
   readAutomationResult,
   remindMissingAutomationResult,
 } from "@/chat/automation-result";
@@ -291,7 +290,7 @@ async function executeAgentRunInPrivacyContext(
   const conversationId = run.conversationId;
   const turnId = run.turnId;
   const runId = run.runId;
-  const requireAutomationResult = isAutomationSource(run.source);
+  const requireAutomationResult = run.dispatch?.declaresResult === true;
   const input = {
     actor: run.instruction.actor,
     includeConversationContextWithPiMessages:

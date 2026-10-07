@@ -58,8 +58,9 @@ describe("agent dispatch recovery", () => {
     ).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       outcome: "failed",
-      resultMessageTs: expect.any(String),
     });
+    // A failed Automation run posts no internal error to its outcomes.
+    expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
@@ -87,7 +88,6 @@ describe("agent dispatch recovery", () => {
     expect(replay.queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
-      resultMessageTs: expect.any(String),
       status: "failed",
     });
   });
