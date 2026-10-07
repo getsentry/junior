@@ -20,14 +20,17 @@ import {
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
 } from "./events/deployment.js";
 import {
   GITHUB_ISSUE_EVENTS,
+  GITHUB_ISSUE_IDENTIFIER,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
 } from "./events/issue.js";
 import {
   GITHUB_PULL_REQUEST_EVENTS,
+  GITHUB_PULL_REQUEST_IDENTIFIER,
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   gitHubPullRequestEventGuidance,
@@ -35,8 +38,10 @@ import {
 } from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_SOURCE_IDENTIFIER,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./events/release.js";
+import { GITHUB_REPOSITORY_IDENTIFIER } from "./events/repository.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
@@ -149,16 +154,19 @@ export function githubPlugin(
       resourceTypes: [
         {
           type: "deployment_source",
+          identifier: GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
           suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
         },
         {
           type: "issue",
+          identifier: GITHUB_ISSUE_IDENTIFIER,
           supportedEvents: [...GITHUB_ISSUE_EVENTS],
           suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
         },
         {
           type: "pull_request",
+          identifier: GITHUB_PULL_REQUEST_IDENTIFIER,
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
@@ -168,11 +176,13 @@ export function githubPlugin(
         },
         {
           type: "release_source",
+          identifier: GITHUB_RELEASE_SOURCE_IDENTIFIER,
           supportedEvents: [...GITHUB_RELEASE_EVENTS],
           suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
         },
         {
           type: "repository",
+          identifier: GITHUB_REPOSITORY_IDENTIFIER,
           supportedEvents: [
             ...GITHUB_ISSUE_EVENTS,
             ...GITHUB_PULL_REQUEST_EVENTS,

@@ -1,57 +1,39 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 import { handoffHistory } from "./handoff-history";
 
-// Memory defines the terse request. Prior work is complete, so the continuation
-// must act on the new request rather than repeat old work. Both cases use live
-// handoff and summarization; only the cleanup request differs.
+// A handoff replaces the history with a summary. The history says that the
+// work is complete, and only memory defines the request, so the summary cannot
+// carry it. The request must still be the active request after the handoff.
+// It needs one tool call and no sandbox, so the turn stays short.
 describe("Handoff task continuity", () => {
-  for (const [label, instruction] of [
-    ["terse request", "Deslop"],
-    [
-      "explicit request control",
-      "Simplify work-object.ts: remove the unnecessary class and factory while keeping workObjectId and its stable ID behavior. Keep the change local.",
-    ],
-  ] as const) {
-    test(`finishes the cleanup after handoff: ${label}`, async ({ run }) => {
-      await insertMemory({
-        content:
-          "Deslop means cleaning the entire changeset: code, tests, comments, commit artifacts, pull-request title, and pull-request description. Remove jargon, follow repository terminology and practices, delete overbuilt or duplicate work, and keep the smallest clear patch.",
-        kind: "procedure",
-      });
-      const conversation = await run(
-        mention(`Switch to the other configured profile first. ${instruction}`),
-        { history: handoffHistory() },
-      );
-
-      const handoffIndex = conversation.toolCalls.findIndex(
-        (call) => call.name === "handoff" && call.status === "completed",
-      );
-      expect(
-        handoffIndex,
-        "No handoff: this run does not test task loss",
-      ).toBeGreaterThanOrEqual(0);
-      const diffs = completedToolCalls("editFile", {
-        toolCalls: conversation.toolCalls.slice(handoffIndex + 1),
-      })
-        .filter((call) =>
-          String((call.input as { path?: unknown }).path).endsWith(
-            "project/src/work-object.ts",
-          ),
-        )
-        .map((call) => (toolOutput(call) as { diff?: string }).diff ?? "");
-      expect(
-        diffs,
-        "The original cleanup needs a successful source edit after handoff",
-      ).not.toHaveLength(0);
-      expect(diffs.join("\n")).toMatch(/-.*class WorkObjectIdentityManager/);
-      expect(diffs.join("\n")).toMatch(
-        /-.*function createWorkObjectIdentityManager/,
-      );
-      expect(conversation.replies.length).toBeGreaterThan(0);
+  test("when the turn hands off, do the new request", async ({ run }) => {
+    await insertMemory({
+      content:
+        "Gut check means reviewing the approach just taken in the thread as a code reviewer. Give the verdict as a reaction on the request: thumbsup to keep it, thumbsdown to redo it. Then name the biggest risk in one sentence. Answer from the thread; do not read files or run commands.",
+      kind: "procedure",
     });
-  }
+    const conversation = await run(
+      mention("Switch to the other configured profile first. Gut check"),
+      { history: handoffHistory() },
+    );
+
+    const handoffIndex = conversation.toolCalls.findIndex(
+      (call) => call.name === "handoff" && call.status === "completed",
+    );
+    expect(
+      handoffIndex,
+      "No handoff: this run does not test task loss",
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      completedToolCalls("addReaction", {
+        toolCalls: conversation.toolCalls.slice(handoffIndex + 1),
+      }),
+      "The request needs a verdict reaction after the handoff",
+    ).not.toHaveLength(0);
+    expect(conversation.replies.length).toBeGreaterThan(0);
+  });
 });

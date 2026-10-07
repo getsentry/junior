@@ -3,6 +3,7 @@ import {
   automationTitleSchema,
   automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
+import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { logInfo } from "@/chat/logging";
 import { automationRevision } from "@/chat/automations/revision";
 import { editScheduledAutomation } from "../edit";
@@ -162,6 +163,9 @@ export function createSlackScheduleUpdateAutomationTool(
       const instructionChanged =
         input.instruction !== undefined &&
         input.instruction !== lookup.task.text;
+      if (input.instruction !== undefined && instructionChanged) {
+        requireRequesterMention(input.instruction, context.actor);
+      }
       const next = await editScheduledAutomation(
         lookup,
         {

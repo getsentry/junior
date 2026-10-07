@@ -208,11 +208,33 @@ export function requireSupportedEventMatch(
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
-/** Normalize one selector with the convention declared by its plugin. */
-export function normalizeCatalogEventIdentifier(
+/**
+ * Normalize one selector with the convention declared by its plugin.
+ *
+ * Reject a selector that does not fit its resource type. Resource types can
+ * share event types, so only the identifier shows which one a selector names.
+ */
+export function requireEventIdentifier(
   catalog: EventCatalog,
-  namespace: string,
-  identifier: string,
+  input: { identifier: string; namespace: string; resourceType: string },
 ): string {
-  return normalizeEventIdentifier(catalog[namespace], identifier);
+  const registration = catalog[input.namespace];
+  const identifier = normalizeEventIdentifier(registration, input.identifier);
+  const resourceTypes = registration?.resourceTypes ?? [];
+  const fits = (resourceType: (typeof resourceTypes)[number]) =>
+    resourceType.identifier !== undefined &&
+    identifier.search(resourceType.identifier.pattern) !== -1;
+  const resourceType = resourceTypes.find(
+    (candidate) => candidate.type === input.resourceType,
+  );
+  if (!resourceType?.identifier || fits(resourceType)) return identifier;
+  const fitting = resourceTypes.filter(fits).map((candidate) => candidate.type);
+  throw new ToolInputError(
+    [
+      `Identifier "${identifier}" is not a "${input.namespace}:${input.resourceType}" identifier. Use the format ${resourceType.identifier.format}.`,
+      ...(fitting.length > 0
+        ? [`This identifier fits the resource type: ${fitting.join(", ")}.`]
+        : []),
+    ].join(" "),
+  );
 }

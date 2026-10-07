@@ -4,6 +4,7 @@ import {
   hasPluginEventCatalogEntries,
   pluginEventCatalog,
   eventGuidance,
+  requireEventIdentifier,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import {
@@ -56,6 +57,44 @@ describe("event catalog", () => {
         "pull_request.comment.created",
       ),
     ).toBeUndefined();
+  });
+
+  it("rejects an identifier that does not fit its resource type", () => {
+    const declared: EventCatalog = {
+      github: {
+        resourceTypes: [
+          {
+            type: "issue",
+            identifier: { format: "owner/repo#number", pattern: /^\S+#\d+$/ },
+            supportedEvents: ["issue.closed"],
+          },
+          {
+            type: "repository",
+            identifier: { format: "owner/repo", pattern: /^[^\s#]+$/ },
+            supportedEvents: ["issue.closed"],
+          },
+          { type: "release_source", supportedEvents: ["release.published"] },
+        ],
+        normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      },
+    };
+    const identifier = (resourceType: string, value: string) =>
+      requireEventIdentifier(declared, {
+        namespace: "github",
+        resourceType,
+        identifier: value,
+      });
+
+    expect(identifier("issue", "Getsentry/Junior#208")).toBe(
+      "getsentry/junior#208",
+    );
+    // A resource type without a declared shape accepts any identifier.
+    expect(identifier("release_source", "anything")).toBe("anything");
+    expect(() => identifier("issue", "getsentry/junior")).toThrow(
+      new ToolInputError(
+        'Identifier "getsentry/junior" is not a "github:issue" identifier. Use the format owner/repo#number. This identifier fits the resource type: repository.',
+      ),
+    );
   });
 
   it("keeps core snapshot events out of durable event-automation selection", () => {

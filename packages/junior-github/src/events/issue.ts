@@ -12,6 +12,12 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
   "issue.reopened",
 ];
 
+/** The identifier shape that `gitHubIssueResource` builds. */
+export const GITHUB_ISSUE_IDENTIFIER = {
+  format: "owner/repo#number",
+  pattern: /^[^\s/:#]+\/[^\s/:#]+#\d+$/,
+};
+
 /** Build the stable issue identity shared by tools and webhooks. */
 export function gitHubIssueResource(input: {
   number: number;
