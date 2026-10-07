@@ -5,6 +5,12 @@ import {
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
 } from "./pull-request.js";
 
+/** The identifier shape that `gitHubRepositoryResource` builds. */
+export const GITHUB_REPOSITORY_IDENTIFIER = {
+  format: "owner/repo",
+  pattern: /^[^\s/:#]+\/[^\s/:#]+$/,
+};
+
 /** Build the stable repository identity shared by tools and webhooks. */
 export function gitHubRepositoryResource(input: {
   repo: string;

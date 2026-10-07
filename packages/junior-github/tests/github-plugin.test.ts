@@ -9,6 +9,11 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
+import { gitHubDeploymentSourceResource } from "../src/events/deployment";
+import { gitHubIssueResource } from "../src/events/issue";
+import { gitHubPullRequestResource } from "../src/events/pull-request";
+import { gitHubReleaseSourceResource } from "../src/events/release";
+import { gitHubRepositoryResource } from "../src/events/repository";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -593,6 +598,40 @@ describe("github plugin", () => {
     expect(releaseSource).toMatchObject({
       supportedEvents: ["release.published"],
       suggestedEvents: ["release.published"],
+    });
+  });
+
+  it("declares an identifier shape that fits only its own resource type", () => {
+    const repo = "getsentry/junior";
+    const built = {
+      deployment_source: gitHubDeploymentSourceResource({
+        commitSha: "0123456789abcdef0123456789abcdef01234567",
+        environment: "Production EU",
+        repo,
+      }),
+      issue: gitHubIssueResource({ number: 208, repo }),
+      pull_request: gitHubPullRequestResource({ number: 691, repo }),
+      release_source: gitHubReleaseSourceResource({ repo, tag: "v1.2.0" }),
+      repository: gitHubRepositoryResource({ repo }),
+    };
+    const fitting = Object.fromEntries(
+      Object.entries(built).map(([type, resource]) => [
+        type,
+        githubPlugin()
+          .events!.resourceTypes.filter((resourceType) =>
+            resourceType.identifier!.pattern.test(resource.identifier),
+          )
+          .map((resourceType) => resourceType.type),
+      ]),
+    );
+
+    // Issues and pull requests share one number space in a repository.
+    expect(fitting).toEqual({
+      deployment_source: ["deployment_source"],
+      issue: ["issue", "pull_request"],
+      pull_request: ["issue", "pull_request"],
+      release_source: ["release_source"],
+      repository: ["repository"],
     });
   });
 

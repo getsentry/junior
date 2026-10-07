@@ -149,9 +149,20 @@ export function eventMatches(
   return true;
 }
 
+/** The identifier shape of one resource type. */
+export const eventIdentifierSchema = z
+  .object({
+    /** Shown to the agent, such as "owner/repo#number". */
+    format: z.string().trim().min(1).max(200),
+    /** Matches a normalized identifier of this resource type. */
+    pattern: z.instanceof(RegExp),
+  })
+  .strict();
+
 export const pluginEventTypeSchema = z
   .object({
     type: resourceTypeSchema,
+    identifier: eventIdentifierSchema.optional(),
     supportedEvents: z.array(eventTypeSchema).min(1),
     suggestedEvents: z.array(eventTypeSchema).optional(),
     matchFields: eventMatchFieldsSchema.optional(),

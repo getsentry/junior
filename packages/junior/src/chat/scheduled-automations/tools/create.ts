@@ -10,6 +10,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
+import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
@@ -130,6 +131,7 @@ export function createSlackScheduleCreateAutomationTool(
         );
       }
 
+      requireRequesterMention(input.instruction, context.actor);
       const creator = await context.users.resolveActor();
       const identity = creator?.identity;
       if (
