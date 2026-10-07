@@ -16,7 +16,10 @@ import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
-import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
+import {
+  AutomationOutcomeFields,
+  AutomationOutcomeList,
+} from "./AutomationOutcomeFields";
 import {
   automationDraftChanges,
   createAutomationDraft,
@@ -110,6 +113,14 @@ export function AutomationEditor(props: {
       .flatMap(([, messages]) => messages)
       .join(" ") || undefined;
   const triggerField = original.kind === "scheduled" ? "schedule" : "trigger";
+  const owned = original.ownedByViewer;
+  const creator = props.summary.createdBy;
+  // Core switches a non-creator's execution change to system credentials.
+  const dropsCreatorCredentials =
+    !owned &&
+    original.credentialMode === "creator" &&
+    (changes.instruction !== undefined ||
+      (original.kind === "event" && changes.trigger !== undefined));
   const triggerError = fieldError(triggerField);
   const inputState = (key: string) => ({
     "aria-invalid": Boolean(fieldError(key)) || undefined,
@@ -223,6 +234,13 @@ export function AutomationEditor(props: {
           </FormNotice>
         </div>
       ) : null}
+      {owned ? null : (
+        <p className="mt-0 mb-6 max-w-2xl text-sm leading-relaxed text-dashboard-text-muted">
+          {creator} created this automation. You can edit it because it is in a
+          public channel. Only {creator} can change where results go or turn on
+          their connected accounts. Version history keeps every saved change.
+        </p>
+      )}
       <fieldset disabled={save.isPending} className="min-w-0">
         <AutomationFormSection
           title="What to do"
@@ -300,12 +318,24 @@ export function AutomationEditor(props: {
               {fieldError("outcomes")}
             </p>
           ) : null}
-          <AutomationOutcomeFields
-            value={draft.outcomes}
-            original={original.outcomes}
-            destination={props.summary.destination}
-            onChange={(outcomes) => change({ outcomes })}
-          />
+          {owned ? (
+            <AutomationOutcomeFields
+              value={draft.outcomes}
+              original={original.outcomes}
+              destination={props.summary.destination}
+              onChange={(outcomes) => change({ outcomes })}
+            />
+          ) : (
+            <>
+              <AutomationOutcomeList
+                outcomes={original.outcomes}
+                destination={props.summary.destination}
+              />
+              <p className="m-0 text-xs text-dashboard-text-muted">
+                Only {creator} can change where results go.
+              </p>
+            </>
+          )}
         </AutomationFormSection>
         <AutomationFormSection
           title="Credentials"
@@ -317,25 +347,41 @@ export function AutomationEditor(props: {
               [
                 [
                   "creator",
-                  "Your connected accounts",
-                  "Uses accounts connected by you, the creator.",
+                  owned
+                    ? "Your connected accounts"
+                    : `${creator}’s connected accounts`,
+                  owned
+                    ? "Uses accounts connected by you, the creator."
+                    : `Uses accounts connected by ${creator}. Only ${creator} can turn this on.`,
                 ],
                 [
                   "system",
                   "System credentials only",
-                  "Does not use your connected accounts. Some work may not be possible.",
+                  owned
+                    ? "Does not use your connected accounts. Some work may not be possible."
+                    : "Does not use anyone’s connected accounts. Some work may not be possible.",
                 ],
               ] as const
             ).map(([value, label, detail]) => (
               <label
                 key={value}
-                className="flex cursor-pointer items-start gap-3 px-4 py-4 has-checked:bg-dashboard-fill-soft"
+                className="flex cursor-pointer items-start gap-3 px-4 py-4 has-checked:bg-dashboard-fill-soft has-disabled:cursor-not-allowed has-disabled:opacity-60"
               >
                 <input
                   type="radio"
                   name="credentials"
                   className="mt-0.5 size-4 shrink-0 accent-dashboard-focus"
-                  checked={draft.credentialMode === value}
+                  checked={
+                    dropsCreatorCredentials
+                      ? value === "system"
+                      : draft.credentialMode === value
+                  }
+                  disabled={
+                    value === "creator" &&
+                    !owned &&
+                    (original.credentialMode !== "creator" ||
+                      dropsCreatorCredentials)
+                  }
                   onChange={() => change({ credentialMode: value })}
                 />
                 <span>
@@ -347,6 +393,13 @@ export function AutomationEditor(props: {
               </label>
             ))}
           </fieldset>
+          {dropsCreatorCredentials ? (
+            <FormNotice title="Saving switches this automation to system credentials.">
+              Only {creator} can let a changed instruction
+              {original.kind === "event" ? " or trigger" : ""} use their
+              connected accounts.
+            </FormNotice>
+          ) : null}
           {fieldError("credentialMode") ? (
             <p role="alert">{fieldError("credentialMode")}</p>
           ) : null}

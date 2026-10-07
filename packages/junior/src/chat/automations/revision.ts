@@ -13,7 +13,8 @@ export class AutomationConflictError extends ToolInputError {
   }
 }
 
-function canonicalJson(value: unknown): unknown {
+/** Sort object keys so equal values produce equal JSON. */
+export function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson);
   if (value && typeof value === "object") {
     return Object.fromEntries(

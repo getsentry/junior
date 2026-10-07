@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention, person, threadMessage } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { test } from "@junior-evals/fixture/test";
@@ -60,19 +60,20 @@ describe("Memory with Multiple Actors", () => {
         { author: BOB },
       ),
     );
-    await thread.continue(
+    const conversation = await thread.continue(
       mention("What are the takeaways so far?", { author: ALICE }),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant answers the follow-up using the thread discussion.",
-            "The assistant does not present the summary-style preference as belonging to the current actor or as saved for the current actor. Mentioning that another participant stated the preference, or that it will be kept in mind for the write-up, is acceptable and expected.",
-          ],
-          fail: [
-            "Do not tell the Actor that the emoji-heavy summary preference is their own stated preference or that Junior saved it for them. Applying or acknowledging the preference as thread feedback without claiming the Actor stated it is acceptable.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant answers the follow-up using the thread discussion.",
+          "The assistant does not present the summary-style preference as belonging to the current actor or as saved for the current actor. Mentioning that another participant stated the preference, or that it will be kept in mind for the write-up, is acceptable and expected.",
+        ],
+        fail: [
+          "Do not tell the Actor that the emoji-heavy summary preference is their own stated preference or that Junior saved it for them. Applying or acknowledging the preference as thread feedback without claiming the Actor stated it is acceptable.",
+        ],
+      }),
     );
 
     // Bob was never the Actor, so his first-person preference must not become
@@ -99,19 +100,20 @@ describe("Memory with Multiple Actors", () => {
         { author: BOB },
       ),
     );
-    await thread.continue(
+    const conversation = await thread.continue(
       mention("Thanks, can you tighten the draft a bit?", { author: ALICE }),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant revises the status update draft from earlier in the thread.",
-            "The assistant keeps each stated preference attributed to its author. Acting on a participant's contribution to shared work does not transfer ownership of that participant's preference to someone else.",
-          ],
-          fail: [
-            "Do not treat the customer-impact-first preference as the actor's own preference.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant revises the status update draft from earlier in the thread.",
+          "The assistant keeps each stated preference attributed to its author. Acting on a participant's contribution to shared work does not transfer ownership of that participant's preference to someone else.",
+        ],
+        fail: [
+          "Do not treat the customer-impact-first preference as the actor's own preference.",
+        ],
+      }),
     );
 
     // Bob was never the Actor, so his customer-impact-first preference must
@@ -211,18 +213,19 @@ describe("Memory with Multiple Actors", () => {
         { author: BOB },
       ),
     );
-    await thread.continue(
+    const result = await thread.continue(
       mention("When should we schedule it?", { author: ALICE }),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant's scheduling answer accounts for the Friday noon deploy freeze.",
-          ],
-          fail: [
-            "Do not schedule the deploy after the freeze starts without flagging the freeze.",
-          ],
-        }),
-      },
+    );
+    await expect(result).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant's scheduling answer accounts for the Friday noon deploy freeze.",
+        ],
+        fail: [
+          "Do not schedule the deploy after the freeze starts without flagging the freeze.",
+        ],
+      }),
     );
 
     // Guard against over-tightening: public operational knowledge from a

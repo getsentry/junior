@@ -10,7 +10,7 @@ import {
   type TranscriptEvent,
 } from "vitest-evals/harness";
 import type { RequestApp, SlackPost } from "./slack";
-import type { VisibleMessage } from "./judge";
+import { EARLIER_MESSAGES_KEY, type VisibleMessage } from "./judge";
 
 /** Header that selects the signed-in person for a fixture API request. */
 export const VIEWER_HEADER = "x-fixture-viewer";
@@ -35,17 +35,16 @@ export interface ToolCall {
 }
 
 /**
- * Completed calls of one tool across the results of several calls. The agent
- * runs deferred tools through `executeTool`; those calls count as calls of the
- * inner tool, with its arguments as `input`.
+ * Calls of one tool in any state across the results of several calls. The
+ * agent runs deferred tools through `executeTool`; those calls count as calls
+ * of the inner tool, with its arguments as `input`.
  */
-export function completedToolCalls(
+export function toolCallsOf(
   name: string,
   ...results: Array<{ toolCalls: ToolCall[] }>
 ): ToolCall[] {
   return results
     .flatMap((result) => result.toolCalls)
-    .filter((call) => call.status === "completed")
     .flatMap((call) => {
       if (call.name === name) return [call];
       const deferred = call.input as
@@ -57,18 +56,39 @@ export function completedToolCalls(
     });
 }
 
+/** Completed calls of one tool across the results of several calls. */
+export function completedToolCalls(
+  name: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return toolCallsOf(name, ...results).filter(
+    (call) => call.status === "completed",
+  );
+}
+
 /**
- * Completed calls of one MCP tool, such as `mcp__eval-tracker__search-tickets`,
- * across the results of several calls.
+ * Calls of one MCP tool in any state, such as
+ * `mcp__eval-tracker__search-tickets`, across the results of several calls.
+ * A call that Guardian rejects has the `error` status.
  */
+export function mcpToolCallsOf(
+  toolName: string,
+  ...results: Array<{ toolCalls: ToolCall[] }>
+): ToolCall[] {
+  return toolCallsOf("callMcpTool", ...results).filter(
+    (call) =>
+      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
+      toolName,
+  );
+}
+
+/** Completed calls of one MCP tool across the results of several calls. */
 export function completedMcpToolCalls(
   toolName: string,
   ...results: Array<{ toolCalls: ToolCall[] }>
 ): ToolCall[] {
-  return completedToolCalls("callMcpTool", ...results).filter(
-    (call) =>
-      (call.input as { tool_name?: unknown } | undefined)?.tool_name ===
-      toolName,
+  return mcpToolCallsOf(toolName, ...results).filter(
+    (call) => call.status === "completed",
   );
 }
 
@@ -97,6 +117,8 @@ export interface Turn {
 
 /** What one call added to a Conversation. */
 export interface CallEvents {
+  /** Times Junior replaced agent history with a summary. */
+  compactions: number;
   lastSeq: number;
   replies: Reply[];
   toolCalls: ToolCall[];
@@ -149,6 +171,7 @@ export function readCallEvents(args: {
   const toolCalls = new Map<string, ToolCall>();
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
+  let compactions = 0;
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -208,6 +231,10 @@ export function readCallEvents(args: {
       }
       continue;
     }
+    if (data.type === "compaction") {
+      compactions += 1;
+      continue;
+    }
     // A handoff replaces agent history, so its tool call gets no tool result.
     // The handoff event completes the call, as the dashboard shows it.
     if (data.type === "handoff" && data.triggeringToolCallId) {
@@ -224,6 +251,7 @@ export function readCallEvents(args: {
   }
 
   return {
+    compactions,
     lastSeq,
     replies,
     toolCalls: [...toolCalls.values()],
@@ -326,15 +354,25 @@ export interface FixtureUsage {
 /** The vitest-evals run for one call. */
 export function toHarnessRun(args: {
   conversationId: string;
+  /** User-visible messages before the call, as context for judges. */
+  earlier: VisibleMessage[];
   usage: FixtureUsage;
   messages: VisibleMessage[];
   startedAtMs: number;
   toolCalls: ToolCall[];
 }): HarnessRun {
   return {
+    // The replies of the call, which a failed judge assertion prints.
+    output: args.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => message.content)
+      .join("\n\n"),
     session: {
       events: toTranscriptEvents(args.messages, args.toolCalls),
-      metadata: { conversation_ids: [args.conversationId] },
+      metadata: {
+        conversation_ids: [args.conversationId],
+        [EARLIER_MESSAGES_KEY]: args.earlier.map((message) => ({ ...message })),
+      },
     },
     usage: {
       toolCalls: args.toolCalls.length,

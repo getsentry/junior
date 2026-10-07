@@ -172,12 +172,16 @@ describe("Conversation mailbox Turn work", () => {
     );
     const run = requireConversationTurn(worker);
 
+    const background: Promise<unknown>[] = [];
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
         run,
         state,
+        waitUntil: (task) => {
+          background.push(task);
+        },
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
@@ -189,17 +193,12 @@ describe("Conversation mailbox Turn work", () => {
       }),
     );
 
-    // Title generation is automatic on human transcript persist and may finish
-    // just after the worker returns completed.
-    await vi.waitFor(
-      async () => {
-        const stored = await conversationStore.get({
-          conversationId: accepted.conversationId,
-        });
-        expect(stored?.title?.trim().length).toBeGreaterThan(0);
-      },
-      { timeout: 5_000 },
-    );
+    // The worker gives title work to `waitUntil`, so the title is stored
+    // when that work settles.
+    await Promise.all(background);
+    await expect(
+      conversationStore.get({ conversationId: accepted.conversationId }),
+    ).resolves.toMatchObject({ title: expect.stringMatching(/\S/) });
 
     const history = await getConversationEventStore().loadHistory(
       accepted.conversationId,

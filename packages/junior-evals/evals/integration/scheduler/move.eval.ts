@@ -4,7 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -35,17 +35,18 @@ describe("Schedule Destination Updates", () => {
         author: alice,
         channel: here,
       }),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply mentions the planning reminder scheduled in this channel.",
-          ],
-          fail: [
-            "Do not claim the ops handoff digest is scheduled in this channel.",
-            "Do not ask the user to provide a channel ID.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply mentions the planning reminder scheduled in this channel.",
+        ],
+        fail: [
+          "Do not claim the ops handoff digest is scheduled in this channel.",
+          "Do not ask the user to provide a channel ID.",
+        ],
+      }),
     );
 
     const lists = completedToolCalls(
@@ -79,18 +80,19 @@ describe("Schedule Destination Updates", () => {
         `move my weekly planning reminder from <#${source.channelId}> here`,
         { author: alice, channel: slackChannel() },
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply confirms the weekly planning reminder now runs in the current destination conversation.",
-          ],
-          fail: [
-            "Do not ask the user to open the source channel and list tasks first.",
-            "Do not ask the user to copy or paste the task text.",
-            "Do not ask for another confirmation after the move request.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply confirms the weekly planning reminder now runs in the current destination conversation.",
+        ],
+        fail: [
+          "Do not ask the user to open the source channel and list tasks first.",
+          "Do not ask the user to copy or paste the task text.",
+          "Do not ask for another confirmation after the move request.",
+        ],
+      }),
     );
 
     expect(

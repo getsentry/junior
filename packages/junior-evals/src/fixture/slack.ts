@@ -12,6 +12,7 @@ import { getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
+  chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsInfoOk,
   conversationsRepliesPage,
@@ -21,7 +22,7 @@ import {
   TEST_BOT_USER_ID,
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
-import type { SlackAuthor, SlackChannelInfo } from "./inputs";
+import type { FileInput, SlackAuthor, SlackChannelInfo } from "./inputs";
 
 export const SLACK_TEAM_ID = "TEVAL";
 export const SLACK_BOT_USER_ID = TEST_BOT_USER_ID;
@@ -31,9 +32,20 @@ export const DEFAULT_SLACK_AUTHOR = {
   userName: "testuser",
 } as const satisfies Required<SlackAuthor>;
 
+/** An uploaded file, as Slack describes it in events and thread history. */
+export type SlackFile = {
+  id: string;
+  mimetype: string;
+  name: string;
+  size: number;
+  url_private: string;
+  url_private_download: string;
+};
+
 /** One message in a Slack thread, as `conversations.replies` returns it. */
 type SlackThreadMessage = {
   bot_id?: string;
+  files?: SlackFile[];
   text: string;
   thread_ts: string;
   ts: string;
@@ -54,6 +66,17 @@ export interface SlackPost {
 }
 
 export interface SlackMock {
+  /** Add a file that a person uploaded. The mock serves its download. */
+  addFile(file: FileInput): SlackFile;
+  /**
+   * Authorization links that a person saw in private, oldest first: the
+   * ephemeral messages to the person, and the messages in their direct
+   * message channel. A link in another channel is not private.
+   */
+  authorizationLinks(person: {
+    directMessageChannel?: string;
+    userId: string;
+  }): string[];
   /** Add a message that people or Junior posted before the input. */
   addThreadMessage(
     channel: string,
@@ -109,6 +132,19 @@ function readPostBody(params: Record<string, string>): string {
   return body || (params.text ?? "");
 }
 
+/** The URL of the Connect button in an authorization message. */
+function readAuthorizationUrl(
+  params: Record<string, string>,
+): string | undefined {
+  const blocks = params.blocks
+    ? (JSON.parse(params.blocks) as Array<{
+        accessory?: { action_id?: string; url?: string };
+      }>)
+    : [];
+  return blocks.find((block) => block.accessory?.action_id === "oauth_connect")
+    ?.accessory?.url;
+}
+
 /** The email `users.info` returns, which links the Slack person to Junior. */
 export function slackAuthorEmail(author: Required<SlackAuthor>): string {
   return `${author.userName}@example.com`;
@@ -125,7 +161,14 @@ export function installSlackMock(): SlackMock {
   ]);
   const posts: SlackPost[] = [];
   const channelInfo = new Map<string, SlackChannelInfo>();
+  // An ephemeral message has the person who saw it.
+  const authorizationLinks: Array<{
+    channel: string;
+    url: string;
+    userId?: string;
+  }> = [];
   let replyHook: ((post: SlackPost) => Promise<void>) | undefined;
+  const files = new Map<string, FileInput>();
 
   const nextTs = () => {
     tsSequence += 1;
@@ -178,6 +221,10 @@ export function installSlackMock(): SlackMock {
         ...(params.thread_ts ? { threadTs: params.thread_ts } : undefined),
       };
       posts.push(post);
+      const authorizationUrl = readAuthorizationUrl(params);
+      if (authorizationUrl) {
+        authorizationLinks.push({ channel, url: authorizationUrl });
+      }
       if (post.threadTs) {
         addThreadMessage(channel, {
           bot_id: "B_TEST_BOT",
@@ -190,6 +237,21 @@ export function installSlackMock(): SlackMock {
       await replyHook?.(post);
       return HttpResponse.json(chatPostMessageOk({ channel, ts: post.ts }));
     }),
+    http.post(
+      "https://slack.com/api/chat.postEphemeral",
+      async ({ request }) => {
+        const params = await readSlackParams(request);
+        const url = readAuthorizationUrl(params);
+        if (url) {
+          authorizationLinks.push({
+            channel: params.channel ?? "",
+            url,
+            userId: params.user ?? "",
+          });
+        }
+        return HttpResponse.json(chatPostEphemeralOk());
+      },
+    ),
     http.post(
       "https://slack.com/api/conversations.replies",
       async ({ request }) => {
@@ -206,9 +268,10 @@ export function installSlackMock(): SlackMock {
     http.post(
       "https://slack.com/api/conversations.info",
       async ({ request }) => {
-        const channel = (await readSlackParams(request)).channel ?? "";
+        // Read a clone. Channels without fixture info fall through to the
+        // shared handler, and that handler must read the original body.
+        const channel = (await readSlackParams(request.clone())).channel ?? "";
         const info = channelInfo.get(channel);
-        // Channels without fixture info use the shared handler.
         if (!info) return undefined;
         const body = conversationsInfoOk({ channelId: channel });
         return HttpResponse.json({
@@ -223,6 +286,21 @@ export function installSlackMock(): SlackMock {
         });
       },
     ),
+    http.get(
+      "https://files.slack.com/files-pri/:fileKey/:name",
+      ({ params }) => {
+        const file = files.get(String(params.fileKey));
+        if (!file?.content) {
+          return HttpResponse.json(
+            { error: "file_not_found" },
+            { status: 404 },
+          );
+        }
+        return new HttpResponse(new Uint8Array(file.content), {
+          headers: { "content-type": file.mimeType },
+        });
+      },
+    ),
     http.get("https://slack.com/api/users.info", ({ request }) =>
       usersInfo(new URL(request.url).searchParams.get("user")),
     ),
@@ -232,6 +310,28 @@ export function installSlackMock(): SlackMock {
   );
 
   return {
+    authorizationLinks: (person) =>
+      authorizationLinks
+        .filter((link) =>
+          link.userId === undefined
+            ? link.channel === person.directMessageChannel
+            : link.userId === person.userId,
+        )
+        .map((link) => link.url),
+    addFile(file) {
+      const id = `F${String(files.size + 1).padStart(8, "0")}`;
+      const fileKey = `${SLACK_TEAM_ID}-${id}`;
+      files.set(fileKey, file);
+      const url = `https://files.slack.com/files-pri/${fileKey}/${encodeURIComponent(file.name)}`;
+      return {
+        id,
+        mimetype: file.mimeType,
+        name: file.name,
+        size: file.content?.byteLength ?? 0,
+        url_private: url,
+        url_private_download: url,
+      };
+    },
     addThreadMessage,
     newChannelId(channelType) {
       channelSequence += 1;
@@ -279,13 +379,15 @@ let eventSequence = 0;
  * has the channel type, and an `app_mention` event, which has none. Slack does
  * not fix their order, and Junior stores the first one. The fixture sends
  * `app_mention` first, so each mention turn must learn the channel type from
- * Slack and not from the event.
+ * Slack and not from the event. Both events have the uploaded files, and the
+ * `message` event has the `file_share` subtype.
  */
 export async function postSlackMessageEvent(
   app: RequestApp,
   event: {
     channel: string;
     channelType: "channel" | "im";
+    files?: SlackFile[];
     mention: boolean;
     text: string;
     threadTs?: string;
@@ -300,6 +402,7 @@ export async function postSlackMessageEvent(
     ts: event.ts,
     event_ts: event.ts,
     ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+    ...(event.files ? { files: event.files } : undefined),
   };
   if (event.mention) {
     await postSlackEvent(app, { ...message, type: "app_mention" });
@@ -308,6 +411,7 @@ export async function postSlackMessageEvent(
     ...message,
     type: "message",
     channel_type: event.channelType,
+    ...(event.files ? { subtype: "file_share" } : undefined),
   });
 }
 

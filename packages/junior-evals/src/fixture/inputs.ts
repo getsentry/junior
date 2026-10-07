@@ -31,6 +31,16 @@ export interface SlackChannelInfo {
   purpose?: string;
 }
 
+/**
+ * A file that a person uploaded with a message. Without `content`, the
+ * download from Slack fails.
+ */
+export interface FileInput {
+  content?: Buffer;
+  mimeType: string;
+  name: string;
+}
+
 /** An `app_mention` through the Slack Events API webhook. */
 export interface MentionInput {
   kind: "mention";
@@ -41,6 +51,8 @@ export interface MentionInput {
   channelInfo?: SlackChannelInfo;
   /** `im` starts a direct message Conversation. */
   channelType?: "channel" | "im";
+  /** Files that the person uploaded with the message. */
+  files?: FileInput[];
   text: string;
 }
 
@@ -48,12 +60,16 @@ export interface MentionInput {
 export interface ThreadMessageInput {
   kind: "thread_message";
   author?: SlackAuthor;
+  /** Files that the person uploaded with the message. */
+  files?: FileInput[];
   text: string;
 }
 
 /** A dashboard message through `POST /api/conversations`. */
 export interface WebMessageInput {
   kind: "web_message";
+  /** Images that the person added to the message. */
+  images?: FileInput[];
   text: string;
 }
 
@@ -73,13 +89,21 @@ export interface GitHubWebhookInput {
   payload: Record<string, unknown>;
 }
 
+/** The OAuth or MCP OAuth callback route, after the person approves. */
+export interface CompleteAuthInput {
+  kind: "complete_auth";
+  author?: SlackAuthor;
+  /** The plugin name, such as `github`. */
+  provider: string;
+}
+
 /** A message from a person. History items use the same inputs. */
 export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
 
 /** An input that starts a Conversation from an automation. */
 export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
-export type Input = MessageInput | AutomationInput;
+export type Input = MessageInput | AutomationInput | CompleteAuthInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
@@ -107,6 +131,7 @@ export function mention(
     channel?: MentionChannel;
     channelInfo?: SlackChannelInfo;
     channelType?: "channel" | "im";
+    files?: FileInput[];
   } = {},
 ): MentionInput {
   return { kind: "mention", text, ...options };
@@ -115,14 +140,31 @@ export function mention(
 /** Post in the Slack thread without mentioning Junior. */
 export function threadMessage(
   text: string,
-  options: { author?: SlackAuthor } = {},
+  options: { author?: SlackAuthor; files?: FileInput[] } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };
 }
 
 /** Send a message from the dashboard. */
-export function webMessage(text: string): WebMessageInput {
-  return { kind: "web_message", text };
+export function webMessage(
+  text: string,
+  options: { images?: FileInput[] } = {},
+): WebMessageInput {
+  return { kind: "web_message", text, ...options };
+}
+
+/** A file for `files` or `images`. A string is the text of the file. */
+export function file(
+  name: string,
+  mimeType: string,
+  content: string | Buffer,
+): FileInput {
+  return { content: Buffer.from(content), mimeType, name };
+}
+
+/** A file for `files` that Slack cannot serve, so its download fails. */
+export function unavailableFile(name: string, mimeType: string): FileInput {
+  return { mimeType, name };
 }
 
 /**
@@ -144,6 +186,19 @@ export function githubWebhook(
   payload: Record<string, unknown>,
 ): GitHubWebhookInput {
   return { kind: "github_webhook", event, payload };
+}
+
+/**
+ * Finish the authorization that a turn waits for.
+ * `conversation.continue(completeAuth(provider))` opens the link that Junior
+ * sent to the person in private, and it returns the resumed turn. It fails
+ * when Junior sent the person no private link.
+ */
+export function completeAuth(
+  provider: string,
+  options: { author?: SlackAuthor } = {},
+): CompleteAuthInput {
+  return { kind: "complete_auth", provider, ...options };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */

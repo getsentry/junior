@@ -175,6 +175,10 @@ export {
   automationRunSchema,
   automationRunWindowsSchema,
   automationSummarySchema,
+  automationVersionActivateSchema,
+  automationVersionListSchema,
+  automationVersionParamsSchema,
+  automationVersionSchema,
 } from "./schema/automation";
 export type {
   AutomationScheduleIntent,
@@ -190,6 +194,8 @@ export type {
   AutomationRunList,
   AutomationRunWindows,
   AutomationSummary,
+  AutomationVersion,
+  AutomationVersionList,
 } from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";

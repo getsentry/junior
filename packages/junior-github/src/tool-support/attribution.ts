@@ -11,6 +11,23 @@ export const GITHUB_REQUEST_ATTRIBUTION_END =
   "<!-- junior-request-attribution:end -->";
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
+// Only a safe login character set; exact GitHub rules vary. Enterprise Managed
+// User logins add an `_shortcode` suffix, so underscores must stay valid.
+const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
+
+/**
+ * Return the GitHub login linked to a user, when it is a valid login.
+ *
+ * Attribution mentions and PR assignment use this login so the requester gets
+ * GitHub notifications for the issue or pull request.
+ */
+export function linkedGitHubLogin(user: User | undefined): string | undefined {
+  const login = user?.identities
+    .find((identity) => identity.provider === "github")
+    ?.handle?.trim()
+    .replace(/^@/, "");
+  return login && GITHUB_LOGIN_PATTERN.test(login) ? login : undefined;
+}
 
 /**
  * Match host actor display cleaning: drop blanks, unknown, the actor id, and
@@ -39,8 +56,10 @@ function cleanDisplayValue(
 /**
  * Resolve the requester display label through the host identity path first.
  *
- * Prefer the linked user name, then the stored identity name/handle, then the
- * already-hydrated actor profile. Never publish a raw actor id.
+ * Prefer a linked GitHub login as an `@` mention so GitHub subscribes the
+ * requester. Otherwise use the linked user name, then the stored identity
+ * name/handle, then the already-hydrated actor profile. Never publish a raw
+ * actor id.
  */
 function requesterLabel(args: {
   actor: Actor | undefined;
@@ -53,6 +72,11 @@ function requesterLabel(args: {
   }
   if (actor.platform === "system") {
     return `Junior system actor \`${actor.name}\``;
+  }
+
+  const login = linkedGitHubLogin(user);
+  if (login) {
+    return `@${login}`;
   }
 
   const userId = actor.userId;
@@ -76,11 +100,11 @@ function parseExistingLabels(blockContents: string): string[] {
     return [];
   }
   const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
-  // Only split on a comma that starts the next label (bold markdown, a
-  // system-actor label, or a legacy repeated "via") so a display name that
-  // itself contains a comma is not broken into extra labels.
+  // Only split on a comma that starts the next label (bold markdown, a GitHub
+  // mention, a system-actor label, or a legacy repeated "via") so a display
+  // name that itself contains a comma is not broken into extra labels.
   return withoutLeadIn
-    .split(/,\s*(?=\*\*|Junior system actor `|via\s)/i)
+    .split(/,\s*(?=\*\*|@|Junior system actor `|via\s)/i)
     .map((entry) => entry.trim().replace(/^via\s+/i, ""))
     .filter(Boolean);
 }

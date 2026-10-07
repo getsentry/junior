@@ -114,16 +114,24 @@ export function AutomationDetailsDrawer(props: {
             )}
           </Detail>
         </DetailList>
-        {automation.totalRuns > 0 &&
-        automation.lastRunStatus !== "failed" &&
-        automation.lastRunStatus !== "blocked" ? (
+        <div className="flex flex-wrap gap-x-5">
+          {automation.totalRuns > 0 &&
+          automation.lastRunStatus !== "failed" &&
+          automation.lastRunStatus !== "blocked" ? (
+            <Link
+              className="w-fit py-2 text-sm text-dashboard-text underline underline-offset-2"
+              to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            >
+              View all runs
+            </Link>
+          ) : null}
           <Link
             className="w-fit py-2 text-sm text-dashboard-text underline underline-offset-2"
-            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/executions`}
+            to={`/automations/${automation.kind}/${encodeURIComponent(automation.id)}/versions${location.search}`}
           >
-            View all runs
+            Version history
           </Link>
-        ) : null}
+        </div>
         <details>
           <summary className="cursor-pointer py-3 text-sm text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline focus-visible:outline-dashboard-focus">
             More details

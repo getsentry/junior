@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention, threadMessage } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Conversation Routing", () => {
@@ -13,14 +13,39 @@ describe("Conversation Routing", () => {
           author: { fullName: "Sam Example", userId: "U0SAM", userName: "sam" },
         }),
       ],
-      criteria: rubric({
+    });
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
         pass: ["The reply answers with 4."],
         fail: ["Do not return sandbox setup failure text."],
       }),
-    });
+    );
 
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.replies[0]!.text.length).toBeLessThanOrEqual(800);
+    // The processing reaction marks the mention, then the completed reaction.
+    expect(conversation.reactions).toEqual(["eyes", "white_check_mark"]);
+  });
+
+  test("when two mentions arrive before the turn starts, one turn answers both", async ({
+    run,
+  }) => {
+    const conversation = await run([
+      mention("The rollback owner for the checkout outage is Dana."),
+      mention("In one sentence, who is the rollback owner?"),
+    ]);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says Dana is the rollback owner."],
+      }),
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual([
+      "succeeded",
+    ]);
+    expect(conversation.replies).toHaveLength(1);
   });
 
   test("when asked to post in another named channel, explain the limitation instead", async ({
@@ -30,17 +55,18 @@ describe("Conversation Routing", () => {
       mention(
         "post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
-          ],
-          fail: [
-            "Do not send a direct channel post to the current channel.",
-            "Do not claim the message was posted to #discuss-design-engineering.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
+        ],
+        fail: [
+          "Do not send a direct channel post to the current channel.",
+          "Do not claim the message was posted to #discuss-design-engineering.",
+        ],
+      }),
     );
 
     expect(conversation.replies.length).toBeGreaterThan(0);

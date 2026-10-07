@@ -5,6 +5,7 @@ import {
 import { AutomationConflictError } from "@/chat/automations/revision";
 import { zValidator } from "@hono/zod-validator";
 import {
+  activateViewerAutomationVersion,
   changeViewerAutomationLifecycle,
   readViewerAutomationEdit,
   updateViewerAutomation,
@@ -28,6 +29,9 @@ import {
   automationParamsSchema,
   automationRunListSchema,
   automationSummarySchema,
+  automationVersionActivateSchema,
+  automationVersionListSchema,
+  automationVersionParamsSchema,
 } from "@/api/schema/automation";
 import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
@@ -37,6 +41,7 @@ import {
   readViewerAutomationRuns,
   readViewerAutomations,
   readViewerAutomationSummary,
+  readViewerAutomationVersions,
   ViewerTaskNotFoundError,
 } from "@/chat/automations/read";
 
@@ -149,6 +154,59 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
           );
         }
         throw error;
+      }
+    },
+  );
+  app.get(
+    "/:kind/:id/versions",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    async (context) => {
+      const { kind, id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationVersionListSchema,
+          await readViewerAutomationVersions(context.get("viewer"), kind, id),
+        );
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/:kind/:id/versions/:version/activate",
+    requireViewer,
+    validateRequest(
+      "param",
+      automationVersionParamsSchema,
+      "Invalid Automation version.",
+    ),
+    validateRequest(
+      "json",
+      automationVersionActivateSchema,
+      "Invalid version activation.",
+    ),
+    async (context) => {
+      const { kind, id, version } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await activateViewerAutomationVersion(
+            context.get("viewer"),
+            kind,
+            id,
+            { version, revision: context.req.valid("json").revision },
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
       }
     },
   );

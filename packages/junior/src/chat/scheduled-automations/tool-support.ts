@@ -13,12 +13,16 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { readUserTimezone, saveUserTimezone } from "@/chat/identities/sql";
+import { lookupSlackUser } from "@/chat/slack/user";
+import type { JuniorDatabase } from "@/db/db";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
 import { sanitizeScheduledAutomationPrincipal } from "./identity";
+import { isValidTimeZone } from "./schedule-intent";
 import { readScheduledAutomation } from "./tasks";
 import type {
   ScheduledAutomation,
@@ -393,4 +397,30 @@ export function normalizeStatus(
 /** Centralize scheduler timezone defaulting for all concrete tool entry points. */
 export function getDefaultScheduleTimezone(): string {
   return process.env.JUNIOR_TIMEZONE?.trim() || DEFAULT_SCHEDULE_TIMEZONE;
+}
+
+/**
+ * Pick the timezone for a new schedule when the user names none: the
+ * creator's Slack profile, then the saved user timezone, then the install
+ * default. A valid Slack timezone is saved on the linked user.
+ */
+export async function resolveCreatorScheduleTimezone(args: {
+  db: JuniorDatabase;
+  nowMs: number;
+  slackUserId: string;
+  teamId: string;
+  userId?: string;
+}): Promise<string> {
+  const profile = await lookupSlackUser(args.teamId, args.slackUserId);
+  const timezone = profile?.timezone;
+  if (timezone && isValidTimeZone(timezone)) {
+    if (args.userId) {
+      await saveUserTimezone(args.db, args.userId, timezone, args.nowMs);
+    }
+    return timezone;
+  }
+  const saved = args.userId
+    ? await readUserTimezone(args.db, args.userId)
+    : undefined;
+  return saved ?? getDefaultScheduleTimezone();
 }

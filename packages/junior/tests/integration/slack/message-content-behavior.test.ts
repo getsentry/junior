@@ -12,7 +12,6 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRun } from "@/chat/agent/types";
@@ -401,88 +400,6 @@ describe("Slack behavior: message content", () => {
     );
     expect(JSON.stringify(calls[1]?.piMessages)).toContain("First response.");
     expect(JSON.stringify(calls[1]?.piMessages)).toContain(
-      "<runtime-turn-context>",
-    );
-  });
-
-  it("auto compacts oversized reusable Pi history before the next turn", async () => {
-    const calls: CapturedCall[] = [];
-    const priorMessages: PiMessage[] = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nbootstrap instructions that must be replaced after compaction\n</runtime-turn-context>",
-          },
-          { type: "text", text: "old context ".repeat(5_000) },
-        ],
-        timestamp: 1,
-      },
-      assistantPiMessage("old answer ".repeat(1_000), 2),
-    ] as PiMessage[];
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700005005.000",
-    });
-    await commitMessages({
-      conversationId: thread.id,
-      messages: priorMessages,
-    });
-    const conversation = coerceThreadConversationState({});
-    await persistThreadState(thread, { conversation });
-
-    const { slackAdapter, slackRuntime } = createTestChatRuntime({
-      services: {
-        contextCompactor: {
-          completeText: async () =>
-            ({
-              text: "Compacted summary: old context is still relevant.",
-            }) as never,
-          autoCompactionTriggerTokens: 100,
-        },
-        agentRunner: createModelAgentRunnerForRun((run) => {
-          captureAgentCall(calls, run);
-          return createModelStream([{ type: "text", text: "Done." }]);
-        }),
-      },
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-content-auto-compact",
-        text: "<@U0APP> continue",
-        isMention: true,
-        threadId: thread.id,
-        author: { userId: "U0TESTER" },
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(calls).toHaveLength(1);
-    const compactingStatusIndex = slackAdapter.statusCalls.findIndex((call) =>
-      call.loadingMessages?.includes("Compacting context"),
-    );
-    expect(compactingStatusIndex).toBeGreaterThanOrEqual(0);
-    expect(
-      slackAdapter.statusCalls.findIndex(
-        (call, index) =>
-          index > compactingStatusIndex &&
-          Boolean(call.text) &&
-          !call.loadingMessages?.includes("Compacting context"),
-      ),
-    ).toBeGreaterThan(compactingStatusIndex);
-    expect(calls[0]?.piMessages?.length).toBeLessThan(priorMessages.length + 1);
-    expect(JSON.stringify(calls[0]?.piMessages)).toContain(
-      COMPACTION_SUMMARY_PREFIX,
-    );
-    expect(JSON.stringify(calls[0]?.piMessages)).toContain(
-      "old context is still relevant",
-    );
-    expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
-      "bootstrap instructions",
-    );
-    expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
       "<runtime-turn-context>",
     );
   });

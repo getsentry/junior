@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -21,17 +21,18 @@ describe("Slack Message Delivery", () => {
   }) => {
     const conversation = await run(
       mention("post this to the channel: deploy is unblocked"),
-      {
-        criteria: rubric({
-          pass: [
-            "The reply clearly explains it cannot make top-level channel posts from this runtime or can only send into the active conversation/thread.",
-          ],
-          fail: [
-            "Do not present the requested channel text as if it was delivered.",
-            "Do not claim the message was posted to the channel.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply clearly explains it cannot make top-level channel posts from this runtime or can only send into the active conversation/thread.",
+        ],
+        fail: [
+          "Do not present the requested channel text as if it was delivered.",
+          "Do not claim the message was posted to the channel.",
+        ],
+      }),
     );
 
     expect(completedToolCalls("sendFiles", conversation)).toEqual([]);
@@ -45,16 +46,17 @@ describe("Slack Message Delivery", () => {
       mention(
         "Tell me the current UTC time, and keep me posted while you check.",
       ),
-      {
-        criteria: rubric({
-          pass: [
-            "The assistant returns the requested UTC time in one concise completed reply.",
-          ],
-          fail: [
-            "Do not post intermediate process narration, cumulative drafts, or repeated copies of the reply.",
-          ],
-        }),
-      },
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The assistant returns the requested UTC time in one concise completed reply.",
+        ],
+        fail: [
+          "Do not post intermediate process narration, cumulative drafts, or repeated copies of the reply.",
+        ],
+      }),
     );
 
     // Progress updates are optional for a task this short. The contract is
@@ -66,17 +68,23 @@ describe("Slack Message Delivery", () => {
   test("when asked to show an image, attach it without process chatter", async ({
     run,
   }) => {
-    const conversation = await run(mention("show me an image of a red panda"), {
-      criteria: rubric({
-        pass: [
-          "Any visible text is limited to at most one concise acknowledgement that the requested image was delivered.",
-        ],
-        fail: [
-          "Do not narrate image generation, file lookup, attachment paths, permission checks, retries, or other internal process steps.",
-          "Do not post multiple progress or troubleshooting messages before the image.",
-        ],
-      }),
-    });
+    const conversation = await run(mention("show me an image of a red panda"));
+    // Junior can send the image with no text. The judge reads text only, so
+    // it has nothing to score then.
+    if (conversation.replies.length > 0) {
+      await expect(conversation).toSatisfyJudge(
+        RubricJudge,
+        rubric({
+          pass: [
+            "Any visible text is limited to at most one concise acknowledgement that the requested image was delivered.",
+          ],
+          fail: [
+            "Do not narrate image generation, file lookup, attachment paths, permission checks, retries, or other internal process steps.",
+            "Do not post multiple progress or troubleshooting messages before the image.",
+          ],
+        }),
+      );
+    }
 
     expect(completedToolCalls("imageGenerate", conversation)).toHaveLength(1);
     const sendFiles = completedToolCalls("sendFiles", conversation);

@@ -25,11 +25,12 @@ const timezoneSchema = z
   .min(1)
   .max(80)
   .describe(
-    "IANA timezone, for example America/Los_Angeles. Omit or use null for the scheduler default.",
+    "IANA timezone the user asked for, for example America/New_York. Omit or use null to use the creator's timezone on create, or to keep the saved timezone on update. Do not guess it from office locations.",
   )
   .nullable()
   .optional();
-const weekdaySchema = z.enum([
+/** Weekday names in `Date#getDay` order. */
+export const weekdaySchema = z.enum([
   "sunday",
   "monday",
   "tuesday",
@@ -213,7 +214,8 @@ function localDateAt(timestampMs: number, timezone: string): string {
     .join("-");
 }
 
-function isValidTimeZone(timezone: string): boolean {
+/** Whether the runtime accepts this IANA timezone name. */
+export function isValidTimeZone(timezone: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
     return true;

@@ -1,4 +1,83 @@
 # Changelog
+## 0.237.0
+
+### New Features ✨
+
+- (brand) Update Junior to the friendlier character art by @sentry-junior in [#2046](https://github.com/getsentry/junior/pull/2046)
+- (sentry) Use an org token for Sentry API reads by @sentry-junior in [#2049](https://github.com/getsentry/junior/pull/2049)
+
+### Bug Fixes 🐛
+
+- (brand) Use head-and-shoulders crops for all Junior avatars by @sentry-junior in [#2048](https://github.com/getsentry/junior/pull/2048)
+- (scheduler) Use the creator's timezone for new schedules by @sentry-junior in [#1921](https://github.com/getsentry/junior/pull/1921)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the last evals to the agent test fixture and use the judge matcher by @dcramer in [#2038](https://github.com/getsentry/junior/pull/2038)
+- Move the OAuth and Sentry evals to the agent test fixture by @dcramer in [#2031](https://github.com/getsentry/junior/pull/2031)
+
+## 0.236.0
+
+### New Features ✨
+
+#### Automations
+
+- Let public readers edit and make versions active by @sentry-junior in [#2037](https://github.com/getsentry/junior/pull/2037)
+- Add version history for Automation definitions by @sentry-junior in [#2036](https://github.com/getsentry/junior/pull/2036)
+
+#### Other
+
+- (brand) Improve Junior avatars and add Slack reactions by @dcramer in [#1997](https://github.com/getsentry/junior/pull/1997)
+- (conversations) Add web conversation forks by @sentry-junior in [#1422](https://github.com/getsentry/junior/pull/1422)
+- (dashboard) Link to event log entries by @sentry-junior in [#2000](https://github.com/getsentry/junior/pull/2000)
+- (github) Assign new pull requests to the requester by @sentry-junior in [#1966](https://github.com/getsentry/junior/pull/1966)
+- (sandbox) List repository skills with AGENTS.md instructions by @sentry-junior in [#1999](https://github.com/getsentry/junior/pull/1999)
+- Support explicit OAuth client configs by @jonahsnider in [#2005](https://github.com/getsentry/junior/pull/2005)
+
+### Bug Fixes 🐛
+
+#### Automations
+
+- Tell the agent that "me" in a task means its creator by @dcramer in [#2028](https://github.com/getsentry/junior/pull/2028)
+- Name the creator exactly in automation instructions by @dcramer in [#2009](https://github.com/getsentry/junior/pull/2009)
+
+#### Other
+
+- (github) Ignore Junior's own PR comments and reviews by @sentry-junior in [#2007](https://github.com/getsentry/junior/pull/2007)
+- (tools) Record tool calls that a turn deadline preempts by @dcramer in [#2019](https://github.com/getsentry/junior/pull/2019)
+
+### Documentation 📚
+
+#### Chat
+
+- Remove stale Destination automated-turn limit claim by @dcramer in [#2016](https://github.com/getsentry/junior/pull/2016)
+- Update the Guardian rejection-limit rule by @dcramer in [#2015](https://github.com/getsentry/junior/pull/2015)
+
+#### Other
+
+- (brand) Add 512px profile avatars and color guidelines by @sentry-junior in [#1993](https://github.com/getsentry/junior/pull/1993)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the conversation evals to the agent test fixture by @dcramer in [#2027](https://github.com/getsentry/junior/pull/2027)
+- Move the memory evals to the agent test fixture by @dcramer in [#2026](https://github.com/getsentry/junior/pull/2026)
+- Move the GitHub evals into the coding suite by @dcramer in [#2023](https://github.com/getsentry/junior/pull/2023)
+- Move the handoff evals to the agent test fixture by @dcramer in [#2022](https://github.com/getsentry/junior/pull/2022)
+- Move the watch evals to the agent test fixture by @dcramer in [#2021](https://github.com/getsentry/junior/pull/2021)
+- Move the conversation integration evals to the agent test fixture by @dcramer in [#2018](https://github.com/getsentry/junior/pull/2018)
+- Move the event automation evals to the agent test fixture by @dcramer in [#2013](https://github.com/getsentry/junior/pull/2013)
+- Move the scheduler evals to the agent test fixture by @dcramer in [#2010](https://github.com/getsentry/junior/pull/2010)
+- Add the agent test fixture and move the first slice by @dcramer in [#2006](https://github.com/getsentry/junior/pull/2006)
+
+#### Other
+
+- (gocd) Remove the GoCD plugin by @joshuarli in [#2020](https://github.com/getsentry/junior/pull/2020)
+- (guardian) Cover repeated PR scope asks after the user steers by @sentry-junior in [#2012](https://github.com/getsentry/junior/pull/2012)
+
 ## 0.235.0
 
 ### New Features ✨

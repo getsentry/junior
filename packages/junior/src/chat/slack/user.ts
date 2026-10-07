@@ -7,12 +7,15 @@ interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
   email?: string;
+  /** Slack profile timezone. Do not copy it onto the Actor. */
+  timezone?: string;
 }
 
 const slackUserInfoSchema = z.object({
   ok: z.literal(true),
   user: z.object({
     name: z.string().nullish(),
+    tz: z.string().nullish(),
     profile: z
       .object({
         email: z.string().nullish(),
@@ -106,6 +109,7 @@ export async function lookupSlackUser(
       userName,
       fullName,
       email: payload.user.profile?.email?.trim() || undefined,
+      timezone: payload.user.tz?.trim() || undefined,
     };
     writeToCache(teamId, userId, result);
     return result;

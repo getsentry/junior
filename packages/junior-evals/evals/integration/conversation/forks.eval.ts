@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mention, reply, webMessage } from "@junior-evals/fixture/inputs";
-import { rubric } from "@junior-evals/fixture/judge";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Conversation Forks", () => {
@@ -20,12 +20,13 @@ describe("Conversation Forks", () => {
     const fork = await source.fork(decision);
     const next = await fork.continue(
       webMessage("Which color is the launch banner right now?"),
-      {
-        criteria: rubric({
-          pass: ["The reply says the launch banner is blue."],
-          fail: ["Do not say the banner is green or was switched to green."],
-        }),
-      },
+    );
+    await expect(next).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says the launch banner is blue."],
+        fail: ["Do not say the banner is green or was switched to green."],
+      }),
     );
     expect(next.replies).toHaveLength(1);
   });
@@ -44,11 +45,12 @@ describe("Conversation Forks", () => {
     const nested = await forkTurn.fork(forkTurn.replies[0]!);
     const nestedTurn = await nested.continue(
       webMessage("What is the release codename now?"),
-      {
-        criteria: rubric({
-          pass: ["The reply says the release codename is Birch."],
-        }),
-      },
+    );
+    await expect(nestedTurn).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says the release codename is Birch."],
+      }),
     );
     expect(nestedTurn.replies).toHaveLength(1);
   });
@@ -66,11 +68,12 @@ describe("Conversation Forks", () => {
     const fork = await source.fork(source.replies[0]!);
     const next = await fork.continue(
       webMessage("What is the release codename?"),
-      {
-        criteria: rubric({
-          pass: ["The reply says the release codename is Maple."],
-        }),
-      },
+    );
+    await expect(next).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The reply says the release codename is Maple."],
+      }),
     );
     expect(next.replies).toHaveLength(1);
   });

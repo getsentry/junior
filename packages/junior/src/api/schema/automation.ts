@@ -1,7 +1,11 @@
 import { scheduleIntentSchema } from "@/chat/scheduled-automations/schedule-intent";
 import { pluginEventTypeSchema } from "@sentry/junior-plugin-api";
 import { scheduledAutomationSchema } from "@/chat/scheduled-automations/types";
-import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
+import {
+  eventAutomationPrincipalSchema,
+  eventAutomationSchema,
+  eventAutomationTriggerSchema,
+} from "@/chat/event-automations/types";
 import {
   scheduledAutomationEditSchema,
   eventAutomationEditSchema,
@@ -202,6 +206,71 @@ export const automationRunListSchema = z
   })
   .strict();
 
+const automationDefinitionFields = {
+  title: z.string().nullable(),
+  instruction: z.string(),
+};
+
+const automationVersionFields = {
+  version: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+  /** Null for versions saved by the upgrade, because the editor is unknown. */
+  editedBy: eventAutomationPrincipalSchema.nullable(),
+};
+
+/** One saved Automation definition. Newer versions have larger numbers. */
+export const automationVersionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...automationVersionFields,
+      kind: z.literal("scheduled"),
+      definition: scheduledAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          schedule: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      ...automationVersionFields,
+      kind: z.literal("event"),
+      definition: eventAutomationSchema
+        .pick({
+          credentialMode: true,
+          destination: true,
+          outcomes: true,
+          trigger: true,
+        })
+        .extend(automationDefinitionFields)
+        .strict(),
+    })
+    .strict(),
+]);
+
+/** Newest versions first. */
+export const automationVersionListSchema = z
+  .object({
+    versions: z.array(automationVersionSchema),
+    /** Newest version that matches the current definition. Null when none match. */
+    activeVersion: z.number().int().positive().nullable(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const automationVersionParamsSchema = automationParamsSchema
+  .extend({ version: z.coerce.number().int().positive() })
+  .strict();
+
+export type AutomationVersion = z.output<typeof automationVersionSchema>;
+export type AutomationVersionList = z.output<
+  typeof automationVersionListSchema
+>;
+
 export type AutomationExecutionDay = z.output<
   typeof automationExecutionDaySchema
 >;
@@ -222,6 +291,11 @@ export type AutomationListQuery = z.output<typeof automationListQuerySchema>;
 
 const automationRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/);
 
+/** Make a saved version active. The revision is the edit read revision. */
+export const automationVersionActivateSchema = z
+  .object({ revision: automationRevisionSchema })
+  .strict();
+
 /** Pause and resume do not start work. */
 export const automationLifecycleSchema = z
   .object({
@@ -239,9 +313,11 @@ const automationEditBaseSchema = scheduledAutomationSchema
     instruction: z.string(),
     credentialMode: z.enum(["system", "creator"]),
     outcomes: z.array(taskOutcomeSchema).max(5),
+    /** Creator-only rules apply when false. */
+    ownedByViewer: z.boolean(),
   });
 
-/** Creator-only edit values. Read schemas also retain legacy values. */
+/** Edit values for owners and public readers. Read schemas also retain legacy values. */
 export const automationEditSchema = z.discriminatedUnion("kind", [
   automationEditBaseSchema
     .merge(scheduledAutomationSchema.pick({ schedule: true }))

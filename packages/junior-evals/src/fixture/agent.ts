@@ -3,14 +3,17 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks. The fixture replaces only the Vercel Queue
- * transports and `waitUntil` with in-process versions, so it knows when the
- * agent is idle.
+ * third-party APIs are MSW mocks, and the web pages that `webFetch` reads are
+ * replayed. The fixture replaces only the Vercel Queue transports and
+ * `waitUntil` with in-process versions, so it knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { assert } from "vitest";
-import type { HarnessRun, TranscriptEvent } from "vitest-evals/harness";
+import {
+  serializeError,
+  type HarnessRun,
+  type TranscriptEvent,
+} from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -20,10 +23,12 @@ import { createConversationId } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
+import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
   AutomationInput,
+  FileInput,
   HistoryItem,
   HistoryReply,
   Input,
@@ -35,12 +40,7 @@ import {
   WEB_VIEWER_EMAIL,
   type LoadedConversation,
 } from "./history";
-import {
-  JUDGE_THRESHOLD,
-  judgeReplies,
-  type Rubric,
-  type VisibleMessage,
-} from "./judge";
+import type { VisibleMessage } from "./judge";
 import { createInProcessQueue } from "./queue";
 import type { RecordedConversation } from "./recorded";
 import {
@@ -64,6 +64,7 @@ import {
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
 } from "./slack";
+import { installWebReplay } from "./web";
 
 /**
  * Every call fails when the agent is not idle within this budget. The budget
@@ -74,7 +75,6 @@ const IDLE_TIMEOUT_MS = 60_000;
 export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
 
 export interface CallOptions {
-  criteria?: Rubric;
   /** Earlier turns as items, or a recorded conversation. */
   history?: HistoryItem[] | RecordedConversation;
   onProgress?: (
@@ -83,8 +83,12 @@ export interface CallOptions {
   ) => void | Promise<void>;
 }
 
-/** Returned by every call. The fields describe that call only. */
-export interface Conversation {
+/**
+ * Returned by every call. The fields describe that call only. It is also the
+ * vitest-evals run of the call, so `expect(conversation).toSatisfyJudge()`
+ * takes it.
+ */
+export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
@@ -96,9 +100,9 @@ export interface Conversation {
   files: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
+  compactions: number;
   turns: Turn[];
-  /** The vitest-evals run, for `toSatisfyJudge()` and other judges. */
-  evalRun: HarnessRun;
   continue(
     input: Input | Input[],
     options?: CallOptions,
@@ -113,10 +117,8 @@ export type RunAgent = (
 
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
-  signal: AbortSignal;
   task: {
     meta: {
-      eval?: unknown;
       harness?: { name: string; run: HarnessRun };
     };
   };
@@ -166,6 +168,7 @@ export async function createFixtureAgent(
   const slack = installSlackMock();
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
+  installWebReplay();
   const app = await createApp({
     ...options,
     conversationWorkQueue: (consume) => queue.connect(consume),
@@ -210,12 +213,6 @@ export async function createFixtureAgent(
     gatewayRequests: gateway.requestCounts(),
   });
   const startedAtMs = Date.now();
-  // Every judged call of the test, for the eval report.
-  const judgeScores: Array<{
-    metadata: Record<string, string>;
-    name: string;
-    score: number;
-  }> = [];
 
   const waitForIdle = async (): Promise<void> => {
     const startedAtMs = Date.now();
@@ -280,6 +277,25 @@ export async function createFixtureAgent(
       await postAutomationInput(input);
       return;
     }
+    if (input.kind === "complete_auth") {
+      const { userId } = slack.registerAuthor(
+        input.author ?? DEFAULT_SLACK_AUTHOR,
+      );
+      await completeAuthorization({
+        app,
+        links: slack.authorizationLinks({
+          // In a direct message, Junior sends the link as a normal message.
+          directMessageChannel:
+            record.surface === "slack" && record.channelType === "im"
+              ? record.channelId
+              : undefined,
+          userId,
+        }),
+        provider: input.provider,
+        userId,
+      });
+      return;
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -292,6 +308,9 @@ export async function createFixtureAgent(
           jsonRequest(record.viewerEmail, {
             idempotencyKey: started ? randomUUID() : record.idempotencyKey,
             message: input.text,
+            ...(input.images?.length
+              ? { images: input.images.map(webImage) }
+              : undefined),
           }),
         ),
       );
@@ -307,7 +326,11 @@ export async function createFixtureAgent(
     const ts = started ? slack.nextTs() : record.threadTs;
     const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
+    const files = input.files?.length
+      ? { files: input.files.map(slack.addFile) }
+      : undefined;
     slack.addThreadMessage(record.channelId, {
+      ...files,
       text,
       thread_ts: record.threadTs,
       ts,
@@ -316,6 +339,7 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
+      ...files,
       mention,
       text,
       ...(started ? { threadTs: record.threadTs } : undefined),
@@ -429,6 +453,15 @@ export async function createFixtureAgent(
     } catch (error) {
       // Work must not outlive the test and reach closed stores.
       await close();
+      // Record the run, so the eval report counts the test as a failed eval.
+      // Without a run, the report gate fails hard, as for a broken setup.
+      context.task.meta.harness = {
+        name: "junior",
+        run: {
+          ...combinedRun(calls, currentUsage(), startedAtMs),
+          errors: [serializeError(error)],
+        },
+      };
       throw error;
     } finally {
       gateway.setProgressHook(undefined);
@@ -501,8 +534,9 @@ export async function createFixtureAgent(
       ),
     );
     const usage = currentUsage();
-    const evalRun = toHarnessRun({
+    const callRun = toHarnessRun({
       conversationId: record.conversationId,
+      earlier,
       usage,
       messages: visibleMessages,
       startedAtMs,
@@ -510,40 +544,15 @@ export async function createFixtureAgent(
     });
     calls.push({
       conversationId: record.conversationId,
-      events: evalRun.session.events,
+      events: callRun.session.events,
     });
     context.task.meta.harness = {
       name: "junior",
       run: combinedRun(calls, usage, startedAtMs),
     };
-    if (options.criteria) {
-      const judged = await judgeReplies({
-        criteria: options.criteria,
-        current: visibleMessages,
-        earlier,
-        signal: context.signal,
-      });
-      judgeScores.push({
-        name: "RubricJudge",
-        score: judged.score,
-        metadata: { answer: judged.answer, rationale: judged.rationale },
-      });
-      context.task.meta.eval = {
-        avgScore:
-          judgeScores.reduce((sum, entry) => sum + entry.score, 0) /
-          judgeScores.length,
-        scores: judgeScores,
-        thresholdFailed: judgeScores.some(
-          (entry) => entry.score < JUDGE_THRESHOLD,
-        ),
-      };
-      assert(
-        judged.score >= JUDGE_THRESHOLD,
-        `Rubric score ${judged.score} is below ${JUDGE_THRESHOLD}: ${judged.rationale}`,
-      );
-    }
     return conversationResult(record, {
-      evalRun,
+      ...callRun,
+      compactions: events.compactions,
       files,
       reactions,
       replies,
@@ -632,13 +641,15 @@ export async function createFixtureAgent(
     forkRecord.lastSeq = copied.lastSeq;
     forkRecord.visibleMessages = copied.visibleMessages;
     return conversationResult(forkRecord, {
-      evalRun: toHarnessRun({
+      ...toHarnessRun({
         conversationId: forkRecord.conversationId,
+        earlier: forkRecord.visibleMessages,
         usage: currentUsage(),
         messages: [],
         startedAtMs,
         toolCalls: [],
       }),
+      compactions: 0,
       files: [],
       reactions: [],
       replies: [],
@@ -697,6 +708,9 @@ export async function createFixtureAgent(
       }
       return await runAutomation(first, options);
     }
+    if (first.kind === "complete_auth") {
+      throw new Error("completeAuth() continues a Conversation");
+    }
     return await converse(
       newConversation(first, options.history),
       input,
@@ -752,6 +766,16 @@ function heartbeatSecret(): string {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }
   return secret;
+}
+
+/** An image as the dashboard sends it with a message. */
+function webImage(image: FileInput) {
+  if (!image.content) throw new Error(`Image ${image.name} needs content`);
+  return {
+    contentType: image.mimeType,
+    data: image.content.toString("base64"),
+    filename: image.name,
+  };
 }
 
 /** A JSON POST signed in as `viewerEmail`. */

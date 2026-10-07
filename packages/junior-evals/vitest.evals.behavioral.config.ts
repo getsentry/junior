@@ -6,6 +6,8 @@ import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { codingSuite } from "./src/suites/coding";
 import { memorySuite } from "./src/suites/memory";
+import { sentrySuite } from "./src/suites/sentry";
+import { skillsSuite } from "./src/suites/skills";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -67,7 +69,6 @@ const projectTest = {
     path.resolve(__dirname, "src/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
-    path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
     path.resolve(__dirname, "src/eval-cleanup.ts"),
   ],
   testTimeout: EVAL_TEST_TIMEOUT_MS,
@@ -77,6 +78,10 @@ const projectTest = {
 const codingSuiteRoot = "evals/coding";
 // The directory of the memory suite. See `src/suites/memory.ts`.
 const memorySuiteRoot = "evals/memory";
+// The directory of the Sentry suite. See `src/suites/sentry.ts`.
+const sentrySuiteRoot = "evals/sentry";
+// The directory of the skills suite. See `src/suites/skills.ts`.
+const skillsSuiteRoot = "evals/skills";
 
 export default defineConfig({
   resolve,
@@ -102,6 +107,8 @@ export default defineConfig({
             "evals/router/**",
             `${codingSuiteRoot}/**`,
             `${memorySuiteRoot}/**`,
+            `${sentrySuiteRoot}/**`,
+            `${skillsSuiteRoot}/**`,
           ],
         },
       },
@@ -119,6 +126,22 @@ export default defineConfig({
           ...projectTest,
           ...memorySuite,
           include: [`${memorySuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...sentrySuite,
+          include: [`${sentrySuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...skillsSuite,
+          include: [`${skillsSuiteRoot}/**/*.eval.ts`],
         },
       },
     ],

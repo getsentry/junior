@@ -133,9 +133,13 @@ describe("loaded history", () => {
     run,
   }) => {
     // Slack ingress escapes markdown, such as the brackets and underscore.
+    // The input does not name the no-reply marker, because the model then
+    // repeats the escaped text, which Junior delivers as a reply.
     await compareWithRealTurn(
       run,
-      mention("Do not reply to this. Answer with exactly [[NO_REPLY]]"),
+      mention(
+        "Note for the thread: the [draft] is in launch_notes.md. Do not reply to this and do not react.",
+      ),
       mention("thanks"),
       "no_reply",
     );

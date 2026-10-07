@@ -14,5 +14,21 @@ describe("Conversation Actions", () => {
       expect.arrayContaining(["heart", "white_check_mark"]),
     );
     expect(conversation.replies).toEqual([]);
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
+  });
+
+  test("when asked for an eyes reaction, keep it after the turn", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      mention(
+        "add an eyes reaction to this message so the team knows you are watching it",
+      ),
+    );
+
+    expect(completedToolCalls("addReaction", conversation)).not.toHaveLength(0);
+    // The requested emoji is also the processing reaction. Junior keeps it,
+    // so the turn does not replace it with the completed reaction.
+    expect(conversation.reactions).toEqual(["eyes"]);
   });
 });

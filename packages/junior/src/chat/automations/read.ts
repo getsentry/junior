@@ -7,6 +7,7 @@ import type {
   AutomationExecutionStatusDay,
   AutomationList,
   AutomationListQuery,
+  AutomationVersionList,
   AutomationRunList,
   AutomationSummary,
 } from "@/api/schema/automation";
@@ -31,6 +32,11 @@ import {
   type AutomationRunRecord,
 } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
+import {
+  automationDefinition,
+  listAutomationVersions,
+  sameDefinitionValue,
+} from "@/chat/automations/versions";
 import {
   deleteEventAutomation,
   eventAutomationBelongsToUser,
@@ -61,8 +67,9 @@ import {
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const TASK_EXECUTION_LIST_LIMIT = 100;
+const AUTOMATION_VERSION_LIST_LIMIT = 100;
 
-type TaskCandidate =
+export type TaskCandidate =
   | {
       kind: "event";
       ownedByViewer: boolean;
@@ -335,7 +342,8 @@ function viewerTeamIds(user: User): string[] {
   ];
 }
 
-async function resolveViewerTaskCandidate(
+/** Resolve an Automation the viewer owns or can read through a public Destination. */
+export async function resolveViewerTaskCandidate(
   user: User,
   kind: "scheduled" | "event",
   id: string,
@@ -762,6 +770,31 @@ export async function readViewerAutomationExecutions(
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
+  };
+}
+
+/** Read saved definitions for one viewer-visible Automation, newest first. */
+export async function readViewerAutomationVersions(
+  user: User,
+  kind: "scheduled" | "event",
+  id: string,
+): Promise<AutomationVersionList> {
+  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  if (!candidate) throw new ViewerTaskNotFoundError();
+  const versions = await listAutomationVersions(
+    getDb(),
+    kind,
+    id,
+    AUTOMATION_VERSION_LIST_LIMIT + 1,
+  );
+  const current = automationDefinition(candidate.task);
+  const listed = versions.slice(0, AUTOMATION_VERSION_LIST_LIMIT);
+  return {
+    versions: listed,
+    activeVersion:
+      listed.find(({ definition }) => sameDefinitionValue(definition, current))
+        ?.version ?? null,
+    truncated: versions.length > AUTOMATION_VERSION_LIST_LIMIT,
   };
 }
 
