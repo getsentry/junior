@@ -21,7 +21,7 @@ import {
   TEST_BOT_USER_ID,
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
-import type { FileInput, SlackAuthor } from "./inputs";
+import type { FileInput, SlackAttachment, SlackAuthor } from "./inputs";
 
 export const SLACK_TEAM_ID = "TEVAL";
 export const SLACK_BOT_USER_ID = TEST_BOT_USER_ID;
@@ -30,6 +30,13 @@ export const DEFAULT_SLACK_AUTHOR = {
   userId: TEST_USER_ID,
   userName: "testuser",
 } as const satisfies Required<SlackAuthor>;
+/** The bot user of the other Slack app, which posts each `appMessage()`. */
+export const SLACK_APP = {
+  fullName: "Alerts",
+  userId: "U0ALERTS",
+  userName: "alerts",
+} as const satisfies Required<SlackAuthor>;
+export const SLACK_APP_BOT_ID = "B0ALERTS";
 
 /** An uploaded file, as Slack describes it in events and thread history. */
 export type SlackFile = {
@@ -43,6 +50,7 @@ export type SlackFile = {
 
 /** One message in a Slack thread, as `conversations.replies` returns it. */
 type SlackThreadMessage = {
+  attachments?: SlackAttachment[];
   bot_id?: string;
   files?: SlackFile[];
   text: string;
@@ -351,12 +359,13 @@ let eventSequence = 0;
  * has the channel type, and an `app_mention` event, which has none. Slack does
  * not fix their order, and Junior stores the first one. The fixture sends
  * `app_mention` first, so each mention turn must learn the channel type from
- * Slack and not from the event. Both events have the uploaded files, and the
- * `message` event has the `file_share` subtype.
+ * Slack and not from the event. Both events have the attachments and the
+ * uploaded files, and the `message` event has the `file_share` subtype.
  */
 export async function postSlackMessageEvent(
   app: RequestApp,
   event: {
+    attachments?: SlackAttachment[];
     channel: string;
     channelType: "channel" | "im";
     files?: SlackFile[];
@@ -374,6 +383,7 @@ export async function postSlackMessageEvent(
     ts: event.ts,
     event_ts: event.ts,
     ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+    ...(event.attachments ? { attachments: event.attachments } : undefined),
     ...(event.files ? { files: event.files } : undefined),
   };
   if (event.mention) {

@@ -34,9 +34,17 @@ export interface FileInput {
   name: string;
 }
 
+/**
+ * A Slack message attachment, as Slack sends it on an event. Apps post alerts
+ * and previews as attachments, and a forwarded message arrives as one.
+ */
+export type SlackAttachment = Record<string, unknown>;
+
 /** An `app_mention` through the Slack Events API webhook. */
 export interface MentionInput {
   kind: "mention";
+  /** Attachments on the message, such as a forwarded alert. */
+  attachments?: SlackAttachment[];
   author?: SlackAuthor;
   /** The channel for a new thread. Defaults to a new channel. */
   channel?: MentionChannel;
@@ -50,6 +58,8 @@ export interface MentionInput {
 /** A thread message without a mention through the Slack Events API webhook. */
 export interface ThreadMessageInput {
   kind: "thread_message";
+  /** Attachments on the message, such as a forwarded alert. */
+  attachments?: SlackAttachment[];
   author?: SlackAuthor;
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
@@ -112,12 +122,23 @@ export interface HistoryReply {
   toolHistory?: HistoryToolCall[];
 }
 
-export type HistoryItem = MessageInput | HistoryReply;
+/**
+ * A message that another Slack app posted before the first input in loaded
+ * history. It is in the Slack thread only.
+ */
+export interface AppMessage {
+  kind: "app_message";
+  attachments?: SlackAttachment[];
+  text: string;
+}
+
+export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 
 /** Mention Junior in Slack. `run()` posts it to a new thread. */
 export function mention(
   text: string,
   options: {
+    attachments?: SlackAttachment[];
     author?: SlackAuthor;
     channel?: MentionChannel;
     channelType?: "channel" | "im";
@@ -130,7 +151,11 @@ export function mention(
 /** Post in the Slack thread without mentioning Junior. */
 export function threadMessage(
   text: string,
-  options: { author?: SlackAuthor; files?: FileInput[] } = {},
+  options: {
+    attachments?: SlackAttachment[];
+    author?: SlackAuthor;
+    files?: FileInput[];
+  } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };
 }
@@ -189,6 +214,18 @@ export function completeAuth(
   options: { author?: SlackAuthor } = {},
 ): CompleteAuthInput {
   return { kind: "complete_auth", provider, ...options };
+}
+
+/**
+ * A message from another Slack app for `history`, such as an alert that
+ * starts the thread. Junior took no turn for it and stored nothing, so a
+ * later turn reads it from Slack. It comes before the first input.
+ */
+export function appMessage(
+  text: string,
+  options: { attachments?: SlackAttachment[] } = {},
+): AppMessage {
+  return { kind: "app_message", text, ...options };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */
