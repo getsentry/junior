@@ -10,7 +10,11 @@ import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
+import {
+  getTurnRecord,
+  upsertTurnRecord,
+} from "@/chat/task-execution/turn-cursor";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import {
@@ -90,6 +94,39 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
       status: "failed",
     });
+  });
+
+  it("fails a stranded automation run without posting to its destination", async () => {
+    const dispatch = await createDispatch("stranded-run");
+    const { queue, state } = await createAgentDispatchWorkHarness(
+      neverRunAgentRunner(),
+    );
+    // Automation Sources are not session Sources, so the fallback has no
+    // Slack routing and posts nothing.
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    const conversationId = getDispatchConversationId(dispatch);
+    const turnId = getDispatchTurnId(dispatch.id);
+    await upsertTurnRecord({
+      conversationId,
+      destination,
+      dispatchId: dispatch.id,
+      piMessages: [],
+      sliceId: 1,
+      source: dispatch.source,
+      state: "running",
+      surface: "api",
+      turnId,
+    });
+
+    await runNextPausedTurn(conversationId, {
+      agentRunner: neverRunAgentRunner(),
+    });
+
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      errorMessage: "Turn lost its worker before reaching a safe boundary",
+      state: "failed",
+    });
+    expect(slackApiOutbox.messages()).toEqual([]);
   });
 
   it("resumes paused dispatch work through production routing", async () => {
