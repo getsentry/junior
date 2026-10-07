@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { appMessage, mention } from "@junior-evals/fixture/inputs";
+import { slackAppMessage, slackMention } from "@junior-evals/fixture/inputs";
 import { test } from "@junior-evals/fixture/test";
 
 const RUN_ID = "536be3d5-76e9-4d2c-b172-9756b5b4e6fc";
@@ -12,7 +12,7 @@ describe("Slack Message Content", () => {
   }) => {
     // Slack shows the label to people. Only the link target has the run id.
     const conversation = await run(
-      mention(
+      slackMention(
         `What is the run id in this link? <https://ci.example.com/runs/${RUN_ID}|ci.example.com/runs/…>`,
       ),
     );
@@ -24,7 +24,7 @@ describe("Slack Message Content", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("Which service does this alert name?", { forwarded: ALERT }),
+      slackMention("Which service does this alert name?", { forwarded: ALERT }),
     );
 
     expect(conversation.replies.at(-1)?.text).toMatch(/checkout/i);
@@ -35,8 +35,8 @@ describe("Slack Message Content", () => {
   }) => {
     // Junior never received the app message, so the turn reads it from Slack.
     const conversation = await run(
-      mention("Which service does this alert name?"),
-      { history: [appMessage(ALERT)] },
+      slackMention("Which service does this alert name?"),
+      { history: [slackAppMessage(ALERT)] },
     );
 
     expect(conversation.replies.at(-1)?.text).toMatch(/checkout/i);

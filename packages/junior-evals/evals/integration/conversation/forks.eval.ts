@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
@@ -59,7 +59,7 @@ describe("Conversation Forks", () => {
     run,
   }) => {
     const source = await run(
-      mention(
+      slackMention(
         "The release codename is Maple. Confirm it in one short sentence.",
       ),
     );

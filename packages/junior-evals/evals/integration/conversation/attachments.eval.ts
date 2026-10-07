@@ -5,9 +5,9 @@ import {
 } from "@junior-evals/fixture/images";
 import {
   file,
-  mention,
+  slackMention,
   reply,
-  threadMessage,
+  slackThreadMessage,
   unavailableFile,
   webMessage,
 } from "@junior-evals/fixture/inputs";
@@ -23,7 +23,7 @@ describe("Conversation Attachments", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("What is the ticket number in this screenshot?", {
+      slackMention("What is the ticket number in this screenshot?", {
         channelType: "im",
         files: [SCREENSHOT],
       }),
@@ -55,10 +55,12 @@ describe("Conversation Attachments", () => {
   }) => {
     // Junior does not answer the thread message, so no turn reads its image.
     const skipped = await run(
-      threadMessage("Here is the screenshot.", { files: [SCREENSHOT] }),
+      slackThreadMessage("Here is the screenshot.", { files: [SCREENSHOT] }),
       {
         history: [
-          mention("I will post a screenshot of the ticket in this thread."),
+          slackMention(
+            "I will post a screenshot of the ticket in this thread.",
+          ),
           reply("Okay, post it here."),
         ],
       },
@@ -66,7 +68,7 @@ describe("Conversation Attachments", () => {
     expect(skipped.turns).toEqual([]);
 
     const conversation = await skipped.continue(
-      mention("What is the ticket number in the screenshot above?"),
+      slackMention("What is the ticket number in the screenshot above?"),
     );
 
     expect(conversation.replies.at(-1)?.text).toContain(TICKET_NUMBER);
@@ -76,7 +78,7 @@ describe("Conversation Attachments", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("What is the ticket number in this screenshot?", {
+      slackMention("What is the ticket number in this screenshot?", {
         files: [file("screenshot.png", "image/png", "These bytes are no PNG.")],
       }),
     );
@@ -100,7 +102,7 @@ describe("Conversation Attachments", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("Who owns the rollback? Could you read both files?", {
+      slackMention("Who owns the rollback? Could you read both files?", {
         files: [
           file(
             "handoff.txt",
@@ -129,7 +131,7 @@ describe("Conversation Attachments", () => {
     run,
   }) => {
     const conversation = await run([
-      mention("Read this handoff first.", {
+      slackMention("Read this handoff first.", {
         files: [
           file(
             "handoff.txt",
@@ -138,7 +140,7 @@ describe("Conversation Attachments", () => {
           ),
         ],
       }),
-      mention("In one sentence, who is the rollback owner?"),
+      slackMention("In one sentence, who is the rollback owner?"),
     ]);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

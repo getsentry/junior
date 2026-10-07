@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
@@ -31,7 +31,7 @@ describe("Schedule Destination Updates", () => {
     });
 
     const conversation = await run(
-      mention("what scheduled automations are in this channel?", {
+      slackMention("what scheduled automations are in this channel?", {
         author: alice,
         channel: here,
       }),
@@ -76,7 +76,7 @@ describe("Schedule Destination Updates", () => {
     });
 
     const conversation = await run(
-      mention(
+      slackMention(
         `move my weekly planning reminder from <#${source.channelId}> here`,
         { author: alice, channel: slackChannel() },
       ),

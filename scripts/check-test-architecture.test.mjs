@@ -254,7 +254,7 @@ test("rejects agent test contract violations above the baseline", () => {
         integrationTest(
           [
             'import { getDb } from "@/chat/db";',
-            'import { mention } from "../../src/helpers";',
+            'import { slackMention } from "../../src/helpers";',
             'import { test } from "../../src/fixture/test";',
           ].join("\n"),
           EVAL_PATH,
@@ -292,7 +292,7 @@ test("allows agent tests to import the fixture, the public app API, plugin packa
             'import type { JuniorAppOptions } from "@sentry/junior";',
             'import { defineJuniorPlugins } from "@sentry/junior";',
             'import { githubPlugin } from "@sentry/junior-github";',
-            'import { mention, test } from "@junior-evals/fixture/test";',
+            'import { slackMention, test } from "@junior-evals/fixture/test";',
             'import { launchHistory } from "./helpers";',
           ].join("\n"),
           EVAL_PATH,

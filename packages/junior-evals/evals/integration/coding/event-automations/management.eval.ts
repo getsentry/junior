@@ -1,7 +1,7 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { describe, expect } from "vitest";
 import type { ToolCall } from "@junior-evals/fixture/test";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
@@ -35,7 +35,7 @@ describe("Event automation management", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
       ),
     );
@@ -79,7 +79,7 @@ describe("Event automation management", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Whenever a reviewer requests changes on GitHub PR getsentry/junior#691, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
       ),
     );
@@ -120,7 +120,7 @@ describe("Event automation management", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Create one event automation for GitHub issue getsentry/junior#208. Whenever it is closed or reopened, summarize the state change in this channel.",
       ),
     );
@@ -159,7 +159,7 @@ describe("Event automation management", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Create one event automation for getsentry/junior. Whenever any issue is closed or reopened, summarize the state change in this channel.",
       ),
     );
@@ -204,9 +204,12 @@ describe("Event automation management", () => {
 
     // The automation came from another thread in the same channel.
     const listing = await run(
-      mention("Show me the event automations configured for this channel.", {
-        channel,
-      }),
+      slackMention(
+        "Show me the event automations configured for this channel.",
+        {
+          channel,
+        },
+      ),
     );
     await expect(listing).toSatisfyJudge(
       RubricJudge,
@@ -220,7 +223,7 @@ describe("Event automation management", () => {
       }),
     );
     const update = await listing.continue(
-      mention(
+      slackMention(
         "Change the issue task so it only reacts when the issue is reopened and posts a reopening summary.",
       ),
     );
@@ -234,7 +237,7 @@ describe("Event automation management", () => {
       }),
     );
     const removal = await listing.continue(
-      mention("Delete that event automation now."),
+      slackMention("Delete that event automation now."),
     );
     await expect(removal).toSatisfyJudge(
       RubricJudge,
@@ -297,7 +300,7 @@ describe("Event automation management", () => {
     });
 
     const conversation = await run(
-      mention(
+      slackMention(
         "Is the GitHub issue event automation in this channel currently able to receive events?",
         { channel },
       ),

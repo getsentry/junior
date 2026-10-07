@@ -30,7 +30,7 @@ export const DEFAULT_SLACK_AUTHOR = {
   userId: TEST_USER_ID,
   userName: "testuser",
 } as const satisfies Required<SlackAuthor>;
-/** The bot user of the other Slack app, which posts each `appMessage()`. */
+/** The bot user of the other Slack app, which posts each `slackAppMessage()`. */
 export const SLACK_APP = {
   fullName: "Alerts",
   userId: "U0ALERTS",

@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
@@ -27,13 +27,13 @@ describe("Schedule Management", () => {
     });
 
     const proposal = await run(
-      mention(
+      slackMention(
         "prepare to change the scheduled planning reminder to Tuesdays at 10am Pacific, but ask me before applying the change.",
         { author: alice, channel },
       ),
     );
     const confirmation = await proposal.continue(
-      mention("Yes, apply that schedule change now.", { author: alice }),
+      slackMention("Yes, apply that schedule change now.", { author: alice }),
     );
     await expect(confirmation).toSatisfyJudge(
       RubricJudge,

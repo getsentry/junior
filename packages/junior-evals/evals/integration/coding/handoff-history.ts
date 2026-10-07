@@ -1,5 +1,5 @@
 import {
-  mention,
+  slackMention,
   reply,
   type HistoryItem,
   type HistoryToolCall,
@@ -123,7 +123,7 @@ const maintenance = [
 /** Completed coding work, then old maintenance instructions. */
 export function handoffHistory(): HistoryItem[] {
   return [
-    mention(
+    slackMention(
       "Make Work Object IDs stable across threads in skills/coding-workspace-fixture/project/src/work-object.ts. Keep this local; do not push or edit GitHub. Use editFile for source changes so I can review the diff.",
     ),
     reply(
@@ -131,18 +131,18 @@ export function handoffHistory(): HistoryItem[] {
       { toolHistory: completedImplementation },
     ),
     // Junior stayed silent on both maintenance tasks.
-    mention(`${maintenance}\nA deployment bot posted a preview URL.`, {
+    slackMention(`${maintenance}\nA deployment bot posted a preview URL.`, {
       author: eventAuthor,
     }),
-    mention(
+    slackMention(
       `${maintenance}\nA CI bot posted a screenshot report. No code change requested.`,
       { author: eventAuthor },
     ),
-    mention("idk what that caveat"),
+    slackMention("idk what that caveat"),
     reply(
       "Old cards return not_found. New cards use the new lookup. Live rendering is not verified.",
     ),
-    mention("that's fine I just need it to work going forward"),
+    slackMention("that's fine I just need it to work going forward"),
     reply(
       "Keeping the clean cutover, no compatibility layer. New cards use stable IDs.",
     ),

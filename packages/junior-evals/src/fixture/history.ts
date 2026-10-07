@@ -106,7 +106,7 @@ function groupTurns(items: HistoryItem[]): {
     if (item.kind === "app_message") {
       // Junior stores a message that arrives after it joined the thread.
       if (turns.length > 0) {
-        throw new Error("appMessage() comes before the first input");
+        throw new Error("slackAppMessage() comes before the first input");
       }
       appMessages.push(item);
       continue;
@@ -428,7 +428,7 @@ export async function loadHistory(args: {
   const { appMessages, turns } = groupTurns(args.items);
   if (appMessages.length > 0) {
     if (conversation.surface !== "slack") {
-      throw new Error("appMessage() needs a Slack Conversation");
+      throw new Error("slackAppMessage() needs a Slack Conversation");
     }
     const app = args.slack.registerAuthor(SLACK_APP);
     for (const [index, message] of appMessages.entries()) {
