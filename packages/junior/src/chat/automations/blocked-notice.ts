@@ -10,51 +10,20 @@ import {
   postSlackMessage,
 } from "@/chat/slack/outbound";
 
-interface BlockedAutomation {
-  creatorSlackUserId: string;
-  id: string;
-  title: string;
-}
-
 /** Identify the Automation that a run blocked. */
 export interface BlockedAutomationRef {
   automationId: string;
   kind: "event" | "scheduled";
 }
 
-async function readBlockedAutomation(
-  ref: BlockedAutomationRef,
-): Promise<BlockedAutomation | undefined> {
-  if (ref.kind === "scheduled") {
-    const task = await readScheduledAutomation(getDb(), ref.automationId);
-    return task
-      ? {
-          creatorSlackUserId: task.createdBy.slackUserId,
-          id: task.id,
-          title:
-            task.title ??
-            fallbackShortTitle(task.task.text, "Scheduled automation"),
-        }
-      : undefined;
-  }
-  const task = await getEventAutomation(getDb(), ref.automationId);
-  return task
-    ? {
-        creatorSlackUserId: task.createdBy.slackUserId,
-        id: task.id,
-        title:
-          task.title ?? fallbackShortTitle(task.task.text, "Event automation"),
-      }
-    : undefined;
-}
-
 function buildBlockedNoticeText(
-  automation: BlockedAutomation,
+  automationId: string,
+  title: string,
   reason: string,
 ): string {
-  const url = getDashboardTaskLink(automation.id);
+  const url = getDashboardTaskLink(automationId);
   return [
-    `Your automation *${escapeSlackMrkdwnText(automation.title)}* is blocked. It won't run again until you resume it.`,
+    `Your automation *${escapeSlackMrkdwnText(title)}* is blocked. It won't run again until you resume it.`,
     `> ${escapeSlackMrkdwnText(reason.replace(/\s+/g, " ").trim())}`,
     url
       ? `Fix the problem, then ${formatSlackLink(url, "resume it")}.`
@@ -73,11 +42,22 @@ export async function notifyAutomationBlocked(
 ): Promise<void> {
   await runBestEffort(
     async () => {
-      const automation = await readBlockedAutomation(ref);
-      if (!automation) return;
+      const task =
+        ref.kind === "scheduled"
+          ? await readScheduledAutomation(getDb(), ref.automationId)
+          : await getEventAutomation(getDb(), ref.automationId);
+      if (!task) return;
+      const title =
+        task.title ??
+        fallbackShortTitle(
+          task.task.text,
+          ref.kind === "scheduled"
+            ? "Scheduled automation"
+            : "Event automation",
+        );
       await postSlackMessage({
-        channelId: await openSlackDirectMessage(automation.creatorSlackUserId),
-        text: buildBlockedNoticeText(automation, ref.reason),
+        channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
+        text: buildBlockedNoticeText(ref.automationId, title, ref.reason),
       });
     },
     "automation.blocked_notice.failed",

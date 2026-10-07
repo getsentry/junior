@@ -318,10 +318,10 @@ When you reply, follow any reply format in the instructions.
 Briefly report what you did or what is needed next.
 ```
 
-**Automation outcome** (exact line; the second sentence only for no outcomes)
+**Automation outcome** (exact line)
 
 ```text
-End with `finishAutomationRun`. This automation posts nothing.
+End with `finishAutomationRun`.
 ```
 
 Automations store an ordered outcome list. An empty list sends no successful
@@ -406,7 +406,6 @@ check, and Slack Delivery read that field. They do not check the Source.
   on the dispatch, in the execution history, and as the last run status on
   the dashboard. `finishedRunReply` decides what a finished run posts, for
   first runs and resumed runs.
-- The `app.automation.result` span attribute records the declared result.
 - Each run has its own dispatch Conversation, `agent-dispatch:{id}`. A person
   who replies to the posted message starts a normal chat Turn in the Slack
   thread Conversation. That Turn sees the thread, including the posted

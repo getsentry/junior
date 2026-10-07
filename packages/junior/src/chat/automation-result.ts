@@ -5,9 +5,7 @@
  * result. The run does not deliver its final assistant text. The work owner
  * reads the declared result and applies the stored outcomes.
  */
-import type { Source } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   isAssistantMessage,
@@ -81,13 +79,6 @@ export function finishedRunReply(
     : undefined;
 }
 
-/** Return whether this Source starts an Automation run. */
-export function isAutomationSource(source: Source): boolean {
-  return (
-    source.kind === "scheduled_automation" || source.kind === "event_automation"
-  );
-}
-
 /**
  * Read the last successful declared result from agent history items.
  *
@@ -113,18 +104,6 @@ export function readAutomationResult(
     }
   }
   return undefined;
-}
-
-/**
- * Return the declared result to save. A message that is only the old
- * no-reply marker posts nothing, so it becomes `no_action`.
- */
-export function normalizeAutomationResult(
-  result: AutomationResult,
-): AutomationResult {
-  return result.result === "send_message" && isNoReplyMarker(result.message)
-    ? { result: "no_action", reason: "The message was the no-reply marker." }
-    : result;
 }
 
 /**

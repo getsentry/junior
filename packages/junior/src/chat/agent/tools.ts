@@ -395,7 +395,7 @@ export async function wireAgentTools(
       ? {
           // Legacy dispatches without outcomes send to their Destination.
           automation: {
-            sendsMessage: args.run.dispatch?.outcomes?.length !== 0,
+            sendsMessage: args.run.dispatch.outcomes?.length !== 0,
           },
         }
       : undefined),

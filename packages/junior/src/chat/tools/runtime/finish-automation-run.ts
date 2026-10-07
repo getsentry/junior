@@ -1,8 +1,6 @@
 import { z } from "zod";
-import {
-  automationResultSchema,
-  normalizeAutomationResult,
-} from "@/chat/automation-result";
+import { automationResultSchema } from "@/chat/automation-result";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -58,7 +56,14 @@ export function createFinishAutomationRunTool(options: {
             : `${input.result} requires a non-empty reason.`,
         );
       }
-      return normalizeAutomationResult(parsed.data);
+      // A message that is only the old no-reply marker posts nothing.
+      return parsed.data.result === "send_message" &&
+        isNoReplyMarker(parsed.data.message)
+        ? {
+            result: "no_action" as const,
+            reason: "The message was the no-reply marker.",
+          }
+        : parsed.data;
     },
   });
 }

@@ -17,11 +17,7 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
       "Briefly report what you did or what is needed next.",
     ];
   }
-  return outcomes.length === 0
-    ? [
-        `End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. This automation posts nothing.`,
-      ]
-    : [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
+  return [`End with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`.`];
 }
 
 function oneLine(value: string): string {
