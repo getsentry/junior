@@ -385,8 +385,9 @@ check, and Slack Delivery read that field. They do not check the Source.
 `automation-result.ts` owns the result contract.
 
 - The system prompt uses `<automation-run>` rules instead of the task,
-  conversation, and Slack action rules. The run context lists each outcome and
-  says if it is the creator's direct message or a channel.
+  conversation, and Slack action rules. It has no tool narration rules, and its
+  failure rules keep failure details out of the message. The run context lists
+  each outcome and says if it is the creator's direct message or a channel.
 - The run has no Delivery port, so final assistant text is never delivered.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.

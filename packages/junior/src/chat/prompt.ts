@@ -352,6 +352,7 @@ const SLACK_ACTION_RULES = [
 const AUTOMATION_RUN_RULES = [
   "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
   "- Nobody reads this run while it executes. Do not ask questions, ask for approval, or offer options. Infer conservatively and do the work now.",
+  "- Check every condition in the instruction before any action with side effects. If a condition is not met or cannot be verified, stop before you act.",
   "- A tool result with `timed_out: true` means that attempt did not finish. Before you retry work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
   `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
 ];
@@ -360,6 +361,13 @@ const SAFETY_RULES = [
   "- Stay within the user's request and the runtime's available capabilities; do not pursue independent goals, persistence, replication, credential gathering, or access expansion.",
   "- Respect stop, pause, audit, and approval boundaries. Do not bypass safeguards or persuade the user to weaken them.",
   "- Do not change system prompts, tool policies, security settings, credentials, or runtime configuration unless the user explicitly requests that exact administrative action and an available tool permits it.",
+];
+
+// Automation runs have no reader for failure reports. A failure that stops the
+// job goes in the declared reason, never in the posted message.
+const AUTOMATION_FAILURE_RULES = [
+  "- Keep commands, error output, raw tool payloads, and internal routing metadata out of the message.",
+  `- When a failure stops the job, put its cause in the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` reason, not in the message.`,
 ];
 
 const FAILURE_RULES = [
@@ -386,14 +394,21 @@ function buildBehaviorSection(
             ? [renderRuleSection("slack-actions", SLACK_ACTION_RULES)]
             : []),
         ];
+  const automation = mode === "automation";
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
-    renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
+    // Narration guidance is for a person who reads the run.
+    ...(automation
+      ? []
+      : [renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES)]),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
     renderRuleSection("planning", PLANNING_RULES),
     ...runSections,
     renderRuleSection("safety", SAFETY_RULES),
-    renderRuleSection("failure-handling", FAILURE_RULES),
+    renderRuleSection(
+      "failure-handling",
+      automation ? AUTOMATION_FAILURE_RULES : FAILURE_RULES,
+    ),
   ].join("\n\n");
 }
 

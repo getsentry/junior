@@ -6,6 +6,7 @@ import {
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
@@ -30,6 +31,19 @@ vi.hoisted(() => {
 });
 
 /** Model output that ends an Automation run with one declared result. */
+const creatorSubject = {
+  type: "user" as const,
+  userId: "U123",
+  allowedWhen: "scheduled-automation" as const,
+  taskId: "task-123",
+  binding: {
+    type: "scheduled-automation" as const,
+    plugin: "scheduler",
+    taskId: "task-123",
+    signature: "v1=test",
+  },
+};
+
 function finishRun(
   args:
     | { result: "send_message"; message: string }
@@ -282,19 +296,43 @@ describe("agent dispatch conversation work", () => {
       outcomes: undefined,
       expected: { status: "completed" },
     },
+    {
+      name: "missing creator account",
+      subject: creatorSubject,
+      failure: new AuthorizationFlowDisabledError("plugin", "github"),
+      outcomes: [],
+      expected: {
+        errorMessage: "This run needs a connected github account.",
+        status: "blocked",
+      },
+    },
+    {
+      // Connecting an account cannot help a system-credential run.
+      name: "system credentials without access",
+      failure: new AuthorizationFlowDisabledError("plugin", "github"),
+      outcomes: [],
+      expected: {
+        errorMessage:
+          "This run uses system credentials, which have no github access. Switch it to creator credentials and connect a github account.",
+        status: "blocked",
+      },
+    },
   ])(
-    "records a declared $name result without posting",
-    async ({ name, declared, outcomes, expected }) => {
+    "records a $name run without posting",
+    async ({ name, declared, subject, failure, outcomes, expected }) => {
       const dispatch = await createDispatch(
         `silent-${name}`,
-        undefined,
+        subject,
         undefined,
         undefined,
         "Apply the requested maintenance.",
         outcomes,
       );
-      const agentRunner = createModelAgentRunner(createModelStream([declared]));
+      const agentRunner = createModelAgentRunner(
+        createModelStream(declared ? [declared] : []),
+      );
       const runAgent = vi.spyOn(agentRunner, "run");
+      if (failure) runAgent.mockRejectedValueOnce(failure);
       const { queue, run, state } =
         await createAgentDispatchWorkHarness(agentRunner);
 

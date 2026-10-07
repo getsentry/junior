@@ -94,9 +94,10 @@ describe("Sentry Skill Workflows", () => {
   test("when creator-bound scheduled Sentry work becomes due without a connected account, do not ask the channel to connect it", async ({
     run,
   }) => {
+    const destination = slackChannel();
     await insertScheduledAutomation({
       credentialMode: "creator",
-      destination: slackChannel(),
+      destination,
       due: true,
       task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
     });
@@ -109,7 +110,7 @@ describe("Sentry Skill Workflows", () => {
     // direct message.
     expect(
       digest.replies.filter(
-        (posted) => !/^Your automation \*.+\* is blocked\./.test(posted.text),
+        (posted) => posted.channelId === destination.channelId,
       ),
     ).toEqual([]);
     expect(digest.turns.map((turn) => turn.status)).not.toContain("started");

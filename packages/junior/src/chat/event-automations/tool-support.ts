@@ -200,7 +200,7 @@ export function eventAutomationIsWritableFrom(
 export async function writableEventAutomation(
   context: ToolRuntimeContext,
   id: string,
-): Promise<EventAutomation> {
+): Promise<StoredEventAutomation> {
   const { destination } = requireEventAutomationSlackContext(context);
   const task = await getEventAutomation(getDb(), id);
   if (

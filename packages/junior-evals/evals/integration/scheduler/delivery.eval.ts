@@ -4,7 +4,7 @@ import {
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -39,9 +39,7 @@ describe("Scheduled Delivery", () => {
 
     expect(silent.replies).toEqual([]);
     expect(
-      completedToolCalls("finishAutomationRun", silent).map(
-        (call) => call.input,
-      ),
+      completedToolCalls("finishAutomationRun", silent).map(toolOutput),
     ).toEqual([expect.objectContaining({ result: "no_action" })]);
   });
 });

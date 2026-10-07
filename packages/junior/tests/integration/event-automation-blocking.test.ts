@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
-import { automationRevision } from "@/chat/automations/revision";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
-import {
-  getEventAutomation,
-  setEventAutomationStatus,
-} from "@/chat/event-automations/store";
+import { getEventAutomation } from "@/chat/event-automations/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
 import {
   changesRequestedEvent,
+  context,
   createTask,
+  EVENT_CATALOG,
+  execute,
   teamId,
 } from "../fixtures/event-automations";
 import {
@@ -72,13 +72,12 @@ describe("event automation blocking", () => {
     const reason = "The release-train label no longer exists.";
     const db = fixture.sql.db();
     const read = async () => (await getEventAutomation(db, automation.id))!;
-    const setStatus = async (status: "active" | "paused") =>
-      setEventAutomationStatus(
-        db,
-        automation.id,
+    // The creator resumes or pauses it from chat.
+    const setStatus = (status: "active" | "paused") =>
+      execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
+        automationId: automation.id,
         status,
-        automationRevision(await read()),
-      );
+      });
     const ingest = (eventKey: string) =>
       ingestEventAutomations(changesRequestedEvent(eventKey), {
         queue,
@@ -121,9 +120,9 @@ describe("event automation blocking", () => {
     });
     expect(await ingest("github:misconfigured-2")).toEqual({ dispatched: 0 });
 
-    const resumed = await setStatus("active");
-    expect(resumed.status).toBe("active");
-    expect(resumed).not.toHaveProperty("statusReason");
+    await setStatus("active");
+    expect(await read()).toMatchObject({ status: "active" });
+    expect(await read()).not.toHaveProperty("statusReason");
     expect(await ingest("github:misconfigured-3")).toEqual({ dispatched: 1 });
 
     // The creator pauses it while that run is in flight. The run blocks, so
@@ -134,7 +133,8 @@ describe("event automation blocking", () => {
       status: "paused",
       statusReason: reason,
     });
-    await expect(setStatus("active")).resolves.toMatchObject({
+    await setStatus("active");
+    expect(await read()).toMatchObject({
       status: "blocked",
       statusReason: reason,
     });

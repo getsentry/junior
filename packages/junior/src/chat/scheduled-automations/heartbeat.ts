@@ -213,20 +213,21 @@ async function applyDispatchResult(args: {
       startedAtMs: args.run.startedAtMs!,
     });
     if (!blocked) return false;
-    await advanceScheduledAutomationAfterRun(args.db, {
+    const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
       errorMessage: blocked.errorMessage,
       nowMs: args.nowMs,
       run: args.run,
       status: "blocked",
     });
-    // Notify only after the Scheduled automation is stored as blocked, so
-    // the dashboard shows the same state as the notice.
-    await notifyAutomationBlocked({
-      automationId: args.run.taskId,
-      dispatchId: args.dispatch.id,
-      kind: "scheduled",
-      reason: blocked.errorMessage ?? "Dispatch blocked.",
-    });
+    // Notify only when the block is stored, so the dashboard matches.
+    if (storedBlock) {
+      await notifyAutomationBlocked({
+        automationId: args.run.taskId,
+        dispatchId: args.dispatch.id,
+        kind: "scheduled",
+        reason: blocked.errorMessage ?? "Dispatch blocked.",
+      });
+    }
     await recordScheduledExecution({
       nowMs: args.nowMs,
       run: args.run,
