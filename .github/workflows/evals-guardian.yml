@@ -44,6 +44,7 @@ jobs:
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior/src/chat/services/guardian-action-policy.ts'
       - id: decision
         env:
@@ -91,7 +92,7 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:guardian
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
       - name: Collect new recordings
         if: always() && !cancelled()
         uses: ./.github/actions/collect-eval-recordings

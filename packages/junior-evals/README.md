@@ -263,8 +263,16 @@ process and has no Junior code, so it can move out of this repository.
 - Every eval suite uses the proxy. Global setup starts it with
   `startRecordingRun()` (`src/recording-run.ts`). Each test sends its HTTP
   traffic through the proxy as one session (`src/fixture/recordings.ts`).
-  MSW mocks, such as Slack, answer first. Requests to `localhost` do not go
-  through the proxy.
+  MSW mocks, such as Slack, answer first.
+- All other HTTP traffic of the run also goes through the proxy. Global
+  setup sets `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY`,
+  and `NODE_EXTRA_CA_CERTS`. The test workers and child processes inherit
+  them. `NO_PROXY` in `src/recording-rules.ts` lists the hosts that skip the
+  proxy: loopback and the Cloudflare Quick Tunnel.
+- In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
+  only loopback, DNS, and Cloudflare. Any other connection that does not use
+  the proxy fails at once. The proxy itself starts outside the jail. Add a
+  host to the jail only if it cannot go through the proxy.
 - `src/recording-rules.ts` is the one list of recorded traffic:
   - `model`: every POST to the AI Gateway. This includes agent, title,
     compaction, judge, Guardian, and turn router requests.

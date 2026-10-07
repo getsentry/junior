@@ -13,6 +13,10 @@ directory, so the proxy can move to its own package or repository.
   `node recording-proxy.ts <config.json>`. The command writes one JSON line
   with `url`, `caCert`, and `secret` when the proxy is ready.
 - Send traffic through `url` with `HTTPS_PROXY` or an undici `ProxyAgent`.
+  The proxy ignores proxy variables in its own environment.
+- `spawnRecordingProxy(config, { launcher })` runs the proxy with a command
+  prefix, such as `sudo`. Use it when the caller cannot reach the network,
+  but the proxy must.
 - The client must trust `caCert`. The proxy signs a certificate for each
   HTTPS host, so it can read the requests.
 - Send proxy credentials with `secret` as the password. The control API

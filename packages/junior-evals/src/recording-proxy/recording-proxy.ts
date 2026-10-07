@@ -763,28 +763,48 @@ export async function startRecordingProxy(
   };
 }
 
+/** Proxy variables. The proxy itself must not send traffic to a proxy. */
+const PROXY_VARIABLES = new Set([
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  "node_use_env_proxy",
+]);
+
 /**
  * Start the proxy in a child process, so the traffic of the caller cannot
  * reach it through mocks in the same process.
+ *
+ * `launcher` is a command that runs the proxy, such as
+ * `["sudo", "-n", "--"]`. Use it when the caller runs where only the
+ * proxy can reach the network.
  */
 export async function spawnRecordingProxy(
   config: RecordingProxyConfig,
+  { launcher = [] }: { launcher?: string[] } = {},
 ): Promise<RecordingProxy> {
   const configDir = await mkdtemp(
     path.join(tmpdir(), "recording-proxy-config-"),
   );
   const configPath = path.join(configDir, "config.json");
   await writeFile(configPath, JSON.stringify(config));
-  const child = spawn(
+  const command = [
+    ...launcher,
     process.execPath,
-    [
-      "--experimental-strip-types",
-      "--disable-warning=ExperimentalWarning",
-      fileURLToPath(import.meta.url),
-      configPath,
-    ],
-    { stdio: ["ignore", "pipe", "inherit"] },
+    "--experimental-strip-types",
+    "--disable-warning=ExperimentalWarning",
+    fileURLToPath(import.meta.url),
+    configPath,
+  ];
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !PROXY_VARIABLES.has(name.toLowerCase()),
+    ),
   );
+  const child = spawn(command[0]!, command.slice(1), {
+    env,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
   const ready = await new Promise<{
     caCert: string;
     secret: string;

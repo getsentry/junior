@@ -101,7 +101,8 @@ jobs:
           RESULT_DIR="$RUNNER_TEMP/eval-recordings-run"
           mkdir -p "$RESULT_DIR"
           touch "$RUNNER_TEMP/started"
-          pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
+          # The jail rejects connections that skip the recording proxy.
+          packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
           echo "$?" > "$RESULT_DIR/exit-code"
           # A passing test writes every recording it used, so the file time
           # shows which recordings this run used.

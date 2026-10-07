@@ -43,6 +43,7 @@ jobs:
               - 'packages/junior-evals/vitest.evals.router.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior/src/chat/services/turn-router.ts'
               - 'packages/junior/src/chat/current-instruction.ts'
               - 'packages/junior/src/chat/model-profile.ts'
@@ -93,7 +94,7 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: router-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:router
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:router
       - name: Collect new recordings
         if: always() && !cancelled()
         uses: ./.github/actions/collect-eval-recordings

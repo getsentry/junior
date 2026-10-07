@@ -19,6 +19,7 @@ import {
 import { inject, onTestFinished } from "vitest";
 import { installEvalAiGatewayDispatcher } from "../eval-ai-gateway-dispatcher";
 import "../eval-context";
+import { NO_PROXY } from "../recording-rules";
 
 /** Send the HTTP traffic of the current test through the recording proxy. */
 export function installRecordings(): void {
@@ -28,12 +29,12 @@ export function installRecordings(): void {
   const sessionId = randomUUID();
   const previous = getGlobalDispatcher();
   // One agent per test, so each tunnel carries the session of its test.
-  // Local fixture servers, such as the blob server, are not outside
-  // traffic, so their requests do not go through the proxy.
+  // Other traffic of the worker uses the proxy variables of the run
+  // (`src/recording-run.ts`), without a session.
   const agent = new EnvHttpProxyAgent({
     httpProxy: proxy.url,
     httpsProxy: proxy.url,
-    noProxy: "localhost,127.0.0.1,::1",
+    noProxy: NO_PROXY,
     token: `Basic ${Buffer.from(`${sessionId}:${proxy.secret}`).toString("base64")}`,
     requestTls: { ca: proxy.caCert },
   });

@@ -62,6 +62,14 @@ const ALLOWED_ORIGINS = [
   "https://docs.slack.dev",
 ];
 
+/**
+ * Hosts that do not use the proxy. Local fixture servers, Postgres, and
+ * Redis are on loopback. The Quick Tunnel of the sandbox egress
+ * (`src/eval-egress.ts`) is on Cloudflare, which the CI network allows
+ * directly (`scripts/network-jail.sh`).
+ */
+export const NO_PROXY = "localhost,127.0.0.1,::1,.trycloudflare.com";
+
 /** The committed recordings of the eval package. */
 const RECORDINGS_DIR = fileURLToPath(new URL("../recordings", import.meta.url));
 

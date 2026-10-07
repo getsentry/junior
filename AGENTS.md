@@ -54,6 +54,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 - Evals replay model calls and web pages from `packages/junior-evals/recordings/`. A recording proxy (`packages/junior-evals/src/recording-proxy/`) records and replays them.
 - `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file.
+- All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
 - A changed prompt, tool, skill, or model makes new requests, and these go live. You can commit the new recordings, but you do not have to. A nightly workflow records them and opens a pull request.
 - Each run prints `[evals] Recordings: ...`. A second run of passing tests must show `0 live`.
 - Details: "Recordings" in `packages/junior-evals/README.md`.
