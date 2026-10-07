@@ -60,6 +60,7 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
+import { isAutomationSource } from "@/chat/automation-result";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -724,6 +725,9 @@ async function failStrandedTurnWithFallback(args: {
       state: "failed",
       surface: failed.surface,
     });
+    // An Automation run posts only its declared message. The failure shows on
+    // the dispatch, not in the channel.
+    if (isAutomationSource(routing.source)) return true;
   }
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
