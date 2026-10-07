@@ -323,7 +323,7 @@ export async function createFixtureAgent(
       throw new Error("Slack input needs a Slack Conversation");
     }
     if (!started && input.kind !== "mention") {
-      throw new Error("A Slack Conversation starts with mention()");
+      throw new Error("A Slack Conversation starts with slackMention()");
     }
     const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
     const ts = started ? slack.nextTs() : record.threadTs;
@@ -373,7 +373,7 @@ export async function createFixtureAgent(
       });
     }
     if (first.kind !== "mention" && !hasHistory(history)) {
-      throw new Error("run() needs mention() or webMessage() first");
+      throw new Error("run() needs slackMention() or webMessage() first");
     }
     const channelType =
       (first.kind === "mention" && first.channelType) || "channel";
@@ -437,7 +437,7 @@ export async function createFixtureAgent(
       send: async (input: Input) => {
         if (typeof target === "function") {
           throw new Error(
-            "send() needs a Conversation from mention() or webMessage()",
+            "send() needs a Conversation from slackMention() or webMessage()",
           );
         }
         await sendInput(target, input);

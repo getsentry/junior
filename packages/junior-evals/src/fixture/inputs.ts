@@ -128,7 +128,7 @@ export interface AppMessage {
 export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 
 /** Mention Junior in Slack. `run()` posts it to a new thread. */
-export function mention(
+export function slackMention(
   text: string,
   options: {
     author?: SlackAuthor;
@@ -142,7 +142,7 @@ export function mention(
 }
 
 /** Post in the Slack thread without mentioning Junior. */
-export function threadMessage(
+export function slackThreadMessage(
   text: string,
   options: {
     author?: SlackAuthor;
@@ -214,7 +214,7 @@ export function completeAuth(
  * starts the thread. Junior took no turn for it and stored nothing, so a
  * later turn reads it from Slack. It comes before the first input.
  */
-export function appMessage(text: string): AppMessage {
+export function slackAppMessage(text: string): AppMessage {
   return { kind: "app_message", text };
 }
 

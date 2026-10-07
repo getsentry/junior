@@ -2,10 +2,10 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import {
-  mention,
+  slackMention,
   person,
   reply,
-  threadMessage,
+  slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedMcpToolCalls } from "@junior-evals/fixture/results";
@@ -39,12 +39,12 @@ describe("Actor Attribution", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("Can you draft the one-sentence status update for this?", {
+      slackMention("Can you draft the one-sentence status update for this?", {
         author: DAVID,
       }),
       {
         history: [
-          mention(
+          slackMention(
             "The billing rollout is paused until the retry queue drains.",
             { author: ALICE },
           ),
@@ -75,13 +75,13 @@ describe("Actor Attribution", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "For the rollout summary, my preferred wording is casual and direct. What wording preference did I just give you?",
         { author: RYAN },
       ),
       {
         history: [
-          mention(
+          slackMention(
             "For the rollout summary, my preferred wording is formal and cautious.",
             { author: ALICE },
           ),
@@ -113,18 +113,18 @@ describe("Actor Attribution", () => {
       plugins: defineJuniorPlugins([evalTracker]),
     });
     const conversation = await run(
-      mention(
+      slackMention(
         "do we already have Linear or GitHub tickets about create-issue modal slowness from product issues or user feedback, and are they the same root cause?",
         { author: BRUNO },
       ),
       {
         // Two people talk to each other before Bruno asks Junior.
         history: [
-          threadMessage(
+          slackThreadMessage(
             "Would it help if I drafted a tracker ticket for this customer case?",
             { author: LAMBERTO },
           ),
-          threadMessage(
+          slackThreadMessage(
             "I assume we might already have one. Feel free to handle the customer case.",
             { author: BRUNO },
           ),

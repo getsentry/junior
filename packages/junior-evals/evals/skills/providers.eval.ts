@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -13,7 +13,7 @@ describe("Skill Providers", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
       ),
     );
@@ -37,7 +37,7 @@ describe("Skill Providers", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/eval-mcp Ask the handbook what it says about US holidays, then summarize the result.",
       ),
     );
@@ -79,7 +79,7 @@ describe("Skill Providers", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/eval-directory Find alice@example.com in the directory and tell me whether the account is active.",
       ),
     );

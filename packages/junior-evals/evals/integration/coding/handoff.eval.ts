@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -17,7 +17,7 @@ describe("Handoff task continuity", () => {
       kind: "procedure",
     });
     const conversation = await run(
-      mention("Switch to the other configured profile first. Gut check"),
+      slackMention("Switch to the other configured profile first. Gut check"),
       { history: handoffHistory() },
     );
 

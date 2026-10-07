@@ -1,9 +1,9 @@
 import { describe, expect } from "vitest";
 import {
-  mention,
+  slackMention,
   person,
   reply,
-  threadMessage,
+  slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
@@ -24,10 +24,10 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const conversation = await run(
-      threadMessage("@sam can you take the billing worker rollback?"),
+      slackThreadMessage("@sam can you take the billing worker rollback?"),
       {
         history: [
-          mention(
+          slackMention(
             "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
           ),
           reply("The deploy changed the billing worker and the API auth flow."),
@@ -43,10 +43,10 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const conversation = await run(
-      threadMessage("What did you just say about the budget?"),
+      slackThreadMessage("What did you just say about the budget?"),
       {
         history: [
-          mention("I need the budget by Friday."),
+          slackMention("I need the budget by Friday."),
           reply("You need the budget by Friday."),
         ],
       },
@@ -70,12 +70,15 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const statement = await run(
-      threadMessage("Alex, I plan to roll back the billing worker first.", {
-        author: SAM,
-      }),
+      slackThreadMessage(
+        "Alex, I plan to roll back the billing worker first.",
+        {
+          author: SAM,
+        },
+      ),
       {
         history: [
-          mention(
+          slackMention(
             "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
           ),
           reply("The deploy changed the billing worker and the API auth flow."),
@@ -83,7 +86,7 @@ describe("Passive Behavior", () => {
       },
     );
     const question = await statement.continue(
-      threadMessage("Is that the right approach?", { author: SAM }),
+      slackThreadMessage("Is that the right approach?", { author: SAM }),
     );
 
     expect([...statement.replies, ...question.replies]).toHaveLength(0);
@@ -94,12 +97,12 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const statement = await run(
-      threadMessage("Sam, I can finish the API rollout tomorrow.", {
+      slackThreadMessage("Sam, I can finish the API rollout tomorrow.", {
         author: ALEX,
       }),
       {
         history: [
-          mention("What does the billing worker do?"),
+          slackMention("What does the billing worker do?"),
           reply(
             "The billing worker handles invoice processing and payment retries.",
           ),
@@ -107,7 +110,9 @@ describe("Passive Behavior", () => {
       },
     );
     const question = await statement.continue(
-      threadMessage("What about the billing worker timeline?", { author: SAM }),
+      slackThreadMessage("What about the billing worker timeline?", {
+        author: SAM,
+      }),
     );
 
     expect([...statement.replies, ...question.replies]).toHaveLength(0);
@@ -118,16 +123,18 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const statement = await run(
-      threadMessage("Alex, my deployment is still queued.", { author: SAM }),
+      slackThreadMessage("Alex, my deployment is still queued.", {
+        author: SAM,
+      }),
       {
         history: [
-          mention("Show me the deployment status."),
+          slackMention("Show me the deployment status."),
           reply("Here's the deployment status."),
         ],
       },
     );
     const question = await statement.continue(
-      threadMessage("Can you check on this?", { author: SAM }),
+      slackThreadMessage("Can you check on this?", { author: SAM }),
     );
 
     expect([...statement.replies, ...question.replies]).toHaveLength(0);
@@ -138,10 +145,10 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const conversation = await run(
-      threadMessage("Can you explain your last response in more detail?"),
+      slackThreadMessage("Can you explain your last response in more detail?"),
       {
         history: [
-          mention(
+          slackMention(
             "What changed in the last deploy? The API gateway gained request timeouts, the billing worker now backs off failed payment retries, and the auth service refreshes expired sessions.",
           ),
           reply("The deploy changed three services."),
@@ -164,9 +171,9 @@ describe("Passive Behavior", () => {
     agent,
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
-    const conversation = await run(threadMessage("Which one?"), {
+    const conversation = await run(slackThreadMessage("Which one?"), {
       history: [
-        mention("What changed in the deploy?"),
+        slackMention("What changed in the deploy?"),
         reply("The deploy changed billing, auth, and the API gateway."),
       ],
     });
@@ -179,18 +186,20 @@ describe("Passive Behavior", () => {
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
     const statement = await run(
-      threadMessage("Sam, I think auth should roll back first.", {
+      slackThreadMessage("Sam, I think auth should roll back first.", {
         author: ALEX,
       }),
       {
         history: [
-          mention("What changed in the deploy?"),
+          slackMention("What changed in the deploy?"),
           reply("The deploy changed billing, auth, and the API gateway."),
         ],
       },
     );
     const question = await statement.continue(
-      threadMessage("What about the billing worker timeline?", { author: SAM }),
+      slackThreadMessage("What about the billing worker timeline?", {
+        author: SAM,
+      }),
     );
 
     expect([...statement.replies, ...question.replies]).toHaveLength(0);

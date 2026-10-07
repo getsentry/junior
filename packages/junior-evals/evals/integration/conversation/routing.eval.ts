@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention, threadMessage } from "@junior-evals/fixture/inputs";
+import { slackMention, slackThreadMessage } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
@@ -7,9 +7,9 @@ describe("Conversation Routing", () => {
   test("when a thread message explicitly mentions Junior, post a direct reply", async ({
     run,
   }) => {
-    const conversation = await run(mention("What is 2+2?"), {
+    const conversation = await run(slackMention("What is 2+2?"), {
       history: [
-        threadMessage("Quick math check before standup.", {
+        slackThreadMessage("Quick math check before standup.", {
           author: { fullName: "Sam Example", userId: "U0SAM", userName: "sam" },
         }),
       ],
@@ -32,8 +32,8 @@ describe("Conversation Routing", () => {
     run,
   }) => {
     const conversation = await run([
-      mention("The rollback owner for the checkout outage is Dana."),
-      mention("In one sentence, who is the rollback owner?"),
+      slackMention("The rollback owner for the checkout outage is Dana."),
+      slackMention("In one sentence, who is the rollback owner?"),
     ]);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -52,7 +52,7 @@ describe("Conversation Routing", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
       ),
     );

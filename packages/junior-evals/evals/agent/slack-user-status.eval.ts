@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -9,7 +9,7 @@ describe("Slack User Status", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("Am I marked out of office in Slack right now?"),
+      slackMention("Am I marked out of office in Slack right now?"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

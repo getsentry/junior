@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
@@ -36,7 +36,9 @@ describe("Shared Memory", () => {
     }
 
     const result = await run(
-      mention("What do you remember about how CI works in getsentry/junior?"),
+      slackMention(
+        "What do you remember about how CI works in getsentry/junior?",
+      ),
     );
     await expect(result).toSatisfyJudge(
       RubricJudge,
@@ -57,12 +59,12 @@ describe("Shared Memory", () => {
     run,
   }) => {
     const asked = await run(
-      mention(
+      slackMention(
         "Please remember that for flaky webhook triage, inspect delivery headers before retrying the job.",
       ),
     );
     const conversation = await asked.continue(
-      mention("How should flaky webhook triage be done?"),
+      slackMention("How should flaky webhook triage be done?"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -88,12 +90,12 @@ describe("Shared Memory", () => {
     run,
   }) => {
     const taught = await run(
-      mention(
+      slackMention(
         "For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.",
       ),
     );
     const conversation = await taught.continue(
-      mention("How should sandbox timeout triage be done?"),
+      slackMention("How should sandbox timeout triage be done?"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -119,12 +121,12 @@ describe("Shared Memory", () => {
     run,
   }) => {
     const taught = await run(
-      mention(
+      slackMention(
         "For this team, branch QA runbooks require risk notes before summary notes. Please acknowledge.",
       ),
     );
     const conversation = await taught.continue(
-      mention("What do branch QA runbooks require?"),
+      slackMention("What do branch QA runbooks require?"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -150,7 +152,7 @@ describe("Shared Memory", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "The analytics query says today's signup conversion rate is 8.4%.",
       ),
     );
@@ -175,7 +177,7 @@ describe("Shared Memory", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("Please remember that David prefers terse PR summaries."),
+      slackMention("Please remember that David prefers terse PR summaries."),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

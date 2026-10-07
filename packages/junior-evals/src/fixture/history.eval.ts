@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { mention, reply, webMessage, type MessageInput } from "./inputs";
+import { slackMention, reply, webMessage, type MessageInput } from "./inputs";
 import { isRecordedConversation } from "./recorded";
 import {
   test,
@@ -124,8 +124,8 @@ describe("loaded history", () => {
   test("matches the rows of a real Slack turn", async ({ run }) => {
     await compareWithRealTurn(
       run,
-      mention("Reply with exactly: noted"),
-      mention("thanks"),
+      slackMention("Reply with exactly: noted"),
+      slackMention("thanks"),
     );
   });
 
@@ -137,10 +137,10 @@ describe("loaded history", () => {
     // repeats the escaped text, which Junior delivers as a reply.
     await compareWithRealTurn(
       run,
-      mention(
+      slackMention(
         "Note for the thread: the [draft] is in launch_notes.md. Do not reply to this and do not react.",
       ),
-      mention("thanks"),
+      slackMention("thanks"),
       "no_reply",
     );
   });
@@ -150,8 +150,8 @@ describe("loaded history", () => {
   }) => {
     await compareWithRealTurn(
       run,
-      mention("Reply with exactly: noted", { channelType: "im" }),
-      mention("thanks", { channelType: "im" }),
+      slackMention("Reply with exactly: noted", { channelType: "im" }),
+      slackMention("thanks", { channelType: "im" }),
     );
   });
 });
@@ -172,7 +172,7 @@ describe("recorded conversations", () => {
       const question = "In one sentence, what did we decide so far?";
       const conversation = await run(
         recording.surface === "slack"
-          ? mention(question)
+          ? slackMention(question)
           : webMessage(question),
         { history: recording },
       );

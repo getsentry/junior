@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -9,7 +9,7 @@ describe("Coding File Tools", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/coding-workspace-fixture What's in project/assets/workspace-shapes.png? Describe the colored shapes and where they are.",
       ),
     );
@@ -38,7 +38,7 @@ describe("Coding File Tools", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/coding-workspace-fixture Change the default retry count from 2 to 3. Keep the reply brief and tell me which file changed.",
       ),
     );
@@ -68,7 +68,7 @@ describe("Coding File Tools", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/coding-workspace-fixture Compare project/src/alerts.ts and project/docs/operations.md for emergency mode behavior. Summarize what each file says and do not change any files.",
       ),
     );
@@ -93,7 +93,7 @@ describe("Coding File Tools", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. I'm looking for a design recommendation first, not a repository review.",
       ),
     );
