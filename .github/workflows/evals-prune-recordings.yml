@@ -1,26 +1,19 @@
-name: Eval recordings
+name: Prune eval recordings
 
-# Keeps the committed eval recordings current. Every eval suite runs on main.
-# Missing responses go live and are recorded. The last job adds the new
-# recordings, deletes the recordings that no passing test used, and opens one
-# pull request. See "Recordings" in packages/junior-evals/README.md.
+# Deletes the eval recordings that no test uses. Run it by hand. Every eval
+# suite runs on main in strict replay mode, so no model request goes live.
+# The last job deletes the recordings that no test replayed and opens one
+# pull request. Pull request runs add new recordings to their branches. See
+# "Recordings" in packages/junior-evals/README.md.
 
 on:
-  schedule:
-    - cron: "0 8 * * *"
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "auto records only missing responses; record writes all responses again"
-        type: choice
-        options: [auto, record]
-        default: auto
 
 permissions:
   contents: read
 
 concurrency:
-  group: evals-recordings
+  group: evals-prune-recordings
   cancel-in-progress: false
 
 jobs:
@@ -89,12 +82,11 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      # A test writes recordings only when it passes, so a failed test never
-      # changes them. The last job reads the exit code.
+      # Strict replay writes no recordings. The last job reads the exit code.
       - name: Run ${{ matrix.suite }} evals
         env:
-          VITEST_EVALS_REPLAY_MODE: ${{ inputs.mode || 'auto' }}
-          # The recording proxy lists the recordings that passing tests used.
+          VITEST_EVALS_REPLAY_MODE: replay
+          # The recording proxy lists the recordings that the tests used.
           EVAL_RECORDINGS_USED_FILE: ${{ runner.temp }}/eval-recordings-run/used-recordings
           SUITE: ${{ matrix.suite }}
           SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
@@ -106,10 +98,6 @@ jobs:
           packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
           echo "$?" > "$RESULT_DIR/exit-code"
           touch "$EVAL_RECORDINGS_USED_FILE"
-          mkdir -p "$RESULT_DIR/new"
-          while IFS= read -r -d '' file; do
-            if [[ -f "$file" ]]; then cp --parents -t "$RESULT_DIR/new" "$file"; fi
-          done < <(git ls-files --others --modified --exclude-standard -z -- "$RECORDINGS_DIR")
       - name: Upload run result
         uses: actions/upload-artifact@v4
         with:
@@ -118,8 +106,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  refresh:
-    name: recordings / refresh
+  prune:
+    name: recordings / prune
     needs: run
     if: ${{ always() && !cancelled() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -145,8 +133,8 @@ jobs:
         with:
           pattern: eval-recordings-run-*
           path: ${{ runner.temp }}/runs
-      - name: Apply recordings
-        id: apply
+      - name: Delete unused recordings
+        id: prune
         env:
           RUNS: ${{ runner.temp }}/runs
           EXPECTED_RUNS: "8"
@@ -160,7 +148,6 @@ jobs:
             if [[ "$(cat "$run/exit-code" 2>/dev/null || echo missing)" != "0" ]]; then
               failed+=("${name#eval-recordings-run-}")
             fi
-            if [[ -d "$run/new" ]]; then cp -R "$run/new/." .; fi
           done
           # Delete unused recordings only when every job finished. A missing
           # job would make all of its recordings look unused.
@@ -171,7 +158,6 @@ jobs:
           else
             echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
           fi
-          echo "failed=${failed[*]}" >> "$GITHUB_OUTPUT"
           {
             echo "### Eval recordings"
             echo
@@ -181,7 +167,7 @@ jobs:
       - name: Open pull request
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
-          BRANCH: evals/refresh-recordings
+          BRANCH: evals/prune-recordings
         run: |
           set -euo pipefail
           git add -A "$RECORDINGS_DIR"
@@ -191,24 +177,11 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(evals): Refresh eval recordings"
+          git commit -m "chore(evals): Delete unused eval recordings"
           # This branch belongs to this workflow. Each run starts it again from main.
           git push --force origin "HEAD:refs/heads/$BRANCH"
           if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
             gh pr create --base main --head "$BRANCH" \
-              --title "chore(evals): Refresh eval recordings" \
-              --body "The nightly eval recordings workflow wrote these recordings. Only passing tests write recordings. See the workflow run summary for failed evals."
+              --title "chore(evals): Delete unused eval recordings" \
+              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed. See the workflow run summary for failed evals."
           fi
-      # Behavioral evals allow some failed cases. Other suites must pass.
-      - name: Fail on failed evals
-        env:
-          FAILED: ${{ steps.apply.outputs.failed }}
-        run: |
-          set -euo pipefail
-          for job in $FAILED; do
-            if [[ "$job" != behavioral-* ]]; then
-              echo "::error::The $job evals failed."
-              exit_code=1
-            fi
-          done
-          exit "${exit_code:-0}"

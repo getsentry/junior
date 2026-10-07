@@ -166,6 +166,8 @@ interface Session {
   name: string;
   /** Recordings by file. `undefined` marks a replayed recording. */
   recordings: Map<string, Recording | undefined>;
+  /** Files that the session replayed. They stay used if it fails. */
+  replayed: Set<string>;
   /** Requests that `replay` mode failed. */
   missed: number;
 }
@@ -463,8 +465,14 @@ export async function startRecordingProxy(
    * Keep a recording that a request used. `write` marks a recording to
    * write: a live one, or a replayed one that gets its request parts.
    */
-  const keep = async (file: string, recording: Recording, write: boolean) => {
+  const keep = async (
+    file: string,
+    recording: Recording,
+    write: boolean,
+    replayed: boolean,
+  ) => {
     if (session) {
+      if (replayed) session.replayed.add(file);
       // A recording to write wins over a replay of the same file.
       if (write || !session.recordings.has(file)) {
         session.recordings.set(file, write ? recording : undefined);
@@ -485,6 +493,8 @@ export async function startRecordingProxy(
     );
     if (!passed) {
       stats.discarded += live.length;
+      // A failed test can still show that a recording is in use.
+      for (const file of ended.replayed) used.add(file);
       return ended.missed;
     }
     for (const file of ended.recordings.keys()) used.add(file);
@@ -568,6 +578,7 @@ export async function startRecordingProxy(
               }
             : recording,
           backfill,
+          true,
         );
         writeRecording(outgoing, recording, "replayed");
         return;
@@ -603,7 +614,7 @@ export async function startRecordingProxy(
     );
     // Never record a temporary failure or a response the client aborted.
     if (!clientGone && !isTemporaryStatus(recording.response.status)) {
-      await keep(file, recording, true);
+      await keep(file, recording, true, false);
     }
     writeRecording(outgoing, recording, "live");
   };
@@ -647,6 +658,7 @@ export async function startRecordingProxy(
       session = {
         name: String(name ?? ""),
         recordings: new Map(),
+        replayed: new Set(),
         missed: 0,
       };
       outgoing.writeHead(204).end();

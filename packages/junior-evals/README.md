@@ -284,18 +284,27 @@ process and has no Junior code, so it can move out of this repository.
   `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
 - The recordings are in `recordings/<rule>/`. A recording answers a request
   when the method, URL, body, and the `key.headers` of the rule are the same.
-  The key ignores ISO times.
+  The key ignores ISO times. A recording keeps the response, the test that
+  recorded it, and a short hash of each part of the request. It does not
+  keep the request body.
 - A request without a recording goes live. When the test passes, the proxy
   writes its new recordings. A failed test writes nothing. A 429 or 5xx
   response is never recorded. A replay does not write the file again.
-- `VITEST_EVALS_REPLAY_MODE` sets the mode: `auto` (the default) replays and
-  records misses, `record` sends every request live and writes it again, and
-  `off` sends every request live and records nothing.
+- `VITEST_EVALS_REPLAY_MODE` sets the mode:
+  - `auto` (the default) replays recordings and records misses.
+  - `replay` replays recordings. A request without a recording fails with
+    HTTP 412 and never goes live, and its test fails. Use it to prove that a
+    run makes no model calls. Judge calls are model calls too, so they also
+    replay.
+  - `record` sends every request live and writes it again.
+  - `off` sends every request live and records nothing.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
   You can commit the new recordings with your change. Do a check for
   secret-like values before you commit them.
 - The Slack mock takes its timestamps and channel ids from the test name.
-  Thus the requests of a test are the same on each run.
+  Thus the requests of a test are the same on each run. If a test sends a
+  value that changes on each run, make the fixture send a stable value. Do
+  not add the value to `key.ignore`: a replayed response can depend on it.
 - The AI SDK sends no model request when it has no gateway credential. To
   replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
 
@@ -312,21 +321,61 @@ process and has no Junior code, so it can move out of this repository.
   `https://ai-gateway.vercel.sh` is in this list, a rule misses a model
   request.
 - Run a suite two times. If all tests pass, the second run must show `0 live`.
-- Each eval workflow uploads the new recordings of a run as an artifact. The
-  job summary shows the `gh run download` command that adds them to your
-  branch.
+  `VITEST_EVALS_REPLAY_MODE=replay` makes this a check that fails.
 
-### Nightly refresh
+### Debug a miss
 
-- The "Eval recordings" workflow runs every eval suite each night on `main`.
-  It adds the new recordings. Each job sets `EVAL_RECORDINGS_USED_FILE`, so
-  the proxy lists the recordings that passing tests used. Then
-  `recording-proxy.ts prune` deletes the recordings that no list has, and the
-  workflow opens or updates one pull request.
-- It deletes recordings only when every job finished. A failed integration,
-  Guardian, or router eval fails the workflow. Behavioral evals allow some
-  failed cases.
-- Run the workflow with `record` to write all recordings again.
+- For each request without a recording, the proxy compares it with the
+  closest recording of the same test. The log and the job summary name the
+  parts that differ:
+
+  ```text
+  [evals] No recording: <test>: model model/<key>.json differs from model/<other>.json at messages[3]
+  ```
+
+- The first miss of a test is the one to fix. The later misses of the test
+  usually follow from it, because the live response differs from the
+  recording.
+- `EVAL_RECORDING_REQUESTS_DIR` names a directory. The proxy writes each
+  request without a recording there, as the key sees it. CI uploads it as
+  the `requests-*` artifact for 3 days. Compare the files of two runs to see
+  the changed value. These files contain prompts. Do not commit them.
+
+### Recordings in CI
+
+- Each eval workflow chooses its mode with
+  `.github/actions/eval-recordings-mode`. A pull request run uses `auto`.
+- After an `auto` run, the "commit recordings" job of the workflow commits
+  the new recordings to the branch as "chore(evals): Update eval
+  recordings" (`.github/actions/commit-eval-recordings`). The job takes only
+  recording files from the run artifacts and runs no pull request code. It
+  pushes only when the branch is still at the tested commit, or at
+  recording commits on top of it. It uses the release bot app, so the push
+  starts CI again.
+- A run on a recordings commit uses strict `replay`. A green run shows that
+  the committed recordings cover every model request. Strict runs write
+  nothing, so they never start another commit.
+- If the recordings of a suite are still on the way, its strict run waits
+  for the earlier run of that suite. A recordings commit does not cancel
+  runs that are still recording, because each bot that pushes has its own
+  concurrency group.
+- Pull requests from forks get no token. Their new recordings stay in the
+  `eval-recordings-*` artifacts. The job summary shows the `gh run download`
+  command that adds them to a branch.
+- A failed test writes no recordings. Its strict run fails again with
+  misses, so the failure stays visible.
+
+### Prune unused recordings
+
+- Run the "Prune eval recordings" workflow by hand. It runs every eval suite
+  on `main` in strict `replay` mode. Each job sets
+  `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
+  tests replayed. Then `recording-proxy.ts prune` deletes the recordings
+  that no list has, and the workflow opens or updates one pull request.
+- It deletes recordings only when every job finished.
+- Nothing refreshes recordings on a schedule. A change of the model id
+  makes new requests, so they record on their own. A provider that changes
+  its behavior under the same model id goes unnoticed until a live run.
 
 ## Running
 

@@ -1,0 +1,66 @@
+name: Eval recordings mode
+description: >
+  Choose the recording mode of an eval run on a pull request. A run on a
+  commit that the commit-eval-recordings action made uses strict `replay`:
+  it proves that the committed recordings cover every model request. Other
+  runs use `auto`. See "Recordings" in packages/junior-evals/README.md.
+inputs:
+  suite:
+    description: The eval suite, such as `integration`.
+    required: true
+outputs:
+  mode:
+    description: The value for VITEST_EVALS_REPLAY_MODE, `auto` or `replay`.
+    value: ${{ steps.mode.outputs.mode }}
+runs:
+  using: composite
+  steps:
+    - id: mode
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SUITE: ${{ inputs.suite }}
+        PR: ${{ github.event.pull_request.number }}
+        BRANCH: ${{ github.event.pull_request.head.ref }}
+        WORKFLOW_REF: ${{ github.workflow_ref }}
+        RUN_ID: ${{ github.run_id }}
+        PREFIX: "chore(evals): Update eval recordings"
+      run: |
+        set -euo pipefail
+        if [[ -z "$PR" ]]; then
+          echo "mode=auto" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # The recording commits at the head of the branch. One JSON string
+        # per commit message, oldest first.
+        gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/commits" \
+          --jq '.[].commit.message | tojson' > "$RUNNER_TEMP/pr-commits"
+        chain=""
+        while IFS= read -r line; do
+          message="$(jq -r . <<< "$line")"
+          [[ "$message" == "$PREFIX"* ]] || break
+          chain+="$message"$'\n'
+        done < <(tac "$RUNNER_TEMP/pr-commits")
+        if [[ -z "$chain" ]]; then
+          echo "mode=auto" >> "$GITHUB_OUTPUT"
+          echo "Eval recordings mode: auto" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        echo "mode=replay" >> "$GITHUB_OUTPUT"
+        echo "Eval recordings mode: replay, because the head is a recordings commit" >> "$GITHUB_STEP_SUMMARY"
+        if grep -qx "Eval-Suite: $SUITE" <<< "$chain"; then
+          exit 0
+        fi
+        # The recordings of this suite can still be on the way, because its
+        # run on the last other commit is not done. Wait for that run. If it
+        # commits recordings, the run on that commit cancels this one.
+        workflow="$(basename "${WORKFLOW_REF%@*}")"
+        for _ in $(seq 1 90); do
+          pending="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=$BRANCH&event=pull_request&per_page=30" |
+            jq --arg prefix "$PREFIX" --argjson id "$RUN_ID" \
+              '[.workflow_runs[] | select(.id != $id and .status != "completed" and (.head_commit.message | startswith($prefix) | not))] | length')"
+          [[ "$pending" == "0" ]] && exit 0
+          echo "Waiting for $pending earlier $SUITE run(s) to record."
+          sleep 30
+        done
+        echo "::warning::Earlier $SUITE runs did not finish in 45 minutes."

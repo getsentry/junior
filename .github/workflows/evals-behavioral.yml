@@ -2,6 +2,9 @@ name: Evals
 
 permissions:
   contents: read
+  # The eval-recordings-mode action reads the commits and runs of the PR.
+  pull-requests: read
+  actions: read
   checks: write
 
 on:
@@ -10,7 +13,9 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  group: evals-behavioral-${{ github.event.pull_request.number || github.ref }}
+  # A recordings commit must not cancel the runs that are still recording,
+  # so each bot that pushes has its own group.
+  group: evals-behavioral-${{ github.event.pull_request.number || github.ref }}-${{ github.event.sender.type == 'Bot' && github.event.sender.login || 'user' }}
   cancel-in-progress: true
 
 env:
@@ -22,6 +27,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
+      mode: ${{ steps.mode.outputs.mode || 'auto' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,6 +49,8 @@ jobs:
               - '.github/workflows/evals-behavioral.yml'
               - '.github/actions/setup-node-pnpm/**'
               - '.github/actions/collect-eval-recordings/**'
+              - '.github/actions/commit-eval-recordings/**'
+              - '.github/actions/eval-recordings-mode/**'
               - 'packages/junior-evals/recordings/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -92,6 +100,11 @@ jobs:
             echo "- will_run: $should_run"
             echo "- minimum_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
+      - id: mode
+        if: steps.decision.outputs.should_run == 'true'
+        uses: ./.github/actions/eval-recordings-mode
+        with:
+          suite: behavioral
 
   behavioral:
     name: behavioral / shard ${{ matrix.shard }}/4
@@ -155,6 +168,7 @@ jobs:
           VITEST_EVALS_OUTPUT_FILE: behavioral-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
           EVAL_RECORDING_REQUESTS_DIR: ${{ runner.temp }}/eval-recording-requests
+          VITEST_EVALS_REPLAY_MODE: ${{ needs.select.outputs.mode }}
         run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
       - name: Collect new recordings
         if: always() && !cancelled()
@@ -233,3 +247,21 @@ jobs:
         env:
           SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
         run: node packages/junior-evals/scripts/report.mjs behavioral eval-results/behavioral-results-*.json
+
+  recordings:
+    name: behavioral / commit recordings
+    needs: [select, behavioral]
+    # Only for a branch of this repository: forks get no token. Strict
+    # replay runs write no recordings.
+    if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' && needs.select.outputs.mode == 'auto' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/commit-eval-recordings
+        with:
+          suite: behavioral
+          app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
