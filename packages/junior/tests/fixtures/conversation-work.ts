@@ -10,16 +10,10 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { executeAgentRun } from "@/chat/agent";
-import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import {
-  coerceThreadConversationState,
-  type ThreadConversationState,
-} from "@/chat/state/conversation";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -35,7 +29,6 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { readProxyProperty } from "./proxy-property";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
@@ -429,9 +422,6 @@ export type ConversationWorkSlackHarness = {
   state: StateAdapter;
   wakes: ConversationWorkQueueTestAdapter;
   replies: () => string[];
-  authLinksFor: (userId: string) => ReturnType<typeof getCapturedSlackApiCalls>;
-  setModelStream: (next: StreamFn) => void;
-  setSubscribedShouldReply: (shouldReply: boolean) => void;
   next: (
     requestStartedAtMs?: number,
   ) => Promise<Awaited<ReturnType<typeof processConversationQueueMessage>>>;
@@ -443,9 +433,6 @@ export type ConversationWorkSlackHarness = {
     ts?: string;
     user?: string;
   }) => Promise<Response>;
-  mention: (user: string, text: string) => Promise<string>;
-  /** Non-mention thread message (subscribed path). */
-  passive: (user: string, text: string) => Promise<string>;
 };
 
 /**
@@ -457,16 +444,13 @@ export async function createConversationWorkSlackHarness(
   options: {
     agentRunner?: AgentRunner;
     modelStream?: StreamFn;
-    /** Default subscribed-message classifier outcome. */
-    subscribedShouldReply?: boolean;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
-  let modelStream = options.modelStream ?? streamReplies("Deploy checked.");
-  let subscribedShouldReply = options.subscribedShouldReply ?? false;
+  const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
@@ -480,12 +464,10 @@ export async function createConversationWorkSlackHarness(
       subscribedReplyPolicy: {
         completeObject: async ({ schema }) => ({
           object: schema.parse({
-            should_reply: subscribedShouldReply,
+            should_reply: false,
             should_unsubscribe: false,
             confidence: 1,
-            reason: subscribedShouldReply
-              ? "test_follow_up"
-              : "side_conversation",
+            reason: "side_conversation",
           }),
         }),
       },
@@ -496,12 +478,6 @@ export async function createConversationWorkSlackHarness(
     state,
   });
 
-  let messageSeq = 0;
-  const nextTs = () => {
-    messageSeq += 1;
-    return `1712345.${String(messageSeq).padStart(4, "0")}`;
-  };
-
   const services = {
     getSlackAdapter: () => adapter,
     queue: wakes,
@@ -509,47 +485,15 @@ export async function createConversationWorkSlackHarness(
     state,
   };
 
-  const post = async (input: {
-    eventType: "app_mention" | "message";
-    user: string;
-    text: string;
-  }) => {
-    const ts = nextTs();
-    const mention = input.eventType === "app_mention";
-    await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest(
-        slackEnvelope({
-          eventType: input.eventType,
-          text: mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text,
-          threadTs: THREAD_TS,
-          ts,
-          user: input.user,
-        }),
-      ),
-      services,
-    });
-    return ts;
-  };
-
   return {
     agentRunner,
     state,
     wakes,
-    setModelStream(next: StreamFn) {
-      modelStream = next;
-    },
-    setSubscribedShouldReply(shouldReply: boolean) {
-      subscribedShouldReply = shouldReply;
-    },
     replies: () =>
       slackApiOutbox
         .messages()
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
-    authLinksFor: (userId: string) =>
-      getCapturedSlackApiCalls("chat.postEphemeral").filter(
-        (call) => String(call.params.user ?? "") === userId,
-      ),
     next: async (requestStartedAtMs?: number) => {
       const process = async () =>
         await processConversationQueueMessage(wakes.takeMessage(), {
@@ -583,23 +527,5 @@ export async function createConversationWorkSlackHarness(
         ),
         services,
       }),
-    mention: async (user: string, text: string) =>
-      await post({ eventType: "app_mention", user, text }),
-    passive: async (user: string, text: string) =>
-      await post({ eventType: "message", user, text }),
   };
-}
-
-/** Load the fixture conversation's persisted thread state with messages. */
-export async function loadConversationState(
-  conversationId = CONVERSATION_ID,
-): Promise<ThreadConversationState> {
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(conversationId),
-  );
-  await hydrateConversationMessages({
-    conversation,
-    conversationId,
-  });
-  return conversation;
 }
