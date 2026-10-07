@@ -1,0 +1,116 @@
+name: Eval recordings
+
+# Keeps the committed model recordings of the integration evals current.
+# See "Model Replay" in packages/junior-evals/README.md.
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto records only missing responses; record writes all responses again"
+        type: choice
+        options: [auto, record]
+        default: auto
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-recordings
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: recordings / refresh
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      RECORDINGS_DIR: packages/junior-evals/recordings/model
+    steps:
+      - name: Get auth token
+        id: token
+        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
+        with:
+          app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.token.outputs.token }}
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      # A failed eval stops the job, so a bad run never changes the recordings.
+      - name: Run integration evals
+        env:
+          JUNIOR_EVAL_MODEL_REPLAY: ${{ inputs.mode || 'auto' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RECORDINGS_DIR"
+          touch "$RUNNER_TEMP/started"
+          pnpm --filter @sentry/junior-evals evals:integration
+          # A passing test writes every recording it used. Delete the others.
+          find "$RECORDINGS_DIR" -name '*.json' ! -newer "$RUNNER_TEMP/started" -delete
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          BRANCH: evals/refresh-model-recordings
+        run: |
+          set -euo pipefail
+          git add -A "$RECORDINGS_DIR"
+          if git diff --cached --quiet; then
+            echo "The recordings did not change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(evals): Refresh model recordings"
+          # This branch belongs to this workflow. Each run starts it again from main.
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+          if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(evals): Refresh model recordings" \
+              --body "The nightly eval recordings workflow wrote these model recordings. All integration evals passed in that run."
+          fi

@@ -15,13 +15,15 @@
  * `auto`. Other suites use `off`.
  *
  * - `off`: every request goes to the live model.
- * - `auto`: a request with a recording younger than the TTL gets the
- *   recorded response. Other requests go to the live model.
- * - `record`: every request goes to the live model. Use it to refresh the
- *   recordings.
+ * - `auto`: a request with a recording gets the recorded response. Other
+ *   requests go to the live model.
+ * - `record`: every request goes to the live model. Use it to write all
+ *   recordings again.
  *
- * In `auto` and `record` mode, the fixture writes the live responses of a
- * test only when the test passes, so a bad sample is never replayed. The
+ * In `auto` and `record` mode, the fixture writes every recording that a test
+ * used, but only when the test passes, so a bad sample is never replayed. A
+ * replayed recording is written again with the same content. The nightly
+ * workflow uses the file times to delete recordings that no test used. The
  * recordings are in `recordings/model/`, and git tracks them.
  */
 import { createHash } from "node:crypto";
@@ -32,8 +34,6 @@ import { bypass } from "msw";
 
 type ModelReplayMode = "auto" | "off" | "record";
 
-/** A recording older than this is not replayed. */
-const RECORDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Change this to make every recording a miss. */
 const RECORDING_VERSION = "model-v1";
 
@@ -62,7 +62,10 @@ export interface ModelReplay {
   counts(): ModelReplayCounts;
   /** Whether the mode is `auto` or `record`. */
   enabled: boolean;
-  /** Write the live responses of the test. Call it only when the test passed. */
+  /**
+   * Write the recordings that the test used. Call it only when the test
+   * passed.
+   */
   save(): Promise<void>;
   /** Answer a model request from a recording, or send it to the live model. */
   send(request: Request): Promise<ModelResponse>;
@@ -126,19 +129,14 @@ export async function modelRequestKey(request: Request): Promise<string> {
     .digest("hex");
 }
 
-async function readFreshRecording(
+async function readRecording(
   file: string,
-  nowMs: number,
 ): Promise<ModelRecording | undefined> {
-  let recording: ModelRecording;
   try {
-    recording = JSON.parse(await readFile(file, "utf8")) as ModelRecording;
+    return JSON.parse(await readFile(file, "utf8")) as ModelRecording;
   } catch {
     return undefined;
   }
-  const writtenAtMs = Date.parse(recording.writtenAt);
-  if (!(nowMs - writtenAtMs < RECORDING_TTL_MS)) return undefined;
-  return recording;
 }
 
 /** Create the model replay of one test. */
@@ -146,34 +144,34 @@ export function createModelReplay(
   directory = MODEL_RECORDINGS_DIR,
 ): ModelReplay {
   const mode = readMode();
-  const unsaved = new Map<string, ModelRecording>();
+  const used = new Map<string, ModelRecording>();
   const counts: ModelReplayCounts = { live: 0, replayed: 0 };
 
   return {
     counts: () => ({ ...counts }),
     enabled: mode !== "off",
     async save() {
-      if (mode === "off" || unsaved.size === 0) return;
+      if (mode === "off" || used.size === 0) return;
       await mkdir(directory, { recursive: true });
       await Promise.all(
-        [...unsaved].map(([key, recording]) =>
+        [...used].map(([key, recording]) =>
           writeFile(
             path.join(directory, `${key}.json`),
             JSON.stringify(recording, null, 2),
           ),
         ),
       );
-      unsaved.clear();
+      used.clear();
     },
     async send(request) {
       const key = mode === "off" ? undefined : await modelRequestKey(request);
       if (key && mode === "auto") {
-        const recording = await readFreshRecording(
+        const recording = await readRecording(
           path.join(directory, `${key}.json`),
-          Date.now(),
         );
         if (recording) {
           counts.replayed += 1;
+          used.set(key, recording);
           return {
             body: recording.body,
             headers: new Headers(
@@ -194,7 +192,7 @@ export function createModelReplay(
       headers.delete("content-encoding");
       headers.delete("content-length");
       if (key && response.ok) {
-        unsaved.set(key, {
+        used.set(key, {
           body,
           contentType: response.headers.get("content-type"),
           writtenAt: new Date().toISOString(),

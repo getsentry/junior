@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,22 +81,25 @@ describe("model replay", () => {
     await expect(readdir(directory)).resolves.toEqual([]);
   });
 
-  it("sends an expired recording to the live model", async () => {
+  it("writes a replayed recording again with the same content", async () => {
     vi.stubEnv("JUNIOR_EVAL_MODEL_REPLAY", "auto");
     const recorded = createModelReplay(directory);
     await recorded.send(modelRequest({ model: "m" }));
     await recorded.save();
     const [file] = await readdir(directory);
     const recordingPath = path.join(directory, file!);
-    const recording = JSON.parse(await readFile(recordingPath, "utf8"));
-    recording.writtenAt = new Date(
-      Date.now() - 8 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    await writeFile(recordingPath, JSON.stringify(recording));
+    const content = await readFile(recordingPath, "utf8");
+    const old = new Date("2026-01-01T00:00:00Z");
+    await utimes(recordingPath, old, old);
 
-    await createModelReplay(directory).send(modelRequest({ model: "m" }));
+    const replay = createModelReplay(directory);
+    await replay.send(modelRequest({ model: "m" }));
+    await replay.save();
 
-    expect(liveRequests).toBe(2);
+    // The nightly workflow deletes recordings that a run did not write.
+    expect((await stat(recordingPath)).mtimeMs).toBeGreaterThan(old.getTime());
+    await expect(readFile(recordingPath, "utf8")).resolves.toBe(content);
+    expect(liveRequests).toBe(1);
   });
 
   it("refreshes a recording in record mode", async () => {

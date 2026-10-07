@@ -267,18 +267,20 @@ connections.
 The integration suite replays model responses from files in git. Other
 suites always use the live model.
 
-- The recordings are in `recordings/model/`. Commit them with your change.
-- A recording answers a model request when the request body is the same and
-  the recording is younger than 7 days. The body has the model, the system
-  prompt, the messages, the tools, and the settings. The key ignores ISO
-  times.
+- The recordings are in `recordings/model/`.
+- A recording answers a model request when the request body is the same.
+  The body has the model, the system prompt, the messages, the tools, and the
+  settings. The key ignores ISO times.
 - Other requests go to the live model. When the test passes, the fixture
-  writes their responses to `recordings/model/`. A failed test writes
-  nothing.
+  writes every recording that the test used. A failed test writes nothing.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
-  Run the affected evals and commit the new recordings.
-- `pnpm --filter @sentry/junior-evals evals:integration:record` sends every
-  request to the live model and writes all recordings again.
+  You can commit the new recordings with your change.
+- The "Eval recordings" workflow runs each night on `main`. It records
+  missing responses and deletes the recordings that no test used. Then it
+  opens or updates one pull request. A failed eval stops the workflow, and
+  the recordings do not change.
+- Run that workflow with `record` to write all recordings again. Locally,
+  use `pnpm --filter @sentry/junior-evals evals:integration:record`.
 - `JUNIOR_EVAL_MODEL_REPLAY` sets the mode: `auto`, `record`, or `off`.
   `src/fixture/model-replay.ts` has the details.
 - The Slack mock takes its timestamps and channel ids from the test name, so

@@ -53,9 +53,9 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 ## Eval Model Recordings
 
 - Integration evals replay model responses from `packages/junior-evals/recordings/model/`.
-- Commit new or changed recordings with your change. A changed prompt, tool, skill, or model makes new recordings.
-- A recording expires after 7 days. Then the eval uses the live model and writes a new recording.
-- To write all recordings again, run `pnpm --filter @sentry/junior-evals evals:integration:record`.
+- A changed prompt, tool, skill, or model makes new requests. These requests use the live model.
+- You can commit new recordings with your change, but you do not have to. A nightly workflow records missing responses, deletes unused recordings, and opens a pull request.
+- To write all recordings again, run `pnpm --filter @sentry/junior-evals evals:integration:record`, or run the "Eval recordings" workflow with `record`.
 - Details: "Model Replay" in `packages/junior-evals/README.md`.
 
 ## Architecture
