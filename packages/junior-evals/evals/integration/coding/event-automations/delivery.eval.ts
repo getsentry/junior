@@ -5,7 +5,7 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const reviewTrigger = {
@@ -92,10 +92,10 @@ describe("Event automation delivery", () => {
       );
 
       expect(delivery.replies).toEqual([]);
+      // Check the saved result, not the call input. A message that is only
+      // the old marker is saved as `no_action`.
       expect(
-        completedToolCalls("finishAutomationRun", delivery).map(
-          (call) => call.input,
-        ),
+        completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
       ).toEqual([expect.objectContaining({ result: "no_action" })]);
     },
   );
