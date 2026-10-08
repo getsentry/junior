@@ -11,17 +11,11 @@ import {
   it,
   onTestFinished,
 } from "vitest";
-import { connectRecordingProxy } from "../../src/recording-proxy/client";
-import { pruneRecordings } from "../../src/recording-proxy/recordings";
-import {
-  startRecordingProxy,
-  type RecordingProxyServer,
-} from "../../src/recording-proxy/server";
-import type {
-  RecordingMode,
-  RecordingProxyConfig,
-} from "../../src/recording-proxy/types";
-import { VALUE_PATTERNS } from "../../src/recording-proxy/values";
+import { connectRoach } from "../../src/roach/client";
+import { pruneRecordings } from "../../src/roach/recordings";
+import { startRoach, type RoachServer } from "../../src/roach/server";
+import type { RecordingMode, RoachConfig } from "../../src/roach/types";
+import { VALUE_PATTERNS } from "../../src/roach/values";
 
 let upstream: Server;
 let origin: string;
@@ -31,17 +25,14 @@ let respond: (body: string) => string;
 /** The upstream answers when this settles. */
 let upstreamGate: Promise<void>;
 let directory: string;
-let proxy: RecordingProxyServer | undefined;
+let proxy: RoachServer | undefined;
 let agent: ProxyAgent | undefined;
 
 async function start(
   mode: RecordingMode,
-  options: Pick<
-    RecordingProxyConfig,
-    "missDirectory" | "secrets" | "usedFile"
-  > = {},
-): Promise<RecordingProxyServer> {
-  proxy = await startRecordingProxy({
+  options: Pick<RoachConfig, "missDirectory" | "secrets" | "usedFile"> = {},
+): Promise<RoachServer> {
+  proxy = await startRoach({
     directory,
     mode,
     allow: [origin],
@@ -73,19 +64,15 @@ async function send(bodies: unknown[], target = `${origin}/v1/messages`) {
     });
     responses.push({
       body: await response.body.text(),
-      source: response.headers["x-recording-proxy"],
+      source: response.headers["x-roach"],
     });
   }
   return responses;
 }
 
 /** Send the requests of one test session, then end it. */
-async function session(
-  running: RecordingProxyServer,
-  bodies: unknown[],
-  passed = true,
-) {
-  const opened = await connectRecordingProxy(running).startSession("test");
+async function session(running: RoachServer, bodies: unknown[], passed = true) {
+  const opened = await connectRoach(running).startSession("test");
   const responses = await send(bodies);
   const { missed } = await opened.end(passed);
   return Object.assign(responses, { missed });
@@ -115,7 +102,7 @@ beforeEach(async () => {
   const address = upstream.address();
   if (!address || typeof address === "string") throw new Error("No port");
   origin = `http://127.0.0.1:${address.port}`;
-  directory = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
+  directory = await mkdtemp(path.join(tmpdir(), "roach-"));
 });
 
 afterEach(async () => {
@@ -127,7 +114,7 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-describe("recording proxy", () => {
+describe("roach", () => {
   it("replays a passed session for the same requests in auto mode", async () => {
     const running = await start("auto");
     await session(running, [
@@ -149,7 +136,7 @@ describe("recording proxy", () => {
       { body: "data: 2\n\n", source: "live" },
     ]);
     expect(liveRequests).toBe(2);
-    await expect(connectRecordingProxy(running).stats()).resolves.toEqual({
+    await expect(connectRoach(running).stats()).resolves.toEqual({
       counts: { model: { live: 2, missed: 0, replayed: 1 } },
       // The miss names the closest recording of the test and the part
       // of the request that differs from it.
@@ -271,12 +258,10 @@ describe("recording proxy", () => {
     expect(replay.missed).toBe(1);
     expect(liveRequests).toBe(1);
     await expect(files()).resolves.toEqual(recorded);
-    await expect(connectRecordingProxy(running).stats()).resolves.toMatchObject(
-      {
-        counts: { model: { live: 0, missed: 1, replayed: 1 } },
-        misses: [{ closest: `model/${recorded[0]}`, differs: ["model"] }],
-      },
-    );
+    await expect(connectRoach(running).stats()).resolves.toMatchObject({
+      counts: { model: { live: 0, missed: 1, replayed: 1 } },
+      misses: [{ closest: `model/${recorded[0]}`, differs: ["model"] }],
+    });
   });
 
   it("redacts credentials in recordings and miss files", async () => {
@@ -290,7 +275,7 @@ describe("recording proxy", () => {
     });
     // The upstream repeats the credential of the request header.
     respond = () => `data: key-from-header-0123456789\n\n`;
-    const opened = await connectRecordingProxy(running).startSession("test");
+    const opened = await connectRoach(running).startSession("test");
     const response = await request(`${origin}/v1/messages`, {
       body: JSON.stringify({ model: "m", note: "cfg-secret=012345" }),
       dispatcher: agent,
@@ -331,7 +316,7 @@ describe("recording proxy", () => {
     const running = await start("auto");
 
     await expect(
-      connectRecordingProxy({ url: running.url, token: "wrong" }).stats(),
+      connectRoach({ url: running.url, token: "wrong" }).stats(),
     ).rejects.toThrow("HTTP 401");
   });
 
@@ -348,7 +333,7 @@ describe("recording proxy", () => {
     const running = await start("auto");
     let open!: () => void;
     upstreamGate = new Promise((resolve) => (open = resolve));
-    const opened = await connectRecordingProxy(running).startSession("test");
+    const opened = await connectRoach(running).startSession("test");
     const pending = send([{ model: "m" }]);
     // Wait until the request reaches the upstream, then end the test.
     while (liveRequests === 0) await new Promise((r) => setTimeout(r, 5));

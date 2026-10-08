@@ -34,7 +34,7 @@ import {
 } from "./streams.ts";
 import type {
   RecordingMiss,
-  RecordingProxyConfig,
+  RoachConfig,
   RecordingRule,
   RecordingStats,
 } from "./types.ts";
@@ -145,7 +145,7 @@ function fromRecording(
 }
 
 /** Create the recorder of one proxy run. */
-export function createRecorder(config: RecordingProxyConfig) {
+export function createRecorder(config: RoachConfig) {
   const missDirectory = config.missDirectory
     ? path.resolve(config.missDirectory)
     : undefined;
@@ -228,9 +228,7 @@ export function createRecorder(config: RecordingProxyConfig) {
     const why = closest
       ? `closest is ${miss.closest}, which differs at ${describeParts(miss.differs)}`
       : "no recording to compare";
-    process.stderr.write(
-      `[recording-proxy] No ${rule.name} recording${where}: ${why}\n`,
-    );
+    process.stderr.write(`[roach] No ${rule.name} recording${where}: ${why}\n`);
     if (missDirectory) {
       const target = path.join(missDirectory, miss.file);
       await mkdir(path.dirname(target), { recursive: true });
@@ -330,7 +328,7 @@ export function createRecorder(config: RecordingProxyConfig) {
             status: 412,
             headers: { "content-type": "text/plain" },
             body: Buffer.from(
-              `Recording proxy: no ${rule.name} recording for this request in replay mode. Run in auto mode to record it.\n`,
+              `Roach: no ${rule.name} recording for this request in replay mode. Run in auto mode to record it.\n`,
             ),
             source: "missed",
           };
@@ -357,7 +355,7 @@ export function createRecorder(config: RecordingProxyConfig) {
     async startSession(name: string): Promise<void> {
       if (session) {
         process.stderr.write(
-          `[recording-proxy] Session "${session.name}" did not end, so its new recordings were dropped\n`,
+          `[roach] Session "${session.name}" did not end, so its new recordings were dropped\n`,
         );
         await finish(false);
       }

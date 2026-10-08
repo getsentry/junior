@@ -1,24 +1,20 @@
 /**
  * The traffic that evals record.
  *
- * Global setup starts the recording proxy in `src/recording-proxy/` with
+ * Global setup starts Roach, the recording proxy in `src/roach/` with
  * this configuration. The proxy knows nothing about Junior. This file is the
  * one place that decides which eval requests are recorded and replayed. To
  * record more traffic, add a rule. `VITEST_EVALS_REPLAY_MODE` sets the mode:
  * `auto` (the default), `replay`, `record`, or `off`.
  * `EVAL_RECORDINGS_USED_FILE` names a file where the proxy lists the
  * recordings that passing tests used. The prune workflow gives these files
- * to `recording-proxy/cli.ts prune`. `EVAL_RECORDING_MISSES_DIR` names a
+ * to `roach/cli.ts prune`. `EVAL_RECORDING_MISSES_DIR` names a
  * directory where the proxy writes each request that had no recording.
  */
 import { fileURLToPath } from "node:url";
 import { USER_AGENT } from "@/chat/tools/web/constants";
-import type {
-  RecordingMode,
-  RecordingProxyConfig,
-  RecordingRule,
-} from "./recording-proxy/types";
-import { NOT_AFTER_WORD, VALUE_PATTERNS } from "./recording-proxy/values";
+import type { RecordingMode, RoachConfig, RecordingRule } from "./roach/types";
+import { NOT_AFTER_WORD, VALUE_PATTERNS } from "./roach/values";
 
 /**
  * Values in model requests that change from run to run. The fixture cannot
@@ -26,7 +22,7 @@ import { NOT_AFTER_WORD, VALUE_PATTERNS } from "./recording-proxy/values";
  * shows when each earlier message and memory was stored, and tool results
  * show the current time, the time of a new schedule, or the expiry of a new
  * watch. The proxy keys requests without them, and a replayed response gets
- * the values of the current run (`recording-proxy/values.ts`).
+ * the values of the current run (`roach/values.ts`).
  */
 const CHANGING_VALUES = {
   uuid: VALUE_PATTERNS.uuid,
@@ -118,8 +114,8 @@ const SECRET_ENV = [
   "VERCEL_TOKEN",
 ];
 
-/** The recording proxy configuration of this eval run. */
-export function recordingProxyConfig(): RecordingProxyConfig {
+/** The Roach configuration of this eval run. */
+export function roachConfig(): RoachConfig {
   return {
     directory: RECORDINGS_DIR,
     mode: readMode(),

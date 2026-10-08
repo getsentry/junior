@@ -1,5 +1,5 @@
 /**
- * The command line of the recording proxy.
+ * The command line of Roach.
  *
  * - `cli.ts serve`: read the configuration as JSON from stdin, and start the
  *   proxy. Print its address as one JSON line. Stop on SIGINT or SIGTERM.
@@ -9,8 +9,8 @@
  */
 import { text } from "node:stream/consumers";
 import { pruneRecordings } from "./recordings.ts";
-import { startRecordingProxy } from "./server.ts";
-import type { RecordingProxyAddress, RecordingProxyConfig } from "./types.ts";
+import { startRoach } from "./server.ts";
+import type { RoachAddress, RoachConfig } from "./types.ts";
 
 const USAGE = `Usage:
   cli.ts serve < config.json
@@ -19,9 +19,9 @@ const USAGE = `Usage:
 const [command, ...args] = process.argv.slice(2);
 
 if (command === "serve") {
-  const config = JSON.parse(await text(process.stdin)) as RecordingProxyConfig;
-  const proxy = await startRecordingProxy(config);
-  const address: RecordingProxyAddress = {
+  const config = JSON.parse(await text(process.stdin)) as RoachConfig;
+  const proxy = await startRoach(config);
+  const address: RoachAddress = {
     url: proxy.url,
     token: proxy.token,
     caCert: proxy.caCert,

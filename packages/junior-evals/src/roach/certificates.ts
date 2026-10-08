@@ -1,5 +1,5 @@
 /**
- * The certificate authority of the recording proxy.
+ * The certificate authority of Roach.
  *
  * The proxy intercepts HTTPS. It creates its own certificate authority when
  * it starts, and signs one certificate for each host when a client first
@@ -34,7 +34,7 @@ export interface CertificateAuthority {
 
 /** Create a certificate authority in a new temporary directory. */
 export async function createCertificateAuthority(): Promise<CertificateAuthority> {
-  const directory = await mkdtemp(path.join(tmpdir(), "recording-proxy-ca-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "roach-ca-"));
   const caKey = path.join(directory, "ca.key");
   const caCertFile = path.join(directory, "ca.crt");
   const hostKey = path.join(directory, "host.key");
@@ -51,7 +51,7 @@ export async function createCertificateAuthority(): Promise<CertificateAuthority
     "-days",
     "7",
     "-subj",
-    "/CN=Recording proxy CA",
+    "/CN=Roach CA",
     "-addext",
     "basicConstraints=critical,CA:TRUE",
     "-addext",
@@ -79,7 +79,7 @@ export async function createCertificateAuthority(): Promise<CertificateAuthority
       "-key",
       hostKey,
       "-subj",
-      "/CN=Recording proxy host",
+      "/CN=Roach host",
       "-out",
       csr,
     ]);

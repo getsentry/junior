@@ -1,5 +1,5 @@
 /**
- * Send the `fetch` traffic of an eval process through the recording proxy.
+ * Send the `fetch` traffic of an eval process through Roach.
  *
  * Node 24 sends `fetch` through the proxy variables that a process has at
  * startup (`NODE_USE_ENV_PROXY`). A process that started before them, such
@@ -7,17 +7,17 @@
  *
  * Some clients give `fetch` their own undici `Agent`. `@vercel/sandbox`
  * does this. That agent ignores the proxy, so the request skips the
- * recording proxy, and the CI network jail (`scripts/network-jail.sh`)
+ * Roach, and the CI network jail (`scripts/network-jail.sh`)
  * refuses it. `useGlobalDispatcherForFetch()` removes that agent, so the
  * request uses the global dispatcher.
  */
 import { EnvHttpProxyAgent } from "undici";
 import { NO_PROXY } from "./recording-rules";
-import type { RecordingProxyAddress } from "./recording-proxy/types";
+import type { RoachAddress } from "./roach/types";
 
 /** Create a `fetch` dispatcher that sends requests through the proxy. */
 export function createProxyDispatcher(
-  proxy: Pick<RecordingProxyAddress, "caCert" | "url">,
+  proxy: Pick<RoachAddress, "caCert" | "url">,
 ): EnvHttpProxyAgent {
   return new EnvHttpProxyAgent({
     httpProxy: proxy.url,

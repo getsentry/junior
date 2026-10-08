@@ -88,7 +88,7 @@ jobs:
       - name: Run ${{ matrix.suite }} evals
         env:
           VITEST_EVALS_REPLAY_MODE: replay
-          # The recording proxy lists the recordings that the tests used.
+          # Roach lists the recordings that the tests used.
           EVAL_RECORDINGS_USED_FILE: ${{ runner.temp }}/eval-recordings-run/used-recordings
           SUITE: ${{ matrix.suite }}
           SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
@@ -96,7 +96,7 @@ jobs:
           set -uo pipefail
           RESULT_DIR="$RUNNER_TEMP/eval-recordings-run"
           mkdir -p "$RESULT_DIR"
-          # The jail rejects connections that skip the recording proxy.
+          # The jail rejects connections that skip Roach.
           packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
           echo "$?" > "$RESULT_DIR/exit-code"
       - name: Upload run result
@@ -157,7 +157,7 @@ jobs:
             echo "::warning::No used recordings were listed in ${unlisted[*]}, so no recordings were deleted."
           else
             node --experimental-strip-types --disable-warning=ExperimentalWarning \
-              packages/junior-evals/src/recording-proxy/cli.ts \
+              packages/junior-evals/src/roach/cli.ts \
               prune "$RECORDINGS_DIR" "$RUNS"/*/used-recordings
           fi
           {

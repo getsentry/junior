@@ -1,8 +1,8 @@
 /**
- * The recording proxy of one eval invocation.
+ * Roach of one eval invocation.
  *
  * Every eval suite calls `startRecordingRun()` in its global setup. It starts
- * the proxy (`src/recording-proxy/`) with the rules of
+ * the proxy (`src/roach/`) with the rules of
  * `src/recording-rules.ts`, and sends all HTTP traffic of the run through
  * it. The proxy owns all reads and writes of recordings. Test workers and
  * child processes inherit the proxy variables. `src/recording-setup.ts`
@@ -17,19 +17,16 @@ import https from "node:https";
 import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import "./eval-context";
 import { createProxyDispatcher } from "./proxy-dispatcher";
-import { spawnRecordingProxy } from "./recording-proxy/client";
+import { spawnRoach } from "./roach/client";
 import {
   describeRecordingMisses,
   describeRecordingStats,
-} from "./recording-proxy/report";
-import { NO_PROXY, recordingProxyConfig } from "./recording-rules";
+} from "./roach/report";
+import { NO_PROXY, roachConfig } from "./recording-rules";
 import type { ProvidedContext } from "vitest";
 
 interface RecordingProject {
-  provide(
-    key: "recordingProxy",
-    value: NonNullable<ProvidedContext["recordingProxy"]>,
-  ): void;
+  provide(key: "roach", value: NonNullable<ProvidedContext["roach"]>): void;
 }
 
 /**
@@ -37,12 +34,12 @@ interface RecordingProject {
  * the network jail, because only the proxy can reach upstream origins.
  */
 function proxyLauncher(): string[] {
-  const value = process.env.EVAL_RECORDING_PROXY_LAUNCHER?.trim();
+  const value = process.env.EVAL_ROACH_LAUNCHER?.trim();
   return value ? (JSON.parse(value) as string[]) : [];
 }
 
 /**
- * Start the recording proxy for this invocation and give its address to the
+ * Start Roach for this invocation and give its address to the
  * test workers. Returns the teardown, which reports the run and stops the
  * proxy.
  */
@@ -50,7 +47,7 @@ export async function startRecordingRun(
   project: RecordingProject,
 ): Promise<() => Promise<void>> {
   // The proxy runs in its own process, so in-process mocks cannot answer it.
-  const proxy = await spawnRecordingProxy(recordingProxyConfig(), {
+  const proxy = await spawnRoach(roachConfig(), {
     launcher: proxyLauncher(),
     noProxy: NO_PROXY,
   });
@@ -69,7 +66,7 @@ export async function startRecordingRun(
     ca: proxy.caCert,
     proxyEnv: proxy.env,
   });
-  project.provide("recordingProxy", {
+  project.provide("roach", {
     caCert: proxy.caCert,
     token: proxy.token,
     url: proxy.url,

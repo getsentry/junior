@@ -6,7 +6,7 @@
  * provider. A search finds nothing unless the test calls
  * `mockWebSearchResults()`.
  *
- * The pages that the `webFetch` tool reads go to the recording proxy, which
+ * The pages that the `webFetch` tool reads go to Roach, which
  * replays them. See `src/recording-rules.ts`.
  */
 import { randomUUID } from "node:crypto";
@@ -15,7 +15,7 @@ import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
-/** Send the pages that `webFetch` reads to the recording proxy. */
+/** Send the pages that `webFetch` reads to Roach. */
 export function installWebReplay(): void {
   mswServer.use(
     http.get("*", ({ request }) => {

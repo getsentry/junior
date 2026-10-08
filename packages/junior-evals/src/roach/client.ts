@@ -1,9 +1,9 @@
 /**
- * The client of the recording proxy. See `README.md` in this directory.
+ * The client of Roach. See `README.md` in this directory.
  *
- * `spawnRecordingProxy()` starts the proxy in its own process and returns
+ * `spawnRoach()` starts the proxy in its own process and returns
  * `env`, the variables that send the traffic of a process through it.
- * `connectRecordingProxy()` controls a running proxy from another process,
+ * `connectRoach()` controls a running proxy from another process,
  * such as a test worker.
  */
 import { spawn } from "node:child_process";
@@ -13,11 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONTROL_PATH } from "./server.ts";
-import type {
-  RecordingProxyAddress,
-  RecordingProxyConfig,
-  RecordingStats,
-} from "./types.ts";
+import type { RoachAddress, RoachConfig, RecordingStats } from "./types.ts";
 
 /** The open session of one test. */
 export interface RecordingSession {
@@ -30,16 +26,15 @@ export interface RecordingSession {
 }
 
 /** The control API of a running proxy. */
-export interface RecordingProxyControl {
+export interface RoachControl {
   /** Open the session of one test. Only one session is open at a time. */
   startSession(name: string): Promise<RecordingSession>;
   /** The totals of the run. */
   stats(): Promise<RecordingStats>;
 }
 
-/** A proxy that `spawnRecordingProxy()` started. */
-export interface RecordingProxy
-  extends RecordingProxyAddress, RecordingProxyControl {
+/** A proxy that `spawnRoach()` started. */
+export interface Roach extends RoachAddress, RoachControl {
   /**
    * The variables that send the HTTP traffic of a process through the
    * proxy: `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY`,
@@ -64,7 +59,7 @@ const PROXY_VARIABLES = new Set([
 
 /** Call the control API, and return the JSON of the response. */
 function callControl<T>(
-  address: Pick<RecordingProxyAddress, "token" | "url">,
+  address: Pick<RoachAddress, "token" | "url">,
   method: "GET" | "POST",
   route: string,
   body?: unknown,
@@ -91,7 +86,7 @@ function callControl<T>(
           if (status >= 400) {
             reject(
               new Error(
-                `Recording proxy ${method} ${route} failed with HTTP ${status}: ${text}`,
+                `Roach ${method} ${route} failed with HTTP ${status}: ${text}`,
               ),
             );
           } else {
@@ -107,9 +102,9 @@ function callControl<T>(
 }
 
 /** Control a running proxy, for example from a test worker. */
-export function connectRecordingProxy(
-  address: Pick<RecordingProxyAddress, "token" | "url">,
-): RecordingProxyControl {
+export function connectRoach(
+  address: Pick<RoachAddress, "token" | "url">,
+): RoachControl {
   return {
     async startSession(name) {
       await callControl(address, "POST", "session", { name });
@@ -123,14 +118,12 @@ export function connectRecordingProxy(
 }
 
 /** Read the address line that `cli.ts serve` prints. */
-function readAddress(
-  child: ReturnType<typeof spawn>,
-): Promise<RecordingProxyAddress> {
+function readAddress(child: ReturnType<typeof spawn>): Promise<RoachAddress> {
   return new Promise((resolve, reject) => {
     let output = "";
     child.once("error", reject);
     child.once("exit", (code) =>
-      reject(new Error(`Recording proxy exited with code ${code}`)),
+      reject(new Error(`Roach exited with code ${code}`)),
     );
     child.stdout!.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
@@ -147,13 +140,13 @@ function readAddress(
  * when the caller cannot reach the network, but the proxy must. `noProxy`
  * lists the hosts that do not use the proxy, such as `localhost`.
  */
-export async function spawnRecordingProxy(
-  config: RecordingProxyConfig,
+export async function spawnRoach(
+  config: RoachConfig,
   {
     launcher = [],
     noProxy = "localhost,127.0.0.1,::1",
   }: { launcher?: string[]; noProxy?: string } = {},
-): Promise<RecordingProxy> {
+): Promise<Roach> {
   const command = [
     ...launcher,
     process.execPath,
@@ -176,13 +169,13 @@ export async function spawnRecordingProxy(
   child.stdin.end(JSON.stringify(config));
   const address = await readAddress(child);
   // `NODE_EXTRA_CA_CERTS` takes a file.
-  const caDirectory = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
+  const caDirectory = await mkdtemp(path.join(tmpdir(), "roach-"));
   const caFile = path.join(caDirectory, "ca.pem");
   await writeFile(caFile, address.caCert);
 
   return {
     ...address,
-    ...connectRecordingProxy(address),
+    ...connectRoach(address),
     env: {
       HTTP_PROXY: address.url,
       HTTPS_PROXY: address.url,

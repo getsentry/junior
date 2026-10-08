@@ -1,5 +1,5 @@
 /**
- * The recording files of the recording proxy.
+ * The recording files of Roach.
  *
  * A recording is one JSON file, `<directory>/<rule>/<key>.json`. It keeps
  * the response of one request, the session (test) that recorded it, and

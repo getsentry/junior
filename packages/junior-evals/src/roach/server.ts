@@ -1,5 +1,5 @@
 /**
- * The server of the recording proxy. See `README.md` in this directory.
+ * The server of Roach. See `README.md` in this directory.
  *
  * The proxy is a forward proxy. It intercepts HTTPS with its own
  * certificate authority (`certificates.ts`). It gives each request that a
@@ -10,7 +10,7 @@
  * with HTTP 403 and sends nothing. The upstream host always comes from
  * `allow`, never from the client. Only the path comes from the client.
  *
- * Each response has an `x-recording-proxy` header: `replayed`, `live`,
+ * Each response has an `x-roach` header: `replayed`, `live`,
  * `missed` (`replay` mode had no recording), or `passthrough` (no rule
  * matched).
  */
@@ -25,13 +25,13 @@ import {
   type ProxyRequest,
   type Recorder,
 } from "./recorder.ts";
-import type { RecordingProxyAddress, RecordingProxyConfig } from "./types.ts";
+import type { RoachAddress, RoachConfig } from "./types.ts";
 
 /** The path prefix of the control API. */
-export const CONTROL_PATH = "/__recording-proxy";
+export const CONTROL_PATH = "/__roach";
 
 /** A proxy that runs in this process. Most callers use `client.ts`. */
-export interface RecordingProxyServer extends RecordingProxyAddress {
+export interface RoachServer extends RoachAddress {
   /** Stop the proxy. A session that is still open fails. */
   close(): Promise<void>;
 }
@@ -58,7 +58,7 @@ function parseOrigins(values: string[]): Map<string, URL> {
         (origin.protocol !== "http:" && origin.protocol !== "https:") ||
         origin.origin !== value.replace(/\/$/, "")
       ) {
-        throw new Error(`Recording proxy origin must be an origin: ${value}`);
+        throw new Error(`Roach origin must be an origin: ${value}`);
       }
       return [origin.origin, origin];
     }),
@@ -146,9 +146,9 @@ async function proxyRequest(
   );
   const origin = origins.get(url.origin);
   if (!origin) {
-    process.stderr.write(`[recording-proxy] Refused ${url.origin}\n`);
+    process.stderr.write(`[roach] Refused ${url.origin}\n`);
     outgoing.writeHead(403, { "content-type": "text/plain" });
-    outgoing.end(`Recording proxy: ${url.origin} is not an allowed origin\n`);
+    outgoing.end(`Roach: ${url.origin} is not an allowed origin\n`);
     return;
   }
   const request: ProxyRequest = {
@@ -164,7 +164,7 @@ async function proxyRequest(
     const upstream = await sendUpstream(origin, request);
     outgoing.writeHead(upstream.statusCode ?? 502, upstream.statusMessage, {
       ...upstream.headers,
-      "x-recording-proxy": "passthrough",
+      "x-roach": "passthrough",
     });
     outgoing.on("close", () => upstream.destroy());
     upstream.pipe(outgoing);
@@ -185,7 +185,7 @@ async function proxyRequest(
   outgoing.writeHead(response.status, {
     ...response.headers,
     "content-length": String(response.body.length),
-    "x-recording-proxy": response.source,
+    "x-roach": response.source,
   });
   outgoing.end(response.body);
 }
@@ -239,9 +239,7 @@ async function control(
 }
 
 /** Start the proxy in this process, on a free port of `127.0.0.1`. */
-export async function startRecordingProxy(
-  config: RecordingProxyConfig,
-): Promise<RecordingProxyServer> {
+export async function startRoach(config: RoachConfig): Promise<RoachServer> {
   const origins = parseOrigins(config.allow);
   const allowedAuthorities = new Set([...origins.values()].map(authorityOf));
   const recorder = createRecorder(config);
@@ -265,7 +263,7 @@ export async function startRecordingProxy(
           outgoing.writeHead(502, { "content-type": "text/plain" });
         }
         outgoing.end(
-          `Recording proxy error: ${error instanceof Error ? error.message : String(error)}\n`,
+          `Roach error: ${error instanceof Error ? error.message : String(error)}\n`,
         );
       });
     };
@@ -283,7 +281,7 @@ export async function startRecordingProxy(
       return;
     }
     control(recorder, token, incoming, outgoing).catch((error: unknown) => {
-      process.stderr.write(`[recording-proxy] Control failed: ${error}\n`);
+      process.stderr.write(`[roach] Control failed: ${error}\n`);
       if (!outgoing.headersSent) outgoing.writeHead(500);
       outgoing.end();
     });
@@ -301,7 +299,7 @@ export async function startRecordingProxy(
     }
     const [, host, port] = match as unknown as [string, string, string];
     if (!allowedAuthorities.has(`${host.toLowerCase()}:${port}`)) {
-      process.stderr.write(`[recording-proxy] Refused ${host}:${port}\n`);
+      process.stderr.write(`[roach] Refused ${host}:${port}\n`);
       socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
@@ -344,7 +342,7 @@ export async function startRecordingProxy(
   });
   const address = server.address();
   if (!address || typeof address === "string") {
-    throw new Error("Recording proxy did not bind to a TCP port");
+    throw new Error("Roach did not bind to a TCP port");
   }
 
   return {

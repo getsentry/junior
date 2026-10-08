@@ -1,5 +1,5 @@
 /**
- * Text reports of a recording proxy run, for logs and CI summaries.
+ * Text reports of a Roach run, for logs and CI summaries.
  */
 import { describeParts } from "./request-key.ts";
 import type { RecordingMiss, RecordingStats } from "./types.ts";

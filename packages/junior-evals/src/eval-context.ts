@@ -1,5 +1,5 @@
 import type { PostgresHarnessConfig } from "@sentry/junior-testing/postgres";
-import type { RecordingProxyAddress } from "./recording-proxy/types";
+import type { RoachAddress } from "./roach/types";
 
 /** Invocation-wide egress and state coordinates provided to eval workers. */
 export interface EvalInvocationContext {
@@ -15,7 +15,7 @@ declare module "vitest" {
   export interface ProvidedContext {
     juniorEvalContext?: EvalInvocationContext;
     juniorPostgresHarness?: PostgresHarnessConfig;
-    /** The recording proxy of every eval suite. See `src/recording-run.ts`. */
-    recordingProxy?: RecordingProxyAddress;
+    /** Roach of every eval suite. See `src/recording-run.ts`. */
+    roach?: RoachAddress;
   }
 }

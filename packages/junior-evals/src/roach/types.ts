@@ -1,5 +1,5 @@
 /**
- * The public types of the recording proxy: its configuration and its
+ * The public types of Roach: its configuration and its
  * results. See `README.md` in this directory.
  */
 import type { ValuePatterns } from "./values.ts";
@@ -40,7 +40,7 @@ export interface RecordingRule {
 }
 
 /** The configuration of one proxy. */
-export interface RecordingProxyConfig {
+export interface RoachConfig {
   /** The directory of the recordings. Each rule has a subdirectory. */
   directory: string;
   mode: RecordingMode;
@@ -106,7 +106,7 @@ export interface RecordingStats {
 }
 
 /** The address of a running proxy. Give it to the processes that use it. */
-export interface RecordingProxyAddress {
+export interface RoachAddress {
   /** The proxy URL, such as `http://127.0.0.1:1234`. */
   url: string;
   /** The bearer token of the control API. */

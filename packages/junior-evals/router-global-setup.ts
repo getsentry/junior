@@ -4,7 +4,7 @@ import { startRecordingRun } from "./src/recording-run";
 /**
  * Set up the lightweight turn router eval invocation.
  *
- * Router cases only need AI Gateway access through the recording proxy.
+ * Router cases only need AI Gateway access through Roach.
  * They intentionally skip Postgres, Redis fixtures, MSW, plugin catalogs, and
  * sandbox egress.
  */

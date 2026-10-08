@@ -1,23 +1,23 @@
-# Recording Proxy
+# Roach
 
-A recording HTTP proxy for tests. It records chosen requests to files in git
+Roach is a recording HTTP proxy for tests. It records chosen requests to files in git
 and replays them, so a second run of a test suite makes no live calls. The
 proxy owns every read and write of the recordings. A test runner only gives
 it rules and tells it when each test starts and ends.
 
 This directory has no Junior code. It uses only Node built-ins and the
 `openssl` command. Do not import anything from outside this directory, so
-the proxy can move to its own package or repository.
+Roach can move to its own package, probably `@sentry/roach`.
 
 ## Use
 
 ```ts
-import { spawnRecordingProxy, connectRecordingProxy } from "./client";
+import { spawnRoach, connectRoach } from "./client";
 import { describeRecordingStats } from "./report";
 import { VALUE_PATTERNS } from "./values";
 
 // Once per run.
-const proxy = await spawnRecordingProxy({
+const proxy = await spawnRoach({
   directory: "recordings",
   mode: "auto",
   allow: ["https://ai-gateway.vercel.sh"],
@@ -33,9 +33,7 @@ const proxy = await spawnRecordingProxy({
 spawn("vitest", { env: { ...process.env, ...proxy.env } });
 
 // Once per test, in a worker that has the `url` and `token` of the proxy.
-const session = await connectRecordingProxy({ url, token }).startSession(
-  testName,
-);
+const session = await connectRoach({ url, token }).startSession(testName);
 const { missed } = await session.end(passed);
 // In `replay` mode, fail the test when `missed` is not 0.
 
@@ -48,7 +46,7 @@ await proxy.close();
   `NODE_USE_ENV_PROXY`, and `NODE_EXTRA_CA_CERTS`. Node 24 reads the last two
   only at startup. A process that is already running must set its own
   agents.
-- `spawnRecordingProxy(config, { launcher })` runs the proxy with a command
+- `spawnRoach(config, { launcher })` runs the proxy with a command
   prefix, such as `sudo`. Use it when the caller cannot reach the network,
   but the proxy must.
 
@@ -82,7 +80,7 @@ await proxy.close();
   `<<redacted>>` in place of each known value.
 
 Requests that match no rule go live without a change, and their responses
-stream. Each response has an `x-recording-proxy` header: `replayed`, `live`,
+stream. Each response has an `x-roach` header: `replayed`, `live`,
 `missed`, or `passthrough`.
 
 ## Recordings
@@ -166,11 +164,11 @@ another run needs.
 
 All calls need `Authorization: Bearer <token>`. `client.ts` calls them.
 
-- `POST /__recording-proxy/session` with `{"name": "..."}`: open a session.
-- `POST /__recording-proxy/session/end` with `{"name": "...", "passed": true}`:
+- `POST /__roach/session` with `{"name": "..."}`: open a session.
+- `POST /__roach/session/end` with `{"name": "...", "passed": true}`:
   end it. Returns `{"missed": 0}`, the misses that `replay` mode failed.
   Returns HTTP 409 when the session is not open.
-- `GET /__recording-proxy/stats`: the totals of the run.
+- `GET /__roach/stats`: the totals of the run.
 
 ## Files
 

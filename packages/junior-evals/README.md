@@ -280,8 +280,8 @@ connections.
 
 ## Recordings
 
-Evals record outside HTTP traffic in files in git and replay it. The
-recording proxy in `src/recording-proxy/` does this. It has no Junior code.
+Roach, the recording proxy in `src/roach/`, does this. It has no Junior code.
+recording proxy Roach (`src/roach/`) does this. It has no Junior code.
 Its `README.md` tells how it keys, records, and replays requests.
 
 ### How evals use the proxy
@@ -413,7 +413,7 @@ Its `README.md` tells how it keys, records, and replays requests.
 - Run the "Prune eval recordings" workflow by hand. It runs every eval suite
   on `main` in strict `replay` mode. Each job sets
   `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
-  tests replayed. Then `src/recording-proxy/cli.ts prune` deletes the
+  tests replayed. Then `src/roach/cli.ts prune` deletes the
   recordings that no list has, and the workflow opens or updates one pull
   request.
 - It deletes recordings only when every job finished and its proxy listed

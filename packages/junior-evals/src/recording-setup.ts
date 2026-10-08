@@ -1,7 +1,7 @@
 /**
  * The recording session of each eval test.
  *
- * Global setup starts the recording proxy (`src/recording-run.ts`). The
+ * Global setup starts Roach (`src/recording-run.ts`). The
  * proxy owns all reads and writes of recordings. This file only sends the
  * traffic of the worker through the proxy and tells the proxy when each
  * test starts and ends. The proxy writes the new recordings of a passed
@@ -19,11 +19,11 @@ import {
   createProxyDispatcher,
   useGlobalDispatcherForFetch,
 } from "./proxy-dispatcher";
-import { connectRecordingProxy } from "./recording-proxy/client";
+import { connectRoach } from "./roach/client";
 
-const address = inject("recordingProxy");
+const address = inject("roach");
 if (address) {
-  const proxy = connectRecordingProxy(address);
+  const proxy = connectRoach(address);
   // Node 24 already uses the proxy variables for `fetch`. This also covers
   // an older Node. The AI Gateway timeouts wrap the proxy dispatcher.
   setGlobalDispatcher(createProxyDispatcher(address));

@@ -52,7 +52,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Eval Recordings
 
-- Evals replay model calls and web pages from `packages/junior-evals/recordings/`. A recording proxy (`packages/junior-evals/src/recording-proxy/`) records and replays them.
+- Evals replay model calls and web pages from `packages/junior-evals/recordings/`. Roach, a recording proxy in `packages/junior-evals/src/roach/`, records and replays them.
 - `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file.
 - All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
 - A changed prompt, tool, skill, or model makes new requests, and these go live. On a pull request, CI commits the new recordings to your branch. Select "Approve workflows to run" on the pull request to start its checks. The evals then run again in strict `replay` mode, where a request without a recording fails and never goes live.

@@ -39,7 +39,7 @@ jobs:
               - '.github/actions/commit-eval-recordings/**'
               - '.github/actions/eval-recordings-mode/**'
               - 'packages/junior-evals/recordings/**'
-              - 'packages/junior-evals/src/recording-proxy/**'
+              - 'packages/junior-evals/src/roach/**'
               - 'packages/junior-evals/src/recording-rules.ts'
               - 'packages/junior-evals/src/recording-run.ts'
               - 'packages/junior-evals/src/recording-setup.ts'

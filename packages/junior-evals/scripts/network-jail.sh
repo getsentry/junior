@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Run an eval command where it cannot skip the recording proxy.
+# Run an eval command where it cannot skip Roach.
 #
 # Usage: scripts/network-jail.sh <command> [args...]
 #
 # The command runs with the group `junior-evals-net`. Firewall rules let
 # that group connect only to:
 #
-# - loopback: the recording proxy, local fixture servers, Postgres, Redis.
+# - loopback: Roach, local fixture servers, Postgres, Redis.
 # - DNS.
 # - Cloudflare, on the ports of Cloudflare Tunnel. cloudflared and the Quick
 #   Tunnel of the sandbox egress (`src/eval-egress.ts`) use it.
@@ -14,8 +14,8 @@
 # The firewall rejects every other connection. So a request that does not
 # use the proxy fails at once, and does not silently go live.
 #
-# The recording proxy must reach upstream origins, so it starts outside the
-# group. `EVAL_RECORDING_PROXY_LAUNCHER` gives the command for that to
+# Roach must reach upstream origins, so it starts outside the
+# group. `EVAL_ROACH_LAUNCHER` gives the command for that to
 # `src/recording-run.ts`.
 #
 # This is a guard against mistakes, not a security boundary: the command
@@ -77,10 +77,10 @@ fi
 as_user=(sudo -n -E env "PATH=$PATH" "HOME=$HOME" setpriv
   "--reuid=$(id -u)" --init-groups)
 launcher=("${as_user[@]}" "--regid=$(id -g)" --)
-EVAL_RECORDING_PROXY_LAUNCHER=$(
+EVAL_ROACH_LAUNCHER=$(
   node -e 'process.stdout.write(JSON.stringify(process.argv.slice(1)))' \
     "${launcher[@]}"
 )
-export EVAL_RECORDING_PROXY_LAUNCHER
+export EVAL_ROACH_LAUNCHER
 
 exec "${as_user[@]}" "--regid=$jail_gid" -- "$@"
