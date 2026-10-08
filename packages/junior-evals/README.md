@@ -257,72 +257,58 @@ connections.
 ## Recordings
 
 Evals record outside HTTP traffic in files in git and replay it. The
-recording proxy in `src/recording-proxy/` does this. It runs in its own
-process and has no Junior code, so it can move out of this repository.
+recording proxy in `src/recording-proxy/` does this. It has no Junior code.
+Its `README.md` tells how it keys, records, and replays requests.
 
-- The proxy owns every read and write of recordings. Junior gives it the
-  rules (`src/recording-rules.ts`) and tells it when each test starts and
-  ends (`src/recording-setup.ts`). Global setup starts it with
-  `startRecordingRun()` (`src/recording-run.ts`). MSW mocks, such as Slack,
-  answer before the proxy.
-- All other HTTP traffic of the run also goes through the proxy. Global
-  setup sets `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NODE_USE_ENV_PROXY`,
-  and `NODE_EXTRA_CA_CERTS`. The test workers and child processes inherit
-  them. `NO_PROXY` in `src/recording-rules.ts` lists the hosts that skip the
-  proxy: loopback and the Cloudflare Quick Tunnel. Some clients, such as
-  `@vercel/sandbox`, give `fetch` their own agent. `src/fetch-dispatcher.ts`
-  removes it, so these requests also use the proxy.
-- In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
-  only loopback, DNS, and Cloudflare. Any other connection that does not use
-  the proxy fails at once. The proxy itself starts outside the jail. Add a
-  host to the jail only if it cannot go through the proxy.
-- `src/recording-rules.ts` is the one list of recorded traffic:
+### How evals use the proxy
+
+- `src/recording-rules.ts` is the one list of recorded traffic, allowed
+  origins, and changing values:
   - `model`: every POST to the AI Gateway. This includes agent, title,
     compaction, judge, Guardian, and turn router requests.
   - `web`: the pages that `webFetch` reads. A redirect is its own recording.
-- The proxy sends requests only to the allowed origins in
-  `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
-- The recordings are in `recordings/<rule>/`. A recording answers a request
-  when the method, URL, body, and the `key.headers` of the rule are the same.
-  A recording keeps the response, the test that recorded it, and a short
-  hash of each part of the request. It does not keep the request body.
-- The `model` rule names the values that change on each run: UUIDs, ISO
-  times and dates, Unix milliseconds, and local times such as
-  `Oct 7, 2026, 10:05 PM`. The product makes these, so a fixture cannot make
-  them stable. The key sees each one as `<<name>>`. A recorded response keeps
-  a value of its request as `<<name:n>>`, and a replay writes the value of
-  the current run there. So when the model archives memory `<<uuid:2>>`, the
-  replay archives the memory of this run. Thinking blocks keep their
-  recorded text, because their signature covers it.
-- The proxy merges the deltas of each content block in a model stream into
-  one event before it records the stream, so a value is never split.
-- A request without a recording goes live. When the test passes, the proxy
-  writes its new recordings. A failed test writes nothing. A 429 or 5xx
-  response is never recorded. A replay does not write the file again.
-- `VITEST_EVALS_REPLAY_MODE` sets the mode:
-  - `auto` (the default) replays recordings and records misses.
-  - `replay` replays recordings. A request without a recording fails with
-    HTTP 412 and never goes live, and its test fails. Use it to prove that a
-    run makes no model calls. Judge calls are model calls too, so they also
-    replay.
-  - `record` sends every request live and writes it again.
-  - `off` sends every request live and records nothing.
+- `src/recording-run.ts`: global setup starts the proxy and sets the proxy
+  variables. Test workers and child processes inherit them. At the end, it
+  prints the totals and adds them to the GitHub Actions job summary.
+- `src/recording-setup.ts`: each test opens a proxy session before its first
+  request and ends it when it finishes. A passed test writes its new
+  recordings. A failed test writes nothing.
+- `src/proxy-dispatcher.ts`: sends `fetch` through the proxy in processes
+  that started before the proxy variables. It also removes the own agent
+  that some clients, such as `@vercel/sandbox`, give `fetch`.
+- MSW mocks, such as Slack and GitHub, answer before the proxy.
+- In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
+  only loopback, DNS, and Cloudflare. Any connection that does not use the
+  proxy fails at once. Add a host to the jail only if it cannot go through
+  the proxy.
+
+### Modes
+
+`VITEST_EVALS_REPLAY_MODE` sets the mode:
+
+- `auto` (the default) replays recordings and records misses.
+- `replay` replays recordings. A request without a recording fails with HTTP
+  412 and never goes live, and its test fails. Use it to prove that a run
+  makes no model calls, judge calls included.
+- `record` sends every request live and writes it again.
+- `off` sends every request live and records nothing.
+
+### Keep requests stable
+
 - A change to a prompt, a tool, a skill, or the model makes new requests.
   You can commit the new recordings with your change. Do a check for
   secret-like values before you commit them.
 - The Slack mock takes its timestamps and channel ids from the test name.
-  Setup data and web Conversations take ids that are not UUIDs from
-  `fixtureId()` in `src/fixture/ids.ts`. Thus the requests of a test are the
-  same on each run. If a test sends another value that changes on each run,
-  make the fixture send a stable value. If only the product can make it,
-  such as a new id format, add a pattern to the `values` of the rule.
+  Setup data and web Conversations take ids from `fixtureId()` in
+  `src/fixture/ids.ts`. If a test sends another value that changes on each
+  run, make the fixture send a stable value. If only the product can make
+  it, add a pattern to `values` of the rule.
 - The AI SDK sends no model request when it has no gateway credential. To
   replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
 
 ### Check that recording works
 
-- At the end of a run, global setup prints one line. In GitHub Actions, the
-  job summary also shows it:
+- At the end of a run, global setup prints one line:
 
   ```text
   [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed sessions. Not recorded: none.
@@ -336,60 +322,52 @@ process and has no Junior code, so it can move out of this repository.
 
 ### Debug a miss
 
-- For each request without a recording, the proxy compares it with the
-  closest recording of the same test. The log and the job summary name the
-  parts that differ:
+- For each test, the log and the job summary name the first request without
+  a recording, and the parts that differ from the closest recording:
 
   ```text
   [evals] No recording: <test>: model model/<key>.json differs from model/<other>.json at messages[3]
   ```
 
-- The first miss of a test is the one to fix. The later misses of the test
-  usually follow from it, because the live response differs from the
-  recording.
-- `EVAL_RECORDING_REQUESTS_DIR` names a directory. The proxy writes each
+- Fix the first miss of a test. The later misses usually follow from it.
+- `EVAL_RECORDING_MISSES_DIR` names a directory. The proxy writes each
   request without a recording there, as the key sees it. CI uploads it as
-  the `requests-*` artifact for 3 days. Compare the files of two runs to see
+  the `misses-*` artifact for 3 days. Compare the files of two runs to see
   the changed value. These files contain prompts. Do not commit them.
 
 ### Recordings in CI
 
 - Each eval workflow chooses its mode with
   `.github/actions/eval-recordings-mode`. A pull request run uses `auto`.
-- After an `auto` run, the "commit recordings" job of the workflow commits
-  the new recordings to the branch as "chore(evals): Update eval
-  recordings" (`.github/actions/commit-eval-recordings`). The job takes only
-  recording files from the run artifacts and runs no pull request code. It
-  pushes only when the branch is still at the tested commit, or at
-  recording commits on top of it.
+- After an `auto` run, the "commit recordings" job commits the new
+  recordings to the branch as "chore(evals): Update eval recordings"
+  (`.github/actions/commit-eval-recordings`). It takes only recording files
+  from the run artifacts and runs no pull request code. It pushes only when
+  the branch is still at the tested commit, or at recording commits on top
+  of it.
 - The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
-  no other secret. The token expires when the job ends, and it can do only
-  what a person who can push a branch here can already do.
-- GitHub does not start the checks of a `GITHUB_TOKEN` push by itself. It
-  holds them until a person with write access selects "Approve workflows to
-  run" on the pull request. Then the normal checks run on the recordings
-  commit, including `ci / required`. If GitHub shows no held runs, close and
-  reopen the pull request, or push another commit.
+  no other secret. The token expires when the job ends.
+- GitHub holds the checks of a `GITHUB_TOKEN` push until a person with write
+  access selects "Approve workflows to run" on the pull request. Then the
+  normal checks run, including `ci / required`. If GitHub shows no held
+  runs, close and reopen the pull request, or push another commit.
 - A run on a recordings commit uses strict `replay`. A green run shows that
   the committed recordings cover every model request. Strict runs write
   nothing, so they never start another commit.
 - If the recordings of a suite are still on the way, its strict run waits
-  for the earlier run of that suite. A recordings commit does not cancel
-  runs that are still recording, because each bot that pushes has its own
-  concurrency group.
-- Pull requests from forks get a read-only token. Their new recordings stay in the
-  `eval-recordings-*` artifacts. The job summary shows the `gh run download`
-  command that adds them to a branch.
-- A failed test writes no recordings. Its strict run fails again with
-  misses, so the failure stays visible.
+  for the earlier run of that suite.
+- Pull requests from forks get a read-only token. Their new recordings stay
+  in the `eval-recordings-*` artifacts. The job summary shows the
+  `gh run download` command that adds them to a branch.
 
 ### Prune unused recordings
 
 - Run the "Prune eval recordings" workflow by hand. It runs every eval suite
   on `main` in strict `replay` mode. Each job sets
   `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
-  tests replayed. Then `recording-proxy.ts prune` deletes the recordings
-  that no list has, and the workflow opens or updates one pull request.
+  tests replayed. Then `src/recording-proxy/cli.ts prune` deletes the
+  recordings that no list has, and the workflow opens or updates one pull
+  request.
 - It deletes recordings only when every job finished and every eval passed.
   A failed test stops at its failure, so its later recordings would look
   unused.

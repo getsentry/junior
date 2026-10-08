@@ -152,7 +152,7 @@ jobs:
             echo "::warning::Evals failed in ${failed[*]}, so no recordings were deleted."
           else
             node --experimental-strip-types --disable-warning=ExperimentalWarning \
-              packages/junior-evals/src/recording-proxy/recording-proxy.ts \
+              packages/junior-evals/src/recording-proxy/cli.ts \
               prune "$RECORDINGS_DIR" "$RUNS"/*/used-recordings
           fi
           {

@@ -15,9 +15,11 @@ import { setGlobalDispatcher } from "undici";
 import { afterAll, beforeEach, inject, onTestFinished } from "vitest";
 import { installEvalAiGatewayDispatcher } from "./eval-ai-gateway-dispatcher";
 import "./eval-context";
-import { useGlobalDispatcherForFetch } from "./fetch-dispatcher";
+import {
+  createProxyDispatcher,
+  useGlobalDispatcherForFetch,
+} from "./proxy-dispatcher";
 import { connectRecordingProxy } from "./recording-proxy/client";
-import { createProxyDispatcher } from "./recording-run";
 
 const address = inject("recordingProxy");
 if (address) {
@@ -30,11 +32,9 @@ if (address) {
   beforeEach(async ({ task }) => {
     // MSW replaces `fetch` before each test file, so this runs after it.
     useGlobalDispatcherForFetch();
-    await proxy.startSession(task.fullName);
+    const session = await proxy.startSession(task.fullName);
     onTestFinished(async ({ task: finished }) => {
-      const { missed } = await proxy.endSession(
-        finished.result?.state === "pass",
-      );
+      const { missed } = await session.end(finished.result?.state === "pass");
       // In `replay` mode the proxy fails a request without a recording, so
       // no model call goes live. The test must fail even if it recovered.
       if (missed > 0) {

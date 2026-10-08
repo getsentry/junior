@@ -15,8 +15,6 @@
  *
  * A value that the response makes itself, such as a date that the model
  * calculates, stays as it was recorded.
- *
- * Like the server, this file uses only Node built-ins.
  */
 
 /**

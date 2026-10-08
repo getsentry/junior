@@ -4,35 +4,41 @@
  * The proxy intercepts HTTPS. It creates its own certificate authority when
  * it starts, and signs one certificate for each host when a client first
  * connects to that host. Clients must trust the authority certificate.
- *
- * Like the server, this file uses only Node built-ins and the `openssl`
- * command.
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { isIP } from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import tls from "node:tls";
 
-function run(command: string, args: string[]): Promise<void> {
+function openssl(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, (error, _stdout, stderr) => {
-      if (error) reject(new Error(`${command} failed: ${stderr || error}`));
+    execFile("openssl", args, (error, _stdout, stderr) => {
+      if (error) reject(new Error(`openssl failed: ${stderr || error}`));
       else resolve();
     });
   });
 }
 
-/**
- * Create a certificate authority, and sign one certificate for each host
- * when a client first connects to it.
- */
-export async function createCertificates(directory: string) {
+/** A certificate authority that signs a certificate for each host. */
+export interface CertificateAuthority {
+  /** The PEM certificate that clients must trust. */
+  caCert: string;
+  /** The TLS context for a host. Signs its certificate on first use. */
+  contextFor(host: string): Promise<tls.SecureContext>;
+  /** Delete the keys and certificates. */
+  close(): Promise<void>;
+}
+
+/** Create a certificate authority in a new temporary directory. */
+export async function createCertificateAuthority(): Promise<CertificateAuthority> {
+  const directory = await mkdtemp(path.join(tmpdir(), "recording-proxy-ca-"));
   const caKey = path.join(directory, "ca.key");
-  const caCertPath = path.join(directory, "ca.crt");
+  const caCertFile = path.join(directory, "ca.crt");
   const hostKey = path.join(directory, "host.key");
-  await run("openssl", [
+  await openssl([
     "req",
     "-x509",
     "-newkey",
@@ -41,7 +47,7 @@ export async function createCertificates(directory: string) {
     "-keyout",
     caKey,
     "-out",
-    caCertPath,
+    caCertFile,
     "-days",
     "7",
     "-subj",
@@ -51,7 +57,8 @@ export async function createCertificates(directory: string) {
     "-addext",
     "keyUsage=critical,keyCertSign,cRLSign",
   ]);
-  await run("openssl", ["genrsa", "-out", hostKey, "2048"]);
+  // All hosts share one key. Only their certificates differ.
+  await openssl(["genrsa", "-out", hostKey, "2048"]);
   const hostKeyPem = await readFile(hostKey, "utf8");
   const contexts = new Map<string, Promise<tls.SecureContext>>();
 
@@ -60,14 +67,13 @@ export async function createCertificates(directory: string) {
     const csr = path.join(directory, `${name}.csr`);
     const extensions = path.join(directory, `${name}.ext`);
     const cert = path.join(directory, `${name}.crt`);
-    const altName = isIP(host.replace(/^\[|\]$/g, ""))
-      ? `IP:${host.replace(/^\[|\]$/g, "")}`
-      : `DNS:${host}`;
+    const bare = host.replace(/^\[|\]$/g, "");
+    const altName = isIP(bare) ? `IP:${bare}` : `DNS:${host}`;
     await writeFile(
       extensions,
       `subjectAltName=${altName}\nextendedKeyUsage=serverAuth\n`,
     );
-    await run("openssl", [
+    await openssl([
       "req",
       "-new",
       "-key",
@@ -77,13 +83,13 @@ export async function createCertificates(directory: string) {
       "-out",
       csr,
     ]);
-    await run("openssl", [
+    await openssl([
       "x509",
       "-req",
       "-in",
       csr,
       "-CA",
-      caCertPath,
+      caCertFile,
       "-CAkey",
       caKey,
       "-set_serial",
@@ -102,8 +108,8 @@ export async function createCertificates(directory: string) {
   };
 
   return {
-    caCert: await readFile(caCertPath, "utf8"),
-    contextFor(host: string): Promise<tls.SecureContext> {
+    caCert: await readFile(caCertFile, "utf8"),
+    contextFor(host) {
       let context = contexts.get(host);
       if (!context) {
         context = sign(host);
@@ -111,5 +117,6 @@ export async function createCertificates(directory: string) {
       }
       return context;
     },
+    close: () => rm(directory, { force: true, recursive: true }),
   };
 }

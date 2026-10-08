@@ -167,7 +167,7 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: behavioral-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-          EVAL_RECORDING_REQUESTS_DIR: ${{ runner.temp }}/eval-recording-requests
+          EVAL_RECORDING_MISSES_DIR: ${{ runner.temp }}/eval-recording-misses
           VITEST_EVALS_REPLAY_MODE: ${{ needs.select.outputs.mode }}
         run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
       - name: Collect new recordings

@@ -2,31 +2,34 @@
  * The recording files of the recording proxy.
  *
  * A recording is one JSON file, `<directory>/<rule>/<key>.json`. It keeps
- * the response of one request, the test (session) that recorded it, and a
- * short hash of each part of the request (`request-parts.ts`). It does not
- * keep the request body, so prompts and other inputs are not committed.
- *
- * Like the server, this file uses only Node built-ins.
+ * the response of one request, the session (test) that recorded it, and
+ * the parts of the request (`request-key.ts`). It does not keep the request
+ * body, so prompts and other inputs are not committed.
  */
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { closestRequest, type RequestParts } from "./request-parts.ts";
+import { closestRequest, type RequestParts } from "./request-key.ts";
 
 /** One recorded response. */
 export interface Recording {
-  writtenAt: string;
   /** The session (test) that recorded the response. */
   session?: string;
-  request: { method: string; url: string; parts?: RequestParts };
+  request: { method: string; url: string; parts: RequestParts };
   response: {
+    status: number;
+    headers: Record<string, string>;
+    /**
+     * A text body keeps each changing value of its request as a
+     * placeholder (`values.ts`).
+     */
     body: string;
     /** `base64` for a body that is not text, such as an image. */
     bodyEncoding: "base64" | "utf8";
-    headers: Record<string, string>;
-    status: number;
-    statusText: string;
   };
 }
+
+const isMissing = (error: unknown) =>
+  (error as NodeJS.ErrnoException).code === "ENOENT";
 
 /** Read a recording. Returns `undefined` when there is none. */
 export async function readRecording(
@@ -34,13 +37,14 @@ export async function readRecording(
 ): Promise<Recording | undefined> {
   try {
     return JSON.parse(await readFile(file, "utf8")) as Recording;
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
   }
 }
 
 /** Write recordings. Returns how many were new or changed. */
-export async function saveRecordings(
+export async function writeRecordings(
   recordings: Iterable<[string, Recording]>,
 ): Promise<number> {
   const changed = await Promise.all(
@@ -62,52 +66,57 @@ interface IndexEntry {
   parts: RequestParts;
 }
 
-/**
- * The request parts of the recordings in one rule directory, for miss
- * diagnosis. It reads the directory on first use.
- */
-export function createRecordingIndex(directory: string) {
-  let entries: Promise<Map<string, IndexEntry>> | undefined;
+/** The recordings of one rule, for miss diagnosis. */
+export interface RecordingIndex {
+  /** Add or replace a recording that the proxy wrote. */
+  add(file: string, recording: Recording): void;
+  /**
+   * The recording with the most equal parts, and the parts that differ.
+   * Recordings of the same session come first, because a test usually
+   * sends the same requests as the last time it ran.
+   */
+  closest(
+    parts: RequestParts,
+    session: string | undefined,
+  ): Promise<{ file: string; differs: string[] } | undefined>;
+}
+
+/** Index the recordings of one rule directory. It reads them on first use. */
+export function createRecordingIndex(directory: string): RecordingIndex {
+  const entries = new Map<string, IndexEntry>();
+  let loaded: Promise<void> | undefined;
+  const entryOf = (file: string, recording: Recording): IndexEntry => ({
+    file,
+    session: recording.session,
+    parts: recording.request.parts,
+  });
   const load = async () => {
-    const result = new Map<string, IndexEntry>();
-    const names = await readdir(directory).catch(() => [] as string[]);
+    const names = await readdir(directory).catch((error: unknown) => {
+      if (isMissing(error)) return [];
+      throw error;
+    });
     for (const name of names.filter((entry) => entry.endsWith(".json"))) {
       const file = path.join(directory, name);
       const recording = await readRecording(file);
-      if (recording?.request.parts) {
-        result.set(file, {
-          file,
-          session: recording.session,
-          parts: recording.request.parts,
-        });
+      if (recording && !entries.has(file)) {
+        entries.set(file, entryOf(file, recording));
       }
     }
-    return result;
   };
-  const all = () => (entries ??= load());
 
   return {
-    /** Add or replace a recording that the proxy wrote. */
-    async add(file: string, recording: Recording) {
-      if (!entries || !recording.request.parts) return;
-      (await entries).set(file, {
-        file,
-        session: recording.session,
-        parts: recording.request.parts,
-      });
+    add(file, recording) {
+      entries.set(file, entryOf(file, recording));
     },
-    /**
-     * The recording with the most equal parts, and the parts that differ.
-     * Recordings of the same session come first, because a test usually
-     * sends the same requests as the last time it ran.
-     */
-    async closest(parts: RequestParts, session: string | undefined) {
-      const candidates = [...(await all()).values()];
-      const same = candidates.filter((entry) => entry.session === session);
-      return closestRequest(
+    async closest(parts, session) {
+      await (loaded ??= load());
+      const all = [...entries.values()];
+      const same = all.filter((entry) => entry.session === session);
+      const found = closestRequest(
         parts,
-        session !== undefined && same.length > 0 ? same : candidates,
+        session !== undefined && same.length > 0 ? same : all,
       );
+      return found && { file: found.candidate.file, differs: found.differs };
     },
   };
 }

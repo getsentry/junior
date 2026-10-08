@@ -8,7 +8,7 @@
  * `auto` (the default), `replay`, `record`, or `off`.
  * `EVAL_RECORDINGS_USED_FILE` names a file where the proxy lists the
  * recordings that passing tests used. The prune workflow gives these files
- * to `recording-proxy.ts prune`. `EVAL_RECORDING_REQUESTS_DIR` names a
+ * to `recording-proxy/cli.ts prune`. `EVAL_RECORDING_MISSES_DIR` names a
  * directory where the proxy writes each request that had no recording.
  */
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import type {
   RecordingMode,
   RecordingProxyConfig,
   RecordingRule,
-} from "./recording-proxy/recording-proxy";
+} from "./recording-proxy/types";
 import { VALUE_PATTERNS } from "./recording-proxy/values";
 
 /**
@@ -44,15 +44,13 @@ const RECORDING_RULES: RecordingRule[] = [
     // image generation and web search before the proxy.
     name: "model",
     match: { method: "POST", url: "https://ai-gateway.vercel.sh/" },
-    key: {
-      // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
-      // model in a header, not in the body.
-      headers: [
-        "ai-language-model-id",
-        "ai-language-model-streaming",
-        "ai-model-id",
-      ],
-    },
+    // AI SDK gateway requests, such as `/v3/ai/language-model`, name the
+    // model in a header, not in the body.
+    keyHeaders: [
+      "ai-language-model-id",
+      "ai-language-model-streaming",
+      "ai-model-id",
+    ],
     values: CHANGING_VALUES,
   },
   {
@@ -113,7 +111,6 @@ export function recordingProxyConfig(): RecordingProxyConfig {
     allow: ALLOWED_ORIGINS,
     rules: RECORDING_RULES,
     usedFile: process.env.EVAL_RECORDINGS_USED_FILE?.trim() || undefined,
-    requestDirectory:
-      process.env.EVAL_RECORDING_REQUESTS_DIR?.trim() || undefined,
+    missDirectory: process.env.EVAL_RECORDING_MISSES_DIR?.trim() || undefined,
   };
 }

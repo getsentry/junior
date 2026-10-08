@@ -9,8 +9,6 @@
  *
  * Thinking blocks keep their recorded text. A signature covers that text,
  * and the provider refuses a changed thinking block in a later request.
- *
- * Like the server, this file uses only Node built-ins.
  */
 
 /** The text field of each delta type that the proxy merges. */

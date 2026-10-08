@@ -43,7 +43,7 @@ jobs:
               - 'packages/junior-evals/src/recording-rules.ts'
               - 'packages/junior-evals/src/recording-run.ts'
               - 'packages/junior-evals/src/recording-setup.ts'
-              - 'packages/junior-evals/src/fetch-dispatcher.ts'
+              - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
@@ -105,7 +105,7 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-          EVAL_RECORDING_REQUESTS_DIR: ${{ runner.temp }}/eval-recording-requests
+          EVAL_RECORDING_MISSES_DIR: ${{ runner.temp }}/eval-recording-misses
           VITEST_EVALS_REPLAY_MODE: ${{ needs.select.outputs.mode }}
         run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
       - name: Collect new recordings

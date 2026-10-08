@@ -5,12 +5,12 @@ import path from "node:path";
 import { ProxyAgent, request } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectRecordingProxy } from "../../src/recording-proxy/client";
+import { pruneRecordings } from "../../src/recording-proxy/recordings";
 import {
   startRecordingProxy,
-  type RecordingMode,
   type RecordingProxyServer,
-} from "../../src/recording-proxy/recording-proxy";
-import { pruneRecordings } from "../../src/recording-proxy/recordings";
+} from "../../src/recording-proxy/server";
+import type { RecordingMode } from "../../src/recording-proxy/types";
 import { VALUE_PATTERNS } from "../../src/recording-proxy/values";
 
 let upstream: Server;
@@ -18,6 +18,8 @@ let origin: string;
 let liveRequests: number;
 /** The event stream that the upstream sends for a request body. */
 let respond: (body: string) => string;
+/** The upstream answers when this settles. */
+let upstreamGate: Promise<void>;
 let directory: string;
 let proxy: RecordingProxyServer | undefined;
 let agent: ProxyAgent | undefined;
@@ -66,10 +68,9 @@ async function session(
   bodies: unknown[],
   passed = true,
 ) {
-  const control = connectRecordingProxy(running);
-  await control.startSession("test");
+  const opened = await connectRecordingProxy(running).startSession("test");
   const responses = await send(bodies);
-  const { missed } = await control.endSession(passed);
+  const { missed } = await opened.end(passed);
   return Object.assign(responses, { missed });
 }
 
@@ -80,11 +81,13 @@ async function files(): Promise<string[]> {
 beforeEach(async () => {
   liveRequests = 0;
   respond = () => `data: ${liveRequests}\n\n`;
+  upstreamGate = Promise.resolve();
   upstream = createServer((incoming, outgoing) => {
     liveRequests += 1;
     const chunks: Buffer[] = [];
     incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
-    incoming.on("end", () => {
+    incoming.on("end", async () => {
+      await upstreamGate;
       outgoing.writeHead(200, { "content-type": "text/event-stream" });
       outgoing.end(respond(Buffer.concat(chunks).toString("utf8")));
     });
@@ -246,6 +249,23 @@ describe("recording proxy", () => {
 
     expect(liveRequests).toBe(2);
     await expect(files()).resolves.toEqual([]);
+  });
+
+  it("writes a request that ends after its passed session", async () => {
+    const running = await start("auto");
+    let open!: () => void;
+    upstreamGate = new Promise((resolve) => (open = resolve));
+    const opened = await connectRecordingProxy(running).startSession("test");
+    const pending = send([{ model: "m" }]);
+    // Wait until the request reaches the upstream, then end the test.
+    while (liveRequests === 0) await new Promise((r) => setTimeout(r, 5));
+    await opened.end(true);
+    open();
+    await pending;
+
+    const [replayed] = await session(running, [{ model: "m" }]);
+    expect(replayed!.source).toBe("replayed");
+    expect(liveRequests).toBe(1);
   });
 
   it("lists used recordings and prunes the others", async () => {

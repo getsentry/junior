@@ -14,18 +14,14 @@
 import { appendFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
-import {
-  EnvHttpProxyAgent,
-  getGlobalDispatcher,
-  setGlobalDispatcher,
-} from "undici";
+import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import "./eval-context";
+import { createProxyDispatcher } from "./proxy-dispatcher";
+import { spawnRecordingProxy } from "./recording-proxy/client";
 import {
   describeRecordingMisses,
   describeRecordingStats,
-  spawnRecordingProxy,
-  type RecordingProxyAddress,
-} from "./recording-proxy/client";
+} from "./recording-proxy/report";
 import { NO_PROXY, recordingProxyConfig } from "./recording-rules";
 import type { ProvidedContext } from "vitest";
 
@@ -34,23 +30,6 @@ interface RecordingProject {
     key: "recordingProxy",
     value: NonNullable<ProvidedContext["recordingProxy"]>,
   ): void;
-}
-
-/**
- * Create a `fetch` dispatcher that sends requests through the proxy.
- *
- * Node 24 reads the proxy variables for `fetch` at startup. A process that
- * started before the variables, or an older Node, needs this dispatcher.
- */
-export function createProxyDispatcher(
-  proxy: Pick<RecordingProxyAddress, "caCert" | "url">,
-): EnvHttpProxyAgent {
-  return new EnvHttpProxyAgent({
-    httpProxy: proxy.url,
-    httpsProxy: proxy.url,
-    noProxy: NO_PROXY,
-    requestTls: { ca: proxy.caCert },
-  });
 }
 
 /**

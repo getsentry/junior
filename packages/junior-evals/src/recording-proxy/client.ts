@@ -4,8 +4,7 @@
  * `spawnRecordingProxy()` starts the proxy in its own process and returns
  * `env`, the variables that send the traffic of a process through it.
  * `connectRecordingProxy()` controls a running proxy from another process,
- * such as a test worker. Like the server, this file uses only Node
- * built-ins.
+ * such as a test worker.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -13,38 +12,29 @@ import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CONTROL_PATH } from "./server.ts";
 import type {
-  RecordingMiss,
+  RecordingProxyAddress,
   RecordingProxyConfig,
-  RecordingRunStats,
-} from "./recording-proxy";
-import { describeParts } from "./request-parts.ts";
+  RecordingStats,
+} from "./types.ts";
 
-/** The address of a running proxy. Give it to other processes. */
-export interface RecordingProxyAddress {
-  /** The proxy URL, such as `http://127.0.0.1:1234`. */
-  url: string;
-  /** The bearer token of the control API. */
-  token: string;
-  /** The PEM certificate that clients must trust. */
-  caCert: string;
+/** The open session of one test. */
+export interface RecordingSession {
+  /**
+   * End the session. A passed session writes its new recordings, and a
+   * failed one drops them. `missed` counts the requests of the session that
+   * `replay` mode failed. A test with a miss must fail.
+   */
+  end(passed: boolean): Promise<{ missed: number }>;
 }
 
 /** The control API of a running proxy. */
 export interface RecordingProxyControl {
-  /**
-   * Open the session of one test. The proxy keeps its new recordings until
-   * `endSession()`. Only one session is open at a time.
-   */
-  startSession(name: string): Promise<void>;
-  /**
-   * End the session. A passed session writes its recordings. `missed`
-   * counts the requests of the session that `replay` mode failed, because
-   * they had no recording. A test with a miss must fail.
-   */
-  endSession(passed: boolean): Promise<{ missed: number }>;
+  /** Open the session of one test. Only one session is open at a time. */
+  startSession(name: string): Promise<RecordingSession>;
   /** The totals of the run. */
-  stats(): Promise<RecordingRunStats>;
+  stats(): Promise<RecordingStats>;
 }
 
 /** A proxy that `spawnRecordingProxy()` started. */
@@ -61,7 +51,7 @@ export interface RecordingProxy
   close(): Promise<void>;
 }
 
-const SERVER = fileURLToPath(new URL("./recording-proxy.ts", import.meta.url));
+const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url));
 
 /** Proxy variables. The proxy itself must not use a proxy. */
 const PROXY_VARIABLES = new Set([
@@ -72,19 +62,19 @@ const PROXY_VARIABLES = new Set([
   "node_use_env_proxy",
 ]);
 
-/** Call the control API of the proxy. */
-function callControl(
+/** Call the control API, and return the JSON of the response. */
+function callControl<T>(
   address: Pick<RecordingProxyAddress, "token" | "url">,
   method: "GET" | "POST",
   route: string,
   body?: unknown,
-): Promise<string> {
+): Promise<T> {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   return new Promise((resolve, reject) => {
     const request = http.request(
-      `${address.url}/__recording-proxy/${route}`,
+      `${address.url}${CONTROL_PATH}/${route}`,
       {
-        // A new agent, so that a proxy agent of the process is not used.
+        // Its own agent, so that a proxy agent of the process is not used.
         agent: false,
         method,
         headers: {
@@ -97,14 +87,15 @@ function callControl(
         response.on("data", (chunk: Buffer) => chunks.push(chunk));
         response.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
-          if ((response.statusCode ?? 500) >= 400) {
+          const status = response.statusCode ?? 500;
+          if (status >= 400) {
             reject(
               new Error(
-                `Recording proxy ${method} ${route} failed with HTTP ${response.statusCode}: ${text}`,
+                `Recording proxy ${method} ${route} failed with HTTP ${status}: ${text}`,
               ),
             );
           } else {
-            resolve(text);
+            resolve((text ? JSON.parse(text) : undefined) as T);
           }
         });
         response.on("error", reject);
@@ -122,55 +113,31 @@ export function connectRecordingProxy(
   return {
     async startSession(name) {
       await callControl(address, "POST", "session", { name });
+      return {
+        end: (passed) =>
+          callControl(address, "POST", "session/end", { name, passed }),
+      };
     },
-    async endSession(passed) {
-      return JSON.parse(
-        await callControl(address, "POST", "session/end", { passed }),
-      ) as { missed: number };
-    },
-    async stats() {
-      return JSON.parse(
-        await callControl(address, "GET", "stats"),
-      ) as RecordingRunStats;
-    },
+    stats: () => callControl(address, "GET", "stats"),
   };
 }
 
-/** Describe the totals of a run in one line. */
-export function describeRecordingStats(stats: RecordingRunStats): string {
-  const rules = Object.entries(stats.counts)
-    .map(
-      ([rule, { live, missed, replayed }]) =>
-        `${rule} ${replayed} replayed, ${live} live${missed ? `, ${missed} missed` : ""}`,
-    )
-    .join("; ");
-  const passthrough =
-    Object.entries(stats.passthrough)
-      .map(([origin, count]) => `${origin} ${count}`)
-      .join(", ") || "none";
-  return `${rules}. ${stats.written} recordings new or changed, ${stats.discarded} dropped from failed sessions. Not recorded: ${passthrough}.`;
-}
-
-/**
- * Describe each request that had no recording, one line each. The first
- * miss of a test is the one to fix. Each later miss of the test usually
- * follows from it, because the live response differs from the recording.
- */
-export function describeRecordingMisses(misses: RecordingMiss[]): string[] {
-  const seen = new Set<string | undefined>();
-  return misses
-    .filter((miss) => {
-      const first = !seen.has(miss.session);
-      seen.add(miss.session);
-      return first;
-    })
-    .map((miss) => {
-      const where = miss.session ?? "outside a test";
-      const why = miss.closest
-        ? `differs from ${miss.closest} at ${describeParts(miss.differs)}`
-        : "no recording to compare";
-      return `${where}: ${miss.rule} ${miss.file} ${why}`;
+/** Read the address line that `cli.ts serve` prints. */
+function readAddress(
+  child: ReturnType<typeof spawn>,
+): Promise<RecordingProxyAddress> {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    child.once("error", reject);
+    child.once("exit", (code) =>
+      reject(new Error(`Recording proxy exited with code ${code}`)),
+    );
+    child.stdout!.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+      const end = output.indexOf("\n");
+      if (end >= 0) resolve(JSON.parse(output.slice(0, end)));
     });
+  });
 }
 
 /**
@@ -187,16 +154,13 @@ export async function spawnRecordingProxy(
     noProxy = "localhost,127.0.0.1,::1",
   }: { launcher?: string[]; noProxy?: string } = {},
 ): Promise<RecordingProxy> {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "recording-proxy-client-"));
-  const configFile = path.join(tempDir, "config.json");
-  await writeFile(configFile, JSON.stringify(config));
   const command = [
     ...launcher,
     process.execPath,
     "--experimental-strip-types",
     "--disable-warning=ExperimentalWarning",
-    SERVER,
-    configFile,
+    CLI,
+    "serve",
   ];
   const child = spawn(command[0]!, command.slice(1), {
     env: Object.fromEntries(
@@ -204,30 +168,16 @@ export async function spawnRecordingProxy(
         ([name]) => !PROXY_VARIABLES.has(name.toLowerCase()),
       ),
     ),
-    stdio: ["ignore", "pipe", "inherit"],
+    stdio: ["pipe", "pipe", "inherit"],
   });
   const exited = new Promise<void>((resolve) =>
     child.once("exit", () => resolve()),
   );
-  let address: RecordingProxyAddress;
-  try {
-    address = await new Promise<RecordingProxyAddress>((resolve, reject) => {
-      let output = "";
-      child.once("error", reject);
-      child.once("exit", (code) =>
-        reject(new Error(`Recording proxy exited with code ${code}`)),
-      );
-      child.stdout.on("data", (chunk: Buffer) => {
-        output += chunk.toString("utf8");
-        const end = output.indexOf("\n");
-        if (end >= 0) resolve(JSON.parse(output.slice(0, end)));
-      });
-    });
-  } catch (error) {
-    await rm(tempDir, { force: true, recursive: true });
-    throw error;
-  }
-  const caFile = path.join(tempDir, "ca.pem");
+  child.stdin.end(JSON.stringify(config));
+  const address = await readAddress(child);
+  // `NODE_EXTRA_CA_CERTS` takes a file.
+  const caDirectory = await mkdtemp(path.join(tmpdir(), "recording-proxy-"));
+  const caFile = path.join(caDirectory, "ca.pem");
   await writeFile(caFile, address.caCert);
 
   return {
@@ -245,7 +195,7 @@ export async function spawnRecordingProxy(
         child.kill("SIGTERM");
         await exited;
       }
-      await rm(tempDir, { force: true, recursive: true });
+      await rm(caDirectory, { force: true, recursive: true });
     },
   };
 }

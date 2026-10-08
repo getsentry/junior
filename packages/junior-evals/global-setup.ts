@@ -15,7 +15,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
-import { useGlobalDispatcherForFetch } from "./src/fetch-dispatcher";
+import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
 import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
