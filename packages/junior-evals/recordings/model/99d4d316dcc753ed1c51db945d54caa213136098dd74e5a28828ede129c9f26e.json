@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/auth/dashboard.eval.ts > Dashboard Authorization > when the person sends a new message without authorizing, answer it and remove the connect prompt",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "582a250a8cc3",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_09dc25856bcd4a88016ac7d61aa59487d1981a4c4647f6b3a7\",\"reasoningEncryptedContent\":\"gAAAAABqx9YbXUcigYdZhBaVULikQtBXSD_tE0rN3doaiNUiYk7qVeHUyud-70AKCLDNi2uvxh8VTRroz1lNYaPlRxAbG8MiPMo7IK5kqrc3HtO_DTSWxCtn57PSqwZJbYWUTOCe-aNohDZpnH7ggbAM8ZhSBwg14w-ZeXZx6Xld7KRHzPRD_y_Hcurm62kV2EivGe4Mn8psnAdd0KiH1JGgy65sPPcYpRNiAnylTJo67xS9xQjwTyejfXJFuSQluhgp9TJTszadpmg87XtPUvbYZZErOyIBsJyDly1-zut-XxQiAELpucXskoEmDG8Iq8fft5PSESmxpCcgChgBnX4LsgP5-iID8m8OOKlne-gITcZ0eTGBSZFpCz6deaVWPCskWbC1z0UG7Vd3tlvHE9wjVEb1E5MxT6RuGxjUD-TJyLsIKaO4GKXsvPMQZs-4q4w0245OC0d61IfKcC1i9sxW4ZDDrf2KjLLTcyOzibaFeu_ZdJ1kZAjrYDzNe8CLY38QvwX5zUL33GcU0CYbyqmeXL20fsHKnthPKvubfd-JkIgb0LeP3DcIQY974Fc7J1bvsbeq83laRX_KG9MEPle7_sRhDGAYIPu7h2vkxDPdQpPsSsp7BcocXU-YHKubOJwxVm40kKRXP3dRffZAKy0dD1bnp8sA9vkMwBRv7mXRo6UFAn3TlhmJmpQbIlEjiHhprowU-OOiBTOs1mbmNghUCfWv4-QJrn327kqXDIw1CECJJUNKXx0A6-uL4xLftdt_sSqRW4etF3TAqFovUvU2dIopct0Tu98R-ozbKnKTYKaENdQRmgk_rtL_4gFj-1NrZnVnK1O5PqaJKs2hRGTil2gm33yDIdQLH1UtmrwujlPGHm0g0gNkrS9ZZVNKgjQjmroun_Lgj2ybG1Cp_aqysF3QKtox-8lWgFr0ovr_nvSw4AaZCj5KQc8NLBK1LSZsR3Am6zykmMwLT8ELE4aFh30zbMoL8Zof8LuBIGZNfwVnU3zScEh7qg2dBYOAQzOcGrcnoAM6IzW_KpkNZ0eSzEvGSwvlZWJiOHv1jG8U20ForOPTGNtNg2cQs909NXk_iO3qcz5LK8E6jnAktNf1Yi7mk8OQSxvAtqyuCWoO6g0SWaqlc8dQvtt8u3UCjwu58HAC4991YI8ObYqG3LZ5MjL8srFQ5amTpaW2Y4RsQbZ6oyMcGbnNlnQU7jxVA5mRSwCooasyKtg6pOb6aENg7gzTmjePQ0_0OTppFIH2Wki-pXPliIxTWf5lF7oS0_lKyJ-Up6tO3SY419xmog-W9fc0j3lZ7GvqpbUCoJVkty69JFlBlqkhtRRcm6XekrzJDhtKUm8xRTdO0_U0iTm9C6P3jdujTKgsRxtwAGHWmxn5dpVNF9--pFpvBrUhO595Wls6F3QUilfr6e2tRmjSYGz91QIphdAj2k1Kthh96NoNdasxwDs=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The current request is a straightforward one-step arithmetic calculation; the prior budget context is no longer relevant.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_09dc25856bcd4a88016ac7d61b248087d1993ba695654e8a9d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":679,\"noCache\":679,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":82,\"text\":49,\"reasoning\":33},\"raw\":{\"input_tokens\":679,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":82,\"output_tokens_details\":{\"reasoning_tokens\":33},\"total_tokens\":761}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_09dc25856bcd4a88016ac7d61a370487d1b1797733b87dea86\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791481370155,\"endTime\":1791481371707,\"providerRequestId\":\"req_d7b4e492dd874e91acf1e06d7ac80dc5\",\"statusCode\":200,\"providerResponseId\":\"resp_09dc25856bcd4a88016ac7d61a370487d1b1797733b87dea86\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"d3f9d251caa9248659f1ebdae8a0b737\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001089\",\"marketCost\":\"0.0001089\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001089\",\"inferenceCost\":\"0.0001089\",\"inputInferenceCost\":\"0.0000679\",\"outputInferenceCost\":\"0.000041\",\"generationId\":\"gen_01M4E9RNGYZT35WRG68DC1GPMH\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
