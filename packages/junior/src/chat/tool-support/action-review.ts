@@ -62,7 +62,8 @@ export interface ToolActionProposal {
         allowedWhen:
           | "private-direct-conversation"
           | "scheduled-automation"
-          | "event-automation";
+          | "event-automation"
+          | "timer-watch";
         taskId?: string;
         type: "user";
         userId: string;
@@ -271,8 +272,7 @@ function actionCredential(
     "subject" in credentialContext && credentialContext.subject
       ? {
           allowedWhen: credentialContext.subject.allowedWhen,
-          ...(credentialContext.subject.allowedWhen !==
-          "private-direct-conversation"
+          ...("taskId" in credentialContext.subject
             ? { taskId: credentialContext.subject.taskId }
             : undefined),
           type: credentialContext.subject.type,
