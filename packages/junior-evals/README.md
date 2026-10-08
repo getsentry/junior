@@ -379,7 +379,9 @@ process and has no Junior code, so it can move out of this repository.
   `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
   tests replayed. Then `recording-proxy.ts prune` deletes the recordings
   that no list has, and the workflow opens or updates one pull request.
-- It deletes recordings only when every job finished.
+- It deletes recordings only when every job finished and every eval passed.
+  A failed test stops at its failure, so its later recordings would look
+  unused.
 - Nothing refreshes recordings on a schedule. A change of the model id
   makes new requests, so they record on their own. A provider that changes
   its behavior under the same model id goes unnoticed until a live run.

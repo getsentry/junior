@@ -143,14 +143,17 @@ jobs:
               failed+=("${name#eval-recordings-run-}")
             fi
           done
-          # Delete unused recordings only when every job finished. A missing
-          # job would make all of its recordings look unused.
-          if [[ "${#runs[@]}" == "$EXPECTED_RUNS" ]]; then
+          # Delete unused recordings only when every job finished and passed.
+          # A missing job makes all of its recordings look unused. A failed
+          # test stops at its failure, so its later recordings look unused.
+          if [[ "${#runs[@]}" != "$EXPECTED_RUNS" ]]; then
+            echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
+          elif [[ "${#failed[@]}" != "0" ]]; then
+            echo "::warning::Evals failed in ${failed[*]}, so no recordings were deleted."
+          else
             node --experimental-strip-types --disable-warning=ExperimentalWarning \
               packages/junior-evals/src/recording-proxy/recording-proxy.ts \
               prune "$RECORDINGS_DIR" "$RUNS"/*/used-recordings
-          else
-            echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
           fi
           {
             echo "### Eval recordings"
@@ -180,6 +183,6 @@ jobs:
             # requests. Then a person opens it from the branch.
             gh pr create --base main --head "$BRANCH" \
               --title "chore(evals): Delete unused eval recordings" \
-              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed. See the workflow run summary for failed evals." ||
+              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed." ||
               echo "::warning::Could not open the pull request. Open it from the $BRANCH branch."
           fi
