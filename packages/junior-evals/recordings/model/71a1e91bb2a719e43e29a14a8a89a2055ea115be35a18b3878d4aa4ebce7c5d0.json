@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/participation.eval.ts > Passive Behavior > when humans resume the thread, keep ignoring same-topic questions unless they turn back to Junior",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4dd21bda7dd0",
+      "maxOutputTokens": "26d228663f13",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f735154caadc",
+      "prompt[1]": "1a65bfc93e34",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d85fa8cc5d2d8d3016ac7d59296d487d18e129fd0679294a0\",\"reasoningEncryptedContent\":\"gAAAAABqx9WU0VLqoFVaEYzJGIjL9Li97U_iRgcyPUVt_IEK9atjV8WLeZZY9LCWZrwi_CewZhsAVwknZe8MwopkUj92RYQ4s49VN2CRd9o0uygx6GZBwmZinPKWp3W8CIA-Hw2Zlf3xXVDtzg6VIUdy9xVojLH7mtl5fDB_kALiik0M3qUDIP-LQa2da-zBTf6dofu49CwkGgJzM_DysKemlKGdxGnnugouMaZSX3n18NB2qNtpNdIl6BNEHzY7uMf0KGo8UjrRxKzLEOJuSg9OiDOhRgDpao_TyCupLbfcNZNqp8jnFnZfYjq0DwGKFGyWZu1p68xD76q-WdcfTiypR5qQWa6Xc3SkU4noFs9kH13CvkkIMsO0NRYg-ycgAY4yUWMfM2ONavE0aHTLtBYLHU9twnsxWIhF_BodJ70w1SsV6x4HmoePmFdfSgEBz1XnctEd9479G-ytLHioLitcLYIlOIer-ajM9N0O3SAIldhygLP6MbSZ6-vTacw3WF8m8t4fWw4JhyBeEPuhdsKswD-TVCsGTQO1QCMU-kH9e8RWZyMwLrBSnICVIcyzI7rluxJmLlKGphQAmeyWw84Tyc88RT3c1TAEQeNymU0bg-E0s3p2-bNGO7JEHdae8gd_JD1yE2wTlastr-niHRHrwcVrIMxxDfNHAZRc4kOvE3N9BGteAEKAfK9oKAftLSi_dhnUCAfsW1wANmhwtAP_uceGkm2nKdUhSho-1bb-RtsXuyUMehpqy-24VIjv6pIhtkui5OV2_S4IfMHzYd_F3_QjRyvTpYYWEYHSM80_LsJhWvo_AfwMsrhHK_-24bBO9WLDRwP_0K7_gY8zybOPTCt1WIMk-HMYkIstU4Qp6YwCktTudNifgDP4a9_RWy_B16emWps8fQNd5CcL7Rt7-XsdnGRwcXDEq9nmRMI_AxQI8kuRa5tX5pigyQC_lzB8KRGd_Ev9--qi2gXmfmZkaYVd_uJsePHSaY5tV1vD0zg4jCAU8JHoH7bdp_jIszfA8JKK2I8Jq4zkbvi3w3MVBo0jnzGBOTo54lCZFUDtmX8iOJ61yMi7IzARkTm4SZvibpY58hs4tHv34zVy5tlkiiLUSu3EnV5BJlJBOI0VzfU5mY8AQueaOo6SkcUsKbHz-hXSvjHM6VZiRkQq0D1acW0VStqKHaWWfvtfDd73XKpjohqEJCIQiU_hdYw5OjN3M94_aUt3hG81cppQ7qQpAIQUPYczIt9uwnfuu76wcZXirLDcTkZTSyMso4-NYBUVRlBzA3DdcTyz8dcSy3OCjmwVbOnc3KwddzvnO4ChDMe_v22-tkkoxELd3MQQ6tAweE5tGVC_naiwgS9VmHrZBENZDw0M7YzIFGnSh0PdL211pynrDa2Pys5RW0rMSv7Yh7RD_BRUDCozNw--1gJvW4_kbCEXFT3r-Vx60rVnTlp4iheStt7NrE7MH7ZWDYYDYnNZgATWezYiiJPq7xifH0NcbiLEoKyG9W2fc_H5IiKqNQot8HohuCON3C9AaxTN_kkDcN3eKiZINgjt0bb1aAuinccdJNqnpR8MOBOf7rJIOhyJ4r-aEnUoLOOF-F16m8Ve3CKJtBi3iLDQbHReqECNk9Bss6HbNemy0EC6Dbq4MONJDUlUGNGV_XN1IUF_PejwMylkuBTqxgYCb2DeaE9bD2CUgyepXr_cM4NUu5SrtVT0aqlMK_s_YF9dwPIBb-Jx5K1kap8a9zTmf-Ma1eqnLB_TGYfxaEghstRNrNZe4K4PMfY2KJ4vG8-oZkSMP2Rc5UHAsJXyNADb7zcz_MpHYFuS61gmv6MzklWcxo7JOUxnqfIYKMySvNWk-6xoRrVtDOpUBglpehRjaCGXq6wT1-BXdz6z77TqL4SuPXRVx-5rjnIbgacB0v0Mrf_J_RzMmRNLIqBuhfXyh5b9eksR5UV4v_62sMoePb6rHscRkfcmDgbOSypyfhiSE2kZr7b5MbeGGN-lM-GiZ9mu2DXi_vPSyA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"should_reply\\\":false,\\\"should_unsubscribe\\\":false,\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The message is directed to Sam, so it is human-to-human rather than a continuation for junior-example.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d85fa8cc5d2d8d3016ac7d594296487d1a25a8bb7bdfb49c2\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1009,\"noCache\":1009,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":160,\"text\":51,\"reasoning\":109},\"raw\":{\"input_tokens\":1009,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":160,\"output_tokens_details\":{\"reasoning_tokens\":109},\"total_tokens\":1169}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d85fa8cc5d2d8d3016ac7d5917fe487d19cb91244d3e2cc68\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791481233414,\"endTime\":1791481236814,\"providerRequestId\":\"req_622612f192294274b9551c7f96158532\",\"statusCode\":200,\"providerResponseId\":\"resp_0d85fa8cc5d2d8d3016ac7d5917fe487d19cb91244d3e2cc68\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"dffc3b1e44cf61c1d5153957e26a09c8\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001809\",\"marketCost\":\"0.0001809\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001809\",\"inferenceCost\":\"0.0001809\",\"inputInferenceCost\":\"0.0001009\",\"outputInferenceCost\":\"0.00008\",\"generationId\":\"gen_01M4E9MFZKZZK70T01F98TDBPM\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
