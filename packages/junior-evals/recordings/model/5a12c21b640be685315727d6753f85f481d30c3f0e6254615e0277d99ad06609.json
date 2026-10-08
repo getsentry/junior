@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-08T05:23:39.858Z",
+  "session": "evals/integration/coding/handoff.eval.ts > Handoff task continuity > when the turn hands off, do the new request",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "edb532908646",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0bb3d26e17b75b59016ac728d98c5c87d28c81adbd45218bcb\",\"reasoningEncryptedContent\":\"gAAAAABqxyjbOXxt_Oagla3f-ZufSZyYV7oQGSGsmRpbEm_1yG4yXM21s7NjwWJLvqNK9n3ilotdaW1l7Eut7pg0_n9RBDEdBA7AEUBe-xyEOf40ShZue0cGHseTjEHJxGbiOXZKhEe98TVxgM89vFA11dJ8alQbfb9IIBWLY1yMOvC71L4whD2ehwZOglaAwCxxjmjt04giGMBK-4XEv0RNOMiM5X3jWS5izZbJIhodXKL2c-pUdNlIDZvmSOJdY4CGO9bn4iZS0aXf3DKO3d0w51aFaXaMgiYYvXJSAF1pFj-8BfF4UWMxeDlJAPkFLZcFjIQrRE5MneR7CmroTBbtwt5l1DXooQwXUMzlpf81lS-7X1hwEK-sRqTsI8V5NT9-xFWGvX5q-lNibk7JwiYCag1Y4UqpFgafogSfuehjWda7AH8f71ad_Aqu5oI2p27YN-Ohi8bcfXp2Rd0F1JKWJKzMx1UnnBKsYsM5q43io8siFHNPRSQt4i5z9obqmW_6tEkO4h1KprVwy11ISsfpopm3Pye8qH9dVsa7i4vm6NJPcZ4ZtziXIHQZE50YfPghL9nGuJGvk-GBbpmCyTGZSLjiXsBHnDiU0zXely_iN64lJ2jebKPQAXdTGTP8gsc71lnC1oCCjB6wSfg8Uu-3X8q-tg2HsxmS-iOxMmSA7sCn6IDJeXpq9z390mAIC4egVeDx0rX1tE4U9YwhJwsL3AML-ip8UvNv3XKceG7OXB6Gk6Epq4Wv38zYv-VMAJ9400EyCcKrZFcuYFzm9Btp4yf5Z8iRPVD0l8jPDyhciDBFC94_KT33TxAvzGyF3CYGpWRbxUt6eh4gGS6N4z80raFXLugCo_pw6ADVucExh1aVVDVM32II64LVP6eNZKbzULo-d1xfdABW6mKMXMiCYw5gaaJEnMb_HE7yrl0vRmX8Lj3YvH5dLeeaTY4xJM07JgeYSlv_DwXZQiKcCknZdPLbLRMOunubkJ0Tl_ky0rN0YxNV0XTEVfV92Z1J1nGEVMJJoWmf43B6WRSa4ce20yqOkotNcJa90myq4yee4zQipba05H0hjBAA2cP4rsnrzonAq4WdEQ05fECilyCmyD3ggJEALZ7LJwNvK2W5iUEiAMxW4KQzyQDkLZT0chXHgmD-rnY9i40uFChd2jNBfI2pTKvid0SUO1fFxCLS-FMCfHYDNNM8ypRGaoLqJn-DIiOZ7Rn8UKOJLNxhI89Ru8OkRbTtccM9D2Z9HajqZKR084yjIqSc_4iAud9beghFP70P-hOju7XPZyJLA67x1-Cwh5iBQ1YfYKMyeRuVnd1-enO-hqnE6clDvZrODC2W9e9O3vV5GmNMx2sxdWPUKGxr5LBDOe2nSaSlRcA8ShWD9JdSMwZdgAZPqDBPaE6ILhxwitieWxjn9j4DPLb5L8cdC_2ZBI9QjQp-M1ZcxXeoa59vRW7fCcIqwpAvxn3VdsAcmjO4cFhdpVST9d_GYBgvAOKssDPjA73uFZAsyQqTD7SIEs4h_8zb73d54xEPTUxjaZunzAwfedoeiro_0oeMJjRJAsUDTRoxORQmQmaJ5_qfzR8rPw_Qx9WS66UGUX_Qpq1cBqHFon9FXCidqOY4purDg3SEjhViYiamhAkPppkFPxteHglUx2ccoRY2-ms-yX041gibqoViQUAOV886ytS8x1Az3VnHcpuM5chTevdp0QfA_kEWkXnQMh38Vjy4zlrr7PGUJbGb_XQuHvjMCiOH8Y2TWUz85sF_Tk4fQJjN-AN4ixdcA0Yneqv2llKf2jeyirJKOX_hMv_hrgmJVaiWmkiS9KBB80Pz_i1tv3JtoZnGFt0N0fcqzld7KgPFmaGSt3hL9n7En8URYYrrDd2hmFhpqfFE9-qIbs6SqWrj_9uO2mhNOLM5MezO_4S-2RpxV61GCeu1DIM_onOidgtJJP1U5VaFmFBZTkHaZMGoW0Qjju5RMYGD5RdQAzFPa7hF6M2Dg-XdbuvjUU8RPSyPwCkVMcl8rvq5b7uzG4-hZ_mbp3Ilc-oU7SI1A86kXGZjOO6jo0_TTRa2zKALzVXNuz92i-pjV9W7G8bbaT4i3B2TZREtpPWQjlS3cuy98z7OD-059vOod7F3ZSksYMnd8rDMhPa7YGBzPLpGToDcpXoJZCC-erV5jPRnubAyQykO0M7mMGmHCAG8x-4J2FjeAMl_kSIqgk4qSv08K-leGOdegzhHc07mabw9Rj7xn6ikjqu5xs-gP0lz9TiD0V0jENSp63zTlA6En5VcQU4WH8bE6CFKpL_sQit0PR040wpwzI-8E_ScaE5aBRPc5Uc2aajPGFA5HMMmNsqPqzU2L5KLTf5HIpA04du10y6pih-gj2KEmz5_y5qD4tvjgjaW3YxyYlrb-cODHRWe_QrI5gH41Jq62Eozhr-CdVlLLXuxWZGn3aIGAo8QckcNc-xSn7Eo2ixyGNNxgC7hiXKVuUFLUVijq9RJI5OGYEtdT7CLVh22xNcz_JQVnGYjqrTS-GKD8ZUeK6iIoIcPoBiWe5Q9G31ee5Hzx-475AN18leNnca8NRUPbv6NOpkY2YvBtz9Jno3RE5bAq1pGnSQyRXBqp5iSJ2Triux2anI984Yv85c65JCW7s-yrVAR4A7kIV5lu2bKr32rVa577aqNhPqK_sW_Qkp7uDY1K-pDxlrkofCX9ukl-AuzJWVOXN7UQxXtST_3kOA9FCbii6-tsfBYazs4jN8i1b7EAzBeEgxfKRm4sTdHcIlYnXf-xJAi16TNsirq1Iu6PQkSk40ZW2olFJN7MBKHYhV5vP9OblyLb-TbyXBBZ-KWOC0wKkgRCLU8kxi7xWZhEveZovil4gS5dmIW51KWSogpqKs1IkpaWQJPKB4f9-pNGqoSFYyOUWxqmhxczuObGlknBnqBHVg=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0bb3d26e17b75b59016ac728dba71c87d296e9fcafc72e9b06\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2285,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2282},\"outputTokens\":{\"total\":245,\"text\":14,\"reasoning\":231},\"raw\":{\"input_tokens\":2285,\"input_tokens_details\":{\"cache_write_tokens\":2282,\"cached_tokens\":0},\"output_tokens\":245,\"output_tokens_details\":{\"reasoning_tokens\":231},\"total_tokens\":2530}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0bb3d26e17b75b59016ac728d9288c87d2ad0972740b543287\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791437017077,\"endTime\":1791437019822,\"providerRequestId\":\"req_35b36d9c57d341c09e03695230902f4e\",\"statusCode\":200,\"providerResponseId\":\"resp_0bb3d26e17b75b59016ac728d9288c87d2ad0972740b543287\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"48db4d4549fa9cb4a31b5ead7c6b4070\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00040805\",\"marketCost\":\"0.00040805\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00040805\",\"inferenceCost\":\"0.00040805\",\"inputInferenceCost\":\"0.00028555\",\"outputInferenceCost\":\"0.0001225\",\"generationId\":\"gen_01M4CZF3Z0X3T51FF4J3E35A7Q\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

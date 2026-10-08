@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-08T05:22:55.139Z",
+  "session": "evals/integration/coding/subscriptions.eval.ts > Watches > when a follow-up stops monitoring, cancel the selected watch before confirming",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "ef3696e4979d",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_031c66240c15a37b016ac728acb4b487d28ff4bc30fe7f17e9\",\"reasoningEncryptedContent\":\"gAAAAABqxyivJv-1lhMD3KQFFbThJbGItKqtmoERNIky4wxsKFdsVe7aBooFDB732ZkaG9ub5ycQlM2ead8BJ1bGQpTe943kuZxqnJshYxFpwrHPRFC05_4PcWF8zOBG7farcwU6p0hOumISmE6PZVpL1cDCgx-IDfyPUjtNPLpOBFyjtrzWzvUVILyF4cgBbZChZF7gtETT8cCSaMcQ5S0PdgS8wHY7ZlR9oyIHLNI4ATiQdrIBFkqSutKSd5d7tjv4koUgkG1XSM3bQJr6DXJ2jyWHvLE4Bame4NSVxgc8CzOVd2n0_JmjU8k2WxZVK4x9obFdhvp0p02a41HDKLFWAl6tH04gikScznebS3ZLaCukybrA4OsTHCC8mdWVvSAdEiBzDnGY3vCi-1idbrBPONrV2jK2bBlbM9nCDbIOd6oSiHo_RCN0ZvllDHYnlsAM6_5_B7VzFIm0g3gQnUNEYMI6f2eHxyIYn67BRpFautbk-WiszSdfOfq9FOnl8nwsrLvIFtMWTZpBGRc0h9ETJfoZFE9mt5npEHl65nrzifTGLMbOxCI3-woWrftXjN71h-U3n0greSKkS9wPUuluB8yGZnXYD6lgpuQ8XmmkCT2HkC3w4UvOmBDSvFtvP7N5T7kI9aWCtqTI0iCFKhpaqFrmq4PNrsx3C4Ny0zps6Nkph1Kx6Jf4Bw9vlKD3Lewbp6HcO7Llu6HjYm28YP8xNG5SIAW7nLM1k8gFYrdwTogY93SpdO8oT_IonvB-smMRpY5W6x5yOGwcABxgxoRHHeN6l2vKkb-4GnH3y2s--NZLjQcYwZWpgPciVwoYhFiUwE0x4JsOFhhmUkHh8SMjlKH20ZTS6RD09twFlfoEwPoOE8xC9SfUws8LAcOAqOj3ud9n-Ej22p-1HpThgW55ElXKOqBeWV0xWlpbiGT_v5SxOyaflmRtscKThcU5UjS3Man9xrbv7Z5sggPX_kRkt5enEaxqLkMugs1MZGhMuYgth382TDS4fJI7_qnha_ECh-MzK2djhGid5rXkKLCKYyDzhDfCaY3rMwzunR7Pv2C-EKNOKeuI_AKAyKIVL4IWopmAMAoupYoCq9GJmaVHVgSY5-qMd-doO2d8VeklMvAFgU2xU6TbvCDL8nAe4EUfXAjcGptEhcWcrVmDFrF15E2F_NNnANyXiwXrW18WNmOFeJAi7Oix-ViGjFo72dLXdBleufgRsYm0ucHJyQEUZ_qDD5vXOJm2bRWHiANS6o_Z3t-5MH4ChU_NZ72KNaETCk2yFLW1akSjL4RaIJuVrIWVfzGLNb8Lohy41BwFwj3hBdN5mA0FU1y10VkuIFJU6_LhUhWYdC-AflmGhF4aJI1KyV4Hx9DgOfi3XHNcoh--1qMSp0jmkXFg_-DnjnHENja6jlY_1VmXJHa4nGGD1YRj6CR18QtTH8vzq7sxGYY-VeEzzYCAZWBVtQUdi_4mS2CSVbhrEU0lccI8hQayIt7bh3aI58xSCzEpgAL_H-M8jozgn-i70YA-VKsw8MPB9YjFsADH1u9Mio-HYv5xfhxfLRuP6JaqeQllw-0gnsYIyz0yRil6hMh_XLIeqAZp37lEVYETDSZmrhIXBfAO5XI32VHfZ8UQjU-4DbZcPKo0w8jRO79yePfDJtbEbH13K3U8S7O_t0NyEx0d95_5lE7G0hLZqaJQ8rk9Wg7XWSb88e1cux3BxUi1mpbGHwBczAoAluyT2snlJg_IDCJySLsjLD_a8l7lKuBPZY5ahq3zBQMUl8mScNSSM5T8YXPaIC--Trwf7caplxA8H8Zcg5mMgtYA-SQwqEU-GmbzaDu-Ul3CtgwXEVtIFabJtz6Z8jyOfYPPceiPYy0foXY4yNKJPI6Rm6jWiXSiTaEYux-70tvGkPgHMPexCctQ56FmVGp3SpCxkLPoOVyEuPaet4se1JYBsKUZtXI8dyLOQ2ru4SIKdb5oi0j2TmT5AUFvhN-9xSXH7w8CYjTiOh1RCl3GFZFyC85FiLicWEAQb0bM86AHtt8f0fFDYSmtIkileeXuu1rGwvFrN-BRAhEmn3KSQsmU8CNZxE_ABaJ6sG-P9lMeUktNzHs5TpcqgGDompIoOOh6h9EPEfxLZJzjOcGVjCwgfUEqS2l4qF-ve5gWFxwiQogkpWAY7RoL2NkRj4k7y5yNnYeqc5YyU5NjopYQT8BQXMaAzcUEoc-EjfNg6JH3Czn7bVIIL8IEiCpHq-JakSCTM2mQ9FVchahwQJvulAKqwEXJQ72GYHwPyuuqJpG-IlKszvL3stNtId35885o40GVyJBXM1Wi6pasmfFcNLpDV8YdO0qgv5rpuWb9lysmjOxANtQQxwT19AUdcbBX0QUZiTNPQW7piDwZUGG-n5lnTu1DPHTlOdaAXJ-ktBXzgL3tn6ciFZLRCwezgettbIS9p35rfToJlbGAaeY_i9f-g3R4daYiFRN4SYxARK1w1qoUuciibkXQYDb0wBLibeFdQU47FBNWE2k7bj_kwWNgjw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.84,\\\"reason\\\":\\\"This is a follow-up to an ongoing monitoring request and likely requires stopping the watch, so thread context and routine tool use matter.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_031c66240c15a37b016ac728ae6fc887d2ad89195a289bbacb\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":778,\"noCache\":778,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":231,\"text\":55,\"reasoning\":176},\"raw\":{\"input_tokens\":778,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":231,\"output_tokens_details\":{\"reasoning_tokens\":176},\"total_tokens\":1009}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_031c66240c15a37b016ac728ac2f6087d2961e7d79d5531814\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791436971974,\"endTime\":1791436975100,\"providerRequestId\":\"req_06ba08e259eb40a8b498db8c86a8e244\",\"statusCode\":200,\"providerResponseId\":\"resp_031c66240c15a37b016ac728ac2f6087d2961e7d79d5531814\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"46aa39b504632a0e21d8b77a07362619\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001933\",\"marketCost\":\"0.0001933\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001933\",\"inferenceCost\":\"0.0001933\",\"inputInferenceCost\":\"0.0000778\",\"outputInferenceCost\":\"0.0001155\",\"generationId\":\"gen_01M4CZDQXE1PS10HT9VKWV2FT4\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
