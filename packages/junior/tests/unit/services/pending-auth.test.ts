@@ -10,7 +10,7 @@ vi.mock("@/chat/task-execution/turn-cursor", () => ({
 import {
   abandonReplacedPendingAuth,
   canReusePendingAuthLink,
-  isPendingAuthLatestRequest,
+  wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
 import type {
   ConversationPendingAuthState,
@@ -195,104 +195,25 @@ describe("abandonReplacedPendingAuth", () => {
   });
 });
 
-describe("isPendingAuthLatestRequest", () => {
-  it("ignores passive skipped bystander messages when checking pending auth freshness", () => {
-    expect(
-      isPendingAuthLatestRequest(
-        conversationWithMessages([
-          {
-            id: "msg.9",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-          },
-          {
-            id: "msg.bystander",
-            role: "user",
-            text: "I think those tools are read only",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "side_conversation:passive side conversation",
-            },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(true);
-  });
+describe("wasPendingAuthStopped", () => {
+  const request = {
+    id: "msg.9",
+    role: "user" as const,
+    text: "list my sentry issues",
+    createdAtMs: NOW,
+  };
 
-  it("ignores thread messages stored while passive routing is off when checking pending auth freshness", () => {
+  it("keeps the wait when the person sends another message", () => {
     expect(
-      isPendingAuthLatestRequest(
+      wasPendingAuthStopped(
         conversationWithMessages([
+          request,
           {
-            id: "msg.9",
+            id: "msg.10",
             role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-          },
-          {
-            id: "msg.bystander",
-            role: "user",
-            text: "while you wait, the record id is 99",
+            text: "thanks, one sec",
             createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "passive_disabled:passive-routing",
-            },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(true);
-  });
-
-  it("ignores messages directed to another party when checking pending auth freshness", () => {
-    expect(
-      isPendingAuthLatestRequest(
-        conversationWithMessages([
-          {
-            id: "msg.9",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-          },
-          {
-            id: "msg.other-party",
-            role: "user",
-            text: "@cursor can you check this?",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "directed_to_other_party:named_mention:Cursor",
-            },
-          },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(true);
-  });
-
-  it("treats failed user turns as newer requests when checking pending auth freshness", () => {
-    expect(
-      isPendingAuthLatestRequest(
-        conversationWithMessages([
-          {
-            id: "msg.9",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-          },
-          {
-            id: "msg.failed",
-            role: "user",
-            text: "sync this with github",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "reply failed",
-            },
+            meta: { replied: true },
           },
         ]),
         pendingAuthState("turn_msg_9"),
@@ -300,33 +221,19 @@ describe("isPendingAuthLatestRequest", () => {
     ).toBe(false);
   });
 
-  it("ignores failed bot-authored turns when checking pending auth freshness", () => {
+  it("ends the wait when the person tells Junior to stop", () => {
     expect(
-      isPendingAuthLatestRequest(
+      wasPendingAuthStopped(
         conversationWithMessages([
+          request,
           {
-            id: "msg.9",
+            id: "msg.stop",
             role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-            author: {
-              userId: "U123",
-              userName: "dcramer",
-            },
-          },
-          {
-            id: "msg.bot-failed",
-            role: "user",
-            text: "sync this with github",
+            text: "stop",
             createdAtMs: NOW + 1,
-            author: {
-              isBot: true,
-              userId: "UBOT",
-              userName: "github",
-            },
             meta: {
               replied: false,
-              skippedReason: "reply failed",
+              skippedReason: "thread_opt_out:explicit stop",
             },
           },
         ]),
@@ -335,60 +242,21 @@ describe("isPendingAuthLatestRequest", () => {
     ).toBe(true);
   });
 
-  it("does not ignore failed human turns from other users when checking pending auth freshness", () => {
+  it("ignores a stop from before the request", () => {
     expect(
-      isPendingAuthLatestRequest(
+      wasPendingAuthStopped(
         conversationWithMessages([
           {
-            id: "msg.9",
+            id: "msg.stop",
             role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-            author: {
-              userId: "U123",
-              userName: "dcramer",
-            },
-          },
-          {
-            id: "msg.other-human-failed",
-            role: "user",
-            text: "sync this with github",
-            createdAtMs: NOW + 1,
-            author: {
-              userId: "U999",
-              userName: "human",
-            },
+            text: "stop",
+            createdAtMs: NOW - 1,
             meta: {
               replied: false,
-              skippedReason: "reply failed",
+              skippedReason: "thread_opt_out:explicit stop",
             },
           },
-        ]),
-        pendingAuthState("turn_msg_9"),
-      ),
-    ).toBe(false);
-  });
-
-  it("treats thread opt-out turns as newer requests when checking pending auth freshness", () => {
-    expect(
-      isPendingAuthLatestRequest(
-        conversationWithMessages([
-          {
-            id: "msg.9",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: NOW,
-          },
-          {
-            id: "msg.opt-out",
-            role: "user",
-            text: "stop replying here",
-            createdAtMs: NOW + 1,
-            meta: {
-              replied: false,
-              skippedReason: "thread_opt_out:explicit stop instruction",
-            },
-          },
+          request,
         ]),
         pendingAuthState("turn_msg_9"),
       ),

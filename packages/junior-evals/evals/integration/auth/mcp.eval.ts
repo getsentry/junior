@@ -91,7 +91,20 @@ describe("MCP Authorization", () => {
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
   });
 
-  test("when the person moves on without authorizing, answer the new request and ignore a late authorization", async ({
+  test("when the person sends another message before authorizing, the authorization still answers the request", async ({
+    run,
+  }) => {
+    const paused = await run(slackMention("/eval-auth Look up the budget."));
+    expect(turnStates(paused)).toEqual(["started"]);
+
+    await paused.continue(slackMention("thanks, one sec"));
+
+    const resumed = await paused.continue(completeAuth("eval-auth"));
+    expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
+    expect(resumed.replies).toHaveLength(1);
+  });
+
+  test("when the person drops the request and authorizes later, answer the new request and do not run the dropped one", async ({
     run,
   }) => {
     const paused = await run(slackMention("/eval-auth Look up the budget."));
@@ -104,10 +117,11 @@ describe("MCP Authorization", () => {
     expect(next.replies).toHaveLength(1);
     expect(next.replies[0]?.text).toContain("42");
 
-    // The old link still works, but its turn is gone.
+    // Junior reads the thread and sees that the person dropped the request.
+    // It only confirms the connection.
     const late = await next.continue(completeAuth("eval-auth"));
-    expect(late.replies).toEqual([]);
-    expect(late.toolCalls).toEqual([]);
+    expect(completedMcpToolCalls(BUDGET_ECHO, late)).toEqual([]);
+    expect(late.replies).toHaveLength(1);
   });
 
   test("when the person says stop while Junior waits for authorization, ignore a late authorization", async ({

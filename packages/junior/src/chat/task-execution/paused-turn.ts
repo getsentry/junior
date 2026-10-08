@@ -79,7 +79,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
-  isPendingAuthLatestRequest,
+  wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
@@ -466,13 +466,12 @@ async function runPausedTurnInContext(
               pendingAuth.scope !== authorization.scope ||
               (pendingAuth.kind === "mcp" &&
                 pendingAuth.authSessionId !== authorization.authSessionId) ||
-              !isPendingAuthLatestRequest(conversation, pendingAuth))
+              wasPendingAuthStopped(conversation, pendingAuth))
           ) {
             await abandonTurnRecord({
               conversationId: payload.conversationId,
               turnId: turn.turnId,
-              errorMessage:
-                "Authorization no longer belongs to the latest request",
+              errorMessage: "Authorization no longer belongs to this request",
             });
             clearPendingAuth(conversation, turn.turnId);
             await persistThreadStateById(payload.conversationId, {
