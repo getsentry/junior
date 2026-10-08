@@ -107,6 +107,15 @@ const dispatchRecordSchema = z
       }
       return;
     }
+    if (subject.allowedWhen === "timer-watch") {
+      // Timer subjects belong to one Watch, never to a dispatch.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Dispatch credentialSubject cannot use a timer Watch binding",
+        path: ["credentialSubject", "allowedWhen"],
+      });
+      return;
+    }
     if (
       subject.binding.type !== subject.allowedWhen ||
       subject.binding.plugin !== record.plugin ||

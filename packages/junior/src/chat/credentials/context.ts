@@ -36,10 +36,20 @@ const eventAutomationCredentialSubjectBindingSchema = z
   })
   .strict();
 
+const timerWatchCredentialSubjectBindingSchema = z
+  .object({
+    type: z.literal("timer-watch"),
+    conversationId: exactNonBlankStringSchema,
+    watchId: exactNonBlankStringSchema,
+    signature: z.string().min(1),
+  })
+  .strict();
+
 const credentialSubjectBindingSchema = z.discriminatedUnion("type", [
   slackDirectCredentialSubjectBindingSchema,
   scheduledAutomationCredentialSubjectBindingSchema,
   eventAutomationCredentialSubjectBindingSchema,
+  timerWatchCredentialSubjectBindingSchema,
 ]);
 
 const credentialUserActorSchema = z
@@ -91,6 +101,14 @@ export const credentialSubjectSchema = z.discriminatedUnion("allowedWhen", [
       message: "Event automation credential subject requires task binding",
       path: ["binding"],
     }),
+  z
+    .object({
+      type: z.literal("user"),
+      userId: exactActorIdSchema,
+      allowedWhen: z.literal("timer-watch"),
+      binding: timerWatchCredentialSubjectBindingSchema,
+    })
+    .strict(),
 ]);
 
 export const credentialContextSchema = z.union([

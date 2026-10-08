@@ -101,6 +101,19 @@ it("delivers timers once through heartbeat and keeps existing Watch controls", a
   expect(await takeDueTimerWatches(clock())).toEqual([]);
   await drain();
   expect(agentRuns).toHaveLength(1);
+  // The timer Turn stays system-acted but can use the creator's grants.
+  expect(agentRuns[0]!.credentialContext).toEqual({
+    actor: { platform: "system", name: "event" },
+    subject: expect.objectContaining({
+      type: "user",
+      userId: "U123",
+      allowedWhen: "timer-watch",
+      binding: expect.objectContaining({
+        conversationId,
+        watchId: timer.id,
+      }),
+    }),
+  });
   expect(await historyTexts(conversationId)).toContain(
     "Conversation request complete.",
   );

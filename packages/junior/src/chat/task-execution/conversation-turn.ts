@@ -86,6 +86,7 @@ import { resolveConversationDestination } from "@/chat/conversations/destination
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
+  timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
@@ -295,6 +296,16 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
+    // A timer Turn stays system-acted but may use its creator's grants.
+    // TODO: A resumed timer Turn loses this subject; the Turn record does not
+    // store it yet.
+    const credentialSubject =
+      resolved.kind === "mailbox" && actor.platform === "system"
+        ? timerWatchCredentialSubject(
+            context.conversationId,
+            resolved.batch.map((entry) => entry.message),
+          )
+        : undefined;
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
       source: turnInputFacts.source,
@@ -541,7 +552,10 @@ export function createConversationTurnWorker(
               },
               history: piMessages,
               actor,
-              credentialContext: credentialContextForActor(actor),
+              credentialContext: credentialContextForActor(
+                actor,
+                credentialSubject,
+              ),
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

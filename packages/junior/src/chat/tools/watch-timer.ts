@@ -35,9 +35,16 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
     async execute(input, options) {
       if (!options.toolCallId)
         throw new Error("Timer creation requires a tool-call identity");
+      // Only a user Turn can hand its grants to the follow-up. A timer set
+      // by a system Turn runs without user credentials.
+      const creatorUserId =
+        context.actor && context.actor.platform !== "system"
+          ? context.actor.userId
+          : undefined;
       const watch = await createTimerWatch({
         ...input,
         conversationId: context.conversationId,
+        ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
       });
       return { id: watch.id, firesAtMs: watch.firesAtMs! };

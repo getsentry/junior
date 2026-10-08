@@ -280,3 +280,77 @@ export function verifyEventAutomationCredentialSubject(input: {
   );
   return timingSafeMatch(expected, binding.signature);
 }
+
+/**
+ * Bind the user who set a timer Watch to that one Watch.
+ *
+ * The timer Turn stays system-acted. This subject only lets it reuse the
+ * creator's provider grants for the follow-up that the creator asked for.
+ */
+export function bindTimerWatchCredentialSubject(input: {
+  conversationId: string;
+  userId: string;
+  watchId: string;
+}): CredentialSubject | undefined {
+  const secret = getCredentialSubjectSecret();
+  const userId = parseActorUserId(input.userId);
+  const { conversationId, watchId } = input;
+  if (
+    !secret ||
+    !userId ||
+    !conversationId ||
+    conversationId !== conversationId.trim() ||
+    !watchId ||
+    watchId !== watchId.trim()
+  ) {
+    return undefined;
+  }
+
+  return {
+    type: "user",
+    userId,
+    allowedWhen: "timer-watch",
+    binding: {
+      type: "timer-watch",
+      conversationId,
+      watchId,
+      signature: signPayload(
+        secret,
+        buildPayload(["timer-watch", conversationId, watchId, userId]),
+      ),
+    },
+  };
+}
+
+/** Verify that a delegated subject was signed for one timer Watch. */
+export function verifyTimerWatchCredentialSubject(input: {
+  conversationId: string;
+  subject: CredentialSubject;
+  watchId: string;
+}): boolean {
+  const secret = getCredentialSubjectSecret();
+  const { subject } = input;
+  const binding = subject.binding;
+  if (
+    !secret ||
+    subject.type !== "user" ||
+    !isActorUserId(subject.userId) ||
+    subject.allowedWhen !== "timer-watch" ||
+    binding.type !== "timer-watch" ||
+    binding.conversationId !== input.conversationId ||
+    binding.watchId !== input.watchId
+  ) {
+    return false;
+  }
+
+  const expected = signPayload(
+    secret,
+    buildPayload([
+      "timer-watch",
+      binding.conversationId,
+      binding.watchId,
+      subject.userId,
+    ]),
+  );
+  return timingSafeMatch(expected, binding.signature);
+}

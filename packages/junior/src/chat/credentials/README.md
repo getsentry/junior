@@ -16,6 +16,9 @@ sandbox.
   delegation to the exact scheduler plugin and task id before persistence.
 - A scheduled run with a delegated creator subject remains system-acted and
   cannot start an interactive OAuth flow.
+- A timer Watch set in a user Turn binds that user to the exact Conversation
+  and Watch id. The timer Turn stays system-acted and uses the subject only
+  when every batched event carries a valid binding for the same user.
 - Run attribution and conversation membership do not grant provider authority.
 - Missing actor or subject context fails closed.
 

@@ -14,6 +14,11 @@ import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
+import {
+  credentialSubjectSchema,
+  type CredentialSubject,
+} from "@/chat/credentials/context";
+import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -72,6 +77,8 @@ export type EventMailboxMetadata = {
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
+  /** Signed timer creator subject. Verified before the Turn uses it. */
+  credentialSubject?: CredentialSubject;
 } & Record<string, unknown>;
 
 /** Whether mailbox metadata is a plain event wake. */
@@ -103,15 +110,52 @@ export function isEventMailboxMetadata(
   );
 }
 
+/**
+ * Return the timer creator subject that every event in one batch shares.
+ *
+ * A batch gets a subject only when each message carries a valid signed
+ * subject for its own timer Watch in this Conversation, and all name the same
+ * user. Anything else runs without user credentials.
+ */
+export function timerWatchCredentialSubject(
+  conversationId: string,
+  messages: readonly InboundMessage[],
+): CredentialSubject | undefined {
+  let shared: CredentialSubject | undefined;
+  for (const message of messages) {
+    const metadata = message.input.metadata;
+    if (!isEventMailboxMetadata(metadata)) return undefined;
+    const parsed = credentialSubjectSchema.safeParse(
+      metadata.credentialSubject,
+    );
+    if (
+      !parsed.success ||
+      !verifyTimerWatchCredentialSubject({
+        conversationId,
+        subject: parsed.data,
+        watchId: metadata.event.subscriptionId,
+      }) ||
+      (shared && shared.userId !== parsed.data.userId)
+    ) {
+      return undefined;
+    }
+    shared ??= parsed.data;
+  }
+  return shared;
+}
+
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
-  subscription: Pick<Watch, "conversationId" | "id">;
+  subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
   text: string;
   receivedAtMs?: number;
 }): InboundMessage {
   const metadata: EventMailboxMetadata = {
     kind: "event",
+    ...(input.subscription.credentialSubject
+      ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
     event: {
       eventKey: input.event.eventKey,
       eventType: input.event.eventType,
@@ -184,6 +228,7 @@ export async function enqueueEventNotification(args: {
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,
+        credentialSubject: args.subscription.credentialSubject,
         id: args.subscription.id,
       },
       text,
