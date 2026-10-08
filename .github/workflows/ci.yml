@@ -76,6 +76,7 @@ jobs:
               - packages/junior-datadog/**
               - packages/junior-tts/**
               - packages/junior-github/**
+              - packages/junior-google/**
               - packages/junior-hex/**
               - packages/junior-linear/**
               - packages/junior-maintenance/**
@@ -306,11 +307,13 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
+      - run: pnpm --filter @sentry/junior-google build
       - run: pnpm --filter @sentry/junior-sentry build
       - run: pnpm --filter @sentry/junior-vercel build
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-tts test
       - run: pnpm --filter @sentry/junior-github test
+      - run: pnpm --filter @sentry/junior-google test
       - run: pnpm --filter @sentry/junior-sentry test
       - run: pnpm --filter @sentry/junior-vercel test
 
@@ -492,6 +495,7 @@ jobs:
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
           pnpm --filter @sentry/junior-tts pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-google pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
           pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
           pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
