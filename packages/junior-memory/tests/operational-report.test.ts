@@ -1,21 +1,11 @@
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  createLocalPgliteFixture,
-  pgliteBtreeGinExtension,
-  pgliteVectorExtension,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import * as memorySqlSchema from "../src/db/schema";
 import { juniorMemoryMemories } from "../src/db/schema";
 import { buildMemoryOperationalReport } from "../src/operational-report";
-import { createMemoryStore, type MemoryDb } from "../src/store";
+import { createMemoryStore } from "../src/store";
+import { createMemoryFixture } from "./fixture";
 
 const TEST_NOW_MS = Date.parse("2026-07-28T12:00:00.000Z");
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function emptyExtractionDays() {
   const start = Date.parse("2026-04-30T00:00:00.000Z");
@@ -26,26 +16,6 @@ function emptyExtractionDays() {
       .slice(0, 10),
     events: 0,
   }));
-}
-
-type MemoryFixture = LocalPgliteFixture<MemoryDb>;
-
-async function createMemoryFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: {
-      btree_gin: pgliteBtreeGinExtension,
-      vector: pgliteVectorExtension,
-    },
-  });
-  const migrations = (await readdir(resolve(__dirname, "../migrations")))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const migration of migrations) {
-    await fixture.execute(
-      await readFile(resolve(__dirname, "../migrations", migration), "utf8"),
-    );
-  }
-  return fixture;
 }
 
 function localContext() {
