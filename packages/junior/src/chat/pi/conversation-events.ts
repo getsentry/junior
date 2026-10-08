@@ -42,7 +42,7 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the blocked request and retry the provider operation if needed.`,
+        text: `${label} completed for provider "${data.provider}". If the request that waited for it is still wanted, continue it and retry the provider operation. If it is not, only confirm the connection.`,
       },
     ],
     timestamp: createdAtMs,

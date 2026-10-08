@@ -122,7 +122,7 @@ describe("projectConversationEvents", () => {
           content: [
             {
               type: "text",
-              text: 'MCP authorization completed for provider "linear". Continue the blocked request and retry the provider operation if needed.',
+              text: 'MCP authorization completed for provider "linear". If the request that waited for it is still wanted, continue it and retry the provider operation. If it is not, only confirm the connection.',
             },
           ],
           timestamp: 1_003,

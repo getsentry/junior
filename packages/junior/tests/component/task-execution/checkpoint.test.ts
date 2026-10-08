@@ -819,7 +819,7 @@ describe("turn checkpoint", () => {
           content: [
             {
               type: "text",
-              text: 'Authorization completed for provider "sentry". Continue the blocked request and retry the provider operation if needed.',
+              text: 'Authorization completed for provider "sentry". If the request that waited for it is still wanted, continue it and retry the provider operation. If it is not, only confirm the connection.',
             },
           ],
         },

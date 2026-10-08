@@ -624,8 +624,8 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    // The follow-up supersedes the pause: it must be answered, not consumed
-    // into a resume that only happens if the user ever authorizes.
+    // The follow-up must be answered, not consumed into a resume that only
+    // happens if the user ever authorizes. The first request keeps waiting.
     expect(agentRunCount).toBe(1);
     expect(agentInstruction).toContain("any update?");
     expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
@@ -633,10 +633,7 @@ describe("bot handlers (integration)", () => {
     );
     await expect(
       getTurnRecord(conversationId, activeSessionId),
-    ).resolves.toMatchObject({
-      state: "abandoned",
-      errorMessage: "Auth-paused Turn superseded by new input",
-    });
+    ).resolves.toMatchObject({ state: "paused", resumeReason: "auth" });
     const state = await thread.getState();
     const conversation = (
       state as {
