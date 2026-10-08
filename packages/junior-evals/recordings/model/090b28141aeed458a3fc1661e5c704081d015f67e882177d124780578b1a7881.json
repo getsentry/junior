@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-08T16:20:56.565Z",
+  "session": "evals/integration/scheduler/credentials.eval.ts > Scheduled Credentials > when the creator confirms connected credential use, enable creator mode",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "5eba03c7fdd1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_006bab1ba7c9a5e1016ac7c2e57da087d1b79fbabc564b8983\",\"reasoningEncryptedContent\":\"gAAAAABqx8LoFjLTizHvL_2m_Ss7CI39AVyUYF97eQE61EQtIL7b_-14pnXT_yTrWd9wsGDcXgcj6ws2cUYev2SE5YwrA7LqEqASsE1UC1AlRczNWOn6wTXtwK7zWjLLp7xR0kmcIgkMMwakHLld6zgtDrTBtWya-X_IUKuWGDa1DVNCGAO-s4c4DVMbpQzSpo9jRC4g_oVsVDeMiQmtgwVa66wj77-3hQDXw2XCl5x8Tv0Ik-aNwIyzJ3bZ4vDrr9Fn1kFkcEsS-zKUuJvaRnPAzgAPdg5kvaxgnpBZtv_LVOF4ohkcNliIW37FUaQp-zv4sbMKqTNNv69JWzlcbuavbDPJLmsS8CE3JV6dbYSaNrst0MBl2OAODYnxXwzZOU6MeupE-fhR7SsLkkI2gDMIb5KFZhaY-uHvXVbtVyXfvPRc2WMV5to_QVi9NOID69gULJ3Dxe9MZsHFLuWf5eOfsrnA3rNbksAKjSG0g5oztTEAc4gGZ1wanV_I-Z1r2zry1GR5tBnIJZ3Vt2rpnbtcZUNHCrt2krrCIcJq3WQZnC1NkTyeW-IZ-EfLxLnnX8vreT5u2swActm6tqulEVY_GI--8eVy_PEZCkHYGzl-lbJXgq_fH-RApSdSQRyXDXlp48Kjxz0ZLOG_Qh0hUyXSG9h3B7J2ioQZ_0wRi3JgHqnQZD7jsFdGJKlAYu1a8Mi4MJtWIlAkAmeC7RndEPedjXVMWU6VURgPvSOG1fWVQqYsFR_eDCzRzgYqe5TEu2oasg2XLYH3GrcM_xia3ZQKgk48g0iiA2SHrPJFYuKZgVhYpOLKAVKTzguqU-d31KgIwqXujhdaUkbXNWXKuwMVPWMhuMkBj-yVpRh4BI6p-IW-pHyG3nYa-SP9A_Flx7bhiKYUKVCdBCV8nRgQUsu0n7NLRyLfB1cxoxQeuuJfwn14xRQjDVq5UNZxXeX25WFdJBZ00uuBcVfIwXIJmhtnqXe44xzc6sYYZM0zUGxW2SoyDHQhNvqDSOYb_EAppTkDEGQVl0ZhkjiAWmz9nhBI92POoRxF0BxSZQsYNHXWPe1Gd524GRAEcMN-r_iWqQ9SLihjT9CcIhJTNf5QNFUYDeXyqMlhemLxkZljmnilwf4yJ1Q_QYbMQKsskTKyncaLcUeK7f65sHkQFEVMystpNkCYpMLP8fOttWGJ35vB4TgdAWL3a507WMpn9Bi6YxFDimFR-ikEr2YmYNPJTg_5zavho-6Cvjh0PKYECXtzqob26CkW8ryAGCl9oIstw2R8DKi1uANPoIG3_1ErkwBbTSOJ1b4BFIEj8mZ6Yp8IJdtOqitFplESe7HngeUJyAGztEHmGwToKsjfQDWqQZZJ1rVHulaQErtvr0ovbYBa-Z2HvZsnruRn-c_txqZjaXyzsbWfrjx86L5fVIEWsJskQet6OwKqgXKluMOgel0D3ksCeLAEhw0DStT2aM3yBV3U2RYeTk_RGeEkMIzQCO3vG6FVejjd1uuobDGcZg3h2riQLeLvQ6lMkP4wzWRjh5YvqbRxiBix58Xs5g0S4SRH-KWdIKRNIujCvLik9M8v8nER4grs3q4k13J1kNO8UnPDeChJTwuVBi9wi82-KO78y2Gb73BpuM8vYaFJQjZiH_Br-HjBPOJKAmX8H0NyvfoXTWy_c7tqGsOcBxqCZsj9jj66oXXqmY-HgJJa_MO8qJZekO2z-unbm688iXLlIy9zLxkhrYtQjF5sxH4m3sx5YF96B-aR43_iO021tV1m4tawMO5ihw0SN4S3fv41mk5uu8OGxqOrPN59RS76yTnTD9lS4NjI1lJvY0h6gvi0-o4U3dbktFIdoZeAysR5zyT1XPwyJKheyDQNVKS1b2YwUzAhkLsDVRqLOhh0qsanc3vdeARfpzWhOmqP196uCiae2lDxH3YosOrbVzxenpKcG9RDxyYNhR7EY7Zci9FCT3HOUXx0h24d34AsRGnxN-PITUQ0cw3Ic9Hzn_uwZz7G2b7sgHXc6asKQMtFu1DGy33henEzQdovXfQ8yVC5DTbiIXerKcxz8iDMezn53tarYs0kIMpkKaaxsqnN1tN0TWy6dRA_mHTkxwtDAZufLWrkakpH98xBL4pbtLEuVgyRMbWtLcL1RLwJM3JcZCKfT9xRWm9dTQj_SYlf4Oq7dNKKofkG9jb5TOaCP_jgPqPuPsGWZEYnDzj9Heobbqo-4YeVou_fZlSGhECPhw63BYD1go_GqSmsYArWWp81p41bYZ8v61d7zhjWNN5juTIpvx4e400GPustH04Us9wlPRC8LPEQrg9h8IdrpFSr9D0CuV8Trd_9YWIFEEu4eanntrFUMw1zBnO-bxOKWILJp__hE-6TWt3zqaQPYNpadcVm_zZ9YU-sskFJPDgQbSa2UdMVEsxf8CiaBiwmRkAacKSh0w_omNfRpU--iLqDXcuzbUCT3ldmNRwhqfgEbRsU7vg1n39j-80PsDKBJN6BQx1ppR58X_4NlXsFOJdHjAEGF0A3dsLJpZIz2y7VrNNp_WUuPOU7lDXK1yyizRhi92GXV4Y4LGBE\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"high\\\",\\\"profile\\\":\\\"handoff\\\",\\\"confidence\\\":0.9,\\\"reason\\\":\\\"The request authorizes a consequential change to a scheduled automation’s credentials, so execution should be handled carefully and verified.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_006bab1ba7c9a5e1016ac7c2e7800487d18d39dba9fd7527c5\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":793,\"noCache\":793,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":227,\"text\":53,\"reasoning\":174},\"raw\":{\"input_tokens\":793,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":227,\"output_tokens_details\":{\"reasoning_tokens\":174},\"total_tokens\":1020}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_006bab1ba7c9a5e1016ac7c2e50ef487d1ae424480e4d6198b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476452942,\"endTime\":1791476456526,\"providerRequestId\":\"req_98c2ebc9bd9c4d88b15b2d0a24637383\",\"statusCode\":200,\"providerResponseId\":\"resp_006bab1ba7c9a5e1016ac7c2e50ef487d1ae424480e4d6198b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"5f39c67d49dcfd77ba1f9fc538f4059f\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001928\",\"marketCost\":\"0.0001928\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001928\",\"inferenceCost\":\"0.0001928\",\"inputInferenceCost\":\"0.0000793\",\"outputInferenceCost\":\"0.0001135\",\"generationId\":\"gen_01M4E52KHS9XJRBRJ9QBYJB0DY\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

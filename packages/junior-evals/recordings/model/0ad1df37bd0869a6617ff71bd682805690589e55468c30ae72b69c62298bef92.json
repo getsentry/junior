@@ -1,0 +1,33 @@
+{
+  "writtenAt": "2026-10-08T16:17:23.628Z",
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for a simple one-off reminder, create it without asking for confirmation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "f0c6f82374a3",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4E4W5MR9BF394DNT9NS8PXE\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant confirms the reminder was created for 1 minute later, does not ask for confirmation or a channel ID, and presents it as a one-off reminder rather than a recurring schedule.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":409,\"output_tokens\":50},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0ff77ad9b975892e016ac7c21230e487d19c8c468d82444ba0\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476242102,\"endTime\":1791476243590,\"providerRequestId\":\"req_1c64eeb325074f6db5def00a69c63c47\",\"statusCode\":200,\"providerResponseId\":\"resp_0ff77ad9b975892e016ac7c21230e487d19c8c468d82444ba0\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"8a5b8187d517c49493eeffebb9566eea\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0017725\",\"marketCost\":\"0.0017725\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0017725\",\"inferenceCost\":\"0.0017725\",\"inputInferenceCost\":\"0.0010225\",\"outputInferenceCost\":\"0.00075\",\"generationId\":\"gen_01M4E4W5MR9BF394DNT9NS8PXE\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 70000 tokens (max output plus thinking budget) for openai/gpt-5.4 and was lowered to 70000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

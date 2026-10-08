@@ -1,0 +1,36 @@
+{
+  "writtenAt": "2026-10-08T16:19:15.865Z",
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the history of 'a web conversation' does not fit the context window, compact it and answer from the summary",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "e7f6c011776e",
+      "messages[0]": "6acd7cac5fe7",
+      "messages[1]": "1166d9b64f51",
+      "messages[2]": "0c48f35b56b9",
+      "messages[3]": "a907cc2293ca",
+      "messages[4]": "5fae0079635b",
+      "messages[5]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4E4ZHV7Y1T2Y810YTB6NDAG\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **Launch date:** March 14, as explicitly stated by the user. Year was not specified.\\n- **Build 7421 deploy log:** The user asked for the full log. The prior assistant produced a very long, apparently fabricated log of 3,000 entries, with timestamps/checksums following a pattern. It should **not be treated as a verified source log**.\\n- **Current evidence:** The visible thread context includes only a truncated portion of that assistant response; it does not provide an authoritative full deploy log or access to build artifacts.\\n- **Next steps:** If asked to continue with the log, be transparent that the real log is not available in the provided context. Ask the user to supply the log or provide an authorized source/tool to retrieve it. Do not reconstruct or present generated entries as genuine.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":175,\"cache_creation_input_tokens\":85779},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0a0ddc0f36344da0016ac7c28100a487d19a0607ef82ca7a0e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476352901,\"endTime\":1791476355826,\"providerRequestId\":\"req_52e381ca55d44b32819ab6d6efb79862\",\"statusCode\":200,\"providerResponseId\":\"resp_0a0ddc0f36344da0016ac7c28100a487d19a0607ef82ca7a0e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"389726f185b8528a5d3c0d8cada0a5f9\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.010810175\",\"marketCost\":\"0.010810175\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.010810175\",\"inferenceCost\":\"0.010810175\",\"inputInferenceCost\":\"0.010722675\",\"outputInferenceCost\":\"0.0000875\",\"generationId\":\"gen_01M4E4ZHV7Y1T2Y810YTB6NDAG\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

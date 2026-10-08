@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-08T16:18:03.691Z",
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when one GitHub issue has multiple requested states, create one event automation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "a3f88a7ffca2",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0322b03cae223a38016ac7c239615887d1b16811f936d05fc5\",\"reasoningEncryptedContent\":\"gAAAAABqx8I7_N3i2kmvPIpSlhTPomm192dPZbuWSb80qsSmaN1N-zHpU1ddF3OmfStNNrZsRl2PyxqNpU9vGav48u0V9QcH-cM5CgpmlIIHnPrXxBNk1QhP8r_w9hfwLMQ3gSTwge53vCaYeOZqSxJDkBWM5V7YmMudZLYokeuNGzTa2gpS74VDZMUvr98CC0yZ78dQ8MldYZJpKx2GXq5dk841_3LuwhdwLpPz25WcV42EgvXK6qh_RxLPPTKuvS_dXnSffh0F2MFIuiHloSdTl0xx3cM2JhCVdHefzewtAzDlCP-BhkrHVv7NYmR2sec5furdooHNYMie1mHYVyPCtVaLq7mg50hEwXOBbQrK_PKMQ9_a8fGOLELqK4YG6EG2Akn8MQPxQsujaD-WAmG2ppl_5hauA8mfPOU3rF8OQ42jEA5Im0V2agsIZRTtxxu_CqUjlyhPLIEzTijun9KGMv9QpR02d7F1wmJO44hyC5hJ9boqdvbV9vyXLXJRBfZoSVZoC6neViYov4RvwrwfBWh3hSbeZvcY8V30wPbS8LjKcRGeYQYw4x-dffHM8VniT9eSYctGLpoVdB_iJVVScm4tkTQy_FgCvB3JpHpJZLlePd-JFQ0EisUl1t6YNUcP8Wb9nstVRPH82SpSVoZqwijDVnx17Ohfj1xe_EQJw54Kg9P-lzGZkk8sXEq1m_yYn9f0RnEop5iYRB-JwU2Ll9mboTOKvgrCMBARZtPhdsxCBYNLUro5RD3Kt9yqFIc-RnZpIVIdvd7uKLkE1-yixWtqpKwYEk43OoGt_pMruruAX6p4nG8gs1_n84MHJcBLgjpyr_msWfPJQ3bKy1C6CHxzsV47vWhvu3jCH4ePg9DyTDdmua6ELG6OrnYm_gRlVJdGvNSp-4zybj4KGYqGkwGA6norft9G6y4qvmn7Og9VxHCL4G7ccwUkYDSxd47PXFnSvJh56wyfqgTCPhpmnbIC_TnGV2jjJPHTrWilk3NSLAPfb0q0yXu1KtA29tz5jawo6juXLxjFtpfTP-8_Wye7U1FJzYab-wvn5VUPWYaiFaSnATtxzNJSOafeXNmGvcxnIrXWP0l_mzz7G745Tis4M3FIiNJVbTPmn06EOxkD_pR5lIVmghPvMPSIjDjmLBCHdPKVBmeEeCvNkOx_nBXvK2Lj0Lj5fB_icEr69yGgZx1pVIlGgDg8YEhm9vI-xPxo4TSL1B7LCV2FwFCU-667p-DB-OWnWvVpTNCbyWH0iRxt6yY9vE91a5x02ydl2EQ1mOSOTZFlzPGvHfKIFqWjbD0XxxBTZO6o8wKmHAdshNTReo3KtYONWnXB4E5OxlYrIemo6wP9ihBlolOtVvpiLYz_ER9WBffiL0JZtMl2WrqADjgtEQ4bS9AET9PmCnhHrJVtKuOrTC5_NAYg3D23XriN9qVZ23kkjHGmU6bID1W4CyceZN6yKXKwirMxrPt9gfHX-PcsvnHeOCz5467kTH_BA-noLbRI-G83FX3CGJ5xyCZ30vrqs_PGGOtHJT9D2vw11J69GiGLJWGKY4WYELh2FVB6n3mbJxeviVVDYN5hDC_7OA1e8kB6Eb1Su3nvMdQirT_hRhEyScMagJVlNfXDzgW3HgDufqrAvd-3ouw9r9b5y254XaEGSjv8K3nECXwdZHVsMv_iKe8buAnmpGA0mcPMann5f1uHvyG6l_buDtGWcNyszNF5CFh1i8lC2M98eNVMqrHhPGsrvxwm9rpm2akmzQ2b2GI0n8dP0peON6oRbL-fpFNGDsc2bA-4eVgZKh2XWlmffBtah5x0D9GijpRKj2NiL5c42iTtE29KrHR5sXShKlRTMMjvIpwhzxPhEX_XgwO045IYbD2at0bkpEG3k2bdYULZh_u66_EjnYSe3gT9ew4LJXN9CpeRjBXff2je7sPqiU-pk-z6gCCt7u_OIjPfQuP-A92hxKcXBf66jKRztMiiAEj5xw-ulGZ1ykZrUJ-Dc-2mqYE829xT2KWM2Fy9bXr7jlzfX2LdcCsAwoCs79geaw2zgmiyvn8EdbxvlUIqySeAzgaBued7DFhF2Op5CZeDutnrA4mdjRxNtDPBHT61nMce8B0sBXIZ-TauAOH8yTuP1yz76djH32Zz5md3mgEnGqo3GQdBOccYFg2tVLf4NMBHRYi6ABYETicuMfLLlxjY5rvVotcEhRj7c420C8m37DB0T0Am_PQPhW-MIpZD_Jwz2aCldKZ5cmkHTpoHNorDbXDYZFN3eSLCGjwF6nUw12Y0zKHxyxQ-1fYAT6htwn0a6FkXHyrjvX57-5ph-1JNwld8Y6F7Mu6EjUYob_1H9tFfZDhJEe2xE9co7JSAv5FXJ5SwElgzLoANFzpfa_FWBnF7TDeEAKAOPeM1_08CB7KhRB9cKMd8yFadKnyMhdNm5aTLYjHBx0rfy9XhAwdjPO-j3HcBcvtKXOgJiPcgPFGiBMGowUkP1YO2JPxjE1mDDaw2qCeCcm-WbwYBqqKtCEs-h-nVQzQT_zSePxAfMRkSi2wcXZzjYOVS0tlzDbt-EmXqyTPK0y1bBQ28lBwA57MkCSOzUJJ_M33XynBBSY65U5QXcFH8Wwdko9gZ0LAl2pnpTPoKOVyytq03eZcn_70WgfBahwj8akRDfPSTUJ9BUHXSgkrNr6OsbUniMrKFF-Dcr5p8IIhm8xoK_E5SCmSGbxD9njXYYgtyPu0xlM0ooQlWGHaAw4HfQE8NJAdK7KjsOWEgQpm1P09SXsIcvZU7WzNiruDNqKudTTIEozJrvG0cEb9DkG_bRta2PFp8O5iSX4A4\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0322b03cae223a38016ac7c23b755887d1973c9b740a5b6adb\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1904,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1901},\"outputTokens\":{\"total\":214,\"text\":14,\"reasoning\":200},\"raw\":{\"input_tokens\":1904,\"input_tokens_details\":{\"cache_write_tokens\":1901,\"cached_tokens\":0},\"output_tokens\":214,\"output_tokens_details\":{\"reasoning_tokens\":200},\"total_tokens\":2118}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0322b03cae223a38016ac7c237886087d18b8ad8e865541361\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476279448,\"endTime\":1791476283651,\"providerRequestId\":\"req_6a7cfbbfe47e4b89b6e1a3941d7e71b8\",\"statusCode\":200,\"providerResponseId\":\"resp_0322b03cae223a38016ac7c237886087d18b8ad8e865541361\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"c64532c521ff0d3bc72fd0d43b98735c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000344925\",\"marketCost\":\"0.000344925\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000344925\",\"inferenceCost\":\"0.000344925\",\"inputInferenceCost\":\"0.000237925\",\"outputInferenceCost\":\"0.000107\",\"generationId\":\"gen_01M4E4XA42VS3G4WQSQGVYKDS0\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "writtenAt": "2026-10-08T16:20:23.283Z",
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when asked for updates on a quick task, send one completed reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "927b7c13fdce",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4E51NDCPVPWVZE86BSHJ8J0\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant provided the requested UTC time in a single concise reply and did not include any intermediate narration, drafts, or repeated content.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":316,\"output_tokens\":39},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0ccfdd30ea23428b016ac7c2c626d887d19280fd1f45bbe526\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476422086,\"endTime\":1791476423245,\"providerRequestId\":\"req_a36c03cde90e45f5aa13d8e57d4f165c\",\"statusCode\":200,\"providerResponseId\":\"resp_0ccfdd30ea23428b016ac7c2c626d887d19280fd1f45bbe526\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"003e65c0630212d6cba9aaa72bede4a7\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.001375\",\"marketCost\":\"0.001375\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.001375\",\"inferenceCost\":\"0.001375\",\"inputInferenceCost\":\"0.00079\",\"outputInferenceCost\":\"0.000585\",\"generationId\":\"gen_01M4E51NDCPVPWVZE86BSHJ8J0\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 70000 tokens (max output plus thinking budget) for openai/gpt-5.4 and was lowered to 70000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
