@@ -6,6 +6,10 @@ export const JUNIOR_RETENTION_ROUTE = "/api/internal/retention";
 // Retention is a dedicated daily bounded-batch cron, kept off the heartbeat
 // repair loop; a purge failure must not touch execution or recovery paths.
 export const JUNIOR_RETENTION_CRON_SCHEDULE = "0 4 * * *";
+export const JUNIOR_CREDENTIAL_SWEEP_ROUTE = "/api/internal/credential-sweep";
+// The credential sweep re-encrypts stored tokens in small batches. It does
+// nothing until an encryption key is active.
+export const JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE = "*/10 * * * *";
 export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
   "/api/internal/agent/continue";
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";

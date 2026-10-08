@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
@@ -69,6 +70,33 @@ describe("StateAdapterTokenStore", () => {
       },
       181 * 24 * 60 * 60 * 1000,
     );
+  });
+
+  describe("with an active encryption key", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("stores tokens encrypted and still reads plain-text tokens", async () => {
+      vi.stubEnv(
+        "JUNIOR_ENCRYPTION_KEYS",
+        `k1:${Buffer.alloc(32, 1).toString("base64")}`,
+      );
+      vi.stubEnv("JUNIOR_ENCRYPTION_KEY_ID", "k1");
+      const state = createMemoryState();
+      await state.connect();
+      const store = new StateAdapterTokenStore(state);
+      const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+      await state.set("oauth-token:U123:notion", tokens);
+
+      await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+
+      await store.set("U123", "github", tokens);
+      const stored = await state.get("oauth-token:U123:github");
+      expect(stored).toMatch(/^jenc:v1:k1:/);
+      expect(JSON.stringify(stored)).not.toContain("access-token");
+      await expect(store.get("U123", "github")).resolves.toEqual(tokens);
+    });
   });
 
   it("waits for the refresh lock before running the callback", async () => {

@@ -4,17 +4,22 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
+import {
+  decryptStoredCredential,
+  encryptStoredCredential,
+} from "@/chat/credentials/encryption";
 import { sleep } from "@/chat/sleep";
 import { acquireActiveLock } from "@/chat/state/locks";
 
-const KEY_PREFIX = "oauth-token";
+/** State key prefix for stored user OAuth tokens. */
+export const USER_TOKEN_KEY_PREFIX = "oauth-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime
 const LONG_LIVED_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const REFRESH_LOCK_WAIT_MS = 30_000;
 const REFRESH_LOCK_RETRY_MS = 100;
 
 function tokenKey(userId: string, provider: string): string {
-  return `${KEY_PREFIX}:${userId}:${provider}`;
+  return `${USER_TOKEN_KEY_PREFIX}:${userId}:${provider}`;
 }
 
 function refreshLockKey(userId: string, provider: string): string {
@@ -32,10 +37,12 @@ export class StateAdapterTokenStore implements UserTokenStore {
     userId: string,
     provider: string,
   ): Promise<StoredTokens | undefined> {
-    const stored = await this.state.get<unknown>(tokenKey(userId, provider));
-    return stored === null || stored === undefined
-      ? undefined
-      : storedTokensSchema.parse(stored);
+    const key = tokenKey(userId, provider);
+    const stored = await this.state.get<unknown>(key);
+    if (stored === null || stored === undefined) {
+      return undefined;
+    }
+    return storedTokensSchema.parse(decryptStoredCredential(stored, key));
   }
 
   async set(
@@ -48,7 +55,8 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const ttlMs = expiresAt
       ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
       : LONG_LIVED_TTL_MS;
-    await this.state.set(tokenKey(userId, provider), parsed, ttlMs);
+    const key = tokenKey(userId, provider);
+    await this.state.set(key, encryptStoredCredential(parsed, key), ttlMs);
   }
 
   async delete(userId: string, provider: string): Promise<void> {

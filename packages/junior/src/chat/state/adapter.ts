@@ -6,6 +6,8 @@ import { getChatConfig } from "@/chat/config";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
+// The Redis adapter stores cache values at `<prefix>:cache:<key>`.
+const REDIS_ADAPTER_KEY_PREFIX = "chat-sdk";
 
 let stateAdapter: StateAdapter | undefined;
 let redisStateAdapter: RedisStateAdapter | undefined;
@@ -274,6 +276,7 @@ function createStateAdapter(): StateAdapter {
   }
 
   const redisState = createRedisState({
+    keyPrefix: REDIS_ADAPTER_KEY_PREFIX,
     url: config.state.redisUrl,
   });
   redisStateAdapter = redisState;
@@ -313,6 +316,16 @@ export async function getDefaultRedisStateAdapterFor(
   return context.stateAdapter === adapter
     ? context.redisStateAdapter
     : undefined;
+}
+
+/**
+ * Return the raw Redis key prefix for values written with `StateAdapter.set`.
+ *
+ * Raw Redis callers need it to find state-adapter values by their logical key.
+ */
+export function getRedisCacheKeyPrefix(): string {
+  const prefix = getChatConfig().state.keyPrefix;
+  return `${REDIS_ADAPTER_KEY_PREFIX}:cache:${prefix ? `${prefix}:` : ""}`;
 }
 
 export function getStateAdapter(): StateAdapter {

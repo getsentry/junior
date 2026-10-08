@@ -12,9 +12,14 @@ import {
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  decryptStoredCredential,
+  encryptStoredCredential,
+} from "@/chat/credentials/encryption";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
-const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
+/** State key prefix for stored MCP OAuth credentials. */
+export const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
 const MCP_AUTH_SESSION_INDEX_PREFIX = "junior:mcp_oauth_attempt_index:v2";
 const MCP_SERVER_SESSION_PREFIX = "junior:mcp_server_session";
 const MCP_AUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -357,8 +362,9 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
+  const key = credentialsKey(userId, provider);
   return parseStoredCredentials(
-    await stateAdapter.get(credentialsKey(userId, provider)),
+    decryptStoredCredential(await stateAdapter.get(key), key),
   );
 }
 
@@ -369,9 +375,10 @@ export async function putMcpStoredOAuthCredentials(
   ttlMs: number = MCP_AUTH_CREDENTIALS_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
+  const key = credentialsKey(userId, provider);
   await stateAdapter.set(
-    credentialsKey(userId, provider),
-    JSON.stringify(value),
+    key,
+    encryptStoredCredential(JSON.stringify(value), key),
     ttlMs,
   );
 }

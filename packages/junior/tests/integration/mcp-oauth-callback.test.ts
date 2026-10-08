@@ -234,6 +234,8 @@ describe("mcp oauth callback integration", () => {
   });
 
   it("finalizes local MCP OAuth without attempting Slack resume", async () => {
+    process.env.JUNIOR_ENCRYPTION_KEYS = `k1:${Buffer.alloc(32, 1).toString("base64")}`;
+    process.env.JUNIOR_ENCRYPTION_KEY_ID = "k1";
     const conversationId = "local:oauth:mcp-callback";
     const sessionId = "local-turn-mcp-oauth";
     const destination = { platform: "local", conversationId } as const;
@@ -287,6 +289,13 @@ describe("mcp oauth callback integration", () => {
       });
 
     expect(response.status).toBe(200);
+    await expect(
+      stateAdapterModule
+        .getStateAdapter()
+        .get(
+          `${mcpAuthStoreModule.MCP_AUTH_CREDENTIALS_PREFIX}:local-cli:${EVAL_MCP_AUTH_PROVIDER}`,
+        ),
+    ).resolves.toMatch(/^jenc:v1:k1:/);
     await expect(
       mcpAuthStoreModule.getMcpStoredOAuthCredentials(
         "local-cli",

@@ -32,6 +32,23 @@ sandbox.
   sandbox session, and expiry as applicable.
 - Real credentials remain in host storage and host-applied request headers.
 
+## Storage Encryption
+
+- Stored user OAuth tokens and MCP OAuth credentials are encrypted at rest
+  when `JUNIOR_ENCRYPTION_KEY_ID` is set. `encryption.ts` owns the key ring
+  and value format.
+- Each value is bound to its logical state key. A value copied to another
+  record does not decrypt.
+- Reads accept plain text and every configured key. Writes use the active key,
+  or plain text when no key is active.
+- A value that does not decrypt throws `CredentialDecryptionError`. It is not
+  a missing credential. Only unlink and App Home display tolerate it, so a
+  user can still disconnect.
+- `sweep.ts` re-encrypts stored values with the active key in bounded cron
+  batches. It handles both plain-text migration and key rotation.
+- Temporary sign-in state, such as MCP authorization attempts, is out of
+  scope.
+
 ## OAuth Flow
 
 1. A provider reports that a user-bound grant is required.

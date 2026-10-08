@@ -1,31 +1,9 @@
-import { timingSafeEqual } from "node:crypto";
+import { verifyCronRequest } from "@/handlers/cron-auth";
 import { runRetentionPurge } from "@/chat/conversations/retention";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
-
-function getRetentionSecret(): string | undefined {
-  return (
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim()
-  );
-}
-
-function verifyRetentionRequest(request: Request): boolean {
-  const secret = getRetentionSecret();
-  if (!secret) {
-    return false;
-  }
-
-  const authorization = request.headers.get("authorization")?.trim();
-  if (!authorization?.startsWith("Bearer ")) {
-    return false;
-  }
-  const actual = Buffer.from(authorization.slice("Bearer ".length));
-  const expected = Buffer.from(secret);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
 
 /**
  * Handle the authenticated internal retention cron. One request runs a single
@@ -36,7 +14,7 @@ export async function GET(
   request: Request,
   options: { attachmentStorage?: AttachmentStorage } = {},
 ): Promise<Response> {
-  if (!verifyRetentionRequest(request)) {
+  if (!verifyCronRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 

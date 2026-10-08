@@ -17,6 +17,7 @@ Handled `GET` routes:
 - `/`
 - `/health`
 - `/api/internal/heartbeat`
+- `/api/internal/credential-sweep`
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 

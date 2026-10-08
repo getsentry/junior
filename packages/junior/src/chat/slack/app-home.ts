@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebClient } from "@slack/web-api";
 import type { KnownBlock, SectionBlock } from "@slack/types";
+import { CredentialDecryptionError } from "@/chat/credentials/encryption";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
@@ -78,13 +79,37 @@ function connectedAccountText(
     : `*${plugin.manifest.name}*\n${plugin.manifest.description}`;
 }
 
+/**
+ * Read one stored credential for display.
+ *
+ * A credential that Junior cannot decrypt still shows as connected, so the
+ * user can unlink it.
+ */
+async function readForHome<T>(
+  read: () => Promise<T>,
+): Promise<T | "unreadable"> {
+  try {
+    return await read();
+  } catch (error) {
+    if (error instanceof CredentialDecryptionError) {
+      return "unreadable";
+    }
+    throw error;
+  }
+}
+
 async function connectedOAuthTokens(
   userId: string,
   plugin: PluginDefinition,
   userTokenStore: UserTokenStore,
-): Promise<StoredTokens | undefined> {
+): Promise<StoredTokens | "unreadable" | undefined> {
   if (plugin.manifest.oauth || plugin.manifest.credentials) {
-    const stored = await userTokenStore.get(userId, plugin.manifest.name);
+    const stored = await readForHome(() =>
+      userTokenStore.get(userId, plugin.manifest.name),
+    );
+    if (stored === "unreadable") {
+      return stored;
+    }
     return stored &&
       hasRequiredOAuthScope(stored.scope, plugin.manifest.oauth?.scope)
       ? stored
@@ -104,10 +129,12 @@ async function hasConnectedMcpAccount(
 
   // Any stored MCP credential state counts, including DCR client/discovery
   // left behind when authorization never finished.
-  const credentials = await getMcpStoredOAuthCredentials(
-    userId,
-    plugin.manifest.name,
+  const credentials = await readForHome(() =>
+    getMcpStoredOAuthCredentials(userId, plugin.manifest.name),
   );
+  if (credentials === "unreadable") {
+    return true;
+  }
   return Boolean(
     credentials?.tokens ||
     credentials?.clientInformation ||
@@ -129,12 +156,13 @@ export async function buildHomeView(
   for (const plugin of providers) {
     const tokens = await connectedOAuthTokens(userId, plugin, userTokenStore);
     if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
+    const account = tokens === "unreadable" ? undefined : tokens?.account;
 
     connectedSections.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: connectedAccountText(plugin, tokens?.account),
+        text: connectedAccountText(plugin, account),
       },
       accessory: {
         type: "button",

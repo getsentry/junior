@@ -12,6 +12,8 @@ import {
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
+  JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE,
+  JUNIOR_CREDENTIAL_SWEEP_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -102,6 +104,10 @@ describe("juniorNitro plugin modules", () => {
           path: JUNIOR_RETENTION_ROUTE,
           schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
         },
+        {
+          path: JUNIOR_CREDENTIAL_SWEEP_ROUTE,
+          schedule: JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE,
+        },
       ],
     });
     expect(vercel.functions).toEqual({
@@ -190,6 +196,10 @@ describe("juniorNitro plugin modules", () => {
       {
         path: JUNIOR_RETENTION_ROUTE,
         schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
+      },
+      {
+        path: JUNIOR_CREDENTIAL_SWEEP_ROUTE,
+        schedule: JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE,
       },
     ]);
     expect(vercel.functions).toEqual({

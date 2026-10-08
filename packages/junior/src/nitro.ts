@@ -18,6 +18,8 @@ import {
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE,
+  JUNIOR_CREDENTIAL_SWEEP_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
@@ -176,6 +178,16 @@ function configureVercelDeployment(
     nitro.options.vercel.config.crons.push({
       path: JUNIOR_RETENTION_ROUTE,
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
+    });
+  }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_CREDENTIAL_SWEEP_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_CREDENTIAL_SWEEP_ROUTE,
+      schedule: JUNIOR_CREDENTIAL_SWEEP_CRON_SCHEDULE,
     });
   }
 

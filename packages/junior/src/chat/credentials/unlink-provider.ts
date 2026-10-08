@@ -1,11 +1,34 @@
 import { getSqlExecutor } from "@/chat/db";
 import { deleteProviderIdentityForSlackUser } from "@/chat/identities/sql";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { CredentialDecryptionError } from "@/chat/credentials/encryption";
 import {
   deleteMcpAuthSessionsForUserProvider,
   deleteMcpServerSessionId,
   deleteMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
+
+/**
+ * Read the stored tokens only to find the linked account id.
+ *
+ * A credential that Junior cannot decrypt must not block a disconnect. In that
+ * case the stored credentials are still deleted, but the linked identity row
+ * stays because its account id is unknown.
+ */
+async function readTokensForUnlink(
+  userId: string,
+  provider: string,
+  userTokenStore: UserTokenStore,
+) {
+  try {
+    return await userTokenStore.get(userId, provider);
+  } catch (error) {
+    if (error instanceof CredentialDecryptionError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
 
 /** Remove one provider connection and its exact stored account identity. */
 export async function unlinkProvider(
@@ -14,7 +37,7 @@ export async function unlinkProvider(
   userTokenStore: UserTokenStore,
   slackTeamId?: string,
 ): Promise<void> {
-  const tokens = await userTokenStore.get(userId, provider);
+  const tokens = await readTokensForUnlink(userId, provider, userTokenStore);
   if (tokens?.account && slackTeamId) {
     await deleteProviderIdentityForSlackUser(
       getSqlExecutor(),

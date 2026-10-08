@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnownBlock, SectionBlock } from "@slack/web-api";
 import { buildHomeView } from "@/chat/slack/app-home";
+import { CredentialDecryptionError } from "@/chat/credentials/encryption";
 import type {
   UserTokenStore,
   StoredTokens,
@@ -193,6 +194,25 @@ describe("buildHomeView", () => {
     const accessory = section.accessory as { action_id: string; value: string };
     expect(accessory.action_id).toBe("app_home_disconnect");
     expect(accessory.value).toBe("sentry");
+  });
+
+  it("shows an unreadable stored credential with Unlink button", async () => {
+    const store = createMockTokenStore({});
+    vi.mocked(store.get).mockRejectedValue(
+      new CredentialDecryptionError(
+        'Stored credential uses encryption key "k1"',
+      ),
+    );
+    const view = await buildHomeView("U123", store);
+
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("*sentry*") ?? false,
+    );
+    expect(section?.accessory).toMatchObject({
+      action_id: "app_home_disconnect",
+      value: "sentry",
+    });
   });
 
   it("shows connected MCP provider with Unlink button", async () => {

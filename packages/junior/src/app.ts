@@ -63,6 +63,8 @@ import {
 import { GET as healthGET } from "@/handlers/health";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as retentionGET } from "@/handlers/retention";
+import { GET as credentialSweepGET } from "@/handlers/credential-sweep";
+import { readCredentialKeyRing } from "@/chat/credentials/encryption";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
@@ -72,6 +74,7 @@ import {
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
 import {
+  JUNIOR_CREDENTIAL_SWEEP_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -400,6 +403,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   validateBuildIncludesPluginRuntimeRegistrations(plugins, virtualConfig);
   validatePlugins(plugins);
+  // Fail startup on an invalid encryption key setting.
+  readCredentialKeyRing();
   getDb();
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
@@ -672,6 +677,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/internal/retention", (c) => {
     return retentionGET(c.req.raw);
+  });
+
+  app.get(JUNIOR_CREDENTIAL_SWEEP_ROUTE, (c) => {
+    return credentialSweepGET(c.req.raw);
   });
 
   app.post("/api/webhooks/slack", (c) => {

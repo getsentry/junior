@@ -3,6 +3,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -297,6 +298,46 @@ describe("Slack webhook: App Home events", () => {
           ),
         ),
     ).resolves.toEqual([{ subjectId: "github-2" }]);
+  });
+
+  it("unlinks a stored credential that cannot be decrypted", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const userTokenStore = new StateAdapterTokenStore(state);
+    process.env.JUNIOR_ENCRYPTION_KEYS = `k1:${Buffer.alloc(32, 1).toString("base64")}`;
+    process.env.JUNIOR_ENCRYPTION_KEY_ID = "k1";
+    await userTokenStore.set("U123", "github", {
+      accessToken: "github-access-token",
+      refreshToken: "github-refresh-token",
+    });
+    // The key is removed before the stored token moves to another key.
+    delete process.env.JUNIOR_ENCRYPTION_KEYS;
+    delete process.env.JUNIOR_ENCRYPTION_KEY_ID;
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+
+    const response = await handleSlackWebhook({
+      request: client.form(
+        new URLSearchParams({
+          payload: JSON.stringify(interactiveDisconnectPayload("github")),
+        }),
+      ),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: createSlackAdapter,
+        queue: createConversationWorkQueueTestAdapter(),
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+        getUserTokenStore: () => userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await waitUntil.flush();
+    await expect(state.get("oauth-token:U123:github")).resolves.toBeNull();
+    expect(slackApiOutbox.homeViews()).toHaveLength(1);
   });
 
   it("does not remove an identity owned by another user", async () => {

@@ -28,6 +28,30 @@ Use this checklist after deployment and when investigating a security issue. Rea
 - The sandbox receives placeholders, not reusable tokens.
 - User access belongs to the current user or an exact task delegation.
 - Rotating `JUNIOR_SECRET` invalidates pending callbacks and sandbox identity signed with the old value.
+- Stored OAuth tokens are encrypted when `JUNIOR_ENCRYPTION_KEY_ID` is set. See [Token encryption](#token-encryption).
+
+## Token encryption
+
+Junior can encrypt stored OAuth tokens at rest with AES-256-GCM. Encryption is optional. Without keys, Junior stores tokens as plain text.
+
+Generate a key:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Use the same steps to turn on encryption and to rotate a key:
+
+1. Add the key to `JUNIOR_ENCRYPTION_KEYS`, for example `k2:<new key>,k1:<old key>`. Deploy. Every deployment can now read values that use the key.
+2. Set `JUNIOR_ENCRYPTION_KEY_ID` to the new key id. Deploy. New writes use the new key.
+3. Wait for the credential sweep. It runs every 10 minutes at `/api/internal/credential-sweep` and re-encrypts stored tokens in small batches. Each run logs `credential_sweep.batch.completed`.
+4. When the log shows `app.credential_sweep.last_clean_pass_at`, no stored token uses plain text or an old key. You can then remove the old key and deploy.
+
+Do steps 1 and 2 in separate deploys. Otherwise, deployments that still run the old configuration cannot read tokens that new deployments write.
+
+After you turn on encryption, do not roll back to a Junior release without encryption support. That release cannot read encrypted tokens.
+
+If Junior cannot decrypt a stored token, it fails with an error that names the key id. It does not delete the token. Add the missing key back to fix it. Users can still unlink the account from App Home or with the slash command.
 
 ## Action Review
 
