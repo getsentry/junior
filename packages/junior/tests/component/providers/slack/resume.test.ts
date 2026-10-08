@@ -162,7 +162,7 @@ describe("Slack resume result handling", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.008",
-          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          text: "<@U123> I need access to your Eval Auth account to continue. I sent you a private link.",
           blocks: expect.any(Array),
         }),
       }),

@@ -20,7 +20,8 @@ import {
 } from "../msw/handlers/eval-mcp-auth";
 
 /** Public Slack auth notice shown while MCP OAuth is pending. */
-export const EVAL_MCP_AUTH_NOTICE = /I need access to Eval Auth to continue/;
+export const EVAL_MCP_AUTH_NOTICE =
+  /I need access to your Eval Auth account to continue/;
 
 /** Canonical Eval Auth tool name used by orchestration suites. */
 export const EVAL_AUTH_TOOL_NAME = "mcp__eval-auth__budget-echo";

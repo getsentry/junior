@@ -326,7 +326,8 @@ export async function wireAgentTools(
     pluginCatalogRuntime.getMcpProviders(),
     {
       authProviderFactory: mcpAuth.authProviderFactory,
-      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      onAuthorizationRequired: (provider, _error, context) =>
+        mcpAuth.onAuthorizationRequired(provider, context),
       onToolSuccess: async (input) => {
         return await pluginHooks.afterMcpTool({
           ...input,

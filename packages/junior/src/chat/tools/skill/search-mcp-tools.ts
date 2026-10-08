@@ -1,4 +1,7 @@
-import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
+import type {
+  ManagedMcpToolDescriptor,
+  McpAuthorizationContext,
+} from "@/chat/mcp/tool-manager";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
@@ -52,7 +55,10 @@ interface ProviderSummary {
 }
 
 interface SearchMcpToolManager {
-  activateProvider(provider: string): Promise<boolean>;
+  activateProvider(
+    provider: string,
+    authorizationContext?: McpAuthorizationContext,
+  ): Promise<boolean>;
   getActiveToolCatalog(options?: {
     provider?: string;
   }): ManagedMcpToolDescriptor[];
@@ -266,6 +272,13 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
             "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
           )
           .optional(),
+        intent: z
+          .string()
+          .min(1)
+          .describe(
+            'Optional short purpose, shown to the user only if this call needs them to connect their account. Write a plain verb phrase, for example "search Notion for the Q3 offsite doc".',
+          )
+          .optional(),
         max_results: z
           .number()
           .int()
@@ -283,9 +296,12 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       available_providers: result.available_providers,
       tools: result.tools,
     }),
-    execute: async ({ query, provider, max_results }) => {
+    execute: async ({ query, provider, intent, max_results }) => {
       if (provider) {
-        await mcpToolManager.activateProvider(provider);
+        await mcpToolManager.activateProvider(
+          provider,
+          intent ? { intent } : undefined,
+        );
       }
       const catalog = mcpToolManager.getActiveToolCatalog(
         provider ? { provider } : {},
