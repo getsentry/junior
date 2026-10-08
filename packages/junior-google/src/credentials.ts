@@ -35,7 +35,17 @@ export const GOOGLE_OPERATIONS = {
   "google.calendar.event.get": {
     access: "read",
     method: "GET",
-    path: /^\/calendar\/v3\/calendars\/primary\/events\/[a-v0-9]+$/,
+    path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
+  },
+  "google.calendar.event.update": {
+    access: "write",
+    method: "PATCH",
+    path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
+  },
+  "google.calendar.events.list": {
+    access: "read",
+    method: "GET",
+    path: /^\/calendar\/v3\/calendars\/[^/]+\/events$/,
   },
   "google.calendar.freebusy.query": {
     access: "read",

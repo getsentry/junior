@@ -7,16 +7,17 @@ import {
 import { z } from "zod";
 import {
   emailListSchema,
-  formatInterval,
   googleApiError,
   googleApiRequest,
+  MAX_EVENT_MS,
+  ownEventOutputFields,
+  ownEventResult,
+  ownEventSchema,
   requireAllowedEmails,
   timeZoneSchema,
   withRequester,
   type GoogleToolContext,
 } from "./shared";
-
-const MAX_EVENT_MS = 8 * 60 * 60 * 1000;
 
 const inputSchema = z
   .object({
@@ -44,23 +45,8 @@ const inputSchema = z
 
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("createCalendarEvent"),
-  attendees: z.array(z.string()),
   created: z.boolean(),
-  end: z.string(),
-  eventId: z.string(),
-  label: z.string(),
-  start: z.string(),
-  url: z.string().optional(),
-  videoCallUrl: z.string().optional(),
-});
-
-const eventResponseSchema = z.object({
-  attendees: z.array(z.object({ email: z.string() })).optional(),
-  end: z.object({ dateTime: z.string() }),
-  hangoutLink: z.string().optional(),
-  htmlLink: z.string().optional(),
-  id: z.string(),
-  start: z.object({ dateTime: z.string() }),
+  ...ownEventOutputFields,
 });
 
 /**
@@ -154,23 +140,10 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
         throw googleApiError("google.calendar.event.create", response);
       }
 
-      const parsed = eventResponseSchema.parse(event.body);
       return {
         target: "createCalendarEvent" as const,
-        attendees: (parsed.attendees ?? []).map((attendee) => attendee.email),
         created,
-        end: parsed.end.dateTime,
-        eventId: parsed.id,
-        label: formatInterval(
-          Date.parse(parsed.start.dateTime),
-          Date.parse(parsed.end.dateTime),
-          input.timeZone,
-        ),
-        start: parsed.start.dateTime,
-        ...(parsed.htmlLink ? { url: parsed.htmlLink } : undefined),
-        ...(parsed.hangoutLink
-          ? { videoCallUrl: parsed.hangoutLink }
-          : undefined),
+        ...ownEventResult(ownEventSchema.parse(event.body), input.timeZone),
       };
     },
   });

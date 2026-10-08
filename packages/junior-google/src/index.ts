@@ -27,6 +27,8 @@ import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
+import { createListCalendarEventsTool } from "./tools/list-events";
+import { createUpdateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
 export function googlePlugin(): PluginRegistration {
@@ -71,6 +73,8 @@ export function googlePlugin(): PluginRegistration {
         return {
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
+          listCalendarEvents: createListCalendarEventsTool(toolContext),
+          updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
       },
     },

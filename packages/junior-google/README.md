@@ -13,6 +13,13 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 - `createCalendarEvent` creates an event on Junior's own calendar. It sends
   invites and can add a Google Meet link. A retry of the same tool call returns
   the same event. It does not create a second invite.
+- `listCalendarEvents` reads the events on one colleague's calendar. It shows
+  only what the calendar's Google sharing settings let Junior's account see.
+  A calendar shared as free/busy only shows busy blocks without titles. It
+  never returns event descriptions.
+- `updateCalendarEvent` changes the title, description, time, or attendees of
+  an event that Junior organizes. Google emails the attendees about the
+  change. Only people invited to the event can ask for a change.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -40,15 +47,20 @@ commands and any request that does not match a declared operation. Thus the
 model cannot use `curl` to read Junior's calendar and skip the tool rules.
 
 If Google rejects the refresh token (`invalid_grant`), Junior deletes it. The
-tools then report that an admin must connect the account again.
+tools then report that an admin must connect the account again. If the stored
+grant does not have every scope the current tools need, the tools also ask an
+admin to reconnect.
 
 ## Rules in code
 
 - Junior checks and invites only people in the allowed domains. By default,
   the allowed domain is the domain of the account email.
 - Junior adds the requester to the attendees when it knows their email.
-- Calendar scopes are `calendar.events.freebusy` and `calendar.events.owned`.
-  Junior also requests `openid email` to verify the account during sign-in.
+- Junior changes only events that it organizes, and only for a requester who
+  is invited to the event.
+- Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
+  and `calendar.events.owned`. Junior also requests `openid email` to verify
+  the account during sign-in.
 
 ## Setup
 
@@ -81,7 +93,11 @@ variables are set. The Admin page shows **Not configured** until then.
 
 - The refresh token is stored in plain text in Postgres. Encryption at rest is
   tracked in getsentry/junior#2065.
-- Free/busy shows only what the company's calendar sharing default allows.
-  Calendars that Junior cannot see appear in `unavailable`.
+- Free/busy and event details show only what the company's calendar sharing
+  default allows. Calendars that Junior cannot see appear in `unavailable`
+  for `findMeetingTimes`, and as `visible: false` for `listCalendarEvents`.
+- Anyone who can talk to Junior can ask it to read a colleague's calendar.
+  Junior returns what its own account can see, so set the sharing default
+  with that in mind.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.
