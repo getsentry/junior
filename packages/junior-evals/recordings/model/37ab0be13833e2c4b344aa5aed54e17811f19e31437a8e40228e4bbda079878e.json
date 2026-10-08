@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when asked about PR auth sequencing, explain automatic installation credentials",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "69fd57b70953",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_05128bfa554c6960016ac80bb8790887d19b1412bdfdcdf0f8\",\"reasoningEncryptedContent\":\"gAAAAABqyAu5FKNWqIYJaprTySmfLGQ4ubnj8oZSRhcj4k9EN7cJwTkYnJzsU_z9ksh28sXXGf1h3-4le3cULiVXcg4vh17x4sTMQJNfrZdvf_qY-hdaePALCoRFCknHrU-V2KqgFwmvL9TESvEgt1jpxy8xNaaEA9559WVjw529ld_-S_22z2ZZatu-r7j1I6dQ8-U9S_XF-ZMrEw0BmbwSEkfRcAgA5qJEe9EzAoIYvM7ClTlag4iO1tSTuen43rFvqOIRtZUacV7EhTKEoBIKjEDWDZV4j1vybeJ-5AbhkzYN9oQoa-6oP57yV6GcsHIVaj0wJh4NzhzORS2d-8lxsSTjJCP-fJznMeNiq_ognUY1Qhf_vZw7-z_6YBuvGWKled1fcqNgzzJj5b_131n41othBD0pBw3PWk0rlO58Gz-AYTcCF33QHN3RmQwBrwMVm_g5eA1Ev9HBC_ymCPHL3rgmPcr3yOjQP8o79-y8eI84J3iOz-keU-UXWM5sdDNKtHCbA567cZzM6qWgnb57Oi9Jjwj1FnI9splN3GsKx213sI2oq0O6bifsEOV4hF0NDu-3IrxF5aA_EvfhHbgYFcIzqsFI3jkuGoFNrisshWdteiHQ8ZfqC-Ffv4Vvn1owD017ubM7chU7PoBvD7wOoHqTVxd4wDDDSwMEGngKauR85qO_TamZqCM1yu6s5wFwtZkpNxYBQaF34fvZBryfIWMI9C3oOI_VqOtWIvv7cmucAjm2RhzC-DSwuZC4fLF_MaYHvtCWudZTAj6SnlWYq2hZDV9GbeUKRV6BJEY3nJzXZ9kNsuLb_4AkNyGkyUt8sOewf79oCmqWFbhLmKBT1TXx-EbhbuIZN7OmwGmbFctA9tlqMTOglf4xXhnO0_g-juqUko0zJZTvGV3CZASKjMbxYOo8QYZQslVP2xdGEVcwKMnBvBA3OUZpi3EhzX6AsjtDDpi1l5qeO1X_E7hAhDdlPZCJlVJxxMJ5M1Zx6qT9vuiiHbWr8qC1FwWVvYhnF1luhBRhq6c0uLDQvqIvT5jAZVuaKXbz2YhvoEuN-rFzxy1PUzMQd5M8Lq1TbWBKV66m1mQks5EAR45saO_p49tY8ijSPF1Uh1rvGBd-NxQb5bqaM2RVdIwx3gmtmSdIoDtlUJ4VkoiB1NVsdisgfr9PMKliKIEAYdJuAMYw_4nt3WVapw803NJpaKWG5IQQVMMVTnN5td-LkylCk4AJYekE0GDVeKbMz8q_OrrUWZtCdj8ijiYBtGI9_OWXksV07VHOT7iRxHsEU6aYs04j4XmPd84idRLYxRTWrGWFSsAR0x0jcn5lP0wB12irHSD2L1XIldWKlT0ARmg-cUyjYJwwXTNNW_cI67Ds0PYH-bBDpZMEQ-JcV8EpuO0TnIkXMVQ9gHd3YaPUBgQy5DDuNtNn5ilFkaM2Lv2ef_GmdPr_67YvNjrWG87Ym9fxckMVNFRXaJl09pvaLUMXE1w6YNkYL-6_tbgoBurAo7UatpZ5gCxoMSBff59G-zsTseN_Ydr03FPm9wTnoHAE1cFX75sjFpAEAPkPCOo0-pg3EoPYXT67uQ_qTyfY_7-FgaUkprCRVFA9l2RHuQkN83SOWOsYdyLD-x_zW-XUx5L-hJeTdJQTUtviFpieB-BCkN7F8fVqvxtmoJoJTCVPIdT1IjoruGXrz1HB8EyvQInZhVLviMv2Gw3W83KSmAv9HhdVLR2Wox-o98HFE9yj_uPMpzuWu7vYXSlUzARSyfW3gWFapGi2RTNn3f2oVeTPVYyjAVEt103q5uNfoVrCqjkazPYWMbd4tSPZJynupwq4SzhwBO9imr6CC7I1nqnEGQdquURMLiIrtn7w_HkBx0XahTIZfcwWxkZT_iAI8J94i4NVi5x40uU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"Push the branch before opening a pull request.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]},{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"Do not ask for a token for bot pushes.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_05128bfa554c6960016ac80bb94acc87d19a6d424a43eb1eae\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2166,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2163},\"outputTokens\":{\"total\":170,\"text\":75,\"reasoning\":95},\"raw\":{\"input_tokens\":2166,\"input_tokens_details\":{\"cache_write_tokens\":2163,\"cached_tokens\":0},\"output_tokens\":170,\"output_tokens_details\":{\"reasoning_tokens\":95},\"total_tokens\":2336}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_05128bfa554c6960016ac80bb35b8887d1990a0dcf6dc3eb1b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791495091271,\"endTime\":1791495097998,\"providerRequestId\":\"req_abde6a1d211a477687187dbc28b877df\",\"statusCode\":200,\"providerResponseId\":\"resp_05128bfa554c6960016ac80bb35b8887d1990a0dcf6dc3eb1b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"42de9af7aec5ecda01e6fdae3bbf7fbe\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000355675\",\"marketCost\":\"0.000355675\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000355675\",\"inferenceCost\":\"0.000355675\",\"inputInferenceCost\":\"0.000270675\",\"outputInferenceCost\":\"0.000085\",\"generationId\":\"gen_01M4EPVD1KVC0ARXBDX7P1JFZ2\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
