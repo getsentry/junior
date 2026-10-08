@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
@@ -15,10 +15,10 @@ describe("Skills", () => {
         ],
       });
 
-    const first = await run(mention("/incident-brief Checkout latency"));
+    const first = await run(slackMention("/incident-brief Checkout latency"));
     await expect(first).toSatisfyJudge(RubricJudge, brief("Checkout latency"));
     const second = await first.continue(
-      mention("/incident-brief Search errors"),
+      slackMention("/incident-brief Search errors"),
     );
     await expect(second).toSatisfyJudge(RubricJudge, brief("Search errors"));
 

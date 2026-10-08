@@ -14,6 +14,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
   isContinuablePiBoundary,
@@ -76,6 +77,7 @@ interface TurnCheckpointWrite {
   // --- SQL dual-write / restore only ---
   actor?: Actor;
   channelName?: string;
+  credentialSubject?: CredentialSubject;
   destination?: Destination;
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
@@ -99,6 +101,11 @@ type ProgressCheckpointArgs =
       mode: "paused";
       reason: TurnPauseReason;
       sliceId: number;
+      /**
+       * The turn paused before it added its prompt, so `messages` is committed
+       * history. Its tail can be the reply of an earlier turn.
+       */
+      beforePrompt?: boolean;
     });
 
 type TerminalCheckpointArgs = TurnCheckpointWrite & {
@@ -182,6 +189,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
     ...definedProps({
       actor: args.actor,
       channelName: args.channelName ?? latest?.channelName,
+      credentialSubject: args.credentialSubject,
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,
@@ -237,13 +245,19 @@ async function savePaused(
   const nextSliceId = keepSlice ? args.sliceId : args.sliceId + 1;
   try {
     const latest = await getTurnRecord(args.conversationId, args.turnId);
+    // Committed history stays whole. A trimmed copy is a branch of it, and
+    // the resumed turn adds its prompt after the tail.
     const messages =
-      args.reason === "yield"
+      args.reason === "yield" || args.beforePrompt
         ? [...args.messages]
         : continuableMessages(args.messages, latest?.piMessages);
 
     if (args.reason === "auth") {
-      if (messages.length > 0 && !isContinuablePiBoundary(messages)) {
+      if (
+        !args.beforePrompt &&
+        messages.length > 0 &&
+        !isContinuablePiBoundary(messages)
+      ) {
         return undefined;
       }
     } else if (messages.length === 0 || !isContinuablePiBoundary(messages)) {

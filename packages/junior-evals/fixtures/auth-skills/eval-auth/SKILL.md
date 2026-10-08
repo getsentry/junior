@@ -1,11 +1,13 @@
 ---
 name: eval-auth
-description: Use for `/eval-auth` requests in auth-resume evals. Always connect through the disclosed MCP tool before answering, then continue the user's actual request using prior thread context when needed.
+description: Use for `/eval-auth` requests in auth-resume evals. Do not use for other requests.
 ---
 
 # Eval Auth Flow
 
-1. Always inspect the disclosed MCP tools and call the exact disclosed tool once before answering.
+Follow these steps for an `/eval-auth` request only. A later request that does not ask for Eval Auth does not need the provider.
+
+1. Inspect the disclosed MCP tools and call the exact disclosed tool once before answering.
 
 2. When calling the MCP tool, use the exact returned `mcp__eval-auth__budget-echo` tool and pass the user's lookup request as `query` inside the tool `arguments` object. Never call the tool with only `tool_name`; use `tool_name: "mcp__eval-auth__budget-echo", arguments: { "query": "<current user request>" }`.
 

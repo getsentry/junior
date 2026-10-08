@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -9,7 +9,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Watch the checks and review feedback on getsentry/junior#691, and keep me posted here.",
       ),
     );
@@ -22,7 +22,9 @@ describe("Watches", () => {
 
     // A bare "stop" opts Junior out of the thread before any turn runs. This
     // follow-up needs the conversation to mean "stop the watch".
-    const stopped = await conversation.continue(mention("you can stop now"));
+    const stopped = await conversation.continue(
+      slackMention("you can stop now"),
+    );
     await expect(stopped).toSatisfyJudge(
       RubricJudge,
       rubric({

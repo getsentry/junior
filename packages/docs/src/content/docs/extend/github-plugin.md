@@ -457,7 +457,7 @@ A reviewer requested changes.
 <details class="event">
 <summary><code>pull_request.review.commented</code></summary>
 
-A reviewer submitted a comment-only review.
+A reviewer submitted a comment-only review, or approved with a comment.
 
 </details>
 

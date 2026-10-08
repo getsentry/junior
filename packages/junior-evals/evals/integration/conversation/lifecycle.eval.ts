@@ -1,7 +1,7 @@
 import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
-import { mention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -38,7 +38,7 @@ describe("Lifecycle and Resilience", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("How do I debug a Node.js memory leak in production?"),
+      slackMention("How do I debug a Node.js memory leak in production?"),
     );
 
     expect(conversation.title).toMatch(/leak/i);
@@ -47,7 +47,7 @@ describe("Lifecycle and Resilience", () => {
   // A Slack turn compacts history before the agent starts. A web turn
   // compacts it in the agent, before the first model request.
   test.for([
-    { surface: "a Slack thread", message: mention },
+    { surface: "a Slack thread", message: slackMention },
     { surface: "a web conversation", message: webMessage },
   ])(
     "when the history of $surface does not fit the context window, compact it and answer from the summary",
@@ -90,7 +90,7 @@ describe("Lifecycle and Resilience", () => {
       limits: { turnTimeoutMs: 15_000 },
     });
     const conversation = await run(
-      mention(
+      slackMention(
         "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
       ),
     );

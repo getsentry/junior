@@ -86,9 +86,12 @@ import { resolveConversationDestination } from "@/chat/conversations/destination
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
+  timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import type { CredentialSubject } from "@/chat/credentials/context";
+import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
 /** Extra debounce time added per additional event already batched. */
 const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
@@ -119,6 +122,21 @@ function captureConversationTurnFailure(args: {
     },
   );
   return typeof eventId === "string" ? eventId : undefined;
+}
+
+/** Return the saved timer creator subject when it is still valid here. */
+function resumedTimerWatchCredentialSubject(
+  conversationId: string,
+  subject: CredentialSubject | undefined,
+): CredentialSubject | undefined {
+  if (subject?.binding.type !== "timer-watch") return undefined;
+  return verifyTimerWatchCredentialSubject({
+    conversationId,
+    subject,
+    watchId: subject.binding.watchId,
+  })
+    ? subject
+    : undefined;
 }
 
 function hasLostTurnInputCommit(error: unknown): boolean {
@@ -295,6 +313,20 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
+    // A timer Turn stays system-acted but may use its creator's grants.
+    let credentialSubject: CredentialSubject | undefined;
+    if (actor.platform === "system") {
+      credentialSubject =
+        resolved.kind === "mailbox"
+          ? timerWatchCredentialSubject(
+              context.conversationId,
+              resolved.batch.map((entry) => entry.message),
+            )
+          : resumedTimerWatchCredentialSubject(
+              context.conversationId,
+              savedTurn?.credentialSubject,
+            );
+    }
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
       source: turnInputFacts.source,
@@ -541,7 +573,10 @@ export function createConversationTurnWorker(
               },
               history: piMessages,
               actor,
-              credentialContext: credentialContextForActor(actor),
+              credentialContext: credentialContextForActor(
+                actor,
+                credentialSubject,
+              ),
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

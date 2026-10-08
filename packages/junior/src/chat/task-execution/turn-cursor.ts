@@ -17,6 +17,10 @@ import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
+  credentialSubjectSchema,
+  type CredentialSubject,
+} from "@/chat/credentials/context";
+import {
   instructionActors,
   instructionProvenanceFor,
   type ConversationMessageProvenance,
@@ -110,6 +114,8 @@ export interface TurnRecord {
    */
   actor?: Actor;
   channelName?: string;
+  /** Delegated subject the Turn started with. Resume must verify it again. */
+  credentialSubject?: CredentialSubject;
   schemaVersion: 2;
   version: number;
   conversationId: string;
@@ -246,6 +252,7 @@ const storedTurnRecordSchema = z
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
+    credentialSubject: credentialSubjectSchema.optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
     resultMessageId: z.string().min(1).optional(),
@@ -448,6 +455,7 @@ function materializeTurnRecord(
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
       channelName: runtimeMetrics?.channelName,
+      credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
@@ -545,6 +553,7 @@ export async function getTurnRecordForResume(
 function buildStoredRecord(args: {
   actor?: Actor;
   conversationId: string;
+  credentialSubject?: CredentialSubject;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
@@ -580,6 +589,7 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     ...definedProps({
       actor: args.actor,
+      credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
@@ -708,6 +718,7 @@ async function updateTurnState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...definedProps({
+        credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
@@ -730,6 +741,7 @@ async function updateTurnState(args: {
 export async function upsertTurnRecord(args: {
   channelName?: string;
   conversationId: string;
+  credentialSubject?: CredentialSubject;
   cumulativeDurationMs?: number;
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
@@ -878,6 +890,8 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
+        credentialSubject:
+          existingRecord?.credentialSubject ?? args.credentialSubject,
         cumulativeToolCallCount:
           args.cumulativeToolCallCount ??
           existingRecord?.cumulativeToolCallCount,

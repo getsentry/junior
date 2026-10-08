@@ -14,7 +14,6 @@ import {
   closeConversationFixture,
   createConversationWebHarness,
 } from "../fixtures/conversation";
-import { streamMcpSearch } from "../fixtures/mcp-auth-orchestration";
 import {
   ACP_TEST_URL,
   appFetch,
@@ -410,8 +409,17 @@ describe("remote ACP recovery", () => {
         SLACK_BOT_TOKEN: "xoxb-test-token",
       };
       pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
+      // The search connects the MCP provider. Without credentials, the Turn
+      // pauses for authorization and never reaches the reply.
       const harness = await createConversationWebHarness(
-        streamMcpSearch("Auth-paused Turn must not reply."),
+        createModelStream([
+          {
+            type: "toolCall",
+            name: "searchMcpTools",
+            arguments: { provider: "eval-auth", query: "budget echo" },
+          },
+          { type: "text", text: "Auth-paused Turn must not reply." },
+        ]),
       );
       const app = await createApp({
         conversationWork: harness.conversationWork,
@@ -449,6 +457,9 @@ describe("remote ACP recovery", () => {
         expect(harness.queue.hasQueuedMessages()).toBe(true);
       });
       await harness.drain();
+      await expect(harness.pendingMessages(sessionId)).resolves.toHaveProperty(
+        "authorization",
+      );
 
       const secondPromptError = await withAcpClient({
         app: secondApp,
@@ -482,6 +493,10 @@ describe("remote ACP recovery", () => {
 
       await expect(prompt).resolves.toEqual({ stopReason: "cancelled" });
       expect(harness.agentRuns).toHaveLength(1);
+      // The dashboard shows no connect prompt for the cancelled Turn.
+      await expect(
+        harness.pendingMessages(sessionId),
+      ).resolves.not.toHaveProperty("authorization");
     } finally {
       await pluginApp?.cleanup();
       process.env = originalEnv;

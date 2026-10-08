@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -10,12 +10,14 @@ describe("Conversation Storage", () => {
   }) => {
     // Each run() posts to a new thread in a new public channel.
     await run(
-      mention(
+      slackMention(
         "Record this decision for our launch: the rollback owner is Priya.",
       ),
     );
     const conversation = await run(
-      mention("Who did we name as the rollback owner in the earlier thread?"),
+      slackMention(
+        "Who did we name as the rollback owner in the earlier thread?",
+      ),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import type { ToolCall } from "@junior-evals/fixture/test";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
@@ -41,7 +41,7 @@ describe("Event automation credentials", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "When review changes are requested on GitHub PR getsentry/junior#691, create an event automation that looks at the feedback and posts a fix plan in this channel.",
       ),
     );
@@ -83,7 +83,7 @@ describe("Event automation credentials", () => {
     });
 
     const conversation = await run(
-      mention(
+      slackMention(
         "Update that event automation to use my connected credentials instead.",
         { author: bob, channel },
       ),
@@ -141,7 +141,7 @@ describe("Event automation credentials", () => {
     });
 
     const conversation = await run(
-      mention(
+      slackMention(
         "Enable my connected credentials for that event automation now.",
         { author: alice, channel },
       ),

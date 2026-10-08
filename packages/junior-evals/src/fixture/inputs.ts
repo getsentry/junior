@@ -44,6 +44,10 @@ export interface MentionInput {
   channelType?: "channel" | "im";
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
+  /** Another Slack app posted the message. Its bot user is the author. */
+  fromApp?: boolean;
   text: string;
 }
 
@@ -53,6 +57,16 @@ export interface ThreadMessageInput {
   author?: SlackAuthor;
   /** Files that the person uploaded with the message. */
   files?: FileInput[];
+  /** The text of a message that the person forwarded with this one. */
+  forwarded?: string;
+  text: string;
+}
+
+/** A slash command of Junior through the Slack webhook, with a valid signature. */
+export interface SlackCommandInput {
+  kind: "slack_command";
+  author?: SlackAuthor;
+  /** The text after the command name, such as `unlink github`. */
   text: string;
 }
 
@@ -84,6 +98,8 @@ export interface GitHubWebhookInput {
 export interface CompleteAuthInput {
   kind: "complete_auth";
   author?: SlackAuthor;
+  /** `first` opens the oldest link that the person got, not the newest. */
+  link?: "first";
   /** The plugin name, such as `github`. */
   provider: string;
 }
@@ -94,7 +110,11 @@ export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
 /** An input that starts a Conversation from an automation. */
 export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
-export type Input = MessageInput | AutomationInput | CompleteAuthInput;
+export type Input =
+  | MessageInput
+  | AutomationInput
+  | CompleteAuthInput
+  | SlackCommandInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
@@ -112,27 +132,57 @@ export interface HistoryReply {
   toolHistory?: HistoryToolCall[];
 }
 
-export type HistoryItem = MessageInput | HistoryReply;
+/**
+ * A message that another Slack app posted before the first input in loaded
+ * history. It is in the Slack thread only.
+ */
+export interface AppMessage {
+  kind: "app_message";
+  text: string;
+}
 
-/** Mention Junior in Slack. `run()` posts it to a new thread. */
-export function mention(
+export type HistoryItem = MessageInput | HistoryReply | AppMessage;
+
+/**
+ * Mention Junior in Slack. `run()` posts it to a new thread. With `fromApp`,
+ * another Slack app posted the mention, as an alert tool does.
+ */
+export function slackMention(
   text: string,
   options: {
     author?: SlackAuthor;
     channel?: MentionChannel;
     channelType?: "channel" | "im";
     files?: FileInput[];
+    forwarded?: string;
+    fromApp?: boolean;
   } = {},
 ): MentionInput {
   return { kind: "mention", text, ...options };
 }
 
 /** Post in the Slack thread without mentioning Junior. */
-export function threadMessage(
+export function slackThreadMessage(
   text: string,
-  options: { author?: SlackAuthor; files?: FileInput[] } = {},
+  options: {
+    author?: SlackAuthor;
+    files?: FileInput[];
+    forwarded?: string;
+  } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };
+}
+
+/**
+ * Run the slash command of Junior in the Slack channel of the Conversation,
+ * such as `slackCommand("unlink github")`. Junior answers the person in
+ * private and starts no turn.
+ */
+export function slackCommand(
+  text: string,
+  options: { author?: SlackAuthor } = {},
+): SlackCommandInput {
+  return { kind: "slack_command", text, ...options };
 }
 
 /** Send a message from the dashboard. */
@@ -181,14 +231,27 @@ export function githubWebhook(
 /**
  * Finish the authorization that a turn waits for.
  * `conversation.continue(completeAuth(provider))` opens the link that Junior
- * sent to the person in private, and it returns the resumed turn. It fails
- * when Junior sent the person no private link.
+ * gave the person, and it returns the resumed turn. The link is the connect
+ * prompt of the dashboard when the dashboard shows one, or the newest link
+ * that Junior sent to the person in private in Slack. With `author`, it is
+ * the Slack link of that person. With `link: "first"`, it is the oldest Slack
+ * link, which a person who asked two times can still open. It fails when
+ * Junior gave the person no link.
  */
 export function completeAuth(
   provider: string,
-  options: { author?: SlackAuthor } = {},
+  options: { author?: SlackAuthor; link?: "first" } = {},
 ): CompleteAuthInput {
   return { kind: "complete_auth", provider, ...options };
+}
+
+/**
+ * A message from another Slack app for `history`, such as an alert that
+ * starts the thread. Junior took no turn for it and stored nothing, so a
+ * later turn reads it from Slack. It comes before the first input.
+ */
+export function slackAppMessage(text: string): AppMessage {
+  return { kind: "app_message", text };
 }
 
 /** An earlier Junior reply for `history`. Pass it to `fork()` to fork there. */

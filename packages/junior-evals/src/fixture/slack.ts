@@ -4,11 +4,11 @@
  * Shared MSW handlers mock the Slack Web API. This module adds the parts a
  * Conversation needs: the bot identity, unique reply timestamps, thread
  * history for `conversations.replies`, and profiles for `users.info`. It also
- * signs Events API webhooks for the app route.
+ * signs Events API webhooks and slash commands for the app route.
  */
 import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
-import { getSlackSigningSecret } from "@/chat/config";
+import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
@@ -30,6 +30,35 @@ export const DEFAULT_SLACK_AUTHOR = {
   userId: TEST_USER_ID,
   userName: "testuser",
 } as const satisfies Required<SlackAuthor>;
+/** The bot user of the other Slack app, which posts each `slackAppMessage()`. */
+export const SLACK_APP = {
+  fullName: "Alerts",
+  userId: "U0ALERTS",
+  userName: "alerts",
+} as const satisfies Required<SlackAuthor>;
+export const SLACK_APP_BOT_ID = "B0ALERTS";
+
+/**
+ * Content under a Slack message that is not in its text. Slack calls it an
+ * attachment; it is not a file.
+ */
+type SlackAttachment = Record<string, unknown>;
+
+/**
+ * A forwarded message, as Slack sends it on the message of the person who
+ * forwarded it.
+ */
+export function forwardedMessage(text: string): SlackAttachment {
+  return { is_share: true, text };
+}
+
+/**
+ * The content of an app message. Apps such as alert tools post their content
+ * in blocks under an empty message, so the message text does not have it.
+ */
+export function appMessageContent(text: string): SlackAttachment {
+  return { blocks: [{ type: "section", text: { type: "mrkdwn", text } }] };
+}
 
 /** An uploaded file, as Slack describes it in events and thread history. */
 export type SlackFile = {
@@ -43,6 +72,7 @@ export type SlackFile = {
 
 /** One message in a Slack thread, as `conversations.replies` returns it. */
 type SlackThreadMessage = {
+  attachments?: SlackAttachment[];
   bot_id?: string;
   files?: SlackFile[];
   text: string;
@@ -76,6 +106,8 @@ export interface SlackMock {
     directMessageChannel?: string;
     userId: string;
   }): string[];
+  /** The Slack people of the test. */
+  authors(): Required<SlackAuthor>[];
   /** Add a message that people or Junior posted before the input. */
   addThreadMessage(
     channel: string,
@@ -325,6 +357,7 @@ export function installSlackMock(testName: string): SlackMock {
       };
     },
     addThreadMessage,
+    authors: () => [...authors.values()],
     newChannelId(channelType) {
       channelSequence += 1;
       const suffix = `${baseSeconds.toString(36)}${channelSequence}`;
@@ -368,12 +401,15 @@ let eventSequence = 0;
  * has the channel type, and an `app_mention` event, which has none. Slack does
  * not fix their order, and Junior stores the first one. The fixture sends
  * `app_mention` first, so each mention turn must learn the channel type from
- * Slack and not from the event. Both events have the uploaded files, and the
- * `message` event has the `file_share` subtype.
+ * Slack and not from the event. Both events have the forwarded message and
+ * the uploaded files, and the `message` event has the `file_share` subtype.
  */
 export async function postSlackMessageEvent(
   app: RequestApp,
   event: {
+    attachments?: SlackAttachment[];
+    /** The bot id of the Slack app that posted the message. */
+    botId?: string;
     channel: string;
     channelType: "channel" | "im";
     files?: SlackFile[];
@@ -391,6 +427,8 @@ export async function postSlackMessageEvent(
     ts: event.ts,
     event_ts: event.ts,
     ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+    ...(event.botId ? { bot_id: event.botId } : undefined),
+    ...(event.attachments ? { attachments: event.attachments } : undefined),
     ...(event.files ? { files: event.files } : undefined),
   };
   if (event.mention) {
@@ -410,15 +448,45 @@ async function postSlackEvent(
   event: Record<string, unknown>,
 ): Promise<void> {
   eventSequence += 1;
-  const body = JSON.stringify({
-    token: "test-token",
-    team_id: SLACK_TEAM_ID,
-    api_app_id: "A_EVAL",
-    type: "event_callback",
-    event_id: `EvEVAL${eventSequence}`,
-    event_time: Math.floor(Date.now() / 1000),
-    event,
-  });
+  await postSignedSlackRequest(
+    app,
+    "application/json",
+    JSON.stringify({
+      token: "test-token",
+      team_id: SLACK_TEAM_ID,
+      api_app_id: "A_EVAL",
+      type: "event_callback",
+      event_id: `EvEVAL${eventSequence}`,
+      event_time: Math.floor(Date.now() / 1000),
+      event,
+    }),
+  );
+}
+
+/** Deliver one slash command of Junior to the app route as Slack does. */
+export async function postSlackCommand(
+  app: RequestApp,
+  command: { channel: string; text: string; user: string },
+): Promise<void> {
+  await postSignedSlackRequest(
+    app,
+    "application/x-www-form-urlencoded",
+    new URLSearchParams({
+      channel_id: command.channel,
+      command: getChatConfig().slack.slashCommand,
+      team_id: SLACK_TEAM_ID,
+      text: command.text,
+      user_id: command.user,
+    }).toString(),
+  );
+}
+
+/** Post one signed Slack request to the app route. */
+async function postSignedSlackRequest(
+  app: RequestApp,
+  contentType: string,
+  body: string,
+): Promise<void> {
   const secret = getSlackSigningSecret();
   if (!secret) {
     throw new Error("The agent test fixture needs SLACK_SIGNING_SECRET");
@@ -430,7 +498,7 @@ async function postSlackEvent(
   const response = await app.request("/api/webhooks/slack", {
     method: "POST",
     headers: {
-      "content-type": "application/json",
+      "content-type": contentType,
       "x-slack-request-timestamp": timestamp,
       "x-slack-signature": signature,
     },

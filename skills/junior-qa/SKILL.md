@@ -132,13 +132,14 @@ Expect an authorization URL on stderr. Complete the provider flow in a browser;
 the same CLI process should then continue the blocked request and print its
 reply without requiring the prompt again.
 
-Use the integration tests as the deterministic check for both local and Slack
-resume behavior:
+Use the integration tests as the check for local resume behavior and for the
+callback route. Use the auth integration evals as the check for Slack and
+dashboard resume behavior:
 
 ```sh
 pnpm --filter @sentry/junior exec vitest run tests/integration/local-agent-runner.test.ts
 pnpm --filter @sentry/junior exec vitest run tests/integration/oauth-callback.test.ts
-pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callback.test.ts tests/integration/mcp-auth-runtime-slack.test.ts
+pnpm --filter @sentry/junior-evals evals:integration evals/integration/auth
 ```
 
 For SQL conversation storage changes, verify the resumed turn rebuilds context

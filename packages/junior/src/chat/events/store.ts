@@ -12,6 +12,8 @@ import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { updateTimerIndex } from "@/chat/events/timer-index";
+import { credentialSubjectSchema } from "@/chat/credentials/context";
+import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -30,6 +32,8 @@ const subscriptionSchema = z
   .object({
     conversationId: z.string().min(1),
     createdAtMs: z.number().finite(),
+    /** Timer creator whose grants the timer Turn may use. */
+    credentialSubject: credentialSubjectSchema.optional(),
     events: z.array(eventTypeSchema).min(1),
     expiresAtMs: z.number().finite(),
     firesAtMs: z.number().finite().optional(),
@@ -359,6 +363,7 @@ export async function createWatch(
 /** Create a retry-stable timer without keeping a process open. */
 export async function createTimerWatch(input: {
   conversationId: string;
+  creatorUserId?: string;
   toolCallId: string;
   afterMs: number;
   intent: string;
@@ -379,8 +384,16 @@ export async function createTimerWatch(input: {
     const nowMs = Date.now();
     const firesAtMs = nowMs + input.afterMs;
     const expiresAtMs = firesAtMs + 24 * 60 * 60 * 1000;
+    const credentialSubject = input.creatorUserId
+      ? bindTimerWatchCredentialSubject({
+          conversationId: input.conversationId,
+          userId: input.creatorUserId,
+          watchId: id,
+        })
+      : undefined;
     const record = subscriptionSchema.parse({
       ...selector,
+      ...(credentialSubject ? { credentialSubject } : undefined),
       id,
       firesAtMs,
       expiresAtMs,

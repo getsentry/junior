@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 import { mockWebSearchResults } from "@junior-evals/fixture/web";
@@ -9,7 +9,7 @@ describe("Output Contract", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Give me a short overview of how OAuth 2.0 authorization code flow works. Cover the authorization request, token exchange, and refresh. Keep it to a few short sections.",
       ),
     );
@@ -52,7 +52,7 @@ describe("Output Contract", () => {
       },
     ]);
     const conversation = await run(
-      mention(
+      slackMention(
         "Where can I find the official documentation for the Slack Web API, Slack Bolt JS, and Slack Block Kit? Just point me at the three canonical starting pages.",
       ),
     );
@@ -74,7 +74,7 @@ describe("Output Contract", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Give me a short comparison of REST and GraphQL across these three dimensions: caching, over-fetching, and tooling maturity. Keep it tight.",
       ),
     );

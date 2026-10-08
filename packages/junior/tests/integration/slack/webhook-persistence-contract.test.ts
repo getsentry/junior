@@ -17,7 +17,6 @@ import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
-  createConversationWorkSlackHarness,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
@@ -87,17 +86,30 @@ describe("Slack webhook persistence contract", () => {
   );
 
   it("accepts a mention even when its receipt reaction is rate limited", async () => {
-    const harness = await createConversationWorkSlackHarness();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
     queueSlackApiError("reactions.add", {
       error: "ratelimited",
       status: 429,
       headers: { "retry-after": "60" },
     });
-    const response = await harness.send({
-      text: "<@U0BOT> deploy status",
+
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({ text: `<@${SLACK_BOT_USER_ID}> deploy status` }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
     });
+
     expect(response.status).toBe(200);
-    expect(harness.wakes.queuedMessages()).toHaveLength(1);
+    expect(queue.queuedMessages()).toHaveLength(1);
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
     expect(slackApiOutbox.reactionAdds()[0]?.params).toMatchObject({
       channel: "C123",
@@ -187,6 +199,31 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("acks a mention that Junior posted without queueing work", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> do not respond`,
+          user: SLACK_BOT_USER_ID,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(queue.queuedMessages()).toEqual([]);
+  });
 
   it("stores subscribed non-mention messages as history without worker work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);

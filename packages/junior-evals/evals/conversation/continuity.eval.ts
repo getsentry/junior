@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention, reply } from "@junior-evals/fixture/inputs";
+import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
@@ -7,9 +7,9 @@ describe("Thread Continuity", () => {
   test("when a follow-up asks about the prior turn, recall the earlier budget context", async ({
     run,
   }) => {
-    const conversation = await run(mention("what did i just ask?"), {
+    const conversation = await run(slackMention("what did i just ask?"), {
       history: [
-        mention("I need the budget by Friday."),
+        slackMention("I need the budget by Friday."),
         reply("Got it: budget due Friday."),
       ],
     });

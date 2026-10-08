@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -9,7 +9,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("send me a direct reminder in 1 minute to wash my hands"),
+      slackMention("send me a direct reminder in 1 minute to wash my hands"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -44,7 +44,9 @@ describe("Schedule Creation", () => {
   test("when asked for a terse one-off reminder, create it without recurrence", async ({
     run,
   }) => {
-    const conversation = await run(mention("remind me to drink water in 1m"));
+    const conversation = await run(
+      slackMention("remind me to drink water in 1m"),
+    );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
@@ -78,7 +80,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "every Friday at 4pm Pacific, remind me in this channel to submit my timesheet",
       ),
     );
@@ -98,7 +100,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("in 2 minutes tell the channel standup moved"),
+      slackMention("in 2 minutes tell the channel standup moved"),
     );
 
     const creates = completedToolCalls(
@@ -126,7 +128,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "every night at 2am Pacific, open PRs to fix failing CI checks in getsentry/junior.",
       ),
     );
@@ -152,7 +154,7 @@ describe("Schedule Creation", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
       ),
     );

@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
@@ -16,7 +16,7 @@ describe("Skill Invocation Control", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("$weather-lookup check the weather in San Francisco."),
+      slackMention("$weather-lookup check the weather in San Francisco."),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -39,7 +39,7 @@ describe("Skill Invocation Control", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Can you double-check what the source handbook says about capability support verification?",
       ),
     );
@@ -61,7 +61,7 @@ describe("Skill Invocation Control", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "I changed the docs site's responsive navigation and dark theme. How would you verify it in the browser? Don't start yet—I'll send the preview URL next.",
       ),
     );

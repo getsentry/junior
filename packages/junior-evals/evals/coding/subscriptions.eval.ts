@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { githubWebhook, mention } from "@junior-evals/fixture/inputs";
+import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
 import { insertWatch } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
@@ -75,7 +75,7 @@ describe("Watches", () => {
   }) => {
     const commitSha = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
     const conversation = await run(
-      mention(
+      slackMention(
         `Watch the Production deployment of getsentry/junior-prod for commit ${commitSha}. It may not exist yet; tell me when it succeeds, fails, or reports an error.`,
       ),
     );
@@ -125,7 +125,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         `Check ${pullRequest} every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.`,
       ),
     );
@@ -179,7 +179,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(`Let me know here when ${pullRequest} lands.`),
+      slackMention(`Let me know here when ${pullRequest} lands.`),
     );
     // A watch whose events do not fit its intent. Check recovery is not a merge.
     await insertWatch({
@@ -201,7 +201,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         `Watch ${pullRequest} for CI failures before review and tell me here. Just summarize any failure and suggest next steps; do not change the PR.`,
       ),
     );
@@ -238,7 +238,7 @@ describe("Watches", () => {
   }) => {
     // The fixture skill has a local checkout of the pull request branch.
     const conversation = await run(
-      mention(
+      slackMention(
         `/github-headless-pr-fixture Watch ${pullRequest}. When its checks fail, fix the failure and push the update. Do not change anything before a check fails.`,
       ),
     );
@@ -277,7 +277,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(`Let me know here when ${pullRequest} lands.`),
+      slackMention(`Let me know here when ${pullRequest} lands.`),
     );
     expect(
       watchedEvents(conversation),
@@ -308,7 +308,7 @@ describe("Watches", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(`Let me know here when ${pullRequest} lands.`),
+      slackMention(`Let me know here when ${pullRequest} lands.`),
     );
     expect(
       watchedEvents(conversation),
@@ -319,7 +319,7 @@ describe("Watches", () => {
     // its own turn.
     const delivery = await conversation.continue(mergedWebhook(), {
       onProgress: sendDuringFirstModelRequest([
-        mention(
+        slackMention(
           "The deployment owner is Alice. Tell the thread who owns the deployment.",
         ),
       ]),

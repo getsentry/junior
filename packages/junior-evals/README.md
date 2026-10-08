@@ -24,25 +24,26 @@ Tests that run the agent use the agent test fixture in `src/fixture/`. Issue
 The agent is one unit. A test does not mock the model or any other part of
 the agent. A test touches the product in three places only:
 
-1. Inputs through app routes: `mention()` and `threadMessage()` post signed
-   Slack Events API webhooks, `webMessage()` posts to the conversations API,
+1. Inputs through app routes: `slackMention()` and `slackThreadMessage()` post
+   signed Slack Events API webhooks, `webMessage()` posts to the conversations API,
    `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route, and `completeAuth()`
-   calls the OAuth or MCP OAuth callback route.
+   signed GitHub webhook to the GitHub plugin route, `slackCommand()` posts a
+   signed slash command to the Slack webhook, and `completeAuth()` calls the
+   OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
 
 ```ts
 import { describe, expect } from "vitest";
-import { mention, reply } from "@junior-evals/fixture/inputs";
+import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
   test("when asked about the prior turn, recall it", async ({ run }) => {
-    const conversation = await run(mention("what did i just ask?"), {
-      history: [mention("I need the budget by Friday."), reply("Got it.")],
+    const conversation = await run(slackMention("what did i just ask?"), {
+      history: [slackMention("I need the budget by Friday."), reply("Got it.")],
     });
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -92,18 +93,30 @@ describe("Thread Continuity", () => {
   A call fails when the agent is not idle within 60 seconds. The product
   delays some queued deliveries; for example, a watch delivery waits 30
   seconds for more events. The 60 seconds start when the last delivery is due.
-- A channel `mention()` arrives as Slack sends it: an `app_mention` event
+- A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
   event. Junior then asks Slack for the channel type and learns that the
   channel is public.
-- `mention()` and `threadMessage()` take `files`, and `webMessage()` takes
-  `images`. `file(name, mimeType, content)` is a file that a person uploaded.
+- `slackMention()` and `slackThreadMessage()` take `files`, and `webMessage()`
+  takes `images`. `file(name, mimeType, content)` is a file that a person uploaded.
   The Slack mock serves its download and lists it in the thread history.
   `unavailableFile(name, mimeType)` is a file whose download fails.
   `ticketScreenshotPng()` in `src/fixture/images.ts` is a real PNG that shows
   a ticket number. Only the pixels have the number, so a reply with
   `TICKET_NUMBER` proves that Junior read the image.
+- `slackMention()` and `slackThreadMessage()` take `forwarded`, the text of a
+  message that the person forwarded with their own message.
+- `slackAppMessage(text)` is a message from another Slack app for `history`,
+  such as an alert that starts the thread. It comes before the first input. Junior
+  took no turn for it and stored nothing, so the message is in the Slack mock
+  only, and a later turn reads it from Slack.
+- `slackMention(text, { fromApp: true })` is a mention that another Slack app
+  posted. Junior takes a turn for it. An app cannot open an authorization
+  link, so the turn does not wait for one.
+- Slack sends a forwarded message and the content of an app message outside
+  the message text. The fixture builds those Slack shapes, so a test gives
+  only the text.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
@@ -135,11 +148,22 @@ describe("Thread Continuity", () => {
   `conversation.continue(completeAuth(provider))` opens that link, the mocked
   provider redirects to the callback route of the app, and the call returns
   the resumed turn. A link in a channel message is not private, so the call
-  fails.
+  fails. `completeAuth(provider, { author })` opens the link of another Slack
+  person. `completeAuth(provider, { link: "first" })` opens the oldest link of
+  the person. A person who asks two times before they authorize has two
+  links.
+- A turn that a person started from the dashboard shows a connect prompt
+  there and sends no Slack link. `conversation.authorizationPrompt` is the
+  label of that prompt after the call. `completeAuth(provider)` opens the
+  prompt when the dashboard shows one.
+- `conversation.continue(slackCommand("unlink <provider>"))` runs the slash
+  command of Junior as a Slack person. Junior answers in private and starts
+  no turn.
 - `insertCredential()` stores the OAuth credential that a Slack person has
   for a plugin. `expired: true` makes its next use refresh it.
-  Credentials are in the state store, which tests share, so the fixture
-  removes the credentials of a test when the test finishes.
+  Credentials and authorization attempts are in the state store, which tests
+  share, so the fixture removes those of the people of a test when the test
+  finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
   needs the memory plugin to recall it. `subjectType: "conversation"` stores a
   memory about the conversation. `visibility: "private"` stores a memory that
@@ -512,13 +536,13 @@ Avoid:
 
 ```typescript
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Routing", () => {
   test("when explicitly mentioned, post one direct reply", async ({ run }) => {
-    const conversation = await run(mention("Summarize this"));
+    const conversation = await run(slackMention("Summarize this"));
 
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

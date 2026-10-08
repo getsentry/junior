@@ -89,8 +89,6 @@
       "files": [
         "tests/component/agent/sandbox.test.ts",
         "tests/component/app-sandbox-trace-config.test.ts",
-        "tests/component/auth/mcp-auth-runtime-slack.test.ts",
-        "tests/component/auth/plugin-auth-runtime-slack.test.ts",
         "tests/component/briefs/conversation-brief-task.test.ts",
         "tests/component/cli/chat-cli.test.ts",
         "tests/component/cli/local-chat-composition.test.ts",

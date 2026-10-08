@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
@@ -11,12 +11,12 @@ describe("User Memory", () => {
     run,
   }) => {
     const asked = await run(
-      mention("Please remember that I prefer terse PR summaries.", {
+      slackMention("Please remember that I prefer terse PR summaries.", {
         channelType: "im",
       }),
     );
     const recalled = await asked.continue(
-      mention("What do you remember about how I like PR summaries?"),
+      slackMention("What do you remember about how I like PR summaries?"),
     );
     await expect(recalled).toSatisfyJudge(
       RubricJudge,
@@ -60,7 +60,7 @@ describe("User Memory", () => {
       });
     }
 
-    const conversation = await run(mention("what time is it"));
+    const conversation = await run(slackMention("what time is it"));
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({
@@ -97,12 +97,12 @@ describe("User Memory", () => {
     run,
   }) => {
     const asked = await run(
-      mention("ok remember that i think types in python are bad", {
+      slackMention("ok remember that i think types in python are bad", {
         channelType: "im",
       }),
     );
     const conversation = await asked.continue(
-      mention("What do you remember about my opinion on Python types?"),
+      slackMention("What do you remember about my opinion on Python types?"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -135,7 +135,7 @@ describe("User Memory", () => {
     await insertMemory({ content: existing, visibility: "private" });
 
     const conversation = await run(
-      mention(
+      slackMention(
         "Please remember that I want risk notes at the start of PR summaries.",
         { channelType: "im" },
       ),
