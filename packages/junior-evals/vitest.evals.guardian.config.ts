@@ -52,6 +52,7 @@ export default defineConfig({
     include: ["evals/guardian/**/*.eval.ts"],
     maxWorkers: 1,
     setupFiles: [
+      path.resolve(__dirname, "src/stable-setup.ts"),
       path.resolve(__dirname, "src/guardian-setup.ts"),
       path.resolve(__dirname, "src/recording-setup.ts"),
     ],

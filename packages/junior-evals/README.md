@@ -300,6 +300,9 @@ Its `README.md` tells how it keys, records, and replays requests.
   secret-like values before you commit them.
 - Fix a changing value for all tests, not in one test. A new test must not
   need its own fix. The fixture and the rules already handle these:
+  - Every eval suite loads `src/stable-setup.ts` first. It sets the time
+    zone to UTC and gives `Math.random` a seed from the test name. It keeps
+    the clock and `crypto.randomUUID` real; the file tells why.
   - The Slack mock takes its timestamps and channel ids from the test name.
     Setup data and web Conversations take ids from `fixtureId()` in
     `src/fixture/ids.ts`.
