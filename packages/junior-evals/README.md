@@ -111,6 +111,9 @@ describe("Thread Continuity", () => {
   such as an alert that starts the thread. It comes before the first input. Junior
   took no turn for it and stored nothing, so the message is in the Slack mock
   only, and a later turn reads it from Slack.
+- `slackMention(text, { fromApp: true })` is a mention that another Slack app
+  posted. Junior takes a turn for it. An app cannot open an authorization
+  link, so the turn does not wait for one.
 - Slack sends a forwarded message and the content of an app message outside
   the message text. The fixture builds those Slack shapes, so a test gives
   only the text.
@@ -146,7 +149,9 @@ describe("Thread Continuity", () => {
   provider redirects to the callback route of the app, and the call returns
   the resumed turn. A link in a channel message is not private, so the call
   fails. `completeAuth(provider, { author })` opens the link of another Slack
-  person.
+  person. `completeAuth(provider, { link: "first" })` opens the oldest link of
+  the person. A person who asks two times before they authorize has two
+  links.
 - A turn that a person started from the dashboard shows a connect prompt
   there and sends no Slack link. `conversation.authorizationPrompt` is the
   label of that prompt after the call. `completeAuth(provider)` opens the

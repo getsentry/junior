@@ -46,6 +46,8 @@ export interface MentionInput {
   files?: FileInput[];
   /** The text of a message that the person forwarded with this one. */
   forwarded?: string;
+  /** Another Slack app posted the message. Its bot user is the author. */
+  fromApp?: boolean;
   text: string;
 }
 
@@ -96,6 +98,8 @@ export interface GitHubWebhookInput {
 export interface CompleteAuthInput {
   kind: "complete_auth";
   author?: SlackAuthor;
+  /** `first` opens the oldest link that the person got, not the newest. */
+  link?: "first";
   /** The plugin name, such as `github`. */
   provider: string;
 }
@@ -139,7 +143,10 @@ export interface AppMessage {
 
 export type HistoryItem = MessageInput | HistoryReply | AppMessage;
 
-/** Mention Junior in Slack. `run()` posts it to a new thread. */
+/**
+ * Mention Junior in Slack. `run()` posts it to a new thread. With `fromApp`,
+ * another Slack app posted the mention, as an alert tool does.
+ */
 export function slackMention(
   text: string,
   options: {
@@ -148,6 +155,7 @@ export function slackMention(
     channelType?: "channel" | "im";
     files?: FileInput[];
     forwarded?: string;
+    fromApp?: boolean;
   } = {},
 ): MentionInput {
   return { kind: "mention", text, ...options };
@@ -226,11 +234,13 @@ export function githubWebhook(
  * gave the person, and it returns the resumed turn. The link is the connect
  * prompt of the dashboard when the dashboard shows one, or the newest link
  * that Junior sent to the person in private in Slack. With `author`, it is
- * the Slack link of that person. It fails when Junior gave the person no link.
+ * the Slack link of that person. With `link: "first"`, it is the oldest Slack
+ * link, which a person who asked two times can still open. It fails when
+ * Junior gave the person no link.
  */
 export function completeAuth(
   provider: string,
-  options: { author?: SlackAuthor } = {},
+  options: { author?: SlackAuthor; link?: "first" } = {},
 ): CompleteAuthInput {
   return { kind: "complete_auth", provider, ...options };
 }
