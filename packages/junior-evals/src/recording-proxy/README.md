@@ -110,6 +110,9 @@ showed. `values` of a rule maps a name to a regular expression source.
   A replayed response thus uses the ids of this run.
 - A value that the response makes itself, such as a date that a model
   calculates, stays as it was recorded.
+- Values in thinking blocks of the request do not count for `n`. A replay
+  keeps the recorded text of a thinking block, so when a later request sends
+  it back, its values come from the recording run.
 
 Model streams send a tool call in many small deltas, so a value can be
 split over two events. Before it records a `text/event-stream`, the proxy

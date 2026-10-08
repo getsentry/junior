@@ -9,6 +9,9 @@
  *
  * Thinking blocks keep their recorded text. A signature covers that text,
  * and the provider refuses a changed thinking block in a later request.
+ * So a later request sends back the values of the recording run in its
+ * thinking blocks, and `request-key.ts` must not fill placeholders from
+ * them.
  */
 
 /** The text field of each delta type that the proxy merges. */
@@ -17,10 +20,11 @@ const DELTA_FIELDS: Record<string, string> = {
   text_delta: "text",
   thinking_delta: "thinking",
 };
+/** The content block types of thinking, in a stream and in a request. */
+export const THINKING_BLOCK_TYPES = new Set(["redacted_thinking", "thinking"]);
 const THINKING_TYPES = new Set([
-  "redacted_thinking",
+  ...THINKING_BLOCK_TYPES,
   "signature_delta",
-  "thinking",
   "thinking_delta",
 ]);
 

@@ -15,6 +15,7 @@
  */
 import { createHash } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
+import { THINKING_BLOCK_TYPES } from "./streams.ts";
 import type { RecordingRule } from "./types.ts";
 import {
   extractValues,
@@ -33,7 +34,10 @@ export interface KeyedRequest {
   /** The name of the recording file, without `.json`. */
   key: string;
   parts: RequestParts;
-  /** The changing values of the request, in their order. */
+  /**
+   * The changing values of the request outside thinking blocks, in their
+   * order. They fill the placeholders of a replayed response.
+   */
   values: RequestValues;
   /** The request that the key hashes. Miss files show it. */
   normalized: {
@@ -66,6 +70,21 @@ function parseJson(body: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The body without thinking blocks. A replay keeps the recorded text of a
+ * thinking block (`streams.ts`), and a later request sends it back. So its
+ * values come from the recording run, not from this run.
+ */
+function withoutThinking(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutThinking);
+  if (value === null || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  if (THINKING_BLOCK_TYPES.has(String(record.type))) return null;
+  return Object.fromEntries(
+    Object.entries(record).map(([name, item]) => [name, withoutThinking(item)]),
+  );
 }
 
 const sha256 = (text: string) =>
@@ -114,10 +133,16 @@ export function keyRequest(
     ]),
   );
   const json = parseJson(request.body);
-  const { text, values } = extractValues(
+  const { text, values: allValues } = extractValues(
     json === undefined ? request.body : stableStringify(json),
     rule.values,
   );
+  // The key sees every value. Placeholders use only the values of this run.
+  const values =
+    json === undefined || allValues.size === 0
+      ? allValues
+      : extractValues(stableStringify(withoutThinking(json)), rule.values)
+          .values;
   const key = sha256(
     [
       KEY_VERSION,

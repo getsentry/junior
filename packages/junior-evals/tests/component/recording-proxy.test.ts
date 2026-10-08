@@ -154,7 +154,8 @@ describe("recording proxy", () => {
 
   it("replays a response with the changing values of the current request", async () => {
     // The model repeats the memory id of the request, split over two
-    // deltas, and quotes it in its thinking.
+    // deltas, and quotes it in its thinking. The request also sends back a
+    // thinking block of an earlier turn, which a replay keeps as recorded.
     respond = (body) => {
       const id = /"id":"([^"]+)"/.exec(body)![1]!;
       const delta = (type: string, field: string, text: string) =>
@@ -165,10 +166,18 @@ describe("recording proxy", () => {
         delta("input_json_delta", "partial_json", `${id.slice(10)}"}`),
       ].join("");
     };
-    const request = (id: string, at: string) => ({
-      messages: [{ content: "forget it", memories: [{ id, at }] }],
-    });
     const first = "0b7c6a2e-1f4d-4c1a-9b8e-2d3f4a5b6c7d";
+    const request = (id: string, at: string) => ({
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: `Find ${first}.`, signature: "s" },
+          ],
+        },
+        { content: "forget it", memories: [{ id, at }] },
+      ],
+    });
     const second = "9f8e7d6c-5b4a-4321-8fed-cba987654321";
     const running = await start("auto");
     await session(running, [request(first, "2026-10-07T03:18:03.123Z")]);
