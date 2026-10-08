@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { juniorConversationBindings } from "@/db/schema";
 import type { JuniorSqlDatabase } from "@/db/db";
 
@@ -40,6 +40,41 @@ export async function getConversationIdByProviderConversation(
     )
     .limit(1);
   return rows[0]?.conversationId;
+}
+
+/**
+ * Return the first provider conversation bound to one Conversation in one
+ * provider place. A channel-level Location starts its thread with that post.
+ */
+export async function getFirstProviderConversationId(
+  executor: JuniorSqlDatabase,
+  args: Omit<ProviderConversationReference, "providerConversationId"> & {
+    conversationId: string;
+  },
+): Promise<string | undefined> {
+  const rows = await executor
+    .db()
+    .select({
+      providerConversationId: juniorConversationBindings.providerConversationId,
+    })
+    .from(juniorConversationBindings)
+    .where(
+      and(
+        eq(juniorConversationBindings.conversationId, args.conversationId),
+        eq(juniorConversationBindings.provider, args.provider),
+        eq(juniorConversationBindings.providerTenantId, args.providerTenantId),
+        eq(
+          juniorConversationBindings.providerDestinationId,
+          args.providerDestinationId,
+        ),
+      ),
+    )
+    .orderBy(
+      asc(juniorConversationBindings.createdAt),
+      asc(juniorConversationBindings.providerConversationId),
+    )
+    .limit(1);
+  return rows[0]?.providerConversationId;
 }
 
 /** Bind provider coordinates to a durable conversation in the caller's SQL scope. */
