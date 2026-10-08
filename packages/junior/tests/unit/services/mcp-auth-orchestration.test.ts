@@ -224,11 +224,14 @@ describe("createMcpAuthOrchestration", () => {
 
     await orchestration.authProviderFactory(plugin("github"));
 
-    await expect(orchestration.onAuthorizationRequired("github")).resolves.toBe(
-      true,
-    );
+    await expect(
+      orchestration.onAuthorizationRequired("github", {
+        intent: "search GitHub for the release notes",
+        toolName: "search_code",
+      }),
+    ).resolves.toBe(true);
     expect(orchestration.getPendingPause()).toMatchObject({
-      requestText: "use MCP",
+      requestText: "search GitHub for the release notes",
     });
 
     expect(deliverPrivateMessage).toHaveBeenCalledWith(
