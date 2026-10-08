@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/actors.eval.ts > Memory with Multiple Actors > when a non-actor shares operational knowledge, conversation-scoped memory is still allowed",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "18e8d0c1b5e6",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_033cf1f562285f04016ac69a1c85d087d19db4a7dffc4f58db\",\"reasoningEncryptedContent\":\"gAAAAABqxpoeyYhAksifnkUn9DjkVvwCoXBV3vphzQ4WRX44sU7jxVa5bKYxQp0udHuPBMOZD3OZQ0oV-RSIv0xH8gWDwB-tT-M4SAA94CRzebWFNr4r6dQNSNwAXYGvC5DPEPeYRA-ABQtUCPqhhvB1a_dFOUXla16TVzkhLrvw5itvDFYg-oGSb8KpvKbUlFUzKwSrmkHCltdFEPXbCbiqLPgWuPupdcI5VTg39BaaYhMpDM8azOeiEZoWdC9VLBubPFGgqAJnAqWFya7FaUZN9DnuZSBUXbf8iiI5jmW2-Rm2f8KifDkTHYoHr3THyW1rLj5ESc_s9j9_8H2FG8qdbycImeUggrqpaulWoul2WhlDVFP9zZdcsopK1a16_uGLw_Tsb_h71Z6VZQ75eIObkI52NaBGfoq8z_bmdlftKM3qkJyA_X5rEBdwNszN8LP7tACw513Gu7FJX_uMatmgm0SnlXT9bCWhbFthwbv32Qda8O_i3rPyhpc1J7uG8cGUoSlt3_MGE0n4bEu_r4I1gZwjZWao43L4PCbFBLGhHTkTpr29W1TQUaM-M6a9ffdQO7bsgrYbCGjCW3IoXabPvo5GcsRbChM0HZJONd9pC7MvF4r9x7JIjrHcCGyEwMaWUPt-1uPjVIiAp69Lsqw24rK18V4kU6ahzFIvbTy2F8vdVk-o5lFbGiiAijokjWocLjdj7IDOjDVIG0VPLhV9MIzULfOU3ZAqWVUTrzbcY-V3cwww4gRtGfNRtjmPAtC7lnKBb_3odPN-656I3V2cSJTDSSInQ8-JD_rlTGTt_NK_EZ0VVrhh4ms_lVTyRpk_Hw7ufvdMH_Z2I0N9uREX_gTiLNV-V6XUeA1BFF-wpNoeKlNJtq4qlAlatIYl5LZ4Hb1vT4ftZhQocjk8EH5FP3W0BxgYF2P_msZRZO5cgRiKnUhduz8_W8wwZUnQxMMrmGsyyLnZdqxfDmNcZ9hXPS8wDed2xs3NoteDyQX0vbpdNHD3LrJnCVxW-DUFWK46NRcXXKHgmWk6GQeSsCb5qoA4_FWz-3o9ZVNTfmHzGlHQsWinzxrbb6lMhCl4Il_T4kLLsFeOReNog4EW4y2CznlXGqWOvStpwWvVt6eMZ1Gnjnp0fnwICHWJgIc1BA4ToI_96123MLi5R78oHzD2cXiLlbD17YYe4PUVX19SWs6J-0ijOHXxO5BaovJRmBqY7bCFA7_DS4hISE7BM2oklOPnKNlPTAPH9-g8wrnZtFzAIE_h1znpnOVjXePujCq4mkZSDm026DQnj5ls5HhwAhaAm96wn2d64m9NfWcpCTOy9dk95RGwe9udZQf6jDBNgmyYkilKW10kApWlYIwHK_cgLdra9Slpy5T5DNOVmo3O8tlw0CMwS8ATQpPFXDs1r8WBpUNOOAJ3wiWFtBCMPI_YuHry4wIjrKfOV-M-O-C-sElzmipXOuATtuN-DuMO-nmAfmesmFVPFdBou4gPVUXbzbmq2VvV7zvSZ4-Fx1FODdI3P2ZNeEPf7k1Xznmaw_M6TvqxT0r_AKa3Obe6wQ7uX-4Lh_TSJxWCPaa72a6xdl43q_MpRg4rdHmj2RHhbyCaxvWFPA6hq_hU7dj7eg9Kol_zUUWpb_9WKuTvbtzm7kv0BnYiBDjaMIzOU9qd8ud0cnYiyXHq8fDhHTYVP7BbFj4nnnKfBHGfld9fWFdH-5Uka2mMpF2WNa6e4V_Ojfyb2Z2o5G5cYosNRj3vECJRjIa0Zq8BoQr4-Cl0-7Tq_1HezCoG4gxkuQ569NG6zyVmIletJKT09mVwm_lnwZxa75l2ehc7UsKdJvJmfyZuMK3GvCAcB4t4Gw-PwBg1JSH5BuoQeMuV0iia6fiBwIHxvHbitC5ibGehgbhqXnQGA5HochQyXcyQIQaAMy-T6jZ7Mflw2MRzmJmX__BM2JUHlFz0c00GYzQTxc38iOqfl-l3Y4x4JkOrMhAhGI_0rR_npxqtZXtXJJVSOGXUilqsWwdrYCmk3wGpslDacUqHnWRdDJ2f7yHz9xdPcmisn4xH39YD4bglu4ArTQe6XBV0k8Qog-Zx6oIbZ9_5zYo24Krdy4BhJm129qVOT5J9Acuoa0S2ntjNnBrhpCl_ynMjv4X73w==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"Deploys freeze every Friday at noon, so risky changes need to land earlier in the week.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[1]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_033cf1f562285f04016ac69a1dab8c87d1bd80eaec896a1248\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1600,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1597},\"outputTokens\":{\"total\":171,\"text\":54,\"reasoning\":117},\"raw\":{\"input_tokens\":1600,\"input_tokens_details\":{\"cache_write_tokens\":1597,\"cached_tokens\":0},\"output_tokens\":171,\"output_tokens_details\":{\"reasoning_tokens\":117},\"total_tokens\":1771}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_033cf1f562285f04016ac69a1c22fc87d18ceaf84ccf507f2b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400476058,\"endTime\":1791400478257,\"providerRequestId\":\"req_f58032019e694ebebe2466e519466bd6\",\"statusCode\":200,\"providerResponseId\":\"resp_033cf1f562285f04016ac69a1c22fc87d18ceaf84ccf507f2b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"4bd40b31cac3583149d5623001457009\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000285425\",\"marketCost\":\"0.000285425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000285425\",\"inferenceCost\":\"0.000285425\",\"inputInferenceCost\":\"0.000199925\",\"outputInferenceCost\":\"0.0000855\",\"generationId\":\"gen_01M4BWKZBT5XFTHFJ3F2PHNYZ3\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

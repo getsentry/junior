@@ -1,0 +1,61 @@
+{
+  "session": "evals/integration/conversation/attachments.eval.ts > Conversation Attachments > when a web message has an image, the reply uses the image",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "d4735e3a265e",
+      "messages[0]": "95fc74ff7e21",
+      "messages[1]": "7cbd5df2a968",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "d4243d8c92c5",
+      "tools.length": "35135aaa6cc2",
+      "tools[0]": "d098cd1dd937",
+      "tools[1]": "12dba46828ca",
+      "tools[2]": "a1056c279456",
+      "tools[3]": "c40e21f9ef0d",
+      "tools[4]": "d3dd7b468c8f",
+      "tools[5]": "f116e66fefdf",
+      "tools[6]": "6653a0a0a3a9",
+      "tools[7]": "3b6ca120b0fb",
+      "tools[8]": "c7dc1bc2c04d",
+      "tools[9]": "f9054d6c4f64",
+      "tools[10]": "f47ca0d0af13",
+      "tools[11]": "37bbd2f6c311",
+      "tools[12]": "5802c8f4c428",
+      "tools[13]": "ae045899dc37",
+      "tools[14]": "218843320f4d",
+      "tools[15]": "0667eb3022b2",
+      "tools[16]": "93f913ef2874",
+      "tools[17]": "cb8897349d4d",
+      "tools[18]": "95c787875e54",
+      "tools[19]": "23162886a934",
+      "tools[20]": "9da7c42a547b",
+      "tools[21]": "ed13dd55d6be",
+      "tools[22]": "06ea3d798e31",
+      "tools[23]": "98cd636f11ec",
+      "tools[24]": "00fbcd9a6ca2",
+      "tools[25]": "b3d118e01068",
+      "tools[26]": "0186c3b7d153",
+      "tools[27]": "e4e3f296282f",
+      "tools[28]": "ec59e4ad36dd",
+      "thinking": "e871cb1e753e"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4BWEPT7Z4FEFRFSM6MAFZPM\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"gwrs1.eyJvcGVuYWkiOnsiaXRlbUlkIjoicnNfMDE3ZmEwZTcyMjRhYzY4NjAxNmFjNjk5NzA4ZTEwODdkMWFkMDE4ZjBiY2RhZDRkOGMiLCJyZWFzb25pbmdFbmNyeXB0ZWRDb250ZW50IjoiZ0FBQUFBQnF4cGx3ZWg4RElySFQ5Z2hEU1Rvckt5anBEM1NTZEVEZVdTX3hDb1ZqdnJXcmtGMGRSU3VaS3JoUkhBNmhVa3lXWERrSmx0QnlpeTNkRlFzNURWM2RpQm9DOEo1Xzg1VWtQY1ZMbmdpczU2cWtKZmlTM3BZUThpWksyYzVtcXZuYWYxU04yN2Fwd2JXM0M4Q3djcm9ZR1RkT2lQRXd2Um9tSnM4cUdENlZnbXZoMG5hTjd5TmxscVRCWDZ5QXN4SWdzSTZsWmlIRGhmMm1aXzl0aENIVF9kYmdJVzg0WDRDVFRPZHJIQVozcVNCbG8zeG5Eb1FXYkpNNnk4cWlJSjdNV2VIbXVLZUR4VGx6U2pWTXk4NUJ0U3llLVl3RGh1cTJwRk9PXzRiM0l2dTJOZ1kzRkg0NGUxZFBNX3UwM0o4d3dCQzl3UUE4R0Z5SjhLWF9GeXVwZWlVdmNwQVdpci01aUFjaDBvUFhVeHBZU2J3N2syTkdKQkRNbTZ2Tk5iTzU1OVRPZmtmRHNWVTRNY2t6SHUzNWExbG1QRE5kb2V5OFEwTlVoYU9ZeFVBYy1KTFg5M1V0c1czNGdQQmdwU2Q1dTdJb2QxendKOXBuakloeG1qQ2VSdGQxZlhKbktKNGo0WHd1dzQ2S3BCcVRRd3hPSkFXTmhhb012aktpVTZ5eDJXMUg2UnZ4aXptMTVNZGZmZkRCM0ZYeUtHYWEzZ1pFMFNtU1lYUVJJYnptQU43NElwQjRwbzZzR3l4N3J0cW9xNUhtejJkWFp3UURSWkQ2RzFVRm1kb09Rc3RKMnR2SHJpdVBJa0pXTlJvY3hhRFlqUmtSRlp1RFBRTC05YmtCQjNwT2gxb2RtaWhwWGFvb3R0UEM1eWVlM1dpUkozMUY5bEhpMTlUSjUxMDBGbmhmVG5vSm1QVzBXTXRYR0lEVmJUT1pfdG9PYjlLQWhOZ0JoQ1FfNnVPNzlCb0xRU1pJbzNfTGk1c0Q5c3FvU1FZSVBQaHR6Vnctc2diR3pRVnpyQW9XZUZzbjFTbDJMVmlZUHNRaHhhMGZ4WmpYbDI3enpCWjh5OF8ydmNNVFVCSjhBUjV5aTM3SU9Da0Jvc1A4OEdEbHhsRkYtMW13M0FTbHk5TURPUDYxYmJMODIwV2JWclJwdURsTGhNUEpXTklYaVNNUkFlVzI1QjJYbVMyUldlaFU1SEJRWUpQSEVzdkF0eUlfSWhNRmdueTRVc3pXYmdQMFFaWFY1dDhiX0pENkc1S2JMRTBUcnA3Zi1yQ2Q4a0N1SzMycC1oLXdoMW1QOERnWUgwcUFhS3dPb3o3WDdDTzkyMHhKdVJDMy1XWlJaU3NRWUh1UlBmYm1PUFZnZzFFN1Q2Tk11TzlwMXh5YlBmN2RKdndoV3I4U3BWMkU5Z2IwcnQzRGhScjFaSUdGLUk3emo5bS0xWVd2cVJBOGJ4UmRVbGtKU1pYN0szdnE3Y1N0WUVFbUxfSG0wd0tLTVNTT1ZnN0hYNHdOcWxyTVdmNDBDcXlnc0tKUXBLYWlLSnhla3BTSDdOYUlRLWFVOTNVbk5qTmR0Y3RrU3QwRzdXSGoxT2NweXlYaklFRGo1WlJYRlYzM01ZcXRSeUI2MGM5d0RjandmWnc5aG1LVmJpNmc2c0lpZjlkblFmazJTRUt0a3B6M2pUMkRvTzVKbGJJN2F2bEZsVFdiUzc2X2JPVWZpR2xFUHNDYzhXZ0JjcE5uc2Q5WUNLcm56OHVsS3lsUDRtWkstdjhPNFFnPSJ9fQ\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"The\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" ticket\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" number\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" is\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\" **\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"472\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"9\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"**\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\".\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":30,\"cache_creation_input_tokens\":383,\"cache_read_input_tokens\":5517},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_017fa0e7224ac686016ac6996f8b8087d18df336b366a74c74\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400303453,\"endTime\":1791400305097,\"providerRequestId\":\"req_1d83224b88054e17b12f047839e7bc3b\",\"statusCode\":200,\"providerResponseId\":\"resp_017fa0e7224ac686016ac6996f8b8087d18df336b366a74c74\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"68c8101779640fcae2357bfea44e392c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000118345\",\"marketCost\":\"0.000118345\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000118345\",\"inferenceCost\":\"0.000118345\",\"inputInferenceCost\":\"0.000103345\",\"outputInferenceCost\":\"0.000015\",\"generationId\":\"gen_01M4BWEPT7Z4FEFRFSM6MAFZPM\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

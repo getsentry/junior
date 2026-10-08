@@ -1,0 +1,29 @@
+{
+  "session": "evals/memory/user.eval.ts > User Memory > uses a remembered timezone when answering the current time",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "5d7152f9437b",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0f112243bc830229016ac5d7f392f887d2bcee65209996e666\",\"reasoningEncryptedContent\":\"gAAAAABqxdf0QCwkIVeKScXugVum6djqijTBZ2PkZxGOUPpCTiroY4N-dXGTfO6kzwl0E_emzS1F6vjD1SIfP-JvOh96JVppfaJctNvSdH4VoYavJYnXRdD74nBFPNCO28omQVdDIPbYQN9e4xiqWxouM3yCCHCQL6J_4OlUipoU-PgAABk2AsXn5yRINBhtYjdhO_us-GMgs2avElrTcDeareONskNOmwt3q2T7ofSPA8xtbXUU_aNflZ_N7QkeKZmI7RDit44pc9xT7q1joctc4VYg7xI2o71Vz20QcvupUEeHAHzfPt9QfY_xCGBu9XHJXzAByIBvVUvHpqa536kIojUTqUbBWGlIoFQ8Y08hOIFCXfWclbtRCsOzZGJi0p6B5SYTNVFIvhj-YErZxijRGzwB4BvYfysI-tQZ1FlvskzWpXFjubE11v1GrzxG6VKRaclUnEHppThhFtJsEQpKgOwDzVaEj6JRrSE_RkGG2NUTGHfUOlzJTuOxf3cQubTICnUleKwqxvAkIkqudOiKr0PvFTT8_7gwKyt8SRexh8kx2FmhF2aKyYp_o35DKtBwL2XPxkGKQ1dHa1RrspXaNZIf3CYhZXCWZ0yKFjQFVg2yJV83UwcdYTm3U20Us-zQ0gkQKbBi9yh6p6G1FjI_W0g3GMViT7xEt0aUqBqyPXV5B6-yvQp36AVb8QiSTKtga1CEiSIYVlzYlC6gK1ZjzOen9Isv-181Cuv0in3tJuAljvKX4eynmMj2QYnKClz3teIiGDrgM-_CYHJBGQMIhirBiMyOPN2DkYA6I05aGWSWukFm9TXAtu5UR5UCnj8u5muyO_qxBDbYVOzyrH9dkVWkd_mhaEAQMAt7EnEqcsMAJNulA-IEYgCqQICsxLlQLgE1BppTalty_q55dmZZKczz5eO2YLOa7t2qppxuxHDY4dpuuG26wFqG6amrKt_hOoCNyv3KBBpstsKmOGJTKr9ZQFEJBtYajx75pDkNP3fa4CKwoXPFUHeWh2-0_lnos-GFcQxyg6DQBCZmyi45SFhPEnj-fKJDSkFh0qC7F1f9gLFvtT4G82-YBhrHHAmppJOf4N5hhFl3YNV3vzk0njEyOuWFHZ2ZUHDkM0xzEMiqj9X9ncug3s-mTQYGd67IZqCEI9TZy9P6WWYlhd3Uj5qBkjAVJgF5HQEksAR8XhReB4ls2YPTaIqTytHTJmjQgy6TyJjOrelBM-89yTdPOvZK0PWzyTODSi7KLDQ6b8Ozbs-iQ8QEgrR3V0jb5ft6ZjAASrfToLHL8RmXuAs3rvcUmQKnxtBLtzjHwqlqNJ5Uj6Lt8AhKTXyfdqLhV7VzqH_di4KuV23xNu-moyszAp9T7e6Z4BQbI5zSvRWWmM9wgQPfo8dswLtnyURV5nSuvpsV9Z6g6yTkAFEdV8ycQo9ZdBiSHiHtdDHnRsUqUD6cGOZnaO6AI9MyB23i6o6OsQpIeFVaSLqvnuBLO6lmTjLzBzhIPtfNMxoHi5cY88dV8sLAuVA=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"Answering requires the current time, which depends on the current clock and possibly the user's timezone.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f112243bc830229016ac5d7f4292c87d2872610b6f12c634b\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":584,\"noCache\":584,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":89,\"text\":48,\"reasoning\":41},\"raw\":{\"input_tokens\":584,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":89,\"output_tokens_details\":{\"reasoning_tokens\":41},\"total_tokens\":673}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0f112243bc830229016ac5d7f31e8c87d290df8f4f68ac2059\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350770983,\"endTime\":1791350772848,\"providerRequestId\":\"req_61b4018d8be443689db3235d41e5bae2\",\"statusCode\":200,\"providerResponseId\":\"resp_0f112243bc830229016ac5d7f31e8c87d290df8f4f68ac2059\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"4da18ab9397f15254ff79daa0a4753d2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001029\",\"marketCost\":\"0.0001029\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001029\",\"inferenceCost\":\"0.0001029\",\"inputInferenceCost\":\"0.0000584\",\"outputInferenceCost\":\"0.0000445\",\"generationId\":\"gen_01M4AD738PBJ6A98Y5G43VFJA5\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

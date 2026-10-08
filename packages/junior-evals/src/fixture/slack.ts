@@ -6,7 +6,7 @@
  * history for `conversations.replies`, and profiles for `users.info`. It also
  * signs Events API webhooks and slash commands for the app route.
  */
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
@@ -179,11 +179,28 @@ export function slackAuthorEmail(author: Required<SlackAuthor>): string {
   return `${author.userName}@example.com`;
 }
 
-/** Install the fixture Slack handlers for the current test. */
-export function installSlackMock(): SlackMock {
+/** The earliest second of a fixture Slack timestamp, in May 2026. */
+const SLACK_TS_EPOCH_SECONDS = 1_780_000_000;
+
+/**
+ * The first second of the Slack timestamps of a test. It comes from the test
+ * name, so a test has the same timestamps, channels, and Conversation ids on
+ * each run, and model replay sees the same requests. Different tests get
+ * different seconds, so they do not share threads in shared state.
+ */
+function slackBaseSeconds(testName: string): number {
+  const hash = createHash("sha256").update(testName).digest();
+  return SLACK_TS_EPOCH_SECONDS + (hash.readUInt32BE(0) % 10_000_000);
+}
+
+/**
+ * Install the fixture Slack handlers for the current test. `testName` makes
+ * the timestamps and channel ids of the test the same on each run.
+ */
+export function installSlackMock(testName: string): SlackMock {
   let tsSequence = 0;
   let channelSequence = 0;
-  const baseSeconds = Math.floor(Date.now() / 1000);
+  const baseSeconds = slackBaseSeconds(testName);
   const threads = new Map<string, SlackThreadMessage[]>();
   const authors = new Map<string, Required<SlackAuthor>>([
     [DEFAULT_SLACK_AUTHOR.userId, DEFAULT_SLACK_AUTHOR],

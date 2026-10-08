@@ -1,0 +1,29 @@
+{
+  "session": "src/fixture/history.eval.ts > recorded conversations > continues launch-planning.json",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "5e11e9527054",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e8ca6950b4c5633016ac7c242ba7887d1b6d83572523b20a1\",\"reasoningEncryptedContent\":\"gAAAAABqx8JDzInNrnm5pUIpzH7IHq8nxdLl6LWCOq4VeKRM6hc1v17RX5bNTRH3HvXmF1v9eVZCO7b_ycHPS0cClcj3GKo9ZSxtf4fRkTB5XqzWztSl2xooEDucK1rN9ASzzGb6BsuOJL33eJ73rWY5WT3ZffBc8A4PyeRI8rO24-GIplNSG4IhqCDSNRnynaIUyjF5lfEJ-1sDyZQKvJ8xD0AweciZOg4Z2fN_TL4QEVTEgh5gvs8lAeQ1ZtDY8ifGyPz47W100miAAoIYv1oVLpXl49Epbm_zjGEZVX8GgNoI30STT-TO210QkznAMgsZoe7K54gghX_ozpr0IwCQrIUp0sC60VjQSpBerX-RwobYO1SryIWc8-v7nlzpJEgfUqkjPQrkb3joRReHGJnNoviYvpyG82ASqDb_L0jO9i3Z1LLhhTw3M8gA2EsdPQ3kXD7_GJGiglYIaOpaNbNP7Ei6mAkoPP-oDvjWD9wxITpK9G2r1tJh5wvashj09pThYId9cOgh_fwcJaZZBxF5q6mqaR7t3u1NmIsxhLMyt8otPVIlIZPpon0GUhwBmWkaLLr-hbpKxFtwaozThqekGEU1X_gHdQ6zz6MZHyFIL-X-LTj_J5o-7VC7V0jP6phs0Qq8wFdTT8CF6CQfamrlnMAFI6CiSUkPwzwD3Enf1JsRUE7kdoSt4AdV-eVaIValZNFKfkU3DIPgIzH0TXDv_KB6gAyW6-nDBREACHVPUljrDVcDiRjwttWyRIhVbR4VIlacWA1RDJrr7eo96lje_LJogszer3v-vghca9ULQtxRLMOS5z2Tt-yBmMUAottyC5VqWk-H_dM7ZL7KQfAUyIoLWplbS503vKJ9VNCnFs83uyDVn2xZ4ls-Vt1-f0jt--wTYBZ-yE4OS5VyQySTmBJbO1nvw0je0TE0JWamIDG8MDhYXlU0P-fbIY-6tK6eNErot9HROL4XClm_-lED_uKMbr8jaodMLTAC41SZAjt_F6SsvzSeOI505Thc2fn-2bOVLk8SOQduaeSS3HTemnceQGdZhpuvSXmKLXI8PifjH8SiV1rS_Qi0Re1dI726uTdaau7vn1sW-ptJbpG58s0pm6ETpTMoCP7RB7vEdD227p1Zoy47sm7npDfvDR2i5NhmNGpldz2BQksk2DUoqCg3M5mKKjN3kNA0QYF8yPxYozgw5T69VxO2LO5Ip081eKJ793WH0CWy7B9aZ--y8miJsGe1xrQpoGUbJ-jB8qpENgNZ39z56_7Eis-sNCiAJy_ZcOQ3SAlJjFE3H-SFpv3hOWMecyeLSLbOvkZcSF5ugFU8sSzju_6zU5nfqhC3wv8LCamFmAA-jzbQSdMVOg5lc795rJSRMjR7KF6nJ-zZenKF3sQfWrlCHAUfooLDQJgiM3BhyzFt_BnV5-pu5q_GwNeIVUmyIBnecZOCRPgdinDD-e-iGu57TwkfJgrNyJ03_b24\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a brief follow-up that requires synthesizing the prior thread into one sentence.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e8ca6950b4c5633016ac7c243288c87d1aa8d07211ccc5cc8\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1058,\"noCache\":3,\"cacheRead\":1055,\"cacheWrite\":0},\"outputTokens\":{\"total\":79,\"text\":46,\"reasoning\":33},\"raw\":{\"input_tokens\":1058,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":1055},\"output_tokens\":79,\"output_tokens_details\":{\"reasoning_tokens\":33},\"total_tokens\":1137}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e8ca6950b4c5633016ac7c2417ef087d1b6d807a1dae10d9e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476289390,\"endTime\":1791476291957,\"providerRequestId\":\"req_e1261757f9b442e7b7d57cfb0a8bd656\",\"statusCode\":200,\"providerResponseId\":\"resp_0e8ca6950b4c5633016ac7c2417ef087d1b6d807a1dae10d9e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"8e2c7cd8d827290bed4ddf1dfe058a45\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00005035\",\"marketCost\":\"0.00005035\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00005035\",\"inferenceCost\":\"0.00005035\",\"inputInferenceCost\":\"0.00001085\",\"outputInferenceCost\":\"0.0000395\",\"generationId\":\"gen_01M4E4XKTP5G1J2ZHV4Z2925SK\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

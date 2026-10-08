@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/steering.eval.ts > Slack Turn Steering > when a thread message needs no reply, Junior consumes it without a turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4dd21bda7dd0",
+      "maxOutputTokens": "26d228663f13",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f735154caadc",
+      "prompt[1]": "87e636150f26",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0ecbbd278839e6e9016ac80ba1042c87d1b846e1ceb638f1df\",\"reasoningEncryptedContent\":\"gAAAAABqyAuiDactYex12BF9B9AWnQ6K-t1yjCus3DvShuSRc3Wm_MhfoBBuMbdLlKVehQQcsrXqDoQKJXFsoxJ1DlhnmRZnjROqfoxRRcy1zddHcKRpvgyz7_J3HNRiGIsYJmrnsxaQnpEOQKj7vNqc_NvzqDbJ0YiukWXtrUBu1p_J0FxxWXdNSzA4iCU0rtOuea9J0vTaa9y0roZec1l1frNwmuOn37UYTWCT-o5Szv3IYVPeQpNDnQZkHXXiOiYUdsxh7n_TOiqbSc-_vN6gaHU3_v0wsWv6qMv1ZLS4mKjKARC9PpsEPcjDX7ue7f70iPdeK2F5ab6ZhizsEXj0kTI9bUisI_Ev5ZVtx90-ILGouSLgWgLCfG-OetsbfvH0D2HNj15tnSJOl6p_gyD0pAN-eSi5KzLwbkUa09VdUjI6t8LX2i-WcIBafNkLGovAyCod6oaDFOzA8wIP2vKEWRjn8gO5tc44adczoFqHKX6hsYQLT1Rms3t_s4lwcWRHX6wNyxGUhH5NUb-0HcGEMaNWzYKbpr7Sgn1crzZ3lsgCedHlCfflY5QTPlVpElhU5IryMhxTkFjvIu3IFzGAB2RqE6olDgMgXfIjQsZ4InqH8y0JzNCbu_50gpSvuBuwfbr4nec_6kA80XKZbWJMrif_vV02CPx3DJn-HXbx3GHdgMfy3_zvpheRmJNNThJLaLhjY7Ur2yijYAItKOXtr_eQNta6Pac2YezfoxvjWJQIfG1OLGuFbv2NoJNjItVk8LgcuM6C7-McQ634OH8soxFIypg-njW1e6c8YjZxLYb316IdmcvXMaJxClQ9UCQvOAhlG6S-3VYAwJiloJZ9ANRXdt08QIE0SJij-PiFjFJhJCOS35roDzVM6wpYlZgi-BY5kACRZetsaX0wSkK4ACYcW7rxEwPLw7AX08ln6vaiGZ4WiJwUjlxhZHoKJECCBA7FdEQ3sVWEg5IbWHCDpoMPBqNMYyFIZx5GhQ3noc8LLSzJF18C_joJqzRFfvgzU6Y8ciUIuo9LH4uY6FebAosO1mMabpxl8tr1HpsRUqHofYvn8F5Ynamu4VApXhpAV7AIOwchq7f3MCi5nL_cr4zsbgDDOTVTib5T6NZMlGywcaKshFm6axcxMDF3KoXlozrMV0iIdTf9SGPmG49fmKCmK0AXrBSQgYK251xgaBwjvw3DuKtgH7ymyYHh7rl9ZK6GEa4GH7stjQb5peFbropp4pwXmtJftDiVmZLqSyY6p4ssH8FRKuowXHWsjWHIVsPFltKAzszwogfInfac8a7vzosbTAJnOW85fthw31xhhY9DdWIl00YP54HOUdIDeGh_bxy7I2KTbJwdecSfwyddWmRxwOiuhEfwgG1FbySouZHmBLZXe_T93vmjmeFi-VA0WFtkIOCeTWtgHDDcTVg4x9HMlh5OSulYoOF3u5BHOe0CjDo=\"}}},{\"type\":\"text\",\"text\":\"{\\\"should_reply\\\":false,\\\"should_unsubscribe\\\":false,\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is an acknowledgment of junior-example’s summary, not a request to continue.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0ecbbd278839e6e9016ac80ba11d8487d197adada08a6276f5\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1035,\"noCache\":3,\"cacheRead\":1032,\"cacheWrite\":0},\"outputTokens\":{\"total\":75,\"text\":46,\"reasoning\":29},\"raw\":{\"input_tokens\":1035,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":1032},\"output_tokens\":75,\"output_tokens_details\":{\"reasoning_tokens\":29},\"total_tokens\":1110}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0ecbbd278839e6e9016ac80b9f6b6c87d19099220c695a16c6\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791495071344,\"endTime\":1791495074130,\"providerRequestId\":\"req_425f5159cde94902bc322a97d03388bf\",\"statusCode\":200,\"providerResponseId\":\"resp_0ecbbd278839e6e9016ac80b9f6b6c87d19099220c695a16c6\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"a2d235f4e39016970a9b86440fef5b3d\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00004812\",\"marketCost\":\"0.00004812\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00004812\",\"inferenceCost\":\"0.00004812\",\"inputInferenceCost\":\"0.00001062\",\"outputInferenceCost\":\"0.0000375\",\"generationId\":\"gen_01M4EPTSJWGBP6Z2A0K38Y4Q6W\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -85,9 +85,13 @@ describe("Lifecycle and Resilience", () => {
     // The first release push lands remotely but stalls past the turn deadline.
     // The runtime records the interrupted call as timed out and resumes the
     // turn, so the resumed turn knows that the push happened.
+    // The deadline must fall during the push, not during the model requests
+    // before it. Live model requests can take more than 15 seconds, and a
+    // replay returns them at once, so a short deadline gives a recording that
+    // a replay cannot follow. The push stalls for 45 seconds.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
-      limits: { turnTimeoutMs: 15_000 },
+      limits: { turnTimeoutMs: 30_000 },
     });
     const conversation = await run(
       slackMention(

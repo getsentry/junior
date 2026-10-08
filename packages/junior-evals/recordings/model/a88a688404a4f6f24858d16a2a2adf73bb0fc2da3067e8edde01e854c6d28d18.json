@@ -1,0 +1,63 @@
+{
+  "session": "evals/integration/auth/dashboard.eval.ts > Dashboard Authorization > when a dashboard turn needs authorization, show a connect prompt and resume after it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "ef2d127de37b",
+      "messages[0]": "5625cb1204f0",
+      "messages[1]": "e037caf088be",
+      "messages[2]": "1c19114a7b4f",
+      "messages[3]": "8f2ac3c934f0",
+      "messages[4]": "627fc31bd4b8",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "d4243d8c92c5",
+      "tools.length": "59e19706d51d",
+      "tools[0]": "12dba46828ca",
+      "tools[1]": "a1056c279456",
+      "tools[2]": "c40e21f9ef0d",
+      "tools[3]": "d3dd7b468c8f",
+      "tools[4]": "f116e66fefdf",
+      "tools[5]": "6653a0a0a3a9",
+      "tools[6]": "3b6ca120b0fb",
+      "tools[7]": "c7dc1bc2c04d",
+      "tools[8]": "f9054d6c4f64",
+      "tools[9]": "f47ca0d0af13",
+      "tools[10]": "37bbd2f6c311",
+      "tools[11]": "5802c8f4c428",
+      "tools[12]": "ae045899dc37",
+      "tools[13]": "218843320f4d",
+      "tools[14]": "0667eb3022b2",
+      "tools[15]": "93f913ef2874",
+      "tools[16]": "cb8897349d4d",
+      "tools[17]": "95c787875e54",
+      "tools[18]": "23162886a934",
+      "tools[19]": "9da7c42a547b",
+      "tools[20]": "ed13dd55d6be",
+      "tools[21]": "06ea3d798e31",
+      "tools[22]": "98cd636f11ec",
+      "tools[23]": "00fbcd9a6ca2",
+      "tools[24]": "783be0c88076",
+      "tools[25]": "36e632f69c1b",
+      "tools[26]": "e4e3f296282f",
+      "tools[27]": "ec59e4ad36dd",
+      "thinking": "e871cb1e753e"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4ERPNW4F37KDY2F47AQ6PZP\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"gwrs1.eyJvcGVuYWkiOnsiaXRlbUlkIjoicnNfMDMyNzRlYWJlYjkzMzkyZTAxNmFjODEzNGE4MmE0ODdkMTg5OWNkOTMzY2U3Y2NiMTciLCJyZWFzb25pbmdFbmNyeXB0ZWRDb250ZW50IjoiZ0FBQUFBQnF5Qk5MTzU5X211MEhNYUk2VkRLRV9sZkwxRHU5dFJzMHF0Y0Vyb2Q0Rkc4RlpsdUZwczhody1aQm80LUdNY3Z5a1c4OFp1MkJmRUFFb3NXeDYxTV95UWw3R2NjQTF0aVNuc0ZLLTVyakNRRWRMSXJERVFsU1M2UVFWcWdBalpid1JoZmxmcWhhMjlSZDNHRFVyWUl4M2hPSVgtemVjQjdpRE9ianBPVlQ2WGo1eVU3N2ZMX1pFalpMcHdjX1Y4RVZ5UEdBNFN0X2E0QjAya2JfeTB3WEQ2U2JKdGFBbExJT1JmZW9LeHJ6c0lSMFhjSG11eUV0Sm1jbWxjUXZnRVVYVmk0SkYyNW5BaWwtRHAzQlBfWWJJMUdKTFdJdmxqNXRfdjE3ay1iOWFBOWxkRlNjMUQyaTROa0ZINGtHcUIxZ0wtV1ZZbVBmTFFWY2hSTmpCcVdMM2gyUGNMNkJCRkMycHVGWXJDajFKQnpoZXZWZndhSkVKelR4SUFJbjdRZy11eW1KTmtsTzJkQVVqZTVuZUdDck1FTENNdFozVmNpdF85SjY1NTV0cmhJVl9lNEw4b3R5OG92M1NMMUhLODFjVm11ODc4NGFKQ1FxYWd0VTZFVnhSR0U4WURpdnMxODgyeWY1b3kycEpmdGlGdWNwRW5iWWdRUnEzX2RzYm4xckVfdENtN1h5cUpIOWRZLXJMdENXSlpFdWRjSGl6TkhWZkFjUmZIbWFjd0ZORVVya1k5OFEycWFRcl92WHNFX0ZISmpOOVpsbWlSaXdGT0I0OG1JUlFOa0dqTHFCM1ZCcTRLU0lfaHI3M0JrQmctN2JBN3lYQkFNMjNsbGZDVU4yWlFXZlpNLWdYUkNRM1E2T2h3dWNiSjNVLTJZd25VTjM3WEJxZm9sbk01cTZ6VXY2WkVFcVNmX0VpN2U2MGNSblBNNlEtYnlwa0hYYUlxQmZoSi03eTFKd29VeldCbFFPclVVZmVlU3lZYlRtVkhScGU3Ri1MSXhNbjVrZWtBaWJXQ1hyLTVhR0dBMHk0Q1NHeFBPMjR2XzRtNWRPQ3ViVDFnTUNvRno1UVB2VUZVTVlqWGpNdUpSdTJZb1A4Y2xyeEstR0xWeHBoVmZ6TzBub2tiaEtpMmtPTnVLQ2U4YVdoS2kxa1J5YVp5aTRjQjYyZTY0X2FRRVVXWTBxWk1IS3U4cnRVQnhvQVN6R0hGTGt1NWFXM2puWkstVTAzamQ2dVpYaDNEbFhYQTRFVGVvTTVMMVRmUkgxaU9CVU9BMUxwb21FNFBDa2QyRlVTSzlLb19PX2tWc1FIZll6cXRCUFNyUkw0RTRkMDhQcUFjbVpTcHlyUzZtS3BaWkFzWTZzQWkwTlFMSnVMa2Z3TFIzNy1JMXd6anREem9RVS04TmZmSEhtX1J2M2JiY3hVZzNaZjdxeXJITm9zNWhQMTBBdndMa1ZNekFZWDRVX0NKakRwN2EyZDhJUFlQZlFSQU44NmQtYzRGVVJzbnVlMXVSV0VWQ1NWb3hzQ0I0YkE2ZE1iZVVNZENnMDRDUEZYWjhpTi1PR2VlRm1JVG9fZ2Jnc01yT2VXV21YeUMweF9WMzMtQVpaeHhzdG5GalZsRXUwODJDV0I4NFhHU2ZjYnhVUHlvUHB6QmdWeUxqcEZOM0hsVnJZRS1BcFdDbEhGVktici1jZVJORV9laHMwejRrYktvVzEtWjhTQWI2Rlc0LUhrLS1hQ2NheHQwUnlaTjJ3WTJMdldjWjZhOHA5dm9YcC1XdllsZU45c3BjY0dldjlyeld0OWhKMEI3aEN2UHc3TEJSdmNIZWxwbWF1MG1kWnVVbDZfNGk1cjZ3Mml5MD0ifX0\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_hexMidjKeBviaxiAyxZaleOv\",\"name\":\"searchMcpTools\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\\\"budget echo\\\",\\\"provider\\\":\\\"eval-auth\\\",\\\"intent\\\":\\\"Look up the budget requested by the user\\\",\\\"max_results\\\":5}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":66,\"cache_creation_input_tokens\":149,\"cache_read_input_tokens\":6184},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_03274eabeb93392e016ac81349b7dc87d19317f341c682eb42\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791497033641,\"endTime\":1791497035586,\"providerRequestId\":\"req_8e698b6d239b4f8bada2efcfed44724a\",\"statusCode\":200,\"providerResponseId\":\"resp_03274eabeb93392e016ac81349b7dc87d19317f341c682eb42\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"34098053119338a7a8a8ef596c6ea7ce\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000113765\",\"marketCost\":\"0.000113765\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000113765\",\"inferenceCost\":\"0.000113765\",\"inputInferenceCost\":\"0.000080765\",\"outputInferenceCost\":\"0.000033\",\"generationId\":\"gen_01M4ERPNW4F37KDY2F47AQ6PZP\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when confirming an explicit issue reference, use that issue as target",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "270d56cb15da",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0a470d0ba2b16404016ac7c3c83cf887d1be534b315594a959\",\"reasoningEncryptedContent\":\"gAAAAABqx8PJZBxgJFCLT7Lc5TpXHnwU5Jup9iaAbqtlGCBkUw8Fdif8KmMXZ_oRRs4S7MyEQcAXRNsWKZzce81OAguXis1oUM1xM5vXrxslVkDJ_-cQ5BWA_6ez0QatrYswfHxrUKOcylQRS-wIwMjex3DaGnRrmkNFT0XZmr5bZOvjtQNYaCiS2Ldm5ou4wozhHcdWD28NsvtIc629ZPXZkp7Iy3GZNFinWk97JCPwb1ipCepBlXCWEvrq9pNaACvyR9802Yms7Ix0Ekc2gjSIecH8t1ifLMgD3tf8zUIGT_6FmpzbHQgNywfEEbW0fbHnzj23cvzu1-ao1InM295TcHoBzkntA3YWZIs6gx2aU6ulDfwnxk-c_58cMcbJtbi-3rQSOoB3f8AElA0R83eg51MKlnEXYdC9FaRw1sTFclbCjrJmPQjI76xdalhe3ujeXZYvCerzD0i0-SoBVPCdY59M0akFq6X7qOZxGtNJ3liyeoUtNDSw5s1Zidg04YQfInN9mXa9MEqTdPsEPzQBYQjBAYNPY2955h5TLwzWC46gpd7PvCiFv9ZEM-47jphT1KVXsGA09owEkSjEGs1w20c8dSUmPYH2zP3NawgUvx4Y37S1Pu1hUCGxhvvrzutJC_0VxnUpDqkMeEGbWT_1a_wuKOqSVJPLNC6kboobyayaU1Jqmp9HEQQA_utzOEmX5g36yp3swTW0PSdaBaBIDN_ocCdhVGp6UGMdDkGn0TmjqR61D2sFf5DmHeWKJm6_VIq0xBReJ_GRVddZ0WHxl2EqAcQbpvTAo9ebexJARiXJIO66EaRV1_VeoWONWZzIGpWIiPAEXBVRnGh_jAvrFUvIgBp7iyElPWdHEX16d73VL39WWdr9-knDsFAaItKf3wSYs74QkcUqD1ZjQ2f1qCTHrFlxNP0DBO9JDnyl-IG4IegEVGiJrpFZZIxrYf6O0szUuLLDKWAGwDteJgJ4jcGcv8jVQh0mZK2fFF05IX_x43_V4aJcyT_VMU2-96RpEK34wglBwdm_a5Jz_-rRbh90H82fE3RYGupZkRBDioD2Cp4CZNK03HK75PjxQ4mPaeFVpzwv4mTsfo6ARzf7kmlTt-Tp9RmH1p9udCTwAbCw7SVYgNkuh_ptR_Jl7odFcUaZy-p8BjeuxuvuJBHGILPLtIpFccvdfT1eTZnnz9Rdng7a5MbLn41yOjToYpxBbWrVdEnP1UkZ-P818MhxwHs3ZxxGVX5IdYBoyuwyThYv6TAkO6MuMHZCcRcTfTeEvoF5whHP6Fuz2baWKUjTWh7PrYKq3OFvWU7KVb7ZAOAjLXIcuByNW6TXHpgNJ6MwhtFwsirK2TFCl7mWtPkXLkiuc00ZfsmeCibqs0xdgDNKb_T1StJGtmjgeECnBZUZLB3ue24w3dLsh1IVRwRT2lpsck9pHl5wBBChfIwK4SB_2Fvcz_nXPGKz49FPMpWrgggskmePFemi-80DtABc5OrUedKN6w==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.97,\\\"reason\\\":\\\"The request is a read-only check of a specific GitHub issue, likely requiring an external lookup; no changes are authorized.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0a470d0ba2b16404016ac7c3c8ced087d1a6b69b1540f76156\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":779,\"noCache\":779,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":94,\"text\":54,\"reasoning\":40},\"raw\":{\"input_tokens\":779,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":94,\"output_tokens_details\":{\"reasoning_tokens\":40},\"total_tokens\":873}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0a470d0ba2b16404016ac7c3c7a03487d1835017180e42f9a3\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476679546,\"endTime\":1791476681680,\"providerRequestId\":\"req_16b41249b4e54565aeea68d467d05d13\",\"statusCode\":200,\"providerResponseId\":\"resp_0a470d0ba2b16404016ac7c3c7a03487d1835017180e42f9a3\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"f4244f3580d5f34b3b4db0b12572748c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001249\",\"marketCost\":\"0.0001249\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001249\",\"inferenceCost\":\"0.0001249\",\"inputInferenceCost\":\"0.0000779\",\"outputInferenceCost\":\"0.000047\",\"generationId\":\"gen_01M4E59GTYS9AJSY2P6EEDV79A\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -3,9 +3,11 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks, and the web pages that `webFetch` reads are
- * replayed. The fixture replaces only the Vercel Queue transports and
- * `waitUntil` with in-process versions, so it knows when the agent is idle.
+ * third-party APIs are MSW mocks. Other HTTP traffic goes through
+ * Roach, the recording proxy, which replays model responses and the web pages that
+ * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * Vercel Queue transports and `waitUntil` with in-process versions, so it
+ * knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -29,6 +31,8 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { fixtureId } from "./ids";
+import { installWebReplay } from "./web";
 import type {
   AutomationInput,
   FileInput,
@@ -74,13 +78,20 @@ import {
   SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
 } from "./slack";
-import { installWebReplay } from "./web";
 
 /**
  * Every call fails when the agent is not idle within this budget. The budget
  * does not include the time that a delivery waits for its delay.
  */
 const IDLE_TIMEOUT_MS = 60_000;
+/**
+ * How long a model request waits after `onProgress` sent input. The product
+ * checks for a stop every 500 ms and takes steering input at the next model
+ * request. A replayed response comes back at once, so without this wait the
+ * turn can go on before the product sees the input. A live model is slower,
+ * so the recording run and the replay would take different paths.
+ */
+const INPUT_SETTLE_MS = 1_500;
 
 export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
 
@@ -133,6 +144,8 @@ export type RunAgent = (
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
   task: {
+    /** The file, describe blocks, and name of the test. */
+    fullName: string;
     meta: {
       harness?: { name: string; run: HarnessRun };
     };
@@ -180,7 +193,7 @@ export async function createFixtureAgent(
     background.add(tracked);
     void tracked.finally(() => background.delete(tracked));
   };
-  const slack = installSlackMock();
+  const slack = installSlackMock(context.task.fullName);
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebReplay();
@@ -365,7 +378,9 @@ export async function createFixtureAgent(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
-            idempotencyKey: started ? randomUUID() : record.idempotencyKey,
+            idempotencyKey: started
+              ? fixtureId("web-message", 32)
+              : record.idempotencyKey,
             message: input.text,
             ...(input.images?.length
               ? { images: input.images.map(webImage) }
@@ -423,7 +438,9 @@ export async function createFixtureAgent(
     history: CallOptions["history"],
   ): ConversationRecord => {
     if (first.kind === "web_message") {
-      const idempotencyKey = randomUUID();
+      // The Conversation id comes from this key, and attachment ids come
+      // from the Conversation id.
+      const idempotencyKey = fixtureId("web-conversation", 32);
       return newRecord({
         conversationId: createConversationId({
           actorEmail: WEB_VIEWER_EMAIL,
@@ -494,6 +511,7 @@ export async function createFixtureAgent(
   ): Promise<Conversation> => {
     const slackCallIndex = readCapturedSlackApiCalls().length;
     const slackPostIndex = slack.posts().length;
+    let sentInputs = 0;
     const progressActions = {
       send: async (input: Input) => {
         if (typeof target === "function") {
@@ -502,13 +520,18 @@ export async function createFixtureAgent(
           );
         }
         await sendInput(target, input);
+        sentInputs += 1;
       },
     };
     if (options.onProgress) {
       const onProgress = options.onProgress;
-      gateway.setProgressHook(
-        async (progress) => await onProgress(progress, progressActions),
-      );
+      gateway.setProgressHook(async (progress) => {
+        const before = sentInputs;
+        await onProgress(progress, progressActions);
+        if (sentInputs > before) {
+          await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
+        }
+      });
       slack.setReplyHook(async (post) => {
         await onProgress({ type: "reply", text: post.text }, progressActions);
       });
@@ -686,7 +709,7 @@ export async function createFixtureAgent(
     const response = await api.request(
       `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
       jsonRequest(record.viewerEmail, {
-        idempotencyKey: randomUUID(),
+        idempotencyKey: fixtureId("fork", 32),
         messageId,
       }),
     );

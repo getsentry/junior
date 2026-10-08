@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/credentials.eval.ts > Event automation credentials > when event work may need user-bound authorization, use the creator default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "0956aac43888",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0b5dcdd9562c3f8b016ac5d858850c87d2bc601c23df86513f\",\"reasoningEncryptedContent\":\"gAAAAABqxdhZhwaLY0gQPsZ8P_k8WAzOuiN0Qxvr_6NWFdhEFJilRcMjTxFbVAbGwv9S8v6tpSdfEqtOZf9e4pYbKohIQOI93oOCgtfdDnibXAP0sQ33x7qIYtIk7sx52kbzDfytY8cNJSHTUWluQNokAQqIcIHtsCUH-g3-PQpSvhC9ITfrJhDsZnFk0B0ID9HeXd9nfMPTeT_urQD_eDglWqzg3IDlD91XjP6__T1MsLYEuoiPliMbSrj8FT5T-PAPZMU-lhiLS6SSLHl9tCBNIriHELj278JmylGR8KkVOZXJlJr3aRpjnkOqSZ5HhGK_V_YyyIZZC12tXVCQWoGgJJAjiNnt7NyGgLQDFxoFmJqVd_E71YK7eSWQRO3AeUXklmilJMtrk8Pdf0yCIby8-50m4lr7bHSnQlNNxmbAdVJXwLyfW4fCV_ULishJxHzJkscajJXBd7Hey8gg3RtGvtKwU1xMrgrHY41ausBsyxLlcjhfSdMDhGYfbJgArGPmPM11OGtVXPJqwDykBwKjgnH0ir618diCs-2jZeZuZjOFNzmU3IwvS8wRn2QRjCmy89Tpic_jdJvBEDZz_e4dcZmsKhKw4r_puzYBc3lo-3FDC4-TCfXOHiuivt3wWNsqf6wzRTkjrbGH6KrTitE119dax5M2RsAgl7TEG6XYaRsaklF_NNwBZnwIx2Fwn8q4aNY7u-OGXzi1qzp3q2eoYRXWDvRuRAIfM6XSLotOp4MKRAbhlk4KR5vhbVhL3e8AyPn1wSw5j96fu3tn_J0jM-5KTR18OOXCRLbucxA-HHEo_szH9Kz57OWGSLNM-g7bWE2go_zw087kqEfR2Max4Ko9E1jkgqLJ2obNsx5v843neFL9zW0qJbzt4bq2hjQECRbYPg1qKSc3TYwpuv1pLGfEiOfwrTnxY1vwZzmuvKMCt5fp-RynY3Sm107X_0LD2bQ8DvyO379sUPql5G4SOFwHZwhBwa6WpZb25lIPsnJ3-Mt6OOCqDMloMYo1GTd4IQwq47LHNEYNR6UpoGYV0gZnbefo2YiMqf23JboK5me20ZCwoqDhY30FzOShnTDU64l3v03Ssimq_1UKIJq72MU9XNVhU24zSxlr6cvFKDuAtR7Mvxp-sJvbJMpPokOb_0rK7e_hVplTPAFmKRpEKS2fG0ZZLPC8W68Y1FXHQ5_D0IVgGKoojNJOPSNP8cwz-bN5pkwfEYqUKl5BdHEcx3x5kQoDDfSaGnjkVsGAdwe-MonSc5GHG022iciJrhQJ6vU-4itFEzYU1M9wKOM3b1uPPQzBNmAOYW7esZBCk32ZcS3oGh1E_CAh2dtIn4boItHMs-Viw_4tW2oCBNY_dp3sZUlauqbhE7ZvI8KWzAkWvThrrqZmrRSggeXmAOMOpJoRFnhytfSt0ysfZifUkyHxGyy_QbZE02FjorU0KjfLZXi8T56RwuC3HmWi-RiBCp6g1Y3mb9oxvVc_R1_yOpIv4RN5kWTeFbrdy3PmyEScXEU7CP1aQ5F_SRHEZghDAfk833jVAK4qgQRaslB3w3dNkTfrRJP0wki-BXchnKyIciAADc9ioC-Mjiaa2K6XoKaDuNNIYRNmNiVvfaR0Z_RsuII45WHnwWkvzFTTOVQScwCGFQMgyEp_tS6borysN9YBqBJiSDRqjQxSxVpzoRGHB6nmh8mEXMwyGz1pkIP1c947XVfnYMusB3DzilOaLI8uZ1FDk8aCIPRNgfg1ZzrEAoksbi_YpxzvMbTiDC_GvgOjWqQ=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"xhigh\\\",\\\"profile\\\":\\\"handoff\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This requests building an event-driven automation connecting GitHub PR review feedback to a channel post, which involves implementation across systems and verification.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0b5dcdd9562c3f8b016ac5d8595e7887d2905ec58362d504c2\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":614,\"noCache\":614,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":126,\"text\":57,\"reasoning\":69},\"raw\":{\"input_tokens\":614,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":126,\"output_tokens_details\":{\"reasoning_tokens\":69},\"total_tokens\":740}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0b5dcdd9562c3f8b016ac5d85826a887d2bf8753f1a1e8e63b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350872063,\"endTime\":1791350873984,\"providerRequestId\":\"req_3aae0ce617c042c5940de81150561f59\",\"statusCode\":200,\"providerResponseId\":\"resp_0b5dcdd9562c3f8b016ac5d85826a887d2bf8753f1a1e8e63b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"c95eba988e08a229f381fc224af226f1\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001244\",\"marketCost\":\"0.0001244\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001244\",\"inferenceCost\":\"0.0001244\",\"inputInferenceCost\":\"0.0000614\",\"outputInferenceCost\":\"0.000063\",\"generationId\":\"gen_01M4ADA5ZFADGM8JD79WMFS9MZ\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

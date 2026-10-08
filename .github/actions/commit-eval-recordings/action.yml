@@ -1,0 +1,108 @@
+name: Commit eval recordings
+description: >
+  Commit the new eval recordings of a pull request run to its branch. It
+  takes only recording files from the run artifacts and runs no code from
+  the pull request. It pushes only when the branch is still at the tested
+  commit, or at recording commits on top of it. It pushes with the
+  GITHUB_TOKEN of the job, which needs `contents: write`. GitHub starts the
+  runs of that push only after a person with write access approves them.
+  The eval-recordings-mode action makes those runs strict. See "Recordings"
+  in packages/junior-evals/README.md.
+inputs:
+  suite:
+    description: The eval suite, such as `integration`.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download new recordings
+      uses: actions/download-artifact@v4
+      with:
+        pattern: eval-recordings-${{ inputs.suite }}*
+        path: ${{ runner.temp }}/new-recordings
+        merge-multiple: true
+    - name: Check new recordings
+      id: files
+      shell: bash
+      env:
+        NEW: ${{ runner.temp }}/new-recordings
+      run: |
+        set -euo pipefail
+        mkdir -p "$NEW"
+        # Accept only recording files: JSON files with a key as the name.
+        count=0
+        while IFS= read -r -d '' file; do
+          relative="${file#"$NEW"/}"
+          if [[ ! "$relative" =~ ^packages/junior-evals/recordings/[a-z0-9-]+/[0-9a-f]{64}\.json$ ]] ||
+            ! jq -e '.request and .response' "$file" >/dev/null; then
+            echo "::error::Not a recording: $relative"
+            exit 1
+          fi
+          count=$((count + 1))
+        done < <(find "$NEW" -type f -print0)
+        echo "New ${{ inputs.suite }} recordings: $count"
+        if [[ "$count" != "0" ]]; then
+          echo "push=true" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Check out the branch
+      if: steps.files.outputs.push == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.pull_request.head.repo.full_name }}
+        ref: ${{ github.event.pull_request.head.ref }}
+        path: recordings-branch
+        fetch-depth: 50
+    - name: Commit and push
+      if: steps.files.outputs.push == 'true'
+      shell: bash
+      working-directory: recordings-branch
+      env:
+        NEW: ${{ runner.temp }}/new-recordings
+        TESTED: ${{ github.event.pull_request.head.sha }}
+        BRANCH: ${{ github.event.pull_request.head.ref }}
+        SUITE: ${{ inputs.suite }}
+        PREFIX: "chore(evals): Update eval recordings"
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        for attempt in 1 2 3; do
+          git fetch --quiet --depth=50 origin "$BRANCH"
+          git reset --quiet --hard FETCH_HEAD
+          # Push only on the tested commit, or on recording commits on top of
+          # it. After another push, the evals of that push record again.
+          if ! git merge-base --is-ancestor "$TESTED" HEAD; then
+            echo "The branch moved past the tested commit. Not pushing."
+            exit 0
+          fi
+          while IFS= read -r subject; do
+            if [[ "$subject" != "$PREFIX" ]]; then
+              echo "The branch has new commits after the tested commit. Not pushing."
+              exit 0
+            fi
+          done < <(git log --format=%s "$TESTED..HEAD")
+          cp -R "$NEW/." .
+          git add packages/junior-evals/recordings
+          if git diff --cached --quiet; then
+            echo "The branch already has these recordings."
+            exit 0
+          fi
+          git commit --quiet --file=- <<EOF
+        $PREFIX
+
+        The $SUITE evals recorded these model responses in $RUN_URL.
+        The evals of this commit replay them in strict mode.
+
+        Eval-Suite: $SUITE
+        EOF
+          if git push --quiet origin "HEAD:refs/heads/$BRANCH"; then
+            # GitHub holds the runs of a GITHUB_TOKEN push until a person
+            # approves them.
+            echo "Pushed $(git rev-parse --short HEAD). To start its checks, select \"Approve workflows to run\" on the pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "The push failed. Trying again."
+          sleep $((attempt * 5))
+        done
+        echo "::warning::Could not push the recordings. Download them from the run artifacts."

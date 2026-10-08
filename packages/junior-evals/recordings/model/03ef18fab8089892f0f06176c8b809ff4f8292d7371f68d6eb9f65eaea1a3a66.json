@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/user.eval.ts > User Memory > when explicitly asked to remember a first-person preference, store one private memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4fc22ed872f0",
+      "maxOutputTokens": "26d228663f13",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "7310d426fab4",
+      "prompt[1]": "42f59e4b5daf",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"relevantIds\\\":[\\\"eb063852-1719-4c63-9414-475357ff2fb9\\\"]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e91b093727df06a016ac69863414087d1b9e33d305ee0a04f\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":235,\"noCache\":235,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":34,\"text\":34,\"reasoning\":0},\"raw\":{\"input_tokens\":235,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":34,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":269}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e91b093727df06a016ac69862c04487d1961bbf8206e76b44\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400034686,\"endTime\":1791400035886,\"providerRequestId\":\"req_19f12bd9c27b44dbbb7382de08e52537\",\"statusCode\":200,\"providerResponseId\":\"resp_0e91b093727df06a016ac69862c04487d1961bbf8206e76b44\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"3de345929b3a118256997758a62ab360\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000405\",\"marketCost\":\"0.0000405\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000405\",\"inferenceCost\":\"0.0000405\",\"inputInferenceCost\":\"0.0000235\",\"outputInferenceCost\":\"0.000017\",\"generationId\":\"gen_01M4BW6GB22F1HVA2DW5ZDVV53\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

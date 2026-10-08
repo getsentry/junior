@@ -10,6 +10,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["../junior/src/*"],
       "@junior-evals/fixture/*": ["./src/fixture/*"],

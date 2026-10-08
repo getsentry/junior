@@ -1,0 +1,47 @@
+{
+  "session": "evals/integration/coding/handoff.eval.ts > Handoff task continuity > when the turn hands off, do the new request",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "9400f1b21cb5",
+      "messages[0]": "9b65d88e8f37",
+      "messages[1]": "b2291d0a8f00",
+      "messages[2]": "bc6fd510c1a5",
+      "messages[3]": "e2e63969e018",
+      "messages[4]": "dc8033d358ee",
+      "messages[5]": "dd60d7fe68e7",
+      "messages[6]": "9bccbdcd52e5",
+      "messages[7]": "5c38a155b8da",
+      "messages[8]": "f6ef3561bc83",
+      "messages[9]": "5c38a155b8da",
+      "messages[10]": "53fdcde5e6f8",
+      "messages[11]": "81c8809eec72",
+      "messages[12]": "cafbdee6401b",
+      "messages[13]": "af47e1a48ad5",
+      "messages[14]": "6be0e18e3c18",
+      "messages[15]": "1a066de33549",
+      "messages[16]": "85df7b38851a",
+      "messages[17]": "00e61c9eebb4",
+      "messages[18]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4E4VC8YV1306MXQK9XMBNGN\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"### Current progress\\n- In `skills/coding-workspace-fixture/project/src/work-object.ts`, changed `workObjectId` to derive IDs from `[object.provider, object.key]`, removing thread ID from the identity.\\n- A local Node check passed. Changes are local; no push or GitHub edits were made.\\n- User accepted a clean cutover: no compatibility layer needed; prioritize working IDs going forward.\\n\\n### Constraints / preferences\\n- Original request: keep changes local, do not push or edit GitHub, and use `editFile` for source changes.\\n- User asked to switch to the other configured profile; a handoff to `standard` was attempted, but no result was returned. Current profile status is unknown.\\n- PR maintenance task for `example/widgets#42` is separate; prior events were informational (preview URL and screenshot report with no requested code change). No PR action is pending based on provided evidence.\\n\\n### Next steps\\n- No additional code work requested. If continuing, confirm profile status only if necessary; otherwise leave the local change untouched and do not push.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":224,\"cache_creation_input_tokens\":2598},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0e74bd88df7d0f6c016ac7c1f830f087d1974f717c660d877d\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476216111,\"endTime\":1791476218971,\"providerRequestId\":\"req_ba0df17033bc4f56bc8c7992d49bc3bf\",\"statusCode\":200,\"providerResponseId\":\"resp_0e74bd88df7d0f6c016ac7c1f830f087d1974f717c660d877d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"664bd41755e2daf923707f4d40b73240\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00043705\",\"marketCost\":\"0.00043705\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00043705\",\"inferenceCost\":\"0.00043705\",\"inputInferenceCost\":\"0.00032505\",\"outputInferenceCost\":\"0.000112\",\"generationId\":\"gen_01M4E4VC8YV1306MXQK9XMBNGN\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

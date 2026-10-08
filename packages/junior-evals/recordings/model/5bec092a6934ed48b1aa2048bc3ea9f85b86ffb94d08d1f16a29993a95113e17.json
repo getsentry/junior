@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when one GitHub issue has multiple requested states, create one event automation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "1f0bee1b2e24",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_052b9f93bdaff78a016ac80ac08b1087d1bf11410434431e88\",\"reasoningEncryptedContent\":\"gAAAAABqyArCN8VLFF6_ECV9o7BtHtCyulINXqulCqQ4ulDfYk06otCAN_rMvioMbA8TmLnu838FUWD9V6c59mDjpXvkvfuWUlscQMp0wCmXil8gYUf8a_lX2i0lSGRiokW-US8e0EEwjmSLG2pPY5KRbZGlJrW0Gsv--MedenRw0ARAmwVcfR2kMQC57s6rvnqtOS_ASynpvYiey-qcKukelw7AG9ijk_nxUdMZveI4iVa_run3h4om1QFJe69trXzU3Sk14ruUmAnoSmkIbZt4Kr9vE99r95XAvbxoN4hEiMyAD3YljjJ_ui9cAv2V3QOQNd_EAU5Iocb21Thlu1MdkcX_xkqqWrWMvvs0p3sEUtKrn309-ZDyeJkSAQadmfa9a_H82kLK3oI4pvdWukph39zJDxdrNMvAgMb1xCtIsJZJaRBhxygVpEEJ0BRYeYXDPdob8DJD3Dkg1k0AOa_2f2QrN1kmk59oBxdUdO-GHqxdndwbszaKtXCiU5K9kzNnzIREFnxc5WpMU9Yk7_pPFbgwpgFBDzStKYLsD7G2Gt4dK77fvLAWWtUxmOKFobICj_RUA3mZGLEnRCQW156diIkzAuiIhvl3FviLbL6U2cwq5z7JWvVMRKWffxozjaDHMImNkq0NuerioyJ8JUvAt8zblzz-yw1GweejHgbNzIntKwWjl8T9hG0-lawAwSQLtfY9fx3vg1NFgK1kFfmyS-ViTkCHvG4adXWXkP-W8hAqVUJagGqi_DxqhunnLHwOWxqZWO6OS_B5y3E7O-MtrP3WVbvvtMsT1jjVsR04lGQOe4LQ6KcZaPo64gfS23lc-lyVRn1mP7nyrhBTznYsnKqgLaZD7XlmuI9SV5h94ktwPr5U0AKhQh3vneeOx3LTWZtc6TQzvcaOmrsRtbbwZJ9COYpyMbJJt58FwBFtE6IPMIeRji_CAsoPWgjkJ1F5wLNZFtvuF99FVYHjWpll0TDhqeLeZjwCs0o0Cfze3n-sAtkK6u2-t3ZL-3uLjh1n7Y3ivcX3Vx5V8WOwmxKRcnQdaj4rkzb45pTgR3R_iI_we8DlEInGCQqo18X0ifCiuQoGQc9TMaCSYCB3W5TqANgqM9qR3JBUBIBz-f-ohYd80__y-G8CRKT3AoSfLFIAVlPCYplpziGFZym3h9dSwY8VfCtG4gyED5BWNqNsJ_SwJMw26lsYfAxfqU4S4V_2tY4iQbEtIwy8Ir-xDbgOkBBCi4P2ldM2DFB83w0jPCJPVcD48i2QhvN14h7bc7YZjZg7JmTetpP34V11bZ5n5w4fOHey5BQzT4avFLDLkQ-Y2YBzI-p9B5S7_zgSFZXY056YcJQHykPEWqsdN3BATSNY0yYmQId0AZQQdrnlBlIuW6lOqSLVncY7xKQUfh1OevD-LpJQqzEuzZhWBWSta_J8i21pFDIByJr619pdUwQxc2HVbb9kUixrb16BspbSGbm_1tw-loZdNrogc7ZjvC-PnZfAg-a9vV-V02gbSAaR1qke0W1A1UeX8i-SC9fOFewnBZDmKfvhsLc6H0qA37yrstXUTPLeBPUU83xwjFnwXlb81oxCbQXp8T-7NiWHvS-nq7qyl0ElTRhcBUcDLOg70lRwU_57Eo7j7S0z0Qj4d8V3IHXpqWOUq9Wa29BRyxhTUlFiUkcNIDDN6TSK7XOewiv3jlwXm-2MRXFM835xPJf-VShxS1fojTySVB2u9AplHQhLakvaAknlDbSDvF45V8r6yi8c-EAibBmoPLmnRTXJOBIBQoZC6mJy32xS-cKL_z65cSL3RkiY91WPkAX3dIDYPaBTTGss7IuKzh7XR72RA0FYjhiWhntxCdRCDHshZZpCAfykwlhzFHYyTStZj0cLKSKhHpCIOS4DS9CO74brR1B3RQkXwPRAXPdbSvIAT4g-Ifuv_uT4uqNo10-1gZeByrmYFih_AlMzs6m1Aq7tQHIq4QjJSwvbnQKgo_3GnTAGikNQ_mRFw5G4HbVtSCCXYUvZTtfgYH8MdkCessPaHk0rOCRtM4k3HLOybLduQzUHWplyTXORP-nfrs-Z551WkM_bEFvXXzkDC3uwogWewpCuEr6ulzF4cki3HFynaPtZ\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested one narrowly scoped automation for this issue’s close/reopen events, posting summaries to this channel.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_052b9f93bdaff78a016ac80ac1b90487d1aff979d34cf1366b\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":3300,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1476},\"outputTokens\":{\"total\":166,\"text\":49,\"reasoning\":117},\"raw\":{\"input_tokens\":3300,\"input_tokens_details\":{\"cache_write_tokens\":1476,\"cached_tokens\":1821},\"output_tokens\":166,\"output_tokens_details\":{\"reasoning_tokens\":117},\"total_tokens\":3466}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_052b9f93bdaff78a016ac80abef71c87d18608ea3379e318c2\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494846869,\"endTime\":1791494850237,\"providerRequestId\":\"req_105eb2ca893243819d16f48456c28ecd\",\"statusCode\":200,\"providerResponseId\":\"resp_052b9f93bdaff78a016ac80abef71c87d18608ea3379e318c2\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"b475d0134986653ad9f9a54b35892361\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00028601\",\"marketCost\":\"0.00028601\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00028601\",\"inferenceCost\":\"0.00028601\",\"inputInferenceCost\":\"0.00020301\",\"outputInferenceCost\":\"0.000083\",\"generationId\":\"gen_01M4EPKYC53GSN7FFBP6QCENVB\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

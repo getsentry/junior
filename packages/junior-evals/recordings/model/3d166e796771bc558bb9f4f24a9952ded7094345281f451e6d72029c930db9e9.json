@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when asked for updates on a quick task, send one completed reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "351cb6389a2a",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d8a68cef2b47f9e016ac5d91f6ef487d2906dc7e655a9db61\",\"reasoningEncryptedContent\":\"gAAAAABqxdkgQENKDNlZOa_xfIwazlwDy7-G6E-20qwibvDxSanFDQ0xRCmsE-rNfZMPF_c7D2xfolA-EMF5bIgJ7WTvqDSnwRPzp8hZL6QDzbl-khkGq-IoLhdfvyqSnbBTovNETUOa0xzQOyZS2R-dtZPy0Ju2sN6R7zvJr_nCbWnhlI3LtE5BEOa0j9kWyJ6H3W2WAa7Il1ADXFf1d68uVpk2W8buNwAJmeerGLrba9UDDH6Z8csObttLohrOWXeY5hv1bRCA3mMhAbwQP2IB4kZEH8FvUwGLbhJWVkeJVb_qw3L7pmPK5SmkDcvL5VOfNaqKbIdQ10g3xkQztzQfiEIcjrMOeXSgaIEk5XwVUa1XT3p3GQH9ljc5_agHEezxV9luaV9am3vQqUIH_6zAvU60f4jlZz0Vrn0pdxcKmnY4y9IYRx1YzcC7LZyWDiP9d-jbb3BEud7ZrKRPd0VOyBECqUlzWeAqvwNZ6jkk6ZJWNnvPzRHPaNkkVjZaCnBadwEWbYNkeceCzmBjpmO-TQCCq3gizdgJnWgGzLcV1WiSlqh_4SlT92QpdHCjcpysb8yTKhIOOuNSgoS0ANW0FPV5WS_wXSapQNFbZiRGwNl0sveWARONGBGe0giqVe9ErtKJQZHSQL4rkUHrYMoYXoptCTEkn9mQxVwX3pjXqXCoPt2n5thsDxl2ZkAT2aqcbQ15YNDzCH4ejxulXgbQjsmh7coJAfQznIFXNyiQ-jH0CqeR43ztciYUPbTj8OTsQcNxNxFyA5R2z_aVQnNyYvdcwaIXsXFuK4r8I1EFdlZNHP73H-LxOsx5Xe5hdILI-JhPxQCvtWXeFQLpNPz2BJ8Kt1jBT3zEG7jHVbyxrn4NU-oTQw9CLV-BZZe4GelwVnIvoV8n48SwHBuCvXrBsjOjDGogAwxAun3Fq1yb-TF5S7CYxMVpV8n9L55TrriwJKVI9QqknKK-Geavul4boy05tao0KYmY82AnqkeYlLt2_F2qGf5FTQxRzBD_N-RU_WJnHsJj76dt2V-hFLoj3kgTbFTKOR1OURLHfUGX471NVktbGIaKRTpgv9u2aMfZWCwaaCOOWy8-YebLgmNyFeQIQNtUgeslLGccls4oqevpGKcDdHm6DsuhtQ0N5-ndPfXWNw0GYAMO6TWG0OK8U1vQTYG-N8wP0_mnOQZ2_YaGmHPeyFnr7hFo8Z6VVydZ7M_u5ySdeTPWvM-Y7rUEX0FCNTZbDZjZiUlNct8hiG_ODtBPfymZ-_ytHaXPY30iGc6GrhjDPEOTlaZw-b4qcRBuNKtvACbWEk7G5FqOkMIHsDRMt49_UyCIR9NKHbIWB2G9dSR98RnHmJ-GSlrnemWmqRw3kdGzE9staAmerBrnQVNyhPBnoXqfLT0Zv6hk24PtIgaPXdoOtIS0PO3a8zKbzuhUkOASQ2PYbFthdbxB7tG2AFWYfuPLuVLZ9_Lhfb1IvzBcFJ7HvbG5rzMPXaAKq_QRecWzhVZRUSGwN9hUdVM6fHPNR0bOb_aT6bdO5e6W0tY61IilV-WqGB9nZEn4EjYEy9xjeGDyowpNqTkVkPUtXXRpqAM-jkZB55P-ObPPpFB_MAweIGbaw07InUmuwHhIeLyvOOHke2Eu3kJi8Q57tdY=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"The request requires checking a current time and providing progress updates, so it involves a live lookup rather than a one-step static answer.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d8a68cef2b47f9e016ac5d920210487d29458e723d32465fa\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":594,\"noCache\":594,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":111,\"text\":55,\"reasoning\":56},\"raw\":{\"input_tokens\":594,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":111,\"output_tokens_details\":{\"reasoning_tokens\":56},\"total_tokens\":705}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d8a68cef2b47f9e016ac5d91ee73087d2b5489e15bfb70a4a\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791351070815,\"endTime\":1791351072912,\"providerRequestId\":\"req_a3d39cb2db3b4bf1875006ade52e3cb7\",\"statusCode\":200,\"providerResponseId\":\"resp_0d8a68cef2b47f9e016ac5d91ee73087d2b5489e15bfb70a4a\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"fded7c6f9c3fa0ba9a1c7e9a9d48eeef\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001149\",\"marketCost\":\"0.0001149\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001149\",\"inferenceCost\":\"0.0001149\",\"inputInferenceCost\":\"0.0000594\",\"outputInferenceCost\":\"0.0000555\",\"generationId\":\"gen_01M4ADG82CNFP1F77RVHDSVQB1\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

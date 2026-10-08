@@ -1,0 +1,53 @@
+name: Collect eval recordings
+description: >
+  Upload the eval recordings that a run wrote new or changed, so they can be
+  added to a branch without a second live run. Also upload the requests that
+  had no recording (EVAL_RECORDING_MISSES_DIR), to debug misses. See
+  "Recordings" in packages/junior-evals/README.md.
+inputs:
+  name:
+    description: Artifact name, unique in the workflow run.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Copy new and changed recordings
+      shell: bash
+      run: |
+        set -euo pipefail
+        out="$RUNNER_TEMP/eval-recordings"
+        mkdir -p "$out"
+        while IFS= read -r -d '' file; do
+          # A deleted recording is also "modified". Skip it.
+          if [[ -f "$file" ]]; then cp --parents -t "$out" "$file"; fi
+        done < <(git ls-files --others --modified --exclude-standard -z -- packages/junior-evals/recordings)
+        count="$(find "$out" -type f | wc -l)"
+        {
+          echo "### New eval recordings"
+          echo
+          if [[ "$count" == "0" ]]; then
+            echo "This run wrote no new or changed recordings."
+          else
+            echo "This run wrote $count new or changed recordings. To add them to your branch:"
+            echo
+            echo '```sh'
+            echo "gh run download $GITHUB_RUN_ID --repo $GITHUB_REPOSITORY --name ${{ inputs.name }} --dir ."
+            echo '```'
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload new and changed recordings
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ runner.temp }}/eval-recordings/
+        if-no-files-found: ignore
+        retention-days: 14
+    # These files contain request bodies, such as prompts. They are for
+    # debugging misses only. Never commit them.
+    - name: Upload requests without a recording (misses)
+      uses: actions/upload-artifact@v4
+      with:
+        name: misses-${{ inputs.name }}
+        path: ${{ runner.temp }}/eval-recording-misses/
+        if-no-files-found: ignore
+        retention-days: 3

@@ -1,0 +1,195 @@
+name: Prune eval recordings
+
+# Deletes the eval recordings that no test uses. Run it by hand. Every eval
+# suite runs on main in strict replay mode, so no model request goes live.
+# The last job deletes the recordings that no test replayed and opens one
+# pull request. A failed test keeps all of its recordings, so tests that fail
+# on main do not block a prune. Pull request runs add new recordings to their
+# branches. See "Recordings" in packages/junior-evals/README.md.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-prune-recordings
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: recordings / ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: integration, shard: 1, shards: 2 }
+          - { suite: integration, shard: 2, shards: 2 }
+          - { suite: behavioral, shard: 1, shards: 4 }
+          - { suite: behavioral, shard: 2, shards: 4 }
+          - { suite: behavioral, shard: 3, shards: 4 }
+          - { suite: behavioral, shard: 4, shards: 4 }
+          - { suite: guardian, shard: 1, shards: 1 }
+          - { suite: router, shard: 1, shards: 1 }
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      RECORDINGS_DIR: packages/junior-evals/recordings
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        if: matrix.suite == 'integration' || matrix.suite == 'behavioral'
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.9.1/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      # Strict replay writes no recordings. The proxy writes the used file
+      # when it stops. The last job reads the exit code and the used file.
+      - name: Run ${{ matrix.suite }} evals
+        env:
+          VITEST_EVALS_REPLAY_MODE: replay
+          # Roach lists the recordings that the tests used.
+          EVAL_RECORDINGS_USED_FILE: ${{ runner.temp }}/eval-recordings-run/used-recordings
+          SUITE: ${{ matrix.suite }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: |
+          set -uo pipefail
+          RESULT_DIR="$RUNNER_TEMP/eval-recordings-run"
+          mkdir -p "$RESULT_DIR"
+          # The jail rejects connections that skip Roach.
+          packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals "evals:$SUITE" "--shard=$SHARD"
+          echo "$?" > "$RESULT_DIR/exit-code"
+      - name: Upload run result
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-recordings-run-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/eval-recordings-run/
+          if-no-files-found: error
+          retention-days: 7
+
+  prune:
+    name: recordings / prune
+    needs: run
+    if: ${{ always() && !cancelled() }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # GITHUB_TOKEN pushes the branch and opens the pull request.
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RECORDINGS_DIR: packages/junior-evals/recordings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+      - name: Download run results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: eval-recordings-run-*
+          path: ${{ runner.temp }}/runs
+      - name: Delete unused recordings
+        id: prune
+        env:
+          RUNS: ${{ runner.temp }}/runs
+          EXPECTED_RUNS: "8"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          runs=("$RUNS"/*/)
+          failed=()
+          unlisted=()
+          for run in "${runs[@]}"; do
+            name="${run%/}"
+            name="${name##*/eval-recordings-run-}"
+            if [[ "$(cat "$run/exit-code" 2>/dev/null || echo missing)" != "0" ]]; then
+              failed+=("$name")
+            fi
+            [[ -s "$run/used-recordings" ]] || unlisted+=("$name")
+          done
+          # Delete unused recordings only when every job finished and its
+          # proxy listed the recordings it used. A missing list makes all of
+          # the recordings of a job look unused. A failed test keeps all of
+          # its recordings, so failed evals do not stop the prune.
+          if [[ "${#runs[@]}" != "$EXPECTED_RUNS" ]]; then
+            echo "::warning::Only ${#runs[@]} of $EXPECTED_RUNS jobs finished, so no recordings were deleted."
+          elif [[ "${#unlisted[@]}" != "0" ]]; then
+            echo "::warning::No used recordings were listed in ${unlisted[*]}, so no recordings were deleted."
+          else
+            node --experimental-strip-types --disable-warning=ExperimentalWarning \
+              packages/junior-evals/src/roach/cli.ts \
+              prune "$RECORDINGS_DIR" "$RUNS"/*/used-recordings
+          fi
+          {
+            echo "### Eval recordings"
+            echo
+            echo "- Jobs finished: ${#runs[@]} of $EXPECTED_RUNS"
+            echo "- Jobs with failed evals: ${failed[*]:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "failed=${failed[*]:-none}" >> "$GITHUB_OUTPUT"
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: evals/prune-recordings
+          FAILED: ${{ steps.prune.outputs.failed }}
+        run: |
+          set -euo pipefail
+          git add -A "$RECORDINGS_DIR"
+          if git diff --cached --quiet; then
+            echo "The recordings did not change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(evals): Delete unused eval recordings"
+          # This branch belongs to this workflow. Each run starts it again from main.
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+          if [[ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" == "0" ]]; then
+            # GitHub holds the checks of a GITHUB_TOKEN pull request until a
+            # person approves them. The repository can also forbid such pull
+            # requests. Then a person opens it from the branch.
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(evals): Delete unused eval recordings" \
+              --body "The prune eval recordings workflow deleted the recordings that no eval test replayed. Failed tests kept their recordings. Jobs with failed evals: $FAILED. A test file that did not load keeps none, so check the deleted files." ||
+              echo "::warning::Could not open the pull request. Open it from the $BRANCH branch."
+          fi

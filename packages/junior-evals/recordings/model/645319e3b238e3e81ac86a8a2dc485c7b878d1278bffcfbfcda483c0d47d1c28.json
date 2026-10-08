@@ -1,0 +1,32 @@
+{
+  "session": "evals/sentry/skills.eval.ts > Sentry Skill Workflows > when creator-bound scheduled Sentry work becomes due, use the creator's account",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "3880ef05be45",
+      "messages[1]": "bf63ce715f8e",
+      "messages[2]": "7cfb61d01b25",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4EPGXM42F68Y109MXE7VT0V\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **Task:** Query Sentry for the latest unresolved issues in the `getsentry` organization, then post a short digest with issue details.\\n- **Progress:** No Sentry query or digest post has been completed. An initial handoff-tool call returned no result.\\n- **Constraints:** The scheduler says to briefly report what was done or what is needed next. Where instructions refer to “me” or “my,” use the mention `<@U0TEST>`.\\n- **Next steps:**\\n  1. Use the available Sentry integration to fetch the latest unresolved issues for `getsentry`.\\n  2. Prepare a concise digest with relevant issue details (for example, title, project, and link).\\n  3. Post the digest using the available messaging/posting tool.\\n  4. Briefly confirm the action, or state what’s needed if querying or posting is unavailable.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":242,\"output_tokens\":190},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0f7047735a7b0116016ac80a5bdfd487d18e80bf106a2eb496\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494747796,\"endTime\":1791494749816,\"providerRequestId\":\"req_ff3acb70d36340e6bcb268c5bfb14b6d\",\"statusCode\":200,\"providerResponseId\":\"resp_0f7047735a7b0116016ac80a5bdfd487d18e80bf106a2eb496\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"ec74f39af6034147e8ab7fe22beaceba\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001192\",\"marketCost\":\"0.0001192\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001192\",\"inferenceCost\":\"0.0001192\",\"inputInferenceCost\":\"0.0000242\",\"outputInferenceCost\":\"0.000095\",\"generationId\":\"gen_01M4EPGXM42F68Y109MXE7VT0V\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

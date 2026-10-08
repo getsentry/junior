@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/attachments.eval.ts > Conversation Attachments > when the vision model cannot read an image, the reply says that Junior could not read it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "96cd33a76e02",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_01e3df1e5d4937c9016ac7d6b0184087d1abdeeeb8203b60aa\",\"reasoningEncryptedContent\":\"gAAAAABqx9axYX9J4b8pPXQw9-tgZ0aGwp0eOr1h_4ElhkuTuioKvSgMlkBKpIb5As-ux8oDeCDsdYZRQVFdk_43vpS43PmK5p4BAdKiQV5s5qOrxQdyCdMgoRCt8PSEc_ntf2ejFKtgxZ5eODfFhfLJ6LBU9nXYtHeJwSkFJKdAvKC8R-q556VzZCn9CFh9YdjoY3lwRF__PnyRszto6rz-4hL2OxdaAlFRShIcwRV4Vz3Plon-fLY94xkFnOvpstrObipY4e-VWc19nCYQeLab9GNKeVN7v_7Pe5HyqgV2jI5_6f7wkcS7iObqPdvA7ZfQbc7DgF34mUvUYJ8zEhIVMRwwzyGogAW3C8kr3R_vydZ2SbTqRpx8GnD9vTtV0fnxnpSZYnoaK6rq16bZ4fbgn5fgy079qi7gJ764EX17kzRZK8huZsFCAfF_bBFZK0T_UUrIaDjtEyrT44yyD9nM89kqGkYY6rqZAWccgkNvjflapKpq77ncStdBaGIu07q6Zu1f3AC9Gdm9J--HAxX1ZXodpDvY0diNQrEpdNFE-tLA4kMZ8jD5yvluGk4qsmIbAIsC871QH9YVwAwFfntddHWdn-18BP3ectISba8SQiC8tBCM4a_QfQz0Hi7NLSTkXE1txfx3VGSGx4GR6dXlGVoc_gz-9D7HdqgQ0wCxJyPMhtCE0ZsMk4aufIo4NuIXU5AEYh5TH9wft3k3SwlFa5Mng_WJFUy7RkzeDaXirQkGrOIS5fsFT29GD96vJwq0gBwiWDRqiyqj-LXhYGxxjVrGb67o7IwYRpsEy3YRoQ5E1P8fFvW-0bkp_BR1-f-cIpSrhuaTC4zGbb27PlDj4JnMZflw3eh4Fwz66rlIwenBchhyFunqQCnUVPYzk-fVfT7dqvpF1oBIBMxzUqxHVJh_lytsvQo6PcSsmuSBwmUDCm5r4iJV6N-KYnPUDWcnoRIP9J9xH-4wdfNTOErGV9h9nKEy_EcVIuqOYsf4jOb3ftmy9w4G8ZNC-2ZSLc46AdixbzCZn8T_KsXU1tZBZQyfJ4aEeVqZjxuPE6XciC8HZtCgNEeacPH0q4gWLQ3nUEGVFEiU6itFN3v6k2VkusWlVi0cPyTrEb8UsyeyIYT4_MOpMpXXWPql-WT42a3OIQ75b4vAWt-4qN_8nkdzx1uwMOXtfSMe1gB0b7X29rPs43-UBiRueqy8BmIEJQzl-XjZZ_oaTy8aH38nGat6i2jPtiX1ak8MuNTAwYjM1YpHnL-QwKZAZnk0ur2QEX2T7gTpIXhgd-RSgEKn-QdFAToRq57M1qtiPxxw15duXr-VU7hxgYddGFA1-pqWaGJB_7-MQQKc4UjGbjqnCDpxbWgHhgvfRa5vbUgysoF6GoyhGR8JlS1ZmstF2jZ0iPU3yQsHeIlAeJgJ9v5WBy_S5c9dMoSUwuTBvkTxtlF_bJBnmjsqoAU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The request is to read a ticket number from an image attachment; accessing and interpreting the image is a straightforward visual lookup.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_01e3df1e5d4937c9016ac7d6b0b6dc87d1a1be3a11cf180d37\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":684,\"noCache\":684,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":83,\"text\":53,\"reasoning\":30},\"raw\":{\"input_tokens\":684,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":83,\"output_tokens_details\":{\"reasoning_tokens\":30},\"total_tokens\":767}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_01e3df1e5d4937c9016ac7d6aed2e087d184ed1bd2305ca81c\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791481518738,\"endTime\":1791481521561,\"providerRequestId\":\"req_67bbdf2868e84db79005d9b6fae1d69d\",\"statusCode\":200,\"providerResponseId\":\"resp_01e3df1e5d4937c9016ac7d6aed2e087d184ed1bd2305ca81c\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"24f2bbd31d50ebea6a52f8ec2a06cfdc\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001099\",\"marketCost\":\"0.0001099\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001099\",\"inferenceCost\":\"0.0001099\",\"inputInferenceCost\":\"0.0000684\",\"outputInferenceCost\":\"0.0000415\",\"generationId\":\"gen_01M4E9X6KRN7GG1AXCZCMHXMJ1\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

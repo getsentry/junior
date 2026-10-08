@@ -2,6 +2,9 @@ name: Evals
 
 permissions:
   contents: read
+  # The eval-recordings-mode action reads the commits and runs of the PR.
+  pull-requests: read
+  actions: read
   checks: write
 
 on:
@@ -10,7 +13,9 @@ on:
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
-  group: evals-behavioral-${{ github.event.pull_request.number || github.ref }}
+  # A recordings commit must not cancel the runs that are still recording,
+  # so each bot that pushes has its own group.
+  group: evals-behavioral-${{ github.event.pull_request.number || github.ref }}-${{ github.event.sender.type == 'Bot' && github.event.sender.login || 'user' }}
   cancel-in-progress: true
 
 env:
@@ -22,6 +27,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
+      mode: ${{ steps.mode.outputs.mode || 'auto' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,12 +48,17 @@ jobs:
               - 'packages/junior-evals/evals/skills/**'
               - '.github/workflows/evals-behavioral.yml'
               - '.github/actions/setup-node-pnpm/**'
+              - '.github/actions/collect-eval-recordings/**'
+              - '.github/actions/commit-eval-recordings/**'
+              - '.github/actions/eval-recordings-mode/**'
+              - 'packages/junior-evals/recordings/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'packages/junior-evals/src/**'
               - 'packages/junior-evals/fixtures/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'
+              - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/tests/**'
@@ -89,6 +100,11 @@ jobs:
             echo "- will_run: $should_run"
             echo "- minimum_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
+      - id: mode
+        if: steps.decision.outputs.should_run == 'true'
+        uses: ./.github/actions/eval-recordings-mode
+        with:
+          suite: behavioral
 
   behavioral:
     name: behavioral / shard ${{ matrix.shard }}/4
@@ -151,7 +167,14 @@ jobs:
         env:
           VITEST_EVALS_OUTPUT_FILE: behavioral-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+          EVAL_RECORDING_MISSES_DIR: ${{ runner.temp }}/eval-recording-misses
+          VITEST_EVALS_REPLAY_MODE: ${{ needs.select.outputs.mode }}
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+      - name: Collect new recordings
+        if: always() && !cancelled()
+        uses: ./.github/actions/collect-eval-recordings
+        with:
+          name: eval-recordings-behavioral-${{ matrix.shard }}
       - name: Require behavioral eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -224,3 +247,25 @@ jobs:
         env:
           SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
         run: node packages/junior-evals/scripts/report.mjs behavioral eval-results/behavioral-results-*.json
+
+  recordings:
+    name: behavioral / commit recordings
+    needs: [select, behavioral]
+    # Only for a branch of this repository: the token of a fork run is
+    # read-only. Strict replay runs write no recordings.
+    if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' && needs.select.outputs.mode == 'auto' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # GITHUB_TOKEN pushes the commit. It expires when the job ends, and it
+    # can do only what a person who can push a branch here can already do.
+    # The job holds no other secret, so it can run the action from the pull
+    # request.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/commit-eval-recordings
+        with:
+          suite: behavioral

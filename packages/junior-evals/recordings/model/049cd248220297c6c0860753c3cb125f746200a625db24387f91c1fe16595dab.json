@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/auth/mcp.eval.ts > MCP Authorization > when one person connected a provider, another person authorizes only when they use that provider",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "8cfa8728c3a2",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d46aefab047125c016ac812f25d1887d18519d35c7e40d67e\",\"reasoningEncryptedContent\":\"gAAAAABqyBLzAy05iz6Yta9V6MxelxuTNd-bgYZ66fx6Dmi9y38fwE4iLzBa7Ugi62bUOzVgp-5pYoPEBxxfLKcHjJZJ4hMJdgrJXVbXg1FF_Rl_6nA40sPzzDyUku5SCjzX5L0RroZ-KuopGuX3YFLdJpe7Vf2_BlHFHfm5JHD_EJ7LEmODEITb4-0n7FsZ6_BEX3YM9kj63or8YizFTGNO3RmcIclhW25_dYZDYW8QWe6c_ZYsp1VTVZTu0XwqhcYQFlEULVIYCEuYl1Y5BT-oNuzo05Djd7um5UR_pjaf9V-jpD6U8372KqONGTi-CCUR3qPjj-VERiZ8sAKWvWRRZmUqOUfnHglqSby9-KLukTqSyBdgnt1RU2JnGqnaPgjVTc3TqHYsH6GJ8SaNM9-IjWITOqIo4PsHl3LoQswDZu2VFGHl5J_aZ-CPbh7z4WHJXv2QdgYyOlUE5Tcca12LrEjGORBPoiVaC4HgJPQooHjCveWC1dCH12tfmytvrbvZYD8kTP_yll3IR-r0guCqDusuSeFYVHefeeZb2RuqPPXkk89EcMUDERvbUpV4PgTfpI5H5jxUNEgflZORRr5FcErD3tHY385EQrbElg2vnoQriwzE3qnH9psGFb97gmEmCbaHXEjz1bxmySohgHR1spSpUdVmOAJJUzVU4Yjuaj2UzbrPD2_wFSVkkmYJfq8TWOgi6G00b6Z5oiDKnq4OncWzSNzqAobfQiEdrgbwzEa-7dLCWR1rSmFhqzTp1dj5d4qFp35p6AFezZ8-Q3Nx9ntbFo7kBjFOo_DAF_IRsJUJG1LeqfrIB2uicomVSBWPxg-pRNX6OJHGyih2_zr8iix60JDGuDxkFZed5dR4u-UUoU4Vo-2qsJdAd7hST9earvVQw6CGtu8o4qH1YYtdpaVOGiXAzJy1L-SM3oXtpaD1WhbDsKUKjtYcO_QiyG5Fqiyy0IG06SM6qhySGmK3NZ9DNf39rAGXKR_CgOeRa-QIiAx6k9B6tMOkHsf3wj1RtTF65gBtLz1UE5J2hanYfjPyJ58gOqfR64QXSnc5cDBnflhqz5can83lyzDmMv6a9PtULJcbkNP5eyw0aAkU6qmZqtuNsp-0VCdER4KDW_RDVCTZTBiImJgm26Xkau3bQzu-5-Llyzaah456WkFRco0l7YqlkGUuZa6wFWzK6OZVYpL0EO5eRCm3um43TCcDfypUx4JueG8W7BEluniAXHQZeI4rE7B_Y33fPy2aOZ-wtGgW5T_wnYQAxGwOiIcrF2hs5jRSIIflF-jz53rD4Kmi2394664ppm1ILUmTCA0-P8wgsaNqi7KEubD-zd6wt3-dN69gGCaXWbKr0VYUzUCtHaekENLewXY5jak9XZsE7rJPmpVrfGrPwWnARrC9HNfJknXcIFVTuiP3XLQLJdEBqFQudai5oRr_n8_SdGAj9_-c3iPnK-m4cv4-J0B8DqAxLSNwXQFkt9R-uCNyO7ObzlQ1u9XQ-nZH7SxnybI5MVa42Rf-Kixg996irBaIQbrz5qzR3P5mJT5jWQzbwGwZFnUg_ab3YWthJYw9S23iCRtgEhC0I1zki_AD0qf59scxuR2NWGgbJeB4tP1nIwnV-Z26HA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.97,\\\"reason\\\":\\\"This is a routine lookup that may require an authorized source or tool, and the thread shows a prior unsuccessful attempt. Use standard profile with medium reasoning.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d46aefab047125c016ac812f2f3dc87d1a83e1571c2c41ede\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":894,\"noCache\":894,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":111,\"text\":59,\"reasoning\":52},\"raw\":{\"input_tokens\":894,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":111,\"output_tokens_details\":{\"reasoning_tokens\":52},\"total_tokens\":1005}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d46aefab047125c016ac812f1c42c87d1814fe9e5e7a7f762\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791496945679,\"endTime\":1791496947767,\"providerRequestId\":\"req_3377f09075d34d639e0600a726120cc4\",\"statusCode\":200,\"providerResponseId\":\"resp_0d46aefab047125c016ac812f1c42c87d1814fe9e5e7a7f762\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"fab7172f6be2d18e89f032e9cde18a08\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001449\",\"marketCost\":\"0.0001449\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001449\",\"inferenceCost\":\"0.0001449\",\"inputInferenceCost\":\"0.0000894\",\"outputInferenceCost\":\"0.0000555\",\"generationId\":\"gen_01M4ERKZZR8EYW9118RQSAPVR4\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
