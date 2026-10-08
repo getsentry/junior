@@ -3,8 +3,7 @@ description: >
   Commit the new eval recordings of a pull request run to its branch. It
   takes only recording files from the run artifacts and runs no code from
   the pull request. It pushes only when the branch is still at the tested
-  commit, or at a recording commit on top of it. All suites of one tested
-  commit share one recording commit. It pushes with the
+  commit, or at recording commits on top of it. It pushes with the
   GITHUB_TOKEN of the job, which needs `contents: write`. GitHub starts the
   runs of that push only after a person with write access approves them.
   The eval-recordings-mode action makes those runs strict. See "Recordings"
@@ -71,42 +70,33 @@ runs:
         for attempt in 1 2 3; do
           git fetch --quiet --depth=50 origin "$BRANCH"
           git reset --quiet --hard FETCH_HEAD
-          head="$(git rev-parse HEAD)"
-          # Push only on the tested commit, or on the recording commit of
-          # another suite on top of it. After another push, the evals of that
-          # push record again.
+          # Push only on the tested commit, or on recording commits on top of
+          # it. After another push, the evals of that push record again.
           if ! git merge-base --is-ancestor "$TESTED" HEAD; then
             echo "The branch moved past the tested commit. Not pushing."
             exit 0
           fi
-          suites="$SUITE"
           while IFS= read -r subject; do
             if [[ "$subject" != "$PREFIX" ]]; then
               echo "The branch has new commits after the tested commit. Not pushing."
               exit 0
             fi
           done < <(git log --format=%s "$TESTED..HEAD")
-          suites+=$'\n'"$(git log --format=%B "$TESTED..HEAD" | sed -n 's/^Eval-Suite: //p')"
-          # One recording commit per tested commit: fold the commit of an
-          # earlier suite into this one. So a person approves the runs once.
-          git reset --quiet --soft "$TESTED"
           cp -R "$NEW/." .
           git add packages/junior-evals/recordings
-          if [[ "$(git write-tree)" == "$(git rev-parse "$head^{tree}")" ]]; then
+          if git diff --cached --quiet; then
             echo "The branch already has these recordings."
             exit 0
           fi
-          trailers="$(sort -u <<< "$suites" | sed '/^$/d; s/^/Eval-Suite: /')"
           git commit --quiet --file=- <<EOF
         $PREFIX
 
-        The evals of $TESTED recorded these model responses.
+        The $SUITE evals recorded these model responses in $RUN_URL.
         The evals of this commit replay them in strict mode.
-        Last run: $RUN_URL
 
-        $trailers
+        Eval-Suite: $SUITE
         EOF
-          if git push --quiet --force-with-lease="refs/heads/$BRANCH:$head" origin "HEAD:refs/heads/$BRANCH"; then
+          if git push --quiet origin "HEAD:refs/heads/$BRANCH"; then
             # GitHub holds the runs of a GITHUB_TOKEN push until a person
             # approves them.
             echo "Pushed $(git rev-parse --short HEAD). To start its checks, select \"Approve workflows to run\" on the pull request." >> "$GITHUB_STEP_SUMMARY"

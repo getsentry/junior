@@ -353,11 +353,8 @@ Its `README.md` tells how it keys, records, and replays requests.
   recordings to the branch as "chore(evals): Update eval recordings"
   (`.github/actions/commit-eval-recordings`). It takes only recording files
   from the run artifacts and runs no pull request code. It pushes only when
-  the branch is still at the tested commit, or at a recording commit on top
-  of it.
-- All suites of one tested commit share one recording commit. A later suite
-  folds its recordings into the commit of an earlier suite and pushes with
-  `--force-with-lease`. So a person approves the checks once.
+  the branch is still at the tested commit, or at recording commits on top
+  of it. Each suite makes its own commit.
 - The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
   no other secret. The token expires when the job ends.
 - GitHub holds the checks of a `GITHUB_TOKEN` push until a person with write
