@@ -599,6 +599,59 @@ describe("GitHub webhook events", () => {
         ],
       },
       {
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          review: { body: "", state: "APPROVED", user: { login: "reviewer" } },
+        },
+        expected: [
+          {
+            eventKey: "github:delivery-event:pull_request.review.approved",
+            eventType: "pull_request.review.approved",
+            occurredAtMs: 1_000,
+            identifier: "getsentry/junior#946",
+            trustedSummary:
+              "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            untrustedText: "",
+          },
+        ],
+      },
+      {
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 946 },
+          review: {
+            body: "fine, but dedupe the tests",
+            state: "APPROVED",
+            user: { login: "reviewer" },
+          },
+        },
+        expected: [
+          {
+            eventKey: "github:delivery-event:pull_request.review.approved",
+            eventType: "pull_request.review.approved",
+            occurredAtMs: 1_000,
+            identifier: "getsentry/junior#946",
+            trustedSummary:
+              "GitHub PR getsentry/junior#946 was approved by reviewer.",
+            untrustedText: "fine, but dedupe the tests",
+          },
+          {
+            eventKey: "github:delivery-event:pull_request.review.commented",
+            eventType: "pull_request.review.commented",
+            occurredAtMs: 1_000,
+            identifier: "getsentry/junior#946",
+            trustedSummary:
+              "GitHub PR getsentry/junior#946 was approved by reviewer with a review comment.",
+            untrustedText: "fine, but dedupe the tests",
+          },
+        ],
+      },
+      {
         eventName: "issue_comment",
         body: {
           action: "created",

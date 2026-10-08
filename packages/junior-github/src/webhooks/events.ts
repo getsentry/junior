@@ -2,7 +2,10 @@ import type { EventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubDeploymentSourceResource } from "../events/deployment.js";
 import { gitHubIssueResource } from "../events/issue.js";
-import { gitHubPullRequestResource } from "../events/pull-request.js";
+import {
+  gitHubPullRequestResource,
+  type GitHubPullRequestEvent,
+} from "../events/pull-request.js";
 import { gitHubReleaseSourceResource } from "../events/release.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
 import {
@@ -522,7 +525,12 @@ const pullRequestReviewWebhookSchema = z.object({
   }),
 });
 
-/** Normalize a submitted pull request review into its review-state event. */
+/**
+ * Normalize a submitted pull request review into its review-state event.
+ *
+ * An approval with a body also emits `pull_request.review.commented`, so
+ * review feedback reaches subscriptions that do not watch approvals.
+ */
 function normalizePullRequestReviewEvent(
   deliveryId: string,
   body: unknown,
@@ -547,27 +555,46 @@ function normalizePullRequestReviewEvent(
     repo,
   });
   const reviewer = parsed.data.review.user?.login;
+  const by = reviewer ? ` by ${reviewer}` : "";
+  const from = reviewer ? ` from ${reviewer}` : "";
   const data = pullRequestMatchData([
     pullRequestDraftData(parsed.data.pull_request.draft),
     pullRequestAuthorData(parsed.data.pull_request.user),
     pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
   ]);
-  return pullRequestTargets(
-    {
-      eventKey: gitHubEventKey(deliveryId, eventType),
-      eventType,
-      occurredAtMs: Date.now(),
-      identifier: resource.identifier,
-      trustedSummary:
-        eventType === "pull_request.review.approved"
-          ? `${resource.label} was approved${reviewer ? ` by ${reviewer}` : ""}.`
-          : eventType === "pull_request.review.changes_requested"
-            ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
-            : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
-      ...(data ? { data } : undefined),
-      untrustedText: parsed.data.review.body ?? undefined,
-    },
-    repo,
+  const untrustedText = parsed.data.review.body ?? undefined;
+  const reviewEvent = (
+    type: GitHubPullRequestEvent,
+    trustedSummary: string,
+  ): EventInput[] =>
+    pullRequestTargets(
+      {
+        eventKey: gitHubEventKey(deliveryId, type),
+        eventType: type,
+        occurredAtMs: Date.now(),
+        identifier: resource.identifier,
+        trustedSummary,
+        ...(data ? { data } : undefined),
+        untrustedText,
+      },
+      repo,
+    );
+  if (eventType === "pull_request.review.approved") {
+    return [
+      ...reviewEvent(eventType, `${resource.label} was approved${by}.`),
+      ...(untrustedText?.trim()
+        ? reviewEvent(
+            "pull_request.review.commented",
+            `${resource.label} was approved${by} with a review comment.`,
+          )
+        : []),
+    ];
+  }
+  return reviewEvent(
+    eventType,
+    eventType === "pull_request.review.changes_requested"
+      ? `${resource.label} received requested changes${from}.`
+      : `${resource.label} received a review comment${from}.`,
   );
 }
 
