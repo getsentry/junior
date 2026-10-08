@@ -80,6 +80,8 @@ export interface BotModelConfig {
 }
 
 export interface BotConfig {
+  contextDistillationBatchEnabled: boolean;
+  contextDistillationEnabled: boolean;
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
   defaultProfile: ModelProfile;
@@ -225,6 +227,16 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
     return false;
   }
   throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
+}
+
+function parseContextDistillationEnabled(
+  rawValue: string | undefined,
+  name = "JUNIOR_CONTEXT_DISTILLATION_ENABLED",
+): boolean {
+  const value = toOptionalTrimmed(rawValue)?.toLowerCase();
+  if (value === undefined || value === "false") return false;
+  if (value === "true") return true;
+  throw new Error(`${name} must be true or false`);
 }
 
 function parseCrossActorMidRunMode(
@@ -473,6 +485,13 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    contextDistillationBatchEnabled: parseContextDistillationEnabled(
+      env.JUNIOR_CONTEXT_DISTILLATION_BATCH_ENABLED,
+      "JUNIOR_CONTEXT_DISTILLATION_BATCH_ENABLED",
+    ),
+    contextDistillationEnabled: parseContextDistillationEnabled(
+      env.JUNIOR_CONTEXT_DISTILLATION_ENABLED,
+    ),
     defaultProfile: "standard",
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,

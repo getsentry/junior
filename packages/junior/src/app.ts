@@ -194,7 +194,12 @@ export interface JuniorAppOptions extends BotModelConfig {
    */
   pluginTaskQueue?: (
     consume: (message: PluginTaskQueueMessage) => Promise<void>,
-  ) => { send(message: PluginTaskQueueMessage): Promise<void> };
+  ) => {
+    send(
+      message: PluginTaskQueueMessage,
+      options?: { delaySeconds: number },
+    ): Promise<void>;
+  };
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -482,7 +487,18 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     ) ??
     getVercelConversationWorkQueue();
-  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const pluginTaskQueue:
+    | ReturnType<NonNullable<JuniorAppOptions["pluginTaskQueue"]>>
+    | undefined = options?.pluginTaskQueue?.((message) =>
+    processPluginTask(message, {
+      send: (next, delivery) => {
+        if (!pluginTaskQueue) {
+          throw new Error("Plugin task queue is unavailable");
+        }
+        return pluginTaskQueue.send(next, delivery);
+      },
+    }),
+  );
   const attachmentStorage = createVercelAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
