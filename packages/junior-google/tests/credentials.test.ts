@@ -114,6 +114,26 @@ describe("Google credential issuing", () => {
     expect(body.get("refresh_token")).toBe("refresh-token");
   });
 
+  it("asks for a reconnect when the stored grant lacks a newer scope", async () => {
+    await saveGoogleAccount(fixture.db(), {
+      accountEmail: ACCOUNT_EMAIL,
+      connectedAtMs: Date.now(),
+      connectedBy: ADMIN_EMAIL,
+      refreshToken: "refresh-token",
+      scope: "https://www.googleapis.com/auth/calendar.events.owned",
+    });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await issue();
+
+    expect(result).toMatchObject({ type: "unavailable" });
+    expect(result.type === "unavailable" && result.message).toContain(
+      "calendar.events.readonly",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("forgets a revoked grant so status shows it needs reconnecting", async () => {
     await saveGoogleAccount(fixture.db(), {
       accountEmail: ACCOUNT_EMAIL,

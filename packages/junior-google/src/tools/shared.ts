@@ -59,6 +59,13 @@ export function requireAllowedEmails(
   }
 }
 
+/** Return the requester's email in lowercase, when Junior knows it. */
+export async function requesterEmail(
+  ctx: GoogleToolContext,
+): Promise<string | undefined> {
+  return (await ctx.users.resolveActor())?.user?.email?.trim().toLowerCase();
+}
+
 /**
  * Add the requester's email when Junior knows it and it is in an allowed
  * domain. People rarely type their own address.
@@ -67,9 +74,7 @@ export async function withRequester(
   ctx: GoogleToolContext,
   emails: string[],
 ): Promise<string[]> {
-  const requester = (await ctx.users.resolveActor())?.user?.email
-    ?.trim()
-    .toLowerCase();
+  const requester = await requesterEmail(ctx);
   const domain = requester ? emailDomain(requester) : undefined;
   const all =
     requester && domain && ctx.allowedDomains.includes(domain)
@@ -146,3 +151,57 @@ export function formatInterval(
   });
   return `${day}, ${time.format(startMs)} – ${time.format(endMs)}`;
 }
+
+/** Longest event Junior may create or move an event to. */
+export const MAX_EVENT_MS = 8 * 60 * 60 * 1000;
+
+/** Event fields that Junior reads back from its own calendar. */
+export const ownEventSchema = z.object({
+  attendees: z
+    .array(
+      z
+        .object({ email: z.string(), responseStatus: z.string().optional() })
+        .loose(),
+    )
+    .optional(),
+  end: z.object({ dateTime: z.string() }),
+  hangoutLink: z.string().optional(),
+  htmlLink: z.string().optional(),
+  id: z.string(),
+  organizer: z.object({ self: z.boolean().optional() }).optional(),
+  start: z.object({ dateTime: z.string() }),
+  summary: z.string().optional(),
+});
+
+/** Shape one event on Junior's calendar for a tool result. */
+export function ownEventResult(
+  event: z.infer<typeof ownEventSchema>,
+  timeZone: string,
+) {
+  return {
+    attendees: (event.attendees ?? []).map((attendee) => attendee.email),
+    end: event.end.dateTime,
+    eventId: event.id,
+    label: formatInterval(
+      Date.parse(event.start.dateTime),
+      Date.parse(event.end.dateTime),
+      timeZone,
+    ),
+    start: event.start.dateTime,
+    ...(event.summary ? { title: event.summary } : undefined),
+    ...(event.htmlLink ? { url: event.htmlLink } : undefined),
+    ...(event.hangoutLink ? { videoCallUrl: event.hangoutLink } : undefined),
+  };
+}
+
+/** Output fields shared by the tools that create or change Junior's events. */
+export const ownEventOutputFields = {
+  attendees: z.array(z.string()),
+  end: z.string(),
+  eventId: z.string(),
+  label: z.string(),
+  start: z.string(),
+  title: z.string().optional(),
+  url: z.string().optional(),
+  videoCallUrl: z.string().optional(),
+};

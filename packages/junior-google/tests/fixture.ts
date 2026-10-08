@@ -41,4 +41,4 @@ export function idToken(claims: Record<string, unknown>): string {
 }
 
 export const CALENDAR_SCOPE =
-  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned";
+  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly";

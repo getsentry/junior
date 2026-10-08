@@ -178,4 +178,137 @@ describe("Google Calendar tools", () => {
       videoCallUrl: "https://meet.google.com/abc-defg-hij",
     });
   });
+  it("reads a colleague's calendar and reports calendars Junior cannot see", async () => {
+    const { fetch, tools } = calendarTools(
+      Response.json({
+        items: [
+          {
+            attendees: [{ email: "bob@example.com" }, { email: REQUESTER }],
+            end: { dateTime: "2026-10-12T10:30:00-07:00" },
+            id: "event1",
+            organizer: { email: "bob@example.com" },
+            start: { dateTime: "2026-10-12T10:00:00-07:00" },
+            summary: "Planning",
+          },
+          // Busy block on a calendar shared as free/busy only.
+          {
+            end: { dateTime: "2026-10-12T12:00:00-07:00" },
+            id: "event2",
+            start: { dateTime: "2026-10-12T11:00:00-07:00" },
+          },
+          {
+            end: { dateTime: "2026-10-12T14:00:00-07:00" },
+            id: "event3",
+            start: { dateTime: "2026-10-12T13:00:00-07:00" },
+            status: "cancelled",
+          },
+        ],
+      }),
+      Response.json({ error: { message: "Not Found" } }, { status: 404 }),
+    );
+    const input = {
+      calendar: "Bob@example.com",
+      timeMax: "2026-10-13T00:00:00Z",
+      timeMin: "2026-10-12T00:00:00Z",
+      timeZone: "America/Los_Angeles",
+    };
+
+    const result = await tools.listCalendarEvents!.execute!(
+      tools.listCalendarEvents!.prepareArguments!(input),
+      { toolCallId: "call-4" },
+    );
+    const call = fetch.mock.calls[0]![0];
+    const url = new URL(call.request.url);
+    expect(call.operation).toBe("google.calendar.events.list");
+    expect(url.pathname).toBe(
+      "/calendar/v3/calendars/bob%40example.com/events",
+    );
+    expect(url.searchParams.get("singleEvents")).toBe("true");
+    expect(result).toMatchObject({
+      events: [
+        {
+          attendees: ["bob@example.com", REQUESTER],
+          eventId: "event1",
+          organizer: "bob@example.com",
+          title: "Planning",
+        },
+        { eventId: "event2" },
+      ],
+      visible: true,
+    });
+    expect(result.events[1]).not.toHaveProperty("title");
+
+    const hidden = await tools.listCalendarEvents!.execute!(
+      tools.listCalendarEvents!.prepareArguments!(input),
+      { toolCallId: "call-5" },
+    );
+    expect(hidden).toMatchObject({ events: [], visible: false });
+  });
+
+  it("changes Junior's event only for people invited to it", async () => {
+    const event = {
+      attendees: [
+        { email: REQUESTER, responseStatus: "accepted" },
+        { email: "bob@example.com", responseStatus: "needsAction" },
+      ],
+      end: { dateTime: "2026-10-12T10:30:00-07:00" },
+      id: "event1",
+      organizer: { email: "junior@example.com", self: true },
+      start: { dateTime: "2026-10-12T10:00:00-07:00" },
+      summary: "Sync",
+    };
+    const input = {
+      addAttendees: ["carol@example.com"],
+      end: "2026-10-13T11:30:00-07:00",
+      eventId: "event1",
+      removeAttendees: ["bob@example.com"],
+      start: "2026-10-13T11:00:00-07:00",
+      timeZone: "America/Los_Angeles",
+    };
+
+    const outsider = calendarTools(
+      Response.json({ ...event, attendees: [{ email: "bob@example.com" }] }),
+    );
+    await expect(
+      outsider.tools.updateCalendarEvent!.execute!(
+        outsider.tools.updateCalendarEvent!.prepareArguments!(input),
+        { toolCallId: "call-6" },
+      ),
+    ).rejects.toBeInstanceOf(PluginToolInputError);
+    expect(outsider.fetch).toHaveBeenCalledTimes(1);
+
+    const { fetch, tools } = calendarTools(
+      Response.json(event),
+      Response.json({
+        ...event,
+        attendees: [{ email: REQUESTER }, { email: "carol@example.com" }],
+        end: { dateTime: input.end },
+        start: { dateTime: input.start },
+      }),
+    );
+    const result = await tools.updateCalendarEvent!.execute!(
+      tools.updateCalendarEvent!.prepareArguments!(input),
+      { toolCallId: "call-7" },
+    );
+    const patch = fetch.mock.calls[1]![0];
+    expect(patch.operation).toBe("google.calendar.event.update");
+    expect(patch.request.method).toBe("PATCH");
+    expect(new URL(patch.request.url).searchParams.get("sendUpdates")).toBe(
+      "all",
+    );
+    expect(await patch.request.json()).toEqual({
+      // Existing attendees keep their response status.
+      attendees: [
+        { email: REQUESTER, responseStatus: "accepted" },
+        { email: "carol@example.com" },
+      ],
+      end: { dateTime: input.end, timeZone: "America/Los_Angeles" },
+      start: { dateTime: input.start, timeZone: "America/Los_Angeles" },
+    });
+    expect(result).toMatchObject({
+      attendees: [REQUESTER, "carol@example.com"],
+      eventId: "event1",
+      start: input.start,
+    });
+  });
 });

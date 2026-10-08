@@ -12,7 +12,7 @@ import {
   type PluginCredentialResult,
   type PluginGrant,
 } from "@sentry/junior-plugin-api";
-import { readGoogleConfig } from "./config";
+import { missingCalendarScopes, readGoogleConfig } from "./config";
 import { refreshGoogleAccessToken } from "./oauth";
 import { GOOGLE_PLUGIN_ROUTE_PREFIX } from "./setup-routes";
 import {
@@ -36,7 +36,17 @@ export const GOOGLE_OPERATIONS = {
   "google.calendar.event.get": {
     access: "read",
     method: "GET",
-    path: /^\/calendar\/v3\/calendars\/primary\/events\/[a-v0-9]+$/,
+    path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
+  },
+  "google.calendar.event.update": {
+    access: "write",
+    method: "PATCH",
+    path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
+  },
+  "google.calendar.events.list": {
+    access: "read",
+    method: "GET",
+    path: /^\/calendar\/v3\/calendars\/[^/]+\/events$/,
   },
   "google.calendar.freebusy.query": {
     access: "read",
@@ -103,6 +113,13 @@ export async function issueGoogleCredential(
   const record = await getGoogleAccount(db, config.accountEmail);
   if (!record) {
     return unavailable(NOT_CONNECTED_MESSAGE);
+  }
+  // A grant from an older plugin version can lack scopes that new tools need.
+  const missing = missingCalendarScopes(record.scope);
+  if (missing.length > 0) {
+    return unavailable(
+      `Junior's Google account needs more Calendar access (${missing.join(", ")}). An admin must reconnect it at ${GOOGLE_PLUGIN_ROUTE_PREFIX}/setup on the Junior dashboard or with \`junior google connect\`.`,
+    );
   }
   const token = await refreshGoogleAccessToken({
     config,

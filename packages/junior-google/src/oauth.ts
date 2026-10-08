@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   GOOGLE_CALENDAR_SCOPES,
   GOOGLE_IDENTITY_SCOPES,
+  missingCalendarScopes,
   type GoogleConfig,
 } from "./config";
 import { saveGoogleAccount, type GoogleDb } from "./store";
@@ -148,8 +149,7 @@ function verifyGrant(
       reason: `You signed in as ${email}. Sign in as ${config.accountEmail} instead.`,
     };
   }
-  const granted = new Set(grantedScopes(tokens));
-  const missing = GOOGLE_CALENDAR_SCOPES.filter((scope) => !granted.has(scope));
+  const missing = missingCalendarScopes(tokens.scope ?? "");
   if (missing.length > 0) {
     return {
       reason: `Google did not grant every Calendar permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,

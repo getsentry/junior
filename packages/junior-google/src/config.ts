@@ -10,11 +10,27 @@ export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ADMIN_EMAILS_ENV = "GOOGLE_WORKSPACE_ADMIN_EMAILS";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
 
-/** Scopes that Calendar v1 needs. Request nothing broader. */
+/**
+ * Scopes the Calendar tools need. Request nothing broader.
+ *
+ * - `calendar.events.freebusy`: availability for `findMeetingTimes`.
+ * - `calendar.events.readonly`: events that Junior's account can see on other
+ *   people's calendars, for `listCalendarEvents`. Google sharing settings
+ *   still decide how much detail each calendar shows.
+ * - `calendar.events.owned`: create and change events on Junior's own
+ *   calendar.
+ */
 export const GOOGLE_CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",
   "https://www.googleapis.com/auth/calendar.events.owned",
+  "https://www.googleapis.com/auth/calendar.events.readonly",
 ] as const;
+
+/** Return the Calendar scopes that a space-separated grant does not include. */
+export function missingCalendarScopes(scope: string): string[] {
+  const granted = new Set(scope.split(/\s+/));
+  return GOOGLE_CALENDAR_SCOPES.filter((required) => !granted.has(required));
+}
 
 /** Identity scopes used only to verify which account signed in. */
 export const GOOGLE_IDENTITY_SCOPES = ["openid", "email"] as const;
