@@ -42,15 +42,10 @@ export async function getConversationIdByProviderConversation(
   return rows[0]?.conversationId;
 }
 
-/**
- * Return the first provider conversation bound to one Conversation in one
- * provider place. A channel-level Location starts its thread with that post.
- */
+/** Return the first provider conversation bound in one destination. */
 export async function getFirstProviderConversationId(
   executor: JuniorSqlDatabase,
-  args: Omit<ProviderConversationReference, "providerConversationId"> & {
-    conversationId: string;
-  },
+  args: Omit<ProviderConversationBinding, "providerConversationId">,
 ): Promise<string | undefined> {
   const rows = await executor
     .db()

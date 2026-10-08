@@ -354,7 +354,7 @@ export class SqlStore implements ConversationStore {
   }
 
   async getFirstProviderConversationId(
-    args: Parameters<ConversationStore["getFirstProviderConversationId"]>[0],
+    args: Omit<ProviderConversationBinding, "providerConversationId">,
   ): Promise<string | undefined> {
     return await getFirstProviderConversationId(this.executor, args);
   }

@@ -126,14 +126,8 @@ function captureConversationTurnFailure(args: {
 }
 
 /**
- * Keep later Turns in the Slack thread a channel-level Conversation started.
- *
- * Automation runs and event-only Conversations post their first reply at the
- * channel top level and bind that Message to the Conversation. Later Watch
- * Turns must reply under it instead of posting new top-level Messages.
- *
- * TODO(dcramer): Store the started thread on Location so Turns do not need
- * this binding lookup.
+ * Reply in the thread started by a channel-level Conversation's first Message.
+ * Automation runs post at the channel top level, so their Watches need this.
  */
 async function resolveStartedThreadLocation(
   conversationId: string,

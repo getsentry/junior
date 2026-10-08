@@ -108,7 +108,7 @@ export interface ConversationStore {
     providerTenantId: string;
     providerConversationId: string;
   }): Promise<string | undefined>;
-  /** Return the first provider conversation bound in one provider place. */
+  /** Return the first provider conversation bound in one destination. */
   getFirstProviderConversationId(args: {
     conversationId: string;
     provider: string;
