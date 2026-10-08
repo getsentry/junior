@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when managing an existing event automation, list update and delete it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "9da09b41c752",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0dd716cb5678d5b1016ac80afb598c87d188d35f7f4f42efff\",\"reasoningEncryptedContent\":\"gAAAAABqyAr9QGLkhLC06jxxI8-ApwK2XU47FWvxLGNrTnsyjrQRs16_G6Z5x6VbQMH9oySsDe6P1Lq3I0SdfrN2g8SkifEaQMNoz_50Y_JPAfPzVzg-UmzNv3T5cPD_xrrx1WH7WWI-as2x89S2FEc-8kgeiXJakRd0pt_7kXl62vDGkqA4g-UTY-Q4ApTG3JV9a8LvlD24HvpohtveSDY5Akq8w5hfHpsWAlr0nH5ISfOAIc5FihMXZK9fuwX4Ov0uzeoBskfwab_0dXTlzKgl8eB-E0DtEy8OahKNhabefCDn-U0C1YqT2QX3YNKwULrZL9xnklLFbSk36W2AsUxFKYLS4T3KqPHM6LGDFf01LJMO5Kq_hklPwhiZQFWvyx2G9zssLEumHR7_vTbm2OHR1W_JyI1bhbb1OLeNkBmnonKhE2LAfRxqb605yolJLXa1BBzyXg9j8U8-382VdtG8_0GJ8ipZPObI5zk5RKUvE9AQ2xLqFG3n_US-2NEhlY9h1CcmCNDn-1uR3624Nzti1qYO5qnClUxus-MBP6nKj1rypYS777CygyJn87pGAneycy55tIJLHbWZXy3uHU_UuzooHl1xV8Tv0sXZX2fBD38y1j8AZuNAhIbXmj_oDfIxdlsH-PpcsAvkeQcW-dglOYWKJIqhfybCa1TrgmWrJOKz4K83IRyGCByJjUOossXE5y4hVq_lkuTEu77iLs5iWGXgvE61HdP8JLjU193W5ByTMc-0cl4ihtvWanUlmK2iIghYncPDF053-sL06VB_oC9My91lxPtm2-E6P8S40Yoq0jGbcfQqHm5p7vE-CmJaDLZf7tRvjoY0WiHerMFskSW5zFDe0Dxe07Yc4npVzt_IEQm0gR8PyoDRAZNzz1VlEZEt4FVVm4xP52i4whT4PQOjJi_08MbnsEc33v467tBmepJvpXDhpO4ALpoH0J3TVyoMtO15q4dm9giNmTzgS8bux5tS0FueKmvAUZMJcE-yA8hHKnq3i9Dg8qMiVRhizxJJJNqHZQHQojyh5vpM6skapkytCk0kLsTDHKS78PGdgjVa8QYlrMB0ThKUdDuzRWy5MunQIGOXvTASE30dEPxsU9dTYPXH3zjIskqrQT9ArCUlkTO3Ar7whJ5zOr7RUgk3LaNwXix6UNyrcv2VtqOe8JntK6Or1RTfTuTnc5RmpZQ35s6tJ7-nr_eKccqCRbhGF7BI7sDI_-Snuhun2t5fv-Xm_9U9gE5Ca-d7ryXYTW_afiGf3K9MRwjp3cyuhIL8E08wp2BBpVUwhYnOJRWSZOToNrnA0lMX-CpXR-XTHyqIYgi67U1cVTEaX1dSe4-cFWKuE7wFs3bTnfHbj7zWi7nqjKL3DYAX0wp92zSMcOV9jrM71YIHcq9jN9Rp_yD4rH-hJDUC0dslll7KXXucXMkJr7KVbS-jv1Q3z4F6XY6ZUxlF_UOWYj97zkFUnPrplsCFf5Cssv7mUou5wi0CP1BTknfHSTcpq2IRrJwc-Y7JTO47ez7UyXEs7ct-t64obH_9bnzoqXK1PCfE5zbbUOktSHUShTe4ZfhXzA6p3Bktz4TQ5u06TLag2RucQq0xgYVuzDU2kdUu4FmOC-EcVl6F8Y-g0N8T4dDRoTsJuIgw8IloFQNkznq4iSfe_LulB7c9vjDU8ce25QQjW2wFC4NHNCgCjzajiXQ3SpOxbj3QhHxPZESuxz2hmM4WTm8l9JoH00O6Kjqh_umjTJBRk4K77rRbPKXwYcepjGCxge_-IRJtAAcJk-SnJfLFEEpD9JhrYoPgZhxQvxRU7sK43Cjw1A5c3qWQUg8ckQsuGn0vrWVRlASSLdt-ofRGhIk3oi-ff7a7fo8Jf2sxrE9GoeIX2aDv96r7yW0AAne_Sp4Krz0z7HpFXYUZ-WSIQczJUE5apCT7WXFKG9vz5ISc_3qkoBR2-W-x5sE8kRdcHgmQRov1eKmrgspsZCVu4EyLhC98pk2V0O9R49eNDkVsuhlQLjbuTd9HrpBtwJxIy2ILOq5Ffw1tz6a9Rhi8gGN676sqw2S9xWJa5FD0QCm3xVZZ3cz6PB8w82PMRThrxiTZFz8=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"This is a straightforward but state-changing follow-up that requires identifying the automation from prior thread context and deleting it.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0dd716cb5678d5b1016ac80afcf11c87d1b70ecc4bed2dee9b\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":975,\"noCache\":975,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":160,\"text\":51,\"reasoning\":109},\"raw\":{\"input_tokens\":975,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":160,\"output_tokens_details\":{\"reasoning_tokens\":109},\"total_tokens\":1135}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0dd716cb5678d5b1016ac80af9ad1487d18edada53b3dd4dba\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494905585,\"endTime\":1791494909811,\"providerRequestId\":\"req_9322744e12e5423cb5f346e695255360\",\"statusCode\":200,\"providerResponseId\":\"resp_0dd716cb5678d5b1016ac80af9ad1487d18edada53b3dd4dba\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"9c1d8b895c69f0f4965bb51a4de3f13e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001775\",\"marketCost\":\"0.0001775\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001775\",\"inferenceCost\":\"0.0001775\",\"inputInferenceCost\":\"0.0000975\",\"outputInferenceCost\":\"0.00008\",\"generationId\":\"gen_01M4EPNQQ28TZAANB7RBX3904S\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

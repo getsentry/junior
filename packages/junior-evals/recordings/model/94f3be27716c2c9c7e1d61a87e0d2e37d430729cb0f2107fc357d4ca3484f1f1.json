@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/coding/event-automations/credentials.eval.ts > Event automation credentials > when another channel member requests creator credentials, explain who can enable them",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "8bc2d75feb20",
+      "messages[1]": "9fe59be7ad1b",
+      "messages[2]": "699f4e896747",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4EPQ25BQ12H5SJFHJX71WC0\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User request:** “Update that event automation to use my connected credentials instead.”\\n- **Progress:** No automation has been inspected or changed. I attempted to switch to the `standard` tool profile via handoff, but the tool returned **“No result provided.”**\\n- **Key decision:** The specific automation is unclear from the available context. Identify the existing event automation(s) before editing.\\n- **Next steps:**\\n  1. Use the appropriate tools/profile to list or inspect event automations.\\n  2. If there’s more than one plausible match, ask the user which one they mean.\\n  3. Update the target automation to use the user’s connected credentials, then verify and report what changed.\\n- **Constraints/preferences:** No further context or preferences are available.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":244,\"output_tokens\":169},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_05619e37d7e246c2016ac80b2521ac87d198af8ced2b0bca7f\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494949050,\"endTime\":1791494950929,\"providerRequestId\":\"req_db1e4e4eb1f64098ab9a6a03df75460d\",\"statusCode\":200,\"providerResponseId\":\"resp_05619e37d7e246c2016ac80b2521ac87d198af8ced2b0bca7f\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"e99b6380e8faddf4ff8a049ea1c3abc5\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001089\",\"marketCost\":\"0.0001089\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001089\",\"inferenceCost\":\"0.0001089\",\"inputInferenceCost\":\"0.0000244\",\"outputInferenceCost\":\"0.0000845\",\"generationId\":\"gen_01M4EPQ25BQ12H5SJFHJX71WC0\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

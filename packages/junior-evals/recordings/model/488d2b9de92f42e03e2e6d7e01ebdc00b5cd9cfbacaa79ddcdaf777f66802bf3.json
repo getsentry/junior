@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/subscriptions.eval.ts > Watches > when a follow-up stops monitoring, cancel the selected watch before confirming",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "dfd71d0e6cd5",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_19c2fa5b9b125141a9e4565bd1221f0f\",\"reasoningEncryptedContent\":\"rsn_rru6BQHgUc/VWS5vRIAlHwIFeIZEudqFhET/0PpAHasemn3uL9xwimrkxUmcJlkpW4ppAF8AAQAVYXdzLWNyeXB0by1wdWJsaWMta2V5AERBa3RiOFRjRFo5bExKNW5MOHFQNmErMnpSQnF3UVYxdlhLV3FwTEk2YW8xVE5NUjNoZkhrOTFoYlBBNDQ5SzFlTkE9PQABABFhd3Mta21zLWhpZXJhcmNoeQAKYmVybS1zdG9yZQBcuom373dCi26xIep+66ZF5adsBL+Rvo/ihvlwEATyexPQO0PepR8jRQ3zVYRTZp4Djz1fplVP3NgLP6r4OvDyXSFrK1TvbfpYJI85VGg1IXABeXezITqFQqGTs+ACAAAQAGa/OjiN7+y65MwzsGJ/Hwkd+AsOp66p2zNXpaL5ifJQXxxiIGEuUwXy+28GDOj+jv////8AAAABAAAAAAAAAAAAAAABAAAB3D/Yotr4gP9/fxbitDFzdF8Y/zKVOYEZ6bA2bgT+a4SLemskNAcdBsWr3fkMK3AZ2KGBIPFMsu2PQn4GO0Vs8S8J+lmEmtp5yRICyjakIxsLn8hr1gGQL6/Bx1ejj7DKzD9+GMZ07gbKQxrg+pa5i50PTXZBjwy/OJqimKx02e/vc0/kIaqX2UomuKIS0ufSdtP0E4/c0XLNBsSWE48r5adh7XIi7sBi6efyZ8GFn7r7QfMvm1WqI3Y4oLtjrprnxv4StzAmGAolMJlj4QSlfXgNeffM9+WuEOR+2JWIUdHI7w2XnKfJ9YXW8z/Lata1NmgAsMG2hRyu0hElHrcQQQGV/Jnqezkqr0+1sCkEH5Yllb6q8pBHEZ0jugMl4FN/IH1Q2xe3TcepIN+QChkHYOBTHot15vCTRJm1ndprLG0WFbJc36/ax1QomonJBvvas1/JB5SUe6oUg/OeUf4eu4LkYjNWJekURxKCZ9nD1Ldxmso5gaRGdbbM85/4yJlm59X42LewJzSzdsQ3xs5vM7IdyU5Tcg+jF8Naht3yZDROstsh0y6LJ9hvUDB6wcfJlsMOmuqbBuIFa7ZRIyVOF/c4TU6oo487MZYnMGsFNjmTBkvweBmiruCTW7S3SSACKZMYUo7I/chRX1tc1wBnMGUCMQDzrIqYw/VcJXMuoBQk0VItbeKJCLhHy13ArriDdNauqVbpS2AxXpDv3leuJeuWB9ACMBtVA7si8YFlTt3Esx+nEPqUsImg+cT+lWYu1EZMaeNGnsr/wWvgVJFQk+wpXU9YrQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_6831b18c85a1565c8a8f0ed9c9535dbd\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1899,\"noCache\":2,\"cacheRead\":0,\"cacheWrite\":1897},\"outputTokens\":{\"total\":95,\"text\":14,\"reasoning\":81},\"raw\":{\"input_tokens\":1899,\"input_tokens_details\":{\"cache_write_tokens\":1897,\"cached_tokens\":0},\"output_tokens\":95,\"output_tokens_details\":{\"reasoning_tokens\":81},\"total_tokens\":1994}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_2lzl3b4jp4niah7miqycehmkgemjfexudz3czgjcw67cjzc6sgwq\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: bedrock(system) → azure(system) → openai(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"bedrock\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494871306,\"endTime\":1791494872559,\"providerRequestId\":\"6a8bb11b-724a-4dca-acab-158eed30883d\",\"statusCode\":200}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e1b6d787d5a7546aac18582252cd817f\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000284825\",\"marketCost\":\"0.000284825\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000284825\",\"inferenceCost\":\"0.000284825\",\"inputInferenceCost\":\"0.000237325\",\"outputInferenceCost\":\"0.0000475\",\"generationId\":\"gen_01M4EPMP7V0CQD84ACB8NXDH54\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/move.eval.ts > Schedule Destination Updates > when asked once in the destination channel, update the requester task to deliver here",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "33da73bbc841",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0a595d7f5feeb1f8016ac80ba3086887d1908d85376f13b6e5\",\"reasoningEncryptedContent\":\"gAAAAABqyAukT5rabwVKgx-EOU_KIFOIDlxb80nVxGysz9malid0Yc6RwaBlWoAAuZkM6WebU2nOHNayLfD082ERikBPH2wxcsvmdyV5t70JKU-UFPR96h46CGEX0Wjuyaudk58NZfHEqXSUQDBHgaiQaOfCk5VP3gwJW-kQYYno0GCjAVu-Aobq3J6z0z5me0ZjdI58uXwzoVr8vzzfRtd7mYsdDA0YoU5FS9VzrUQmLHWoXuNalCSEpZz0C1U-oX9oWnsP4yTXz5S7mxUNje9IbSwVkrFHJuvbRbKOK-FCjHv8ONdfmuTcnRsJsFmd6cI-xrs9LF-qq9ABXZr26EeX6FzJn7v1Rib3ogkVLek1phmSzIcRN_ixRSVCWHGZerWeYBDdL_vMqmQ7FzrO_eOhLUXQ24F5EbxyTsIQRZuEFO6Ozbal5oV8mAhimPmGp9vJxmywFdkaAwG-phbR9mjSA_3i-n_9c1qLvq9snSpnEVwF5EKhtG-UDHhLtx5BgiVbNLAaDZEEwlET-quzJtGn6btWtAYFzAq8G5JzgY7Oe-GUAL15PJr8bRiZtiubiNpdVpT46WzwGJVImcWZUrMWp_4Tl267WnOTIKoN5L_cYktFZoJi22ctS0LrALaAJ02jVJTRkedBdeymUTSobvMBw9f3-Pkpxpt2rBuGx-5OZHzAz01QIN5591hnz89jQS_emhQWd6V4VyGxj_FENjPTByNypX5X8ZhkkGwlvhTEeTk2CyshLLUR9Laqkk1VGXRZ-Kuf70HeM6Q8RfWOvH-95fH-kNjhq2yEchYTyvA479tXsXZqY2SxUFdXjyEUa49kfidSPyhIRGwX9I46BKuRy32ZtipFRYwQrDYoGGYVz7weguQfsoTCEEIjRarGMtayHkcfvPIrkoztVW1TJBAe98bJQMgvLE2qCGwbUB1tpWry0pSEhM010z0f_zTIL6YGWU_-MAK4Y2BqOZjzP_heLM7HrWperBI_BLWaV80uiQzpO5C7n_VVBHqoe2DlxoiTgW8eOgT3aJSy-5pvPL7DTH48tt8JAFubHJb7-VCqN8NKihk8UBB39mGN17tpZoO4S4ODWsnhlYSoatfKQR9kziHOKI24bDmnKBzmcEDT7DnQMtse2dmkUG4R14uSsZl7w0Atli92pcBYk4Pklz4QTFqxCYacGO8gjarXx1ZtM6FMbTRcW_ibqUuyB7_TkjdVdGCGMpqqSzNuvYuM-98rE8fLN-hT4sx4OV9AaY6fM3aPyC0kfOuwIKAivogpEeQrYmbLvYDkmk_tQfdsgivJVpcU_3YgEBooqs-KP-Cq74vjIO7bTpgYrLy63_yHZRx1uS-98jysAo_QSGOF9fOHxIELiXIHHl6VzQmuEne7yOygvVTGfRatu7MaKyGRl8wQCYDXOdOoX7d7ncFJ9dZA31YYspbkiFlfz8XuLIfmIKSp1IBOoTdY9zLjdMLFARbDYWqbWBUGD96l7qwf-eIzOprJQ7FDp8TOkSpvI7eQDO-dZb_R0gaSZKB_heqVlxbgG1T4hiRJ9NkuOKQ_9H6aqPMuVd1QKkBDPBU2wIbXnSTak06XOfCqMp_8ZUS52UTCEczzo2I8e6C24GN-RctetNSfN0b_Zetbz84bF40BpvCZcrDLpdGWTnhRBDKZV9NbejnM3KucZ-NagUqpY6Uv_Ymnoj3WeHMQRtFW7AWPL7ux_NJczYClLFTXWUvh_t9RTZo8CWi7SmwqDq4rA5Pq8TUiuR05Sgp-oEE6zxjy1fOxXAqI8z8BTN5blYeHjksJstULk7jQ-yrNvZFaF8AVhW1em7V22rVBbf4MsxdMQugAKy7pyR9wdN-FgZdhxEo4czdxrK-nKOZG54Nx_xMSlkaQNuSPo9eySy77WrkWfcuZfg1Z9L0MLq6xzsHFCJ-dEOJIe5hrknVFFssxCrQSnKUfabguLI29Hkyuvl7PIJINEyg5FQkev6fVa4wIZ14soD4eaMZC1xInG9WdBmG_ZWLowxl2vxMZDtU63v6EAhlfXhYs2po6W-elGukKXqJ7AJp8uhQ9WY_RiHmDRBA9kkoxmBdQegbUo0zEqs1xR42KrwbFD6446co0psjkUdrUGsH0w0nveh9BrIkdEgSY-2pHcefI_J4_hmI4tVHy3f26cmreDAs=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly asked to move the identified weekly reminder here, and this update changes its posting destination to the current Slack channel while preserving its schedule.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0a595d7f5feeb1f8016ac80ba405a887d1a4d85be0708aceb1\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2960,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1136},\"outputTokens\":{\"total\":169,\"text\":55,\"reasoning\":114},\"raw\":{\"input_tokens\":2960,\"input_tokens_details\":{\"cache_write_tokens\":1136,\"cached_tokens\":1821},\"output_tokens\":169,\"output_tokens_details\":{\"reasoning_tokens\":114},\"total_tokens\":3129}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0a595d7f5feeb1f8016ac80ba2561087d1875091c9f9b17420\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791495074245,\"endTime\":1791495076556,\"providerRequestId\":\"req_2d6c7e47279f42acafa86d9d18645732\",\"statusCode\":200,\"providerResponseId\":\"resp_0a595d7f5feeb1f8016ac80ba2561087d1875091c9f9b17420\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"79fbaa471d77bd90fbf1b49688159011\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00024501\",\"marketCost\":\"0.00024501\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00024501\",\"inferenceCost\":\"0.00024501\",\"inputInferenceCost\":\"0.00016051\",\"outputInferenceCost\":\"0.0000845\",\"generationId\":\"gen_01M4EPTWDHMCCPB0Z9Q2WASHNE\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
