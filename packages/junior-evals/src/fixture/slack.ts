@@ -4,11 +4,11 @@
  * Shared MSW handlers mock the Slack Web API. This module adds the parts a
  * Conversation needs: the bot identity, unique reply timestamps, thread
  * history for `conversations.replies`, and profiles for `users.info`. It also
- * signs Events API webhooks for the app route.
+ * signs Events API webhooks and slash commands for the app route.
  */
 import { createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
-import { getSlackSigningSecret } from "@/chat/config";
+import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
   authTestOk,
@@ -106,6 +106,8 @@ export interface SlackMock {
     directMessageChannel?: string;
     userId: string;
   }): string[];
+  /** The Slack people of the test. */
+  authors(): Required<SlackAuthor>[];
   /** Add a message that people or Junior posted before the input. */
   addThreadMessage(
     channel: string,
@@ -338,6 +340,7 @@ export function installSlackMock(): SlackMock {
       };
     },
     addThreadMessage,
+    authors: () => [...authors.values()],
     newChannelId(channelType) {
       channelSequence += 1;
       const suffix = `${baseSeconds.toString(36)}${channelSequence}`;
@@ -425,15 +428,45 @@ async function postSlackEvent(
   event: Record<string, unknown>,
 ): Promise<void> {
   eventSequence += 1;
-  const body = JSON.stringify({
-    token: "test-token",
-    team_id: SLACK_TEAM_ID,
-    api_app_id: "A_EVAL",
-    type: "event_callback",
-    event_id: `EvEVAL${eventSequence}`,
-    event_time: Math.floor(Date.now() / 1000),
-    event,
-  });
+  await postSignedSlackRequest(
+    app,
+    "application/json",
+    JSON.stringify({
+      token: "test-token",
+      team_id: SLACK_TEAM_ID,
+      api_app_id: "A_EVAL",
+      type: "event_callback",
+      event_id: `EvEVAL${eventSequence}`,
+      event_time: Math.floor(Date.now() / 1000),
+      event,
+    }),
+  );
+}
+
+/** Deliver one slash command of Junior to the app route as Slack does. */
+export async function postSlackCommand(
+  app: RequestApp,
+  command: { channel: string; text: string; user: string },
+): Promise<void> {
+  await postSignedSlackRequest(
+    app,
+    "application/x-www-form-urlencoded",
+    new URLSearchParams({
+      channel_id: command.channel,
+      command: getChatConfig().slack.slashCommand,
+      team_id: SLACK_TEAM_ID,
+      text: command.text,
+      user_id: command.user,
+    }).toString(),
+  );
+}
+
+/** Post one signed Slack request to the app route. */
+async function postSignedSlackRequest(
+  app: RequestApp,
+  contentType: string,
+  body: string,
+): Promise<void> {
   const secret = getSlackSigningSecret();
   if (!secret) {
     throw new Error("The agent test fixture needs SLACK_SIGNING_SECRET");
@@ -445,7 +478,7 @@ async function postSlackEvent(
   const response = await app.request("/api/webhooks/slack", {
     method: "POST",
     headers: {
-      "content-type": "application/json",
+      "content-type": contentType,
       "x-slack-request-timestamp": timestamp,
       "x-slack-signature": signature,
     },

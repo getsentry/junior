@@ -19,11 +19,14 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
-import { createConversationId } from "@/chat/conversations/web-input";
+import {
+  createConversationId,
+  webActorFromEmail,
+} from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
-import { completeAuthorization } from "./auth";
+import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import type {
@@ -48,6 +51,7 @@ import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
+  readAuthorizationPrompt,
   readCallEvents,
   readConversationDetail,
   slackCallReplies,
@@ -63,6 +67,7 @@ import {
   forwardedMessage,
   installSlackMock,
   isAppMention,
+  postSlackCommand,
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_BOT_USER_ID,
@@ -103,6 +108,11 @@ export interface Conversation extends HarnessRun {
   files: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /**
+   * The label of the connect prompt that the dashboard shows to the person
+   * after the call, when a turn waits for their authorization.
+   */
+  authorizationPrompt?: string;
   /** Times Junior replaced agent history with a summary, as the dashboard shows. */
   compactions: number;
   turns: Turn[];
@@ -202,6 +212,16 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
+      // Each Slack person is also a dashboard person with their email.
+      await forgetAuthorizations([
+        webActorFromEmail(WEB_VIEWER_EMAIL).userId,
+        ...slack
+          .authors()
+          .flatMap((author) => [
+            author.userId,
+            webActorFromEmail(slackAuthorEmail(author)).userId,
+          ]),
+      ]);
     }
   };
 
@@ -281,21 +301,54 @@ export async function createFixtureAgent(
       return;
     }
     if (input.kind === "complete_auth") {
+      // The dashboard shows the prompt of a turn that its person started.
+      const prompt = input.author
+        ? undefined
+        : await readAuthorizationPrompt(
+            api,
+            record.conversationId,
+            record.viewerEmail,
+          );
+      if (prompt) {
+        await completeAuthorization({
+          app,
+          link: prompt.url,
+          provider: input.provider,
+          userId: webActorFromEmail(record.viewerEmail).userId,
+        });
+        return;
+      }
       const { userId } = slack.registerAuthor(
         input.author ?? DEFAULT_SLACK_AUTHOR,
       );
       await completeAuthorization({
         app,
-        links: slack.authorizationLinks({
-          // In a direct message, Junior sends the link as a normal message.
-          directMessageChannel:
-            record.surface === "slack" && record.channelType === "im"
-              ? record.channelId
-              : undefined,
-          userId,
-        }),
+        link: slack
+          .authorizationLinks({
+            // In a direct message, Junior sends the link as a normal message.
+            directMessageChannel:
+              record.surface === "slack" && record.channelType === "im"
+                ? record.channelId
+                : undefined,
+            userId,
+          })
+          .at(-1),
         provider: input.provider,
         userId,
+      });
+      return;
+    }
+    if (input.kind === "slack_command") {
+      if (record.surface !== "slack") {
+        throw new Error("slackCommand() continues a Slack Conversation");
+      }
+      const { userId } = slack.registerAuthor(
+        input.author ?? DEFAULT_SLACK_AUTHOR,
+      );
+      await postSlackCommand(app, {
+        channel: record.channelId,
+        text: input.text,
+        user: userId,
       });
       return;
     }
@@ -531,6 +584,11 @@ export async function createFixtureAgent(
           )
         : [],
     );
+    const authorizationPrompt = await readAuthorizationPrompt(
+      api,
+      record.conversationId,
+      record.viewerEmail,
+    );
     agentCostUsd.set(
       record.conversationId,
       (detail.modelUsage ?? []).reduce(
@@ -557,6 +615,9 @@ export async function createFixtureAgent(
     };
     return conversationResult(record, {
       ...callRun,
+      ...(authorizationPrompt
+        ? { authorizationPrompt: authorizationPrompt.label }
+        : undefined),
       compactions: events.compactions,
       files,
       reactions,
@@ -715,6 +776,9 @@ export async function createFixtureAgent(
     }
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");
+    }
+    if (first.kind === "slack_command") {
+      throw new Error("slackCommand() continues a Slack Conversation");
     }
     return await converse(
       newConversation(first, options.history),

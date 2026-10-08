@@ -100,6 +100,7 @@ export function createResumeState(args: ResumeStateArgs) {
   let latestSafeBoundaryMessages: PiMessage[] = [];
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
+  let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
   // Durable across slices and history replacement; not derived from live messages.
@@ -165,6 +166,14 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     captureResumeSnapshot(messages: PiMessage[]): void {
       resumeMessages = [...messages];
+    },
+    /**
+     * Pause at committed history, before the turn adds its prompt. The tail
+     * can be the reply of an earlier turn, so the pause keeps it.
+     */
+    captureHistoryBeforePrompt(messages: PiMessage[]): void {
+      resumeMessages = [...messages];
+      pausedBeforePrompt = true;
     },
     getResumeSnapshot(currentMessages: PiMessage[]): PiMessage[] {
       return latestSafeBoundaryMessages.length > currentMessages.length
@@ -257,6 +266,7 @@ export function createResumeState(args: ResumeStateArgs) {
           durationMs: durationMs(),
           usage,
           messages: resumeMessages,
+          beforePrompt: pausedBeforePrompt,
           errorMessage: pause.message,
         });
         if (!record) {

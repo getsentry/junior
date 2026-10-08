@@ -1,5 +1,6 @@
 /**
- * The auth suite: two plugins that need authorization, and their skills.
+ * The auth suite: two plugins that need authorization with their skills, and
+ * one plugin that needs none.
  *
  * A suite is a Vitest project for one directory. It sets the default agent
  * options for its tests. See `src/fixture/test.ts`.

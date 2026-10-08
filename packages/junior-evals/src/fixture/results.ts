@@ -3,7 +3,10 @@
  * reads a Conversation. Tests never read stored rows directly.
  */
 import type { z } from "zod";
-import { conversationDetailReportSchema } from "@/api/schema";
+import {
+  conversationDetailReportSchema,
+  conversationPendingMessagesReportSchema,
+} from "@/api/schema";
 import {
   toJsonValue,
   type HarnessRun,
@@ -143,6 +146,38 @@ export async function readConversationDetail(
     );
   }
   return conversationDetailReportSchema.parse(await response.json());
+}
+
+/** The connect prompt that the dashboard shows to a person. */
+export interface AuthorizationPrompt {
+  label: string;
+  url: string;
+}
+
+/**
+ * Read the connect prompt of one Conversation through
+ * `GET /api/conversations/:id/pending-messages`, as the dashboard does.
+ */
+export async function readAuthorizationPrompt(
+  api: RequestApp,
+  conversationId: string,
+  viewerEmail: string,
+): Promise<AuthorizationPrompt | undefined> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Pending messages returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { authorization } = conversationPendingMessagesReportSchema.parse(
+    await response.json(),
+  );
+  return authorization
+    ? { label: authorization.label, url: authorization.authorizationUrl }
+    : undefined;
 }
 
 /** Sequence before a Conversation's first event. */

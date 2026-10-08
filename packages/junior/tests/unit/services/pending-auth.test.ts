@@ -222,6 +222,32 @@ describe("isPendingAuthLatestRequest", () => {
     ).toBe(true);
   });
 
+  it("ignores thread messages stored while passive routing is off when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+          },
+          {
+            id: "msg.bystander",
+            role: "user",
+            text: "while you wait, the record id is 99",
+            createdAtMs: NOW + 1,
+            meta: {
+              replied: false,
+              skippedReason: "passive_disabled:passive-routing",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(true);
+  });
+
   it("ignores messages directed to another party when checking pending auth freshness", () => {
     expect(
       isPendingAuthLatestRequest(

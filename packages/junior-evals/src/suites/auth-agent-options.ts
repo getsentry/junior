@@ -42,8 +42,26 @@ const evalOAuthPlugin = defineJuniorPlugin({
   },
 });
 
+/** A plugin whose MCP server needs no authorization. */
+const evalHandbookPlugin = defineJuniorPlugin({
+  manifest: {
+    name: "eval-handbook",
+    displayName: "Handbook",
+    description: "Search the company handbook",
+    mcp: {
+      transport: "http",
+      url: "https://eval-mcp.example.test/mcp",
+      allowedTools: ["handbook-search"],
+    },
+  },
+});
+
 /** The eval egress process registers these plugins too. */
-export const authSuitePlugins = [evalAuthPlugin, evalOAuthPlugin];
+export const authSuitePlugins = [
+  evalAuthPlugin,
+  evalOAuthPlugin,
+  evalHandbookPlugin,
+];
 
 export default {
   plugins: defineJuniorPlugins(authSuitePlugins),

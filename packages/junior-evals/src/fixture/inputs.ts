@@ -60,6 +60,14 @@ export interface ThreadMessageInput {
   text: string;
 }
 
+/** A slash command of Junior through the Slack webhook, with a valid signature. */
+export interface SlackCommandInput {
+  kind: "slack_command";
+  author?: SlackAuthor;
+  /** The text after the command name, such as `unlink github`. */
+  text: string;
+}
+
 /** A dashboard message through `POST /api/conversations`. */
 export interface WebMessageInput {
   kind: "web_message";
@@ -98,7 +106,11 @@ export type MessageInput = MentionInput | ThreadMessageInput | WebMessageInput;
 /** An input that starts a Conversation from an automation. */
 export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
-export type Input = MessageInput | AutomationInput | CompleteAuthInput;
+export type Input =
+  | MessageInput
+  | AutomationInput
+  | CompleteAuthInput
+  | SlackCommandInput;
 
 /** A completed tool call in loaded history. */
 export interface HistoryToolCall {
@@ -153,6 +165,18 @@ export function slackThreadMessage(
   return { kind: "thread_message", text, ...options };
 }
 
+/**
+ * Run the slash command of Junior in the Slack channel of the Conversation,
+ * such as `slackCommand("unlink github")`. Junior answers the person in
+ * private and starts no turn.
+ */
+export function slackCommand(
+  text: string,
+  options: { author?: SlackAuthor } = {},
+): SlackCommandInput {
+  return { kind: "slack_command", text, ...options };
+}
+
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
@@ -199,8 +223,10 @@ export function githubWebhook(
 /**
  * Finish the authorization that a turn waits for.
  * `conversation.continue(completeAuth(provider))` opens the link that Junior
- * sent to the person in private, and it returns the resumed turn. It fails
- * when Junior sent the person no private link.
+ * gave the person, and it returns the resumed turn. The link is the connect
+ * prompt of the dashboard when the dashboard shows one, or the newest link
+ * that Junior sent to the person in private in Slack. With `author`, it is
+ * the Slack link of that person. It fails when Junior gave the person no link.
  */
 export function completeAuth(
   provider: string,
