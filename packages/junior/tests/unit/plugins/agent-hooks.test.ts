@@ -1399,6 +1399,7 @@ describe("agent plugin hooks", () => {
             user: {
               email: "person@example.com",
               emailVerified: true,
+              isAdmin: false,
             },
           },
           pluginName: "agent-demo",

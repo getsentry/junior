@@ -4,6 +4,7 @@ import type { DashboardHeaderNavItem } from "./components/layout/DashboardHeader
 import { pluginUserPagePath } from "./pages/user/PluginUserPage";
 
 const AUTH_PRIMARY_NAV_PREFIXES = [
+  "/admin",
   "/automations",
   "/memories",
   "/settings",

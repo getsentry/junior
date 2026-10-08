@@ -215,10 +215,25 @@ describe("dashboard plugin routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
+          isAdmin: false,
           name: "Person",
         },
       },
       pluginName: "memory",
+    });
+
+    // The admin role comes from the stored user, not from the sign-in session.
+    resolveViewerUser.mockResolvedValueOnce({
+      email: "person@sentry.io",
+      id: "user:person@sentry.io",
+      identities: [],
+      isAdmin: true,
+    } as never);
+    await authenticated.fetch(
+      new Request("http://localhost/api/plugins/memory/memories"),
+    );
+    expect(pluginContext).toMatchObject({
+      auth: { user: { email: "person@sentry.io", isAdmin: true } },
     });
   });
 

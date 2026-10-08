@@ -99,7 +99,7 @@ function systemData(): SystemData {
       timeZone: "UTC",
       version: "0.0.0-test",
     },
-    me: { user: { email: "viewer@example.com" } },
+    me: { user: { email: "viewer@example.com", isAdmin: false } },
     conversationStats: {
       active: 0,
       actors: [],

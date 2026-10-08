@@ -81,9 +81,18 @@ validated search and cursor input and may return an opaque continuation cursor.
 Set `navigation: "primary"` for a top-level dashboard navigation item. The
 default `profile` placement keeps account-oriented pages in the signed-in user
 menu. Junior always renders core System navigation after plugin pages.
+Set `navigation: "admin"` for setup that only Junior admins may use. Core lists
+these pages on the dashboard Admin page and serves them only to admins. Core
+reads the admin role from the user record on every request.
 Records may expose bounded `DELETE` actions inside their own authenticated
-plugin API namespace. Core owns discovery, authentication, user resolution,
-routing, response validation, rendering, confirmation, and query state.
+plugin API namespace. Records may also expose `GET` actions. The dashboard opens
+them as normal browser links, for example to start an OAuth sign-in. Core owns
+discovery, authentication, user resolution, routing, response validation,
+rendering, confirmation, and query state.
+
+Authenticated plugin API routes receive `context.auth.user.isAdmin`. Core sets
+it from the stored user on every request. Admin-only routes must check it on
+the server, because a hidden link does not protect a route.
 
 ## Durable Work
 

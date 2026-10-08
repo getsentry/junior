@@ -376,6 +376,7 @@ function pluginRouteRequest(request: Request, prefix: string): Request {
 function pluginRouteContext(
   pluginName: string,
   session: DashboardSession,
+  viewer: Variables["viewer"],
 ): PluginApiRouteRequestContext {
   const { email, emailVerified, name } = session.user;
   return {
@@ -383,6 +384,7 @@ function pluginRouteContext(
       user: {
         email,
         emailVerified,
+        isAdmin: viewer?.isAdmin === true,
         name,
       },
     },
@@ -612,7 +614,11 @@ export function createDashboardApp(
       route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),
         pluginApiRouteRequestContextSchema.parse(
-          pluginRouteContext(route.pluginName, c.get("authSession")),
+          pluginRouteContext(
+            route.pluginName,
+            c.get("authSession"),
+            c.get("viewer"),
+          ),
         ),
       );
     app.all(prefix, handler);
@@ -645,6 +651,7 @@ export function createDashboardApp(
       user: {
         email: session.user.email,
         emailVerified: session.user.emailVerified,
+        isAdmin: viewer?.isAdmin === true,
         name: viewer?.displayName ?? session.user.name,
       },
     });
@@ -684,6 +691,7 @@ export function createDashboardApp(
         user: {
           email: session.user.email,
           emailVerified: session.user.emailVerified,
+          isAdmin: viewer.isAdmin === true,
           name: parsed.data.displayName,
         },
       });
@@ -703,6 +711,7 @@ export function createDashboardApp(
       user: {
         email: session.user.email,
         emailVerified: session.user.emailVerified,
+        isAdmin: updated.isAdmin === true,
         name: updated.displayName,
       },
     });

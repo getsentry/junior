@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dashboardIdentitySchema } from "../src/api/schema";
+import { dashboardSessionSchema } from "../src/api/schema";
 import { resetDashboardEnv } from "./dashboard-test-helpers";
 
 describe("dashboard auth config", () => {
@@ -8,16 +8,16 @@ describe("dashboard auth config", () => {
     vi.resetModules();
   });
 
-  it("requires a valid email for every dashboard identity", () => {
+  it("requires a valid email for every dashboard session", () => {
     expect(
-      dashboardIdentitySchema.parse({
+      dashboardSessionSchema.parse({
         user: { email: "person@example.com" },
       }),
     ).toEqual({ user: { email: "person@example.com" } });
 
     for (const email of [undefined, null, "not-an-email"]) {
       expect(
-        dashboardIdentitySchema.safeParse({ user: { email } }).success,
+        dashboardSessionSchema.safeParse({ user: { email } }).success,
       ).toBe(false);
     }
   });

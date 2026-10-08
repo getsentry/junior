@@ -2628,6 +2628,7 @@ describe("memory plugin storage", () => {
           user: {
             email: "person@example.com",
             emailVerified: true,
+            isAdmin: false,
           },
         },
         pluginName: "memory",

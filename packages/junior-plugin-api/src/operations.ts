@@ -181,6 +181,8 @@ export const pluginApiRouteRequestContextSchema = z
           .object({
             email: z.string().nullable().optional(),
             emailVerified: z.boolean().optional(),
+            /** Junior-wide admin role, read from the user record on each request. */
+            isAdmin: z.boolean(),
             name: z.string().nullable().optional(),
           })
           .strict(),
