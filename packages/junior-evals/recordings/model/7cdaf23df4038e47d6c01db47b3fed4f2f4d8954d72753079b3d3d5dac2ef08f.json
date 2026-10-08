@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/participation.eval.ts > Passive Behavior > when a later question only shares topic vocabulary, do not treat it as directed at Junior",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4dd21bda7dd0",
+      "maxOutputTokens": "26d228663f13",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f735154caadc",
+      "prompt[1]": "d5e0db258b87",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0ea990fd69b02322016ac7f78f6b8487d196829287d9895a5a\",\"reasoningEncryptedContent\":\"gAAAAABqx_eQmj1bLZ0VSSJcrQ7gHnrD9eUdDERgmwToLxpC1lboCu0CwrjBA2gE7-QfwjeYiKFcTzO8UmXMhN4ngmxd1phQpH0KF-m0qEcgQKlFc_aCw0SkCMX_17intaHtJaVuCRaSvqGw5e9xbJeBkL1U2yBNn_ZxfGs80DosABX6c_S54hgSBENuZwBH0AkDQSf1kv4iaX6gUjP5iu5o85zjBvt0YB4fm3SqStfXhtK3IvFNELNBmADTrksyR2dEkCm9QCPueLQOaEVc_YoAQgUDYI151lVuWX09cUTm4dpS-APQ-DdwFgKy7ZcbYXI45ii7Uqh7h4KdlK_3gS30ke9Gn6-FwzMr8kjZzGdZLug98OoukBJZE6cIbKFLM4XkKE63aA64xxoM53RWCUWDF9Z_9tQ_6WRtdIdLnu4vN2INxzsV_HUp1z92aaGDhbiGjZ3esVZa9sKIEzvNhuFQmU7yFwUHBYvWDld1qYkoCyIKffrPf_tEoMj9d1HrCUA-pdywXJ_8naRCO1gu8wEH6MWEeP_3OCPC2Fgwa5ifVEeXksfCixaWxudlriRjlsgc-xWD2_uKyQouXfF8CoYUcZ5_VrqN0-eZh4LViFE-HThdB7NI59AtQNnT2UNiTLOwFmg6Uc1ByKQHDPhySGtpOypY8OgxKr3qo7zSBCDzPUB5X8mx2y0O-rqH9PzZPQBJrlmRMnvM6j3N0ggztJqbssWRe5jyBu3AcstnpLURfDEQwz07DUKyj3rxmUzO-Gwef1pCzNLj_KM4snuqeIf3OAdSeaam5B6og9ckkTUOEu0HLeb8MksFx8dvEJabVfisHxXL80xX4Q1kY5gphVapliypE12smz30ToJxrfjxsFqGjPXiU-OSr3ja6S0lkqBMbtLocTxLhUBeE9acrzk1LvBy-66UsoPht8DfTZjjymY60LkDWMgevBcAV9f_XnWfGcIfet_VsOgs-6aXSw-Abno13lh2M9_AfBjH1zD1x58GDl13Q1fKnuQJxx1Xwsq9t2-5-aASSaAq0AtT92oh-GFkRzoSihuaoQBNMaHsZ2YeSsg52Kzld3fD2HCDS5fbyg52fS28U6ecjRzCdmo0nPiY9wM_8i7rDXJz2AnOi3OJK33EZm-FqzmdUL4m5EV0EEzbr3jKe11xyOmlZS4J_jymAX4ggRyxSCG9Qb9678WieUZKPqPd41bh-qYHDbjY4iPYdm9zyl-GBr04MjohMZ3PHwAJlPtqcGo0Deir_8yQKkda5hQqhHiAp5FHF6XBl7y99W59kSTG9c8Td1DmL4RjTUs2ru07lfyv133911vq5ruLjnOfcFV1gwH7qJStr5It6nKuMv2Zl0edxGfZ8fkmt47QWWL6xRsD0vitpFj0nUwQjLjKVCvJma47qHrWtPjzEhMBkJGeuXMlfcVkwxWLQRsoKSqSiJ2jOxdLMk6C7muHIBcxdjo2J_lkQUgiqCDgDLJ9eLQg9A0n759Gco8AHs439r0e-IbYvriUND9JP1ZZB8g=\"}}},{\"type\":\"text\",\"text\":\"{\\\"should_reply\\\":false,\\\"should_unsubscribe\\\":false,\\\"confidence\\\":0.98,\\\"reason\\\":\\\"The latest message is a human-to-human status update addressed to Sam, not a continuation for junior-example.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0ea990fd69b02322016ac7f78ffbdc87d18028d1f907f3a374\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1006,\"noCache\":1006,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":92,\"text\":51,\"reasoning\":41},\"raw\":{\"input_tokens\":1006,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":92,\"output_tokens_details\":{\"reasoning_tokens\":41},\"total_tokens\":1098}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0ea990fd69b02322016ac7f78ee85887d19bed2a4d6768d667\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791489934826,\"endTime\":1791489936858,\"providerRequestId\":\"req_511885d2328842f48785dc9ffb9b276d\",\"statusCode\":200,\"providerResponseId\":\"resp_0ea990fd69b02322016ac7f78ee85887d19bed2a4d6768d667\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e10bcbe1e0c2b0de492f53052b391236\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001466\",\"marketCost\":\"0.0001466\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001466\",\"inferenceCost\":\"0.0001466\",\"inputInferenceCost\":\"0.0001006\",\"outputInferenceCost\":\"0.000046\",\"generationId\":\"gen_01M4EHY1EHK904JXC28EFGGMGN\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
