@@ -42,7 +42,7 @@ function authorizationObservationMessage(
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". If the request that waited for it is still wanted, continue it and retry the provider operation. If it is not, only confirm the connection.`,
+        text: `${label} completed for provider "${data.provider}". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that ${data.provider} is connected.`,
       },
     ],
     timestamp: createdAtMs,

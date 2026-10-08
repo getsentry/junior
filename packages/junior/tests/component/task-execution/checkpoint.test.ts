@@ -819,7 +819,7 @@ describe("turn checkpoint", () => {
           content: [
             {
               type: "text",
-              text: 'Authorization completed for provider "sentry". If the request that waited for it is still wanted, continue it and retry the provider operation. If it is not, only confirm the connection.',
+              text: 'Authorization completed for provider "sentry". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that sentry is connected.',
             },
           ],
         },
