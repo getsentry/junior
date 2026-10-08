@@ -500,7 +500,7 @@ export async function wireAgentTools(
         await args.recordConnectedMcpProvider(provider);
       }
       if (mcpAuth.getPendingPause()) {
-        args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
+        args.resume.captureHistoryBeforePrompt(args.preAgentPromptMessages());
         throw mcpAuth.getPendingPause()!;
       }
     }

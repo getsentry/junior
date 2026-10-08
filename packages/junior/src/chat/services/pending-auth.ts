@@ -12,8 +12,11 @@ import { abandonTurnRecord } from "@/chat/task-execution/checkpoint";
 // re-advertising itself. Most provider `state` TTLs sit above this window,
 // so the old link is usually still honorable when we reuse it.
 const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
+// Thread messages that Junior did not treat as a request to it. With passive
+// routing off, ingress stores every thread message without a mention this way.
 const NON_REQUEST_SKIPPED_REASON_PREFIXES = [
   "directed_to_other_party:",
+  "passive_disabled:",
   "side_conversation:",
 ];
 

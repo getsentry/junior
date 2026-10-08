@@ -27,8 +27,9 @@ the agent. A test touches the product in three places only:
 1. Inputs through app routes: `slackMention()` and `slackThreadMessage()` post
    signed Slack Events API webhooks, `webMessage()` posts to the conversations API,
    `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route, and `completeAuth()`
-   calls the OAuth or MCP OAuth callback route.
+   signed GitHub webhook to the GitHub plugin route, `slackCommand()` posts a
+   signed slash command to the Slack webhook, and `completeAuth()` calls the
+   OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
@@ -144,11 +145,20 @@ describe("Thread Continuity", () => {
   `conversation.continue(completeAuth(provider))` opens that link, the mocked
   provider redirects to the callback route of the app, and the call returns
   the resumed turn. A link in a channel message is not private, so the call
-  fails.
+  fails. `completeAuth(provider, { author })` opens the link of another Slack
+  person.
+- A turn that a person started from the dashboard shows a connect prompt
+  there and sends no Slack link. `conversation.authorizationPrompt` is the
+  label of that prompt after the call. `completeAuth(provider)` opens the
+  prompt when the dashboard shows one.
+- `conversation.continue(slackCommand("unlink <provider>"))` runs the slash
+  command of Junior as a Slack person. Junior answers in private and starts
+  no turn.
 - `insertCredential()` stores the OAuth credential that a Slack person has
   for a plugin. `expired: true` makes its next use refresh it.
-  Credentials are in the state store, which tests share, so the fixture
-  removes the credentials of a test when the test finishes.
+  Credentials and authorization attempts are in the state store, which tests
+  share, so the fixture removes those of the people of a test when the test
+  finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
   needs the memory plugin to recall it. `subjectType: "conversation"` stores a
   memory about the conversation. `visibility: "private"` stores a memory that
