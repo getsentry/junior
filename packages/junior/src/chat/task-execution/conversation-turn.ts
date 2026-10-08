@@ -83,6 +83,7 @@ import {
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
+import type { Location } from "@/chat/conversations/location";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
@@ -122,6 +123,26 @@ function captureConversationTurnFailure(args: {
     },
   );
   return typeof eventId === "string" ? eventId : undefined;
+}
+
+/**
+ * Reply in the thread started by a channel-level Conversation's first Message.
+ * Automation runs post at the channel top level, so their Watches need this.
+ */
+async function resolveStartedThreadLocation(
+  conversationId: string,
+  location: Location | undefined,
+): Promise<Location | undefined> {
+  if (location?.provider !== "slack" || location.threadTs) {
+    return location;
+  }
+  const threadTs = await getConversationStore().getFirstProviderConversationId({
+    conversationId,
+    provider: "slack",
+    providerDestinationId: location.channelId,
+    providerTenantId: location.teamId,
+  });
+  return threadTs ? { ...location, threadTs } : location;
 }
 
 /** Return the saved timer creator subject when it is still valid here. */
@@ -333,7 +354,10 @@ export function createConversationTurnWorker(
       visibility: storedConversation?.visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    const conversationLocation = storedConversation?.location;
+    const conversationLocation = await resolveStartedThreadLocation(
+      context.conversationId,
+      storedConversation?.location,
+    );
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
     // TODO(dcramer): Remove this Source-based Delivery choice after the core

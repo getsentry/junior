@@ -38,6 +38,8 @@ Watches route events back into an existing conversation.
   destination or rewrite the conversation id.
 - Root conversations set destination on first upsert. Later event wakes
   use that destination.
+- A channel-level Location, such as an automation run's, has no thread. Its
+  first reply starts one. Later event Turns reply in that thread.
 - Ingestion only wakes that Conversation mailbox with plain system input. The
   input contains text and event metadata. Destination and Location stay on the
   Conversation. The shared mailbox worker runs a normal Turn. Slack supplies
