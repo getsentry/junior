@@ -276,7 +276,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .string()
           .min(1)
           .describe(
-            'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+            'Set this when you pass provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
           )
           .optional(),
         max_results: z

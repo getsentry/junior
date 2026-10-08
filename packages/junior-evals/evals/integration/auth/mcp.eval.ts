@@ -12,7 +12,10 @@ import {
 } from "@junior-evals/fixture/inputs";
 import { insertWatch } from "@junior-evals/fixture/insert";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
-import { completedMcpToolCalls } from "@junior-evals/fixture/results";
+import {
+  completedMcpToolCalls,
+  toolCallsOf,
+} from "@junior-evals/fixture/results";
 import {
   test,
   type Conversation,
@@ -35,6 +38,19 @@ async function connectAlice(run: RunAgent) {
     slackMention("/eval-auth Look up the budget.", { author: ALICE }),
   );
   expect(turnStates(paused)).toEqual(["started"]);
+
+  // The agent says why it connects the provider, and the notice shows it.
+  const connect = toolCallsOf("searchMcpTools", paused).find(
+    (call) =>
+      (call.input as { provider?: unknown } | undefined)?.provider ===
+      "eval-auth",
+  );
+  const intent = (connect?.input as { intent?: unknown } | undefined)?.intent;
+  expect(intent).toEqual(expect.any(String));
+  expect(paused.replies.map((reply) => reply.text).join("\n")).toContain(
+    `*Why:* ${String(intent)}`,
+  );
+
   const resumed = await paused.continue(
     completeAuth("eval-auth", { author: ALICE }),
   );
