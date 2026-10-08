@@ -391,6 +391,8 @@ export async function postSlackMessageEvent(
   app: RequestApp,
   event: {
     attachments?: SlackAttachment[];
+    /** The bot id of the Slack app that posted the message. */
+    botId?: string;
     channel: string;
     channelType: "channel" | "im";
     files?: SlackFile[];
@@ -408,6 +410,7 @@ export async function postSlackMessageEvent(
     ts: event.ts,
     event_ts: event.ts,
     ...(event.threadTs ? { thread_ts: event.threadTs } : undefined),
+    ...(event.botId ? { bot_id: event.botId } : undefined),
     ...(event.attachments ? { attachments: event.attachments } : undefined),
     ...(event.files ? { files: event.files } : undefined),
   };

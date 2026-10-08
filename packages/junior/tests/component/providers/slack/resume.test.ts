@@ -5,6 +5,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   deliverAssistantMessagesForTest,
   createTestTurnExecution,
+  neverRunAgentRunner,
 } from "../../../fixtures/agent-runner";
 import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
@@ -128,6 +129,83 @@ describe("Slack resume result handling", () => {
         failureCode: "persistence_failed",
       }),
     ]);
+  });
+
+  it("fails before the Slack status and the agent when the credential actor is not the Actor", async () => {
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
+
+    await resumeSlackTurn({
+      messageText: "Continue the original request",
+      conversationId: "slack:C123:1700000000.015",
+      turnId: "turn-invalid-resume-actor",
+      channelId: "C123",
+      threadTs: "1700000000.015",
+      initialText: "Connected. Continuing...",
+      initialStatus: { text: "Continuing request" },
+      run: {
+        credentialContext: {
+          actor: { type: "user", userId: "U456" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.015"),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      executeTurn: createTestTurnExecution(neverRunAgentRunner()),
+    });
+
+    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").map(
+        (call) => call.params.text,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "I ran into an internal error while processing that.",
+      ),
+    ]);
+  });
+
+  it("binds the Slack thread to the Conversation of a resumed dispatch", async () => {
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
+    const { getConversationStore } = await import("@/chat/db");
+    const threadTs = "1700000000.007";
+    const conversationId = "agent-dispatch:resume-binding";
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      conversationId,
+      turnId: "turn-resume-dispatch-binding",
+      channelId: "C123",
+      threadTs,
+      run: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        dispatch: { id: "resume-binding" },
+        source: testSlackSource(threadTs),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      executeTurn: createTestTurnExecution({
+        run: async (run) => {
+          await deliverAssistantMessagesForTest(run, [{ text: "Done." }]);
+          return successfulAgentRun("Done.");
+        },
+      }),
+    });
+
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    expect(posts.map((call) => call.params.text)).toEqual(["Done."]);
+    expect(JSON.stringify(posts[0]?.params.blocks)).toContain(conversationId);
+    // A later message in the thread reaches the Conversation of the dispatch.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: threadTs,
+      }),
+    ).resolves.toBe(conversationId);
   });
 
   it("posts an auth pause notice with the conversation footer", async () => {

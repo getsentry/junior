@@ -147,6 +147,19 @@ describe("MCP Authorization", () => {
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
   });
 
+  test("when another Slack app asks for a provider that needs authorization, answer without waiting for an authorization", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention("/eval-auth Look up the budget.", { fromApp: true }),
+    );
+
+    // An app cannot open an authorization link, so the turn does not wait.
+    expect(turnStates(conversation)).toEqual(["succeeded"]);
+    expect(conversation.replies).toHaveLength(1);
+    expect(completedMcpToolCalls(BUDGET_ECHO, conversation)).toEqual([]);
+  });
+
   test("when the person unlinks the provider, the next use asks them to authorize again", async ({
     run,
   }) => {
