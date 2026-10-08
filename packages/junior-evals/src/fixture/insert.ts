@@ -43,6 +43,16 @@ const FIXTURE_START_DATE = "2026-05-04";
 /** The Slack timestamp of the message that stored a setup memory. */
 const FIXTURE_MESSAGE_TS = "1780000000.000100";
 
+/**
+ * The time of the last memory that `insertMemory()` stored. Each memory gets
+ * a later time than the one before. Memory search orders equal matches by
+ * time and then by random id, so memories that a loop stores in the same
+ * millisecond would come back in another order on each run.
+ */
+let lastMemoryMs = 0;
+const nextMemoryMs = () =>
+  (lastMemoryMs = Math.max(Date.now(), lastMemoryMs + 1));
+
 /** Return a new public Slack channel in the test workspace. */
 export function slackChannel(): SlackChannel {
   const suffix = fixtureId("channel", 9).toUpperCase();
@@ -247,7 +257,7 @@ export async function insertMemory(args: {
       }),
       userId: identity.userId,
     },
-    { embedder: createPluginEmbedder("memory") },
+    { embedder: createPluginEmbedder("memory"), now: nextMemoryMs },
   );
   const input = {
     content: args.content,

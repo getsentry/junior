@@ -68,7 +68,8 @@ await proxy.close();
   and `headers`. `keyHeaders` adds request headers to the key. `values`
   names the values that change from run to run.
 - `usedFile`: when the proxy stops, it lists here the recordings that
-  sessions used. `cli.ts prune` takes these files.
+  sessions used. A failed session uses all recordings that it recorded
+  before, because it stops early. `cli.ts prune` takes these files.
 - `missDirectory`: for each miss, the proxy writes the request as the key
   sees it, and its diagnosis, to `<missDirectory>/<rule>/<key>.json`. These
   files contain request bodies. Do not commit them.
@@ -113,9 +114,15 @@ as part of a word and does not match.
   A replayed response thus uses the ids of this run.
 - A value that the response makes itself, such as a date that a model
   calculates, stays as it was recorded.
-- Values in thinking blocks of the request do not count for `n`. A replay
-  keeps the recorded text of a thinking block, so when a later request sends
-  it back, its values come from the recording run.
+- A session remembers the values of its requests. In a later request of
+  the same session, such a value is also a placeholder where no pattern
+  finds it. For example, a pattern finds a short commit id only in the
+  output of `git push`, but the model then quotes it alone in its reply. A
+  pattern wins at the same place.
+- Values in thinking blocks of the request do not count for `n`, and the
+  proxy does not look for remembered values in them. A replay keeps the
+  recorded text of a thinking block, so when a later request sends it back,
+  its values come from the recording run.
 
 Model streams send a tool call in many small deltas, so a value can be
 split over two events. Before it records a `text/event-stream`, the proxy

@@ -62,6 +62,11 @@ interface Session {
   replayed: Set<string>;
   /** Requests that `replay` mode failed. */
   missed: number;
+  /**
+   * Changing values of the requests so far, with their names. A later
+   * request can repeat one where no pattern finds it (`values.ts`).
+   */
+  known: Map<string, string>;
   /** Set when the session ends. */
   passed?: boolean;
 }
@@ -234,6 +239,12 @@ export function createRecorder(config: RecordingProxyConfig) {
       await write([...ended.recorded]);
     } else {
       stats.discarded += ended.recorded.size;
+      // A failed test stops early, so it does not replay all of its
+      // recordings. Keep every recording that it made before, so that a
+      // prune does not delete them.
+      for (const index of indexes.values()) {
+        for (const file of await index.filesOf(ended.name)) used.add(file);
+      }
     }
     return ended.missed;
   };
@@ -263,12 +274,23 @@ export function createRecorder(config: RecordingProxyConfig) {
       // A request belongs to the session that was open when it started.
       const owner = session;
       const counts = stats.counts[rule.name]!;
-      const keyed = keyRequest(rule, {
-        method: request.method,
-        url: request.url.href,
-        headers: request.headers,
-        body: request.body.toString("utf8"),
-      });
+      const keyed = keyRequest(
+        rule,
+        {
+          method: request.method,
+          url: request.url.href,
+          headers: request.headers,
+          body: request.body.toString("utf8"),
+        },
+        owner?.known,
+      );
+      if (owner) {
+        for (const [name, list] of keyed.values) {
+          for (const value of list) {
+            if (!owner.known.has(value)) owner.known.set(value, name);
+          }
+        }
+      }
       const file = path.join(config.directory, rule.name, `${keyed.key}.json`);
 
       if (config.mode !== "record") {
@@ -317,7 +339,13 @@ export function createRecorder(config: RecordingProxyConfig) {
         );
         await finish(false);
       }
-      session = { name, recorded: new Map(), replayed: new Set(), missed: 0 };
+      session = {
+        name,
+        recorded: new Map(),
+        replayed: new Set(),
+        missed: 0,
+        known: new Map(),
+      };
     },
 
     /**

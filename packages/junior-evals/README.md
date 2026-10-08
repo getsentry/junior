@@ -333,6 +333,11 @@ Its `README.md` tells how it keys, records, and replays requests.
   - The `values` of the model rule in `src/recording-rules.ts` cover ids and
     times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
     ISO times and dates, Unix milliseconds, and local times.
+  - The proxy remembers the values of each request in a test. A later
+    request of the same test that repeats one, for example a short commit id
+    that the model quotes in its reply, gets the same placeholder.
+  - `insertMemory()` gives each memory a later time than the one before.
+    Memory search orders equal matches by time and then by random id.
   - When `onProgress` sends input, the model request waits 1.5 seconds
     before it goes on (`INPUT_SETTLE_MS` in `src/fixture/agent.ts`). The
     product checks for a stop every 500 ms. Without the wait, a replayed
@@ -405,9 +410,12 @@ Its `README.md` tells how it keys, records, and replays requests.
   tests replayed. Then `src/recording-proxy/cli.ts prune` deletes the
   recordings that no list has, and the workflow opens or updates one pull
   request.
-- It deletes recordings only when every job finished and every eval passed.
-  A failed test stops at its failure, so its later recordings would look
-  unused.
+- It deletes recordings only when every job finished and its proxy listed
+  the recordings it used. A failed test stops at its failure, so it keeps
+  all of the recordings that it recorded before. Tests that fail on `main`
+  then do not block a prune.
+- A test file that does not load starts no test, so its recordings look
+  unused. Check the deleted files in the pull request.
 - Nothing refreshes recordings on a schedule. A change of the model id
   makes new requests, so they record on their own. A provider that changes
   its behavior under the same model id goes unnoticed until a live run.

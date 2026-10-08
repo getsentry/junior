@@ -102,24 +102,43 @@ function compile(patterns: ValuePatterns): CompiledValues {
   return result;
 }
 
+/** Values that an earlier request of the same session had, by value. */
+export type KnownValues = ReadonlyMap<string, string>;
+
 /**
  * Replace each changing value in `text` with `<<name>>`. Returns the text
  * and the values in their order. With no patterns, nothing changes.
+ *
+ * `known` maps values of earlier requests in the session to their names. A
+ * known value also counts where no pattern finds it. For example, the
+ * model repeats the short commit id of a `git push` range in its reply,
+ * and a later request sends that reply back. A pattern wins over a known
+ * value at the same place.
  */
 export function extractValues(
   text: string,
   patterns: ValuePatterns | undefined,
+  known?: KnownValues,
 ): { text: string; values: RequestValues } {
   const values: RequestValues = new Map();
   if (!patterns || Object.keys(patterns).length === 0) {
     return { text, values };
   }
   const { names, pattern, groups } = compile(patterns);
-  const result = text.replace(pattern, (...match: unknown[]) => {
-    const index = groups.findIndex((group) => match[group] !== undefined);
-    const name = names[index]!;
+  const hasKnown = known !== undefined && known.size > 0;
+  // Known values are the last group, after the groups of the patterns.
+  const knownGroup = groupCount(pattern.source) + 1;
+  const search = hasKnown
+    ? new RegExp(`${pattern.source}|(${literals([...known.keys()])})`, "g")
+    : pattern;
+  const result = text.replace(search, (...match: unknown[]) => {
+    const value = match[0] as string;
+    const name =
+      hasKnown && match[knownGroup] !== undefined
+        ? known.get(value)!
+        : names[groups.findIndex((group) => match[group] !== undefined)]!;
     const list = values.get(name) ?? [];
-    list.push(match[0] as string);
+    list.push(value);
     values.set(name, list);
     return `<<${name}>>`;
   });
@@ -127,6 +146,17 @@ export function extractValues(
 }
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A pattern source for any of `values`, where it is not part of a longer
+ * word or number. Longer values come first, so a date never replaces part
+ * of a time.
+ */
+const literals = (values: string[]) =>
+  `${NOT_AFTER_WORD}(?:${values
+    .sort((a, b) => b.length - a.length)
+    .map(escape)
+    .join("|")})(?![0-9A-Za-z])`;
 
 /**
  * Write each value of the request that a recorded response repeats as
@@ -143,14 +173,7 @@ export function templateValues(text: string, values: RequestValues): string {
     });
   }
   if (placeholders.size === 0) return text;
-  // Longer values first, so a date never replaces part of a time.
-  const alternatives = [...placeholders.keys()]
-    .sort((a, b) => b.length - a.length)
-    .map(escape);
-  const pattern = new RegExp(
-    `${NOT_AFTER_WORD}(?:${alternatives.join("|")})(?![0-9A-Za-z])`,
-    "g",
-  );
+  const pattern = new RegExp(literals([...placeholders.keys()]), "g");
   return text.replace(pattern, (value) => placeholders.get(value)!);
 }
 

@@ -79,6 +79,8 @@ export interface RecordingIndex {
     parts: RequestParts,
     session: string | undefined,
   ): Promise<{ file: string; differs: string[] } | undefined>;
+  /** The recordings that the session `session` recorded. */
+  filesOf(session: string): Promise<string[]>;
 }
 
 /** Index the recordings of one rule directory. It reads them on first use. */
@@ -117,6 +119,12 @@ export function createRecordingIndex(directory: string): RecordingIndex {
         session !== undefined && same.length > 0 ? same : all,
       );
       return found && { file: found.candidate.file, differs: found.differs };
+    },
+    async filesOf(session) {
+      await (loaded ??= load());
+      return [...entries.values()]
+        .filter((entry) => entry.session === session)
+        .map((entry) => entry.file);
     },
   };
 }

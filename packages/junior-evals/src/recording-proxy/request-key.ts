@@ -19,6 +19,7 @@ import { THINKING_BLOCK_TYPES } from "./streams.ts";
 import type { RecordingRule } from "./types.ts";
 import {
   extractValues,
+  type KnownValues,
   type RequestValues,
   type ValuePatterns,
 } from "./values.ts";
@@ -72,19 +73,45 @@ function parseJson(body: string): unknown {
   }
 }
 
+/** Marks the place of a thinking block in the text of a body. */
+const THINKING_MARK = /"\uE000(\d+)"/g;
+
 /**
- * The body without thinking blocks. A replay keeps the recorded text of a
- * thinking block (`streams.ts`), and a later request sends it back. So its
- * values come from the recording run, not from this run.
+ * The text of a JSON value with `<<name>>` for each changing value, and the
+ * values outside thinking blocks.
+ *
+ * A replay keeps the recorded text of a thinking block (`streams.ts`), and
+ * a later request sends it back. So its values come from the recording
+ * run. They are in the key, but they do not fill placeholders, and known
+ * values of this run are not looked for in them.
  */
-function withoutThinking(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutThinking);
-  if (value === null || typeof value !== "object") return value;
-  const record = value as Record<string, unknown>;
-  if (THINKING_BLOCK_TYPES.has(String(record.type))) return null;
-  return Object.fromEntries(
-    Object.entries(record).map(([name, item]) => [name, withoutThinking(item)]),
+function normalizeJson(
+  json: unknown,
+  patterns: ValuePatterns | undefined,
+  known: KnownValues | undefined,
+): { text: string; values: RequestValues } {
+  const thinking: string[] = [];
+  const mark = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(mark);
+    if (value === null || typeof value !== "object") return value;
+    const record = value as Record<string, unknown>;
+    if (THINKING_BLOCK_TYPES.has(String(record.type))) {
+      thinking.push(extractValues(stableStringify(record), patterns).text);
+      return `\uE000${thinking.length - 1}`;
+    }
+    return Object.fromEntries(
+      Object.entries(record).map(([name, item]) => [name, mark(item)]),
+    );
+  };
+  const { text, values } = extractValues(
+    stableStringify(mark(json)),
+    patterns,
+    known,
   );
+  return {
+    text: text.replace(THINKING_MARK, (_, index) => thinking[Number(index)]!),
+    values,
+  };
 }
 
 const sha256 = (text: string) =>
@@ -95,12 +122,13 @@ function bodyParts(
   json: unknown,
   normalizedBody: string,
   patterns: ValuePatterns | undefined,
+  known: KnownValues | undefined,
 ): RequestParts {
   if (json === null || typeof json !== "object" || Array.isArray(json)) {
     return normalizedBody ? { body: shortHash(normalizedBody) } : {};
   }
   const part = (value: unknown) =>
-    shortHash(extractValues(stableStringify(value), patterns).text);
+    shortHash(normalizeJson(value, patterns, known).text);
   const parts: RequestParts = {};
   for (const [field, value] of Object.entries(json)) {
     if (value === undefined) continue;
@@ -116,7 +144,10 @@ function bodyParts(
   return parts;
 }
 
-/** The key, the parts, and the changing values of a request. */
+/**
+ * The key, the parts, and the changing values of a request. `known` holds
+ * the values of earlier requests in the same session (`values.ts`).
+ */
 export function keyRequest(
   rule: RecordingRule,
   request: {
@@ -125,6 +156,7 @@ export function keyRequest(
     headers: IncomingHttpHeaders;
     body: string;
   },
+  known?: KnownValues,
 ): KeyedRequest {
   const headers = Object.fromEntries(
     (rule.keyHeaders ?? []).map((name) => [
@@ -133,16 +165,10 @@ export function keyRequest(
     ]),
   );
   const json = parseJson(request.body);
-  const { text, values: allValues } = extractValues(
-    json === undefined ? request.body : stableStringify(json),
-    rule.values,
-  );
-  // The key sees every value. Placeholders use only the values of this run.
-  const values =
-    json === undefined || allValues.size === 0
-      ? allValues
-      : extractValues(stableStringify(withoutThinking(json)), rule.values)
-          .values;
+  const { text, values } =
+    json === undefined
+      ? extractValues(request.body, rule.values, known)
+      : normalizeJson(json, rule.values, known);
   const key = sha256(
     [
       KEY_VERSION,
@@ -160,7 +186,7 @@ export function keyRequest(
   for (const [name, value] of Object.entries(headers)) {
     parts[`header ${name}`] = shortHash(value);
   }
-  Object.assign(parts, bodyParts(json, text, rule.values));
+  Object.assign(parts, bodyParts(json, text, rule.values, known));
   return {
     key,
     parts,

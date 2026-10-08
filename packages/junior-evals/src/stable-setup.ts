@@ -26,32 +26,49 @@
  *   model rule replaces UUIDs in requests instead.
  */
 import { relative } from "node:path";
-import { afterAll, beforeEach } from "vitest";
+import { beforeEach } from "vitest";
 
 process.env.TZ = "UTC";
 
-const realRandom = Math.random;
-afterAll(() => {
-  Math.random = realRandom;
-});
+// Install one generator for the whole worker and only change its state per
+// test. Code that a test runs can leave `Math.random` read-only. A later
+// assignment then throws, which failed the second test of
+// `evals/sentry/skills.eval.ts`. Setup files run again for each test file in
+// the same worker, so the generator is kept on `globalThis` and installed once.
+const SEEDED_RANDOM = Symbol.for("junior-evals.seeded-random");
+type SeededRandom = { seed(text: string): void };
+const globals = globalThis as { [SEEDED_RANDOM]?: SeededRandom };
+const seededRandom = (globals[SEEDED_RANDOM] ??= installSeededRandom());
 
 beforeEach(({ task }) => {
-  Math.random = seededRandom(
+  seededRandom.seed(
     `${relative(process.cwd(), task.file.filepath)} > ${task.fullName}`,
   );
 });
 
-/** A small fast generator (mulberry32) with a seed from the given text. */
-function seededRandom(text: string): () => number {
-  // FNV-1a gives a 32-bit seed from the text.
-  let state = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    state = Math.imul(state ^ text.charCodeAt(index), 0x01000193);
-  }
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ (state >>> 15), 1 | state);
-    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+/**
+ * Replace `Math.random` with a small fast generator (mulberry32). `seed()`
+ * restarts it with a seed from the given text (FNV-1a).
+ */
+function installSeededRandom(): SeededRandom {
+  let state = 0;
+  const seed = (text: string) => {
+    state = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      state = Math.imul(state ^ text.charCodeAt(index), 0x01000193);
+    }
   };
+  seed("junior-evals");
+  Object.defineProperty(Math, "random", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: () => {
+      state = (state + 0x6d2b79f5) | 0;
+      let value = Math.imul(state ^ (state >>> 15), 1 | state);
+      value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    },
+  });
+  return { seed };
 }

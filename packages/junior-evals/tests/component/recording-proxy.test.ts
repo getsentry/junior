@@ -36,7 +36,11 @@ async function start(
       {
         name: "model",
         match: { method: "POST", url: `${origin}/v1/` },
-        values: { uuid: VALUE_PATTERNS.uuid, time: VALUE_PATTERNS.isoTime },
+        values: {
+          uuid: VALUE_PATTERNS.uuid,
+          time: VALUE_PATTERNS.isoTime,
+          commit: VALUE_PATTERNS.gitCommit,
+        },
       },
     ],
     usedFile,
@@ -207,6 +211,34 @@ describe("recording proxy", () => {
     expect(recording).toContain("<<uuid:1>>");
   });
 
+  it("replays a later request that repeats a value of an earlier one", async () => {
+    // A tool result shows the commit id in a `git push` range, where the
+    // pattern finds it. The next request quotes it alone in the reply of
+    // the model, where no pattern finds it. Its thinking block keeps the id
+    // of the recording run, as a replay keeps thinking as recorded.
+    const recorded = "e735f91";
+    const requests = (commit: string) => [
+      { messages: [`a5fd79f..${commit}  main -> main`] },
+      {
+        messages: [
+          `a5fd79f..${commit}  main -> main`,
+          { type: "thinking", thinking: `Push ${recorded}.`, signature: "s" },
+          `Pushed \`${commit}\`.`,
+        ],
+      },
+    ];
+    const running = await start("auto");
+    await session(running, requests(recorded));
+
+    const replay = await session(running, requests("8d130ac"));
+
+    expect(replay.map(({ source }) => source)).toEqual([
+      "replayed",
+      "replayed",
+    ]);
+    expect(liveRequests).toBe(2);
+  });
+
   it("fails a request without a recording in replay mode and sends nothing", async () => {
     const recording = await start("auto");
     await session(recording, [{ model: "m" }]);
@@ -285,26 +317,36 @@ describe("recording proxy", () => {
       `${path.basename(directory)}.used`,
     );
     const running = await start("auto", usedFile);
-    await session(running, [{ model: "m" }]);
-    const [file] = await files();
-    const content = await readFile(
-      path.join(directory, "model", file!),
-      "utf8",
+    await session(running, [{ model: "m" }, { model: "n" }]);
+    const recorded = (await files()).sort();
+    const contents = await Promise.all(
+      recorded.map((file) => readFile(path.join(directory, "model", file))),
     );
-    await writeFile(path.join(directory, "model", "stale.json"), "{}\n");
+    const stale = JSON.parse(contents[0]!.toString("utf8"));
+    await writeFile(
+      path.join(directory, "model", "stale.json"),
+      JSON.stringify({ ...stale, session: "removed test" }),
+    );
 
-    // A replay neither writes the file again nor makes it unused.
-    await session(running, [{ model: "m" }]);
+    // A replay neither writes a file again nor makes it unused. The test
+    // fails before its second request, and its recordings stay in use.
+    await session(running, [{ model: "m" }], false);
     await running.close();
     proxy = undefined;
 
-    await expect(readFile(usedFile, "utf8")).resolves.toBe(`model/${file}\n`);
+    await expect(readFile(usedFile, "utf8")).resolves.toBe(
+      recorded.map((file) => `model/${file}\n`).join(""),
+    );
     await expect(pruneRecordings(directory, [usedFile])).resolves.toBe(1);
-    await expect(files()).resolves.toEqual([file]);
+    await expect(files().then((names) => names.sort())).resolves.toEqual(
+      recorded,
+    );
     await expect(
-      readFile(path.join(directory, "model", file!), "utf8"),
-    ).resolves.toBe(content);
-    expect(liveRequests).toBe(1);
+      Promise.all(
+        recorded.map((file) => readFile(path.join(directory, "model", file))),
+      ),
+    ).resolves.toEqual(contents);
+    expect(liveRequests).toBe(2);
     await rm(usedFile);
   });
 

@@ -52,7 +52,8 @@ export interface RecordingProxyConfig {
   rules: RecordingRule[];
   /**
    * When the proxy stops, it lists here the recordings that sessions used.
-   * Give these files to the `prune` command.
+   * A failed session uses all recordings that it recorded before. Give these
+   * files to the `prune` command.
    */
   usedFile?: string;
   /**
