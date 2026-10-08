@@ -1,5 +1,4 @@
 {
-  "writtenAt": "2026-10-06T01:43:32.774Z",
   "session": "evals/agent/research.eval.ts > Research Reply Shape > when summarizing multiple sources, show initial progress and return a concise answer without process chatter",
   "request": {
     "method": "GET",
@@ -10,13 +9,12 @@
     }
   },
   "response": {
-    "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Redirecting</title>\n</head>\n<body>\n<pre>Redirecting to /changelog/2025/10/7/chat-streaming/</pre>\n</body>\n</html>\n",
-    "bodyEncoding": "utf8",
+    "status": 301,
     "headers": {
       "content-type": "text/html; charset=UTF-8",
       "location": "/changelog/2025/10/7/chat-streaming/"
     },
-    "status": 301,
-    "statusText": ""
+    "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Redirecting</title>\n</head>\n<body>\n<pre>Redirecting to /changelog/2025/10/7/chat-streaming/</pre>\n</body>\n</html>\n",
+    "bodyEncoding": "utf8"
   }
 }
