@@ -284,7 +284,9 @@ process and has no Junior code, so it can move out of this repository.
   `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
 - The recordings are in `recordings/<rule>/`. A recording answers a request
   when the method, URL, body, and the `key.headers` of the rule are the same.
-  The key ignores ISO times. A recording keeps the response, the test that
+  The key ignores the clock time of the run: ISO times, Unix milliseconds,
+  and local times such as `Oct 7, 2026, 10:05 PM`. A fixture cannot make
+  these stable. A recording keeps the response, the test that
   recorded it, and a short hash of each part of the request. It does not
   keep the request body.
 - A request without a recording goes live. When the test passes, the proxy
@@ -302,7 +304,9 @@ process and has no Junior code, so it can move out of this repository.
   You can commit the new recordings with your change. Do a check for
   secret-like values before you commit them.
 - The Slack mock takes its timestamps and channel ids from the test name.
-  Thus the requests of a test are the same on each run. If a test sends a
+  Setup data, web Conversations, and memories take their ids from
+  `fixtureId()` in `src/fixture/ids.ts`. Thus the requests of a test are the
+  same on each run. If a test sends a
   value that changes on each run, make the fixture send a stable value. Do
   not add the value to `key.ignore`: a replayed response can depend on it.
 - The AI SDK sends no model request when it has no gateway credential. To

@@ -6,9 +6,8 @@
  * they never run turns and they contain no assertions. Add one when a test
  * needs a new kind of setup data.
  */
-import { createHash, randomUUID } from "node:crypto";
-import { relative } from "node:path";
-import { expect, onTestFinished } from "vitest";
+import { randomUUID } from "node:crypto";
+import { onTestFinished } from "vitest";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -24,6 +23,7 @@ import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
+import { fixtureId } from "./ids";
 import type { SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
@@ -32,26 +32,6 @@ export interface SlackChannel {
   channelId: string;
   platform: "slack";
   teamId: string;
-}
-
-const fixtureIdCounts = new Map<string, number>();
-
-/**
- * An id for setup data. It comes from the test and a count, so a test gets
- * the same ids on each run. The ids reach model requests, for example in
- * tool results, and recordings replay only equal requests. Different tests
- * get different ids.
- */
-function fixtureId(kind: string, length: number): string {
-  const { currentTestName, testPath } = expect.getState();
-  const test = `${testPath ? relative(process.cwd(), testPath) : ""} > ${currentTestName ?? ""}`;
-  const scope = `${test} > ${kind}`;
-  const count = (fixtureIdCounts.get(scope) ?? 0) + 1;
-  fixtureIdCounts.set(scope, count);
-  return createHash("sha256")
-    .update(`${scope} > ${count}`)
-    .digest("hex")
-    .slice(0, length);
 }
 
 /**
@@ -267,7 +247,11 @@ export async function insertMemory(args: {
       }),
       userId: identity.userId,
     },
-    { embedder: createPluginEmbedder("memory") },
+    {
+      // Recall prompts show memory ids to the model.
+      createId: () => fixtureId("memory", 32),
+      embedder: createPluginEmbedder("memory"),
+    },
   );
   const input = {
     content: args.content,

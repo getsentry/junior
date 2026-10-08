@@ -20,10 +20,20 @@ import type {
 } from "./recording-proxy/recording-proxy";
 
 /**
- * An ISO time. The prompt shows when each earlier message was stored, and
- * that is the clock time of the run.
+ * The forms of the clock time of the run. A fixture cannot make them
+ * stable: the prompt shows when each earlier message was stored, and tool
+ * results show the current time, the time of a new schedule, or the expiry
+ * of a new watch.
  */
-const ISO_TIME = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
+const CLOCK_TIMES = [
+  // An ISO time, in UTC or with an offset or in local time.
+  String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?`,
+  // Unix milliseconds from 2023 to 2033, such as `expiresAtMs` or a file
+  // name. Slack timestamps have seconds, so they do not match.
+  String.raw`\b1[789]\d{11}\b`,
+  // A local time for people, such as `Oct 7, 2026, 10:05 PM`.
+  String.raw`\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4}, \d{1,2}:\d{2}\s?[AP]M\b`,
+];
 
 const RECORDING_RULES: RecordingRule[] = [
   {
@@ -39,7 +49,7 @@ const RECORDING_RULES: RecordingRule[] = [
         "ai-language-model-streaming",
         "ai-model-id",
       ],
-      ignore: [ISO_TIME],
+      ignore: CLOCK_TIMES,
     },
   },
   {

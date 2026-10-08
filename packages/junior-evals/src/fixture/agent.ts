@@ -28,6 +28,7 @@ import { runEvalWork } from "../eval-work";
 import { completeAuthorization } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { fixtureId } from "./ids";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -310,7 +311,9 @@ export async function createFixtureAgent(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
-            idempotencyKey: started ? randomUUID() : record.idempotencyKey,
+            idempotencyKey: started
+              ? fixtureId("web-message", 32)
+              : record.idempotencyKey,
             message: input.text,
             ...(input.images?.length
               ? { images: input.images.map(webImage) }
@@ -358,7 +361,9 @@ export async function createFixtureAgent(
     history: CallOptions["history"],
   ): ConversationRecord => {
     if (first.kind === "web_message") {
-      const idempotencyKey = randomUUID();
+      // The Conversation id comes from this key, and attachment ids come
+      // from the Conversation id.
+      const idempotencyKey = fixtureId("web-conversation", 32);
       return newRecord({
         conversationId: createConversationId({
           actorEmail: WEB_VIEWER_EMAIL,
@@ -613,7 +618,7 @@ export async function createFixtureAgent(
     const response = await api.request(
       `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
       jsonRequest(record.viewerEmail, {
-        idempotencyKey: randomUUID(),
+        idempotencyKey: fixtureId("fork", 32),
         messageId,
       }),
     );

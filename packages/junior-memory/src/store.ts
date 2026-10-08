@@ -341,6 +341,8 @@ export interface MemorySupersessionDecider {
 }
 
 export interface MemoryStoreOptions {
+  /** Makes the id of a new memory. Defaults to a random UUID. */
+  createId?: () => string;
   embedder?: MemoryEmbeddingProvider;
   now?: () => number;
   supersessionDecider?: MemorySupersessionDecider;
@@ -1157,6 +1159,7 @@ export function createMemoryStore(
   const embedder = options.embedder;
   const supersessionDecider = options.supersessionDecider;
   const getNowMs = parsedOptions.now ?? Date.now;
+  const createId = options.createId ?? randomUUID;
 
   async function archiveExpiredVisibleMemories(
     input: ArchiveExpiredMemoriesInput | undefined,
@@ -1302,7 +1305,7 @@ export function createMemoryStore(
       }
     }
 
-    const id = randomUUID();
+    const id = createId();
     const write = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(juniorMemoryMemories)
