@@ -3,9 +3,6 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   and,
-  asc,
-  count,
-  desc,
   eq,
   inArray,
   ne,
@@ -167,92 +164,176 @@ export function viewerAutomationCollection(user: User) {
   ).as("accessible_automations");
 }
 
-/** Read an SQL page and complete, access-scoped counts and filter options. */
+type CollectionRow = {
+  attention: boolean;
+  createdAtMs: number;
+  creator: string | null;
+  creatorLabel: string | null;
+  destination: string | null;
+  destinationLabel: string | null;
+  id: string;
+  instruction: string | null;
+  isPublic: boolean;
+  kind: "scheduled" | "event";
+  owned: boolean;
+  resource: string | null;
+  state: string;
+  title: string | null;
+  unavailable: boolean;
+};
+
+type FilterOption = { value: string; label: string };
+
+/** Code point order with Postgres' ascending NULLS LAST placement. */
+function compareText(left: string | null, right: string | null): number {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left < right ? -1 : 1;
+}
+
+/** Postgres `trim()` only strips spaces, unlike `String.prototype.trim`. */
+function trimSpaces(value: string): string {
+  return value.replace(/^ +| +$/g, "");
+}
+
+function titleSortKey(row: CollectionRow): string | null {
+  const title = row.title === null ? "" : trimSpaces(row.title);
+  const value = title || row.instruction;
+  return value === null ? null : value.toLowerCase();
+}
+
+function filterOptions(
+  rows: CollectionRow[],
+  value: (row: CollectionRow) => string | null,
+  label: (row: CollectionRow) => string | null,
+): FilterOption[] {
+  const groups = new Map<string | null, string | null>();
+  for (const row of rows) {
+    const key = value(row);
+    const candidate = label(row);
+    const current = groups.get(key) ?? null;
+    if (!groups.has(key) || compareText(candidate, current) < 0) {
+      groups.set(key, candidate);
+    }
+  }
+  return [...groups]
+    .map(([optionValue, optionLabel]) => ({
+      value: optionValue,
+      label: optionLabel,
+    }))
+    .sort(
+      (left, right) =>
+        compareText(left.label, right.label) ||
+        compareText(left.value, right.value),
+    ) as FilterOption[];
+}
+
+function matchesQuery(row: CollectionRow, input: AutomationListQuery): boolean {
+  if (input.scope === "mine" && !row.owned) return false;
+  if (input.scope === "public" && !row.isPublic) return false;
+  if (input.scope === "attention" && !row.attention) return false;
+  if (input.type !== "all" && row.kind !== input.type) return false;
+  if (input.state === "unavailable" && !row.unavailable) return false;
+  if (
+    input.state !== "all" &&
+    input.state !== "unavailable" &&
+    row.state !== input.state
+  ) {
+    return false;
+  }
+  if (input.creator && row.creator !== input.creator) return false;
+  if (input.destination && row.destination !== input.destination) {
+    return false;
+  }
+  if (input.q) {
+    const text = [row.title, row.instruction, row.resource]
+      .filter((part): part is string => part !== null)
+      .join(" ")
+      .toLowerCase();
+    if (!text.includes(input.q.toLowerCase())) return false;
+  }
+  return true;
+}
+
+function compareRows(sort: AutomationListQuery["sort"]) {
+  return (left: CollectionRow, right: CollectionRow): number => {
+    const primary =
+      sort === "oldest"
+        ? Number(left.createdAtMs) - Number(right.createdAtMs)
+        : sort === "title"
+          ? compareText(titleSortKey(left), titleSortKey(right))
+          : Number(right.createdAtMs) - Number(left.createdAtMs);
+    return (
+      primary ||
+      compareText(right.id, left.id) ||
+      compareText(left.kind, right.kind)
+    );
+  };
+}
+
+/**
+ * Read a page plus complete, access-scoped counts and filter options.
+ *
+ * The access-scoped collection is a union with correlated execution lookups,
+ * so it is evaluated once and the counts, options, and page are derived from
+ * that single result instead of re-running the union for every aggregate.
+ */
 export async function readAutomationCollection(
   user: User,
   input: AutomationListQuery,
 ) {
-  const db = getDb();
   const collection = viewerAutomationCollection(user);
-  const where = and(
-    input.scope === "mine"
-      ? eq(collection.owned, true)
-      : input.scope === "public"
-        ? eq(collection.isPublic, true)
-        : input.scope === "attention"
-          ? eq(collection.attention, true)
-          : undefined,
-    input.type === "all" ? undefined : eq(collection.kind, input.type),
-    input.state === "all"
-      ? undefined
-      : input.state === "unavailable"
-        ? eq(collection.unavailable, true)
-        : eq(collection.state, input.state),
-    input.creator ? eq(collection.creator, input.creator) : undefined,
-    input.destination
-      ? eq(collection.destination, input.destination)
-      : undefined,
-    input.q
-      ? sql`strpos(lower(concat_ws(' ', ${collection.title}, ${collection.instruction}, ${collection.resource})), ${input.q.toLowerCase()}) > 0`
-      : undefined,
-  );
-  const [totals, counts, creators, destinations] = await Promise.all([
-    db.select({ total: count() }).from(collection).where(where),
-    db
-      .select({
-        all: count(),
-        mine: sql<number>`count(*) filter (where ${collection.owned})::int`,
-        public: sql<number>`count(*) filter (where ${collection.isPublic})::int`,
-        private: sql<number>`count(*) filter (where not ${collection.isPublic})::int`,
-      })
-      .from(collection),
-    db
-      .select({
-        value: collection.creator,
-        label: sql<string>`min(${collection.creatorLabel})`,
-      })
-      .from(collection)
-      .groupBy(collection.creator)
-      .orderBy(sql`min(${collection.creatorLabel})`, collection.creator),
-    db
-      .select({
-        value: collection.destination,
-        label: sql<string>`min(${collection.destinationLabel})`,
-      })
-      .from(collection)
-      .groupBy(collection.destination)
-      .orderBy(
-        sql`min(${collection.destinationLabel})`,
-        collection.destination,
-      ),
-  ]);
-  const total = totals[0]!.total;
+  const all: CollectionRow[] = await getDb()
+    .select({
+      attention: collection.attention,
+      createdAtMs: collection.createdAtMs,
+      creator: collection.creator,
+      creatorLabel: collection.creatorLabel,
+      destination: collection.destination,
+      destinationLabel: collection.destinationLabel,
+      id: collection.id,
+      instruction: collection.instruction,
+      isPublic: collection.isPublic,
+      kind: collection.kind,
+      owned: collection.owned,
+      resource: collection.resource,
+      state: collection.state,
+      title: collection.title,
+      unavailable: collection.unavailable,
+    })
+    .from(collection);
+  const matching = all.filter((row) => matchesQuery(row, input));
+  const total = matching.length;
   const page = Math.min(
     input.page,
     Math.max(1, Math.ceil(total / input.pageSize)),
   );
-  const order =
-    input.sort === "oldest"
-      ? asc(collection.createdAtMs)
-      : input.sort === "title"
-        ? asc(
-            sql`lower(coalesce(nullif(trim(${collection.title}), ''), ${collection.instruction}))`,
-          )
-        : desc(collection.createdAtMs);
-  const rows = await db
-    .select({ id: collection.id, kind: collection.kind })
-    .from(collection)
-    .where(where)
-    .orderBy(order, desc(collection.id), asc(collection.kind))
-    .limit(input.pageSize)
-    .offset((page - 1) * input.pageSize);
+  const offset = (page - 1) * input.pageSize;
+  const rows = matching
+    .sort(compareRows(input.sort))
+    .slice(offset, offset + input.pageSize)
+    .map(({ id, kind }) => ({ id, kind }));
   return {
     rows,
     total,
     page,
     pageSize: input.pageSize,
-    counts: counts[0]!,
-    creators,
-    destinations,
+    counts: {
+      all: all.length,
+      mine: all.filter((row) => row.owned).length,
+      public: all.filter((row) => row.isPublic).length,
+      private: all.filter((row) => !row.isPublic).length,
+    },
+    creators: filterOptions(
+      all,
+      (row) => row.creator,
+      (row) => row.creatorLabel,
+    ),
+    destinations: filterOptions(
+      all,
+      (row) => row.destination,
+      (row) => row.destinationLabel,
+    ),
   };
 }
