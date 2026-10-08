@@ -646,7 +646,7 @@ describe("GitHub webhook events", () => {
             occurredAtMs: 1_000,
             identifier: "getsentry/junior#946",
             trustedSummary:
-              "GitHub PR getsentry/junior#946 was approved by reviewer with a review comment.",
+              "GitHub PR getsentry/junior#946 was approved by reviewer.",
             untrustedText: "fine, but dedupe the tests",
           },
         ],
