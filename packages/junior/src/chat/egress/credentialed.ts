@@ -1,4 +1,4 @@
-import { logInfo, logWarn } from "@/chat/logging";
+import { logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -311,22 +311,56 @@ async function requestBodyBytes(
   ) {
     return undefined;
   }
+  return await request.arrayBuffer();
+}
+
+/**
+ * Read the forwarded body, or build a controlled error when it is unreadable.
+ *
+ * The Vercel runtime can deliver an already-used body stream, for example for
+ * a POST that the sandbox sent without a body. Forwarding headers do not show
+ * whether the body was empty, so Junior must not guess and send a credentialed
+ * write without its payload. It returns an error that names Junior as the
+ * source and links the Sentry event.
+ */
+async function readForwardedBody(input: {
+  egressId: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<{ body: ArrayBuffer | undefined } | { response: Response }> {
   try {
-    return await request.arrayBuffer();
+    return { body: await requestBodyBytes(input.request) };
   } catch (error) {
-    // The Vercel runtime can deliver an already-used body stream for a POST
-    // without Content-Length or Transfer-Encoding, such as GitHub's
-    // ready_for_review call. HTTP/1.1 defines such a request as having no
-    // body (RFC 9112, section 6.3), so forward it without one. A framed body
-    // that cannot be read is still an error.
-    if (
-      error instanceof TypeError &&
-      !request.headers.has("content-length") &&
-      !request.headers.has("transfer-encoding")
-    ) {
-      return undefined;
+    if (!(error instanceof TypeError)) {
+      throw error;
     }
-    throw error;
+    const eventId = logException(
+      error,
+      "sandbox.egress.request_body.unreadable",
+      {
+        ...egressAttributes({
+          egressId: input.egressId,
+          host: input.upstreamUrl.hostname,
+          method: input.request.method,
+          path: input.upstreamUrl.pathname,
+          provider: input.provider,
+          status: 500,
+        }),
+        ...routingAttributes(input.request, input.upstreamUrl),
+      },
+    );
+    return {
+      response: Response.json(
+        {
+          source: "junior-egress",
+          error:
+            "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+          ...(eventId ? { sentryEventId: eventId } : undefined),
+        },
+        { status: 500, headers: { "cache-control": "no-store" } },
+      ),
+    };
   }
 }
 
@@ -616,13 +650,26 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  const bodyForGrantSelection = githubBodyInspection({
+  const bodyRead = (): Promise<
+    { body: ArrayBuffer | undefined } | { response: Response }
+  > =>
+    readForwardedBody({
+      egressId: activeEgressId,
+      provider,
+      request,
+      upstreamUrl,
+    });
+  const grantSelectionRead = githubBodyInspection({
     provider,
     requestMethod: request.method,
     upstreamUrl,
   })
-    ? await requestBodyBytes(request)
+    ? await bodyRead()
     : undefined;
+  if (grantSelectionRead && "response" in grantSelectionRead) {
+    return grantSelectionRead.response;
+  }
+  const bodyForGrantSelection = grantSelectionRead?.body;
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
@@ -746,7 +793,14 @@ export async function executeCredentialedEgressRequest(input: {
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
+  let body = bodyForGrantSelection;
+  if (body === undefined) {
+    const read = await bodyRead();
+    if ("response" in read) {
+      return read.response;
+    }
+    body = read.body;
+  }
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 

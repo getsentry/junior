@@ -1120,7 +1120,7 @@ describe("sandbox egress proxy integration", () => {
     expect(tokenRequests).toEqual([{}]);
   });
 
-  it("forwards an unframed POST without a body when its stream is already used", async () => {
+  it("returns a Junior egress error instead of forwarding an unreadable body", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
     await registerGitHubPlugin({ appPermissions: { actions: "write" } });
@@ -1134,21 +1134,14 @@ describe("sandbox egress proxy integration", () => {
       GITHUB_API_HOST,
     );
     const upstreamFetch = vi.fn(
-      async (_url: URL | string, init?: RequestInit) => {
-        expect(init?.method).toBe("POST");
-        expect(init).not.toHaveProperty("body");
-        return new Response(null, { status: 202 });
-      },
+      async () => new Response(null, { status: 202 }),
     );
-    const deps = {
-      fetch: upstreamFetch as typeof fetch,
-      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-    };
-    // Production can deliver a used stream for a POST with no Content-Length
-    // or Transfer-Encoding, such as `gh run cancel`.
-    const usedBody = async (headers?: Record<string, string>) => {
+    // Production can deliver a used stream for a POST such as `gh run cancel`.
+    // Forwarding headers do not prove that the body was empty, so the proxy
+    // must not send the write upstream without its payload.
+    for (const headers of [undefined, { "content-length": "2" }]) {
       const request = proxiedRequest({
-        body: "",
+        body: "{}",
         forwardURL,
         ...(headers ? { headers } : undefined),
         method: "POST",
@@ -1156,23 +1149,19 @@ describe("sandbox egress proxy integration", () => {
         upstreamPath: "/repos/getsentry/junior/actions/runs/123/cancel",
       });
       await request.arrayBuffer();
-      return request;
-    };
 
-    const response = await modules.proxy.proxySandboxEgressRequest(
-      await usedBody(),
-      deps,
-    );
+      const response = await modules.proxy.proxySandboxEgressRequest(request, {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      });
 
-    expect(response.status).toBe(202);
-    expect(upstreamFetch).toHaveBeenCalledTimes(1);
-    // A framed body must never be dropped silently.
-    await expect(
-      modules.proxy.proxySandboxEgressRequest(
-        await usedBody({ "content-length": "2" }),
-        deps,
-      ),
-    ).rejects.toThrow(/Body is unusable/);
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toMatchObject({
+        source: "junior-egress",
+        error: expect.stringContaining("did not send the request upstream"),
+      });
+    }
+    expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
   it("records GitHub GraphQL repository access errors without rewriting the response", async () => {
