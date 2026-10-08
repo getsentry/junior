@@ -1,0 +1,30 @@
+{
+  "writtenAt": "2026-10-08T16:18:14.531Z",
+  "session": "evals/memory/management.eval.ts > Memory Management > does not passively duplicate an existing semantic memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "dfb3a50becf1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0086c88639bc69f2016ac7c2461d1487d18b6977ad0d3d2eab\",\"reasoningEncryptedContent\":\"gAAAAABqx8JG-yPu_9KwFd00bwjIvH7mTAwxA5WFY5OMGnEfBzMnwHNEt7QuW2eUjwhwTBKAM_9U6UX_PWhbRwFwxHXSUERhimYHxDCghW2a40I8Feqawh1gWHE-l1DSnq_Zrvp0MlmuVuaXrdY1mwwVBU2Ew0P8G4wc140bBNzxEbXZGhso_xZrXbRFOwXeJ6xP1qSYtVthXqkKpM-JKuBdzarJh0XHFV-GZNkyFQxxL5u5gec4e5ttLTecnFwsBj2I4fqMJfgw-_PlG76jWC7SAMi4qpn8Q7rsPlBvWPOvooeSTOz2kd5Y_MZRv3XXmLwyVG0vxrpjaHPvN7Ii0uIctP4LtT_nbSAvLaZDK5UmBknbZ5mgb34qSD5U6d0OBPRnT2uDqPzNrrpvjEdfGOjnO-1040LXE5VfZZ6yDAPiG8PEDOzlMjaQGJuGK1NNNRGZt1MhGT8k4qQyLBHPvxCt3u5BotomAcqYvLr8OmtFCklOSEOdI51ZFiD6_rQT20GgxXPdvcwNDrsJWsms-N42rof1D6scMxbTom4YS17cwr1I2KXv-VIe7vCvTWoMJLjR_Qq7zdqPw-pXw_8dFtzn_mv1wJ45CDVHSaDPS6xP6GuRgbkADTvEZKFXK8_NG4l4I3Mh2UtN2uJot2A-OSeCxngdKmeQISgEYvS1N0qevhebo5Hm8g8hBYwzjrNdk1SmeYRX2lt6OmvzlN_jEdmCCJxvxAupPEQCafm5V2X-lUj2EPkZlI14CWNhVwDRitMn7cjwyAvLZR9ZMu7TpdFGO6tBL0f_Uov-UHQLjucq7ra92uhf9sQcUZJ9_EeqQZbP5cAHYfQ0Au5KcRD1uvp9Iv_EdbWY1n9YEq8URyISlyxP5kDmAIfLVfwI2BL_ni6gRGAgO63EHXe7Iy35PlST38dNoN1IhEDxoaYWTb7BUWs-PTSqV1dbHQycWEHav8AjdEt-qS4hTppb2BRtxkwEWW5I6hspmEVMPKM3IYAOwuxBEe6NVE6csCrSuLbjSRsOgfyeQj9qOiNdmyYmNYzg3hgRMEUerrpVHzR7wj4i27vUnsoAQDRjKsLHJgEqVCx73hJ03ok0vYKykZqe1js5HH3fwh_uKg_Gwv0aYfMiVgt4GrI8RcOQXxta1ZLcElm-x9Fmj6CGbFElu4kG5n7sIHpLskDlH7UAmjPktSZEComFPbBMKfWjPwcWnI1-Wv96R54QUvBm9IY24zDgsE3gIJ8YG7I_7pOmvUWShHdStNydWNceEdPCE2S4edKeySoQqBKdPatMPf8lSe-jVQB1dRs_azFCc12X7n7CBppq3YXdsbP6_r19jgF3p1QDiJiIF_6jEjJX\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0086c88639bc69f2016ac7c24651e487d1a058dc8d4cbd6d04\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1499,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1496},\"outputTokens\":{\"total\":29,\"text\":14,\"reasoning\":15},\"raw\":{\"input_tokens\":1499,\"input_tokens_details\":{\"cache_write_tokens\":1496,\"cached_tokens\":0},\"output_tokens\":29,\"output_tokens_details\":{\"reasoning_tokens\":15},\"total_tokens\":1528}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0086c88639bc69f2016ac7c245afdc87d1a44f219dc165fdbf\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476293595,\"endTime\":1791476294493,\"providerRequestId\":\"req_e5b8a169f88144bcbaa87c1f4252db8b\",\"statusCode\":200,\"providerResponseId\":\"resp_0086c88639bc69f2016ac7c245afdc87d1a44f219dc165fdbf\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"63523e62d9c0f6fe8d9992a97729d606\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002018\",\"marketCost\":\"0.0002018\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002018\",\"inferenceCost\":\"0.0002018\",\"inputInferenceCost\":\"0.0001873\",\"outputInferenceCost\":\"0.0000145\",\"generationId\":\"gen_01M4E4XQY57CJ9XAYBWQG3WBQ9\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}

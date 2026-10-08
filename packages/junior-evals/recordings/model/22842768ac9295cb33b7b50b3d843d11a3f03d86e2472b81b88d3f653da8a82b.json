@@ -1,0 +1,31 @@
+{
+  "writtenAt": "2026-10-08T16:17:39.624Z",
+  "session": "evals/memory/user.eval.ts > User Memory > when the actor states a first-person opinion, store it even if candidate wording is rewritten",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "b6a029d248f9",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_007bed7ecff245a2016ac7c22247a087d1b99e3b993005d323\",\"reasoningEncryptedContent\":\"gAAAAABqx8Ijgzh5GChIrH8aTFgKogSp-l62u6vfc44GwBZIpUwDi90LkQpSb0WFTNsmD_XBHF8EklLOWoCwT3tsMx_5G1ojM85ZrH5kBylFbx7VNpYS42jsl2bXP8JMSgJCyY0xbckS0mFVFMPW1bAhvnnzxS2y4l4Mp8cK4gZOgBYtqTcH8gLXvnBmmG5H5_9ZdtlqHy7jwzyHdKlGS5piBlU9dHIzeHD6yzpl4EKtZYyw-rwP5eUzKW9jMWJqnSLlz8yNYvcRmlPtl2AFUv8onBbH-0mgTVHDiMRtGDoeL53njQ2FL1XnojYK1Nb_2eUUkTxVwxYF2KRqZjRCSvbFkb1vdfZi9J0YVWXCkDVtrGET0SyijLitm5MoRuKtY8JHDw_UyszbB7H7XFPYiCARe6UU7RSU6WjOzAbutYpGV_3OZgcQVWwSBbRVDTkoDVuCxqPkFuxBuA-_zHcf8rD7WVd_N2ho7h0CgPs6mtPFd9VFaXUsEPqpJd4yfhuah6owofnRIUuYSkCrzSB6BqjlhiUEEy-oMoeJdoxjvTVsqYF3XIjos9ArvvSc2RVZrsiK_w1c0oaHOcSeTaP8MhiRRY8GGOZ640ap78PbzR4xmh_ulete71YzQF9zhzkJiYVTxXrIODdsHaQoxqm1nbCBYWTj50XDviRvugGnHoIHhcoc6m6A0tyC0EmMON5d171GRhOOZkqE1tz30zerE8xirvNXnocwqkING6dqd9OwPxcfGc5hOkcdiiIjyHajsxE9-BoY3l_LV9eEsZZWYJiS3PIGWS44mqSGmbVXBmAonD6T4StWrgSBAo5_n2a64DFY9Ah-WSxB1Bf9TmjNz_33KY4c7VurXgr4uW-Qewv-3rimE2ISRimUvQqepEmpx7sDZFlDhW9kJOOKZYZ4K__CE8TaKQrlDvowJnwd-4wwZEac__EFIef3BzZDbc5We2qCwGnlEQoYftU7cTnka7kIO80i-IbmQzevwrQJw-wBEjp7An046b6FZxtIbi8w8CDY26QOdgD7_M9tZDv0aybBl9F613dGKMMJ_LTuOZAp78x7ABRRcN8-6qfppc6KkDPm-hXmzH93TdK54GFew75XS-GOfq5tNn9BNq_JJ9y56T3q5Qm7g71VAJV8DTjB4kkc--AIXDzZKtwXGIl6BhGfe8xrR_iDsrb8C5pNgwMrbVWFG4S8h5YTonWI2us8ue54-QzghdItBB7goa7mjuqoZ6ORj1jcvSpVP6tKbipg7TFMJKph_QcXFxFJpnY1mkhkE9ApJ3kMF9u0oueveXeF9mgy8a8LqRjq2ARxmzSCLpyFF3JnNPTYb6iO0rcFo7YPzoi7J610l1ix1NiFTmpSJSKXJXWI6tKZQYHUhUSfFFwVCxWQKVMwoyTdAS3QLYHXFDI0MC-MXrykpPZQiTekrEBPwLwDhjxgRfIwQ9ewV18GniNa4F4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a straightforward follow-up that asks me to recall and restate the opinion explicitly recorded in the thread.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_007bed7ecff245a2016ac7c222b3bc87d19a0565ba83446688\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":748,\"noCache\":748,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":82,\"text\":51,\"reasoning\":31},\"raw\":{\"input_tokens\":748,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":82,\"output_tokens_details\":{\"reasoning_tokens\":31},\"total_tokens\":830}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_007bed7ecff245a2016ac7c221b49487d1b9b03eae81f77a24\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476257615,\"endTime\":1791476259580,\"providerRequestId\":\"req_6843ba272fcb42a1983e2d13eb399535\",\"statusCode\":200,\"providerResponseId\":\"resp_007bed7ecff245a2016ac7c221b49487d1b9b03eae81f77a24\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"8d2eedf6021b6429944e435aa14dc165\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001158\",\"marketCost\":\"0.0001158\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001158\",\"inferenceCost\":\"0.0001158\",\"inputInferenceCost\":\"0.0000748\",\"outputInferenceCost\":\"0.000041\",\"generationId\":\"gen_01M4E4WMSMBC2Z9KRV7BNK94XM\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200,
+    "statusText": "OK"
+  }
+}
