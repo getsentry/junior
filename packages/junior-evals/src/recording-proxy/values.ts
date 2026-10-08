@@ -52,10 +52,11 @@ export const VALUE_PATTERNS = {
   /**
    * A git commit id. Its hash covers the commit time, so it changes on each
    * run. A full id has 40 hex digits. A short id only counts in the output
-   * of `git commit`, such as `[main (root-commit) a7a9f1d]`, because seven
-   * hex digits can also be a word.
+   * of `git commit`, such as `[main (root-commit) a7a9f1d]`, and in the range
+   * of `git push`, such as `a5fd79f..a73e959`, because seven hex digits can
+   * also be a word.
    */
-  gitCommit: String.raw`${NOT_AFTER_WORD}[0-9a-f]{40}(?![0-9A-Za-z])|(?<=\[[^\]\s]+ (?:\(root-commit\) )?)[0-9a-f]{7,12}(?=\])`,
+  gitCommit: String.raw`${NOT_AFTER_WORD}[0-9a-f]{40}(?![0-9A-Za-z])|(?<=\[[^\]\s]+ (?:\(root-commit\) )?)[0-9a-f]{7,12}(?=\])|${NOT_AFTER_WORD}[0-9a-f]{7,12}(?=\.\.\.?[0-9a-f]{7,12}(?![0-9A-Za-z]))|(?<=${NOT_AFTER_WORD}[0-9a-f]{7,12}\.\.\.?)[0-9a-f]{7,12}(?![0-9A-Za-z])`,
 } as const;
 
 /** Changing values by name. Each value is a regular expression source. */
