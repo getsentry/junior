@@ -111,11 +111,8 @@ export function isEventMailboxMetadata(
 }
 
 /**
- * Return the timer creator subject that every event in one batch shares.
- *
- * A batch gets a subject only when each message carries a valid signed
- * subject for its own timer Watch in this Conversation, and all name the same
- * user. Anything else runs without user credentials.
+ * Return the timer creator subject when every event in the batch carries a
+ * valid subject for its own Watch and the same user.
  */
 export function timerWatchCredentialSubject(
   conversationId: string,

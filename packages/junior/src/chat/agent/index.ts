@@ -511,6 +511,11 @@ async function executeAgentRunInPrivacyContext(
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
+      ...(routing.credentialContext &&
+      "subject" in routing.credentialContext &&
+      routing.credentialContext.subject
+        ? { credentialSubject: routing.credentialContext.subject }
+        : undefined),
       destination: routing.destination,
       ...(routing.dispatch?.id
         ? { dispatchId: routing.dispatch.id }

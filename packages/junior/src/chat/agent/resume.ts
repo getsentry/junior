@@ -13,6 +13,7 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { Actor } from "@/chat/actor";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import {
   continuableMessages,
   saveTurnCheckpoint,
@@ -42,6 +43,7 @@ import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
   channelName?: string;
+  credentialSubject?: CredentialSubject;
   destination: Destination;
   dispatchId?: string;
   durability: AgentDurability;
@@ -122,6 +124,7 @@ export function createResumeState(args: ResumeStateArgs) {
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
+    credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     destination: args.destination,
     dispatchId: args.dispatchId,

@@ -14,6 +14,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import {
   isContinuablePiBoundary,
@@ -76,6 +77,7 @@ interface TurnCheckpointWrite {
   // --- SQL dual-write / restore only ---
   actor?: Actor;
   channelName?: string;
+  credentialSubject?: CredentialSubject;
   destination?: Destination;
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
@@ -182,6 +184,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
     ...definedProps({
       actor: args.actor,
       channelName: args.channelName ?? latest?.channelName,
+      credentialSubject: args.credentialSubject,
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,

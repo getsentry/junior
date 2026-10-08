@@ -18,7 +18,9 @@ sandbox.
   cannot start an interactive OAuth flow.
 - A timer Watch set in a user Turn binds that user to the exact Conversation
   and Watch id. The timer Turn stays system-acted and uses the subject only
-  when every batched event carries a valid binding for the same user.
+  when every batched event carries a valid binding for the same user. A
+  resumed timer Turn reads the subject from its Turn record and verifies it
+  again.
 - Run attribution and conversation membership do not grant provider authority.
 - Missing actor or subject context fails closed.
 

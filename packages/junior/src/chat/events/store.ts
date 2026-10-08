@@ -360,12 +360,7 @@ export async function createWatch(
   return parsed;
 }
 
-/**
- * Create a retry-stable timer without keeping a process open.
- *
- * `creatorUserId` is the user whose Turn set the timer. When set, the timer
- * Turn may use that user's provider grants.
- */
+/** Create a retry-stable timer without keeping a process open. */
 export async function createTimerWatch(input: {
   conversationId: string;
   creatorUserId?: string;

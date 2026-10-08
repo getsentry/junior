@@ -281,12 +281,7 @@ export function verifyEventAutomationCredentialSubject(input: {
   return timingSafeMatch(expected, binding.signature);
 }
 
-/**
- * Bind the user who set a timer Watch to that one Watch.
- *
- * The timer Turn stays system-acted. This subject only lets it reuse the
- * creator's provider grants for the follow-up that the creator asked for.
- */
+/** Bind the user who set a timer Watch to that one Watch. */
 export function bindTimerWatchCredentialSubject(input: {
   conversationId: string;
   userId: string;
