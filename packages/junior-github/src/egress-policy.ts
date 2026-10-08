@@ -339,12 +339,6 @@ function githubApiWriteGrantName(
     return "installation-write";
   }
   if (
-    method === "POST" &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/ready_for_review$/.test(pathname)
-  ) {
-    return "installation-write";
-  }
-  if (
     (method === "POST" || method === "DELETE") &&
     /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/requested_reviewers$/.test(pathname)
   ) {
@@ -386,31 +380,51 @@ function githubApiWriteGrantName(
   return undefined;
 }
 
-function reviewThreadResolveRepository(
+/**
+ * GraphQL-only writes that typed host tools send. Each one binds a named
+ * operation and mutation field to a repository-scoped egress operation, so
+ * sandbox traffic, which cannot set an operation, stays denied.
+ */
+const HOST_GRAPHQL_MUTATIONS = [
+  {
+    field: "resolveReviewThread",
+    operationName: "ResolveReviewThread",
+    operationPrefix: "github.pull.review-thread.resolve:",
+  },
+  {
+    field: "markPullRequestReadyForReview",
+    operationName: "MarkPullRequestReadyForReview",
+    operationPrefix: "github.pull.draft.update:",
+  },
+  {
+    field: "convertPullRequestToDraft",
+    operationName: "ConvertPullRequestToDraft",
+    operationPrefix: "github.pull.draft.update:",
+  },
+] as const;
+
+function hostGraphqlMutationRepository(
   operation: string | undefined,
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
 ): string | undefined {
-  const prefix = "github.pull.review-thread.resolve:";
-  if (
-    method !== "POST" ||
-    !isGitHubGraphqlUrl(upstreamUrl) ||
-    !operation?.startsWith(prefix)
-  ) {
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl) || !operation) {
     return undefined;
   }
-  const repository = operation.slice(prefix.length);
-  if (!/^[^/]+\/[^/]+$/.test(repository)) return undefined;
   const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (
-    parsed?.operationName !== "ResolveReviewThread" ||
-    !/\bmutation\s+ResolveReviewThread\b/.test(parsed.normalized) ||
-    !/\bresolveReviewThread\b/.test(parsed.normalized)
-  ) {
-    return undefined;
-  }
-  return repository;
+  const mutation = HOST_GRAPHQL_MUTATIONS.find(
+    (candidate) =>
+      operation.startsWith(candidate.operationPrefix) &&
+      parsed?.operationName === candidate.operationName &&
+      new RegExp(`\\bmutation\\s+${candidate.operationName}\\b`).test(
+        parsed.normalized,
+      ) &&
+      new RegExp(`\\b${candidate.field}\\b`).test(parsed.normalized),
+  );
+  if (!mutation) return undefined;
+  const repository = operation.slice(mutation.operationPrefix.length);
+  return /^[^/]+\/[^/]+$/.test(repository) ? repository : undefined;
 }
 
 function isGitHubGraphqlMutation(
@@ -567,13 +581,13 @@ export async function githubGrantForEgress(
     );
   }
 
-  const reviewThreadRepository = reviewThreadResolveRepository(
+  const hostMutationRepository = hostGraphqlMutationRepository(
     ctx.request.operation,
     method,
     upstreamUrl,
     ctx.request.bodyText,
   );
-  if (reviewThreadRepository) {
+  if (hostMutationRepository) {
     return grantForAccess(
       "write",
       "github.installation-write",
