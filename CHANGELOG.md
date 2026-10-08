@@ -1,4 +1,43 @@
 # Changelog
+## 0.238.0
+
+### New Features ✨
+
+- (admin) Add a Junior-wide admin role and Admin page by @sentry-junior in [#2074](https://github.com/getsentry/junior/pull/2074)
+- (evals) Record and replay eval model calls through a recording proxy by @sentry-junior in [#2054](https://github.com/getsentry/junior/pull/2054)
+- (github) Mention the linked GitHub requester in attribution by @sentry-junior in [#2039](https://github.com/getsentry/junior/pull/2039)
+- (google) Add a Google Calendar plugin by @sentry-junior in [#2064](https://github.com/getsentry/junior/pull/2064)
+- (mcp) Show why Junior asks for MCP auth by @sentry-junior in [#2067](https://github.com/getsentry/junior/pull/2067)
+
+### Bug Fixes 🐛
+
+#### Events
+
+- Keep automation Watch replies in the run's thread by @sentry-junior in [#2069](https://github.com/getsentry/junior/pull/2069)
+- Let timer Turns use the creator's credentials by @sentry-junior in [#2062](https://github.com/getsentry/junior/pull/2062)
+
+#### Other
+
+- (auth) Keep a request that waits for authorization when the person sends another message by @dcramer in [#2073](https://github.com/getsentry/junior/pull/2073)
+- (chat) Fix the product gaps behind the flaky integration evals by @dcramer in [#2055](https://github.com/getsentry/junior/pull/2055)
+- (github) Deliver approval review comments to review subscriptions by @sentry-junior in [#2072](https://github.com/getsentry/junior/pull/2072)
+- (mcp) Offer the configured providers when a search names an unknown provider by @dcramer in [#2060](https://github.com/getsentry/junior/pull/2060)
+
+### Internal Changes 🔧
+
+#### Evals
+
+- Move the auth callback and resume tests to the agent test fixture by @dcramer in [#2070](https://github.com/getsentry/junior/pull/2070)
+- Move the MCP auth orchestration tests to the agent test fixture by @dcramer in [#2059](https://github.com/getsentry/junior/pull/2059)
+- Add the slack prefix to the Slack input names by @dcramer in [#2058](https://github.com/getsentry/junior/pull/2058)
+- Move the Slack message content tests to the agent test fixture by @dcramer in [#2056](https://github.com/getsentry/junior/pull/2056)
+- Move the Slack file and image tests to the agent test fixture by @dcramer in [#2053](https://github.com/getsentry/junior/pull/2053)
+- Move the Slack reaction and reply tests to the agent test fixture by @dcramer in [#2045](https://github.com/getsentry/junior/pull/2045)
+
+#### Other
+
+- (memory) Copy one migrated database for each memory test by @dcramer in [#2075](https://github.com/getsentry/junior/pull/2075)
+
 ## 0.237.0
 
 ### New Features ✨
