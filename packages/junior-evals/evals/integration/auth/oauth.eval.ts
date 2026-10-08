@@ -49,6 +49,7 @@ describe("OAuth Workflows", () => {
       },
     );
     expect(turnStates(paused)).toEqual(["started"]);
+    expect(paused.reactions).toEqual(["eyes"]);
 
     const resumed = await paused.continue(completeAuth("eval-auth"));
     await expect(resumed).toSatisfyJudge(
@@ -65,6 +66,7 @@ describe("OAuth Workflows", () => {
       }),
     );
     expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(resumed.reactions).toEqual(["eyes", "white_check_mark"]);
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
 
     const reused = await resumed.continue(
@@ -142,6 +144,30 @@ describe("OAuth Workflows", () => {
     expect(identityChecks(reused)).not.toHaveLength(0);
     // `/eval-oauth` gives the skill to the agent, so the agent does not load it.
     expect(skillLoads("eval-oauth", paused, resumed, reused)).toEqual([]);
+  });
+
+  test("when the person asks again before authorizing, the first link resumes the newest request", async ({
+    run,
+  }) => {
+    const first = await run(
+      slackMention("/eval-oauth Tell me which eval identity is active."),
+    );
+    expect(turnStates(first)).toEqual(["started"]);
+
+    // A new request replaces the first one, so Junior asks again.
+    const second = await first.continue(
+      slackMention(
+        "/eval-oauth Forget that question. Tell me only whether an eval identity is connected, and end the answer with the word pineapple.",
+      ),
+    );
+    expect(turnStates(second).at(-1)).toBe("started");
+
+    const resumed = await second.continue(
+      completeAuth("eval-oauth", { link: "first" }),
+    );
+    expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(identityChecks(resumed)).not.toHaveLength(0);
+    expect(resumed.replies.at(-1)?.text).toMatch(/pineapple/i);
   });
 
   test("when OAuth pauses a turn in a direct message, send the link there and resume", async ({

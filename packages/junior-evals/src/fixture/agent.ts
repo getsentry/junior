@@ -70,6 +70,8 @@ import {
   postSlackCommand,
   postSlackMessageEvent,
   slackAuthorEmail,
+  SLACK_APP,
+  SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
 } from "./slack";
 import { installWebReplay } from "./web";
@@ -302,13 +304,14 @@ export async function createFixtureAgent(
     }
     if (input.kind === "complete_auth") {
       // The dashboard shows the prompt of a turn that its person started.
-      const prompt = input.author
-        ? undefined
-        : await readAuthorizationPrompt(
-            api,
-            record.conversationId,
-            record.viewerEmail,
-          );
+      const prompt =
+        input.author || input.link
+          ? undefined
+          : await readAuthorizationPrompt(
+              api,
+              record.conversationId,
+              record.viewerEmail,
+            );
       if (prompt) {
         await completeAuthorization({
           app,
@@ -332,7 +335,7 @@ export async function createFixtureAgent(
                 : undefined,
             userId,
           })
-          .at(-1),
+          .at(input.link === "first" ? 0 : -1),
         provider: input.provider,
         userId,
       });
@@ -378,7 +381,10 @@ export async function createFixtureAgent(
     if (!started && input.kind !== "mention") {
       throw new Error("A Slack Conversation starts with slackMention()");
     }
-    const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
+    const fromApp = input.kind === "mention" && input.fromApp;
+    const author = slack.registerAuthor(
+      fromApp ? SLACK_APP : (input.author ?? DEFAULT_SLACK_AUTHOR),
+    );
     const ts = started ? slack.nextTs() : record.threadTs;
     const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
@@ -389,6 +395,7 @@ export async function createFixtureAgent(
       ? { attachments: [forwardedMessage(input.forwarded)] }
       : undefined;
     slack.addThreadMessage(record.channelId, {
+      ...(fromApp ? { bot_id: SLACK_APP_BOT_ID } : undefined),
       ...forwarded,
       ...files,
       text,
@@ -399,6 +406,7 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
+      ...(fromApp ? { botId: SLACK_APP_BOT_ID } : undefined),
       ...forwarded,
       ...files,
       mention,

@@ -396,8 +396,8 @@ async function runPausedTurnInContext(
     turnId: payload.turnId,
     channelId: thread?.channelId ?? destination.channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
-    executeTurn: async (run, saveResult, timeoutMs) =>
-      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
+    executeTurn: async (run, saveResult) =>
+      await executeTurn(options.agentRunner, run, saveResult),
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
