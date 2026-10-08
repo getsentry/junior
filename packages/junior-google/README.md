@@ -64,10 +64,15 @@ admin to reconnect.
 
 ## Setup
 
-1. In a Google Cloud project that the company owns, enable the Google Calendar
-   API.
-2. Configure the OAuth consent screen with user type **Internal**.
-3. Create an OAuth client of type **Web application**. Add these redirect URIs:
+The plugin uses the same Google OAuth client as dashboard sign-in. Each
+sign-in requests only its own scopes, so dashboard sign-in still asks only for
+identity.
+
+1. In the Google Cloud project of the dashboard OAuth client, enable the
+   Google Calendar API.
+2. On the OAuth consent screen, use user type **Internal** and add the
+   Calendar scopes above.
+3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
    - `http://127.0.0.1:8765/oauth/callback`, for the CLI. Use another port with
      `junior google connect --port`.
@@ -76,8 +81,8 @@ admin to reconnect.
 
 | Variable                           | Purpose                                         |
 | ---------------------------------- | ----------------------------------------------- |
-| `GOOGLE_WORKSPACE_CLIENT_ID`       | OAuth client id                                 |
-| `GOOGLE_WORKSPACE_CLIENT_SECRET`   | OAuth client secret                             |
+| `GOOGLE_CLIENT_ID`                 | OAuth client id, shared with dashboard sign-in  |
+| `GOOGLE_CLIENT_SECRET`             | OAuth client secret                             |
 | `GOOGLE_WORKSPACE_ACCOUNT_EMAIL`   | The account Junior acts as                      |
 | `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` | Optional comma-separated domains to schedule in |
 

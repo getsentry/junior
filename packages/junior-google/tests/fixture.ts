@@ -15,8 +15,8 @@ export const CLIENT_ID = "client-id.apps.googleusercontent.com";
 
 /** Configure the plugin through the same env vars a deployment uses. */
 export function stubGoogleEnv(): void {
-  vi.stubEnv("GOOGLE_WORKSPACE_CLIENT_ID", CLIENT_ID);
-  vi.stubEnv("GOOGLE_WORKSPACE_CLIENT_SECRET", "client-secret");
+  vi.stubEnv("GOOGLE_CLIENT_ID", CLIENT_ID);
+  vi.stubEnv("GOOGLE_CLIENT_SECRET", "client-secret");
   vi.stubEnv("GOOGLE_WORKSPACE_ACCOUNT_EMAIL", ACCOUNT_EMAIL);
   vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
 }
