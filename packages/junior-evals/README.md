@@ -298,11 +298,21 @@ Its `README.md` tells how it keys, records, and replays requests.
 - A change to a prompt, a tool, a skill, or the model makes new requests.
   You can commit the new recordings with your change. Do a check for
   secret-like values before you commit them.
-- The Slack mock takes its timestamps and channel ids from the test name.
-  Setup data and web Conversations take ids from `fixtureId()` in
-  `src/fixture/ids.ts`. If a test sends another value that changes on each
-  run, make the fixture send a stable value. If only the product can make
-  it, add a pattern to `values` of the rule.
+- Fix a changing value for all tests, not in one test. A new test must not
+  need its own fix. The fixture and the rules already handle these:
+  - The Slack mock takes its timestamps and channel ids from the test name.
+    Setup data and web Conversations take ids from `fixtureId()` in
+    `src/fixture/ids.ts`.
+  - The `values` of the model rule in `src/recording-rules.ts` cover ids and
+    times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
+    ISO times and dates, Unix milliseconds, and local times.
+  - When `onProgress` sends input, the model request waits 1.5 seconds
+    before it goes on (`INPUT_SETTLE_MS` in `src/fixture/agent.ts`). The
+    product checks for a stop every 500 ms. Without the wait, a replayed
+    response comes back before the product sees the input, and the test
+    takes another path than in the recording run.
+- If a miss shows a new kind of changing value, add it to the fixture or to
+  `values` of the rule.
 - The AI SDK sends no model request when it has no gateway credential. To
   replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
 
@@ -343,8 +353,11 @@ Its `README.md` tells how it keys, records, and replays requests.
   recordings to the branch as "chore(evals): Update eval recordings"
   (`.github/actions/commit-eval-recordings`). It takes only recording files
   from the run artifacts and runs no pull request code. It pushes only when
-  the branch is still at the tested commit, or at recording commits on top
+  the branch is still at the tested commit, or at a recording commit on top
   of it.
+- All suites of one tested commit share one recording commit. A later suite
+  folds its recordings into the commit of an earlier suite and pushes with
+  `--force-with-lease`. So a person approves the checks once.
 - The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
   no other secret. The token expires when the job ends.
 - GitHub holds the checks of a `GITHUB_TOKEN` push until a person with write

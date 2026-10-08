@@ -49,6 +49,13 @@ export const VALUE_PATTERNS = {
    * values, such as attachment ids, change with them.
    */
   sha256: String.raw`${NOT_AFTER_WORD}[0-9a-f]{64}(?![0-9A-Za-z])`,
+  /**
+   * A git commit id. Its hash covers the commit time, so it changes on each
+   * run. A full id has 40 hex digits. A short id only counts in the output
+   * of `git commit`, such as `[main (root-commit) a7a9f1d]`, because seven
+   * hex digits can also be a word.
+   */
+  gitCommit: String.raw`${NOT_AFTER_WORD}[0-9a-f]{40}(?![0-9A-Za-z])|(?<=\[[^\]\s]+ (?:\(root-commit\) )?)[0-9a-f]{7,12}(?=\])`,
 } as const;
 
 /** Changing values by name. Each value is a regular expression source. */

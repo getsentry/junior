@@ -74,6 +74,14 @@ import {
  * does not include the time that a delivery waits for its delay.
  */
 const IDLE_TIMEOUT_MS = 60_000;
+/**
+ * How long a model request waits after `onProgress` sent input. The product
+ * checks for a stop every 500 ms and takes steering input at the next model
+ * request. A replayed response comes back at once, so without this wait the
+ * turn can go on before the product sees the input. A live model is slower,
+ * so the recording run and the replay would take different paths.
+ */
+const INPUT_SETTLE_MS = 1_500;
 
 export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
 
@@ -434,6 +442,7 @@ export async function createFixtureAgent(
   ): Promise<Conversation> => {
     const slackCallIndex = readCapturedSlackApiCalls().length;
     const slackPostIndex = slack.posts().length;
+    let sentInputs = 0;
     const progressActions = {
       send: async (input: Input) => {
         if (typeof target === "function") {
@@ -442,13 +451,18 @@ export async function createFixtureAgent(
           );
         }
         await sendInput(target, input);
+        sentInputs += 1;
       },
     };
     if (options.onProgress) {
       const onProgress = options.onProgress;
-      gateway.setProgressHook(
-        async (progress) => await onProgress(progress, progressActions),
-      );
+      gateway.setProgressHook(async (progress) => {
+        const before = sentInputs;
+        await onProgress(progress, progressActions);
+        if (sentInputs > before) {
+          await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
+        }
+      });
       slack.setReplyHook(async (post) => {
         await onProgress({ type: "reply", text: post.text }, progressActions);
       });
