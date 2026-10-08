@@ -306,6 +306,7 @@ describe("McpToolManager", () => {
         provider: "demo",
         message: "Auth required",
       }),
+      { toolName: "ping" },
     );
   });
 
@@ -346,6 +347,7 @@ describe("McpToolManager", () => {
         provider: "demo",
         message: "Discovery auth required",
       }),
+      undefined,
     );
   });
 
@@ -396,7 +398,11 @@ describe("McpToolManager", () => {
 
     await expect(manager.activateProvider("demo")).resolves.toBe(false);
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
-    expect(onAuthorizationRequiredMock).toHaveBeenCalledWith("demo", authError);
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledWith(
+      "demo",
+      authError,
+      undefined,
+    );
     expect(manager.getActiveProviders()).toEqual([]);
   });
 

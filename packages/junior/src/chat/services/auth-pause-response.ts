@@ -1,3 +1,5 @@
+import type { McpAuthorizationContext } from "@/chat/mcp/tool-manager";
+
 const MAX_AUTH_REQUEST_LENGTH = 200;
 
 function formatAuthRequest(requestText: string): string | undefined {
@@ -15,6 +17,17 @@ function formatAuthRequest(requestText: string): string | undefined {
     .replaceAll(">", "&gt;");
 }
 
+/** Describe why auth is needed: the agent intent, else the MCP tool name. */
+export function describeAuthorizationReason(
+  context?: McpAuthorizationContext,
+): string | undefined {
+  const intent = context?.intent?.trim();
+  if (intent) {
+    return intent;
+  }
+  return context?.toolName ? `calling \`${context.toolName}\`` : undefined;
+}
+
 /** Build the visible Slack thread note for an auth-paused turn. */
 export function buildAuthPauseResponse(
   slackUserId: string | undefined,
@@ -23,8 +36,6 @@ export function buildAuthPauseResponse(
 ): string {
   const mention = slackUserId ? `<@${slackUserId}> ` : "";
   const request = requestText ? formatAuthRequest(requestText) : undefined;
-  if (!request) {
-    return `${mention}I'll need you to authorize ${providerDisplayName}. I sent you a link.`;
-  }
-  return `${mention}I need access to ${providerDisplayName} to continue.\n\n*Why:* ${request}\n\nI sent you a link.`;
+  const notice = `${mention}I need access to your ${providerDisplayName} account to continue. I sent you a private link.`;
+  return request ? `${notice}\n\n*Why:* ${request}` : notice;
 }
