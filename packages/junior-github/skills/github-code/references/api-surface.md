@@ -35,7 +35,6 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Push                    | `git -C DIR push -u origin BRANCH`                                                              |
 | Workflow dispatch       | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                           |
 | Rerun / cancel          | `gh run rerun RUN_ID -R owner/repo [--failed]` / `gh run cancel RUN_ID -R owner/repo`           |
-| Ready for review        | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                           |
 | Request reviewers       | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
 | Submit review           | `github_submitPullRequestReview`                                                                |
 | Set feedback status     | `github_updatePullRequestFeedback`                                                              |
@@ -52,6 +51,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
+- Junior cannot mark a draft PR ready for review. GitHub has no REST endpoint for it, and the GraphQL mutation is denied. Ask the user to click "Ready for review".
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.

@@ -311,7 +311,23 @@ async function requestBodyBytes(
   ) {
     return undefined;
   }
-  return await request.arrayBuffer();
+  try {
+    return await request.arrayBuffer();
+  } catch (error) {
+    // The Vercel runtime can deliver an already-used body stream for a POST
+    // without Content-Length or Transfer-Encoding, such as GitHub's
+    // ready_for_review call. HTTP/1.1 defines such a request as having no
+    // body (RFC 9112, section 6.3), so forward it without one. A framed body
+    // that cannot be read is still an error.
+    if (
+      error instanceof TypeError &&
+      !request.headers.has("content-length") &&
+      !request.headers.has("transfer-encoding")
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 type GitHubBodyInspection = "graphql" | "pull-request-review";

@@ -614,6 +614,41 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("forwards an unframed POST without a body when its stream is already used", async () => {
+    setSandboxEgressUserActor();
+    mockSentryLease();
+    startSpanMock.mockImplementation(
+      async (
+        _options: unknown,
+        callback: (span: unknown) => Promise<unknown>,
+      ) => await callback({ setAttribute: vi.fn() }),
+    );
+
+    // Production can deliver a used stream for a POST with no Content-Length
+    // or Transfer-Encoding, such as GitHub's ready_for_review call.
+    const unframed = egressRequest({ method: "POST", body: "" });
+    await unframed.arrayBuffer();
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBeUndefined();
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await proxy(unframed, fetchMock as typeof fetch);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // A framed body must never be dropped silently.
+    const framed = egressRequest({
+      method: "POST",
+      body: "{}",
+      headers: { "content-length": "2" },
+    });
+    await framed.arrayBuffer();
+    await expect(proxy(framed)).rejects.toThrow(/Body is unusable/);
+  });
+
   it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
