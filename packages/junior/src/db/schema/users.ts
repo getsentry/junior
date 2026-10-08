@@ -1,4 +1,4 @@
-import { text, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, text, pgTable, uniqueIndex } from "drizzle-orm/pg-core";
 import { timestamptz } from "./timestamps";
 
 export const juniorUsers = pgTable(
@@ -9,6 +9,8 @@ export const juniorUsers = pgTable(
     primaryEmailNormalized: text("primary_email_normalized").notNull(),
     displayName: text("display_name"),
     timezone: text("timezone"),
+    /** Junior-wide admin role. Only the `junior admin` CLI changes it. */
+    isAdmin: boolean("is_admin").notNull().default(false),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

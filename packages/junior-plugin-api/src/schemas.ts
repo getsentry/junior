@@ -283,6 +283,8 @@ export const userSchema = z
     email: nonBlankStringSchema.max(320),
     id: exactNonBlankStringSchema,
     identities: z.array(identitySchema).max(100),
+    /** True only for Junior admins. Missing means not an admin. */
+    isAdmin: z.literal(true).optional(),
   })
   .strict();
 

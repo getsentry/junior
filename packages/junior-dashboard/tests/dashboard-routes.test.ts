@@ -340,6 +340,7 @@ describe("dashboard routes", () => {
       user: {
         email: "dev@example.com",
         emailVerified: true,
+        isAdmin: false,
       },
     });
     expect(resolveViewerUser).toHaveBeenCalledWith("dev@example.com");
@@ -459,6 +460,7 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
+        isAdmin: false,
         name: "New Name",
       },
     });
@@ -515,6 +517,7 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
+        isAdmin: false,
         name: "Mock Name",
       },
     });
@@ -525,6 +528,7 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
+        isAdmin: false,
         name: "Mock Name",
       },
     });
@@ -548,6 +552,7 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
+        isAdmin: false,
         name: "Dashboard User",
       },
     });

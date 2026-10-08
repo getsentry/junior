@@ -137,27 +137,39 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                   <h2 className="m-0 min-w-0 flex-1 font-display text-base font-medium text-dashboard-text">
                     {record.title}
                   </h2>
-                  {record.actions?.map((recordAction) => (
-                    <button
-                      aria-label={`${recordAction.label}: ${record.title}`}
-                      className={`cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted transition-colors ${
-                        recordAction.tone === "danger"
-                          ? "hover:text-rose-300"
-                          : "hover:text-dashboard-text"
-                      }`}
-                      disabled={action.isPending}
-                      key={`${recordAction.method}:${recordAction.href}`}
-                      onClick={() => runAction(recordAction)}
-                      title={recordAction.label}
-                      type="button"
-                    >
-                      {recordAction.tone === "danger" ? (
-                        <Trash2 aria-hidden="true" size={16} />
-                      ) : (
-                        recordAction.label
-                      )}
-                    </button>
-                  ))}
+                  {record.actions?.map((recordAction) =>
+                    recordAction.method === "GET" ? (
+                      // Full browser navigation, so plugin routes can redirect
+                      // to an external sign-in page.
+                      <a
+                        className="shrink-0 rounded-md border border-dashboard-border-strong px-3 py-1.5 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong"
+                        href={recordAction.href}
+                        key={`${recordAction.method}:${recordAction.href}`}
+                      >
+                        {recordAction.label}
+                      </a>
+                    ) : (
+                      <button
+                        aria-label={`${recordAction.label}: ${record.title}`}
+                        className={`cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted transition-colors ${
+                          recordAction.tone === "danger"
+                            ? "hover:text-rose-300"
+                            : "hover:text-dashboard-text"
+                        }`}
+                        disabled={action.isPending}
+                        key={`${recordAction.method}:${recordAction.href}`}
+                        onClick={() => runAction(recordAction)}
+                        title={recordAction.label}
+                        type="button"
+                      >
+                        {recordAction.tone === "danger" ? (
+                          <Trash2 aria-hidden="true" size={16} />
+                        ) : (
+                          recordAction.label
+                        )}
+                      </button>
+                    ),
+                  )}
                 </div>
                 {record.description ? (
                   <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">

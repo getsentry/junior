@@ -43,6 +43,11 @@ async function runChat(
   return await mod.runChat(argv, undefined, { pluginSet });
 }
 
+async function runAdmin(argv: string[]): Promise<number> {
+  const mod = await import("./admin");
+  return await mod.runAdmin(argv);
+}
+
 async function runBriefs(argv: string[]): Promise<number> {
   const mod = await import("./briefs");
   return await mod.runBriefs(argv);
@@ -64,10 +69,10 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  // `briefs pull` must work with only an API token, so it skips app plugin
-  // loading like `init` does.
+  // `briefs pull` must work with only an API token, and `admin` only needs
+  // core SQL, so both skip app plugin loading like `init` does.
   const cliPluginsModule =
-    command && command !== "init" && command !== "briefs"
+    command && command !== "init" && command !== "briefs" && command !== "admin"
       ? await import("./plugins")
       : undefined;
   const pluginSet = cliPluginsModule
@@ -77,6 +82,7 @@ export async function runMain(
     ? await cliPluginsModule.loadCliPluginCommands(pluginSet)
     : undefined;
   const exitCode = await runCli(argv, {
+    runAdmin,
     runBriefs,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,

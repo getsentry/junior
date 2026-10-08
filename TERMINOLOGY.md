@@ -34,6 +34,9 @@ Canonical words used across Junior's code and documentation.
 - **Delivery**: a function that sends Run output to the Conversation Location.
   A Conversation without Delivery stores completed assistant Messages only.
 - **User**: one person-level record. A user may have several linked identities.
+- **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
+  CLI grants or revokes it. Plugins use it for setup that other users must not
+  reach. Do not add plugin-specific admin lists.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are

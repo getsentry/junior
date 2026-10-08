@@ -78,7 +78,7 @@ describe("dashboard canonical-event mock routes", () => {
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     await expect(me.json()).resolves.toEqual({
-      user: { email: "dev@example.com", emailVerified: true },
+      user: { email: "dev@example.com", emailVerified: true, isAdmin: false },
     });
 
     const code = await app.fetch(new Request("http://localhost/api/code"));

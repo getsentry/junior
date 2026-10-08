@@ -160,6 +160,7 @@ function dashboardHostRoutePaths(
   const peoplePath = pagePath("people");
   const pagePaths = [
     basePath,
+    pagePath("admin"),
     pagePath("code"),
     `${pagePath("code")}/*`,
     conversationsPath,

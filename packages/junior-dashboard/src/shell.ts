@@ -121,6 +121,9 @@ export function dashboardPagePaths(
   const paths: Array<{ nested?: boolean; path: string }> = [
     { path: basePath },
     {
+      path: basePath === "/" ? "/admin" : `${basePath}/admin`,
+    },
+    {
       nested: true,
       path: basePath === "/" ? "/code" : `${basePath}/code`,
     },
