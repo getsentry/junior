@@ -24,18 +24,7 @@ const GOOGLE_ISSUERS = new Set([
 
 /** A sign-in attempt failed in a way that is safe to show to the admin. */
 export class GoogleConnectError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.name = "GoogleConnectError";
-  }
-}
-
-/** Google rejected the stored refresh token. An admin must reconnect. */
-export class GoogleTokenRejectedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "GoogleTokenRejectedError";
-  }
+  override name = "GoogleConnectError";
 }
 
 /** One pending sign-in: the state and PKCE verifier the callback must match. */
@@ -52,10 +41,9 @@ const tokenResponseSchema = z.object({
   scope: z.string().optional(),
 });
 
-const tokenErrorSchema = z.object({
-  error: z.string(),
-  error_description: z.string().optional(),
-});
+type TokenResponse = z.infer<typeof tokenResponseSchema>;
+
+const tokenErrorSchema = z.object({ error: z.string() });
 
 const idTokenClaimsSchema = z.object({
   aud: z.string(),
@@ -64,15 +52,11 @@ const idTokenClaimsSchema = z.object({
   iss: z.string(),
 });
 
-function base64Url(bytes: Buffer): string {
-  return bytes.toString("base64url");
-}
-
 /** Create the random state and PKCE verifier for one sign-in attempt. */
 export function createGoogleSignInRequest(): GoogleSignInRequest {
   return {
-    codeVerifier: base64Url(randomBytes(32)),
-    state: base64Url(randomBytes(24)),
+    codeVerifier: randomBytes(32).toString("base64url"),
+    state: randomBytes(24).toString("base64url"),
   };
 }
 
@@ -83,9 +67,9 @@ export function googleAuthorizationUrl(input: {
   request: GoogleSignInRequest;
 }): string {
   const url = new URL(AUTHORIZE_ENDPOINT);
-  const challenge = base64Url(
-    createHash("sha256").update(input.request.codeVerifier).digest(),
-  );
+  const challenge = createHash("sha256")
+    .update(input.request.codeVerifier)
+    .digest("base64url");
   url.search = new URLSearchParams({
     access_type: "offline",
     client_id: input.config.clientId,
@@ -122,41 +106,64 @@ async function postTokenEndpoint(
 }
 
 function decodeIdTokenClaims(idToken: string) {
-  const payload = idToken.split(".")[1];
-  if (!payload) {
-    throw new GoogleConnectError("Google returned a malformed identity token.");
-  }
   try {
+    const payload = idToken.split(".")[1] ?? "";
     return idTokenClaimsSchema.parse(
       JSON.parse(Buffer.from(payload, "base64url").toString("utf8")),
     );
-  } catch (error) {
-    throw new GoogleConnectError(
-      "Google returned a malformed identity token.",
-      {
-        cause: error,
-      },
-    );
+  } catch {
+    return undefined;
   }
 }
 
-async function revokeToken(token: string) {
-  // Best effort: the grant is already unusable to Junior because it is not
-  // stored. Revoking only removes it from the signed-in account.
-  await fetch(REVOKE_ENDPOINT, {
-    body: new URLSearchParams({ token }),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    method: "POST",
-  }).catch(() => undefined);
+function grantedScopes(tokens: TokenResponse): string[] {
+  return (tokens.scope ?? "").split(/\s+/).filter(Boolean).sort();
 }
 
 /**
- * Exchange an authorization code, verify the account and scopes, and store the
- * refresh token.
+ * Check that a sign-in granted the configured account every Calendar scope.
  *
  * The token response comes straight from Google over TLS, so the identity
  * token claims are trusted without a signature check (OpenID Connect Core
  * 3.1.3.7).
+ */
+function verifyGrant(
+  tokens: TokenResponse,
+  config: GoogleConfig,
+): { refreshToken: string } | { reason: string } {
+  const claims = tokens.id_token
+    ? decodeIdTokenClaims(tokens.id_token)
+    : undefined;
+  if (
+    !claims ||
+    !GOOGLE_ISSUERS.has(claims.iss) ||
+    claims.aud !== config.clientId ||
+    claims.email_verified !== true
+  ) {
+    return { reason: "Google did not return a valid account identity." };
+  }
+  const email = claims.email.toLowerCase();
+  if (email !== config.accountEmail) {
+    return {
+      reason: `You signed in as ${email}. Sign in as ${config.accountEmail} instead.`,
+    };
+  }
+  const granted = new Set(grantedScopes(tokens));
+  const missing = GOOGLE_CALENDAR_SCOPES.filter((scope) => !granted.has(scope));
+  if (missing.length > 0) {
+    return {
+      reason: `Google did not grant every Calendar permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,
+    };
+  }
+  if (!tokens.refresh_token) {
+    return { reason: "Google did not return a refresh token. Start again." };
+  }
+  return { refreshToken: tokens.refresh_token };
+}
+
+/**
+ * Exchange an authorization code, verify the account and scopes, and store the
+ * refresh token. A grant that fails a check is revoked and never stored.
  */
 export async function connectGoogleAccount(input: {
   code: string;
@@ -180,60 +187,41 @@ export async function connectGoogleAccount(input: {
     );
   }
   const tokens = tokenResponseSchema.parse(result.value);
-  const grantedToken = tokens.refresh_token ?? tokens.access_token;
-
-  if (!tokens.id_token) {
-    await revokeToken(grantedToken);
-    throw new GoogleConnectError("Google did not return the account identity.");
-  }
-  const claims = decodeIdTokenClaims(tokens.id_token);
-  const email = claims.email.toLowerCase();
-  if (
-    !GOOGLE_ISSUERS.has(claims.iss) ||
-    claims.aud !== input.config.clientId ||
-    claims.email_verified !== true
-  ) {
-    await revokeToken(grantedToken);
-    throw new GoogleConnectError("Google returned an unexpected identity.");
-  }
-  if (email !== input.config.accountEmail) {
-    await revokeToken(grantedToken);
-    throw new GoogleConnectError(
-      `You signed in as ${email}. Sign in as ${input.config.accountEmail} instead.`,
-    );
+  const grant = verifyGrant(tokens, input.config);
+  if ("reason" in grant) {
+    // Best effort: an unstored grant is already unusable to Junior. Revoking
+    // only removes it from the signed-in account.
+    await fetch(REVOKE_ENDPOINT, {
+      body: new URLSearchParams({
+        token: tokens.refresh_token ?? tokens.access_token,
+      }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    }).catch(() => undefined);
+    throw new GoogleConnectError(grant.reason);
   }
 
-  const granted = new Set((tokens.scope ?? "").split(/\s+/).filter(Boolean));
-  const missing = GOOGLE_CALENDAR_SCOPES.filter((scope) => !granted.has(scope));
-  if (missing.length > 0) {
-    await revokeToken(grantedToken);
-    throw new GoogleConnectError(
-      `Google did not grant every Calendar permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,
-    );
-  }
-  if (!tokens.refresh_token) {
-    await revokeToken(grantedToken);
-    throw new GoogleConnectError(
-      "Google did not return a refresh token. Start again.",
-    );
-  }
-
-  const scope = [...granted].sort().join(" ");
+  const scope = grantedScopes(tokens).join(" ");
   await saveGoogleAccount(input.db, {
-    accountEmail: email,
+    accountEmail: input.config.accountEmail,
     connectedAtMs: Date.now(),
     connectedBy: input.connectedBy,
-    refreshToken: tokens.refresh_token,
+    refreshToken: grant.refreshToken,
     scope,
   });
-  return { accountEmail: email, scope };
+  return { accountEmail: input.config.accountEmail, scope };
 }
 
-/** Exchange the stored refresh token for a short-lived access token. */
+/**
+ * Exchange the stored refresh token for a short-lived access token.
+ *
+ * Returns undefined when Google rejects the refresh token (`invalid_grant`),
+ * which means an admin must reconnect the account.
+ */
 export async function refreshGoogleAccessToken(input: {
   config: GoogleConfig;
   refreshToken: string;
-}): Promise<{ accessToken: string; expiresAtMs: number }> {
+}): Promise<{ accessToken: string; expiresAtMs: number } | undefined> {
   const result = await postTokenEndpoint({
     client_id: input.config.clientId,
     client_secret: input.config.clientSecret,
@@ -242,9 +230,7 @@ export async function refreshGoogleAccessToken(input: {
   });
   if (!result.ok) {
     if (result.error === "invalid_grant") {
-      throw new GoogleTokenRejectedError(
-        "Google rejected Junior's stored refresh token.",
-      );
+      return undefined;
     }
     throw new Error(`Google token refresh failed (${result.error})`);
   }

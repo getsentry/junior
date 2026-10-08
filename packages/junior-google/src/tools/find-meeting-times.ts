@@ -193,7 +193,6 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           timeMax: new Date(timeMaxMs).toISOString(),
           timeMin: new Date(timeMinMs).toISOString(),
         },
-        method: "POST",
         operation: "google.calendar.freebusy.query",
         path: "/calendar/v3/freeBusy",
       });

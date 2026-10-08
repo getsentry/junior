@@ -5,7 +5,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { emailDomain } from "../config";
-import { GOOGLE_API_DOMAIN, type GoogleOperation } from "../credentials";
+import {
+  GOOGLE_API_DOMAIN,
+  GOOGLE_OPERATIONS,
+  type GoogleOperation,
+} from "../credentials";
 
 /** Runtime capabilities the Calendar tools use. */
 export interface GoogleToolContext {
@@ -83,7 +87,6 @@ export async function googleApiRequest(
   ctx: GoogleToolContext,
   input: {
     body?: unknown;
-    method: "GET" | "POST";
     operation: GoogleOperation;
     path: string;
     query?: Record<string, string>;
@@ -97,14 +100,12 @@ export async function googleApiRequest(
     operation: input.operation,
     provider: "google",
     request: new Request(url, {
-      method: input.method,
+      method: GOOGLE_OPERATIONS[input.operation].method,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      ...(input.body !== undefined
-        ? { body: JSON.stringify(input.body) }
-        : undefined),
+      body: input.body === undefined ? undefined : JSON.stringify(input.body),
     }),
   });
   const body: unknown = await response.json().catch(() => undefined);

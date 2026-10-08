@@ -495,6 +495,7 @@ jobs:
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
           pnpm --filter @sentry/junior-tts pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-google pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
           pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
           pnpm --filter @sentry/junior-memory pack --pack-destination artifacts

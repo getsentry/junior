@@ -57,12 +57,8 @@ export function googlePlugin(): PluginRegistration {
           ? createGoogleSetupRoutes({ config, db: ctx.db as GoogleDb })
           : undefined;
       },
-      grantForEgress(ctx) {
-        return googleGrantForEgress(ctx);
-      },
-      async issueCredential(ctx) {
-        return await issueGoogleCredential(ctx);
-      },
+      grantForEgress: googleGrantForEgress,
+      issueCredential: issueGoogleCredential,
       tools(ctx): Record<string, PluginToolDefinition> {
         const config = readGoogleConfig();
         if (!config) {
