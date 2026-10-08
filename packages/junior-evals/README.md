@@ -376,6 +376,9 @@ Its `README.md` tells how it keys, records, and replays requests.
   request without a recording there, as the key sees it. CI uploads it as
   the `misses-*` artifact for 3 days. Compare the files of two runs to see
   the changed value. These files contain prompts. Do not commit them.
+- The proxy never writes a credential to a recording or a miss file. It
+  knows the values of credential request headers and of the variables in
+  `SECRET_ENV` of `src/recording-rules.ts`. Add a new secret variable there.
 
 ### Recordings in CI
 

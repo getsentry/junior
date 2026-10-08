@@ -160,7 +160,7 @@ async function proxyRequest(
   const rule = recorder.ruleFor(request);
 
   if (!rule) {
-    recorder.countPassthrough(origin.origin);
+    recorder.countPassthrough(origin.origin, request.headers);
     const upstream = await sendUpstream(origin, request);
     outgoing.writeHead(upstream.statusCode ?? 502, upstream.statusMessage, {
       ...upstream.headers,

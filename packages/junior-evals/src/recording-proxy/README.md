@@ -73,6 +73,11 @@ await proxy.close();
 - `missDirectory`: for each miss, the proxy writes the request as the key
   sees it, and its diagnosis, to `<missDirectory>/<rule>/<key>.json`. These
   files contain request bodies. Do not commit them.
+- `secrets`: credentials that the proxy must never write. The proxy also
+  learns the values of credential headers, such as `authorization` and
+  `cookie`, from each request that it sees. A response that contains one
+  fails its request with HTTP 502 and is not recorded. A miss file shows
+  `<<redacted>>` in place of each one.
 
 Requests that match no rule go live without a change, and their responses
 stream. Each response has an `x-recording-proxy` header: `replayed`, `live`,

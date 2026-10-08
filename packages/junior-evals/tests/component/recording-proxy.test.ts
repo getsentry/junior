@@ -10,7 +10,10 @@ import {
   startRecordingProxy,
   type RecordingProxyServer,
 } from "../../src/recording-proxy/server";
-import type { RecordingMode } from "../../src/recording-proxy/types";
+import type {
+  RecordingMode,
+  RecordingProxyConfig,
+} from "../../src/recording-proxy/types";
 import { VALUE_PATTERNS } from "../../src/recording-proxy/values";
 
 let upstream: Server;
@@ -26,7 +29,10 @@ let agent: ProxyAgent | undefined;
 
 async function start(
   mode: RecordingMode,
-  usedFile?: string,
+  options: Pick<
+    RecordingProxyConfig,
+    "missDirectory" | "secrets" | "usedFile"
+  > = {},
 ): Promise<RecordingProxyServer> {
   proxy = await startRecordingProxy({
     directory,
@@ -43,7 +49,7 @@ async function start(
         },
       },
     ],
-    usedFile,
+    ...options,
   });
   agent = new ProxyAgent({ uri: proxy.url });
   return proxy;
@@ -266,6 +272,35 @@ describe("recording proxy", () => {
     );
   });
 
+  it("never writes a credential to a recording or a miss file", async () => {
+    const missDirectory = path.join(directory, "misses");
+    const running = await start("auto", {
+      missDirectory,
+      secrets: ["config-secret-0123456789"],
+    });
+    // The upstream repeats the credential of the request header.
+    respond = () => `data: key-from-header-0123456789\n\n`;
+    const opened = await connectRecordingProxy(running).startSession("test");
+    const response = await request(`${origin}/v1/messages`, {
+      body: JSON.stringify({ model: "m", note: "config-secret-0123456789" }),
+      dispatcher: agent,
+      headers: { authorization: "Bearer key-from-header-0123456789" },
+      method: "POST",
+    });
+    await opened.end(true);
+
+    expect(response.statusCode).toBe(502);
+    expect(await response.body.text()).toContain("contains a credential");
+    await expect(files()).resolves.toEqual([]);
+    const [miss] = await readdir(path.join(missDirectory, "model"));
+    const text = await readFile(
+      path.join(missDirectory, "model", miss!),
+      "utf8",
+    );
+    expect(text).toContain("<<redacted>>");
+    expect(text).not.toContain("config-secret-0123456789");
+  });
+
   it("sends no request to another origin", async () => {
     await start("auto");
 
@@ -316,7 +351,7 @@ describe("recording proxy", () => {
       "..",
       `${path.basename(directory)}.used`,
     );
-    const running = await start("auto", usedFile);
+    const running = await start("auto", { usedFile });
     await session(running, [{ model: "m" }, { model: "n" }]);
     const recorded = (await files()).sort();
     const contents = await Promise.all(

@@ -62,6 +62,13 @@ export interface RecordingProxyConfig {
    * bodies, such as prompts, so do not commit them.
    */
   missDirectory?: string;
+  /**
+   * Credentials that the proxy must never write, such as API keys. The
+   * proxy also learns the values of credential headers, such as
+   * `authorization`, from each request. A recording that contains one
+   * fails its request, and a miss file is redacted.
+   */
+  secrets?: string[];
 }
 
 /** A request that a rule matched, but that had no recording. */

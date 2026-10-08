@@ -107,6 +107,17 @@ function readMode(): RecordingMode {
   );
 }
 
+/**
+ * Environment variables with real credentials in CI. The proxy never writes
+ * their values. It also learns credentials from request headers.
+ */
+const SECRET_ENV = [
+  "AI_GATEWAY_API_KEY",
+  "SENTRY_EVALS_API_KEY",
+  "VERCEL_OIDC_TOKEN",
+  "VERCEL_TOKEN",
+];
+
 /** The recording proxy configuration of this eval run. */
 export function recordingProxyConfig(): RecordingProxyConfig {
   return {
@@ -116,5 +127,6 @@ export function recordingProxyConfig(): RecordingProxyConfig {
     rules: RECORDING_RULES,
     usedFile: process.env.EVAL_RECORDINGS_USED_FILE?.trim() || undefined,
     missDirectory: process.env.EVAL_RECORDING_MISSES_DIR?.trim() || undefined,
+    secrets: SECRET_ENV.flatMap((name) => process.env[name]?.trim() || []),
   };
 }

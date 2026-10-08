@@ -12,6 +12,9 @@
  * drops them, so a bad sample is never replayed. A request that ends after
  * its session ended follows the result of that session. A request outside
  * a session is written at once.
+ *
+ * The recorder never writes a known credential (`secrets.ts`). A recording
+ * that contains one fails its request, and a miss file is redacted.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import type { IncomingHttpHeaders } from "node:http";
@@ -23,6 +26,7 @@ import {
   type Recording,
 } from "./recordings.ts";
 import { describeParts, keyRequest, type KeyedRequest } from "./request-key.ts";
+import { createSecrets } from "./secrets.ts";
 import {
   isEventStream,
   mapStreamEvents,
@@ -143,6 +147,7 @@ function fromRecording(
 /** Create the recorder of one proxy run. */
 export function createRecorder(config: RecordingProxyConfig) {
   let session: Session | undefined;
+  const secrets = createSecrets(config.secrets);
   /** Recordings that passed sessions, or requests outside one, used. */
   const used = new Set<string>();
   const stats: RecordingStats = {
@@ -221,7 +226,9 @@ export function createRecorder(config: RecordingProxyConfig) {
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(
         target,
-        `${JSON.stringify({ ...miss, request: keyed.normalized }, null, 2)}\n`,
+        secrets.redact(
+          `${JSON.stringify({ ...miss, request: keyed.normalized }, null, 2)}\n`,
+        ),
       );
     }
   };
@@ -256,8 +263,9 @@ export function createRecorder(config: RecordingProxyConfig) {
       return config.rules.find((rule) => matches(rule, request));
     },
 
-    /** Count a request that no rule records. */
-    countPassthrough(origin: string): void {
+    /** Count a request that no rule records, and learn its credentials. */
+    countPassthrough(origin: string, headers: IncomingHttpHeaders): void {
+      secrets.learn(headers);
       stats.passthrough[origin] = (stats.passthrough[origin] ?? 0) + 1;
     },
 
@@ -274,6 +282,7 @@ export function createRecorder(config: RecordingProxyConfig) {
       // A request belongs to the session that was open when it started.
       const owner = session;
       const counts = stats.counts[rule.name]!;
+      secrets.learn(request.headers);
       const keyed = keyRequest(
         rule,
         {
@@ -325,6 +334,12 @@ export function createRecorder(config: RecordingProxyConfig) {
         owner?.name,
         await sendLive(),
       );
+      if (secrets.has(JSON.stringify(recording))) {
+        // Fail the request, so the test fails and nothing is written.
+        throw new Error(
+          `the ${rule.name} response contains a credential, so it was not recorded`,
+        );
+      }
       if (!isTemporaryStatus(recording.response.status)) {
         await record(owner, file, recording);
       }
