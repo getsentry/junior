@@ -12,7 +12,7 @@ related:
 
 Use `junior admin` to choose who is a Junior admin. Admins see the **Admin**
 page in the dashboard. Plugins put setup there that other people must not
-use, such as connecting the Google account Junior acts as.
+use.
 
 Only this command changes the admin role. The dashboard and Slack cannot change
 it, so no one can make themselves an admin.
