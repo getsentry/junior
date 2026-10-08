@@ -12,7 +12,13 @@ import type {
   PluginCliActionContext,
   PluginCliCommandDefinition,
 } from "@sentry/junior-plugin-api";
-import { readGoogleConfig, type GoogleConfig } from "./config";
+import {
+  GOOGLE_ACCOUNT_EMAIL_ENV,
+  GOOGLE_CLIENT_ID_ENV,
+  GOOGLE_CLIENT_SECRET_ENV,
+  readGoogleConfig,
+  type GoogleConfig,
+} from "./config";
 import {
   connectGoogleAccount,
   createGoogleSignInRequest,
@@ -38,7 +44,7 @@ async function requireConfig(
   const config = readGoogleConfig();
   if (!config) {
     await ctx.io.writeError(
-      "Google plugin is not configured. Set GOOGLE_WORKSPACE_CLIENT_ID, GOOGLE_WORKSPACE_CLIENT_SECRET, and GOOGLE_WORKSPACE_ACCOUNT_EMAIL.\n",
+      `Google plugin is not configured. Set ${GOOGLE_CLIENT_ID_ENV}, ${GOOGLE_CLIENT_SECRET_ENV}, and ${GOOGLE_ACCOUNT_EMAIL_ENV}.\n`,
     );
   }
   return config;
@@ -50,7 +56,6 @@ async function waitForLoopbackCode(input: {
   onListening(): Promise<void> | void;
   port: number;
   state: string;
-  timeoutMs?: number;
 }): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
     const server = createServer((request, response) => {
@@ -91,7 +96,7 @@ async function waitForLoopbackCode(input: {
     const timer = setTimeout(() => {
       server.close();
       reject(new GoogleConnectError("Timed out waiting for Google sign-in."));
-    }, input.timeoutMs ?? SIGN_IN_TIMEOUT_MS);
+    }, SIGN_IN_TIMEOUT_MS);
     server.once("error", (error) => {
       clearTimeout(timer);
       reject(error);

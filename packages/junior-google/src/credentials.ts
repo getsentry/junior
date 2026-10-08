@@ -13,7 +13,7 @@ import {
   type PluginGrant,
 } from "@sentry/junior-plugin-api";
 import { readGoogleConfig } from "./config";
-import { GoogleTokenRejectedError, refreshGoogleAccessToken } from "./oauth";
+import { refreshGoogleAccessToken } from "./oauth";
 import { GOOGLE_PLUGIN_ROUTE_PREFIX } from "./setup-routes";
 import {
   deleteRejectedGoogleAccount,
@@ -104,23 +104,18 @@ export async function issueGoogleCredential(
   if (!record) {
     return unavailable(NOT_CONNECTED_MESSAGE);
   }
-  let token: { accessToken: string; expiresAtMs: number };
-  try {
-    token = await refreshGoogleAccessToken({
-      config,
-      refreshToken: record.refreshToken,
+  const token = await refreshGoogleAccessToken({
+    config,
+    refreshToken: record.refreshToken,
+  });
+  if (!token) {
+    await deleteRejectedGoogleAccount(db, record);
+    ctx.log.warn("google.account.token_rejected", {
+      "app.google.account": config.accountEmail,
     });
-  } catch (error) {
-    if (error instanceof GoogleTokenRejectedError) {
-      await deleteRejectedGoogleAccount(db, record);
-      ctx.log.warn("google.account.token_rejected", {
-        "app.google.account": config.accountEmail,
-      });
-      return unavailable(
-        `Google revoked Junior's access. ${NOT_CONNECTED_MESSAGE}`,
-      );
-    }
-    throw error;
+    return unavailable(
+      `Google revoked Junior's access. ${NOT_CONNECTED_MESSAGE}`,
+    );
   }
   return {
     type: "lease",

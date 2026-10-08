@@ -7,14 +7,6 @@ export type GoogleDb = PgDatabase<PgQueryResultHKT, typeof googleSqlSchema>;
 
 export type GoogleAccountRecord = typeof juniorGoogleAccounts.$inferSelect;
 
-/** Account details that are safe to show to an admin. Never includes tokens. */
-export interface GoogleAccountStatus {
-  accountEmail: string;
-  connectedAt: string;
-  connectedBy: string;
-  scope: string;
-}
-
 /** Read the stored connection for one account email. */
 export async function getGoogleAccount(
   db: GoogleDb,
@@ -66,10 +58,8 @@ export async function deleteRejectedGoogleAccount(
     );
 }
 
-/** Project a stored connection into admin-safe status fields. */
-export function googleAccountStatus(
-  record: GoogleAccountRecord,
-): GoogleAccountStatus {
+/** Project a stored connection into admin-safe fields. Never includes tokens. */
+export function googleAccountStatus(record: GoogleAccountRecord) {
   return {
     accountEmail: record.accountEmail,
     connectedAt: new Date(record.connectedAtMs).toISOString(),

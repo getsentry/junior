@@ -130,7 +130,6 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
           start: { dateTime: input.start, timeZone: input.timeZone },
           summary: input.title,
         },
-        method: "POST",
         operation: "google.calendar.event.create",
         path: "/calendar/v3/calendars/primary/events",
         query: {
@@ -145,7 +144,6 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
         // A retry of the same tool call already created this event.
         created = false;
         event = await googleApiRequest(ctx, {
-          method: "GET",
           operation: "google.calendar.event.get",
           path: `/calendar/v3/calendars/primary/events/${eventId}`,
         });

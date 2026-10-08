@@ -4,8 +4,7 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar only. Drive and Gmail are out of scope. The
-package is private and is not part of the release set.
+This version supports Calendar only. Drive and Gmail are out of scope.
 
 ## Surfaces
 
@@ -78,8 +77,8 @@ variables are set. Nobody can use the setup page until
 
 ## Known gaps
 
-- The refresh token is stored in plain text in Postgres. Core OAuth tokens use
-  the same model. Encryption at rest is a follow-up.
+- The refresh token is stored in plain text in Postgres. Encryption at rest is
+  tracked in getsentry/junior#2065.
 - Free/busy shows only what the company's calendar sharing default allows.
   Calendars that Junior cannot see appear in `unavailable`.
 - No disconnect command. To revoke access, remove the app grant from the
