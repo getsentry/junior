@@ -21,5 +21,6 @@ packages/junior-evals/integration-results*.json
 packages/junior-evals/guardian-results*.json
 packages/junior-evals/router-results*.json
 packages/junior-evals/eval-results/
+packages/junior-evals/recording-misses/
 .env*
 test-results/

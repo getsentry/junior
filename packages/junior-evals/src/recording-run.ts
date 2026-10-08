@@ -64,13 +64,11 @@ export async function startRecordingRun(
   const dispatcher = createProxyDispatcher(proxy);
   setGlobalDispatcher(dispatcher);
   const previousAgents = [http.globalAgent, https.globalAgent] as const;
-  const proxyEnv = {
-    HTTP_PROXY: proxy.url,
-    HTTPS_PROXY: proxy.url,
-    NO_PROXY,
-  };
-  http.globalAgent = new http.Agent({ proxyEnv });
-  https.globalAgent = new https.Agent({ ca: proxy.caCert, proxyEnv });
+  http.globalAgent = new http.Agent({ proxyEnv: proxy.env });
+  https.globalAgent = new https.Agent({
+    ca: proxy.caCert,
+    proxyEnv: proxy.env,
+  });
   project.provide("recordingProxy", {
     caCert: proxy.caCert,
     token: proxy.token,

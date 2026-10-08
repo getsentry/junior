@@ -50,7 +50,10 @@ export async function writeRecordings(
   const changed = await Promise.all(
     [...recordings].map(async ([file, recording]) => {
       const content = `${JSON.stringify(recording, null, 2)}\n`;
-      const previous = await readFile(file, "utf8").catch(() => undefined);
+      const previous = await readFile(file, "utf8").catch((error) => {
+        if (isMissing(error)) return undefined;
+        throw error;
+      });
       if (previous === content) return false;
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, content);

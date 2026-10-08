@@ -375,10 +375,13 @@ Its `README.md` tells how it keys, records, and replays requests.
 - `EVAL_RECORDING_MISSES_DIR` names a directory. The proxy writes each
   request without a recording there, as the key sees it. CI uploads it as
   the `misses-*` artifact for 3 days. Compare the files of two runs to see
-  the changed value. These files contain prompts. Do not commit them.
-- The proxy never writes a credential to a recording or a miss file. It
-  knows the values of credential request headers and of the variables in
-  `SECRET_ENV` of `src/recording-rules.ts`. Add a new secret variable there.
+  the changed value. These files contain prompts, but no request headers
+  except the model ids. Locally, use `EVAL_RECORDING_MISSES_DIR=recording-misses`,
+  which git ignores.
+- The proxy redacts credentials in recordings and miss files. It knows the
+  values of request headers whose names can mean a credential, such as
+  `auth`, `token`, or `key`, and of the variables in `SECRET_ENV` of
+  `src/recording-rules.ts`. Add a new secret variable there.
 
 ### Recordings in CI
 

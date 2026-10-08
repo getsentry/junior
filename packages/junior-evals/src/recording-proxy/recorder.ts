@@ -13,8 +13,8 @@
  * its session ended follows the result of that session. A request outside
  * a session is written at once.
  *
- * The recorder never writes a known credential (`secrets.ts`). A recording
- * that contains one fails its request, and a miss file is redacted.
+ * The recorder never writes a known credential (`secrets.ts`). It redacts
+ * them in recordings and miss files.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import type { IncomingHttpHeaders } from "node:http";
@@ -146,6 +146,16 @@ function fromRecording(
 
 /** Create the recorder of one proxy run. */
 export function createRecorder(config: RecordingProxyConfig) {
+  const missDirectory = config.missDirectory
+    ? path.resolve(config.missDirectory)
+    : undefined;
+  if (
+    missDirectory &&
+    !path.relative(config.directory, missDirectory).startsWith("..")
+  ) {
+    // Miss files hold request bodies. Keep them out of the committed files.
+    throw new Error("missDirectory must not be inside directory");
+  }
   let session: Session | undefined;
   const secrets = createSecrets(config.secrets);
   /** Recordings that passed sessions, or requests outside one, used. */
@@ -221,8 +231,8 @@ export function createRecorder(config: RecordingProxyConfig) {
     process.stderr.write(
       `[recording-proxy] No ${rule.name} recording${where}: ${why}\n`,
     );
-    if (config.missDirectory) {
-      const target = path.join(config.missDirectory, miss.file);
+    if (missDirectory) {
+      const target = path.join(missDirectory, miss.file);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(
         target,
@@ -328,18 +338,15 @@ export function createRecorder(config: RecordingProxyConfig) {
       }
 
       counts.live += 1;
-      const recording = toRecording(
-        request,
-        keyed,
-        owner?.name,
-        await sendLive(),
-      );
-      if (secrets.has(JSON.stringify(recording))) {
-        // Fail the request, so the test fails and nothing is written.
-        throw new Error(
-          `the ${rule.name} response contains a credential, so it was not recorded`,
-        );
-      }
+      // The client gets the redacted response too, so a live run and a
+      // replay give the same body.
+      const recording = JSON.parse(
+        secrets.redact(
+          JSON.stringify(
+            toRecording(request, keyed, owner?.name, await sendLive()),
+          ),
+        ),
+      ) as Recording;
       if (!isTemporaryStatus(recording.response.status)) {
         await record(owner, file, recording);
       }

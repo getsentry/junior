@@ -3,7 +3,14 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ProxyAgent, request } from "undici";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+} from "vitest";
 import { connectRecordingProxy } from "../../src/recording-proxy/client";
 import { pruneRecordings } from "../../src/recording-proxy/recordings";
 import {
@@ -272,33 +279,42 @@ describe("recording proxy", () => {
     );
   });
 
-  it("never writes a credential to a recording or a miss file", async () => {
-    const missDirectory = path.join(directory, "misses");
+  it("redacts credentials in recordings and miss files", async () => {
+    // Miss files must not be inside the recordings directory.
+    const missDirectory = `${directory}-misses`;
+    onTestFinished(() => rm(missDirectory, { recursive: true, force: true }));
     const running = await start("auto", {
       missDirectory,
-      secrets: ["config-secret-0123456789"],
+      // Each part of this value is short, so only the whole value matches.
+      secrets: ["cfg-secret=012345"],
     });
     // The upstream repeats the credential of the request header.
     respond = () => `data: key-from-header-0123456789\n\n`;
     const opened = await connectRecordingProxy(running).startSession("test");
     const response = await request(`${origin}/v1/messages`, {
-      body: JSON.stringify({ model: "m", note: "config-secret-0123456789" }),
+      body: JSON.stringify({ model: "m", note: "cfg-secret=012345" }),
       dispatcher: agent,
-      headers: { authorization: "Bearer key-from-header-0123456789" },
+      // Any header whose name can mean a credential is learned.
+      headers: { "x-custom-auth": "Bearer key-from-header-0123456789" },
       method: "POST",
     });
     await opened.end(true);
 
-    expect(response.statusCode).toBe(502);
-    expect(await response.body.text()).toContain("contains a credential");
-    await expect(files()).resolves.toEqual([]);
+    expect(await response.body.text()).toBe("data: <<redacted>>\n\n");
+    const [recorded] = await files();
+    const recording = await readFile(
+      path.join(directory, "model", recorded!),
+      "utf8",
+    );
+    expect(recording).toContain("<<redacted>>");
+    expect(recording).not.toContain("key-from-header-0123456789");
     const [miss] = await readdir(path.join(missDirectory, "model"));
     const text = await readFile(
       path.join(missDirectory, "model", miss!),
       "utf8",
     );
     expect(text).toContain("<<redacted>>");
-    expect(text).not.toContain("config-secret-0123456789");
+    expect(text).not.toContain("cfg-secret=012345");
   });
 
   it("sends no request to another origin", async () => {

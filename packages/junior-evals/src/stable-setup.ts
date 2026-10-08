@@ -30,11 +30,10 @@ import { beforeEach } from "vitest";
 
 process.env.TZ = "UTC";
 
-// Install one generator for the whole worker and only change its state per
-// test. Code that a test runs can leave `Math.random` read-only. A later
-// assignment then throws, which failed the second test of
-// `evals/sentry/skills.eval.ts`. Setup files run again for each test file in
-// the same worker, so the generator is kept on `globalThis` and installed once.
+// Install one generator per worker and only reseed it per test. Code that a
+// test runs can make `Math.random` read-only, so a later assignment throws.
+// Setup files run again for each test file in a worker, so the generator
+// lives on `globalThis`.
 const SEEDED_RANDOM = Symbol.for("junior-evals.seeded-random");
 type SeededRandom = { seed(text: string): void };
 const globals = globalThis as { [SEEDED_RANDOM]?: SeededRandom };

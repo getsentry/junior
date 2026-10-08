@@ -59,14 +59,15 @@ export interface RecordingProxyConfig {
   /**
    * For each miss, the proxy writes the request as the key sees it to
    * `<missDirectory>/<rule>/<key>.json`. These files contain request
-   * bodies, such as prompts, so do not commit them.
+   * bodies, such as prompts, so do not commit them. It must not be inside
+   * `directory`.
    */
   missDirectory?: string;
   /**
    * Credentials that the proxy must never write, such as API keys. The
-   * proxy also learns the values of credential headers, such as
-   * `authorization`, from each request. A recording that contains one
-   * fails its request, and a miss file is redacted.
+   * proxy also learns the values of headers that can carry credentials,
+   * such as `authorization`, from each request. It redacts them in
+   * recordings and miss files.
    */
   secrets?: string[];
 }

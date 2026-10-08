@@ -72,12 +72,14 @@ await proxy.close();
   before, because it stops early. `cli.ts prune` takes these files.
 - `missDirectory`: for each miss, the proxy writes the request as the key
   sees it, and its diagnosis, to `<missDirectory>/<rule>/<key>.json`. These
-  files contain request bodies. Do not commit them.
+  files contain request bodies, but no request headers except `keyHeaders`.
+  Do not commit them. The proxy refuses a `missDirectory` inside
+  `directory`.
 - `secrets`: credentials that the proxy must never write. The proxy also
-  learns the values of credential headers, such as `authorization` and
-  `cookie`, from each request that it sees. A response that contains one
-  fails its request with HTTP 502 and is not recorded. A miss file shows
-  `<<redacted>>` in place of each one.
+  learns the value of each request header whose name can mean a credential,
+  such as one with `auth`, `token`, `key`, `secret`, `cookie`, or `session`.
+  The match is broad on purpose. Recordings and miss files show
+  `<<redacted>>` in place of each known value.
 
 Requests that match no rule go live without a change, and their responses
 stream. Each response has an `x-recording-proxy` header: `replayed`, `live`,
