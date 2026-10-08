@@ -1,12 +1,3 @@
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  createLocalPgliteFixture,
-  pgliteBtreeGinExtension,
-  pgliteVectorExtension,
-  type LocalPgliteFixture,
-} from "@sentry/junior-testing/pglite";
 import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import {
   createEventSource,
@@ -51,11 +42,9 @@ import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
+import { createMemoryFixture, type MemoryFixture } from "./fixture";
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-type MemoryFixture = LocalPgliteFixture<MemoryDb>;
 
 const noopLogger: PluginLogger = {
   error() {},
@@ -179,26 +168,6 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
     stderr: stderr.join(""),
     stdout: stdout.join(""),
   };
-}
-
-async function createMemoryFixture(): Promise<MemoryFixture> {
-  const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: {
-      btree_gin: pgliteBtreeGinExtension,
-      vector: pgliteVectorExtension,
-    },
-  });
-  const migrationsDir = resolve(__dirname, "../migrations");
-  const migrations = (await readdir(migrationsDir))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrations) {
-    const migration = await readFile(resolve(migrationsDir, migrationFile), {
-      encoding: "utf8",
-    });
-    await fixture.execute(migration);
-  }
-  return fixture;
 }
 
 async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
