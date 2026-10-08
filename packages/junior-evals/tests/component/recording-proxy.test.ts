@@ -156,6 +156,7 @@ describe("recording proxy", () => {
     // The model repeats the memory id of the request, split over two
     // deltas, and quotes it in its thinking. The request also sends back a
     // thinking block of an earlier turn, which a replay keeps as recorded.
+    // The prompt shows the id again after a newline, which is `\n` in JSON.
     respond = (body) => {
       const id = /"id":"([^"]+)"/.exec(body)![1]!;
       const delta = (type: string, field: string, text: string) =>
@@ -175,7 +176,7 @@ describe("recording proxy", () => {
             { type: "thinking", thinking: `Find ${first}.`, signature: "s" },
           ],
         },
-        { content: "forget it", memories: [{ id, at }] },
+        { content: `Memory:\n${id}`, memories: [{ id, at }] },
       ],
     });
     const second = "9f8e7d6c-5b4a-4321-8fed-cba987654321";

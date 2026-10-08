@@ -99,8 +99,11 @@ body.
 Ids and times change on each run, and a response often repeats them. For
 example, the model archives the memory with the id that its request
 showed. `values` of a rule maps a name to a regular expression source.
-`VALUE_PATTERNS` in `values.ts` has `uuid`, `isoTime`, `date`, and
-`epochMs`. When two patterns match at the same place, the first one wins.
+`VALUE_PATTERNS` in `values.ts` has `uuid`, `isoTime`, `date`, `epochMs`,
+and `sha256`. When two patterns match at the same place, the first one wins.
+The proxy matches values in JSON text. Start a custom pattern with
+`NOT_AFTER_WORD`, not `\b`: after an escape such as `\n`, `\b` sees the `n`
+as part of a word and does not match.
 
 - The key sees each value as `<<name>>`. So two runs with other ids or
   times use the same recording.

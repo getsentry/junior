@@ -18,12 +18,20 @@
  */
 
 /**
+ * Lookbehind: the value does not continue a word or number. The proxy
+ * matches values in JSON text, where `\nab12` is a newline and then
+ * `ab12`. So a letter after a backslash, such as the `n` of `\n`, does not
+ * count as a word. Use it in a pattern that starts with a letter or digit.
+ */
+export const NOT_AFTER_WORD = String.raw`(?<!(?:^|[^\\])[0-9A-Za-z])`;
+
+/**
  * Patterns for common changing values. Use them in `values` of a rule. Each
  * pattern is a regular expression source.
  */
 export const VALUE_PATTERNS = {
   /** A UUID, also inside a name such as `junior-ws-<uuid>`. */
-  uuid: String.raw`(?<![0-9A-Za-z])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])`,
+  uuid: String.raw`${NOT_AFTER_WORD}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])`,
   /**
    * An ISO time, with `T` or a space, with or without seconds, and in UTC,
    * with an offset, or in local time.
@@ -36,6 +44,11 @@ export const VALUE_PATTERNS = {
    * timestamps, do not match.
    */
   epochMs: String.raw`(?<!\d)1[789]\d{11}(?!\d)`,
+  /**
+   * A SHA-256 hex digest. Ids that the product hashes from other changing
+   * values, such as attachment ids, change with them.
+   */
+  sha256: String.raw`${NOT_AFTER_WORD}[0-9a-f]{64}(?![0-9A-Za-z])`,
 } as const;
 
 /** Changing values by name. Each value is a regular expression source. */
@@ -127,7 +140,7 @@ export function templateValues(text: string, values: RequestValues): string {
     .sort((a, b) => b.length - a.length)
     .map(escape);
   const pattern = new RegExp(
-    `(?<![0-9A-Za-z])(?:${alternatives.join("|")})(?![0-9A-Za-z])`,
+    `${NOT_AFTER_WORD}(?:${alternatives.join("|")})(?![0-9A-Za-z])`,
     "g",
   );
   return text.replace(pattern, (value) => placeholders.get(value)!);

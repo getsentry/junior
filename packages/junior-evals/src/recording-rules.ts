@@ -18,7 +18,7 @@ import type {
   RecordingProxyConfig,
   RecordingRule,
 } from "./recording-proxy/types";
-import { VALUE_PATTERNS } from "./recording-proxy/values";
+import { NOT_AFTER_WORD, VALUE_PATTERNS } from "./recording-proxy/values";
 
 /**
  * Values in model requests that change from run to run. The fixture cannot
@@ -33,9 +33,11 @@ const CHANGING_VALUES = {
   time: VALUE_PATTERNS.isoTime,
   date: VALUE_PATTERNS.date,
   "epoch-ms": VALUE_PATTERNS.epochMs,
+  // Attachment ids hash the file name, which has the time in milliseconds.
+  sha256: VALUE_PATTERNS.sha256,
   // A local time for people, such as `Oct 7, 2026, 10:05 PM`, or the file
   // time of `ls -l` in the sandbox, such as `Oct  8 05:04`.
-  "local-time": String.raw`\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2}(?:, \d{4}, \d{1,2}:\d{2}\s?[AP]M| \d{2}:\d{2})\b`,
+  "local-time": String.raw`${NOT_AFTER_WORD}(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2}(?:, \d{4}, \d{1,2}:\d{2}\s?[AP]M| \d{2}:\d{2})\b`,
 };
 
 const RECORDING_RULES: RecordingRule[] = [
