@@ -1,8 +1,8 @@
 /**
  * Google plugin runtime boundary.
  *
- * Junior acts as its own Google Workspace account. An admin connects that
- * account out of band, through the dashboard setup page or the CLI. Calendar
+ * Junior acts as its own Google Workspace account. A Junior admin connects
+ * that account out of band, through the dashboard Admin page or the CLI. Calendar
  * tools use host-owned egress, and the sandbox gets no Google credential.
  */
 import {
@@ -13,7 +13,6 @@ import {
 import { createGoogleCliCommand } from "./cli";
 import {
   GOOGLE_ACCOUNT_EMAIL_ENV,
-  GOOGLE_ADMIN_EMAILS_ENV,
   GOOGLE_ALLOWED_DOMAINS_ENV,
   GOOGLE_CLIENT_ID_ENV,
   GOOGLE_CLIENT_SECRET_ENV,
@@ -24,7 +23,7 @@ import {
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
-import { createGoogleSetupRoutes } from "./setup-routes";
+import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
@@ -43,13 +42,13 @@ export function googlePlugin(): PluginRegistration {
         [GOOGLE_CLIENT_ID_ENV]: {},
         [GOOGLE_CLIENT_SECRET_ENV]: {},
         [GOOGLE_ACCOUNT_EMAIL_ENV]: {},
-        [GOOGLE_ADMIN_EMAILS_ENV]: {},
         [GOOGLE_ALLOWED_DOMAINS_ENV]: {},
       },
     },
     cli: {
       commands: [createGoogleCliCommand()],
     },
+    userPages: [createGoogleSetupPage()],
     hooks: {
       apiRoutes(ctx) {
         const config = readGoogleConfig();

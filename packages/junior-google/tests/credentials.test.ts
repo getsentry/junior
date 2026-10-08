@@ -78,7 +78,7 @@ describe("Google credential issuing", () => {
     const result = await issue();
     expect(result).toMatchObject({ type: "unavailable" });
     expect(result.type === "unavailable" && result.message).toContain(
-      "/api/plugins/google/setup",
+      "dashboard Admin page",
     );
   });
 

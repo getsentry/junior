@@ -14,7 +14,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import { readGoogleConfig } from "./config";
 import { refreshGoogleAccessToken } from "./oauth";
-import { GOOGLE_PLUGIN_ROUTE_PREFIX } from "./setup-routes";
 import {
   deleteRejectedGoogleAccount,
   getGoogleAccount,
@@ -82,7 +81,7 @@ function unavailable(message: string): PluginCredentialResult {
   return { type: "unavailable", message };
 }
 
-const NOT_CONNECTED_MESSAGE = `Junior's Google account is not connected. An admin must connect it at ${GOOGLE_PLUGIN_ROUTE_PREFIX}/setup on the Junior dashboard or with \`junior google connect\`.`;
+const NOT_CONNECTED_MESSAGE = `Junior's Google account is not connected. A Junior admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
 
 /** Mint a short-lived access token for Junior's Google account. */
 export async function issueGoogleCredential(

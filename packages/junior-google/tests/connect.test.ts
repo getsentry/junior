@@ -1,6 +1,7 @@
-import type {
-  PluginApiRouteRequestContext,
-  PluginRouteApp,
+import {
+  pluginUserPageContentSchema,
+  type PluginApiRouteRequestContext,
+  type PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
@@ -17,11 +18,24 @@ import {
 
 const PREFIX = "https://junior.example.com/api/plugins/google";
 
-function session(email: string): PluginApiRouteRequestContext {
+/** Plugin route context for a dashboard user. Core reads `isAdmin` from the stored user. */
+function session(
+  email: string,
+  isAdmin = email === ADMIN_EMAIL,
+): PluginApiRouteRequestContext {
   return {
-    auth: { user: { email, emailVerified: true } },
+    auth: { user: { email, emailVerified: true, isAdmin } },
     pluginName: "google",
   };
+}
+
+async function readSetupPage(db: GoogleDb) {
+  const page = googlePlugin().userPages?.find((item) => item.id === "account");
+  if (!page) throw new Error("expected the Google admin page");
+  expect(page.navigation).toBe("admin");
+  return pluginUserPageContentSchema.parse(
+    await page.read({ db } as never, { limit: 20 }),
+  ).records[0]!;
 }
 
 function setupRoutes(db: GoogleDb): PluginRouteApp {
@@ -98,24 +112,44 @@ describe("Google account setup", () => {
     await fixture.close();
   });
 
-  it("lets only configured admins open setup", async () => {
+  it("lets only Junior admins start or finish sign-in", async () => {
     const app = setupRoutes(fixture.db());
-    const response = await app.fetch(
-      new Request("https://junior.example.com/setup"),
-      session("someone@example.com"),
+    for (const path of ["/oauth/start", "/oauth/callback?state=x&code=y"]) {
+      const response = await app.fetch(
+        new Request(`https://junior.example.com${path}`),
+        session("someone@example.com"),
+      );
+      expect(response.status).toBe(403);
+      expect(await response.text()).toContain("junior admin grant");
+    }
+    // An unverified email is refused even with the admin role.
+    const unverified = await app.fetch(
+      new Request("https://junior.example.com/oauth/start"),
+      {
+        auth: {
+          user: { email: ADMIN_EMAIL, emailVerified: false, isAdmin: true },
+        },
+        pluginName: "google",
+      },
     );
-    expect(response.status).toBe(403);
-
-    const page = await app.fetch(
-      new Request("https://junior.example.com/setup"),
-      session(ADMIN_EMAIL),
-    );
-    expect(page.status).toBe(200);
-    expect(await page.text()).toContain("Not connected");
+    expect(unverified.status).toBe(403);
   });
 
   it("connects the configured account through Google sign-in", async () => {
     const app = setupRoutes(fixture.db());
+    const before = await readSetupPage(fixture.db());
+    expect(before).toMatchObject({
+      title: ACCOUNT_EMAIL,
+      actions: [
+        {
+          href: "/api/plugins/google/oauth/start",
+          label: "Connect",
+          method: "GET",
+        },
+      ],
+    });
+    expect(before.metadata).toBeUndefined();
+
     const { cookie, location, state } = await startSignIn(app);
     expect(location.origin + location.pathname).toBe(
       "https://accounts.google.com/o/oauth2/v2/auth",
@@ -143,6 +177,14 @@ describe("Google account setup", () => {
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
     });
+
+    const after = await readSetupPage(fixture.db());
+    expect(after.actions?.[0]?.label).toBe("Reconnect");
+    expect(after.metadata).toContainEqual({
+      label: "Connected by",
+      value: ADMIN_EMAIL,
+    });
+    expect(JSON.stringify(after)).not.toContain("refresh-token");
   });
 
   it("rejects a sign-in that did not start in this browser", async () => {

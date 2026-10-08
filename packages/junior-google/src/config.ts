@@ -7,7 +7,6 @@
 export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_WORKSPACE_CLIENT_ID";
 export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_WORKSPACE_CLIENT_SECRET";
 export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
-export const GOOGLE_ADMIN_EMAILS_ENV = "GOOGLE_WORKSPACE_ADMIN_EMAILS";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
 
 /** Scopes that Calendar v1 needs. Request nothing broader. */
@@ -22,8 +21,6 @@ export const GOOGLE_IDENTITY_SCOPES = ["openid", "email"] as const;
 export interface GoogleConfig {
   /** The Workspace account Junior acts as, for example `junior@sentry.io`. */
   accountEmail: string;
-  /** People who may connect or reconnect the account. Empty means nobody. */
-  adminEmails: string[];
   /** Domains Junior may check availability for and invite. */
   allowedDomains: string[];
   clientId: string;
@@ -69,7 +66,6 @@ export function readGoogleConfig(): GoogleConfig | undefined {
   const allowedDomains = readList(GOOGLE_ALLOWED_DOMAINS_ENV);
   return {
     accountEmail,
-    adminEmails: readList(GOOGLE_ADMIN_EMAILS_ENV),
     allowedDomains: allowedDomains.length ? allowedDomains : [accountDomain],
     clientId,
     clientSecret,

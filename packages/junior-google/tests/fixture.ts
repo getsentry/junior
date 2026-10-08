@@ -9,6 +9,7 @@ import * as googleSqlSchema from "../src/db/schema";
 import type { GoogleDb } from "../src/store";
 
 export const ACCOUNT_EMAIL = "junior@example.com";
+/** A Junior admin who connects the account. */
 export const ADMIN_EMAIL = "admin@example.com";
 export const CLIENT_ID = "client-id.apps.googleusercontent.com";
 
@@ -17,7 +18,6 @@ export function stubGoogleEnv(): void {
   vi.stubEnv("GOOGLE_WORKSPACE_CLIENT_ID", CLIENT_ID);
   vi.stubEnv("GOOGLE_WORKSPACE_CLIENT_SECRET", "client-secret");
   vi.stubEnv("GOOGLE_WORKSPACE_ACCOUNT_EMAIL", ACCOUNT_EMAIL);
-  vi.stubEnv("GOOGLE_WORKSPACE_ADMIN_EMAILS", ADMIN_EMAIL);
   vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
 }
 

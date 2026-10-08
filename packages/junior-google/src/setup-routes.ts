@@ -1,15 +1,24 @@
 /**
- * Admin-only web setup for the Google account that Junior acts as.
+ * Admin-only setup for the Google account that Junior acts as.
  *
- * Routes mount under Junior's authenticated plugin namespace,
- * `/api/plugins/google`. The dashboard session identifies the admin. Google
- * consent must come from the configured account itself.
+ * The dashboard Admin page lists `createGoogleSetupPage()` for Junior admins.
+ * Its Connect link opens the sign-in routes below, which mount under Junior's
+ * authenticated plugin namespace, `/api/plugins/google`. Every route checks
+ * the Junior admin role on the server. Google consent must come from the
+ * configured account itself.
  */
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
+  PluginUserPageDefinition,
 } from "@sentry/junior-plugin-api";
-import { GOOGLE_ADMIN_EMAILS_ENV, type GoogleConfig } from "./config";
+import {
+  GOOGLE_ACCOUNT_EMAIL_ENV,
+  GOOGLE_CLIENT_ID_ENV,
+  GOOGLE_CLIENT_SECRET_ENV,
+  readGoogleConfig,
+  type GoogleConfig,
+} from "./config";
 import {
   connectGoogleAccount,
   createGoogleSignInRequest,
@@ -22,6 +31,8 @@ export const GOOGLE_PLUGIN_ROUTE_PREFIX = "/api/plugins/google";
 const SIGN_IN_COOKIE = "junior_google_sign_in";
 const SIGN_IN_COOKIE_PATH = `${GOOGLE_PLUGIN_ROUTE_PREFIX}/oauth`;
 const SIGN_IN_MAX_AGE_SECONDS = 600;
+/** Dashboard page that `createGoogleSetupPage()` renders. */
+const SETUP_PAGE_PATH = "/plugins/google/account";
 
 function escapeHtml(value: string): string {
   return value
@@ -67,23 +78,25 @@ export function googleCallbackUrl(request: Request): string {
   ).toString();
 }
 
+/** Return the signed-in Junior admin's email, or undefined for anyone else. */
 function adminEmail(
-  config: GoogleConfig,
   context: PluginApiRouteRequestContext | undefined,
 ): string | undefined {
   const user = context?.auth.user;
   const email = user?.email?.trim().toLowerCase();
-  if (!email || user?.emailVerified !== true) {
+  if (!email || user?.emailVerified !== true || user.isAdmin !== true) {
     return undefined;
   }
-  return config.adminEmails.includes(email) ? email : undefined;
+  return email;
 }
 
-function forbidden(config: GoogleConfig): Response {
-  const reason = config.adminEmails.length
-    ? "Your account is not allowed to connect Junior's Google account."
-    : `No admins are configured. Set <code>${GOOGLE_ADMIN_EMAILS_ENV}</code>.`;
-  return htmlPage("Google setup", `<p>${reason}</p>`, { status: 403 });
+function forbidden(): Response {
+  return htmlPage(
+    "Google setup",
+    "<p>Only Junior admins can connect Junior's Google account. " +
+      "An operator can grant the role with <code>junior admin grant &lt;email&gt;</code>.</p>",
+    { status: 403 },
+  );
 }
 
 function readCookie(request: Request, name: string): string | undefined {
@@ -98,23 +111,6 @@ function readCookie(request: Request, name: string): string | undefined {
 
 function signInCookie(value: string, maxAgeSeconds: number): string {
   return `${SIGN_IN_COOKIE}=${value}; Path=${SIGN_IN_COOKIE_PATH}; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`;
-}
-
-async function renderSetup(
-  config: GoogleConfig,
-  db: GoogleDb,
-): Promise<Response> {
-  const record = await getGoogleAccount(db, config.accountEmail);
-  const status = record ? googleAccountStatus(record) : undefined;
-  const summary = status
-    ? `<p>Connected as <code>${escapeHtml(status.accountEmail)}</code> by ${escapeHtml(status.connectedBy)} at ${escapeHtml(status.connectedAt)}.</p>` +
-      `<p>Granted scopes: <code>${escapeHtml(status.scope)}</code></p>`
-    : `<p>Not connected. Junior cannot use Google until an admin connects <code>${escapeHtml(config.accountEmail)}</code>.</p>`;
-  return htmlPage(
-    "Google setup",
-    `${summary}<p>Connecting opens Google sign-in. Sign in as <code>${escapeHtml(config.accountEmail)}</code>, not as yourself.</p>` +
-      `<p><a class="button" href="${GOOGLE_PLUGIN_ROUTE_PREFIX}/oauth/start">${status ? "Reconnect" : "Connect"} Google account</a></p>`,
-  );
 }
 
 function startSignIn(config: GoogleConfig, request: Request): Response {
@@ -148,7 +144,7 @@ async function finishSignIn(input: {
   const failed = (message: string, status = 400) =>
     htmlPage(
       "Google setup failed",
-      `<p>${escapeHtml(message)}</p><p><a href="${GOOGLE_PLUGIN_ROUTE_PREFIX}/setup">Back to setup</a></p>`,
+      `<p>${escapeHtml(message)}</p><p><a href="${SETUP_PAGE_PATH}">Back to setup</a></p>`,
       { headers: clearCookie, status },
     );
 
@@ -179,7 +175,7 @@ async function finishSignIn(input: {
     });
     return htmlPage(
       "Google connected",
-      `<p>Junior now acts as <code>${escapeHtml(connected.accountEmail)}</code>.</p><p><a href="${GOOGLE_PLUGIN_ROUTE_PREFIX}/setup">Back to setup</a></p>`,
+      `<p>Junior now acts as <code>${escapeHtml(connected.accountEmail)}</code>.</p><p><a href="${SETUP_PAGE_PATH}">Back to setup</a></p>`,
       { headers: clearCookie },
     );
   } catch (error) {
@@ -190,7 +186,7 @@ async function finishSignIn(input: {
   }
 }
 
-/** Create the admin-only Google setup routes. */
+/** Create the admin-only Google sign-in routes. */
 export function createGoogleSetupRoutes(input: {
   config: GoogleConfig;
   db: GoogleDb;
@@ -201,13 +197,11 @@ export function createGoogleSetupRoutes(input: {
       if (request.method !== "GET") {
         return new Response("Method not allowed", { status: 405 });
       }
-      const admin = adminEmail(input.config, context);
+      const admin = adminEmail(context);
       if (!admin) {
-        return forbidden(input.config);
+        return forbidden();
       }
       switch (pathname) {
-        case "/setup":
-          return await renderSetup(input.config, input.db);
         case "/oauth/start":
           return startSignIn(input.config, request);
         case "/oauth/callback":
@@ -215,6 +209,67 @@ export function createGoogleSetupRoutes(input: {
         default:
           return new Response("Not found", { status: 404 });
       }
+    },
+  };
+}
+
+/**
+ * Admin page that shows whether the Google account is connected and links to
+ * Google sign-in. Junior lists and serves it only to Junior admins.
+ */
+export function createGoogleSetupPage(): PluginUserPageDefinition {
+  return {
+    id: "account",
+    label: "Google account",
+    description: "Connect the Google Workspace account that Junior acts as.",
+    navigation: "admin",
+    async read(ctx) {
+      const config = readGoogleConfig();
+      if (!config) {
+        return {
+          type: "list",
+          records: [
+            {
+              id: "not-configured",
+              title: "Not configured",
+              description: `Set ${GOOGLE_CLIENT_ID_ENV}, ${GOOGLE_CLIENT_SECRET_ENV}, and ${GOOGLE_ACCOUNT_EMAIL_ENV} on the deployment.`,
+            },
+          ],
+        };
+      }
+      const record = await getGoogleAccount(
+        ctx.db as GoogleDb,
+        config.accountEmail,
+      );
+      const status = record ? googleAccountStatus(record) : undefined;
+      return {
+        type: "list",
+        records: [
+          {
+            id: config.accountEmail,
+            title: config.accountEmail,
+            description: status
+              ? "Connected. Reconnect after Google revokes access or Junior needs new permissions."
+              : `Not connected. Sign in as ${config.accountEmail}, not as yourself.`,
+            ...(status
+              ? {
+                  metadata: [
+                    { label: "Connected by", value: status.connectedBy },
+                    { label: "Connected at", value: status.connectedAt },
+                    { label: "Scopes", value: status.scope },
+                  ],
+                }
+              : undefined),
+            actions: [
+              {
+                href: `${GOOGLE_PLUGIN_ROUTE_PREFIX}/oauth/start`,
+                label: status ? "Reconnect" : "Connect",
+                method: "GET",
+              },
+            ],
+          },
+        ],
+      };
     },
   };
 }

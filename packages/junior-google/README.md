@@ -13,16 +13,19 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 - `createCalendarEvent` creates an event on Junior's own calendar. It sends
   invites and can add a Google Meet link. A retry of the same tool call returns
   the same event. It does not create a second invite.
-- `GET /api/plugins/google/setup` is the admin setup page in the Junior
-  dashboard.
-- `junior google connect` and `junior google status` are the admin CLI.
+- The **Google account** page on the dashboard Admin page shows whether the
+  account is connected. Its Connect button starts Google sign-in.
+- `junior google connect` and `junior google status` are the operator CLI.
 
 ## Authentication
 
-An admin connects the account one time, out of band. Slack never shows the
-sign-in link, the authorization code, or any token.
+A Junior admin connects the account one time, out of band. Slack never shows
+the sign-in link, the authorization code, or any token. Junior admins are
+managed with `junior admin grant <email>`. This plugin has no admin list of its
+own.
 
-1. An admin opens the setup page or runs `junior google connect`.
+1. An admin opens **Admin → Google account** in the dashboard and selects
+   **Connect**, or runs `junior google connect`.
 2. Google sign-in opens with PKCE and a single-use state value.
 3. The admin signs in as the configured account, not as themselves.
 4. Junior checks that the identity token names the configured account. It also
@@ -64,16 +67,15 @@ tools then report that an admin must connect the account again.
 | `GOOGLE_WORKSPACE_CLIENT_ID`       | OAuth client id                                 |
 | `GOOGLE_WORKSPACE_CLIENT_SECRET`   | OAuth client secret                             |
 | `GOOGLE_WORKSPACE_ACCOUNT_EMAIL`   | The account Junior acts as                      |
-| `GOOGLE_WORKSPACE_ADMIN_EMAILS`    | Comma-separated admins who may connect it       |
 | `GOOGLE_WORKSPACE_ALLOWED_DOMAINS` | Optional comma-separated domains to schedule in |
 
-The plugin registers no tools and no setup routes until the first three
-variables are set. Nobody can use the setup page until
-`GOOGLE_WORKSPACE_ADMIN_EMAILS` is set.
+The plugin registers no tools and no sign-in routes until the first three
+variables are set. The Admin page shows **Not configured** until then.
 
 6. Run `junior upgrade` to create the table.
-7. Connect the account on the setup page, or run `junior google connect` with
-   the deployment database configured.
+7. Run `junior admin grant <email>` for each person who may connect the account.
+8. Connect the account on **Admin → Google account**, or run
+   `junior google connect` with the deployment database configured.
 
 ## Known gaps
 
