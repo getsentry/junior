@@ -1,4 +1,14 @@
 # Changelog
+## 0.238.1
+
+### New Features ✨
+
+- (google) Use the dashboard Google OAuth client by @sentry-junior in [#2080](https://github.com/getsentry/junior/pull/2080)
+
+### Internal Changes 🔧
+
+- (evals) Move the Slack status and thread title tests to the agent test fixture by @dcramer in [#2076](https://github.com/getsentry/junior/pull/2076)
+
 ## 0.238.0
 
 ### New Features ✨
