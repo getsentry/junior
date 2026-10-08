@@ -217,6 +217,26 @@ function searchProviderCatalog(
     .map((ranked) => ranked.provider);
 }
 
+/**
+ * Providers to offer when `provider` is not a configured name, such as a
+ * display name. Without them, the empty result reads as "no such tools".
+ */
+function unknownProviderSuggestions(
+  mcpToolManager: SearchMcpToolManager,
+  provider: string,
+  activeToolCount: number,
+): ProviderSummary[] {
+  if (activeToolCount > 0) {
+    return [];
+  }
+  const configured = mcpToolManager.getAvailableProviderCatalog();
+  if (configured.some((candidate) => candidate.provider === provider)) {
+    return [];
+  }
+  const matches = searchProviderCatalog(configured, provider);
+  return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
+}
+
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
@@ -276,7 +296,11 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
         maxResults,
       );
       const providers = provider
-        ? []
+        ? unknownProviderSuggestions(
+            mcpToolManager,
+            provider,
+            catalog.length,
+          ).slice(0, maxResults)
         : searchProviderCatalog(
             mcpToolManager.getAvailableProviderCatalog(),
             query ?? "",
