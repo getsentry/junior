@@ -1,3 +1,5 @@
+import type { McpAuthorizationContext } from "@/chat/mcp/tool-manager";
+
 const MAX_AUTH_REQUEST_LENGTH = 200;
 
 function formatAuthRequest(requestText: string): string | undefined {
@@ -15,21 +17,15 @@ function formatAuthRequest(requestText: string): string | undefined {
     .replaceAll(">", "&gt;");
 }
 
-/**
- * Pick the reason text for an auth request: the agent's stated intent, else
- * the tool that hit the auth challenge. Returns undefined when neither exists
- * so callers can fall back to the user's message.
- */
-export function describeAuthorizationReason(context?: {
-  intent?: string;
-  toolName?: string;
-}): string | undefined {
+/** Describe why auth is needed: the agent intent, else the MCP tool name. */
+export function describeAuthorizationReason(
+  context?: McpAuthorizationContext,
+): string | undefined {
   const intent = context?.intent?.trim();
   if (intent) {
     return intent;
   }
-  const toolName = context?.toolName?.replaceAll("`", "").trim();
-  return toolName ? `calling \`${toolName}\`` : undefined;
+  return context?.toolName ? `calling \`${context.toolName}\`` : undefined;
 }
 
 /** Build the visible Slack thread note for an auth-paused turn. */

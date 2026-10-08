@@ -268,8 +268,8 @@ export interface McpToolSuccessHookInput {
 }
 
 /**
- * Why a call needed MCP authorization, shown to the user with the auth request.
- * `intent` is agent-written and untrusted display text.
+ * Why a call needs MCP authorization. The agent writes `intent`, so treat it
+ * as untrusted text.
  */
 export interface McpAuthorizationContext {
   intent?: string;
@@ -643,7 +643,7 @@ export class McpToolManager {
                   plugin.manifest.name,
                   error,
                   {
-                    toolName: tool.title?.trim() || tool.name,
+                    toolName: tool.name,
                     ...(options?.authorizationIntent
                       ? { intent: options.authorizationIntent }
                       : undefined),

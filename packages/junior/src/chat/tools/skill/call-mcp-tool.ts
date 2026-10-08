@@ -82,7 +82,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           .string()
           .min(1)
           .describe(
-            'Optional short purpose, shown to the user only if this call needs them to connect their account. Write a plain verb phrase, for example "search Notion for the Q3 offsite doc".',
+            'Optional short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
           )
           .optional(),
       })

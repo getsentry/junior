@@ -2,8 +2,8 @@ import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import type { KnownBlock } from "@slack/types";
 import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 
-// User OAuth links always connect the requester's own account. Say so, because
-// provider consent screens often read like an org-wide install.
+// User OAuth connects only the requester's account. Provider consent screens
+// can look like an install for the whole workspace.
 const ACCOUNT_SCOPE_NOTE =
   "This connects only your account. Junior sees only what you can see.";
 

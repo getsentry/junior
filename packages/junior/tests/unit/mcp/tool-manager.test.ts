@@ -306,7 +306,7 @@ describe("McpToolManager", () => {
         provider: "demo",
         message: "Auth required",
       }),
-      { toolName: "Ping" },
+      { toolName: "ping" },
     );
   });
 
