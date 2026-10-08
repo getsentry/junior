@@ -114,6 +114,17 @@ describe("Thread Continuity", () => {
 - `slackMention(text, { fromApp: true })` is a mention that another Slack app
   posted. Junior takes a turn for it. An app cannot open an authorization
   link, so the turn does not wait for one.
+- `slackMention(text, { assistantThread: true })` is a message in the chat
+  of the Junior app, which is a direct message. Slack starts an assistant
+  thread there before the first message, so the fixture sends the
+  `assistant_thread_started` event and then the message in that thread. A
+  `slackMention(text, { channelType: "im" })` is a direct message that is not
+  in a thread.
+- `conversation.statuses` has the status lines that Junior set under the
+  Slack thread, and an empty string clears the status.
+  `conversation.threadTitles` has the titles that Junior gave the Slack
+  thread. Slack shows a status for a channel thread and for a direct message
+  in a thread. Slack shows a title only for a direct message in a thread.
 - Slack sends a forwarded message and the content of an app message outside
   the message text. The fixture builds those Slack shapes, so a test gives
   only the text.
@@ -485,7 +496,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
-- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `compactions`, and `turns`.
+- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `statuses`, `threadTitles`, `compactions`, and `turns`.
 - When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.

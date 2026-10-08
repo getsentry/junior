@@ -71,6 +71,7 @@ import {
   forwardedMessage,
   installSlackMock,
   isAppMention,
+  postSlackAssistantThreadStarted,
   postSlackCommand,
   postSlackMessageEvent,
   slackAuthorEmail,
@@ -119,6 +120,13 @@ export interface Conversation extends HarnessRun {
   reactions: string[];
   /** Names of the files that Junior uploaded to the Slack thread. */
   files: string[];
+  /**
+   * Status lines that Junior set under the Slack thread, in order. An empty
+   * string clears the status.
+   */
+  statuses: string[];
+  /** Titles that Junior gave the Slack thread, in order. */
+  threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
   /**
@@ -400,7 +408,20 @@ export async function createFixtureAgent(
     const author = slack.registerAuthor(
       fromApp ? SLACK_APP : (input.author ?? DEFAULT_SLACK_AUTHOR),
     );
-    const ts = started ? slack.nextTs() : record.threadTs;
+    // The first message of an assistant thread is under the thread that
+    // Slack started. Every other first message is the root of its thread.
+    const inAssistantThread =
+      !started && input.kind === "mention" && input.assistantThread === true;
+    if (inAssistantThread) {
+      await postSlackAssistantThreadStarted(app, {
+        channel: record.channelId,
+        threadTs: record.threadTs,
+        user: author.userId,
+      });
+      await waitForIdle();
+    }
+    const inThread = started || inAssistantThread;
+    const ts = inThread ? slack.nextTs() : record.threadTs;
     const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
     const files = input.files?.length
@@ -426,7 +447,7 @@ export async function createFixtureAgent(
       ...files,
       mention,
       text,
-      ...(started ? { threadTs: record.threadTs } : undefined),
+      ...(inThread ? { threadTs: record.threadTs } : undefined),
       ts,
       user: author.userId,
     });
@@ -453,11 +474,15 @@ export async function createFixtureAgent(
     if (first.kind !== "mention" && !hasHistory(history)) {
       throw new Error("run() needs slackMention() or webMessage() first");
     }
-    const channelType =
-      (first.kind === "mention" && first.channelType) || "channel";
+    const mention = first.kind === "mention" ? first : undefined;
+    if (mention?.assistantThread && mention.channelType === "channel") {
+      throw new Error("An assistant thread is a direct message");
+    }
+    const channelType = mention?.assistantThread
+      ? "im"
+      : (mention?.channelType ?? "channel");
     const channelId =
-      (first.kind === "mention" ? first.channel?.channelId : undefined) ??
-      slack.newChannelId(channelType);
+      mention?.channel?.channelId ?? slack.newChannelId(channelType);
     const threadTs = slack.nextTs();
     // The person who posted first in the thread reads the results.
     const historyRoot = Array.isArray(history)
@@ -615,6 +640,19 @@ export async function createFixtureAgent(
           )
         : [],
     );
+    const threadCalls = (method: string) =>
+      slackCalls.filter(
+        (captured) =>
+          captured.method === method &&
+          captured.params.channel_id === thread?.channelId &&
+          captured.params.thread_ts === thread?.threadTs,
+      );
+    const statuses = threadCalls("assistant.threads.setStatus").map(
+      (captured) => String(captured.params.status),
+    );
+    const threadTitles = threadCalls("assistant.threads.setTitle").map(
+      (captured) => String(captured.params.title),
+    );
     const authorizationPrompt = await readAuthorizationPrompt(
       api,
       record.conversationId,
@@ -653,6 +691,8 @@ export async function createFixtureAgent(
       files,
       reactions,
       replies,
+      statuses,
+      threadTitles,
       title: detail.displayTitle,
       toolCalls: events.toolCalls,
       turns: events.turns,
@@ -750,6 +790,8 @@ export async function createFixtureAgent(
       files: [],
       reactions: [],
       replies: [],
+      statuses: [],
+      threadTitles: [],
       title: detail.displayTitle,
       toolCalls: [],
       turns: [],
