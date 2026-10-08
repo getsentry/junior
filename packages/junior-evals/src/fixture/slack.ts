@@ -442,6 +442,26 @@ export async function postSlackMessageEvent(
   });
 }
 
+/**
+ * Tell Junior that a person opened a new chat with the Junior app, as Slack
+ * does before the first message of an assistant thread.
+ */
+export async function postSlackAssistantThreadStarted(
+  app: RequestApp,
+  thread: { channel: string; threadTs: string; user: string },
+): Promise<void> {
+  await postSlackEvent(app, {
+    type: "assistant_thread_started",
+    event_ts: thread.threadTs,
+    assistant_thread: {
+      channel_id: thread.channel,
+      context: {},
+      thread_ts: thread.threadTs,
+      user_id: thread.user,
+    },
+  });
+}
+
 /** Post one signed Slack Events API event to the app route. */
 async function postSlackEvent(
   app: RequestApp,
