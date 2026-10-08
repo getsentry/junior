@@ -11,10 +11,13 @@ import {
   type RecordingProxyServer,
 } from "../../src/recording-proxy/recording-proxy";
 import { pruneRecordings } from "../../src/recording-proxy/recordings";
+import { VALUE_PATTERNS } from "../../src/recording-proxy/values";
 
 let upstream: Server;
 let origin: string;
 let liveRequests: number;
+/** The event stream that the upstream sends for a request body. */
+let respond: (body: string) => string;
 let directory: string;
 let proxy: RecordingProxyServer | undefined;
 let agent: ProxyAgent | undefined;
@@ -31,7 +34,7 @@ async function start(
       {
         name: "model",
         match: { method: "POST", url: `${origin}/v1/` },
-        key: { ignore: [String.raw`\d{4}-\d{2}-\d{2}T[\d:.]+Z`] },
+        values: { uuid: VALUE_PATTERNS.uuid, time: VALUE_PATTERNS.isoTime },
       },
     ],
     usedFile,
@@ -76,10 +79,15 @@ async function files(): Promise<string[]> {
 
 beforeEach(async () => {
   liveRequests = 0;
+  respond = () => `data: ${liveRequests}\n\n`;
   upstream = createServer((incoming, outgoing) => {
     liveRequests += 1;
-    outgoing.writeHead(200, { "content-type": "text/event-stream" });
-    outgoing.end(`data: ${liveRequests}\n\n`);
+    const chunks: Buffer[] = [];
+    incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+    incoming.on("end", () => {
+      outgoing.writeHead(200, { "content-type": "text/event-stream" });
+      outgoing.end(respond(Buffer.concat(chunks).toString("utf8")));
+    });
   });
   await new Promise<void>((resolve) =>
     upstream.listen(0, "127.0.0.1", resolve),
@@ -139,6 +147,51 @@ describe("recording proxy", () => {
       discarded: 0,
       passthrough: {},
     });
+  });
+
+  it("replays a response with the changing values of the current request", async () => {
+    // The model repeats the memory id of the request, split over two
+    // deltas, and quotes it in its thinking.
+    respond = (body) => {
+      const id = /"id":"([^"]+)"/.exec(body)![1]!;
+      const delta = (type: string, field: string, text: string) =>
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type, [field]: text } })}\n\n`;
+      return [
+        delta("thinking_delta", "thinking", `Archive ${id}.`),
+        delta("input_json_delta", "partial_json", `{"id":"${id.slice(0, 10)}`),
+        delta("input_json_delta", "partial_json", `${id.slice(10)}"}`),
+      ].join("");
+    };
+    const request = (id: string, at: string) => ({
+      messages: [{ content: "forget it", memories: [{ id, at }] }],
+    });
+    const first = "0b7c6a2e-1f4d-4c1a-9b8e-2d3f4a5b6c7d";
+    const second = "9f8e7d6c-5b4a-4321-8fed-cba987654321";
+    const running = await start("auto");
+    await session(running, [request(first, "2026-10-07T03:18:03.123Z")]);
+
+    const [replayed] = await session(running, [
+      request(second, "2026-10-09T11:00:00.456Z"),
+    ]);
+
+    expect(replayed!.source).toBe("replayed");
+    expect(liveRequests).toBe(1);
+    // One delta per block, with the id of this run. Thinking keeps the
+    // recorded text, because a signature covers it.
+    const events = replayed!.body
+      .split("\n\n")
+      .filter(Boolean)
+      .map((event) => JSON.parse(event.split("data: ")[1]!).delta);
+    expect(events).toEqual([
+      { type: "thinking_delta", thinking: `Archive ${first}.` },
+      { type: "input_json_delta", partial_json: `{"id":"${second}"}` },
+    ]);
+    const [file] = await files();
+    const recording = await readFile(
+      path.join(directory, "model", file!),
+      "utf8",
+    );
+    expect(recording).toContain("<<uuid:1>>");
   });
 
   it("fails a request without a recording in replay mode and sends nothing", async () => {

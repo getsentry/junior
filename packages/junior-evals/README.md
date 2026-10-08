@@ -284,11 +284,18 @@ process and has no Junior code, so it can move out of this repository.
   `src/recording-rules.ts`. It refuses all other origins with HTTP 403.
 - The recordings are in `recordings/<rule>/`. A recording answers a request
   when the method, URL, body, and the `key.headers` of the rule are the same.
-  The key ignores the clock time of the run: ISO times, Unix milliseconds,
-  and local times such as `Oct 7, 2026, 10:05 PM`. A fixture cannot make
-  these stable. A recording keeps the response, the test that
-  recorded it, and a short hash of each part of the request. It does not
-  keep the request body.
+  A recording keeps the response, the test that recorded it, and a short
+  hash of each part of the request. It does not keep the request body.
+- The `model` rule names the values that change on each run: UUIDs, ISO
+  times and dates, Unix milliseconds, and local times such as
+  `Oct 7, 2026, 10:05 PM`. The product makes these, so a fixture cannot make
+  them stable. The key sees each one as `<<name>>`. A recorded response keeps
+  a value of its request as `<<name:n>>`, and a replay writes the value of
+  the current run there. So when the model archives memory `<<uuid:2>>`, the
+  replay archives the memory of this run. Thinking blocks keep their
+  recorded text, because their signature covers it.
+- The proxy merges the deltas of each content block in a model stream into
+  one event before it records the stream, so a value is never split.
 - A request without a recording goes live. When the test passes, the proxy
   writes its new recordings. A failed test writes nothing. A 429 or 5xx
   response is never recorded. A replay does not write the file again.
@@ -304,11 +311,11 @@ process and has no Junior code, so it can move out of this repository.
   You can commit the new recordings with your change. Do a check for
   secret-like values before you commit them.
 - The Slack mock takes its timestamps and channel ids from the test name.
-  Setup data, web Conversations, and memories take their ids from
+  Setup data and web Conversations take ids that are not UUIDs from
   `fixtureId()` in `src/fixture/ids.ts`. Thus the requests of a test are the
-  same on each run. If a test sends a
-  value that changes on each run, make the fixture send a stable value. Do
-  not add the value to `key.ignore`: a replayed response can depend on it.
+  same on each run. If a test sends another value that changes on each run,
+  make the fixture send a stable value. If only the product can make it,
+  such as a new id format, add a pattern to the `values` of the rule.
 - The AI SDK sends no model request when it has no gateway credential. To
   replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
 

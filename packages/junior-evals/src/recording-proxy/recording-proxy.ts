@@ -10,7 +10,9 @@
  *
  * The key of a request is the hash of its rule, method, URL, and body. JSON
  * bodies are compared with sorted keys. A rule can add request headers to
- * the key and remove changing values, such as times, from the body.
+ * the key. It can also name changing values, such as ids and times
+ * (`values.ts`). The key sees each of them as `<<name>>`, and a replayed
+ * response gets the values of the current request back.
  *
  * A recording also keeps a short hash of each part of its request
  * (`request-parts.ts`). When a request has no recording, the proxy finds
@@ -63,6 +65,17 @@ import {
   type KeyedRequest,
   type RequestParts,
 } from "./request-parts.ts";
+import {
+  isEventStream,
+  mapStreamEvents,
+  mergeStreamDeltas,
+} from "./streams.ts";
+import {
+  fillValues,
+  templateValues,
+  type RequestValues,
+  type ValuePatterns,
+} from "./values.ts";
 
 export type RecordingMode = "auto" | "off" | "record" | "replay";
 
@@ -83,9 +96,16 @@ export interface RecordingRule {
   key?: {
     /** Request headers that are also in the key. Names are lowercase. */
     headers?: string[];
-    /** Regular expression sources. The key ignores their matches in the body. */
-    ignore?: string[];
   };
+  /**
+   * Values in the request body that change from run to run, by name. Each
+   * value is a regular expression source, such as one of
+   * `VALUE_PATTERNS`. When two patterns match at the same place, the first
+   * one wins. The key sees each value as `<<name>>`. A recorded response
+   * keeps a value of its request as `<<name:n>>`, and a replay writes the
+   * value of the current request there.
+   */
+  values?: ValuePatterns;
 }
 
 export interface RecordingProxyConfig {
@@ -231,14 +251,33 @@ function keyHeaders(
   );
 }
 
-/** The recording key of a request. */
-function recordingKey(rule: RecordingRule, request: KeyedRequest): string {
+/** The recording key of a request, from its normalized body. */
+function recordingKey(
+  rule: RecordingRule,
+  request: KeyedRequest,
+  normalizedBody: string,
+): string {
   const parts = [RECORDING_VERSION, rule.name, request.method, request.url];
   for (const [name, value] of Object.entries(request.headers)) {
     parts.push(`${name}: ${value}`);
   }
-  parts.push(normalizeBody(request.body, rule.key?.ignore ?? []));
+  parts.push(normalizedBody);
   return createHash("sha256").update(parts.join("\n")).digest("hex");
+}
+
+/**
+ * The response body as a recording keeps it. A stream gets one delta per
+ * content block, and each value of the request becomes a placeholder.
+ */
+function templateBody(
+  body: string,
+  contentType: string | undefined,
+  values: RequestValues,
+): string {
+  if (!isEventStream(contentType)) return templateValues(body, values);
+  return mapStreamEvents(mergeStreamDeltas(body), (event) =>
+    templateValues(event, values),
+  );
 }
 
 function matches(
@@ -322,6 +361,7 @@ async function toRecording(
   method: string,
   url: string,
   parts: RequestParts,
+  values: RequestValues,
   session: string | undefined,
   response: http.IncomingMessage,
 ): Promise<Recording> {
@@ -338,7 +378,9 @@ async function toRecording(
     session,
     request: { method, url, parts },
     response: {
-      body: isText ? body.toString("utf8") : body.toString("base64"),
+      body: isText
+        ? templateBody(body.toString("utf8"), contentType, values)
+        : body.toString("base64"),
       bodyEncoding: isText ? "utf8" : "base64",
       headers,
       status: response.statusCode ?? 502,
@@ -347,14 +389,18 @@ async function toRecording(
   };
 }
 
+/** Send a recording, with the changing values of the current request. */
 function writeRecording(
   target: http.ServerResponse,
   { response }: Recording,
+  values: RequestValues,
   source: "live" | "replayed",
 ): void {
   const body = NULL_BODY_STATUSES.has(response.status)
     ? Buffer.alloc(0)
-    : Buffer.from(response.body, response.bodyEncoding);
+    : response.bodyEncoding === "utf8"
+      ? Buffer.from(fillValues(response.body, values))
+      : Buffer.from(response.body, "base64");
   target.writeHead(response.status, response.statusText || undefined, {
     ...response.headers,
     "content-length": String(body.length),
@@ -426,6 +472,7 @@ export async function startRecordingProxy(
     file: string,
     parts: RequestParts,
     request: KeyedRequest,
+    normalizedBody: string,
     current: Session | undefined,
   ) => {
     const closest = await indexes.get(rule.name)!.closest(parts, current?.name);
@@ -445,10 +492,9 @@ export async function startRecordingProxy(
       `[recording-proxy] No ${rule.name} recording${where}: ${why}\n`,
     );
     if (config.requestDirectory) {
-      const normalized = normalizeBody(request.body, rule.key?.ignore ?? []);
-      let body: unknown = normalized;
+      let body: unknown = normalizedBody;
       try {
-        body = JSON.parse(normalized);
+        body = JSON.parse(normalizedBody);
       } catch {
         // Keep the text of a body that is not JSON.
       }
@@ -554,12 +600,13 @@ export async function startRecordingProxy(
       method,
       url: url.href,
     };
+    const normalized = normalizeBody(keyed.body, rule.values);
     const file = path.join(
       config.directory,
       rule.name,
-      `${recordingKey(rule, keyed)}.json`,
+      `${recordingKey(rule, keyed, normalized.text)}.json`,
     );
-    const parts = requestParts(keyed, rule.key?.ignore ?? []);
+    const parts = requestParts(keyed, rule.values);
     if (recordingMode === "auto" || recordingMode === "replay") {
       const recording = await readRecording(file);
       if (recording) {
@@ -580,10 +627,10 @@ export async function startRecordingProxy(
           backfill,
           true,
         );
-        writeRecording(outgoing, recording, "replayed");
+        writeRecording(outgoing, recording, normalized.values, "replayed");
         return;
       }
-      await diagnose(rule, file, parts, keyed, current);
+      await diagnose(rule, file, parts, keyed, normalized.text, current);
       if (recordingMode === "replay") {
         counts.missed += 1;
         if (current) current.missed += 1;
@@ -609,6 +656,7 @@ export async function startRecordingProxy(
       method,
       url.href,
       parts,
+      normalized.values,
       current?.name,
       await sendUpstream(allowed, requestPath, method, headers, body),
     );
@@ -616,7 +664,7 @@ export async function startRecordingProxy(
     if (!clientGone && !isTemporaryStatus(recording.response.status)) {
       await keep(file, recording, true, false);
     }
-    writeRecording(outgoing, recording, "live");
+    writeRecording(outgoing, recording, normalized.values, "live");
   };
 
   const serve =

@@ -10,6 +10,11 @@
  * Like the server, this file uses only Node built-ins.
  */
 import { createHash } from "node:crypto";
+import {
+  extractValues,
+  type RequestValues,
+  type ValuePatterns,
+} from "./values.ts";
 
 /** A short hash of each part of a request, by part name. */
 export type RequestParts = Record<string, string>;
@@ -39,15 +44,6 @@ export function stableStringify(value: unknown): string {
     .join(",")}}`;
 }
 
-/** Replace the matches of the ignore patterns. */
-export function removeIgnored(text: string, ignore: string[]): string {
-  let result = text;
-  for (const pattern of ignore) {
-    result = result.replace(new RegExp(pattern, "g"), "<ignored>");
-  }
-  return result;
-}
-
 function parseJson(body: string): unknown {
   try {
     return body ? JSON.parse(body) : undefined;
@@ -56,12 +52,18 @@ function parseJson(body: string): unknown {
   }
 }
 
-/** The body as the key sees it: sorted JSON without ignored values. */
-export function normalizeBody(body: string, ignore: string[]): string {
+/**
+ * The body as the key sees it: sorted JSON, with each changing value as
+ * `<<name>>`. Also returns the changing values, in their order.
+ */
+export function normalizeBody(
+  body: string,
+  patterns: ValuePatterns | undefined,
+): { text: string; values: RequestValues } {
   const json = parseJson(body);
-  return removeIgnored(
+  return extractValues(
     json === undefined ? body : stableStringify(json),
-    ignore,
+    patterns,
   );
 }
 
@@ -71,7 +73,7 @@ const hash = (text: string) =>
 /** The parts of a request. */
 export function requestParts(
   request: KeyedRequest,
-  ignore: string[],
+  patterns: ValuePatterns | undefined,
 ): RequestParts {
   const parts: RequestParts = {
     method: hash(request.method),
@@ -82,11 +84,13 @@ export function requestParts(
   }
   const json = parseJson(request.body);
   if (json === null || typeof json !== "object" || Array.isArray(json)) {
-    if (request.body) parts.body = hash(normalizeBody(request.body, ignore));
+    if (request.body) {
+      parts.body = hash(normalizeBody(request.body, patterns).text);
+    }
     return parts;
   }
   const part = (value: unknown) =>
-    hash(removeIgnored(stableStringify(value), ignore));
+    hash(extractValues(stableStringify(value), patterns).text);
   for (const [field, value] of Object.entries(json)) {
     if (value === undefined) continue;
     if (Array.isArray(value)) {

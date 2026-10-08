@@ -247,11 +247,7 @@ export async function insertMemory(args: {
       }),
       userId: identity.userId,
     },
-    {
-      // Recall prompts show memory ids to the model.
-      createId: () => fixtureId("memory", 32),
-      embedder: createPluginEmbedder("memory"),
-    },
+    { embedder: createPluginEmbedder("memory") },
   );
   const input = {
     content: args.content,

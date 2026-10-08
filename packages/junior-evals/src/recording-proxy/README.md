@@ -13,6 +13,9 @@ the proxy can move to its own package or repository.
 - `recordings.ts`: the recording files, and prune.
 - `request-parts.ts`: the key of a request, and the request parts that
   miss diagnosis compares.
+- `values.ts`: changing values, such as ids and times, and their
+  placeholders.
+- `streams.ts`: merges the deltas of a recorded model stream.
 - `certificates.ts`: the certificate authority for HTTPS.
 - `client.ts`: starts the server in its own process and calls its control
   API.
@@ -26,6 +29,7 @@ import {
   describeRecordingStats,
   spawnRecordingProxy,
 } from "./client";
+import { VALUE_PATTERNS } from "./values";
 
 const proxy = await spawnRecordingProxy({
   directory: "recordings",
@@ -35,7 +39,8 @@ const proxy = await spawnRecordingProxy({
     {
       name: "model",
       match: { method: "POST", url: "https://ai-gateway.vercel.sh/" },
-      key: { headers: ["ai-model-id"], ignore: [ISO_TIME] },
+      key: { headers: ["ai-model-id"] },
+      values: { uuid: VALUE_PATTERNS.uuid, time: VALUE_PATTERNS.isoTime },
     },
   ],
 });
@@ -78,14 +83,39 @@ await proxy.close();
   `https://ai-gateway.vercel.sh`. It refuses all other origins with HTTP 403.
   The upstream host always comes from this list, not from the client.
 - `rules`: the traffic to record. `match` has `method`, `url` (a prefix),
-  and `headers`. `key.headers` adds request headers to the key.
-  `key.ignore` lists regular expressions that the key ignores in the body,
-  such as times.
+  and `headers`. `key.headers` adds request headers to the key. `values`
+  names the values that change from run to run (see below).
 - `usedFile`: when the proxy stops, it lists here the recordings that
   sessions used. A failed session counts only the recordings it replayed.
 - `requestDirectory`: for each miss, the proxy writes the request as the key
   sees it, and its diagnosis, to `<requestDirectory>/<rule>/<key>.json`.
   These files contain request bodies. Do not commit them.
+
+## Changing values
+
+Ids and times change on each run, and a response often repeats them. For
+example, the model archives the memory with the id that its request
+showed. `values` of a rule maps a name to a regular expression source.
+`VALUE_PATTERNS` in `values.ts` has `uuid`, `isoTime`, `date`, and
+`epochMs`. When two patterns match at the same place, the first one wins.
+
+- The key sees each value as `<<name>>`. So two runs with other ids or
+  times use the same recording.
+- When the proxy records a response, it writes each value of the request as
+  `<<name:n>>`: the n-th value of that name in the request.
+- On replay, the proxy writes the n-th value of the current request there.
+  A replayed response thus uses the ids of this run.
+- A value that the response makes itself, such as a date that a model
+  calculates, stays as it was recorded.
+
+Model streams send a tool call in many small deltas, so a value can be
+split over two events. Before it records a `text/event-stream`, the proxy
+merges the deltas of each Anthropic Messages content block into one event.
+Thinking blocks keep their recorded text, because their signature covers
+it, and the provider refuses a changed thinking block.
+
+Keep the patterns narrow. A broad pattern makes requests that differ in a
+real way use the same recording.
 
 ## Misses
 

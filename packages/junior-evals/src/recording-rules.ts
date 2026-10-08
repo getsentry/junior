@@ -18,22 +18,25 @@ import type {
   RecordingProxyConfig,
   RecordingRule,
 } from "./recording-proxy/recording-proxy";
+import { VALUE_PATTERNS } from "./recording-proxy/values";
 
 /**
- * The forms of the clock time of the run. A fixture cannot make them
- * stable: the prompt shows when each earlier message was stored, and tool
- * results show the current time, the time of a new schedule, or the expiry
- * of a new watch.
+ * Values in model requests that change from run to run. The fixture cannot
+ * make them stable: the product makes ids with `randomUUID()`, the prompt
+ * shows when each earlier message and memory was stored, and tool results
+ * show the current time, the time of a new schedule, or the expiry of a new
+ * watch. The proxy keys requests without them, and a replayed response gets
+ * the values of the current run (`recording-proxy/values.ts`).
  */
-const CLOCK_TIMES = [
-  // An ISO time, in UTC or with an offset or in local time.
-  String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?`,
-  // Unix milliseconds from 2023 to 2033, such as `expiresAtMs` or a file
-  // name. Slack timestamps have seconds, so they do not match.
-  String.raw`\b1[789]\d{11}\b`,
-  // A local time for people, such as `Oct 7, 2026, 10:05 PM`.
-  String.raw`\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}, \d{4}, \d{1,2}:\d{2}\s?[AP]M\b`,
-];
+const CHANGING_VALUES = {
+  uuid: VALUE_PATTERNS.uuid,
+  time: VALUE_PATTERNS.isoTime,
+  date: VALUE_PATTERNS.date,
+  "epoch-ms": VALUE_PATTERNS.epochMs,
+  // A local time for people, such as `Oct 7, 2026, 10:05 PM`, or the file
+  // time of `ls -l` in the sandbox, such as `Oct  8 05:04`.
+  "local-time": String.raw`\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2}(?:, \d{4}, \d{1,2}:\d{2}\s?[AP]M| \d{2}:\d{2})\b`,
+};
 
 const RECORDING_RULES: RecordingRule[] = [
   {
@@ -49,8 +52,8 @@ const RECORDING_RULES: RecordingRule[] = [
         "ai-language-model-streaming",
         "ai-model-id",
       ],
-      ignore: CLOCK_TIMES,
     },
+    values: CHANGING_VALUES,
   },
   {
     // Public pages that the `webFetch` tool reads.
