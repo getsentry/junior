@@ -83,9 +83,19 @@ const listResponseSchema = z.object({
   nextPageToken: z.string().optional(),
 });
 
+type EventTime = z.infer<typeof eventTimeSchema>;
+
+/** Google's all-day `end.date` is exclusive; return the last day of the event. */
+function lastAllDayDate(end: EventTime): string | undefined {
+  if (!end.date) return undefined;
+  const day = new Date(`${end.date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
 function eventLabel(
-  start: z.infer<typeof eventTimeSchema>,
-  end: z.infer<typeof eventTimeSchema>,
+  start: EventTime,
+  end: EventTime,
   timeZone: string,
 ): string {
   if (start.dateTime && end.dateTime) {
@@ -95,7 +105,11 @@ function eventLabel(
       timeZone,
     );
   }
-  return `${start.date ?? "unknown date"}, all day`;
+  const first = start.date ?? "unknown date";
+  const last = lastAllDayDate(end);
+  return last && last !== first
+    ? `${first} to ${last}, all day`
+    : `${first}, all day`;
 }
 
 /**
@@ -159,7 +173,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
         events: items
           .filter((event) => event.status !== "cancelled")
           .map((event) => ({
-            end: event.end.dateTime ?? event.end.date ?? "",
+            end: event.end.dateTime ?? lastAllDayDate(event.end) ?? "",
             eventId: event.id,
             label: eventLabel(event.start, event.end, input.timeZone),
             start: event.start.dateTime ?? event.start.date ?? "",

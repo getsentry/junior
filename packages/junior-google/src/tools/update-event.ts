@@ -140,15 +140,23 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         );
       }
       const attendees = event.attendees ?? [];
-      if (!attendees.some((attendee) => attendee.email === requester)) {
+      // Google can return directory capitalization; inputs are lowercased.
+      const emailKey = (email: string) => email.toLowerCase();
+      if (
+        !attendees.some((attendee) => emailKey(attendee.email) === requester)
+      ) {
         throw new PluginToolInputError(
           "Only people invited to this event can ask Junior to change it.",
         );
       }
 
       const removed = new Set(input.removeAttendees);
-      const kept = attendees.filter((attendee) => !removed.has(attendee.email));
-      const existing = new Set(kept.map((attendee) => attendee.email));
+      const kept = attendees.filter(
+        (attendee) => !removed.has(emailKey(attendee.email)),
+      );
+      const existing = new Set(
+        kept.map((attendee) => emailKey(attendee.email)),
+      );
       const added = input.addAttendees
         .filter((email) => !existing.has(email))
         .map((email) => ({ email }));

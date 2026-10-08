@@ -196,6 +196,17 @@ describe("Google Calendar tools", () => {
             id: "event2",
             start: { dateTime: "2026-10-12T11:00:00-07:00" },
           },
+          // All-day events: Google's end date is exclusive.
+          {
+            end: { date: "2026-10-13" },
+            id: "allDay",
+            start: { date: "2026-10-12" },
+          },
+          {
+            end: { date: "2026-10-15" },
+            id: "offsite",
+            start: { date: "2026-10-12" },
+          },
           {
             end: { dateTime: "2026-10-12T14:00:00-07:00" },
             id: "event3",
@@ -233,6 +244,12 @@ describe("Google Calendar tools", () => {
           title: "Planning",
         },
         { eventId: "event2" },
+        { end: "2026-10-12", eventId: "allDay", label: "2026-10-12, all day" },
+        {
+          end: "2026-10-14",
+          eventId: "offsite",
+          label: "2026-10-12 to 2026-10-14, all day",
+        },
       ],
       visible: true,
     });
@@ -247,9 +264,11 @@ describe("Google Calendar tools", () => {
 
   it("changes Junior's event only for people invited to it", async () => {
     const event = {
+      // Google can return directory capitalization.
       attendees: [
-        { email: REQUESTER, responseStatus: "accepted" },
-        { email: "bob@example.com", responseStatus: "needsAction" },
+        { email: REQUESTER.toUpperCase(), responseStatus: "accepted" },
+        { email: "Bob@example.com", responseStatus: "needsAction" },
+        { email: "Carol@example.com", responseStatus: "accepted" },
       ],
       end: { dateTime: "2026-10-12T10:30:00-07:00" },
       id: "event1",
@@ -299,8 +318,8 @@ describe("Google Calendar tools", () => {
     expect(await patch.request.json()).toEqual({
       // Existing attendees keep their response status.
       attendees: [
-        { email: REQUESTER, responseStatus: "accepted" },
-        { email: "carol@example.com" },
+        { email: REQUESTER.toUpperCase(), responseStatus: "accepted" },
+        { email: "Carol@example.com", responseStatus: "accepted" },
       ],
       end: { dateTime: input.end, timeZone: "America/Los_Angeles" },
       start: { dateTime: input.start, timeZone: "America/Los_Angeles" },
