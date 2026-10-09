@@ -129,6 +129,15 @@ describe("Thread Continuity", () => {
   `conversation.threadTitles` has the titles that Junior gave the Slack
   thread. Slack shows a status for a channel thread and for a direct message
   in a thread. Slack shows a title only for a direct message in a thread.
+- `rejectNextModelRequest()` in `src/fixture/gateway.ts` makes the model
+  provider reject the next model request of the agent, as it does when it
+  blocks a request under its usage policy. Junior does not retry, so the turn
+  fails and the person sees a failure notice. The fixture returns only the
+  provider error. It never writes a model answer.
+- `rejectNextSlackReply()` in `src/fixture/slack.ts` makes Slack reject the
+  next thread reply of Junior in the test. The turn fails and Junior stores
+  no reply. The person sees a failure notice, which is in
+  `conversation.replies`.
 - Slack sends a forwarded message and the content of an app message outside
   the message text. The fixture builds those Slack shapes, so a test gives
   only the text.
@@ -142,8 +151,13 @@ describe("Thread Continuity", () => {
   also accepts a recorded conversation from `src/fixture/recordings/`. Export
   one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
-  `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
-  waits, so the product decides whether it steers, waits, or stops the turn.
+  `tool_request`, `reply`, or `paused`. Its `send(input)` posts an input while
+  the turn waits, so the product decides whether it steers, waits, or stops
+  the turn.
+  `paused` means that a turn stopped before it finished, for example at its
+  deadline, and Junior queued the rest of it. The fixture sees this at the
+  queue, which it replaces. The rest of the turn waits until the handler
+  finishes, so a sent input arrives before the turn continues.
   `sendDuringFirstModelRequest(inputs)` in `src/fixture/progress.ts` sends
   inputs while the first model request waits.
 - Insert functions in `src/fixture/insert.ts` write setup data through the
@@ -348,7 +362,8 @@ Its `README.md` tells how it keys, records, and replays requests.
     `src/fixture/ids.ts`.
   - The `values` of the model rule in `src/recording-rules.ts` cover ids and
     times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
-    ISO times and dates, Unix milliseconds, and local times.
+    ISO times and dates, Unix milliseconds, local times, and the event id
+    in a failure notice.
   - The proxy remembers the values of each request in a test. A later
     request of the same test that repeats one, for example a short commit id
     that the model quotes in its reply, gets the same placeholder.

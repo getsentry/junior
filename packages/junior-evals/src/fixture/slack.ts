@@ -8,6 +8,7 @@
  */
 import { createHash, createHmac } from "node:crypto";
 import { http, HttpResponse } from "msw";
+import { onTestFinished } from "vitest";
 import { getChatConfig, getSlackSigningSecret } from "@/chat/config";
 import { mswServer } from "@junior-tests/msw/server";
 import {
@@ -15,6 +16,7 @@ import {
   chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsRepliesPage,
+  slackError,
   usersInfoOk,
 } from "@junior-tests/fixtures/slack/factories/api";
 import {
@@ -193,6 +195,19 @@ function slackBaseSeconds(testName: string): number {
   return SLACK_TS_EPOCH_SECONDS + (hash.readUInt32BE(0) % 10_000_000);
 }
 
+let rejectedReplies = 0;
+
+/**
+ * Make Slack reject the next thread reply that Junior posts in this test, as
+ * Slack does when Junior can no longer post in the channel.
+ */
+export function rejectNextSlackReply(): void {
+  rejectedReplies += 1;
+  onTestFinished(() => {
+    rejectedReplies = 0;
+  });
+}
+
 /**
  * Install the fixture Slack handlers for the current test. `testName` makes
  * the timestamps and channel ids of the test the same on each run.
@@ -259,6 +274,10 @@ export function installSlackMock(testName: string): SlackMock {
     http.post("https://slack.com/api/chat.postMessage", async ({ request }) => {
       const params = await readSlackParams(request);
       const channel = params.channel ?? "";
+      if (params.thread_ts && rejectedReplies > 0) {
+        rejectedReplies -= 1;
+        return HttpResponse.json(slackError({ error: "channel_not_found" }));
+      }
       const post: SlackPost = {
         channel,
         text: readPostBody(params),

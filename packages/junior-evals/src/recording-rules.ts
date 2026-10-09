@@ -36,6 +36,8 @@ const CHANGING_VALUES = {
   // A local time for people, such as `Oct 7, 2026, 10:05 PM`, or the file
   // time of `ls -l` in the sandbox, such as `Oct  8 05:04`.
   "local-time": String.raw`${NOT_AFTER_WORD}(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}\d{1,2}(?:, \d{4}, \d{1,2}:\d{2}\s?[AP]M| \d{2}:\d{2})\b`,
+  // The reference of a failure reply, such as `event_id=59063a3f...`.
+  "event-id": String.raw`(?<=event_id=)[0-9a-f]{32}(?![0-9A-Za-z])`,
 };
 
 const RECORDING_RULES: RecordingRule[] = [

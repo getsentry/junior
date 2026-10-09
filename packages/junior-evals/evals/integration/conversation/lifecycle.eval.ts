@@ -2,6 +2,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { describe, expect } from "vitest";
 import { slackMention, reply, webMessage } from "@junior-evals/fixture/inputs";
+import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -79,7 +80,7 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
-  test("when a tool call is interrupted at a turn deadline, continue the task to completion", async ({
+  test("when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between", async ({
     agent,
   }) => {
     // The first release push lands remotely but stalls past the turn deadline.
@@ -89,14 +90,27 @@ describe("Lifecycle and Resilience", () => {
     // before it. Live model requests can take more than 15 seconds, and a
     // replay returns them at once, so a short deadline gives a recording that
     // a replay cannot follow. The push stalls for 45 seconds.
+    // A person writes again while the turn waits to continue. The continued
+    // turn takes that message too.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: { turnTimeoutMs: 30_000 },
     });
+    let sentWhilePaused = false;
     const conversation = await run(
       slackMention(
         "Ship the release with mcp__eval-operation__release-push, then tell me the final remote status from mcp__eval-operation__release-status.",
       ),
+      {
+        onProgress: async (progress, { send }) => {
+          if (progress.type === "paused" && !sentWhilePaused) {
+            sentWhilePaused = true;
+            await send(
+              slackMention("Also end your reply with the line: Owner: Dana"),
+            );
+          }
+        },
+      },
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -131,5 +145,33 @@ describe("Lifecycle and Resilience", () => {
       ),
     ).not.toHaveLength(0);
     expect(conversation.replies).toHaveLength(1);
+    expect(sentWhilePaused).toBe(true);
+    expect(conversation.replies[0]!.text).toContain("Owner: Dana");
+  });
+
+  test("when the model provider rejects a request, Junior posts a safe failure reply and answers the next message", async ({
+    run,
+  }) => {
+    rejectNextModelRequest();
+    const conversation = await run(
+      slackMention("The code word for the launch is maple. Reply with: noted"),
+    );
+
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    expect(conversation.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("content policy"),
+    ]);
+    // The reply does not have the text of the provider.
+    expect(conversation.replies[0]!.text).not.toContain("flagged");
+    expect(conversation.statuses[0]).not.toBe("");
+    expect(conversation.statuses.at(-1)).toBe("");
+
+    const next = await conversation.continue(
+      slackMention("Which code word did I give you for the launch?"),
+    );
+
+    expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(next.replies).toHaveLength(1);
+    expect(next.replies[0]!.text).toMatch(/maple/i);
   });
 });

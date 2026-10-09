@@ -3,12 +3,14 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a model request or its response. Two requests are
- * not model requests. Image generation is a third-party image API, so the
+ * reacts. It never changes a model request or its response, and it never
+ * writes a model answer. A test can make the provider reject one agent
+ * request with `rejectNextModelRequest()`. Two requests are not model requests. Image generation is a third-party image API, so the
  * observer answers it with a 1x1 PNG. `webSearch` is a third-party search
  * provider, so `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
+import { onTestFinished } from "vitest";
 import { mswServer } from "@junior-tests/msw/server";
 import { answerWebSearch } from "./web";
 
@@ -25,6 +27,20 @@ async function isImageGeneration(request: Request): Promise<boolean> {
   return (
     Array.isArray(payload.modalities) && payload.modalities.includes("image")
   );
+}
+
+let rejectedModelRequests = 0;
+
+/**
+ * Make the model provider reject the next model request of the agent in this
+ * test, as it does when it blocks a request under its usage policy. Junior
+ * does not retry such a request, so the turn fails.
+ */
+export function rejectNextModelRequest(): void {
+  rejectedModelRequests += 1;
+  onTestFinished(() => {
+    rejectedModelRequests = 0;
+  });
 }
 
 export type GatewayProgress =
@@ -113,7 +129,10 @@ export function installGatewayObserver(): GatewayObserver {
         });
       }
       const hook = progressHook;
-      if (!hook || !request.url.startsWith(GATEWAY_MESSAGES_URL)) {
+      if (
+        (!hook && rejectedModelRequests === 0) ||
+        !request.url.startsWith(GATEWAY_MESSAGES_URL)
+      ) {
         return passthrough();
       }
       const payload = (await request.clone().json()) as { tools?: unknown[] };
@@ -121,6 +140,21 @@ export function installGatewayObserver(): GatewayObserver {
         // Titles and other side calls do not offer tools.
         return passthrough();
       }
+      if (rejectedModelRequests > 0) {
+        rejectedModelRequests -= 1;
+        return HttpResponse.json(
+          {
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message:
+                "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      if (!hook) return passthrough();
       await hook({ type: "model_request" });
       let response: Response;
       try {

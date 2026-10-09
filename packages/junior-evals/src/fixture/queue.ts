@@ -4,7 +4,12 @@
  * It replaces the Vercel Queue transport. Each sent message runs through the
  * app's worker after its delay, and messages can run at the same time, as on
  * Vercel. The fixture waits for every delivery before a call returns.
+ *
+ * The worker also sends messages itself, for example to continue a turn that
+ * stopped at its deadline. The queue knows such a message because the worker
+ * sends it during a delivery.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -28,6 +33,13 @@ export interface InProcessQueue extends ConversationWorkQueue {
   /** Hold deliveries until `release()`, so inputs form one mailbox batch. */
   hold(): void;
   release(): void;
+  /**
+   * Called before a delivery starts when the worker sent its message. The
+   * delivery waits until the hook finishes.
+   */
+  setRequeueHook(
+    hook: ((conversationId: string) => Promise<void>) | undefined,
+  ): void;
   /** The Conversation of each sent message, in send order. */
   sentConversationIds(): string[];
   /** Failures from deliveries since the last call. */
@@ -48,26 +60,32 @@ export function createInProcessQueue(): InProcessQueue {
   const pending = new Set<Promise<void>>();
   const errors: unknown[] = [];
   const sentConversationIds: string[] = [];
+  // Set while the worker runs a delivery.
+  const inDelivery = new AsyncLocalStorage<true>();
+  let requeueHook: ((conversationId: string) => Promise<void>) | undefined;
 
   const deliver = (
     message: ConversationQueueMessage,
     messageId: string,
     delayMs: number,
+    fromWorker: boolean,
   ) => {
     latestStartAtMs = Math.max(latestStartAtMs, Date.now() + delayMs);
     const delivery = new Promise<void>((resolve) => {
-      const start = () => {
-        if (closed || !consume) {
-          resolve();
-          return;
-        }
-        consume(message, { messageId })
+      const start = async () => {
+        if (fromWorker) await requeueHook?.(message.conversationId);
+        const run = consume;
+        if (closed || !run) return;
+        await inDelivery.run(true, () => run(message, { messageId }));
+      };
+      const startAndSettle = () => {
+        start()
           .catch((error: unknown) => {
             errors.push(error);
           })
           .finally(resolve);
       };
-      const schedule = () => setTimeout(start, delayMs);
+      const schedule = () => setTimeout(startAndSettle, delayMs);
       if (held) {
         waiting.push(schedule);
       } else {
@@ -95,7 +113,12 @@ export function createInProcessQueue(): InProcessQueue {
       if (key) {
         sentKeys.set(key, messageId);
       }
-      deliver(message, messageId, Math.max(0, options?.delayMs ?? 0));
+      deliver(
+        message,
+        messageId,
+        Math.max(0, options?.delayMs ?? 0),
+        inDelivery.getStore() === true,
+      );
       return { messageId };
     },
     connect(next) {
@@ -112,6 +135,9 @@ export function createInProcessQueue(): InProcessQueue {
       for (const schedule of waiting.splice(0)) {
         schedule();
       }
+    },
+    setRequeueHook(hook) {
+      requeueHook = hook;
     },
     sentConversationIds: () => [...sentConversationIds],
     takeErrors: () => errors.splice(0),
