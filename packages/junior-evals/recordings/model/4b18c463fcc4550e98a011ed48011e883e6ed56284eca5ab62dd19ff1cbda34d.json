@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/delivery.eval.ts > Event automation delivery > when events are about different pull requests, run each in its own Conversation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "0d99e863e652",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_072f6fc121db708e016ac83eee9cac87d2a1bd8b9696096399\",\"reasoningEncryptedContent\":\"gAAAAABqyD7wlSS7po8dnry50VTDBn1Q9BsVyt-_FX9tegKd6Myg7n6wWLzOe3NfyIjN7B7sOFrm1pPqJcl3zDIFP9lfPHaB0gs_OK8ZEcXl51hUzXd9yJsw5PtlGjyXDf_1ClQ166w05fMH-FTmDD1CsFi-wadmBTgFBeCoEaP0AIMLc3vkeRpTkzu1TSFg7hL2OeLRsf76gB-6UHzN8y0Z85PTw4ncZnBP-C0Hd0kAL8QHvFtwkkN4xoWv5Dx6QMmXQUgBe0ow0dxQdGUBYxSFOofQqxG-vm8fQW8Ds-XrzbtP1qJqaAXQn21aI3KdKR9RmRffbqFL0WxLG_h3l3s_xt7ABrswnvEllqxhv77R72h9vCkFU9Muzj_aVQd6Xo9p9NzuwvslJmQgNDCt0uHmX_pRKLlWO2Eez44vfBDOw4wvJQeMy5lryrrfw_bGmsc4tWbQLzb9janwvqRYJYqne478JAwuVYrB_GYG6NV7Mshq9EiRs9x4yfv4gYUT5ypXxtz82u0EG48J6fPiXIuom7RyG3Dk9fcWa0yiMR_lj1CY3bA_V63dgXGHXZSR4DZsv7WJZskK9G8WtqgGx0DkI5ZcYu388xFldyDa9Zvoh0AiN_G8mjBRa3LKrbXI7yCNPqjuGflyGLF2UBeQqm1T96GPNZ74SGtTrbnPJPkm04ECoGXUtEo4-goKkiOuV7Xfds82UEeZym5hq_eXu3NnkPsmyjqNuTzxv7n8NYMZWK9Aw_rz5pNwGuufV7m24z1B02snIeyUst5f4oRFn7diW5EhjUuvUQFpN3zVBZfz39L0cQKsEoARp_6WUWyHLqeBHPjcaOuwP-DEOfDivg8_tKApyxYA7XcpcSdpr2fi5t05FbpGoW1CSpPG2fQEJpxsFHuIQCwWr6wzwLN7D8etaosHoNtvTbcQ6CihqhMnMKitCeCHpIIkHW-8YCPUWUVFSCNO36zaS_8dIn5uvKVaJeX-1G49UREJnvr0tmo3orlboOOlmyk3OPY1Qrtfqc_K-WBJTZs3aUkfRvprRgngqRuvRjU0jktePMEiGCH_SZIqxRJXM1IUjoppP9BGsfHiJh_GaRf72F6FQDwuXblkO7I_fA-XE6qbJ1jjG6Co90kpuK5a28XjKq2uKzkuHVLHfzXOgh-fDc3HRVI8L-AtenNGgccl-OaauYDheeoZh57z8UxKt-9IRz2u-oJz2zSMmp-orLlkYuEJcCWQPNttH3SD12ObdYolUJdTUUukhbYg-zpsszhz90Hwy44gQQSJpz0gVZN8lViBwqh34x7chl7SdH_ucBcRzT70fBLu3pKVw1FiyfiZjzdNgQ-EFnAZM68ouCbDw3626NYCMyRchOP7Jc1-1uT0jSd4jVwCROdOqWHc_kFcYvurkW2GxFHaSfrljWMu-G5UrjPGO5RuZFpF7ivk_LL0UxeWhl8OT5PQeSfscUNWLjnFQ6c5W3JfPDdrsyDZe7IuzLK-O2MU9YRGH5VVdhJeJaXBwcv4ADPu3J04jTzyU4r041aNF_q9WY-uD6Fy-GIkswHcgPXcJVJ7SS1vDdG7lpofRWHspNzc_DgVybrAcg_AQlyDEx4EPsp8ZBq3WIBXaSdXeVPcxOSr0J8wjxozw_427c-PIwfW6K8RBrLuUcGGdoRMX0570bd-FemVbN2UlAPyszIBXygBJ01CwGW34-kkf8og0TDs3JtFPMw9jMdpkMs_vEpQfS5EvbRlswTdjM2Rd99PjcW5ijnh1GBNSBiPeXaFnhL6cHjkeOHPCxf1B6168nmwYnn8CcCp9lUxKNN8fcvEsXwv6OkfTy1wOPVIpuH9rY6cpWWIx-Bg8ifTmeUuYOmZtJarq20Q7k96spSOtKu6AYzRHluNxQZwCQwoBWQ0ALTt8LXqo9D0UCU0dtEnYOZYL94S-9nHocrUeuAzOlpMrSIxnE3nqCSDMhOfNWtFaMjRG3kVco5Aw05rJ4bhHtegGK3t-vGeJEo3h2kZFr08vqnm_LOkL-wGGiWxJogQJFDsH0a51JNIH1MP5aIWV43GxO_Z67Drd9o4Tl6fGWDXEKHKkwjKbYS_vgldDhPCPVJGvC54mZI=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"Drafting a short Slack update based on the PR activity and thread context.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_072f6fc121db708e016ac83eef731087d2ba358bac42bdc2ca\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1053,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1050},\"outputTokens\":{\"total\":159,\"text\":44,\"reasoning\":115},\"raw\":{\"input_tokens\":1053,\"input_tokens_details\":{\"cache_write_tokens\":1050,\"cached_tokens\":0},\"output_tokens\":159,\"output_tokens_details\":{\"reasoning_tokens\":115},\"total_tokens\":1212}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_072f6fc121db708e016ac83eedf86c87d29ee99a853397adcf\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791508205861,\"endTime\":1791508208186,\"providerRequestId\":\"req_e3c237e119f642929ed4b9b3427338cd\",\"statusCode\":200,\"providerResponseId\":\"resp_072f6fc121db708e016ac83eedf86c87d29ee99a853397adcf\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"bb7033062cc2daf73094f0243b4d3e47\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00021105\",\"marketCost\":\"0.00021105\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00021105\",\"inferenceCost\":\"0.00021105\",\"inputInferenceCost\":\"0.00013155\",\"outputInferenceCost\":\"0.0000795\",\"generationId\":\"gen_01M4F3BM6NAHKR6R5DFS4H3Z6K\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
