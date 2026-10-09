@@ -1,0 +1,29 @@
+{
+  "session": "evals/sentry/skills.eval.ts > Sentry Skill Workflows > when a Sentry request follows a generic first turn, use the Sentry skill and CLI",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "f6672bf4c9b1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_059b762707a91616016ac7c1e813e887d199eac35e0ec8ca54\",\"reasoningEncryptedContent\":\"gAAAAABqx8Hplkmy5D7SjVBReO1c4i40Iv1a7JpWVj12PT8MCeLzRm2TqfBGzmHjFmrTMawKMv6mrJubgZuJcro40nGMsCgL-tNMFu9nJwApsnZfo1ErdoVTlo6VdCw3HX6cJhiodCkeK33MC8jzKBSWCFSHQz3E4c4wx0ERTM3vtNq6mh4I7_on2TCRbENYqth4soVEowDMa_ckz8s-A6BXGRiZGj8FxLwkpfJ3MYU8GoOpMRgOgkd9C4d8qk63UbvT_lLiODPyN02Hp1d_rIUDPw9bP3qmU9oY05veh9TnJ9a1xDEjGwz1mrL1a9NI5uEDMn5E91ppy-z4TxeuGeIFPUV-H1Mg7asFWsvzBmfRxKa8aPNRoY3wpJXrD0rj4EGz4ifmiA2JwflTsDnqkeSmgljz_ags61Ilh0TPZfPTpN4JAxqlQArYyRd0U1N-g0sug-4YHj6QDsSlFl0Hxp_T5YEChAj_q9g5ooANNkvDg8vHe0gd5b5KGP-e4F3G8izJVCJuqdj_bFX9YCiwQMQ4gRyBGu1FN-I74O7jKVepeQ48RgU2XnmuX-vjqSKM-SSRCcYvfb7iwuaCaoGLA7cN62dwmgJ472K4wY_6-5zR-chnHouYg5ihhMny5hJQCMQHBMvmBIs8srYjoCSh4ZT8TsrNSF6XTxxw3vqhgZ9ZUVBtNESZzmUNrneGfwsZqDRLCQwIzMK6VYp0qp8_zNNd3Z4g9SmdEyFiUou3nwGWJCaagOVltd0Q35U1rT-audtevDuKlHuOJjE5nA2CxWh5a0e3sJRitpB-jroInr7T8vN9v5mQ3pPYcVgD6GqHYj3lYf5W9KMDMvDhD3QTcxYa6pJWd3R_RJWi5uE2CJvj3IT1ONYVP7v2C08CAf0nblmpWAv_SPD_hz3UhiLooSmIoUGi_vNaBll7rjaH388VjapgBqd-LvSO9NlOYoqihVuM8_uFQGDyH2ld8KsWWgWbJn9Uv_wsLXmyx_Fw6enmG5KsD7csVtn3hDTaYwyeRfBKNjv4MeYv0_BiSUgqsPmSgp4skZa8pme0jxHhNeT_4hdGRSmU71Y6SGxw-LTRj0Rpd-LAJjc5WSAI9-ImhGDToE_I0bxNX4raR2zaLff0-1iRCG8c7fE9yBiwD7wj9wm2fNxGx0YiAIEPcT7pDD0o1o1YZFBZZqOgFbKe2yZBhbZX9w7A8oln_Fzzq5ij0uMQB3QxLmcVoBjszswA_WnogYIE-1t5fbeZf7P3JlDAUW-6zI1d-gLChMUhI9ydeCwaz1e7wrabDuQ3jbcN9jw9OSDTh4e-MdzTe04h8dFcwleM6ldGVtVOSzcOlSkvWww3ViI-iok47mx6Di9tWKY-azCwS_WL1_arPkTTqxZq__cC3qF78iG4CpNVlLF2LGwZIfmLG0JvqImjYoeUZSxmuJCJ3s-JBWy4TRryttCG6YIjhCn8_GL45XVDlKPpygMD_TiIb6TuV6JKG6BcLQu3COkw0nDNpVGbyVnGn6b6iTRGM4-ITa5BsAJUxIAR7Cu14BWbtu0l\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"The user asks about the latest issues in getsentry, which requires a current lookup and likely source verification.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_059b762707a91616016ac7c1e8b90c87d1a6806bc7dc4e29d1\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":736,\"noCache\":736,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":94,\"text\":50,\"reasoning\":44},\"raw\":{\"input_tokens\":736,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":94,\"output_tokens_details\":{\"reasoning_tokens\":44},\"total_tokens\":830}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_059b762707a91616016ac7c1e710e887d19687d4caf2d0b125\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476198988,\"endTime\":1791476201377,\"providerRequestId\":\"req_297d119c216745b6a4b560ea506acc1c\",\"statusCode\":200,\"providerResponseId\":\"resp_059b762707a91616016ac7c1e710e887d19687d4caf2d0b125\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"5333e637f02a6af01a07d4f81059cba4\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001206\",\"marketCost\":\"0.0001206\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001206\",\"inferenceCost\":\"0.0001206\",\"inputInferenceCost\":\"0.0000736\",\"outputInferenceCost\":\"0.000047\",\"generationId\":\"gen_01M4E4TVHM2XAYYMA9B53NS1KM\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "session": "evals/integration/conversation/forks.eval.ts > Conversation Forks > when a fork is forked, each fork continues from its own reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "d4735e3a265e",
+      "messages[0]": "95fc74ff7e21",
+      "messages[1]": "7d1ca70b2817",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "d4243d8c92c5",
+      "tools.length": "35135aaa6cc2",
+      "tools[0]": "d098cd1dd937",
+      "tools[1]": "12dba46828ca",
+      "tools[2]": "a1056c279456",
+      "tools[3]": "c40e21f9ef0d",
+      "tools[4]": "d3dd7b468c8f",
+      "tools[5]": "f116e66fefdf",
+      "tools[6]": "6653a0a0a3a9",
+      "tools[7]": "3b6ca120b0fb",
+      "tools[8]": "c7dc1bc2c04d",
+      "tools[9]": "f9054d6c4f64",
+      "tools[10]": "f47ca0d0af13",
+      "tools[11]": "37bbd2f6c311",
+      "tools[12]": "5802c8f4c428",
+      "tools[13]": "ae045899dc37",
+      "tools[14]": "218843320f4d",
+      "tools[15]": "0667eb3022b2",
+      "tools[16]": "93f913ef2874",
+      "tools[17]": "cb8897349d4d",
+      "tools[18]": "95c787875e54",
+      "tools[19]": "23162886a934",
+      "tools[20]": "9da7c42a547b",
+      "tools[21]": "ed13dd55d6be",
+      "tools[22]": "06ea3d798e31",
+      "tools[23]": "98cd636f11ec",
+      "tools[24]": "00fbcd9a6ca2",
+      "tools[25]": "783be0c88076",
+      "tools[26]": "36e632f69c1b",
+      "tools[27]": "e4e3f296282f",
+      "tools[28]": "ec59e4ad36dd",
+      "thinking": "e871cb1e753e"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4EPV94MKW7GJ5Y1VEK1JRBF\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"gwrs1.eyJvcGVuYWkiOnsiaXRlbUlkIjoicnNfMGEzMTMzNTFlY2JkZmZiNTAxNmFjODBiYjBhOWNjODdkMTg2Y2Y5YTg5OWIwZGIzMmUiLCJyZWFzb25pbmdFbmNyeXB0ZWRDb250ZW50IjoiZ0FBQUFBQnF5QXV3SXdMLXJPZlNYc1EyVlZqa05DU2lxVWRnS1lYZGppLThRU0JHaXV4eHRuNkdCdGhlV1RJVU0zWlBkYVpPNElNTVh1QktlOExmLWRzTVdOTEhMSkl5Z0ZLblp2M2JkeUdiZTJuX1Z4UEZId1RGZDZBb09KTTdlOEVvR3JWVmNuekhoNWZiSEJ0UFBtVWFGTWtiM1ZLWDdkN0V4b2I4NUdfUXNweDY1MnIwYTFUX2VFNl85S3c3U2xRbl8yNS1DWDd0ZUYxMHNJSG14eW5wOWFXSXl6YnBYdVZvSFp6RnJjWl8wUXNPbWx3R0V2VHAtOHZ3bWVwM0puNjFHbmNpTHdUSHBIV1ZhVThkT2FGdWxpblNBYThVSldBRmlEckh4U0s0V1BrcXBSQjYxVVI2czA3QkFLWkNFYVN1TGlDTl93OEZmM0l3Z01Ja1pCUHY3WDVUZjdGS1ZkdzQtT0xmS0hsdElOVmhibkVOUlgwa3pEa0stR0ZkRHoydV9Va21ZUHhIbkpWT20yNVBiNldsc3ZWenFKZ1pxTXZlbjU4THVLV3F2dVZibm93NjF5VFNKMUkxX2pJWTFRSl9HdngxTjNlcE5SYmZPb1ZfemdUdDI5NXBEQ0hBYjE0ZzVFZ3BQREFHNmxVOWlERlAyM2lMemtNTDdVSE5JZDJJdTdfM1dyaDRDS1ZCeHlralM0dmE2MUZNQzEyX0gxTl9EUDRRYWR0SURuM0VTX2cwSDFYMUlnX0RzazAxTlpDNDBCTEFhcVYtelJmNU9vVl9pS0N5Y1YzR1NMdHpfVGVFUUNTTzNhaVdjRkVKV2ZjVDBlNGVYMnpQMGgwXzlqVGdhUjlKUjNqcEhpenp6NE9VNTVqU1JZMVJic2Z3MXhiay1jcnBxVlpnRGF1SW5PZnJ4cF9zZlY5OG1QZFpwdDVfcVRsVGxqdUNnRFgxay1rNVNwd2hCV1R6X1B1Z2toQlp0NkRxd183QjVEd0lsdFdJS0JQVzBDY0ZVQk9jeWd2dEJDajVyaHN6cDNSU0xLOF9NU1BvWU00QXJNYWhITk1wTUNzLVc3V0p5Ym1LdkNPd2pDbE9TeE03OThtTzAyTTYwMTNCaDJDajJFWThQaWZHVWhYOV9EQVdXR19YaWQ0dFRmamVlNk1nc1RjdHVscm1ZNllQeFNMX3RicmMyZGc2cGIzeWh6NU9FYnZUbDNxdU9IQ2JkMFJkdnViSndnaENFUE01Y2Q2ZXBjbVZnMXlQcGxsMlRTYV9qZmdnQTZ5U2FWYUNPUFA4WVRSVHhNaEVMZ2NWZ1F6ZVFNQlFkUjFQU3k3VG0zZGpKak02RzM4UGtvNXRLR3pyQ0R3YTJnSWdVMjBvakxXRzMxY2o4VUgybEFlc0lQeFpfTzNSZS1OR1I2NWNjRU5jZ0gyUDhvNlZuaHdJc0dWWUNUMXhSaDFHYU4waTlKWG1iS0pNdlFhYU81MTdPQ2djT0ZjekkyaVFHMHNCRHdNTG5yT2V6ZW5mc3RnTHY3VUx4TFhsLXQwckM4U1MwVVRsRElhMHhJY01iZUNPaG1SRUNEUlFoMzhtY3BaMkdUWXdOZ1gzOVVTSUJoNFRJclV4bDlmM1VMV2t1TUp0cmNQZkdXNlBLM3BJeEpDR1VNbGo3V2hNbXZITUljZ2g4aWZUVDNFS1RXMzlVaXJOdXFyZDBVbkdVNlc5YklvSWRaSXR6b0dmV3ZoM1RjRm1SZHJSMVNDa3p3PT0ifX0\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"Got it—the release codename is **Maple**.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":26,\"cache_creation_input_tokens\":224,\"cache_read_input_tokens\":5609},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0a313351ecbdffb5016ac80baf63e087d1bf19ddc710a36d02\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791495087273,\"endTime\":1791495089237,\"providerRequestId\":\"req_e31c39cdec344c309e7b4499bfd3c077\",\"statusCode\":200,\"providerResponseId\":\"resp_0a313351ecbdffb5016ac80baf63e087d1bf19ddc710a36d02\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"510bdf210df43eba0fc85bc20d23c7c8\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00009739\",\"marketCost\":\"0.00009739\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00009739\",\"inferenceCost\":\"0.00009739\",\"inputInferenceCost\":\"0.00008439\",\"outputInferenceCost\":\"0.000013\",\"generationId\":\"gen_01M4EPV94MKW7GJ5Y1VEK1JRBF\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

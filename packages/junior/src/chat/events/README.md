@@ -38,6 +38,8 @@ Watches route events back into an existing conversation.
   destination or rewrite the conversation id.
 - Root conversations set destination on first upsert. Later event wakes
   use that destination.
+- An automation run's Location starts at the channel top level. Its first
+  post starts the thread, so later event Turns reply there.
 - Ingestion only wakes that Conversation mailbox with plain system input. The
   input contains text and event metadata. Destination and Location stay on the
   Conversation. The shared mailbox worker runs a normal Turn. Slack supplies
@@ -67,6 +69,11 @@ Watches route events back into an existing conversation.
   from the resource type `matchFields`. Core drops events that do not match
   before any wake. `resourceType` and `label` are display metadata, not match
   keys.
+- A resource type may declare the shape of its identifiers. Resource types can
+  share event types, so the identifier shows which one a selector names. Core
+  rejects a watch or event automation whose identifier does not fit its
+  resource type, and the error gives the format. Event type search returns the
+  format.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A conversation may run only a bounded streak of consecutive automated turns.
   After that limit, later event wakes stay quiet until a user message

@@ -819,7 +819,7 @@ describe("turn checkpoint", () => {
           content: [
             {
               type: "text",
-              text: 'Authorization completed for provider "sentry". Continue the blocked request and retry the provider operation if needed.',
+              text: 'Authorization completed for provider "sentry". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that sentry is connected.',
             },
           ],
         },
@@ -1280,7 +1280,8 @@ describe("turn checkpoint", () => {
   it("creates auth-pause records before a prompt checkpoint", async () => {
     const { loadTurnCheckpoint, saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
 
     const authRecord = await saveTurnCheckpoint({
       mode: "paused",
@@ -1307,6 +1308,36 @@ describe("turn checkpoint", () => {
     ).resolves.toMatchObject({
       resumed: true,
       sliceId: 2,
+    });
+
+    // An earlier turn left its reply at the tail of committed history. The
+    // pause keeps that history whole, so it commits without a branch.
+    const committedHistory = [
+      userMessage("earlier question"),
+      assistantMessage("earlier reply", 2),
+    ];
+    await upsertTurnRecord({
+      conversationId: "conversation-auth-history",
+      turnId: "turn-earlier",
+      sliceId: 1,
+      state: "completed",
+      piMessages: committedHistory,
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "auth",
+        conversationId: "conversation-auth-history",
+        turnId: "turn-auth-history",
+        sliceId: 1,
+        messages: committedHistory,
+        beforePrompt: true,
+        errorMessage: "auth pause",
+      }),
+    ).resolves.toMatchObject({
+      state: "paused",
+      piMessages: committedHistory,
+      resumeReason: "auth",
     });
 
     await expect(

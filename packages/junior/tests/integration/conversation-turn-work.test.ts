@@ -21,6 +21,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
+import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
@@ -172,12 +173,16 @@ describe("Conversation mailbox Turn work", () => {
     );
     const run = requireConversationTurn(worker);
 
+    const background: Promise<unknown>[] = [];
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
         run,
         state,
+        waitUntil: (task) => {
+          background.push(task);
+        },
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
@@ -189,17 +194,12 @@ describe("Conversation mailbox Turn work", () => {
       }),
     );
 
-    // Title generation is automatic on human transcript persist and may finish
-    // just after the worker returns completed.
-    await vi.waitFor(
-      async () => {
-        const stored = await conversationStore.get({
-          conversationId: accepted.conversationId,
-        });
-        expect(stored?.title?.trim().length).toBeGreaterThan(0);
-      },
-      { timeout: 5_000 },
-    );
+    // The worker gives title work to `waitUntil`, so the title is stored
+    // when that work settles.
+    await Promise.all(background);
+    await expect(
+      conversationStore.get({ conversationId: accepted.conversationId }),
+    ).resolves.toMatchObject({ title: expect.stringMatching(/\S/) });
 
     const history = await getConversationEventStore().loadHistory(
       accepted.conversationId,
@@ -532,6 +532,12 @@ describe("Conversation mailbox Turn work", () => {
       nowMs: 1,
       title: "Events",
     });
+    // The Watch creator's subject must survive the yield.
+    const credentialSubject = bindTimerWatchCredentialSubject({
+      conversationId,
+      userId: "U123",
+      watchId: "resource-subscription-1",
+    });
     const message = createEventInboundMessage({
       event: {
         eventKey: "checks-failed-1",
@@ -544,6 +550,7 @@ describe("Conversation mailbox Turn work", () => {
       receivedAtMs: 2,
       subscription: {
         conversationId,
+        credentialSubject,
         id: "resource-subscription-1",
       },
       text: "Code change checks failed",
@@ -614,7 +621,10 @@ describe("Conversation mailbox Turn work", () => {
       expect(run).toEqual(
         expect.objectContaining({
           actor: EVENT_SYSTEM_ACTOR,
-          credentialContext: { actor: EVENT_SYSTEM_ACTOR },
+          credentialContext: {
+            actor: EVENT_SYSTEM_ACTOR,
+            subject: credentialSubject,
+          },
           destination,
           disabledFeatures: ["interactive-auth"],
           source,

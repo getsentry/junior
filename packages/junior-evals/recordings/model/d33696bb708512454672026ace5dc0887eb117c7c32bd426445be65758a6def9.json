@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watched event does not serve the intent, stay silent",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "0ad686087760",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_004887f18d3d3b1c016ac7c7b6ce5087d1b896d712706ebeb1\",\"reasoningEncryptedContent\":\"gAAAAABqx8e4TKVC-C9hyLgwsTENlEIpH0xcPl3he7R9S4BdptnlwsD_U6w9Ls0tYL6-bZqCUH7edkr1KeFsF5tLvQYeaA-s_qAWLQ0ehS7BEQTMiaBc8LOpbsCDtRg1uUVGrWvnBvcrTdEZuEipBFJgnBULK8FaOW3yXgsQ-BVw_Y6hF5lv_ZE0dbqxYmSRdqkppdvKHeNhMuiLDcHhSL7ZkcwF22EF_KNh5XIv95IxO-BG4mFfU7rMaAGCYB8Vym9TgeM9cDTFCW7lCuxrdWpgS-AfxsH4zUB4V87b9f6j4mhljs_zS3-M82P8-81oZ89TBpDTNI892wPDpquTafo84myOrNRdx4bcqPiCjYG5AMDzItlpKlgOiLDhGNX4btwqGuv5bjmQKCQdnh7Hr3F2vOUWg3QAPveyrHbvbcjzhHDl9O0vHuFBbay0q9Qm96w6gKJ-ELA3wm4bKN4Bqnrgqof65DV2Sy6rzTvVAbr3-j-HZMhMIcyxu-lEnJq91SOFnG0kJDsalsjh-O2Y6w4EAuKmGtgMluH9HqqspRL0qsXMQexxmJa3-gHbOEXm2WsmkVYcgfMd8go3xg7WRzn0wlvd5oP4nRyWeFInESMlGnIn6SBNr4W26WsCt5ORY5Mm_AQwzBiaKicHbcRrr1rlGvPGDMUOuNCc481QpyGUM43rB8t1YBjTmC5rpn3DOuKAinLWMy0D0F4hjx9lM9Azx4Oq86_5vKOeYzDOVWBbh50r8vpbqtZ2if4oK9e65cH4SxzqPfFdS8JP5ZaV41oJ0q4esabq3FJVi3YX5PTN2C7Z1nr9X_yksfpaUBolk-VUqrbT6nXkOWuPGOW0J-0j-ZELmgavH9oc8f1BPOp7FrcXEYpBJTvW0pRuYgXKkcii3SxYA65lAPcPqkdZfChqmTh-xRNP9rikb0J7MAU3DSsmyj28DFAPvCuIWFxE2KsCrZr1cMIXgS-fCoxNqwGEph1HapnJPELlDfk58ztWjomHN74UVXpBZwQcLOpBAMpIK0OeDJuRrJa4rbeUQ-kLotJx-t1tzN2x5312MoHSf-buBjtbyWccUPmaOIuHVPPO7hY4KhnMj5PM2l3lFN-TH2n_gZm6sCWz2oSvr5E_FSvRyTsDRlQ80TVr8NMMa1-Yk0okMQSvv7JWmniOzcpJ3hqwrxHV6Al4vLuajeq3eBZgQ013lW27VkIW3s9zd7NI_YPxKeinV3SeuQyyPEjbKAT-rmXUqEQPS3ce8plGQbLGmCTZwOXBxtgTD_gqNZ9ghFY4if4sV6UmdE6rrOVSGm6sbiF6AZE74EUcs0sbzfUJclDHQQXntEPvrO9pVRZUQMeGu6e8EsKxDpHmfxL2SR4SxwUWuRPbZvNxst3FSUmgUgct6RqYh3x3GttYhOVq_WOOly-wksm2aNPSf5SQfwlrc2q3ZP5i_U0zGqXxW0bPPlPUdU1-EVybgfb1hYSnYvjBA7gbDIWRE6nlO15HUvFAuvS1KbxErBf1ZI8Su_alhCy_9ftyv3uE_dZKwFm4CXV1y3qOS_5pAsVevpJZ86Alc3IbZrDob2P2A8Ns9AHkR2JyyVxDpeqKuhzm1I5BwTPbOgZTE_rVb3j66CYeFKQvfPaUQG7wLrYzrwP7OlT5xPwT8Sg_8w1DliTgkWct12kabsjn0VMcLvSFETKXu3kEMifwAKK_ySIatnVygf7437MLKw3WMlNex6RPq4K-sj-aki4KRRJh83_kSaj_VUqkL0US8NV0EKxpb0qvlRT4E4t8gZIa4JWTsPjmu5hU70TK38mTCGxbQQAnzVKRNj39x5f_aeYoRsZSQv7AHzOdWsRb3XvPFkTIF91hwPDWa_sh020xaqAfZM7faxsL2tDbgbeH0x09jqKlbqYQL24K8flmdfZqEgiYp2vqhSXpk_40Ab-GQHoseiQVxddxASWos6nCi0T8gyiCrHnH0cd-YD_qwKt2vEq6mlL1OIqtZcOrqMz7f_xU1-Nm9d2lCoypxnNfD1UJUJh47fK1UcNpM8ihReA=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"The task requires interpreting a successful check-suite event without assuming the PR has landed, and likely verifying the PR state before notifying the original Slack thread.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_004887f18d3d3b1c016ac7c7b84df887d1a1ef7bb9c2bc35b9\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1053,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1050},\"outputTokens\":{\"total\":165,\"text\":58,\"reasoning\":107},\"raw\":{\"input_tokens\":1053,\"input_tokens_details\":{\"cache_write_tokens\":1050,\"cached_tokens\":0},\"output_tokens\":165,\"output_tokens_details\":{\"reasoning_tokens\":107},\"total_tokens\":1218}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_004887f18d3d3b1c016ac7c7b6503087d19202086ef56f4bff\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791477686211,\"endTime\":1791477688946,\"providerRequestId\":\"req_ca74793958794cc69a63b9a143262eed\",\"statusCode\":200,\"providerResponseId\":\"resp_004887f18d3d3b1c016ac7c7b6503087d19202086ef56f4bff\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"a048cdbb961aeb5ab105a5ebef2b16e5\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00021405\",\"marketCost\":\"0.00021405\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00021405\",\"inferenceCost\":\"0.00021405\",\"inputInferenceCost\":\"0.00013155\",\"outputInferenceCost\":\"0.0000825\",\"generationId\":\"gen_01M4E687WRJP9ARXZZR7MB73RB\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

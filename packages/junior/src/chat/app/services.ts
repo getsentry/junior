@@ -80,8 +80,8 @@ export function createJuniorRuntimeServices(
   return {
     conversationMemory,
     contextCompactor,
-    executeTurn: async (run, saveResult, timeoutMs) =>
-      await executeTurn(agentRunner, run, saveResult, timeoutMs),
+    executeTurn: async (run, saveResult) =>
+      await executeTurn(agentRunner, run, saveResult),
     subscribedReplyPolicy: createSubscribedReplyPolicy({
       completeObject:
         overrides.subscribedReplyPolicy?.completeObject ?? completeObject,

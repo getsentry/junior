@@ -1,0 +1,29 @@
+{
+  "session": "evals/agent/slack-user-status.eval.ts > Slack User Status > when no custom status is set, report that it is unset",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "1228c645f272",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0f23cf846411f029016ac728ad522087d2b99a8c1910c5acd6\",\"reasoningEncryptedContent\":\"gAAAAABqxyiubsPuKvXSnJu88PS5HrFRX1plwNJvKb9qZujWWPT1Ddejt0AnhIWDtJKm9A4zKYDkaibZ9p7E5lpjgXWoHNeOYSmQu3bWJsK5BlxxZ-_yHKIeJwWXg5C8pKbZL0v0grEnRtCareu81Owu7cNPrEik8s3xioMlCUcuvw2X9VowiD-ZoHVJ7E5I3vy21-7Ri3dAtN4SQO13YGf_wZOrvAXboRc44BjTmZhrMUUs90xu7p3bdGAptr4hHJd9JQlJ5paJCFM8dkX3HbVOmKNE-_d3igDJzQr3IQrjou30i0a1e2jpqN9K4sRZyhvN891p4S80ULeKeQKaoVaog6XVlIG3B-8O5xngavmpa4PR-cbwq_yhffHgE-OanGUg0q0nq8AGWEJJYrvCs_vBCEGg07aJObuz6tNlBGhgS7uORp01WVM-uBVY5HqDfsmwX0hCWiLsx5yo8Pam6M9C-KmteiFTvq-5zqeofZkwxCiwWG_KHCgthwCd4IpIpDGxZQ-CsjMiOtcpFSBQEiagA2AxiZpYjjuhpQgelZo-a-EuGlMCLCcv33S0eWgoZOqDdYnH4iyjpPbni8wYia0qte3SVfQo1r8P58kS9zTC-reCc9AL0j-TE9XQ33FcyoBeln-R-qv7miuylbcPVSIzI17rQ0z830p05BkhTGYx3FL7oWaULL5Sc28jZAPfqGzLZoEWr1VSAvkktGTiDwM7EXUduLwgPEQNR4q3tJMbJj2Tts0Dv8G6Pb3VI_hPgpoU2hUWU6qC4TH3dpuDkJBzeBlIofhw228FXaWIl2yKZSyL5JgnH9bG4YzT1jJG-KAj0RVNYTP-4QNzezHJx_nDudrEZh4OrxaYjKHzlbFlD_9V0dfGD9dvqZXpRAiJZjAO55NVVMqGQsddVlbTWUEU6rmXbIoz3dbRc9NvsZ1Eks87R3YC35MkN6HL0CX7sibRDRuLNzBaLmCbl4k-zf8Wy9F8mgteVNoMhpapAqBP2RZtDHy9DWP73HMDZbZ7b9dYr9E_yp8l9KCv6_pxk-CXe7OtoE2nofY4DEgMrjlaq14GKEoe1Xj3J69QihNN7G6GgUfO1OJ_uZPsQtPPBXleIGrvylKNio49HFkbANFsPNCQHwJlWYbDwOXqH-KO2xG-48M14gokPwD4leLw9l-K2erdh2HiTCW12bARREIuiAt99jiYGTlxbJyZ4-oRzgU_2wUO4xTrOaw7UlO-28Z7CoV3mMnW3QWVZxztLgbbAeNp8n8YMw_wLqkXVUdd53ceS4ilidzq279_6pco2zc26ZA3FzxZQlJeml4u4cTLuwT9L3zsvkUhsuqJSdV68f5U4xyGbm3DI_WBlUIdENYDh3m8Aivv3i7-43WfkHzj298Plh_NTm7vcPmmpxZ0fq_tg1oEngj0D_IgnRM4NdGXJ8vhUpJbSjpoJM2TBFw_t08r08PPMRea3MzC22ZrwTKm4AGrgQzeWtKT-9j-PEqGJyYK2csAvw6HdohGOe6oXNSLgjOQyqc=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This requires checking the user’s current Slack status, which depends on live account information.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f23cf846411f029016ac728adca7c87d289bd965aea3d65f6\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":590,\"noCache\":590,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":82,\"text\":46,\"reasoning\":36},\"raw\":{\"input_tokens\":590,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":82,\"output_tokens_details\":{\"reasoning_tokens\":36},\"total_tokens\":672}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0f23cf846411f029016ac728ac8bac87d293368f9ae5a127ff\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791436972448,\"endTime\":1791436974439,\"providerRequestId\":\"req_f9d5abce96774d80a75523ffc6d4956a\",\"statusCode\":200,\"providerResponseId\":\"resp_0f23cf846411f029016ac728ac8bac87d293368f9ae5a127ff\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"8c2a90a2e33be42ee0d0de0324705ac4\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001\",\"marketCost\":\"0.0001\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001\",\"inferenceCost\":\"0.0001\",\"inputInferenceCost\":\"0.000059\",\"outputInferenceCost\":\"0.000041\",\"generationId\":\"gen_01M4CZDRC9GDS1VTGPNPMV2GA2\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

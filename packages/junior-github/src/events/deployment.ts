@@ -16,6 +16,12 @@ export const GITHUB_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.error",
 ];
 
+/** The identifier shape that `gitHubDeploymentSourceResource` builds. */
+export const GITHUB_DEPLOYMENT_SOURCE_IDENTIFIER = {
+  format: "deployment-source:owner/repo[:environment]:<full-commit-sha>",
+  pattern: /^deployment-source:[^\s/:#]+\/[^\s/:#]+(?::[^\s:]+)?:[0-9a-f]+$/,
+};
+
 /** Build the stable deployment-source identity shared by tools and webhooks. */
 export function gitHubDeploymentSourceResource(input: {
   commitSha: string;

@@ -10,6 +10,7 @@ const searchedResourceTypeSchema = z
   .object({
     namespace: z.string(),
     type: z.string(),
+    identifierFormat: z.string().optional(),
     supportedEvents: z.array(z.string()),
     suggestedEvents: z.array(z.string()).optional(),
     matchFields: z
@@ -49,6 +50,9 @@ function searchableResourceTypes(catalog: EventCatalog) {
       registration.resourceTypes.map((resourceType) => ({
         namespace,
         type: resourceType.type,
+        ...(resourceType.identifier
+          ? { identifierFormat: resourceType.identifier.format }
+          : undefined),
         supportedEvents: [...resourceType.supportedEvents].sort(),
         ...(resourceType.suggestedEvents
           ? { suggestedEvents: [...resourceType.suggestedEvents].sort() }
@@ -82,7 +86,7 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
           .string()
           .nullable()
           .describe(
-            "Optional terms matching a namespace, resource type, or event name. Empty lists all enabled event types.",
+            "Optional terms matching a namespace, resource type, or event name. Resource types that match more terms come first. Empty lists all enabled event types.",
           )
           .optional(),
         namespace: eventNamespaceSchema(catalog)
@@ -103,21 +107,33 @@ export function createSearchEventTypesTool(catalog: EventCatalog) {
     async execute({ query, namespace, maxResults }) {
       const normalizedQuery = normalizeSearchText(query ?? "");
       const terms = normalizedQuery.split(/\s+/).filter(Boolean);
-      const matches = searchableResourceTypes(catalog).filter(
-        (resourceType) => {
-          if (namespace && resourceType.namespace !== namespace) return false;
-          const text = normalizeSearchText(
-            [
-              resourceType.namespace,
-              resourceType.type,
-              ...resourceType.supportedEvents,
-              ...(resourceType.suggestedEvents ?? []),
-              ...Object.keys(resourceType.matchFields ?? {}),
-            ].join(" "),
-          );
-          return terms.every((term) => text.includes(term));
-        },
+      const candidates = searchableResourceTypes(catalog).filter(
+        (resourceType) => !namespace || resourceType.namespace === namespace,
       );
+      // A query is free text, so words such as "events" name nothing in the
+      // catalog. One matching term is enough; more matching terms rank first.
+      const matches =
+        terms.length === 0
+          ? candidates
+          : candidates
+              .map((resourceType) => {
+                const text = normalizeSearchText(
+                  [
+                    resourceType.namespace,
+                    resourceType.type,
+                    ...resourceType.supportedEvents,
+                    ...(resourceType.suggestedEvents ?? []),
+                    ...Object.keys(resourceType.matchFields ?? {}),
+                  ].join(" "),
+                );
+                return {
+                  resourceType,
+                  score: terms.filter((term) => text.includes(term)).length,
+                };
+              })
+              .filter((match) => match.score > 0)
+              .sort((left, right) => right.score - left.score)
+              .map((match) => match.resourceType);
       const resourceTypes = matches.slice(
         0,
         maxResults ?? DEFAULT_SEARCH_RESULTS,

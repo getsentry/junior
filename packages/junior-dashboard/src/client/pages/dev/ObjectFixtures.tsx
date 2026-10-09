@@ -59,6 +59,20 @@ const objects: OwnedObjectAnnotation[] = [
   },
   {
     kind: "object",
+    objectType: "calendar_event",
+    plugin: "google",
+    key: "event-1",
+    label: "Oct 12",
+    title: "Parser sync",
+    url: "https://calendar.google.com/calendar/event?eid=1",
+    facts: {
+      type: "calendar_event",
+      when: "Mon, Oct 12, 10:00 – 10:30 PDT",
+      attendees: ["Sam Lee", "alex@example.com"],
+    },
+  },
+  {
+    kind: "object",
     objectType: "item",
     plugin: "example",
     key: "item-1",

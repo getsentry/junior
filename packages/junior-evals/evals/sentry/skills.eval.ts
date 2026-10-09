@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { heartbeat, mention, reply } from "@junior-evals/fixture/inputs";
+import { heartbeat, slackMention, reply } from "@junior-evals/fixture/inputs";
 import {
   insertCredential,
   insertScheduledAutomation,
@@ -34,9 +34,9 @@ describe("Sentry Skill Workflows", () => {
     await insertCredential(sentryCredential);
 
     const conversation = await run(
-      mention("what's up with the latest Sentry issues in getsentry?"),
+      slackMention("what's up with the latest Sentry issues in getsentry?"),
       {
-        history: [mention("are you working"), reply("Yes—I'm working.")],
+        history: [slackMention("are you working"), reply("Yes—I'm working.")],
       },
     );
     await expect(conversation).toSatisfyJudge(

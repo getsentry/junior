@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/output.eval.ts > Output Contract > when asked for a structured overview, avoid hash markdown headings",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "bca67ec00685",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0dc5ef8b7b0e4d1a016ac5d770034887d28e9e6b8422b280b8\",\"reasoningEncryptedContent\":\"gAAAAABqxddxZDTyn2jaq2TrIiYJB_2qEvuWHNqRXBL6ynpbk_p3poso8K_Fhj0n8EZ7TMTejaFn2I_A7CYbPIJbUsROsXCMtUar6UoRwyze7HkIf842fgOoUUNxA8dkSYhXQ5qywst41R00JDaU-4bMPwPw8-zLqqsglo5M3zLBRzUF-F3a7TYtvrxZljJ-_GWPH6ZvettL1fT2OwRFPi3ElCRfOFxM4TAHc-wUhzQsYZWb2kH84fu0NYLHOgtm026uWMw8huxjv06arFFBDdd2pMsmpPJXSrw91tY0tq4Z8VIw84BmgXO9lmRT0M20DJbvle5446Z9YAoGZEKUBqIop_hyTPaugfBOp7rIoSLL_f-dFL78pIGst21ebek0tH66pPaY_uivihrSp2EVJg0YDoMmHF8KcrRHAZexOB5bEhli9piLZz8HqWIjIm8pZIOxD_kdXLsV_neJu55m_MYLYpyrVtLM5dYF5WMw0p34eNwlbjtgk8_8LrEETEFMWmi4Vzx1Qp0Qw56joiLidT0wYWCvT1i4AWQYTKOyoloL2iQpefszIN8VycDHy3hI4HW2MAwKVvm7fvv9wJ_6MfVrd4bQmourwTZpT00ryhu6jzyoh27697fd6Hjw_m7T6UCIEXBxJoGuPdouJObIYau9U7-n_bpVrbm9WuwX-IsxfnIG-bW_SxokTJjodbVsdElGvfIfxO3AYe-Kq6Im5LSWkyGjaPi3OEIm8enS0PttYjHy5ySgAJyFJYsJkNRDWxKhZXC80skcpz4X4uaBmHuLnpYK9wU0kOlQLNESFdGUMNLEqNkDP3FUuNpQ9Ymnk5dOwXqVLaPSej_SA0F0X26WaG7tRR7-Pogo5sqhH_zCPZmtQoB70GvAYGYmn1Kt3Y0MFFiZzysbpfr5WLp-cw1dYtOIACEPHb_r5rX8NCsy7_XWYSOH5ZRqIvoEy5oih0qyOqSawSWNZ0pRq7y3-iCL7PxzuBlN4yMC7KYSz0ZuXPrnUJ5cZWwwCMGxomp92dcDrxIsRr1sUr4c05OYn-uE1yQ_ox1VOukQHCM1AiYGT2-S2yaC2DB70CELL0BFYRU-HeYF9x-R73jqCOQcLsHG-Edu0C41EFXhoPb8CPQ-jgCBtw7iF66Pazq41Nm4r2J_7BOYYzL8XgTcgaaIsGAfwNJTPMzM0Ddzi7JCjsLQes4k5eNwqkiVdzRi1fkWMQSYNIyUn64EqfJ96W4kaJvhrW2aA8YdCRq4BXDs3OUDenfZjQRJNAFbG_EADNJFyAMPs8GvvTSmn3o9hqlVmqi6LGYtU6ASDJr6OwypP7UwYT3vaoMRtychVjxvqfUuCD4-Uz-puiWUPU4elyjSoubWATbgkq5rKH_7sge4pAZqbuVPe-0YinT6Aq1wLaDfgLGplTaedO421vmCITEwWXNjgXtovMvyR3w2YYgYwa6gFBh6ZFWb52Jgpjr8KszxDKJY7DUmPXozyVdAPAMJPxcAaybvy8j2RPoqnqzY21x2q55vNULwG72HJgFijgFbFnSUcwKPYvu8tWFXWf3nkZ0-WP1veU7yo30b6KJOLgANWnBfPxgjnFg0_nTVT0gSOQRnQeU87doASwqhXi4Dx7snRdY01RoGjg==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"A concise explanation of OAuth 2.0 authorization code flow has several connected steps and security details, so it warrants normal reasoning; it is a routine explanatory request suited to the standard profile.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0dc5ef8b7b0e4d1a016ac5d770ac2487d2ad65e20ebcc07e9a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":615,\"noCache\":615,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":121,\"text\":67,\"reasoning\":54},\"raw\":{\"input_tokens\":615,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":121,\"output_tokens_details\":{\"reasoning_tokens\":54},\"total_tokens\":736}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0dc5ef8b7b0e4d1a016ac5d76fa16c87d282acfdc0d862b045\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350639548,\"endTime\":1791350641416,\"providerRequestId\":\"req_590fea99975a45e9881189b95ad43dd1\",\"statusCode\":200,\"providerResponseId\":\"resp_0dc5ef8b7b0e4d1a016ac5d76fa16c87d282acfdc0d862b045\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"156561d724ff99e4a440bdd3f00e8b82\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000122\",\"marketCost\":\"0.000122\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000122\",\"inferenceCost\":\"0.000122\",\"inputInferenceCost\":\"0.0000615\",\"outputInferenceCost\":\"0.0000605\",\"generationId\":\"gen_01M4AD32XCVB943F4MCC4GKM2V\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > looks up and subscribes to an exact deployment before GitHub creates it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "c4410a73c47e",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_09c80fa5fd4fc5a6016ac7c1d6710087d1aaf3f439bde7d835\",\"reasoningEncryptedContent\":\"gAAAAABqx8HYjuHB-tOiKR-lZdIURVxe73qzwohuQdMfmU96UYw6fegigdrXYIY1LnbWGTy5cXxw--oXLszFgXxl2-RLiHgTOTAXPJz38UMZF4YO2L8nO9ygZoFHUmnOvsM-HdZHMi_4LORUqp7VYua7ysRCyczhvNovYlnMwyvY3-oYFJIqJKxfVP1kd77ykb2_3NCfdzS-VZOxOofamBOaRa2ymHXJGGUxWJxzoyqjmsnDncnq4869DDBF4h0DmGTG-6VS2g3eO9g7i6lx6F13nvx8UEmJ7PjLbDZMqKQz3hZSE9VKi0YLyBB6HDBKkBPpEKI0Xm6BQFRVyCH7OXIM44vVS3_6qum5qrpZGRi_fpEApdoPp2YDK_e7d6Jw-uFdfuzTpU1RcSRiuUbTecm2Ot0n4MFWv9SMamNSzgF0ogiKU6GbHWISxGlReS4P-U8p7bchpvRTB4iM90giZsMDCqz46fohcPQbfucdUBeentc2mSw4JQoaJ1xOf4lBQrdonU5bMNPE6OA7HOaOXCGCaT2JfeUINohiYROIUeg4MIpqUrXfYT-d0tQ8OFkVIornQI9SAbB8DXSLJC8c-g8e91e1SHXfiA2FO9eJw8U2OFVVp1NpLxkNjLJysHJi7GE91Q_dwWU0-gRXmzEAkpYwQ507enc8A1dDe9Z3ErdyE4p7xJ5ZS9Wep7gyY_yO_Nv-daiVUOzzwO-xDDDfWjC-ik9X7qY3oDE4NXkcvc2DfdK-iVHWzvQOsGW8gA8y0zh6741rLDohPefX9bQRIlmfhZInN2eBdX6GY2XaaYwc0t67rxapvCOnnVd-B-LDlQisFOstB-RkO4v5GBJ0K64XUi0QeX8AjiLsj9hBeeRdCvY4z9B2L8IRdqkQf5EAN4DQvy3EpsEHaf5yp28ColJajSWsKMPrSxBo5AoZqZ8i2SI_pqdb1m2Nw7db8hXhGUUs73jwLvm8o-yW6XCmkAxywI6tjy79JuRC-Ts_hV8bgYeKaXx_BO2LLMcUpZtu8LhaEYE4TkhZpPZZWKdWAPu5RrOQFVt_cVZSlD6czySfuoquHp6ZLudI9rZ3-Y6Q-a_KsCQ2F7BuOuSTQLsyjthEKgr9HmbawRY3iFcaxZCJaslZ7V8jBPymSTPKRD-McSHgbJbsrKV5GmcWK2JRRVjyMcifjY5Q57KBzD73hhR-5AKQFQTn2wqXXuBD0wJsah5WmMBjA7QqC_Vry5SSYYYJ3DjqqlzkE7TNEnvJywdjBSIj9PwW6luJIm82dqjR8wogUUZyt-whuOp5o2vZOWftZa3KQ4a6iO2QYc0y3Oh6B3TvS_AV81OIe-Rc4tgKbXjdQXzXIEimvw8N1y901zTdDOF8gzfWkLMT485FxO2QMfVcb0fwlnfIaHPTQMfVi1aE3Q5bgLtesPaVwA8NNz7eAMtseDMk-ByS4jrAUkrdC4sfvB0kqEJu0y6FSpara9iWfW8kBWiO9BP06XkzhyjTb0nb0mKiuQMVrwS_OMgNNU5L2wrNz3i1skIwzES1uGNCB8rXFxx27rKt14grSea6JSDpPpyfQWXhVB_-Se9YLpMtHEsJz57KwkJSnthCoTWzjiGlB60cFwfOHj5m9zKinBOZSm7LW_59fiDkNgAa2rxn3kHRkglRKphHBB9HT7fWQxpZLzzb0S4gD8liPBTzuQ-Umdp5TuVj__3Gd1GuD7hPuJ5UHNna-iweoJJP0CDFaJb75MGtKc2RZ5vWk_K8ix9H6xd_G26scwFpZDc2nbMUlr4hfMm-9L2URHgps6UCb-ZmMzQaAA6sjIhWAa30WvdC5H7XVaJ1tHopf1gyMWvEM8UtIjIH06N_QZBVKF1O-w2vgON9iSj3-oSlV8-KrqygW8t-1A==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"To monitor a GitHub deployment, look it up by repository, full commit SHA, and optional environment, then subscribe to its deployment source for the desired status events; the source can be subscribable even when no deployment exists yet.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[3,4]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_09c80fa5fd4fc5a6016ac7c1d753a887d19cf03f890d0f2b39\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":4039,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":4036},\"outputTokens\":{\"total\":170,\"text\":83,\"reasoning\":87},\"raw\":{\"input_tokens\":4039,\"input_tokens_details\":{\"cache_write_tokens\":4036,\"cached_tokens\":0},\"output_tokens\":170,\"output_tokens_details\":{\"reasoning_tokens\":87},\"total_tokens\":4209}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_09c80fa5fd4fc5a6016ac7c1d5dd0c87d1ba661526bbb9accc\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476181708,\"endTime\":1791476184191,\"providerRequestId\":\"req_824fd8c6a8d340a69f0be48368bea2bb\",\"statusCode\":200,\"providerResponseId\":\"resp_09c80fa5fd4fc5a6016ac7c1d5dd0c87d1ba661526bbb9accc\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"acb9756dcaa090b41e46c6f58a34f6c0\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0005898\",\"marketCost\":\"0.0005898\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0005898\",\"inferenceCost\":\"0.0005898\",\"inputInferenceCost\":\"0.0005048\",\"outputInferenceCost\":\"0.000085\",\"generationId\":\"gen_01M4E4TANPK9F7VTK4AYPD6WG1\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

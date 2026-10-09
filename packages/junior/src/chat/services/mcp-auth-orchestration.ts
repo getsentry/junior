@@ -34,6 +34,8 @@ import {
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import type { McpAuthorizationContext } from "@/chat/mcp/tool-manager";
+import { describeAuthorizationReason } from "@/chat/services/auth-pause-response";
 
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -71,7 +73,10 @@ export interface McpAuthOrchestration {
   authProviderFactory: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
-  onAuthorizationRequired: (provider: string) => Promise<boolean>;
+  onAuthorizationRequired: (
+    provider: string,
+    context?: McpAuthorizationContext,
+  ) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
 }
 
@@ -126,6 +131,7 @@ export function createMcpAuthOrchestration(
 
   const onAuthorizationRequired = async (
     provider: string,
+    context?: McpAuthorizationContext,
   ): Promise<boolean> => {
     // Bot auth has no user OAuth session or authorization link. If the SDK
     // ever reports an unauthorized response from that non-interactive flow,
@@ -197,7 +203,7 @@ export function createMcpAuthOrchestration(
       await recordPendingAuth(nextPendingAuth);
       const authorizationRequest = {
         authorizationUrl: authSession.authorizationUrl,
-        label: `Connect to ${providerLabel}`,
+        label: `Connect your ${providerLabel} account`,
         completionText:
           "Once you've authorized, Junior will continue automatically.",
       };
@@ -241,7 +247,7 @@ export function createMcpAuthOrchestration(
       provider,
       providerLabel,
       reusingPendingLink ? "link_already_sent" : "link_sent",
-      input.userMessage,
+      describeAuthorizationReason(context) ?? input.userMessage,
     );
     input.abortAgent();
     return true;

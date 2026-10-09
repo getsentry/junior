@@ -9,6 +9,11 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
+import { gitHubDeploymentSourceResource } from "../src/events/deployment";
+import { gitHubIssueResource } from "../src/events/issue";
+import { gitHubPullRequestResource } from "../src/events/pull-request";
+import { gitHubReleaseSourceResource } from "../src/events/release";
+import { gitHubRepositoryResource } from "../src/events/repository";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -596,6 +601,40 @@ describe("github plugin", () => {
     });
   });
 
+  it("declares an identifier shape that fits only its own resource type", () => {
+    const repo = "getsentry/junior";
+    const built = {
+      deployment_source: gitHubDeploymentSourceResource({
+        commitSha: "0123456789abcdef0123456789abcdef01234567",
+        environment: "Production EU",
+        repo,
+      }),
+      issue: gitHubIssueResource({ number: 208, repo }),
+      pull_request: gitHubPullRequestResource({ number: 691, repo }),
+      release_source: gitHubReleaseSourceResource({ repo, tag: "v1.2.0" }),
+      repository: gitHubRepositoryResource({ repo }),
+    };
+    const fitting = Object.fromEntries(
+      Object.entries(built).map(([type, resource]) => [
+        type,
+        githubPlugin()
+          .events!.resourceTypes.filter((resourceType) =>
+            resourceType.identifier!.pattern.test(resource.identifier),
+          )
+          .map((resourceType) => resourceType.type),
+      ]),
+    );
+
+    // Issues and pull requests share one number space in a repository.
+    expect(fitting).toEqual({
+      deployment_source: ["deployment_source"],
+      issue: ["issue", "pull_request"],
+      pull_request: ["issue", "pull_request"],
+      release_source: ["release_source"],
+      repository: ["repository"],
+    });
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({
@@ -866,7 +905,7 @@ describe("github plugin", () => {
       {
         repo: "getsentry/junior",
         title: "Typed issue",
-        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**.\n<!-- junior-request-attribution:end -->",
         labels: ["bug"],
       },
       { toolCallId: "call-create-issue-accumulate" },
@@ -874,7 +913,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer, **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -1475,7 +1514,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("assigns pull requests to the linked requester and preserves attribution", async () => {
+  it("assigns pull requests to the linked requester and mentions them in attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
@@ -1500,14 +1539,14 @@ Conversation: \`local:test:old-conversation\`
               id: "github-identity",
               provider: "github",
               providerSubjectId: "1473041",
-              handle: "dcramer",
+              handle: "dcramer_sentry",
             },
           ],
         },
       }),
       egressFetch: async ({ operation }) =>
         operation === "github.pull.assign"
-          ? Response.json({ assignees: [{ login: "dcramer" }] })
+          ? Response.json({ assignees: [{ login: "dcramer_sentry" }] })
           : new Response(
               JSON.stringify({
                 number: 692,
@@ -1541,11 +1580,11 @@ Conversation: \`local:test:old-conversation\`
       "https://api.github.com/repos/getsentry/junior/issues/692/assignees",
     );
     await expect(assignment.request.json()).resolves.toEqual({
-      assignees: ["dcramer"],
+      assignees: ["dcramer_sentry"],
     });
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia @dcramer_sentry.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -2168,6 +2207,46 @@ Conversation: \`local:test:old-conversation\`
       }),
     ).rejects.toThrow("GraphQL mutations are not enabled");
   });
+
+  it.each([
+    ["MarkPullRequestReadyForReview", "markPullRequestReadyForReview"],
+    ["ConvertPullRequestToDraft", "convertPullRequestToDraft"],
+  ])(
+    "allows only the typed %s mutation with repository scope",
+    async (operationName, field) => {
+      const bodyText = JSON.stringify({
+        operationName,
+        query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
+        variables: { id: "PR_kwDO" },
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.draft.update:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).resolves.toMatchObject({
+        name: "installation-write",
+        access: "write",
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.review-thread.resolve:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+    },
+  );
 
   it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(

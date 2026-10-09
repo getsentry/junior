@@ -552,23 +552,39 @@ function normalizePullRequestReviewEvent(
     pullRequestAuthorData(parsed.data.pull_request.user),
     pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
   ]);
-  return pullRequestTargets(
-    {
-      eventKey: gitHubEventKey(deliveryId, eventType),
-      eventType,
-      occurredAtMs: Date.now(),
-      identifier: resource.identifier,
-      trustedSummary:
-        eventType === "pull_request.review.approved"
-          ? `${resource.label} was approved${reviewer ? ` by ${reviewer}` : ""}.`
-          : eventType === "pull_request.review.changes_requested"
-            ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
-            : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
-      ...(data ? { data } : undefined),
-      untrustedText: parsed.data.review.body ?? undefined,
-    },
-    repo,
-  );
+  const event: EventInput = {
+    eventKey: gitHubEventKey(deliveryId, eventType),
+    eventType,
+    occurredAtMs: Date.now(),
+    identifier: resource.identifier,
+    trustedSummary:
+      eventType === "pull_request.review.approved"
+        ? `${resource.label} was approved${reviewer ? ` by ${reviewer}` : ""}.`
+        : eventType === "pull_request.review.changes_requested"
+          ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
+          : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
+    ...(data ? { data } : undefined),
+    untrustedText: parsed.data.review.body ?? undefined,
+  };
+  const events = pullRequestTargets(event, repo);
+  if (
+    eventType !== "pull_request.review.approved" ||
+    !parsed.data.review.body?.trim()
+  ) {
+    return events;
+  }
+  // Also deliver an approval's comment to subscriptions that skip approvals.
+  return [
+    ...events,
+    ...pullRequestTargets(
+      {
+        ...event,
+        eventKey: gitHubEventKey(deliveryId, "pull_request.review.commented"),
+        eventType: "pull_request.review.commented",
+      },
+      repo,
+    ),
+  ];
 }
 
 const pullRequestWebhookSchema = z.object({

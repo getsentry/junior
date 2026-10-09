@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation reveals operational knowledge, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "9a13a4002745",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0774d9714992bcd5016ac69834135887d1bc5b88187a049a7a\",\"reasoningEncryptedContent\":\"gAAAAABqxpg0eFD_kOw96_6dmaRe5zAAs_fM-xdPA-XU3igoMwO61ncDDynanyyNubrZgZYgAikuF1hdO6dCfoZ3-ELSSoXgLjgNo4HfM2u0N0y4CYqYqq-9fnwMmlyM0QpG4cSFb96KaH3ldj7J6pNxylH1DqIwBmbULJaDNbf7TgHNd9bqj7-9pTV7shp0ZUj3C5F-Hgyu9kzWu866sQzrF3DlioT5DUn7A9DDr4NKVqPL42kfkdaMlvY8v8SaJSkHH2oKw7-yc-2PcuFAqJ9d4hW2nG4C1AOuYR7MeYe7YNP4lUeSdR_hN5BLBi_3a7zhwnnMakJjRptw_vqoNrtL5YZp_G6izFUefvfUOLoPhx2HMva2tz8SOCKP8ZckRN2OI-LFmevRtl2cey6s3QQD5eSZpwbMg4cOD3X3-HeLIHDkUxg7KMiNEgE2QplRo1Oy5_0zAnX2RxdnYERoI9nPmMYZroaHMD0EQaTQsLh6awRu3In1B-rnnYaLmCajysipnyuhJXnwy0i57U9Y_e5G3WOmFbL7GV0nazSwXExXbafnsVhUqLT7naR3DgbyYorlPDyNME5GVeT23GjK5tijcHNa01MLYXBQBkVjgFAMMoe6t3X7SFpmZegTodJQiuBJD9U_H-VoMmjEcR3slkKyLEqlbRyFh6t059CO_tHupaYuh8JZz4NEPLqtrWt_bFOdmSFc-sc8MGHI6XT8sTWiPgbi5lopp48RBIhll9ZzpIe4MdX1rwh6S_DvuvRPv3bgL7Gv6UAfuOVACE-f6017v9feh3FaYcWi4kIxKC0QsiOtMlulJ0UALsnfOPnaO0Ope8bq-wBRlz0-Ld6QLx2EybYci45QqY-o-gxE9sQwfh3AhAV2ZonaAS3N1cS0Hm3suo53sWmbu2E8Z2M0qyp9GzbProx3CHpxwLT2OE77vIjLHtYqNUuA_MWG2OJUPbBTBmQE8KvSRP1zn8Cojy91hW_2GDJtTSfjxBxd6E3GKeHgb1YsZnStotIZ0QXx3VTnCi5TPXgnyGHtkXlM24QjxQIYTrVjTUL7X7D87ARKaiYV2cu8sOgCvvdF8LUpAhdpxoKAnLaZEujeZAmebvN7YU8OEj5Ux-Xl2YFeF7LHImu3_7eNP8aC1vUEu52BzwUSosn2T44ihmi1zxun1hCSRvr-SOljrxo2IW4VeXY-hsC_3X1uqV7wOWviMvsXc3efIHWcWhKI6mCjZU_w6HXQlJTGxMhVR6acbQ2kpPqbuJBgVOvHRBvAPdDuSz-Qdm3hF2p5csBqg0SbK1xEeiQSfym8kmrXuhm0l_qf4ckRtj2kIiOVCwxOKstWPVRdT4FzQgcZbtBANFtHzD3wD94KnZM4Poy-BgMsdnIwdntXB4j-z9yUio1AIy_Ek9Mynyo5XQEsIPV3ipLgGFp0lvF0-1AMfuCGhdxm0Af5crXcc1hHawkX7FPLxjy3jIhAgD4uZNwcKnDJRS5WFUfp2CXWx09c_w5R1oZrA_Te-gaoSXOt42rzKUxMdkEKxUGKV-ZZYH4IUHIU\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"In branch QA runbooks, place risk notes before summary notes.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0774d9714992bcd5016ac698348ba887d19215daf28ba1cc80\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1477,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1474},\"outputTokens\":{\"total\":97,\"text\":48,\"reasoning\":49},\"raw\":{\"input_tokens\":1477,\"input_tokens_details\":{\"cache_write_tokens\":1474,\"cached_tokens\":0},\"output_tokens\":97,\"output_tokens_details\":{\"reasoning_tokens\":49},\"total_tokens\":1574}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0774d9714992bcd5016ac69833846087d1a6590c300104afc6\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791399987422,\"endTime\":1791399989025,\"providerRequestId\":\"req_5cb83bffe0d04b2dac30adb2699ce61f\",\"statusCode\":200,\"providerResponseId\":\"resp_0774d9714992bcd5016ac69833846087d1a6590c300104afc6\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"1d21fad5d2fc7efabe133605857e0b56\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00023305\",\"marketCost\":\"0.00023305\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00023305\",\"inferenceCost\":\"0.00023305\",\"inputInferenceCost\":\"0.00018455\",\"outputInferenceCost\":\"0.0000485\",\"generationId\":\"gen_01M4BW525NPNE8ZT90HNFQ7XAB\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

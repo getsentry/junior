@@ -15,6 +15,8 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
+import { useGlobalDispatcherForFetch } from "./src/proxy-dispatcher";
+import { startRecordingRun } from "./src/recording-run";
 import type { EvalInvocationContext } from "./src/eval-context";
 import { evalGitHubEnv, evalRuntimePlugins } from "./src/eval-plugin-fixtures";
 import {
@@ -24,9 +26,10 @@ import {
 import { installEvalAiGatewayDispatcher } from "./src/eval-ai-gateway-dispatcher";
 import { authSuitePlugins } from "./src/suites/auth-agent-options";
 
-type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
-  provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
-};
+type EvalGlobalProject = Parameters<typeof setupPostgres>[0] &
+  Parameters<typeof startRecordingRun>[0] & {
+    provide(key: "juniorEvalContext", value: EvalInvocationContext): void;
+  };
 
 /** Set up shared Postgres and public sandbox egress for one eval invocation. */
 export default async function setup(
@@ -39,6 +42,7 @@ export default async function setup(
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
+  let stopRecordings: (() => Promise<void>) | undefined;
   let mswListening = false;
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
   const fixtureEnv = {
@@ -60,6 +64,7 @@ export default async function setup(
     const errors: unknown[] = [];
     for (const task of [
       async () => await egress?.close(),
+      async () => await stopRecordings?.(),
       async () => {
         if (mswListening) mswServer.close();
       },
@@ -108,8 +113,11 @@ export default async function setup(
     previousPlugins = setPlugins(runtimePlugins);
     Object.assign(process.env, fixtureEnv);
     previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
+    stopRecordings = await startRecordingRun(project);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
+    // The Vercel Sandbox client gives `fetch` its own agent.
+    useGlobalDispatcherForFetch();
     process.stdout.write("[evals] Starting public egress\n");
     egress = await startEvalEgress({
       interceptHttp: interceptTestHttp,

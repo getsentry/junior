@@ -51,7 +51,11 @@ export default defineConfig({
     globalSetup: [path.resolve(__dirname, "guardian-global-setup.ts")],
     include: ["evals/guardian/**/*.eval.ts"],
     maxWorkers: 1,
-    setupFiles: [path.resolve(__dirname, "src/guardian-setup.ts")],
+    setupFiles: [
+      path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(__dirname, "src/guardian-setup.ts"),
+      path.resolve(__dirname, "src/recording-setup.ts"),
+    ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
     testTimeout: GUARDIAN_EVAL_TEST_TIMEOUT_MS,

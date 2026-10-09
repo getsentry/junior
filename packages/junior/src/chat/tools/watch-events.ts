@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   eventNamespaceSchema,
-  normalizeCatalogEventIdentifier,
+  requireEventIdentifier,
   pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredEventMatchSchema,
@@ -180,11 +180,7 @@ export function createWatchEventsTool(
         label: input.label.trim(),
         ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
-        identifier: normalizeCatalogEventIdentifier(
-          catalog,
-          input.namespace,
-          input.identifier,
-        ),
+        identifier: requireEventIdentifier(catalog, input),
         resourceType: input.resourceType.trim(),
       });
       const details = {

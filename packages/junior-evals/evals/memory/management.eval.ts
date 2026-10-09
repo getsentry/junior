@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { insertMemory } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
@@ -14,7 +14,7 @@ describe("Memory Management", () => {
     await insertMemory({ content: RISKS_FIRST, visibility: "private" });
 
     const conversation = await run(
-      mention("How should I structure my next PR summary?", {
+      slackMention("How should I structure my next PR summary?", {
         channelType: "im",
       }),
     );
@@ -47,7 +47,7 @@ describe("Memory Management", () => {
     await insertMemory({ content: RISKS_FIRST, visibility: "private" });
 
     const conversation = await run(
-      mention("For PR summaries, I still want risk notes first.", {
+      slackMention("For PR summaries, I still want risk notes first.", {
         channelType: "im",
       }),
     );
@@ -82,7 +82,7 @@ describe("Memory Management", () => {
     });
 
     const conversation = await run(
-      mention("Please forget that I prefer terse PR summaries."),
+      slackMention("Please forget that I prefer terse PR summaries."),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

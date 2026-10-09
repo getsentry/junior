@@ -17,6 +17,9 @@ for the Location and does not repeat it.
 The Conversation row stores the complete Location in `location_json`. Local
 Conversations have no Location.
 
+An automation run starts with a channel-level Location. Its first post at the
+channel top level becomes the Location's thread.
+
 TODO(dcramer): Remove `sessionSource` after resume reads the saved Turn Source
 and every Conversation place reader uses Location.
 
@@ -292,6 +295,11 @@ latest saved state, not live provider state.
 - Deployments use the `deployment` object type. Vercel selects project, target, revision, and
   branch from its existing deployment response. It never copies environment
   values. A missing target stays unknown.
+- Calendar events use the `calendar_event` object type. The owner formats the
+  time in the requester's time zone, because surfaces do not know it. The label
+  is the short date for the sidebar. Slack previews show the time, up to five
+  attendees, and the `cancelled` status after Junior cancels the event. The
+  description appears only in details.
 - Automations use the existing card and detail page. Slack previews show only
   the trigger and warning. The existing Automation record owns full details
   and actions.

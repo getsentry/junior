@@ -1,0 +1,30 @@
+{
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when asked to show an image, attach it without process chatter",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "4582ce0d15ab",
+      "max_tokens": "e39eef82f61b",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "70b6025f74b5",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4EQ02HMX9EE2KVFDTJ6ZSCF\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Photorealistic wildlife portrait of a charming red panda sitting naturally on a moss-covered branch in a lush, green forest. Capture its fluffy rust-red fur, distinctive white facial markings, alert gentle expression, and thick ringed tail. Soft natural light filters through the canopy, creating subtle highlights and a calm, inviting mood. Crisp fur detail, realistic anatomy, shallow depth of field, richly textured moss and foliage, refined wildlife photography, high resolution.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":126,\"output_tokens\":94},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_097ca5431b0a8680016ac80c4c6cfc87d1afe4672e1e33fac3\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791495244357,\"endTime\":1791495246057,\"providerRequestId\":\"req_58d238295907403395f665c4fd4304e5\",\"statusCode\":200,\"providerResponseId\":\"resp_097ca5431b0a8680016ac80c4c6cfc87d1afe4672e1e33fac3\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"37f1e9c3ebad9a06190d1ffdeec729e0\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000596\",\"marketCost\":\"0.0000596\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000596\",\"inferenceCost\":\"0.0000596\",\"inputInferenceCost\":\"0.0000126\",\"outputInferenceCost\":\"0.000047\",\"generationId\":\"gen_01M4EQ02HMX9EE2KVFDTJ6ZSCF\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

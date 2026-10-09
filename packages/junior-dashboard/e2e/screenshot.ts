@@ -22,6 +22,10 @@ const VIEWS: Record<View, ViewSize> = {
 
 const SCREENSHOT_DIR = path.resolve(".playwright/junior-dashboard/screenshots");
 
+// The full-screen noise texture rasterizes slightly differently on each run.
+// Hide it so visual review only reports real changes.
+const SCREENSHOT_STYLE = "[data-dashboard-noise] { display: none !important; }";
+
 /**
  * Save a loaded page image for visual review.
  * Writes `{name}__desktop.png` and `{name}__mobile.png` by default.
@@ -50,6 +54,9 @@ export async function screenshot(
     });
     await page.waitForLoadState("networkidle");
     await page.evaluate(async () => {
+      // fonts.ready only waits for faces the page has already requested. A
+      // late web font swap changes text width and layout, so load every face.
+      await Promise.allSettled([...document.fonts].map((font) => font.load()));
       await document.fonts.ready;
       // Full-page captures include offscreen images. Start lazy loads before
       // decoding, and let failed images render their fallback in the capture.
@@ -67,6 +74,7 @@ export async function screenshot(
       animations: "disabled",
       clip: options.clip,
       fullPage: !options.clip,
+      style: SCREENSHOT_STYLE,
       path: path.join(SCREENSHOT_DIR, `${name}__${view.name}.png`),
     });
   }

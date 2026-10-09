@@ -1,10 +1,7 @@
 import path from "node:path";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createLocalSource,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -13,89 +10,29 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import type { AgentRun } from "@/chat/agent/types";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
-  createModelAgentRunnerForRun,
-  neverRunAgentRunner,
-} from "../fixtures/agent-runner";
-import { createModelStream } from "../fixtures/model-stream";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/messages";
-import {
-  coerceThreadConversationState,
-  type ConversationMessage,
-} from "@/chat/state/conversation";
+  testWaitUntil,
+  waitUntilCallbacks,
+} from "../fixtures/oauth-callback-after-harness";
 import { mswServer } from "../msw/server";
-
-/**
- * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
- * authority the resume handlers now read from. Takes the connected adapter so it
- * uses the same (dynamically imported) instance the test seeded through.
- */
-async function seedVisibleTranscriptFromThreadState(
-  adapter: { get<T>(key: string): Promise<T | null | undefined> },
-  conversationId: string,
-): Promise<void> {
-  const raw = await adapter.get<{
-    conversation?: { messages?: ConversationMessage[] };
-  }>(`thread-state:${conversationId}`);
-  const messages = raw?.conversation?.messages ?? [];
-  if (messages.length === 0) {
-    return;
-  }
-  const conversation = coerceThreadConversationState({});
-  conversation.messages.push(...messages);
-  await persistConversationMessages({ conversation, conversationId });
-}
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-oauth",
 );
-const SLACK_DESTINATION = {
-  platform: "slack",
-  teamId: "T123",
-  channelId: "C123",
-} as const;
-
-function slackSource(threadTs: string) {
-  return createSlackSource({
-    teamId: SLACK_DESTINATION.teamId,
-    channelId: SLACK_DESTINATION.channelId,
-    threadTs,
-
-    visibility: "private",
-  });
-}
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
-type OAuthCallbackHarnessModule =
-  typeof import("../fixtures/oauth-callback-harness");
-type TurnSessionStoreModule =
-  typeof import("@/chat/task-execution/turn-cursor");
+type OAuthCallbackModule = typeof import("@/handlers/oauth-callback");
 
 let stateAdapterModule: StateAdapterModule;
 let capabilitiesFactoryModule: CapabilitiesFactoryModule;
-let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
-let turnSessionStoreModule: TurnSessionStoreModule;
+let oauthCallbackModule: OAuthCallbackModule;
 let pluginApp: PluginAppFixture | undefined;
-let agentRunner: AgentRunner;
-let agentRuns: AgentRun[];
 
 describe("oauth callback integration", () => {
   beforeEach(async () => {
-    agentRuns = [];
-    agentRunner = createModelAgentRunnerForRun((run) => {
-      agentRuns.push(run);
-      return createModelStream([
-        { type: "text", text: "Here are your Sentry issues." },
-      ]);
-    });
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -107,9 +44,7 @@ describe("oauth callback integration", () => {
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
     capabilitiesFactoryModule = await import("@/chat/capabilities/factory");
-    oauthCallbackHarnessModule =
-      await import("../fixtures/oauth-callback-harness");
-    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
+    oauthCallbackModule = await import("@/handlers/oauth-callback");
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
   }, 45_000);
@@ -121,7 +56,7 @@ describe("oauth callback integration", () => {
     process.env = { ...ORIGINAL_ENV };
   }, 45_000);
 
-  it("publishes app home through the Slack MSW harness after generic OAuth callback", async () => {
+  it("publishes the App Home of the Slack person after the callback", async () => {
     await stateAdapterModule
       .getStateAdapter()
       .set("oauth-state:eval-oauth-state", {
@@ -129,12 +64,18 @@ describe("oauth callback integration", () => {
         provider: "eval-oauth",
       });
 
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-state",
-      code: "eval-oauth-code",
-      agentRunner: neverRunAgentRunner(),
-    });
+    waitUntilCallbacks.length = 0;
+    const response = await oauthCallbackModule.GET(
+      new Request(
+        "https://junior.example.com/api/oauth/callback/eval-oauth?state=eval-oauth-state&code=eval-oauth-code",
+      ),
+      "eval-oauth",
+      testWaitUntil,
+      {},
+    );
+    for (const callback of waitUntilCallbacks.splice(0)) {
+      await callback();
+    }
 
     expect(response.status).toBe(200);
     await expect(
@@ -212,585 +153,4 @@ describe("oauth callback integration", () => {
       await callback.close();
     }
   }, 20_000);
-
-  it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
-    const conversationId = "slack:C123:1700000000.009";
-    const sessionId = "turn_msg_9";
-    // Resume loads SQL sessionSource, which drops per-message timestamps.
-    const storedSource = createSlackSource({
-      teamId: "T123",
-      channelId: "C123",
-      threadTs: "1700000000.009",
-      visibility: "private",
-    });
-
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: sessionId,
-      sliceId: 2,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      destinationVisibility: "public",
-      source: storedSource,
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "list my sentry issues" }],
-          timestamp: 1,
-        },
-      ],
-      resumeReason: "auth",
-      resumedFromSliceId: 1,
-      actor: {
-        platform: "slack",
-        teamId: "T123",
-        userId: "U123",
-        userName: "stored-user",
-        fullName: "Stored User",
-        email: "stored@example.com",
-      },
-    });
-
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-session-record-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1700000000.009"),
-        threadTs: "1700000000.009",
-        resumeConversationId: conversationId,
-        resumeSessionId: sessionId,
-        scope: "read",
-      });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set(`thread-state:${conversationId}`, {
-        conversation: {
-          messages: [
-            {
-              id: "assistant-1",
-              role: "assistant",
-              text: "You need the budget by Friday.",
-              createdAtMs: 1,
-              author: {
-                userName: "junior",
-                isBot: true,
-              },
-            },
-            {
-              id: "msg.9",
-              role: "user",
-              text: "list my sentry issues",
-              createdAtMs: 2,
-              author: {
-                userId: "U123",
-                userName: "dcramer",
-              },
-              meta: {
-                slackTs: "1700000000.010",
-              },
-            },
-            {
-              id: "msg.bystander",
-              role: "user",
-              text: "I think those tools are read only",
-              createdAtMs: 3,
-              author: {
-                userId: "U999",
-                userName: "bystander",
-              },
-              meta: {
-                replied: false,
-                skippedReason: "side_conversation:passive side conversation",
-                slackTs: "1700000000.011",
-              },
-            },
-            {
-              id: "msg.bot-failed",
-              role: "user",
-              text: "sync this with github",
-              createdAtMs: 4,
-              author: {
-                userId: "UBOT",
-                userName: "github",
-                isBot: true,
-              },
-              meta: {
-                replied: false,
-                skippedReason: "reply failed",
-                slackTs: "1700000000.012",
-              },
-            },
-          ],
-          processing: {
-            activeTurnId: undefined,
-            pendingAuth: {
-              kind: "plugin",
-              provider: "eval-oauth",
-              actorId: "U123",
-              scope: "read",
-              sessionId,
-              linkSentAtMs: 1,
-            },
-          },
-        },
-      });
-    await seedVisibleTranscriptFromThreadState(
-      stateAdapterModule.getStateAdapter(),
-      conversationId,
-    );
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-session-record-state",
-      code: "eval-oauth-code",
-      agentRunner,
-    });
-
-    expect(response.status).toBe(200);
-    const sessionRecordAfterAuth = await turnSessionStoreModule.getTurnRecord(
-      conversationId,
-      sessionId,
-    );
-    expect(sessionRecordAfterAuth?.piMessages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: 'Authorization completed for provider "eval-oauth". Continue the blocked request and retry the provider operation if needed.',
-            },
-          ],
-        }),
-      ]),
-    );
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toEqual(
-      expect.objectContaining({
-        conversationId,
-        turnId: sessionId,
-        instruction: expect.objectContaining({
-          text: "list my sentry issues",
-          context: expect.stringContaining("You need the budget by Friday."),
-        }),
-        actor: {
-          email: "stored@example.com",
-          fullName: "Stored User",
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "stored-user",
-        },
-        destination: SLACK_DESTINATION,
-        location: expect.objectContaining({
-          provider: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          threadTs: "1700000000.009",
-        }),
-        source: storedSource,
-        toolChannelId: "C123",
-      }),
-    );
-    const resumeContext = agentRuns[0]!;
-    expect(resumeContext.source).toEqual(slackSource("1700000000.009"));
-    expect(resumeContext.instruction.context).not.toContain(
-      "list my sentry issues",
-    );
-
-    const persistedState = await stateAdapterModule
-      .getStateAdapter()
-      .get<Record<string, unknown>>(`thread-state:${conversationId}`);
-    const processing = (
-      persistedState?.conversation as {
-        processing?: { activeTurnId?: string };
-      }
-    )?.processing;
-    expect(processing?.activeTurnId).toBeUndefined();
-    const conversation = coerceThreadConversationState({});
-    await hydrateConversationMessages({ conversation, conversationId });
-    expect(conversation.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      text: "Here are your Sentry issues.",
-    });
-
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.009",
-            text: "Here are your Sentry issues.",
-          }),
-        }),
-      ]),
-    );
-    expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          timestamp: "1700000000.010",
-          name: "eyes",
-        }),
-      }),
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          timestamp: "1700000000.010",
-          name: "white_check_mark",
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackApiCalls("reactions.remove")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          timestamp: "1700000000.010",
-          name: "eyes",
-        }),
-      }),
-    ]);
-  });
-
-  it("rebuilds session-recorded OAuth resume context from state loaded under the thread lock", async () => {
-    const conversationId = "slack:C123:1700000000.011";
-    const sessionId = "turn_msg_11";
-    const staleState = {
-      conversation: {
-        messages: [
-          {
-            id: "assistant-old",
-            role: "assistant",
-            text: "Old context that should not be used.",
-            createdAtMs: 1,
-            author: {
-              userName: "junior",
-              isBot: true,
-            },
-          },
-          {
-            id: "msg.11",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: 2,
-            author: {
-              userId: "U123",
-              userName: "dcramer",
-            },
-            meta: {
-              slackTs: "1700000000.0111",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: undefined,
-          pendingAuth: {
-            kind: "plugin",
-            provider: "eval-oauth",
-            actorId: "U123",
-            sessionId,
-            linkSentAtMs: 1,
-          },
-        },
-      },
-    };
-    const freshState = {
-      conversation: {
-        messages: [
-          {
-            id: "assistant-fresh",
-            role: "assistant",
-            text: "Fresh context loaded after the lock.",
-            createdAtMs: 1,
-            author: {
-              userName: "junior",
-              isBot: true,
-            },
-          },
-          {
-            id: "msg.11",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: 2,
-            author: {
-              userId: "U123",
-              userName: "dcramer",
-            },
-            meta: {
-              slackTs: "1700000000.0112",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: undefined,
-          pendingAuth: {
-            kind: "plugin",
-            provider: "eval-oauth",
-            actorId: "U123",
-            sessionId,
-            linkSentAtMs: 1,
-          },
-        },
-      },
-    };
-
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: sessionId,
-      sliceId: 2,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1700000000.011"),
-      piMessages: [],
-      resumeReason: "auth",
-      resumedFromSliceId: 1,
-      actor: { platform: "slack", teamId: "T123", userId: "U123" },
-    });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-locked-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1700000000.011"),
-        threadTs: "1700000000.011",
-        resumeConversationId: conversationId,
-        resumeSessionId: sessionId,
-      });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set(`thread-state:${conversationId}`, freshState);
-    await seedVisibleTranscriptFromThreadState(
-      stateAdapterModule.getStateAdapter(),
-      conversationId,
-    );
-
-    const adapter = stateAdapterModule.getStateAdapter();
-    const originalGet = adapter.get.bind(adapter);
-    let threadReadCount = 0;
-    const getSpy = vi.spyOn(adapter, "get");
-    getSpy.mockImplementation((async (key: string) => {
-      if (key === `thread-state:${conversationId}` && threadReadCount++ === 0) {
-        return structuredClone(staleState);
-      }
-      return await originalGet(key);
-    }) as typeof adapter.get);
-
-    try {
-      const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-        provider: "eval-oauth",
-        state: "eval-oauth-locked-state",
-        code: "eval-oauth-code",
-        agentRunner,
-      });
-
-      expect(response.status).toBe(200);
-    } finally {
-      getSpy.mockRestore();
-    }
-
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toEqual(
-      expect.objectContaining({
-        instruction: expect.objectContaining({
-          text: "list my sentry issues",
-          context: expect.stringContaining(
-            "Fresh context loaded after the lock.",
-          ),
-        }),
-        toolChannelId: "C123",
-        destination: SLACK_DESTINATION,
-      }),
-    );
-    const resumeContext = agentRuns[0]!;
-    expect(resumeContext.instruction.context).not.toContain(
-      "Old context that should not be used.",
-    );
-    expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          timestamp: "1700000000.0112",
-          name: "eyes",
-        }),
-      }),
-      expect.objectContaining({
-        params: expect.objectContaining({
-          timestamp: "1700000000.0112",
-          name: "white_check_mark",
-        }),
-      }),
-    ]);
-  });
-
-  it("resumes the latest pending OAuth session when a reused link points at an abandoned session", async () => {
-    const conversationId = "slack:C123:1700000000.012";
-    const oldSessionId = "turn_msg_old_12";
-    const newSessionId = "turn_msg_new_12";
-
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: oldSessionId,
-      sliceId: 2,
-      state: "abandoned",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1700000000.012"),
-      piMessages: [],
-      resumeReason: "auth",
-      resumedFromSliceId: 1,
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "dcramer",
-      },
-    });
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: newSessionId,
-      sliceId: 2,
-      state: "paused",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1700000000.012"),
-      piMessages: [],
-      resumeReason: "auth",
-      resumedFromSliceId: 1,
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "dcramer",
-      },
-    });
-
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-reused-link-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1700000000.012"),
-        threadTs: "1700000000.012",
-        resumeConversationId: conversationId,
-        resumeSessionId: oldSessionId,
-      });
-    await stateAdapterModule
-      .getStateAdapter()
-      .set(`thread-state:${conversationId}`, {
-        conversation: {
-          messages: [
-            {
-              id: "msg.old.12",
-              role: "user",
-              text: "old request",
-              createdAtMs: 1,
-              author: {
-                userId: "U123",
-                userName: "dcramer",
-              },
-            },
-            {
-              id: "msg.new.12",
-              role: "user",
-              text: "new request",
-              createdAtMs: 2,
-              author: {
-                userId: "U123",
-                userName: "dcramer",
-              },
-              meta: {
-                slackTs: "1700000000.0123",
-              },
-            },
-          ],
-          processing: {
-            activeTurnId: undefined,
-            pendingAuth: {
-              kind: "plugin",
-              provider: "eval-oauth",
-              actorId: "U123",
-              sessionId: newSessionId,
-              linkSentAtMs: 1,
-            },
-          },
-        },
-      });
-    await seedVisibleTranscriptFromThreadState(
-      stateAdapterModule.getStateAdapter(),
-      conversationId,
-    );
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-reused-link-state",
-      code: "eval-oauth-code",
-      agentRunner,
-    });
-
-    expect(response.status).toBe(200);
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toEqual(
-      expect.objectContaining({
-        conversationId,
-        turnId: newSessionId,
-        instruction: expect.objectContaining({ text: "new request" }),
-      }),
-    );
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.012",
-            text: "Here are your Sentry issues.",
-          }),
-        }),
-      ]),
-    );
-  });
-
-  it("does not re-post the pending message when the session record is already abandoned", async () => {
-    const conversationId = "slack:C123:1700000000.010";
-    const sessionId = "turn_msg_10";
-
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      turnId: sessionId,
-      sliceId: 2,
-      state: "abandoned",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1700000000.010"),
-      piMessages: [],
-      resumeReason: "auth",
-      resumedFromSliceId: 1,
-      actor: { platform: "slack", teamId: "T123", userId: "U123" },
-    });
-
-    await stateAdapterModule
-      .getStateAdapter()
-      .set("oauth-state:eval-oauth-abandoned-state", {
-        userId: "U123",
-        provider: "eval-oauth",
-        channelId: "C123",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1700000000.010"),
-        threadTs: "1700000000.010",
-        resumeConversationId: conversationId,
-        resumeSessionId: sessionId,
-      });
-
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-abandoned-state",
-      code: "eval-oauth-code",
-      agentRunner: neverRunAgentRunner(),
-    });
-
-    expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
-  });
 });

@@ -3,7 +3,10 @@
  * reads a Conversation. Tests never read stored rows directly.
  */
 import type { z } from "zod";
-import { conversationDetailReportSchema } from "@/api/schema";
+import {
+  conversationDetailReportSchema,
+  conversationPendingMessagesReportSchema,
+} from "@/api/schema";
 import {
   toJsonValue,
   type HarnessRun,
@@ -119,6 +122,8 @@ export interface Turn {
 
 /** What one call added to a Conversation. */
 export interface CallEvents {
+  /** Times Junior replaced agent history with a summary. */
+  compactions: number;
   lastSeq: number;
   replies: Reply[];
   toolCalls: ToolCall[];
@@ -143,6 +148,38 @@ export async function readConversationDetail(
     );
   }
   return conversationDetailReportSchema.parse(await response.json());
+}
+
+/** The connect prompt that the dashboard shows to a person. */
+export interface AuthorizationPrompt {
+  label: string;
+  url: string;
+}
+
+/**
+ * Read the connect prompt of one Conversation through
+ * `GET /api/conversations/:id/pending-messages`, as the dashboard does.
+ */
+export async function readAuthorizationPrompt(
+  api: RequestApp,
+  conversationId: string,
+  viewerEmail: string,
+): Promise<AuthorizationPrompt | undefined> {
+  const response = await api.request(
+    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+    { headers: { [VIEWER_HEADER]: viewerEmail } },
+  );
+  if (response.status !== 200) {
+    throw new Error(
+      `Pending messages returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  const { authorization } = conversationPendingMessagesReportSchema.parse(
+    await response.json(),
+  );
+  return authorization
+    ? { label: authorization.label, url: authorization.authorizationUrl }
+    : undefined;
 }
 
 /** Sequence before a Conversation's first event. */
@@ -171,6 +208,7 @@ export function readCallEvents(args: {
   const toolCalls = new Map<string, ToolCall>();
   const turnToolCallIds = new Map<Turn, string[]>();
   let currentTurn: Turn | undefined;
+  let compactions = 0;
   let lastSeq = args.afterSeq;
 
   for (const event of args.detail.events) {
@@ -230,6 +268,10 @@ export function readCallEvents(args: {
       }
       continue;
     }
+    if (data.type === "compaction") {
+      compactions += 1;
+      continue;
+    }
     // A handoff replaces agent history, so its tool call gets no tool result.
     // The handoff event completes the call, as the dashboard shows it.
     if (data.type === "handoff" && data.triggeringToolCallId) {
@@ -246,6 +288,7 @@ export function readCallEvents(args: {
   }
 
   return {
+    compactions,
     lastSeq,
     replies,
     toolCalls: [...toolCalls.values()],

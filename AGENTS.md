@@ -50,6 +50,15 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
 - Telemetry is diagnostic, not a product behavior assertion; follow `policies/observability.md` and `TELEMETRY.md`.
 
+## Eval Recordings
+
+- Evals replay model calls and web pages from `packages/junior-evals/recordings/`. Roach, a recording proxy in `packages/junior-evals/src/roach/`, records and replays them.
+- `packages/junior-evals/src/recording-rules.ts` lists the recorded traffic and the only origins that evals can reach. To record more or reach a new site, edit that file.
+- All eval HTTP traffic must go through the proxy. In CI, a firewall (`packages/junior-evals/scripts/network-jail.sh`) rejects other connections. If a request fails with a refused connection, send it through the proxy. Do not allow its host in the firewall.
+- A changed prompt, tool, skill, or model makes new requests, and these go live. On a pull request, CI commits the new recordings to your branch. Select "Approve workflows to run" on the pull request to start its checks. The evals then run again in strict `replay` mode, where a request without a recording fails and never goes live.
+- Each run prints `[evals] Recordings: ...`. For each miss, it names the closest recording and the request parts that differ, such as `messages[3]`. Fix a value that changes on each run for all tests, in the fixture or in `values` of the rule, not in one test. For ids and times that only the product can make, add a pattern to `values` of the rule. The proxy keys the request without the value and gives a replayed response the value of the current run.
+- Details: "Recordings" in `packages/junior-evals/README.md`.
+
 ## Architecture
 
 - Core owns the runtime and provider-neutral plugin contracts. Plugins own their domain behavior.

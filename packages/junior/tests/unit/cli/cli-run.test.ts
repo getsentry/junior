@@ -4,6 +4,7 @@ import { CLI_USAGE, runCli } from "@/cli/run";
 describe("cli command dispatch", () => {
   function handlers() {
     return {
+      runAdmin: vi.fn(async () => 0),
       runBriefs: vi.fn(async () => 0),
       runChat: vi.fn(async () => 0),
       runInit: vi.fn(async () => undefined),
@@ -72,6 +73,22 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
+  });
+
+  it("runs admin with its remaining arguments", async () => {
+    const cliHandlers = handlers();
+
+    const exitCode = await runCli(
+      ["admin", "grant", "person@example.com"],
+      cliHandlers,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(cliHandlers.runAdmin).toHaveBeenCalledWith([
+      "grant",
+      "person@example.com",
+    ]);
     expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
   });
 

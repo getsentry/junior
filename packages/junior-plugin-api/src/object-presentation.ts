@@ -6,6 +6,7 @@ export const objectTypeSchema = z.enum([
   "code_change",
   "automation",
   "deployment",
+  "calendar_event",
   "item",
 ]);
 export type ObjectType = z.output<typeof objectTypeSchema>;
@@ -15,6 +16,7 @@ const objectTypeLabels = {
   code_change: "Code change",
   automation: "Automation",
   deployment: "Deployment",
+  calendar_event: "Calendar event",
   item: "Item",
 } satisfies Record<ObjectType, string>;
 
@@ -27,6 +29,7 @@ const objectIconNames = [
   "git-merge",
   "workflow",
   "rocket",
+  "calendar",
   "package",
 ] as const;
 export type ObjectIconName = (typeof objectIconNames)[number];
@@ -56,6 +59,7 @@ export function objectPresentation(object: {
       code_change: "git-pull-request",
       automation: "workflow",
       deployment: "rocket",
+      calendar_event: "calendar",
       item: "package",
     } satisfies Record<ObjectType, ObjectIconName>
   )[type];

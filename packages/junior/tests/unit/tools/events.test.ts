@@ -189,12 +189,10 @@ describe("event tools", () => {
     });
 
     await expect(
-      tools.searchEventTypes!.execute!(
-        { query: "review changes", namespace: "github" },
-        {},
-      ),
+      // "events" names nothing in the catalog; the other terms still match.
+      tools.searchEventTypes!.execute!({ query: "review changes events" }, {}),
     ).resolves.toMatchObject({
-      namespace: "github",
+      namespace: null,
       totalMatches: 1,
       resourceTypes: [
         {

@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
@@ -8,7 +8,7 @@ describe("GitHub Skill Workflows", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "/github-code If I ask you to open a PR from an existing branch, do I need to authorize GitHub or provide a token? Also, does the branch get pushed before or after the PR is opened? Keep it short.",
       ),
     );
@@ -32,7 +32,9 @@ describe("GitHub Skill Workflows", () => {
     run,
   }) => {
     const configured = await run(
-      mention("Set the default repo to getsentry/junior for this channel."),
+      slackMention(
+        "Set the default repo to getsentry/junior for this channel.",
+      ),
     );
     await expect(configured).toSatisfyJudge(
       RubricJudge,
@@ -42,8 +44,10 @@ describe("GitHub Skill Workflows", () => {
         ],
       }),
     );
+    // Junior stores an explicit default without an agent turn.
+    expect(configured.turns).toEqual([]);
     const conversation = await configured.continue(
-      mention(
+      slackMention(
         "Now tell me which GitHub repo you'd use for issue commands when I don't name one.",
       ),
     );
@@ -65,12 +69,12 @@ describe("GitHub Skill Workflows", () => {
     run,
   }) => {
     const configured = await run(
-      mention(
+      slackMention(
         "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel.",
       ),
     );
     const conversation = await configured.continue(
-      mention(
+      slackMention(
         "We need a tracking issue for the Junior bot. Use getsentry/junior-eval-reference-never-exists#123 as background. Draft the target repo, title, and body for me to review—don't create anything yet.",
       ),
     );
@@ -95,12 +99,12 @@ describe("GitHub Skill Workflows", () => {
     run,
   }) => {
     const configured = await run(
-      mention(
+      slackMention(
         "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel.",
       ),
     );
     const conversation = await configured.continue(
-      mention(
+      slackMention(
         "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Don't change anything yet.",
       ),
     );

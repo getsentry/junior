@@ -24,25 +24,26 @@ Tests that run the agent use the agent test fixture in `src/fixture/`. Issue
 The agent is one unit. A test does not mock the model or any other part of
 the agent. A test touches the product in three places only:
 
-1. Inputs through app routes: `mention()` and `threadMessage()` post signed
-   Slack Events API webhooks, `webMessage()` posts to the conversations API,
+1. Inputs through app routes: `slackMention()` and `slackThreadMessage()` post
+   signed Slack Events API webhooks, `webMessage()` posts to the conversations API,
    `heartbeat()` calls the heartbeat route, `githubWebhook()` posts a
-   signed GitHub webhook to the GitHub plugin route, and `completeAuth()`
-   calls the OAuth or MCP OAuth callback route.
+   signed GitHub webhook to the GitHub plugin route, `slackCommand()` posts a
+   signed slash command to the Slack webhook, and `completeAuth()` calls the
+   OAuth or MCP OAuth callback route.
 2. Mocked third-party APIs: Slack and other providers through MSW.
 3. What people and the model see: replies, tool calls, reactions, and turn
    states, read through Junior's reporting API.
 
 ```ts
 import { describe, expect } from "vitest";
-import { mention, reply } from "@junior-evals/fixture/inputs";
+import { slackMention, reply } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Thread Continuity", () => {
   test("when asked about the prior turn, recall it", async ({ run }) => {
-    const conversation = await run(mention("what did i just ask?"), {
-      history: [mention("I need the budget by Friday."), reply("Got it.")],
+    const conversation = await run(slackMention("what did i just ask?"), {
+      history: [slackMention("I need the budget by Friday."), reply("Got it.")],
     });
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -74,6 +75,10 @@ describe("Thread Continuity", () => {
   `evals/integration/coding/`, and its behavioral evals are in `evals/coding/`.
   Put an eval that needs the GitHub plugin in this suite. Do not set up the
   plugin in the test.
+- The `google` suite has the Google plugin. `src/suites/google.ts` has its
+  settings. Its integration evals are in `evals/integration/google/`, and its
+  behavioral evals are in `evals/google/`. `src/fixture/google.ts` connects
+  Junior's Google account and mocks the Calendar APIs.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
@@ -92,11 +97,50 @@ describe("Thread Continuity", () => {
   A call fails when the agent is not idle within 60 seconds. The product
   delays some queued deliveries; for example, a watch delivery waits 30
   seconds for more events. The 60 seconds start when the last delivery is due.
-- A channel `mention()` arrives as Slack sends it: an `app_mention` event
+- A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
   event. Junior then asks Slack for the channel type and learns that the
   channel is public.
+- `slackMention()` and `slackThreadMessage()` take `files`, and `webMessage()`
+  takes `images`. `file(name, mimeType, content)` is a file that a person uploaded.
+  The Slack mock serves its download and lists it in the thread history.
+  `unavailableFile(name, mimeType)` is a file whose download fails.
+  `ticketScreenshotPng()` in `src/fixture/images.ts` is a real PNG that shows
+  a ticket number. Only the pixels have the number, so a reply with
+  `TICKET_NUMBER` proves that Junior read the image.
+- `slackMention()` and `slackThreadMessage()` take `forwarded`, the text of a
+  message that the person forwarded with their own message.
+- `slackAppMessage(text)` is a message from another Slack app for `history`,
+  such as an alert that starts the thread. It comes before the first input. Junior
+  took no turn for it and stored nothing, so the message is in the Slack mock
+  only, and a later turn reads it from Slack.
+- `slackMention(text, { fromApp: true })` is a mention that another Slack app
+  posted. Junior takes a turn for it. An app cannot open an authorization
+  link, so the turn does not wait for one.
+- `slackMention(text, { assistantThread: true })` is a message in the chat
+  of the Junior app, which is a direct message. Slack starts an assistant
+  thread there before the first message, so the fixture sends the
+  `assistant_thread_started` event and then the message in that thread. A
+  `slackMention(text, { channelType: "im" })` is a direct message that is not
+  in a thread.
+- `conversation.statuses` has the status lines that Junior set under the
+  Slack thread, and an empty string clears the status.
+  `conversation.threadTitles` has the titles that Junior gave the Slack
+  thread. Slack shows a status for a channel thread and for a direct message
+  in a thread. Slack shows a title only for a direct message in a thread.
+- `rejectNextModelRequest()` in `src/fixture/gateway.ts` makes the model
+  provider reject the next model request of the agent, as it does when it
+  blocks a request under its usage policy. Junior does not retry, so the turn
+  fails and the person sees a failure notice. The fixture returns only the
+  provider error. It never writes a model answer.
+- `rejectNextSlackReply()` in `src/fixture/slack.ts` makes Slack reject the
+  next thread reply of Junior in the test. The turn fails and Junior stores
+  no reply. The person sees a failure notice, which is in
+  `conversation.replies`.
+- Slack sends a forwarded message and the content of an app message outside
+  the message text. The fixture builds those Slack shapes, so a test gives
+  only the text.
 - Plugin tasks run in process after each completed turn. For example, the
   memory plugin extracts memories from the turn before the call returns.
 - `history` loads earlier turns as stored data. Loading never runs the agent.
@@ -107,8 +151,13 @@ describe("Thread Continuity", () => {
   also accepts a recorded conversation from `src/fixture/recordings/`. Export
   one with `exportRecordedConversation()`.
 - `onProgress` reacts to what the turn does: `model_request`,
-  `tool_request`, or `reply`. Its `send(input)` posts an input while the turn
-  waits, so the product decides whether it steers, waits, or stops the turn.
+  `tool_request`, `reply`, or `paused`. Its `send(input)` posts an input while
+  the turn waits, so the product decides whether it steers, waits, or stops
+  the turn.
+  `paused` means that a turn stopped before it finished, for example at its
+  deadline, and Junior queued the rest of it. The fixture sees this at the
+  queue, which it replaces. The rest of the turn waits until the handler
+  finishes, so a sent input arrives before the turn continues.
   `sendDuringFirstModelRequest(inputs)` in `src/fixture/progress.ts` sends
   inputs while the first model request waits.
 - Insert functions in `src/fixture/insert.ts` write setup data through the
@@ -128,11 +177,22 @@ describe("Thread Continuity", () => {
   `conversation.continue(completeAuth(provider))` opens that link, the mocked
   provider redirects to the callback route of the app, and the call returns
   the resumed turn. A link in a channel message is not private, so the call
-  fails.
+  fails. `completeAuth(provider, { author })` opens the link of another Slack
+  person. `completeAuth(provider, { link: "first" })` opens the oldest link of
+  the person. A person who asks two times before they authorize has two
+  links.
+- A turn that a person started from the dashboard shows a connect prompt
+  there and sends no Slack link. `conversation.authorizationPrompt` is the
+  label of that prompt after the call. `completeAuth(provider)` opens the
+  prompt when the dashboard shows one.
+- `conversation.continue(slackCommand("unlink <provider>"))` runs the slash
+  command of Junior as a Slack person. Junior answers in private and starts
+  no turn.
 - `insertCredential()` stores the OAuth credential that a Slack person has
   for a plugin. `expired: true` makes its next use refresh it.
-  Credentials are in the state store, which tests share, so the fixture
-  removes the credentials of a test when the test finishes.
+  Credentials and authorization attempts are in the state store, which tests
+  share, so the fixture removes those of the people of a test when the test
+  finishes.
 - `insertMemory({ content })` stores a memory about a Slack person. The agent
   needs the memory plugin to recall it. `subjectType: "conversation"` stores a
   memory about the conversation. `visibility: "private"` stores a memory that
@@ -196,7 +256,7 @@ Not in scope:
 
 - Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, and scheduler create/credential/management contracts
+  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, scheduler create/credential/management contracts, and Google Calendar find/read/book contracts
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, and output shape
 - Behavioral agent cases: `evals/agent/`
@@ -206,6 +266,7 @@ Not in scope:
 - Behavioral coding suite cases: `evals/coding/`
   - file tools, GitHub skill workflows, watch intent, summary quality, a fix after a failed check, and a mention during a watch delivery, with the GitHub plugin
 - Behavioral feature cases:
+  - `evals/google/` (calendar scheduling)
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
   - `evals/sentry/`
@@ -240,20 +301,161 @@ Global setup reports the Postgres, egress, and snapshot phases before cases
 start. Egress teardown stops the tunnel and closes its remaining HTTP
 connections.
 
-## Web Pages And Search
+## Web Search
 
-- The fixture replays the requests that the `webFetch` tool sends.
-  `src/fixture/web.ts` records each response under
-  `.vitest-evals/recordings/webFetch/` and answers later requests for the same
-  URL from the recording. A redirect is its own recording.
 - The fixture always mocks the search provider of `webSearch`. No test turns
   the mock on or off, and no search reaches the real provider. A search finds
   nothing by default. `mockWebSearchResults()` from `src/fixture/web.ts` sets
   the results for one test.
-- Use `pnpm evals:record` to record the pages again.
-- Git ignores new recordings. Add the ones that an eval needs with
-  `git add -f`. Review them for stale fetches and secret-like values before
-  you commit.
+
+## Recordings
+
+Roach, the recording proxy in `src/roach/`, does this. It has no Junior code.
+recording proxy Roach (`src/roach/`) does this. It has no Junior code.
+Its `README.md` tells how it keys, records, and replays requests.
+
+### How evals use the proxy
+
+- `src/recording-rules.ts` is the one list of recorded traffic, allowed
+  origins, and changing values:
+  - `model`: every POST to the AI Gateway. This includes agent, title,
+    compaction, judge, Guardian, and turn router requests.
+  - `web`: the pages that `webFetch` reads. A redirect is its own recording.
+- `src/recording-run.ts`: global setup starts the proxy and sets the proxy
+  variables. Test workers and child processes inherit them. At the end, it
+  prints the totals and adds them to the GitHub Actions job summary.
+- `src/recording-setup.ts`: each test opens a proxy session before its first
+  request and ends it when it finishes. A passed test writes its new
+  recordings. A failed test writes nothing.
+- `src/proxy-dispatcher.ts`: sends `fetch` through the proxy in processes
+  that started before the proxy variables. It also removes the own agent
+  that some clients, such as `@vercel/sandbox`, give `fetch`.
+- MSW mocks, such as Slack and GitHub, answer before the proxy.
+- In CI, `scripts/network-jail.sh` runs the evals with a firewall. It allows
+  only loopback, DNS, and Cloudflare. Any connection that does not use the
+  proxy fails at once. Add a host to the jail only if it cannot go through
+  the proxy.
+
+### Modes
+
+`VITEST_EVALS_REPLAY_MODE` sets the mode:
+
+- `auto` (the default) replays recordings and records misses.
+- `replay` replays recordings. A request without a recording fails with HTTP
+  412 and never goes live, and its test fails. Use it to prove that a run
+  makes no model calls, judge calls included.
+- `record` sends every request live and writes it again.
+- `off` sends every request live and records nothing.
+
+### Keep requests stable
+
+- A change to a prompt, a tool, a skill, or the model makes new requests.
+  You can commit the new recordings with your change. Do a check for
+  secret-like values before you commit them.
+- Fix a changing value for all tests, not in one test. A new test must not
+  need its own fix. The fixture and the rules already handle these:
+  - Every eval suite loads `src/stable-setup.ts` first. It sets the time
+    zone to UTC and gives `Math.random` a seed from the test name. It keeps
+    the clock and `crypto.randomUUID` real; the file tells why.
+  - The Slack mock takes its timestamps and channel ids from the test name.
+    Setup data and web Conversations take ids from `fixtureId()` in
+    `src/fixture/ids.ts`.
+  - The `values` of the model rule in `src/recording-rules.ts` cover ids and
+    times that only the product makes: UUIDs, SHA-256 ids, git commit ids,
+    ISO times and dates, Unix milliseconds, local times, and the event id
+    in a failure notice.
+  - The proxy remembers the values of each request in a test. A later
+    request of the same test that repeats one, for example a short commit id
+    that the model quotes in its reply, gets the same placeholder.
+  - `insertMemory()` gives each memory a later time than the one before.
+    Memory search orders equal matches by time and then by random id.
+  - When `onProgress` sends input, the model request waits 1.5 seconds
+    before it goes on (`INPUT_SETTLE_MS` in `src/fixture/agent.ts`). The
+    product checks for a stop every 500 ms. Without the wait, a replayed
+    response comes back before the product sees the input, and the test
+    takes another path than in the recording run.
+- If a miss shows a new kind of changing value, add it to the fixture or to
+  `values` of the rule.
+- The AI SDK sends no model request when it has no gateway credential. To
+  replay without a credential, set `AI_GATEWAY_API_KEY` to any value.
+
+### Check that recording works
+
+- At the end of a run, global setup prints one line:
+
+  ```text
+  [evals] Recordings: model 12 replayed, 0 live; web 4 replayed, 0 live. 0 recordings new or changed, 0 dropped from failed sessions. Not recorded: none.
+  ```
+
+- `Not recorded` lists the origins of requests that matched no rule. If
+  `https://ai-gateway.vercel.sh` is in this list, a rule misses a model
+  request.
+- Run a suite two times. If all tests pass, the second run must show `0 live`.
+  `VITEST_EVALS_REPLAY_MODE=replay` makes this a check that fails.
+
+### Debug a miss
+
+- For each test, the log and the job summary name the first request without
+  a recording, and the parts that differ from the closest recording:
+
+  ```text
+  [evals] No recording: <test>: model model/<key>.json differs from model/<other>.json at messages[3]
+  ```
+
+- Fix the first miss of a test. The later misses usually follow from it.
+- `EVAL_RECORDING_MISSES_DIR` names a directory. The proxy writes each
+  request without a recording there, as the key sees it. CI uploads it as
+  the `misses-*` artifact for 3 days. Compare the files of two runs to see
+  the changed value. These files contain prompts, but no request headers
+  except the model ids. Locally, use `EVAL_RECORDING_MISSES_DIR=recording-misses`,
+  which git ignores.
+- The proxy redacts credentials in recordings and miss files. It knows the
+  values of request headers whose names can mean a credential, such as
+  `auth`, `token`, or `key`, and of the variables in `SECRET_ENV` of
+  `src/recording-rules.ts`. Add a new secret variable there.
+
+### Recordings in CI
+
+- Each eval workflow chooses its mode with
+  `.github/actions/eval-recordings-mode`. A pull request run uses `auto`.
+- After an `auto` run, the "commit recordings" job commits the new
+  recordings to the branch as "chore(evals): Update eval recordings"
+  (`.github/actions/commit-eval-recordings`). It takes only recording files
+  from the run artifacts and runs no pull request code. It pushes only when
+  the branch is still at the tested commit, or at recording commits on top
+  of it. Each suite makes its own commit.
+- The job pushes with its own `GITHUB_TOKEN` and `contents: write`. It holds
+  no other secret. The token expires when the job ends.
+- GitHub holds the checks of a `GITHUB_TOKEN` push until a person with write
+  access selects "Approve workflows to run" on the pull request. Then the
+  normal checks run, including `ci / required`. If GitHub shows no held
+  runs, close and reopen the pull request, or push another commit.
+- A run on a recordings commit uses strict `replay`. A green run shows that
+  the committed recordings cover every model request. Strict runs write
+  nothing, so they never start another commit.
+- If the recordings of a suite are still on the way, its strict run waits
+  for the earlier run of that suite.
+- Pull requests from forks get a read-only token. Their new recordings stay
+  in the `eval-recordings-*` artifacts. The job summary shows the
+  `gh run download` command that adds them to a branch.
+
+### Prune unused recordings
+
+- Run the "Prune eval recordings" workflow by hand. It runs every eval suite
+  on `main` in strict `replay` mode. Each job sets
+  `EVAL_RECORDINGS_USED_FILE`, so the proxy lists the recordings that the
+  tests replayed. Then `src/roach/cli.ts prune` deletes the
+  recordings that no list has, and the workflow opens or updates one pull
+  request.
+- It deletes recordings only when every job finished and its proxy listed
+  the recordings it used. A failed test stops at its failure, so it keeps
+  all of the recordings that it recorded before. Tests that fail on `main`
+  then do not block a prune.
+- A test file that does not load starts no test, so its recordings look
+  unused. Check the deleted files in the pull request.
+- Nothing refreshes recordings on a schedule. A change of the model id
+  makes new requests, so they record on their own. A provider that changes
+  its behavior under the same model id goes unnoticed until a live run.
 
 ## Running
 
@@ -314,7 +516,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Add isolated turn route snapshots under `evals/router/` using `describeEval()` with `routerEvals`. Feed realistic task inputs and assert the exact model profile and reasoning level.
 - Keep each case focused on one primary behavior.
 - Put semantic, model-dependent expectations in a rubric for `RubricJudge`.
-- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, and `turns`.
+- Put deterministic boundary expectations in normal Vitest assertions against the call result: `replies`, `toolCalls`, `reactions`, `files`, `statuses`, `threadTitles`, `compactions`, and `turns`.
 - When an eval judges nondeterministic visible output, write the rubric with `rubric({ pass, fail })`.
 - Let the eval test name describe the scenario and expected outcome.
 - `pass` should list observable pass conditions.
@@ -379,13 +581,13 @@ Avoid:
 
 ```typescript
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Routing", () => {
   test("when explicitly mentioned, post one direct reply", async ({ run }) => {
-    const conversation = await run(mention("Summarize this"));
+    const conversation = await run(slackMention("Summarize this"));
 
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

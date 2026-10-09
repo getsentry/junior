@@ -10,6 +10,7 @@ import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
@@ -114,6 +115,33 @@ describe("agent resume", () => {
       cumulativeToolCallCount: 18,
       state: "running",
     });
+  });
+
+  it("fails a durable turn when committed history rejects its input checkpoint", async () => {
+    const conversationId = "local:test:input-commit-lost";
+    const turnId = "turn-input-commit-lost";
+    await saveTurnCheckpoint({
+      mode: "running",
+      conversationId,
+      turnId,
+      sliceId: 1,
+      messages: [message("committed")],
+    });
+    const resume = createResumeState({
+      destination: { platform: "local", conversationId },
+      durability: { onInputCommitted: async () => undefined },
+      recordActiveMcpProviders: async () => undefined,
+      runSource: createLocalSource(conversationId),
+      conversationId,
+      turnId,
+      checkpoint: await loadTurnCheckpoint({ conversationId, turnId }),
+      startedAtMs: Date.now(),
+      surface: "internal",
+    });
+
+    await expect(
+      resume.requireDurableInputCheckpoint([message("branch")]),
+    ).rejects.toBeInstanceOf(TurnInputCommitLostError);
   });
 
   it("preserves the execution-limit error while parking for auth", async () => {

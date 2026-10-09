@@ -3,7 +3,7 @@
  *
  * Covers destroy/exfil, injection, prior-rejection continuity, and ambiguous
  * high-blast writes. Workflow corpora (delivery, tickets, publishing, schedules)
- * live in sibling files.
+ * and real-world must-deny cases (harmful-actions) live in sibling files.
  */
 import { describeEval } from "vitest-evals";
 import { guardianEvals } from "../../src/guardian-harness";

@@ -85,16 +85,6 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 import { getConversationStore } from "@/chat/db";
 
-function resolveReplyTimeoutMs(): number | undefined {
-  const raw = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS?.trim();
-  if (!raw) {
-    return undefined;
-  }
-
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
 async function postSlackMessageBestEffort(
   channelId: string,
   threadTs: string | undefined,
@@ -639,90 +629,85 @@ async function resumeSlackTurnInContext(
         surface: "slack",
       });
     }
-    const replyTimeoutMs = resolveReplyTimeoutMs();
-    const outcome = await runArgs.executeTurn(
-      run,
-      async (result) => {
-        const finalized = finalizeFailedTurnReplyWithEvent({
-          reply: result,
-          logException,
-        });
-        const reply = finalized.reply;
-        setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
-        const dispatchResult = runDispatchOutcome(reply);
-        const dispatchErrorMessage = run.dispatch
-          ? dispatchResult.errorMessage
-          : undefined;
-        const replyText = finishedRunReply(reply, run.dispatch);
-        if (replyText !== undefined) {
-          await deliverAssistantMessage(replyText);
-        }
-        runResultHandled = true;
+    const outcome = await runArgs.executeTurn(run, async (result) => {
+      const finalized = finalizeFailedTurnReplyWithEvent({
+        reply: result,
+        logException,
+      });
+      const reply = finalized.reply;
+      setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
+      const dispatchResult = runDispatchOutcome(reply);
+      const dispatchErrorMessage = run.dispatch
+        ? dispatchResult.errorMessage
+        : undefined;
+      const replyText = finishedRunReply(reply, run.dispatch);
+      if (replyText !== undefined) {
+        await deliverAssistantMessage(replyText);
+      }
+      runResultHandled = true;
 
-        await status.clear();
-        failureCode = "persistence_failed";
-        // Save the completed Turn only after delivery. A remaining write
-        // failure must reach this provider instead of completing durable work.
-        if (reply.piMessages?.length) {
-          await saveTurnCheckpoint({
-            mode: "completed",
-            conversationId: runArgs.conversationId,
-            turnId: runArgs.turnId,
-            messages: reply.piMessages,
-            durationMs: reply.diagnostics.durationMs,
-            usage: reply.diagnostics.usage,
-            destination: run.destination,
-            destinationVisibility: visibility,
-            dispatchId: run.dispatch?.id,
-            dispatchOutcome: dispatchResult.outcome,
-            ...(dispatchErrorMessage
-              ? { errorMessage: dispatchErrorMessage }
-              : undefined),
-            ...(acceptedDeliveryId
-              ? { resultMessageId: acceptedDeliveryId }
-              : undefined),
-            source: run.source,
-            actor: resumeActor,
-            surface: run.surface ?? "slack",
-            sliceId: runArgs.sliceId,
-          });
-        } else if (run.dispatch?.id) {
-          await recordTurnSummary({
-            conversationId: runArgs.conversationId,
-            destination: run.destination,
-            destinationVisibility: visibility,
-            dispatchId: run.dispatch?.id,
-            dispatchOutcome: dispatchResult.outcome,
-            ...(acceptedDeliveryId
-              ? { resultMessageId: acceptedDeliveryId }
-              : undefined),
-            turnId: runArgs.turnId,
-            sliceId: runArgs.sliceId ?? 1,
-            source: run.source,
-            state:
-              reply.diagnostics.outcome === "success" ? "completed" : "failed",
-            surface: run.surface ?? "slack",
-          });
-        }
-        await runArgs.commitResult?.(reply);
-        if (reply.diagnostics.outcome === "success") {
-          shouldScheduleCompletedPluginTasks = true;
-          return {
-            outcome: assistantMessageDelivered ? "success" : "no_reply",
-          };
-        }
-
-        return {
-          outcome: "failed",
-          failureCode: "model_execution_failed",
-          ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
-          ...(finalized.failureReason
-            ? { failureReason: finalized.failureReason }
+      await status.clear();
+      failureCode = "persistence_failed";
+      // Save the completed Turn only after delivery. A remaining write
+      // failure must reach this provider instead of completing durable work.
+      if (reply.piMessages?.length) {
+        await saveTurnCheckpoint({
+          mode: "completed",
+          conversationId: runArgs.conversationId,
+          turnId: runArgs.turnId,
+          messages: reply.piMessages,
+          durationMs: reply.diagnostics.durationMs,
+          usage: reply.diagnostics.usage,
+          destination: run.destination,
+          destinationVisibility: visibility,
+          dispatchId: run.dispatch?.id,
+          dispatchOutcome: dispatchResult.outcome,
+          ...(dispatchErrorMessage
+            ? { errorMessage: dispatchErrorMessage }
             : undefined),
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : undefined),
+          source: run.source,
+          actor: resumeActor,
+          surface: run.surface ?? "slack",
+          sliceId: runArgs.sliceId,
+        });
+      } else if (run.dispatch?.id) {
+        await recordTurnSummary({
+          conversationId: runArgs.conversationId,
+          destination: run.destination,
+          destinationVisibility: visibility,
+          dispatchId: run.dispatch?.id,
+          dispatchOutcome: dispatchResult.outcome,
+          ...(acceptedDeliveryId
+            ? { resultMessageId: acceptedDeliveryId }
+            : undefined),
+          turnId: runArgs.turnId,
+          sliceId: runArgs.sliceId ?? 1,
+          source: run.source,
+          state:
+            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          surface: run.surface ?? "slack",
+        });
+      }
+      await runArgs.commitResult?.(reply);
+      if (reply.diagnostics.outcome === "success") {
+        shouldScheduleCompletedPluginTasks = true;
+        return {
+          outcome: assistantMessageDelivered ? "success" : "no_reply",
         };
-      },
-      replyTimeoutMs,
-    );
+      }
+
+      return {
+        outcome: "failed",
+        failureCode: "model_execution_failed",
+        ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
+        ...(finalized.failureReason
+          ? { failureReason: finalized.failureReason }
+          : undefined),
+      };
+    });
     if (outcome.status !== "completed") {
       // Finish reaction cleanup before running pause or failure handlers.
       await status.clear();

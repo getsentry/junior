@@ -6,7 +6,8 @@ import {
   pluginUserPageLinksSchema,
 } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { getDb } from "@/chat/db";
+import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -33,6 +34,30 @@ function plugin() {
               id: `${identity.provider}:${identity.providerSubjectId}`,
               title: ctx.viewer.email,
             })),
+          };
+        },
+      },
+      {
+        id: "storage",
+        label: "Memory storage",
+        description: "Admin-only storage setup.",
+        navigation: "admin",
+        read() {
+          return {
+            type: "list" as const,
+            records: [
+              {
+                id: "storage",
+                title: "Memory storage",
+                actions: [
+                  {
+                    href: "/api/plugins/memory/storage/connect",
+                    label: "Connect",
+                    method: "GET" as const,
+                  },
+                ],
+              },
+            ],
           };
         },
       },
@@ -191,6 +216,54 @@ describe("plugin user page API", () => {
           },
         ],
       });
+
+      // Admin pages stay hidden and unreadable until the viewer is an admin.
+      const adminPageUrl = "http://localhost/api/user-pages/memory/storage";
+      const hidden = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/user-pages",
+      );
+      expect(
+        pluginUserPageLinksSchema
+          .parse(await hidden.json())
+          .map((page) => page.id),
+      ).toEqual(["memories"]);
+      expect(
+        (await authenticatedApi("viewer@example.com").request(adminPageUrl))
+          .status,
+      ).toBe(404);
+
+      await setUserAdminFromSql(getDb(), "viewer@example.com", true);
+      const listed = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/user-pages",
+      );
+      expect(
+        pluginUserPageLinksSchema
+          .parse(await listed.json())
+          .map((page) => [page.id, page.navigation]),
+      ).toEqual([
+        ["memories", "profile"],
+        ["storage", "admin"],
+      ]);
+      const served =
+        await authenticatedApi("viewer@example.com").request(adminPageUrl);
+      expect(served.status).toBe(200);
+      expect(
+        pluginUserPageContentSchema.parse(await served.json()).records[0]
+          ?.actions,
+      ).toEqual([
+        {
+          href: "/api/plugins/memory/storage/connect",
+          label: "Connect",
+          method: "GET",
+        },
+      ]);
+
+      // Revoking takes effect on the next request.
+      await setUserAdminFromSql(getDb(), "viewer@example.com", false);
+      expect(
+        (await authenticatedApi("viewer@example.com").request(adminPageUrl))
+          .status,
+      ).toBe(404);
     } finally {
       await fixture.close();
     }

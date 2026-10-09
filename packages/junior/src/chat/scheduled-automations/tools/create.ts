@@ -5,11 +5,13 @@ import {
 import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { getDb } from "@/chat/db";
+import { resolveUserTimezone } from "@/chat/identities/timezone";
 import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
+import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { z } from "zod";
@@ -27,7 +29,6 @@ import {
   getConversationAccess,
   requireActiveChannel,
   requireActor,
-  resolveCreatorScheduleTimezone,
   sameDestination,
   scheduleAutomationToolResult,
   scheduleAutomationToolResultSchema,
@@ -130,6 +131,7 @@ export function createSlackScheduleCreateAutomationTool(
         );
       }
 
+      requireRequesterMention(input.instruction, context.actor);
       const creator = await context.users.resolveActor();
       const identity = creator?.identity;
       if (
@@ -146,11 +148,10 @@ export function createSlackScheduleCreateAutomationTool(
       const nowMs = context.now?.() ?? Date.now();
       const defaultTimezone =
         input.schedule.timezone ??
-        (await resolveCreatorScheduleTimezone({
+        (await resolveUserTimezone({
           db,
           nowMs,
-          slackUserId: actor.slackUserId,
-          teamId: destination.teamId,
+          slack: { teamId: destination.teamId, userId: actor.slackUserId },
           ...(creator.user ? { userId: creator.user.id } : undefined),
         }));
       let compiled;

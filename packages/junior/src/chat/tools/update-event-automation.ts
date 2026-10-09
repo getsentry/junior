@@ -6,6 +6,7 @@ import {
   automationTitleSchema,
   automationInstructionToolSchema,
 } from "@/chat/automations/edit-schema";
+import { requireRequesterMention } from "@/chat/automations/requester-mention";
 import { automationRevision } from "@/chat/automations/revision";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { z } from "zod";
@@ -118,6 +119,12 @@ export function createUpdateEventAutomationTool(
         input.credentialMode != null;
       if (!edits && input.status == null) {
         throw new ToolInputError("Event automation update requires a change.");
+      }
+      if (
+        input.instruction != null &&
+        input.instruction !== current.task.text
+      ) {
+        requireRequesterMention(input.instruction, actor);
       }
       let saved = current;
       if (edits) {

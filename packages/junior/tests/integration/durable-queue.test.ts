@@ -347,6 +347,7 @@ describe("durable queue contract", () => {
       const q = await slack({
         modelStream: createModelStream([
           { type: "text", text: "The subscribed check failed." },
+          { type: "text", text: "The subscribed check recovered." },
         ]),
       });
       const store = getConversationStore();
@@ -431,6 +432,40 @@ describe("durable queue contract", () => {
           }),
         ]),
       );
+
+      // Later Watch Turns reply in the thread the first Message started.
+      const followUp = createEventInboundMessage({
+        event: {
+          eventKey: "checks-recovered-1",
+          eventType: "pull_request.checks.recovered",
+          identifier: "getsentry/junior#1563",
+          namespace: "github",
+          occurredAtMs: 200_000,
+          trustedSummary: "The subscribed check recovered.",
+        },
+        receivedAtMs: 200_000,
+        subscription: {
+          conversationId: CONVERSATION_ID,
+          id: "resource-subscription-channel-1",
+        },
+        text: "The subscribed check recovered.",
+      });
+      await appendAndEnqueueInboundMessage({
+        message: followUp,
+        queue: q.wakes,
+        state: q.state,
+      });
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0043" }),
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      const followUpPosts = slackApiOutbox.messages();
+      expect(followUpPosts).toHaveLength(2);
+      expect(followUpPosts[1]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        thread_ts: "1712345.0042",
+      });
     }, 10_000);
   });
 

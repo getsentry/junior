@@ -50,14 +50,10 @@ export const fileLengthExceptions = {
     "Existing broad conversation work suite; split by behavior.",
   "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts":
     "Existing broad Slack conversation work suite; split by behavior.",
-  "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":
-    "Existing broad MCP auth suite; split by behavior.",
   "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts":
     "Existing broad provider retry suite; split by behavior.",
   "packages/junior/tests/integration/sandbox-egress-proxy.test.ts":
     "Existing broad sandbox egress suite; split by behavior.",
-  "packages/junior/tests/integration/slack/bot-handlers.test.ts":
-    "Existing broad Slack handler suite; split by handler.",
   "packages/junior/tests/integration/slack-schedule-tools.test.ts":
     "Existing broad Slack scheduler suite; split by tool.",
   "packages/junior/tests/integration/slack/watched-message-behavior.test.ts":

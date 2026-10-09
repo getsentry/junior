@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the history of 'a Slack thread' does not fit the context window, compact it and answer from the summary",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "bc6b1d17c6b3",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_02c7ae9106eab529016ac7c27a3f2487d1a88b18cec4762102\",\"reasoningEncryptedContent\":\"gAAAAABqx8J7eN1qJmJOrwH23nAgVWgZx3mDIxuRdqzTFosDA5nKTAkqLqrmnpw_nUz6LLeYwABQ2KMvisdtG7O2RbRqaghBgv883GltFlVF0KyfviKBoyerxc6sCpbbffq6KP-zuNIGohXBIaFlEVsbFImlpWh8CLsXbMgx9rL9SKpx_JkMh_o9tc_dhiAXVOloCYXToif8u5L-VrXj_nBfQyDqK1Hr2508vfPXBB9FoqkTlY5QM1X2kc6aHt00zt8UQ8iXBK3d_M2wWZD_NfYvTWNfiAwPHDPrbL7UA6IKtaascRY05vKguE7CP71HikrkmxN5xabb_UxVlYNGuEPwnswzywK7BgaupiyGwec4flNWaRWH2bt0WqZG0NCuu4gper80qq0WmT5wzK2CisciaqVqeVf0IRbEFulS4noRKVaSfWvishp86e5RfBsFYSoX047k9Gd-TDAKnIY0pqivbAe9VUIHcdXBarmfwrpCNTuKlZzflLPND1A2OQh9TYRNd5eY8cmxdFPrt24Y5qRQCW3Bpf1FIYkAmVd_aw4mPGhQ_FfkqRbbvx5jlcNkA1SNSA0ENQrLhcL3fUBIjBXrZZ0wW8hOqRSyWTMEDoExjlWafSKlI82MolDeTxxM2hKhF-tYMjHfbRc_0KMDDbWyTnCjfpwhS3rstZYMVZ7nQyibBbTJZcRgfqvgrQrWasVvKIOO5mwzzqsAWKuzKnlMYLL0G2ZaPjCc3m9XMAv0HulFoFzUFlECq0i8Q58IpVnsMwMPO4ZXydLbVM9Q5Jh7-IIAXkvunOkYor2_igq5VbvlqAHLRsWFRzcrjfBtZBeiK3MWSqr4TbWOK1OJo-nehWW7u0uzN1flxlpOEfMQhFRJTWOpVMhX56YpAR-Ov2Tjo-n9BcaNv7sWxUv0vZ98qzAkIR0mpa9LUtRWcEZ3MzyNtOoGPkItxvzGEAao-21ZfMQtBL1sKu3MW1OEvEHP9jusKtyzbJM2am0X2LLXNkL-yznjEmRdEz39vfYkKmChHy7GBJuUUJcXrxXEICMlW-p-8vEC01gXxoAbu75jqEB3azMbLcyJV3SlQfw69KacRvQAktei4j_KIbcV78rYYoPGSQdOnWsMw4zS8ZAJgMU8so_amA6hgI_6n8u2kS7HwB8lG7jtn6A5EzpGiilrPQpL2OmCyZqG5Y8wvsLfwfQvS5VGqYYhHBLwuqykNIbIMbk5NDZo19Ng1T4iYkDEd5QlYba-azHnPHsrXHZ9MQC0wmF1Xyfg5v8OQN5rgcmMWzIMVTZUa7gkx208hqt30arecTqeoCp1Fk83YhGkCGppE7-KeMwtlNKvyJiBBFt0CRa-hjG-7YH2m7KFStr4bHVTcEvkXV_4QwrAvbd7K8dlAEDThBbdfArQetpTBxSgcZFiQi1kFYls1hHgwL22jAsHJ9wzzK2AJpUfcu2SwmYcO2YWw56Yfa_Zf0lpIvvVtKYT-XmhPzZaNGxTPkLCQ-B12CTmYE1vUMM-OSAZIMyiNhulD3k=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The answer requires a straightforward lookup in the prior thread context, so use standard profile with medium reasoning.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_02c7ae9106eab529016ac7c27ad66887d1b0deea79198d6a5c\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2202,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2199},\"outputTokens\":{\"total\":83,\"text\":49,\"reasoning\":34},\"raw\":{\"input_tokens\":2202,\"input_tokens_details\":{\"cache_write_tokens\":2199,\"cached_tokens\":0},\"output_tokens\":83,\"output_tokens_details\":{\"reasoning_tokens\":34},\"total_tokens\":2285}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_02c7ae9106eab529016ac7c2796ca087d19ebe503974e51e9d\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476345312,\"endTime\":1791476347640,\"providerRequestId\":\"req_1300faaf2f834dff9be58dabca65fcce\",\"statusCode\":200,\"providerResponseId\":\"resp_02c7ae9106eab529016ac7c2796ca087d19ebe503974e51e9d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"848af6d97fd802076e96c916fad637b7\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000316675\",\"marketCost\":\"0.000316675\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000316675\",\"inferenceCost\":\"0.000316675\",\"inputInferenceCost\":\"0.000275175\",\"outputInferenceCost\":\"0.0000415\",\"generationId\":\"gen_01M4E4ZADT7435NPQVCDFTBGPX\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

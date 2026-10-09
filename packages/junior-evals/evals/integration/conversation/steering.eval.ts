@@ -1,5 +1,9 @@
 import { describe, expect } from "vitest";
-import { mention, person, threadMessage } from "@junior-evals/fixture/inputs";
+import {
+  slackMention,
+  person,
+  slackThreadMessage,
+} from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { test } from "@junior-evals/fixture/test";
@@ -18,9 +22,9 @@ describe("Slack Turn Steering", () => {
   test("when the same person mentions Junior during a turn, the running turn takes the mention", async ({
     run,
   }) => {
-    const conversation = await run(mention(INCIDENT_REQUEST), {
+    const conversation = await run(slackMention(INCIDENT_REQUEST), {
       onProgress: sendDuringFirstModelRequest([
-        mention("include the rollback owner: Dana"),
+        slackMention("include the rollback owner: Dana"),
       ]),
     });
     await expect(conversation).toSatisfyJudge(
@@ -42,14 +46,14 @@ describe("Slack Turn Steering", () => {
     // Only routing is asserted, so the inputs are manufactured and short.
     const shortReply = (word: string) => `Reply with only the word ${word}.`;
     const conversation = await run(
-      mention(shortReply("ready"), { author: person("U0SAM", "Sam") }),
+      slackMention(shortReply("ready"), { author: person("U0SAM", "Sam") }),
       {
         onProgress: sendDuringFirstModelRequest([
-          mention(shortReply("one"), { author: person("U0RIO", "Rio") }),
-          mention(shortReply("two"), { author: person("U0RIO", "Rio") }),
-          mention(shortReply("three"), { author: person("U0KAI", "Kai") }),
-          mention(shortReply("four"), { author: person("U0RIO", "Rio") }),
-          mention(`!! ${shortReply("go")}`, {
+          slackMention(shortReply("one"), { author: person("U0RIO", "Rio") }),
+          slackMention(shortReply("two"), { author: person("U0RIO", "Rio") }),
+          slackMention(shortReply("three"), { author: person("U0KAI", "Kai") }),
+          slackMention(shortReply("four"), { author: person("U0RIO", "Rio") }),
+          slackMention(`!! ${shortReply("go")}`, {
             author: person("U0ALEX", "Alex"),
           }),
         ]),
@@ -73,10 +77,10 @@ describe("Slack Turn Steering", () => {
       slack: { crossActorMidRunMode: "steer" },
     });
     const conversation = await run(
-      mention(INCIDENT_REQUEST, { author: person("U0SAM", "Sam") }),
+      slackMention(INCIDENT_REQUEST, { author: person("U0SAM", "Sam") }),
       {
         onProgress: sendDuringFirstModelRequest([
-          mention("include the rollback owner: Dana", {
+          slackMention("include the rollback owner: Dana", {
             author: person("U0RIO", "Rio"),
           }),
         ]),
@@ -98,25 +102,26 @@ describe("Slack Turn Steering", () => {
     agent,
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
-    const conversation = await run(mention(INCIDENT_REQUEST));
+    const conversation = await run(slackMention(INCIDENT_REQUEST));
     expect(conversation.replies.length).toBeGreaterThan(0);
 
     const next = await conversation.continue(
-      threadMessage("thanks, sounds good"),
+      slackThreadMessage("thanks, sounds good"),
     );
     expect(next.turns).toEqual([]);
     expect(next.replies).toEqual([]);
+    expect(next.reactions).toEqual([]);
   });
 
   test("when someone says stop during a turn, Junior stops and stays out of the thread", async ({
     agent,
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
-    const conversation = await run(mention(INCIDENT_REQUEST), {
+    const conversation = await run(slackMention(INCIDENT_REQUEST), {
       // The mention waits for a follow-up turn; the stop discards it.
       onProgress: sendDuringFirstModelRequest([
-        mention("also list the affected regions"),
-        threadMessage("stop"),
+        slackMention("also list the affected regions"),
+        slackThreadMessage("stop"),
       ]),
     });
 
@@ -127,7 +132,7 @@ describe("Slack Turn Steering", () => {
     expect(conversation.reactions).not.toContain("white_check_mark");
 
     const next = await conversation.continue(
-      threadMessage("what about the regions?"),
+      slackThreadMessage("what about the regions?"),
     );
     expect(next.turns).toEqual([]);
   });

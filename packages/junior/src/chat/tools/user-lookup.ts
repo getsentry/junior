@@ -230,7 +230,7 @@ export function createUserLookupTool(
 ) {
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. The `slack` provider also accepts email and name searches. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -246,7 +246,9 @@ export function createUserLookupTool(
           .string()
           .trim()
           .min(1)
-          .describe("Provider subject ID, handle, Slack email, or Slack name."),
+          .describe(
+            "Provider subject ID, handle, Slack email, or Slack name. Prefer a Slack user ID (U…) when one is known.",
+          ),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema,

@@ -60,6 +60,7 @@ import {
   MemoryPermalinkRoute,
   PluginUserPageRoute,
 } from "./pages/user/PluginUserPage";
+import { AdminPage } from "./pages/admin/AdminPage";
 import { buildPrimaryNavItems } from "./primaryNav";
 import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
@@ -600,11 +601,24 @@ export function DashboardShell() {
             }
             path="/plugins/:pluginName/:pageId/*"
           />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <LoadingView label="Loading admin" />
+              ) : loggedIn && data!.me.user.isAdmin && userPagesQuery.data ? (
+                <AdminPage pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/admin"
+          />
           <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
         <span
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
+          data-dashboard-noise=""
           style={dashboardNoise}
         />
       </VisualViewportShell>

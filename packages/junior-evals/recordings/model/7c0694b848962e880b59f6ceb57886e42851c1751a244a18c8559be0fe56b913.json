@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/content.eval.ts > Slack Message Content > when a mention is under an app message, the reply uses the app message",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "0c5f6b33a720",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_045a068e0722beea016ac699e49f0c87d1b15586531d5311c5\",\"reasoningEncryptedContent\":\"gAAAAABqxpnlzxOgpkPO6fquA_-02lu5leFHm-lPQv6cR3wLrqDbDUgh0jYvaNBH9mZSSv07K0bgwhJUlViqrQ7v5NvBIJehhG-tydpkmj6hWQ3OJyi0Kd1pjynqM5L9p1RXUO8GMKNtufnFAZWg-qTHdnwAzTKBPdptGf-N1VFzUmDq0dbR0YXNc5eXiHgThq6ASjw9GiY79a8nDjGl06NKLiMqnVzRaG7HydaL_eGBXism6XjI_mkqoGXsWJh-HcxqMzTh3Zr381XlY_LfRxMVoFMyvDnpfyVSI0-oX3Kv-cZZGdabiiIHmKvSVFaso6XV021EpwdGMlQzVg7w1rqz69mNN41FoQteTmr2B-cwUa_aGgUpR7J9bRhHn_Q00kIbVdD8-w6SyHnWWwaEVzQ_NyGRm_3J97L40b0hpcdFW3bEJW5vIs5MntrydgmEaC_-xpX30AicPWckHkP8eSb0-51rN8_Uz3NwXWjSJ993cE2vI_TrhIxkfw7wgOXV-Vl5YKEEBtCUitvKZ6j94twAPpCreDnmSbnh-uQAhCxJC6CgSuxkd7MX7OaylomCKRCEB8sW3oKTkiUDxyjeUb8C78B26icMcjGnJaRIJX2LnjMtXx9l4JvtvlqNQbHpIkV_d21GGdCmp83snLIpggVO1EPDlmjXC_U04Qk6_43uQ54AYU55Cx8QXbvx3JopPiTDSduuFFb7ynKUGDiGJ4rgVszsHtgbHBKhEi6UsQ61TUAJiqx2GEYXWoLWYS7bpYqEaRQlJsM357-2-JtIkPkhd6u9qtCjT9h1jrzWp4c9p6Gu1MnRwA9xtAOuNOPAstxgziKnQ0iZpIFXGm1Z6q_gLmBkLAMUTEGpHeMNW1VwbimuGs3luPEJIIfqEWHmMmheuASUT7xSuineAJHRRkfasf2sFlfgwuCkQa2Ukkm53_w3C_XC_eD8Qv_HFXwoeuM-GZQ3dnt7ZZVFwQpblRhTgufFB5ix4NyrLLWviMAyc4cEDg3LYBY32_yI9JA6hRcAox439upTBN_ErQKOyFx86hKsx7_2ZZJM5OEgeYnxYZ0E0BfbXsSWPzpWCUsMH3j32FTzg9UbCGWF8vljiyjHoNx9Lv8o5P2x61WWqqqk1bgrvLDJoTbBRFSIhozaWwtLOz0fm0nOA-CfnSx9NHPK0Iw6Et5jnqXDyQDTQbj1NMWtbwOKZUDd1_8RvK4RqrASSiCVXLPtMUMVq7wOEIWtn3EkObRULtvnCEEyThP-cWaa9BpZ717ECzDQJ9OX4EDYDg2A7dLwtKA6m4XyvADrT8TCGXN_zev3KwmSx7HawqFLikzvO8kJU_TkWHS31iJ7o4x7LI8fcjDXJIR5hh82qG7bmWvFOnXoeTxkTirFfkeN57if_S2qWjd1HqS6Tps_739J2rk9\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The user asks for a direct extraction of the service name from the alert.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_045a068e0722beea016ac699e4f7a887d183f2780de0c81666\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":685,\"noCache\":685,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":69,\"text\":44,\"reasoning\":25},\"raw\":{\"input_tokens\":685,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":69,\"output_tokens_details\":{\"reasoning_tokens\":25},\"total_tokens\":754}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_045a068e0722beea016ac699e430d487d1b3e08481ccc66c06\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791400420104,\"endTime\":1791400421773,\"providerRequestId\":\"req_ab9680ec25134fc48008b1311f395960\",\"statusCode\":200,\"providerResponseId\":\"resp_045a068e0722beea016ac699e430d487d1b3e08481ccc66c06\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"a0f2f851637b664e8bd4a3cef7ec5041\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000103\",\"marketCost\":\"0.000103\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000103\",\"inferenceCost\":\"0.000103\",\"inputInferenceCost\":\"0.0000685\",\"outputInferenceCost\":\"0.0000345\",\"generationId\":\"gen_01M4BWJ8QB9XTSSTQME2XG6H8E\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

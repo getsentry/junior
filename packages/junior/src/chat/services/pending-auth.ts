@@ -1,4 +1,5 @@
 import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
+import { SubscribedReplyReason } from "@/chat/services/subscribed-decision";
 import type {
   ConversationPendingAuthState,
   ThreadConversationState,
@@ -12,16 +13,6 @@ import { abandonTurnRecord } from "@/chat/task-execution/checkpoint";
 // re-advertising itself. Most provider `state` TTLs sit above this window,
 // so the old link is usually still honorable when we reuse it.
 const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
-const NON_REQUEST_SKIPPED_REASON_PREFIXES = [
-  "directed_to_other_party:",
-  "side_conversation:",
-];
-
-function isSkippedNonRequest(reason: string | undefined): boolean {
-  return NON_REQUEST_SKIPPED_REASON_PREFIXES.some((prefix) =>
-    reason?.startsWith(prefix),
-  );
-}
 
 /** Decide whether the same agent-run session can reuse its fresh auth link. */
 export function canReusePendingAuthLink(args: {
@@ -123,11 +114,12 @@ export async function abandonReplacedPendingAuth(args: {
 }
 
 /**
- * Decide whether an auth callback still belongs to the latest real human
- * request, ignoring bot-authored and passive bystander rows while treating
- * failed human turns and opt-outs as newer freshness blockers.
+ * Whether the person told Junior to stop after the request that waits for
+ * authorization. No other later message ends the wait: the agent reads the
+ * thread when the authorization resumes the request, and it decides whether
+ * the request is still wanted.
  */
-export function isPendingAuthLatestRequest(
+export function wasPendingAuthStopped(
   conversation: ThreadConversationState,
   pendingAuth: ConversationPendingAuthState,
 ): boolean {
@@ -136,13 +128,16 @@ export function isPendingAuthLatestRequest(
     if (message?.role !== "user") {
       continue;
     }
-    if (message.author?.isBot) {
-      continue;
+    if (buildDeterministicTurnId(message.id) === pendingAuth.sessionId) {
+      return false;
     }
-    if (isSkippedNonRequest(message.meta?.skippedReason)) {
-      continue;
+    if (
+      message.meta?.skippedReason?.startsWith(
+        `${SubscribedReplyReason.ThreadOptOut}:`,
+      )
+    ) {
+      return true;
     }
-    return buildDeterministicTurnId(message.id) === pendingAuth.sessionId;
   }
 
   return false;

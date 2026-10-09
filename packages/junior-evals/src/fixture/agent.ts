@@ -3,9 +3,11 @@
  *
  * The agent, the model, Guardian, the turn router, titles, the reply policy,
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
- * third-party APIs are MSW mocks, and the web pages that `webFetch` reads are
- * replayed. The fixture replaces only the Vercel Queue transports and
- * `waitUntil` with in-process versions, so it knows when the agent is idle.
+ * third-party APIs are MSW mocks. Other HTTP traffic goes through
+ * Roach, the recording proxy, which replays model responses and the web pages that
+ * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * Vercel Queue transports and `waitUntil` with in-process versions, so it
+ * knows when the agent is idle.
  */
 import { createHmac, randomUUID } from "node:crypto";
 import { Hono } from "hono";
@@ -19,19 +21,27 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
-import { createConversationId } from "@/chat/conversations/web-input";
+import {
+  createConversationId,
+  webActorFromEmail,
+} from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
-import { completeAuthorization } from "./auth";
+import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { fixtureId } from "./ids";
+import { installWebReplay } from "./web";
 import type {
   AutomationInput,
+  FileInput,
   HistoryItem,
   HistoryReply,
   Input,
+  MentionInput,
   MessageInput,
+  ThreadMessageInput,
 } from "./inputs";
 import {
   hasHistory,
@@ -45,6 +55,7 @@ import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
+  readAuthorizationPrompt,
   readCallEvents,
   readConversationDetail,
   slackCallReplies,
@@ -57,21 +68,41 @@ import {
 } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
+  forwardedMessage,
   installSlackMock,
   isAppMention,
+  postSlackAssistantThreadStarted,
+  postSlackCommand,
   postSlackMessageEvent,
   slackAuthorEmail,
+  SLACK_APP,
+  SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
 } from "./slack";
-import { installWebReplay } from "./web";
 
 /**
  * Every call fails when the agent is not idle within this budget. The budget
  * does not include the time that a delivery waits for its delay.
  */
 const IDLE_TIMEOUT_MS = 60_000;
+/**
+ * How long a model request waits after `onProgress` sent input. The product
+ * checks for a stop every 500 ms and takes steering input at the next model
+ * request. A replayed response comes back at once, so without this wait the
+ * turn can go on before the product sees the input. A live model is slower,
+ * so the recording run and the replay would take different paths.
+ */
+const INPUT_SETTLE_MS = 1_500;
 
-export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
+export type TurnProgress =
+  | GatewayProgress
+  | { type: "reply"; text: string }
+  /**
+   * A turn stopped before it finished, for example at its deadline, and
+   * Junior queued the rest of it. The rest waits until the handler finishes,
+   * so a sent input arrives before the turn continues.
+   */
+  | { type: "paused" };
 
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
@@ -97,8 +128,22 @@ export interface Conversation extends HarnessRun {
   reactions: string[];
   /** Names of the files that Junior uploaded to the Slack thread. */
   files: string[];
+  /**
+   * Status lines that Junior set under the Slack thread, in order. An empty
+   * string clears the status.
+   */
+  statuses: string[];
+  /** Titles that Junior gave the Slack thread, in order. */
+  threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /**
+   * The label of the connect prompt that the dashboard shows to the person
+   * after the call, when a turn waits for their authorization.
+   */
+  authorizationPrompt?: string;
+  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
+  compactions: number;
   turns: Turn[];
   continue(
     input: Input | Input[],
@@ -115,6 +160,8 @@ export type RunAgent = (
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
   task: {
+    /** The file, describe blocks, and name of the test. */
+    fullName: string;
     meta: {
       harness?: { name: string; run: HarnessRun };
     };
@@ -162,7 +209,7 @@ export async function createFixtureAgent(
     background.add(tracked);
     void tracked.finally(() => background.delete(tracked));
   };
-  const slack = installSlackMock();
+  const slack = installSlackMock(context.task.fullName);
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebReplay();
@@ -196,6 +243,16 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
+      // Each Slack person is also a dashboard person with their email.
+      await forgetAuthorizations([
+        webActorFromEmail(WEB_VIEWER_EMAIL).userId,
+        ...slack
+          .authors()
+          .flatMap((author) => [
+            author.userId,
+            webActorFromEmail(slackAuthorEmail(author)).userId,
+          ]),
+      ]);
     }
   };
 
@@ -275,21 +332,55 @@ export async function createFixtureAgent(
       return;
     }
     if (input.kind === "complete_auth") {
+      // The dashboard shows the prompt of a turn that its person started.
+      const prompt =
+        input.author || input.link
+          ? undefined
+          : await readAuthorizationPrompt(
+              api,
+              record.conversationId,
+              record.viewerEmail,
+            );
+      if (prompt) {
+        await completeAuthorization({
+          app,
+          link: prompt.url,
+          provider: input.provider,
+          userId: webActorFromEmail(record.viewerEmail).userId,
+        });
+        return;
+      }
       const { userId } = slack.registerAuthor(
         input.author ?? DEFAULT_SLACK_AUTHOR,
       );
       await completeAuthorization({
         app,
-        links: slack.authorizationLinks({
-          // In a direct message, Junior sends the link as a normal message.
-          directMessageChannel:
-            record.surface === "slack" && record.channelType === "im"
-              ? record.channelId
-              : undefined,
-          userId,
-        }),
+        link: slack
+          .authorizationLinks({
+            // In a direct message, Junior sends the link as a normal message.
+            directMessageChannel:
+              record.surface === "slack" && record.channelType === "im"
+                ? record.channelId
+                : undefined,
+            userId,
+          })
+          .at(input.link === "first" ? 0 : -1),
         provider: input.provider,
         userId,
+      });
+      return;
+    }
+    if (input.kind === "slack_command") {
+      if (record.surface !== "slack") {
+        throw new Error("slackCommand() continues a Slack Conversation");
+      }
+      const { userId } = slack.registerAuthor(
+        input.author ?? DEFAULT_SLACK_AUTHOR,
+      );
+      await postSlackCommand(app, {
+        channel: record.channelId,
+        text: input.text,
+        user: userId,
       });
       return;
     }
@@ -303,8 +394,13 @@ export async function createFixtureAgent(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
-            idempotencyKey: started ? randomUUID() : record.idempotencyKey,
+            idempotencyKey: started
+              ? fixtureId("web-message", 32)
+              : record.idempotencyKey,
             message: input.text,
+            ...(input.images?.length
+              ? { images: input.images.map(webImage) }
+              : undefined),
           }),
         ),
       );
@@ -314,13 +410,38 @@ export async function createFixtureAgent(
       throw new Error("Slack input needs a Slack Conversation");
     }
     if (!started && input.kind !== "mention") {
-      throw new Error("A Slack Conversation starts with mention()");
+      throw new Error("A Slack Conversation starts with slackMention()");
     }
-    const author = slack.registerAuthor(input.author ?? DEFAULT_SLACK_AUTHOR);
-    const ts = started ? slack.nextTs() : record.threadTs;
+    const fromApp = input.kind === "mention" && input.fromApp;
+    const author = slack.registerAuthor(
+      fromApp ? SLACK_APP : (input.author ?? DEFAULT_SLACK_AUTHOR),
+    );
+    // The first message of an assistant thread is under the thread that
+    // Slack started. Every other first message is the root of its thread.
+    const inAssistantThread =
+      !started && input.kind === "mention" && input.assistantThread === true;
+    if (inAssistantThread) {
+      await postSlackAssistantThreadStarted(app, {
+        channel: record.channelId,
+        threadTs: record.threadTs,
+        user: author.userId,
+      });
+      await waitForIdle();
+    }
+    const inThread = started || inAssistantThread;
+    const ts = inThread ? slack.nextTs() : record.threadTs;
     const mention = isAppMention(input, record.channelType);
     const text = mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text;
+    const files = input.files?.length
+      ? { files: input.files.map(slack.addFile) }
+      : undefined;
+    const forwarded = input.forwarded
+      ? { attachments: [forwardedMessage(input.forwarded)] }
+      : undefined;
     slack.addThreadMessage(record.channelId, {
+      ...(fromApp ? { bot_id: SLACK_APP_BOT_ID } : undefined),
+      ...forwarded,
+      ...files,
       text,
       thread_ts: record.threadTs,
       ts,
@@ -329,9 +450,12 @@ export async function createFixtureAgent(
     await postSlackMessageEvent(app, {
       channel: record.channelId,
       channelType: record.channelType,
+      ...(fromApp ? { botId: SLACK_APP_BOT_ID } : undefined),
+      ...forwarded,
+      ...files,
       mention,
       text,
-      ...(started ? { threadTs: record.threadTs } : undefined),
+      ...(inThread ? { threadTs: record.threadTs } : undefined),
       ts,
       user: author.userId,
     });
@@ -343,7 +467,9 @@ export async function createFixtureAgent(
     history: CallOptions["history"],
   ): ConversationRecord => {
     if (first.kind === "web_message") {
-      const idempotencyKey = randomUUID();
+      // The Conversation id comes from this key, and attachment ids come
+      // from the Conversation id.
+      const idempotencyKey = fixtureId("web-conversation", 32);
       return newRecord({
         conversationId: createConversationId({
           actorEmail: WEB_VIEWER_EMAIL,
@@ -354,22 +480,26 @@ export async function createFixtureAgent(
       });
     }
     if (first.kind !== "mention" && !hasHistory(history)) {
-      throw new Error("run() needs mention() or webMessage() first");
+      throw new Error("run() needs slackMention() or webMessage() first");
     }
-    const channelType =
-      (first.kind === "mention" && first.channelType) || "channel";
+    const mention = first.kind === "mention" ? first : undefined;
+    if (mention?.assistantThread && mention.channelType === "channel") {
+      throw new Error("An assistant thread is a direct message");
+    }
+    const channelType = mention?.assistantThread
+      ? "im"
+      : (mention?.channelType ?? "channel");
     const channelId =
-      (first.kind === "mention" ? first.channel?.channelId : undefined) ??
-      slack.newChannelId(channelType);
+      mention?.channel?.channelId ?? slack.newChannelId(channelType);
     const threadTs = slack.nextTs();
-    // The person who posted the thread root reads the results.
-    const historyRoot = Array.isArray(history) ? history[0] : undefined;
-    const root =
-      historyRoot &&
-      historyRoot.kind !== "reply" &&
-      historyRoot.kind !== "web_message"
-        ? historyRoot
-        : first;
+    // The person who posted first in the thread reads the results.
+    const historyRoot = Array.isArray(history)
+      ? history.find(
+          (item): item is MentionInput | ThreadMessageInput =>
+            item.kind === "mention" || item.kind === "thread_message",
+        )
+      : undefined;
+    const root = historyRoot ?? first;
     const rootAuthor = slack.registerAuthor(
       root.author ?? DEFAULT_SLACK_AUTHOR,
     );
@@ -414,21 +544,52 @@ export async function createFixtureAgent(
   ): Promise<Conversation> => {
     const slackCallIndex = readCapturedSlackApiCalls().length;
     const slackPostIndex = slack.posts().length;
+    let sentInputs = 0;
     const progressActions = {
       send: async (input: Input) => {
         if (typeof target === "function") {
           throw new Error(
-            "send() needs a Conversation from mention() or webMessage()",
+            "send() needs a Conversation from slackMention() or webMessage()",
           );
         }
-        await sendInput(target, input);
+        // The handler runs during a delivery of the worker.
+        await queue.asInput(() => sendInput(target, input));
+        sentInputs += 1;
       },
     };
     if (options.onProgress) {
       const onProgress = options.onProgress;
-      gateway.setProgressHook(
-        async (progress) => await onProgress(progress, progressActions),
-      );
+      const report = async (progress: TurnProgress) => {
+        const before = sentInputs;
+        await onProgress(progress, progressActions);
+        if (sentInputs > before) {
+          await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
+        }
+      };
+      gateway.setProgressHook(report);
+      queue.setRequeueHook(async (conversationId) => {
+        if (
+          typeof target === "function" ||
+          conversationId !== target.conversationId
+        ) {
+          return;
+        }
+        // The worker also queues work for a message that waits for its own
+        // turn. A turn is paused only when the reporting API still shows it
+        // as started.
+        const { turns } = readCallEvents({
+          afterSeq: BEFORE_FIRST_EVENT,
+          conversationId,
+          detail: await readConversationDetail(
+            api,
+            conversationId,
+            target.viewerEmail,
+          ),
+        });
+        if (turns.some((turn) => turn.status === "started")) {
+          await report({ type: "paused" });
+        }
+      });
       slack.setReplyHook(async (post) => {
         await onProgress({ type: "reply", text: post.text }, progressActions);
       });
@@ -451,6 +612,7 @@ export async function createFixtureAgent(
       throw error;
     } finally {
       gateway.setProgressHook(undefined);
+      queue.setRequeueHook(undefined);
       slack.setReplyHook(undefined);
     }
     const record = typeof target === "function" ? target() : target;
@@ -512,6 +674,24 @@ export async function createFixtureAgent(
           )
         : [],
     );
+    const threadCalls = (method: string) =>
+      slackCalls.filter(
+        (captured) =>
+          captured.method === method &&
+          captured.params.channel_id === thread?.channelId &&
+          captured.params.thread_ts === thread?.threadTs,
+      );
+    const statuses = threadCalls("assistant.threads.setStatus").map(
+      (captured) => String(captured.params.status),
+    );
+    const threadTitles = threadCalls("assistant.threads.setTitle").map(
+      (captured) => String(captured.params.title),
+    );
+    const authorizationPrompt = await readAuthorizationPrompt(
+      api,
+      record.conversationId,
+      record.viewerEmail,
+    );
     agentCostUsd.set(
       record.conversationId,
       (detail.modelUsage ?? []).reduce(
@@ -538,9 +718,15 @@ export async function createFixtureAgent(
     };
     return conversationResult(record, {
       ...callRun,
+      ...(authorizationPrompt
+        ? { authorizationPrompt: authorizationPrompt.label }
+        : undefined),
+      compactions: events.compactions,
       files,
       reactions,
       replies,
+      statuses,
+      threadTitles,
       title: detail.displayTitle,
       toolCalls: events.toolCalls,
       turns: events.turns,
@@ -597,7 +783,7 @@ export async function createFixtureAgent(
     const response = await api.request(
       `/api/conversations/${encodeURIComponent(record.conversationId)}/forks`,
       jsonRequest(record.viewerEmail, {
-        idempotencyKey: randomUUID(),
+        idempotencyKey: fixtureId("fork", 32),
         messageId,
       }),
     );
@@ -634,9 +820,12 @@ export async function createFixtureAgent(
         startedAtMs,
         toolCalls: [],
       }),
+      compactions: 0,
       files: [],
       reactions: [],
       replies: [],
+      statuses: [],
+      threadTitles: [],
       title: detail.displayTitle,
       toolCalls: [],
       turns: [],
@@ -695,6 +884,9 @@ export async function createFixtureAgent(
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");
     }
+    if (first.kind === "slack_command") {
+      throw new Error("slackCommand() continues a Slack Conversation");
+    }
     return await converse(
       newConversation(first, options.history),
       input,
@@ -750,6 +942,16 @@ function heartbeatSecret(): string {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }
   return secret;
+}
+
+/** An image as the dashboard sends it with a message. */
+function webImage(image: FileInput) {
+  if (!image.content) throw new Error(`Image ${image.name} needs content`);
+  return {
+    contentType: image.mimeType,
+    data: image.content.toString("base64"),
+    filename: image.name,
+  };
 }
 
 /** A JSON POST signed in as `viewerEmail`. */

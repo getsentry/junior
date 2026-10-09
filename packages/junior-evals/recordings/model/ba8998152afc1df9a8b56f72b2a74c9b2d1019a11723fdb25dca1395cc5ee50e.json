@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/subscriptions.eval.ts > Watches > when a follow-up stops monitoring, cancel the selected watch before confirming",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "f3ff6ff273f9",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0b76d308f2afb219016ac80aca554487d1b99ef2d431ddc787\",\"reasoningEncryptedContent\":\"gAAAAABqyArKyvVFFQ5v3a8HvBc1cT-wzuvDNz3QwYTB0maAbys6WMl6vprdF_fT7io7Ak449s4Nr5RF4xJVHCYRkSyvzR_F4hJsnPwW1yAmdE4ClANY_Dc-cHu3aBCuQevqdS1CMcwVtOxnFZoN8iMiRy31EZQPpRAOQKaq_5QwUj9ooGg2K5fhQDoaMKkOjPnxvLmeJ_MRyNYKl9J2U1dNLlfBJZKj6nDkHfLsWjgb1_jVIKMB4yEcXbs7SnzFnARszaBxzKVwc3nJAH2nYenCXDhr6NmnafOO7I0kdKMKw3bf1yyT-UCIsz5iHN2ihcbj30-8C2RIQn8k7WbCxzBu8TztsNAfVjGSAq5YEejhTw7trnwahKObUHYAvkpoReHkXMEWeY_6PKc7sO-GOFhIdydApSQxMJiom2Plk2D8wrGFye1ssZ71TwgWhUeX2Ag9S4riJ4Uaa2b_KVW4q8PSCz8LK0Fq5f8_nIzrcW0m8PmoaciXuPbq8C6WbBhMF5r3Hqhhd7kh8bOjXFPZc8r6Af06GANPaEhf8J8CTBLw5lncs7znAIsVjuCwN27tqCm-7N72MickLg2ThYnBDPYEofQlQw2895K8u6ol6VweV1sX51V2qSrmarbEQRjcn0ihOiR72kBY_OazeRuT9lzdoPSplIWU1aKj8tK8O5zBld4YqaVzuEjjS6pUHr-IOgHSM8PcwBoOlxNISU9L6kqNRW2yPlZMYrhCJ0F2S7hByB6-DvkHnZQdrwDETbLS2bUrCU-lHtP8_4PrbKMxd_dlhGHDHgo-G2mJ5UdtVgoPzx3mN2RpsLuu9VR31yvZE9tckWiwhaOS1GW6k7SrzbnNfNYUdH4YrMYr6t-yp2yAD_Ja0mfCovz9O-sXyajWLkHwUxd_dNXsDyyZtRAnTnJG5H4HcOnJmC3jba8fMCI65aoQAkaiXDB6UBgcu6_egp3jlqAGWI0gbzURb0vgwRE35VCw3vjOwEsutpRPpkdQ3z9nJ_JpPAI5cPhVCedhKk7K6PCo4e0thyi9opYSwlvuE0R7qE0nhCjVheq_X6u-2jNdu2CwdcoPqo_I2y0PnkctX3SgSKkJdJH1leIftCdFQQLR37Dkhb8LG-lFVQxZxravpux3b3lKCGtGsYXjK5RiA5BQDeo6u4wjUhQe5USvLMnoX1ZUwb28yTm7yXBN6m3M6ICVWhnrR0qSR-h2STdEYPNXxO5pyYBk0lMjZfoAvHjziX5-kNP_uLewLmeR14uR1FxK3TxL93ZUa91twYreW5GJLX1ol3dZ8x1ePQXLQGZghnCsEIIfhgMZXnqZYU6j9mIgFuWJMHP9UVgW0-0jM2EIFtdqv8S-DaN4ABpFV74SX9CzhFo5OY9mYqueB1plAkTjoVpCcajPLh17mEhUUtWba8KurR5iKLADE8i2zQSF5mjEJoQgcYkImfU5SmNLa2ZZpqvjRV5clMUMsI2pFxjFppwWIS2NzxxC3M8JZUDF3okZ8KNwlvqzZ6_l165Cx70I8kSZv2PJQqlSobnh-q-TWvvM\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0b76d308f2afb219016ac80acabc4887d1941b8b2cd176e10e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1645,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1642},\"outputTokens\":{\"total\":55,\"text\":14,\"reasoning\":41},\"raw\":{\"input_tokens\":1645,\"input_tokens_details\":{\"cache_write_tokens\":1642,\"cached_tokens\":0},\"output_tokens\":55,\"output_tokens_details\":{\"reasoning_tokens\":41},\"total_tokens\":1700}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0b76d308f2afb219016ac80ac9a27c87d1b877a6a242f4895d\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791494856802,\"endTime\":1791494858936,\"providerRequestId\":\"req_8dd5f4ec5556430d80cc114d517403dc\",\"statusCode\":200,\"providerResponseId\":\"resp_0b76d308f2afb219016ac80ac9a27c87d1b877a6a242f4895d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"8d8d6c87cceac53dfdcec036705d0548\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00023305\",\"marketCost\":\"0.00023305\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00023305\",\"inferenceCost\":\"0.00023305\",\"inputInferenceCost\":\"0.00020555\",\"outputInferenceCost\":\"0.0000275\",\"generationId\":\"gen_01M4EPM82FJ5WQ6TKZ75G74TBH\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

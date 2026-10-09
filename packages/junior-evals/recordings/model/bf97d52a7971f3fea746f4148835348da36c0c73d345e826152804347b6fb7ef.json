@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watched PR check fails, summarize the failure and suggest next steps",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "4885aa803ca1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0f5ae21c0c07c336016ac7c27c9c6087d19311d5b419a5a0f8\",\"reasoningEncryptedContent\":\"gAAAAABqx8J9eOXONKkF-HDR2x8Ede2y04SX7PjGF8dR6qIuVG1B5-l9kM54Egd7oceAjv5gfEyUWfBAHUkdrp-_e95I39XXoszcdf4DVNCc6D6pq8hnOXjjRBIe645tQkB7LkD-ggZ5r08tVuoWPMrlXpoHVwxxMZNTb2jT3lcI-PZCOGjxc7pGHwvRrWC5KCa6UEIoj_TKNSofk7-bhC1yk1Z9WtbpzB4yuFsNZ8cAH41aX9CoICR9FYDm9lW4v0hmY4cghWuAUMWofPwcjit4i5nsXE0a6FX6-jiq_ZbsZoJwVwQPKfiTMgUE5oQrW_J-55oYRLe8ZtjB2RNG0nUxYTDHhw3d3GtFEvx09hpjBK_KFVrZ-dUw2Ie13JLfRtiKtoSzXeLRB1LC3_KD1UXYzcrUY98YJdscbiu64O9v1Wy_f0Xu-ErKj_BOVAAdNa_uqurCdTLSSefLXYgWaxvu3BohgNvr9In-j4A-NXVG6i7JVRUMVz8Wc-K8Yu9nUHc2eWFOYO2TjoRakinf-GBUvto8d7M7etB-QXT9G_tTEattGq3JR0tS02_Z4xl3TGLku_0Pj6bO85THVwYEqjAR0wL6ZtCCSj_MGpXU0mlqzDr2WdWY7E6j05CUpcOCsNOGzud95BgzTy7dsL5BHAKVlKtisMBMusiB61wcLhQ0IxlwTYYLkmbi4gaJNRmGa9gd1dQvHHWHYxgznTBtFftFBHUfkTbJH9yfW9jBuKRtni11wkPTTyuyxbele8NdajYaVeu4vYn6IbyS_xuJ-8toqmWLPfYMX58nxHRJk6LrUgvtGduQXGYdhO-uGm8po-FXdjNiWG_NT3nQAtphwsumBSg9Vj3Le_WRBNBJxpkIB0aiLW8gGkFMepd0DnAAvH2cO9B_JFK1uZuOkCIgZS2PoJ8iRqQmRtjFN-D9ZWVUAg6mSyp0dvuK33LIrOYFKzW1Us5_HkZHPZVS2xlBlMbRKnHG92tdbUDywyoNlCBO1dKo36_RcgHU0KOa8JjCdjApyv4elFbajBPFR6yGoFFABRyuxhBnV5AKJpbbpC37T9SHPVVJsZOhQmNQfTuuT5Tzw2wdYaJrCwUu2jkt9k5OqoY2L2oZXXV66O5Ysna9wS9kc5UH6UkNU3urOMY1S97NQS5sCUN4RMIRMqxh84gUW7p19pRyI4QTndsIlRL7lSwiBxpWBW-MYWiJg0FuewcGuzQER9HRPpRnXAdFQhk2-V2JTsGw1KzSkUCQvi5zrKqicpS2b_Y7o0licRyGN-xDWjfBxOCsAtsGdsMkRl_eO9bko8ctFVZOqrhBd0rB_wYCUI8k6U9_9ndGWJb4F8FfC5AO15mMAy2Qn6dEMs4e3Bsk-nSzG13awWSKr1ILzUoZP7x5YZmFbWZK2meXU7rwCavyejpRI9u6yJmJIRul21z8fElrI3X0KAaQo7XvUiJg1QeSLQ51csdoy1teKvE4YkoJaDegrrMikhKA85DAuBII7sDVdFbXnasTm1bHCtD0pEeLdIHsmaDWheZwosOYp6B6MFcX\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a focused follow-up to an existing watch: report the supplied CI failure and suggest next steps without changing the PR.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f5ae21c0c07c336016ac7c27d274c87d19ae2fb8d26a45ca4\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1231,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1228},\"outputTokens\":{\"total\":94,\"text\":54,\"reasoning\":40},\"raw\":{\"input_tokens\":1231,\"input_tokens_details\":{\"cache_write_tokens\":1228,\"cached_tokens\":0},\"output_tokens\":94,\"output_tokens_details\":{\"reasoning_tokens\":40},\"total_tokens\":1325}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0f5ae21c0c07c336016ac7c27bed4c87d193122adad0ad3531\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476347850,\"endTime\":1791476349787,\"providerRequestId\":\"req_2d3f2d24c8a643c9a6c24c034be8e83e\",\"statusCode\":200,\"providerResponseId\":\"resp_0f5ae21c0c07c336016ac7c27bed4c87d193122adad0ad3531\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e23cb9f27d58b16f74c9827170014a3c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002008\",\"marketCost\":\"0.0002008\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002008\",\"inferenceCost\":\"0.0002008\",\"inputInferenceCost\":\"0.0001538\",\"outputInferenceCost\":\"0.000047\",\"generationId\":\"gen_01M4E4ZCX4PHY4TYSBV6VBYYWK\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

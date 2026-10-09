@@ -34,6 +34,9 @@ Canonical words used across Junior's code and documentation.
 - **Delivery**: a function that sends Run output to the Conversation Location.
   A Conversation without Delivery stores completed assistant Messages only.
 - **User**: one person-level record. A user may have several linked identities.
+- **Admin**: a user with the Junior-wide admin role. Only the `junior admin`
+  CLI grants or revokes it. Plugins use it for setup that other users must not
+  reach. Do not add plugin-specific admin lists.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
@@ -96,6 +99,8 @@ Canonical words used across Junior's code and documentation.
 - **Ticket**: an issue or planned work item from a provider. Object annotations
   store this type as `task`.
 - **Deployment**: a revision sent to a target environment.
+- **Calendar event**: a meeting on a calendar. Object annotations store this
+  type as `calendar_event`.
 - **Item**: a linked object without a more specific native type.
 - **Message card**: a reference to an Annotation attached to a Message. Each
   surface shows the latest saved facts and owns its layout. A card does not

@@ -326,7 +326,8 @@ export async function wireAgentTools(
     pluginCatalogRuntime.getMcpProviders(),
     {
       authProviderFactory: mcpAuth.authProviderFactory,
-      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      onAuthorizationRequired: (provider, _error, context) =>
+        mcpAuth.onAuthorizationRequired(provider, context),
       onToolSuccess: async (input) => {
         return await pluginHooks.afterMcpTool({
           ...input,
@@ -507,7 +508,7 @@ export async function wireAgentTools(
         await args.recordConnectedMcpProvider(provider);
       }
       if (mcpAuth.getPendingPause()) {
-        args.resume.captureResumeSnapshot(args.preAgentPromptMessages());
+        args.resume.captureHistoryBeforePrompt(args.preAgentPromptMessages());
         throw mcpAuth.getPendingPause()!;
       }
     }

@@ -1,5 +1,9 @@
 import { describe, expect } from "vitest";
-import { mention, person, threadMessage } from "@junior-evals/fixture/inputs";
+import {
+  slackMention,
+  person,
+  slackThreadMessage,
+} from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { readMemories } from "@junior-evals/fixture/memory";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
@@ -43,25 +47,25 @@ describe("Memory with Multiple Actors", () => {
     run,
   }) => {
     const thread = await run(
-      mention(
+      slackMention(
         "Can you help capture takeaways from this retro discussion as we go?",
         { author: ALICE },
       ),
     );
     await thread.continue(
-      threadMessage(
+      slackThreadMessage(
         "Biggest takeaway from my side: the rollout checklist missed cache invalidation, and we only caught it because support flagged the stale pages.",
         { author: CAROL },
       ),
     );
     await thread.continue(
-      threadMessage(
+      slackThreadMessage(
         "fwiw I prefer really short, emoji-heavy summaries when these get written up.",
         { author: BOB },
       ),
     );
     const conversation = await thread.continue(
-      mention("What are the takeaways so far?", { author: ALICE }),
+      slackMention("What are the takeaways so far?", { author: ALICE }),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -89,19 +93,21 @@ describe("Memory with Multiple Actors", () => {
     run,
   }) => {
     const thread = await run(
-      mention(
+      slackMention(
         "I prefer status updates with risks listed first. Draft a brief update saying the rollout is paused while we validate the rollback and that the next checkpoint is tomorrow.",
         { author: ALICE },
       ),
     );
     await thread.continue(
-      threadMessage(
+      slackThreadMessage(
         "personally I prefer status updates that lead with the customer impact, not risks.",
         { author: BOB },
       ),
     );
     const conversation = await thread.continue(
-      mention("Thanks, can you tighten the draft a bit?", { author: ALICE }),
+      slackMention("Thanks, can you tighten the draft a bit?", {
+        author: ALICE,
+      }),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -127,12 +133,12 @@ describe("Memory with Multiple Actors", () => {
     run,
   }) => {
     await run(
-      mention("Can you recap what has been asked in this thread so far?", {
+      slackMention("Can you recap what has been asked in this thread so far?", {
         author: ALICE,
       }),
       {
         onProgress: sendDuringFirstModelRequest([
-          mention(
+          slackMention(
             "!! When you write up the recap, I prefer short bullet summaries over prose.",
             { author: BOB },
           ),
@@ -162,13 +168,13 @@ describe("Memory with Multiple Actors", () => {
     run,
   }) => {
     await run(
-      mention(
+      slackMention(
         "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
         { author: ALICE },
       ),
       {
         onProgress: sendDuringFirstModelRequest([
-          mention(
+          slackMention(
             "!! Open question: should we pause the launch? Please list it when you get a chance.",
             { author: BOB },
           ),
@@ -203,18 +209,18 @@ describe("Memory with Multiple Actors", () => {
     run,
   }) => {
     const thread = await run(
-      mention("Can you help us plan the deploy for the retention fix?", {
+      slackMention("Can you help us plan the deploy for the retention fix?", {
         author: ALICE,
       }),
     );
     await thread.continue(
-      threadMessage(
+      slackThreadMessage(
         "Just so you know, deploys freeze every Friday at noon here — risky changes always need to land earlier in the week.",
         { author: BOB },
       ),
     );
     const result = await thread.continue(
-      mention("When should we schedule it?", { author: ALICE }),
+      slackMention("When should we schedule it?", { author: ALICE }),
     );
     await expect(result).toSatisfyJudge(
       RubricJudge,

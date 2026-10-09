@@ -1,8 +1,8 @@
 import { describe, expect } from "vitest";
 import {
   completeAuth,
-  mention,
-  threadMessage,
+  slackMention,
+  slackThreadMessage,
 } from "@junior-evals/fixture/inputs";
 import { insertCredential } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
@@ -39,12 +39,17 @@ describe("OAuth Workflows", () => {
     run,
   }) => {
     const paused = await run(
-      mention(
+      slackMention(
         "/eval-auth Connect, then tell me the budget deadline I mentioned.",
       ),
-      { history: [threadMessage("Remember: the budget deadline is Friday.")] },
+      {
+        history: [
+          slackThreadMessage("Remember: the budget deadline is Friday."),
+        ],
+      },
     );
     expect(turnStates(paused)).toEqual(["started"]);
+    expect(paused.reactions).toEqual(["eyes"]);
 
     const resumed = await paused.continue(completeAuth("eval-auth"));
     await expect(resumed).toSatisfyJudge(
@@ -61,10 +66,11 @@ describe("OAuth Workflows", () => {
       }),
     );
     expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(resumed.reactions).toEqual(["eyes", "white_check_mark"]);
     expect(completedMcpToolCalls(BUDGET_ECHO, resumed)).toHaveLength(1);
 
     const reused = await resumed.continue(
-      mention(
+      slackMention(
         "/eval-auth Use the connection again and confirm the lookup works.",
       ),
     );
@@ -88,10 +94,14 @@ describe("OAuth Workflows", () => {
     run,
   }) => {
     const paused = await run(
-      mention(
+      slackMention(
         "/eval-oauth Connect, then tell me the budget deadline I mentioned.",
       ),
-      { history: [threadMessage("Remember: the budget deadline is Friday.")] },
+      {
+        history: [
+          slackThreadMessage("Remember: the budget deadline is Friday."),
+        ],
+      },
     );
     expect(turnStates(paused)).toEqual(["started"]);
     expect(identityChecks(paused)).toEqual([]);
@@ -114,7 +124,7 @@ describe("OAuth Workflows", () => {
     expect(identityChecks(resumed)).not.toHaveLength(0);
 
     const reused = await resumed.continue(
-      mention(
+      slackMention(
         "/eval-oauth Check again and tell me which eval identity is active.",
       ),
     );
@@ -136,11 +146,35 @@ describe("OAuth Workflows", () => {
     expect(skillLoads("eval-oauth", paused, resumed, reused)).toEqual([]);
   });
 
+  test("when the person asks again before authorizing, the first link resumes the newest request", async ({
+    run,
+  }) => {
+    const first = await run(
+      slackMention("/eval-oauth Tell me which eval identity is active."),
+    );
+    expect(turnStates(first)).toEqual(["started"]);
+
+    // A new request replaces the first one, so Junior asks again.
+    const second = await first.continue(
+      slackMention(
+        "/eval-oauth Forget that question. Tell me only whether an eval identity is connected, and end the answer with the word pineapple.",
+      ),
+    );
+    expect(turnStates(second).at(-1)).toBe("started");
+
+    const resumed = await second.continue(
+      completeAuth("eval-oauth", { link: "first" }),
+    );
+    expect(turnStates(resumed)).toEqual(["succeeded"]);
+    expect(identityChecks(resumed)).not.toHaveLength(0);
+    expect(resumed.replies.at(-1)?.text).toMatch(/pineapple/i);
+  });
+
   test("when OAuth pauses a turn in a direct message, send the link there and resume", async ({
     run,
   }) => {
     const paused = await run(
-      mention("/eval-oauth Tell me which eval identity is active.", {
+      slackMention("/eval-oauth Tell me which eval identity is active.", {
         channelType: "im",
       }),
     );
@@ -165,7 +199,9 @@ describe("OAuth Workflows", () => {
     });
 
     const conversation = await run(
-      mention("/eval-oauth Tell me which eval identity is currently active."),
+      slackMention(
+        "/eval-oauth Tell me which eval identity is currently active.",
+      ),
     );
 
     // The turn does not wait for authorization.
@@ -178,7 +214,7 @@ describe("OAuth Workflows", () => {
     run,
   }) => {
     const paused = await run(
-      mention("Connect my eval-oauth account so I can use it here."),
+      slackMention("Connect my eval-oauth account so I can use it here."),
     );
     expect(turnStates(paused)).toEqual(["started"]);
 

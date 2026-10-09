@@ -100,7 +100,7 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
  */
 export async function createLocalPgliteFixture<TDatabase>(
   schema: Record<string, unknown>,
-  options: Pick<PGliteOptions, "extensions"> = {},
+  options: Pick<PGliteOptions, "extensions" | "loadDataDir"> = {},
 ): Promise<LocalPgliteFixture<TDatabase>> {
   const client = await PGlite.create(
     `memory://junior-sql-${randomUUID()}`,

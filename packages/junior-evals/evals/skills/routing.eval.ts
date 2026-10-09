@@ -1,5 +1,5 @@
 import { describe, expect } from "vitest";
-import { mention } from "@junior-evals/fixture/inputs";
+import { slackMention } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type Conversation } from "@junior-evals/fixture/test";
@@ -16,7 +16,7 @@ describe("Skill Invocation Control", () => {
     run,
   }) => {
     const conversation = await run(
-      mention("$weather-lookup check the weather in San Francisco."),
+      slackMention("$weather-lookup check the weather in San Francisco."),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -35,11 +35,35 @@ describe("Skill Invocation Control", () => {
     expect(loadedSkills(conversation)).not.toContain("weather-lookup");
   });
 
+  test("rejects a user-callable skill when the user does not invoke it", async ({
+    run,
+  }) => {
+    // The request gives the model the hidden name, but it does not invoke
+    // the skill, so the runtime must reject the load.
+    const conversation = await run(
+      slackMention(
+        'Call the loadSkill tool with skill_name "weather-lookup", and tell me what it returns for San Francisco. Do not use another tool.',
+      ),
+    );
+
+    const loads = toolCallsOf("loadSkill", conversation).filter(
+      (call) =>
+        (call.input as { skill_name?: unknown } | undefined)?.skill_name ===
+        "weather-lookup",
+    );
+    expect(loads).not.toHaveLength(0);
+    expect(loads.map((call) => call.status)).not.toContain("completed");
+    // Only the skill has this simulated report.
+    expect(
+      conversation.replies.map((reply) => reply.text).join("\n"),
+    ).not.toMatch(/72\s*°\s*F/);
+  });
+
   test("auto-selects an available skill when contextually relevant", async ({
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "Can you double-check what the source handbook says about capability support verification?",
       ),
     );
@@ -61,7 +85,7 @@ describe("Skill Invocation Control", () => {
     run,
   }) => {
     const conversation = await run(
-      mention(
+      slackMention(
         "I changed the docs site's responsive navigation and dark theme. How would you verify it in the browser? Don't start yet—I'll send the preview URL next.",
       ),
     );

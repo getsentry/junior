@@ -1,12 +1,25 @@
 import { z } from "zod";
 
+const dashboardSessionUserSchema = z
+  .object({
+    email: z.string().trim().email(),
+    emailVerified: z.boolean().optional(),
+    name: z.string().nullable().optional(),
+  })
+  .strict();
+
+/** Sanitized sign-in session. It never carries Junior roles. */
+export const dashboardSessionSchema = z
+  .object({ user: dashboardSessionUserSchema })
+  .strict();
+
+/** Signed-in viewer returned by `/api/me`. */
 export const dashboardIdentitySchema = z
   .object({
-    user: z
-      .object({
-        email: z.string().trim().email(),
-        emailVerified: z.boolean().optional(),
-        name: z.string().nullable().optional(),
+    user: dashboardSessionUserSchema
+      .extend({
+        /** Junior-wide admin role. The server still checks it on every admin route. */
+        isAdmin: z.boolean(),
       })
       .strict(),
   })
@@ -32,5 +45,6 @@ export const dashboardConfigSchema = z
   })
   .strict();
 
+export type DashboardSession = z.infer<typeof dashboardSessionSchema>;
 export type DashboardIdentity = z.infer<typeof dashboardIdentitySchema>;
 export type DashboardConfig = z.infer<typeof dashboardConfigSchema>;

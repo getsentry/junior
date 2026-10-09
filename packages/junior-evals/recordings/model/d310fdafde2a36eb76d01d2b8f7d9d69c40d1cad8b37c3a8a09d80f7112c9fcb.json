@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/participation.eval.ts > Passive Behavior > when a casual pronoun question reads like coworker talk, stay out of the thread",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4dd21bda7dd0",
+      "maxOutputTokens": "26d228663f13",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f735154caadc",
+      "prompt[1]": "932a261decb3",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_06c49d407b227505016ac5d7401c0087d2af662e370a9a3c56\",\"reasoningEncryptedContent\":\"gAAAAABqxddB8mSIf4N8k85vIEZIs4-GexE9R7mMHjIJekhvogpHJGi45D_cDSvF-p506wavwSZYXLCNtvsgfF6G0N1UEEK3QWB9hp05fEVzf_2fZY9--d0LMrS1TVH3BnuNg_CoMT4qRQFehD3HRKArHbojsjLqIRDDeDBux3msiRUiNqpwjWg1wy5PrU2FRNBRdiX2aQmpC71swBbFz81diTBk3F90XQ2mcLtXH8_rsqCM_6S8oxrtMjfVYg90FPdmxWmFklpX3AeG6-RyYQYJrOmn6EYLpWnIHkGAo5x1mYjMg9Dnn4pxZA6vhQK_4eNOCFiINC0A9AigQb3X85aFnhVHt_s4Q7qg50N1BV1nZrZHA_kKMinGzo4yHLDQ3fFsH4XBn_NVHhWfG2bjPGVP8RuoBFQ1NFzXeoYIU5vXjlFRfOUuyW9c5MNp5K_Ss2qyOSgJ1R-JKE2le1DDrXcvfS1TI87ygr7STZ-gj1K9lmHGiXi4A3se1cdxgnbuCzCIo3gIGsw9RwExlxlhDQ6G3CwuqSPZccPW61EoB8oqBTpSdnMNeM5Jyn-omis_2_2aL8Pb9UezBFBqCEYVvUit1zipH0bXS7VTuSYV87DPxs9GYRNtF6ektnnnHPDyeavutHYA1nq8BfyZDmFPB93e0xO7ZCTJYoPLrjw9xh7lzQMnhrcwGc7qkAo6mEeNXDj_Rg0X65YBFopCSsOw0v0p57D0qGa3EK2KGdFuuSGeXVLdnQ9-xA9QAlxa5YkG4kDnXZdD6sXPyLvzOnazEGfr-1ianOeF361cp-iV0Skr_mPnFxmQ5xuxIHGO8MovnzdUmRIubAGsTD1_x8c3W67AsOjfsr_iUtvKF-5CObzqPKifWY4tZClvuL_XfKNOAjsWaTydKJZXsW-CL86-evPmkidIZWbcAKB8ZD_rzflgePQbK5be9ep7BvN2TIHobX2Oz_0-XHPV1SQc9Pj014imleNST6sXm_Uw-wpAOFVUQSzpmUSr2zTEvoW39KrKcjwjZnOlCDvuR8VeKS_gjUsnQKrfv4s8Tj_olxJ74RMgo1QCIXvqDvw5Os4M7faWqmtIygvasSClIGn3RCI1N199P5uABXZrQQzzDWnpI5_5Zsk7q67p6VwJStlqhN4sD3PdjXxQKzKyiqWPVUbdQpmQGtCPMKQD8SJPCwfwhE8orLIWW_aclB8SozaCUTS1lQjCu_2JVv3634SSObgz22AqwpW8LQOjxXizPS8MwKXXzPKcvpxdBtukSbtHApL3oEUQFxIp3ChehVXkTsyKmyeZ6oIVl6CkYr3QWfIamtxFmwDXg6s3xFPu7yEc9I97geJhsIgQv4hqnnRvMB49fyOx9TyQvZboX6QoWCxlpbpYZdXcrkw0yqCFfUL1Kg3DFtTLE865bFUxGlmhIFrAFp437XrF8FJraqmPU-mp6PtTNmKwlREnsO3QvvInsVy2mGQN8Fr1lvKaYrqKI1Nq0Nr8BU48RPyq-ukCY4VkyzvE4Xd6e14UYWm4tTCbDOnoCXGwssEtl8BDv6kL361m-GjO36cfRS6XvI80dATE-2e8hH7NhrkFPGFP9o4WjESrSVp8eY2d_hIO9-0BC8bExzLjGnCCe0rr0OrxcFjE0j1feCljyVhgu01mYRx86xSHzG3ttHpPvuUn35jppW2jMRtckw35lJoy5LOkopmr4o5AK2ARlbQHZsYnz4YebWeqOSCpy9d9sYzhtJOlsS-asBPMRt2HsE800IzcdpksjL9srsJepxr9gy8=\"}}},{\"type\":\"text\",\"text\":\"{\\\"should_reply\\\":false,\\\"should_unsubscribe\\\":false,\\\"confidence\\\":0.96,\\\"reason\\\":\\\"The latest message is addressed to Alex and states a plan, so the floor is human-to-human.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_06c49d407b227505016ac5d740c81887d29ca82896f6a6364f\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1025,\"noCache\":1025,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":126,\"text\":50,\"reasoning\":76},\"raw\":{\"input_tokens\":1025,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":126,\"output_tokens_details\":{\"reasoning_tokens\":76},\"total_tokens\":1151}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_06c49d407b227505016ac5d73fb17487d29ab49d9ef00d0e26\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791350591612,\"endTime\":1791350593841,\"providerRequestId\":\"req_e53594539fbd48d18652437afd4f5d9e\",\"statusCode\":200,\"providerResponseId\":\"resp_06c49d407b227505016ac5d73fb17487d29ab49d9ef00d0e26\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"0f7acf0e1a22a9149217e0eb2b56bff3\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001655\",\"marketCost\":\"0.0001655\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001655\",\"inferenceCost\":\"0.0001655\",\"inputInferenceCost\":\"0.0001025\",\"outputInferenceCost\":\"0.000063\",\"generationId\":\"gen_01M4AD1M31647A852X5YDA2TCP\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

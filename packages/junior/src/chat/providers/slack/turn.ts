@@ -592,16 +592,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
-              // A user follow-up replaces a Turn paused for authorization.
-              // Answer it as a new Turn. The original agent input remains in
-              // history, and the authorization link remains valid. A later
-              // authorization response finds the abandoned Turn and cannot
-              // start a competing Run.
-              await abandonTurnRecord({
-                conversationId,
-                turnId: activeTurnId,
-                errorMessage: "Auth-paused Turn superseded by new input",
-              });
+              // A user follow-up gets its own Turn. The Turn that waits for
+              // authorization stays paused, so a later authorization can
+              // still resume it. Only one Run has the Conversation lease, so
+              // the two Turns do not run at the same time.
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),

@@ -31,6 +31,7 @@ import {
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { startLocationThread } from "@/chat/conversations/sql/location";
 import {
   historyItemFromPiMessage,
   projectConversationEvents,
@@ -393,11 +394,10 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
-      for (const binding of args.providerConversationBindings ?? []) {
-        await bindProviderConversation(executor, {
-          conversationId: args.conversationId,
-          ...binding,
-        });
+      for (const reference of args.providerConversationBindings ?? []) {
+        const binding = { conversationId: args.conversationId, ...reference };
+        await bindProviderConversation(executor, binding);
+        await startLocationThread(executor, binding);
       }
     }),
   );

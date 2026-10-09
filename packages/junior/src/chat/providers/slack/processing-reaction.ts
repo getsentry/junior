@@ -114,7 +114,8 @@ export async function startProcessingReactionForMessage(args: {
     complete: async () => {
       // Always attempt both sides of the completion lifecycle independently.
       // Reaction-only Turns still need `:done` even if removing the processing
-      // reaction fails, and a prior keep() must not block the completed emoji.
+      // reaction fails. After keep(), the processing reaction is the result
+      // that the person asked for, so the Turn adds no completed emoji.
       const shouldAddCompleted = shouldRemove;
       await removeProcessingReaction();
 

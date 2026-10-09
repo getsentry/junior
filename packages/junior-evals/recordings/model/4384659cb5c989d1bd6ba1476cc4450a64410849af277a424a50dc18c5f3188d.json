@@ -1,0 +1,29 @@
+{
+  "session": "evals/router/reasoning.eval.ts > Turn Router Reasoning Snapshots > when the user asks for a thorough strategy comparison, use high reasoning",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "c5aa8a16ce4d",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_05a3a36bae5b052e016ac5d009266887d2bbe9c9e43d240576\",\"reasoningEncryptedContent\":\"gAAAAABqxdAK2j2Q-j-av5pO6imakgMkw2CstntFXvdUmJTRe4XCZAKU7Suf8-71_kV8n7zC95Wrun4RiGtCw1o6AeDu0GZx95rCMbCu8B09vJIJhAsiaK2FQ1lT9tnnqKmhH0orIHQ-A0OFSrZATa3GH3DvABr-AZZ5B64ONVpWGWlYGFo2nSVC0mxdPpktQDOZ2aTqgVT8GX58pfZyVFUcQ5ODVZfAVugnppOo4J0UvCtZX-vAVhykQ09fmPaB5hFRgxGc0j2lEn53Fjnxnbai3-BOdI-R8q82u2Z1-_uR9ev9qbTzgEcWZizqOYokVnDx4A9IMoYpjQ6m9jHfGfPRMvO_-3gYkaJJQVKv7JsPmrCcKVrDLtS654i4XzP2ldR3m2dcbgJPv_tAI5t0hqLeSByZZ2CdVxjrMeAX7x9SqlwOeLl-F_YchMrwI747gLVdNHRoxz88-xgNFWgV01tEwQ-4AiL6evLoY7bYWH_Fk24Be3mHL9zMj2gFcu8Mn50jaFwa26yfkq3gtUv9x46skxxZJj6cSpDAiC8sHTgi-pBW1QrNhf-8ROw_xZ1ARKM-H6xLYILZ1BoZu7xy5ziJ7ZFMR4PNSvoVVlFTIKEjRuh1VtVhf3rTGhbxmMa24AlAnElywoGnHrbw1Jbk1_dpGBcBUEFZQNmOyXC2TiavoZ9NICiCAadtXkb3eJ5DIVZLJp_m15tEmdDEXW8c3yvYXcnhMGlBOdljIczC8T5MFVq9Tjawy729MIp1Omp1VT3X7rzDbB5jAOLpqhYmBZyzpaschwGB5lBZyROPwxOzmtQWEKeItV0o6wM_3-Uth6ZX_etRBtX_16PTaLvPWVjv_MZT5xyUBL3Tu1jibgQzS4SJ6rDHdJ8S-gK8N2iShfh9JNxCJaQ_tAz1rFsqSIPfXYfV0GiB8erDBAJr39EgS0Vo-I6fp2yJqbK4AZXS634Jwf329k8K8K5ESh3y1UzR6E8W6MH2ShD13w2-DEdzEB1U-oEGCSLMFKA9W-uZgisY_FRIr3fX_WakYVQgq2_wLPN1ZIZ-TfFrzjl5-myRLnSTnwF38ZLKDOO2kZzT20xd0lW9Nw68eps7NTZ5w1V_HBYpAUYUBmGITILbYMbfxmy7FMvCoYpSKVipitFZW3AgGsbmSuQOLD8DnGh8PTreFj3t7iZZleFron8VhC8iArwrhPdnYjiJgpZc7a9xt0U0B410ywnh5MdKxs_d-nlSsyiusEznraLvUMIzdFAOzCgbhbz24ycEqNsvbhdsUZwis-Pm4LFFghq7uqnTR-_tscxVZ8plZTQJXgI17cklMzNb1vJEOG73bVcKMM547jk-Bzizg37Qdr5gDGjolBFMVOQkwtopvaVbRCLhDlmNgnvyphXVkK3ViTTQfps1x-4phfWUFgwt0LWVKG2RPCnRsBF9DFaAqjnYMTKEpM9W8uu6X0vT2RyXQK8TrGnxkax_ZGZoaPkPB0ZnvNcByQEwB-Vj7xQ2r0f6ZXxqK8JQamkt7OBGqIOfx6ptwH3WNpQviCK9cg4BQ7vFhedzS-j5tkMN9ed2kbdJwPPL4YX4cJs0q9_LQgrAB9WOuLru-2RzOqcJkvDOh8eCLIqTjMw6C-xUT-Ya0upercfCTeLvCJfLFNbQQFB3Z_bfO2JegBqLtKRmwk_u9E5JmChjgEsAXhmBX_Lqtb8KB3rYzPoyOZNm_KtPQaPF5wP3akVeWiRCyXsrvYD45wxr9rh14zt6uB8wcQv__hlg6PqhD3TL87W6u0T_MerKw6rw1R9pVhg0d-J3Qq6H9OhXy4KnOWrCwghFJnmj4Dx3epCn7C70NDwXXas9sQim-LYlzOb3csF5L9WZQ7AD\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"high\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"The request calls for a thorough comparison of three launch strategies, analysis of tradeoffs and risks, and a recommendation. This is substantive strategic analysis, but not implementation or cross-system research.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_05a3a36bae5b052e016ac5d00a021887d2a0c760fa3e0ab9da\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":608,\"noCache\":608,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":145,\"text\":66,\"reasoning\":79},\"raw\":{\"input_tokens\":608,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":145,\"output_tokens_details\":{\"reasoning_tokens\":79},\"total_tokens\":753}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_05a3a36bae5b052e016ac5d008a61887d2990f7b5a995862a2\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791348744572,\"endTime\":1791348746626,\"providerRequestId\":\"req_de9901f68d1a465d8bf8951c22aadc9e\",\"statusCode\":200,\"providerResponseId\":\"resp_05a3a36bae5b052e016ac5d008a61887d2990f7b5a995862a2\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"b04f31cef1afd18e18320a3eb8f7a1ab\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001333\",\"marketCost\":\"0.0001333\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001333\",\"inferenceCost\":\"0.0001333\",\"inputInferenceCost\":\"0.0000608\",\"outputInferenceCost\":\"0.0000725\",\"generationId\":\"gen_01M4AB98A65PHWTW653NGP1Y0S\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

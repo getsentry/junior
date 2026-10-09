@@ -151,10 +151,11 @@ export function defineJuniorPlugin(
     if (
       page.navigation !== undefined &&
       page.navigation !== "primary" &&
-      page.navigation !== "profile"
+      page.navigation !== "profile" &&
+      page.navigation !== "admin"
     ) {
       throw new Error(
-        `Junior plugin "${name}" user page "${page.id}" navigation must be "primary" or "profile".`,
+        `Junior plugin "${name}" user page "${page.id}" navigation must be "primary", "profile", or "admin".`,
       );
     }
     if (typeof page.read !== "function") {

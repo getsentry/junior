@@ -13,6 +13,7 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { Actor } from "@/chat/actor";
+import type { CredentialSubject } from "@/chat/credentials/context";
 import {
   continuableMessages,
   saveTurnCheckpoint,
@@ -42,6 +43,7 @@ import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
   channelName?: string;
+  credentialSubject?: CredentialSubject;
   destination: Destination;
   dispatchId?: string;
   durability: AgentDurability;
@@ -98,6 +100,7 @@ export function createResumeState(args: ResumeStateArgs) {
   let latestSafeBoundaryMessages: PiMessage[] = [];
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
+  let pausedBeforePrompt = false;
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
   // Durable across slices and history replacement; not derived from live messages.
@@ -122,6 +125,7 @@ export function createResumeState(args: ResumeStateArgs) {
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
+    credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     destination: args.destination,
     dispatchId: args.dispatchId,
@@ -162,6 +166,14 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     captureResumeSnapshot(messages: PiMessage[]): void {
       resumeMessages = [...messages];
+    },
+    /**
+     * Pause at committed history, before the turn adds its prompt. The tail
+     * can be the reply of an earlier turn, so the pause keeps it.
+     */
+    captureHistoryBeforePrompt(messages: PiMessage[]): void {
+      resumeMessages = [...messages];
+      pausedBeforePrompt = true;
     },
     getResumeSnapshot(currentMessages: PiMessage[]): PiMessage[] {
       return latestSafeBoundaryMessages.length > currentMessages.length
@@ -254,6 +266,7 @@ export function createResumeState(args: ResumeStateArgs) {
           durationMs: durationMs(),
           usage,
           messages: resumeMessages,
+          beforePrompt: pausedBeforePrompt,
           errorMessage: pause.message,
         });
         if (!record) {

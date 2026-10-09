@@ -222,7 +222,9 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
 `ctx.users.resolveActor()` only when a tool needs the active actor's linked
-identity or user. Return tool definitions keyed by the plugin-local tool
+identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
+active actor's IANA timezone. It returns the install default when Junior does
+not know the person's timezone. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,

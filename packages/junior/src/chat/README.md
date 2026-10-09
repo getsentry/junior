@@ -156,7 +156,9 @@ Conversation Location.
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
 subject. Scheduled-task creator identity may authorize task-scoped credential
-delegation without becoming the execution actor or a general task owner.
+delegation without becoming the execution actor or a general task owner. A
+timer Watch creator may authorize credentials for that one timer Turn in the
+same way.
 
 ## Invariants
 

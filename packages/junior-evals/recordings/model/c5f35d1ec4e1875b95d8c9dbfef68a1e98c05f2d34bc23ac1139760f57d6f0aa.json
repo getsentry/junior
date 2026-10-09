@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/steering.eval.ts > Slack Turn Steering > when other people mention Junior during a turn, each person gets a follow-up turn unless they override with !!",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "d08b999e0ed5",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d4dd8d52bccbc8a016ac7c24b1f6087d1ad4b5660c7b9af5d\",\"reasoningEncryptedContent\":\"gAAAAABqx8JMjXrWmikncOd0-5ASP5ECQqheQfu684SB9kuC1U1gr7JsEPcLNObG90g0Kjg4rIfy1Gdik6eEvDlCjnaEfIIXNAnd6a-v9KW7jRUu8txcJ1TLuSRqYQ4eJesBgvaquVuDTVyEepfViQ6kmG2LdkUWfhpUhQQrSTeCLV7Z1us1mX5yugWWQxSNOfkrVil4LEpi0Nk_fTM9JrI5afHY1TpPgdGV80jWRX3dTx2pH_OGdPXo8vRFn5Nihs_P3hhrvrCatt3lxsNwJFMdxcBKN3hpKF8AjZma6-Ysk4jVmkNnnKMjcQTMJLOag43F0hDuKAGhQi0s3_ThpWhiwPkqctItOG1hzEpXLWbEmErvAsrB6HGmKw5jVB5h8ML9wiYzwwpMHdbRqmH_sa5uQKBE7McckG8izM8F-UMZAIY4V0R3pvdg3S82fYnNVyUsFdrMygxgxhnYoHI2SnRPFEd8Fo6xS6WA9mG5L1nkCjVP1MXgc4BXscgAAGIQAeGwgaC6q4mJTmD0ThO_IEslH_63KstiSCUdUHt-IkAJ5IDFibfRgfyuwP65rXBWGYBs7KyJoNPsDvUy6nnLgNk_-WhEWX4HKzxf0oJV8fqtgvJ2cL8VCIQ0AwIcdW3ubx0KRsv-WGdb-2Zzx-gaEyDAMb2yjQcJu1DVIRs-JAK_NPN4ZsKf4icjhhLKXnFWdzVU4Dw_tT8anNLNNTXsLUMbG8KV8KypR4-xJBMOuKMgcWxqMvFY4rcGZARq-xecnn7SUDV6HFIvnmlbl1rU8YRj1U5bchNuu_GuZmykNNLI7x9Agv2i_aueDUQMB1HluTOO9o_ste0L7VWsRmgBiuNzyyvt8hlZJUoOAYHGCcdqdaaTM8_6uN2K69VzNKaTpAWlDdPVNNEz2VqynbKq6ePmKELHbHzORzKNxd1rPrywtucEIib8b3JndqFVaBn0vzqZq3c1fy025Bm-BgvtiUnw-85IYf20SX-ST2_qRcg9R6M1hPaxVb-vFdFutfTHJICyEaCnk1FvWElhv6IPsZ9kWNif3NraHLqqT2UHqHhz7aduoXoc6yiEoQap5wU6dqHO5nBPF0nn4IEbwHlB1ANlO5jNIHGgnU7Qfw6mc86DXNobhaGYGzIHcL9qeNfFnOHG28NTOYGx5f3hfiAMeIJIz63GQRaFYarfjLcbFCut95V33ael-6ubB9YJKeU1_aUX-FHNI6iatJkrMxmYB9q9HSO7920RqmZeO0LaNpJ0orvhsXfd69Fq300MlzZNz0sviaR4qZDd9xO6Y1O7lGvjA-TqKks_MRSiUc4W6GAfF9VLMH2ux4MN1fMESvwTDBo3DZYroQAobUZ2f5oN632gjeztuNfON1UHc4_IxHIYTtdebOEakpIJ9T_w5LrnmEgxp7uUM1TNtxpwvpeLduYWSHXzDHHq-ZYeTVdYNKcSSneI_fQW55AmbvoE0LTpMzF-g6B3oo6wSQEb81bD7lM_zJS1NJ9KgptU2Y2nrnkI5-QZ9owD67kMMBGlhbMp_7oq0WrBvjX_3i1U6LIXQqRQIGhseWk9fb7sPF2vj1BteEUAe3QzHyDBO4lXqRRX9tjE_qcTwB-EKP0Na3GHQBuW2PF3sYmwxAuohbCrBl86MgX5tB1BWp7u0jkzGAZXHTiP3G3qq5MoqaPQnjAsPxdKrgcnb-TvlQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"A deterministic one-word response request; no substantive analysis or tool use is needed.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d4dd8d52bccbc8a016ac7c24bf19887d1bdbd5ebe715b45e6\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":859,\"noCache\":859,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":106,\"text\":45,\"reasoning\":61},\"raw\":{\"input_tokens\":859,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":106,\"output_tokens_details\":{\"reasoning_tokens\":61},\"total_tokens\":965}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d4dd8d52bccbc8a016ac7c24aaab887d19e71a515c6599d12\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791476298593,\"endTime\":1791476300834,\"providerRequestId\":\"req_7f47d7e13a2a46fa893f3dde7a72537a\",\"statusCode\":200,\"providerResponseId\":\"resp_0d4dd8d52bccbc8a016ac7c24aaab887d19e71a515c6599d12\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"32648634f853f5ee4c99389b4fe573b0\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001389\",\"marketCost\":\"0.0001389\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001389\",\"inferenceCost\":\"0.0001389\",\"inputInferenceCost\":\"0.0000859\",\"outputInferenceCost\":\"0.000053\",\"generationId\":\"gen_01M4E4XWT77643JPY0FX4WGT5R\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
