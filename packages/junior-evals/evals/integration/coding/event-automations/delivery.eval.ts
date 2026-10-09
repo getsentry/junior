@@ -21,14 +21,21 @@ const repositoryRef = {
 
 /** A non-draft pull request opens: GitHub sends opened and ready signals. */
 function pullRequestOpened(number: number) {
+  const openedAt = new Date().toISOString();
   return githubWebhook("pull_request", {
     action: "opened",
     pull_request: {
-      created_at: new Date().toISOString(),
+      body: null,
+      closed_at: null,
+      created_at: openedAt,
       draft: false,
       head: { ref: `seer/fix-${number}` },
+      id: number * 1_000,
+      merged: false,
+      merged_at: null,
       number,
       title: `Fix cache refresh ${number}`,
+      updated_at: openedAt,
       user: { login: "seer-by-sentry[bot]" },
     },
     repository,
