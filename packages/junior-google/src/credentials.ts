@@ -21,6 +21,7 @@ import {
 } from "./store";
 
 export const GOOGLE_API_DOMAIN = "www.googleapis.com";
+export const GOOGLE_MEET_API_DOMAIN = "meet.googleapis.com";
 const GRANT_NAME = "account";
 // Renew leases a little before Google's access token expires.
 const LEASE_SAFETY_MS = 60_000;
@@ -29,37 +30,55 @@ const LEASE_SAFETY_MS = 60_000;
 export const GOOGLE_OPERATIONS = {
   "google.calendar.event.create": {
     access: "write",
+    domain: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/calendars\/primary\/events$/,
   },
   "google.calendar.event.delete": {
     access: "write",
+    domain: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.event.get": {
     access: "read",
+    domain: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.event.update": {
     access: "write",
+    domain: GOOGLE_API_DOMAIN,
     method: "PATCH",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.events.list": {
     access: "read",
+    domain: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/calendar\/v3\/calendars\/[^/]+\/events$/,
   },
   "google.calendar.freebusy.query": {
     access: "read",
+    domain: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
+  "google.meet.space.get": {
+    access: "read",
+    domain: GOOGLE_MEET_API_DOMAIN,
+    method: "GET",
+    path: /^\/v2\/spaces\/[A-Za-z0-9_-]+$/,
+  },
+  "google.meet.space.update": {
+    access: "write",
+    domain: GOOGLE_MEET_API_DOMAIN,
+    method: "PATCH",
+    path: /^\/v2\/spaces\/[A-Za-z0-9_-]+$/,
+  },
 } as const satisfies Record<
   string,
-  { access: "read" | "write"; method: string; path: RegExp }
+  { access: "read" | "write"; domain: string; method: string; path: RegExp }
 >;
 
 export type GoogleOperation = keyof typeof GOOGLE_OPERATIONS;
@@ -77,7 +96,7 @@ export function googleGrantForEgress(ctx: EgressHookContext): PluginGrant {
   }
   const url = new URL(ctx.request.url);
   if (
-    url.hostname !== GOOGLE_API_DOMAIN ||
+    url.hostname !== rule.domain ||
     ctx.request.method.toUpperCase() !== rule.method ||
     !rule.path.test(url.pathname)
   ) {
@@ -136,12 +155,12 @@ export async function issueGoogleCredential(
     lease: {
       account: { id: config.accountEmail, label: config.accountEmail },
       expiresAt: new Date(token.expiresAtMs - LEASE_SAFETY_MS).toISOString(),
-      headerTransforms: [
-        {
-          domain: GOOGLE_API_DOMAIN,
+      headerTransforms: [GOOGLE_API_DOMAIN, GOOGLE_MEET_API_DOMAIN].map(
+        (domain) => ({
+          domain,
           headers: { Authorization: `Bearer ${token.accessToken}` },
-        },
-      ],
+        }),
+      ),
     },
   };
 }

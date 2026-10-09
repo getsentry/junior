@@ -4,7 +4,8 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar only. Drive and Gmail are out of scope.
+This version supports Calendar, plus Google Meet auto-recording for events
+that Junior creates. Drive and Gmail are out of scope.
 
 ## Surfaces
 
@@ -22,6 +23,12 @@ This version supports Calendar only. Drive and Gmail are out of scope.
   invites and always adds a Google Meet link. It can add a location, optional
   attendees, and a simple repeat rule (weekdays, weekly, or monthly). A retry of the same
   tool call returns the same event. It does not create a second invite.
+- `createCalendarEvent` with `record: true` turns on Google Meet
+  auto-recording for the event's Meet space. It adds a recording notice to the
+  event description. Google saves the recording to the organizer's Drive,
+  which is Junior's account, in its "Google Meet" folder, and adds the link to
+  the Calendar event. If Google refuses, the event still exists and the result
+  has `recording: "failed"` with the reason.
 - `listCalendarEvents` reads the events on one colleague's calendar, or on
   Junior's own calendar when no calendar is given. It shows only what the
   calendar's Google sharing settings let Junior's account see. A calendar
@@ -57,13 +64,13 @@ own.
 2. Google sign-in opens with PKCE and a single-use state value.
 3. The admin signs in as the configured account, not as themselves.
 4. Junior checks that the identity token names the configured account. It also
-   checks that Google granted every Calendar scope. If a check fails, Junior
+   checks that Google granted every tool scope. If a check fails, Junior
    revokes the grant and stores nothing.
 5. Junior stores the refresh token in the `junior_google_accounts` table.
 
 At runtime, the `issueCredential` hook exchanges the refresh token for a
 one-hour access token. Junior applies that token only to `www.googleapis.com`
-requests from this plugin's tools. The `grantForEgress` hook denies sandbox
+and `meet.googleapis.com` requests from this plugin's tools. The `grantForEgress` hook denies sandbox
 commands and any request that does not match a declared operation. Thus the
 model cannot use `curl` to read Junior's calendar and skip the tool rules.
 
@@ -80,9 +87,11 @@ admin to reconnect.
 - Junior changes or cancels only events that it organizes, and only for a
   requester who is invited to the event. The `calendar.events.owned` scope
   also keeps events that other people organize out of reach.
-- Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
-  and `calendar.events.owned`. Junior also requests `openid email` to verify
-  the account during sign-in.
+- Tool scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
+  `calendar.events.owned`, and `meetings.space.settings`. Junior also requests
+  `openid email` to verify the account during sign-in.
+- `meetings.space.settings` lets Junior change Meet settings for meetings it
+  organizes. It cannot read or download recordings.
 
 ## Setup
 
@@ -91,14 +100,15 @@ sign-in requests only its own scopes, so dashboard sign-in still asks only for
 identity.
 
 1. In the Google Cloud project of the dashboard OAuth client, enable the
-   Google Calendar API.
+   Google Calendar API and the Google Meet REST API.
 2. On the OAuth consent screen, use user type **Internal** and add the
-   Calendar scopes above.
+   tool scopes above.
 3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
    - `http://127.0.0.1:8765/oauth/callback`, for the CLI. Use another port with
      `junior google connect --port`.
-4. Give the Junior account a Workspace license.
+4. Give the Junior account a Workspace license. For recording, the license
+   and the Workspace admin settings must let the account record meetings.
 5. Set these environment variables on the deployment:
 
 | Variable                           | Purpose                                         |
@@ -132,5 +142,17 @@ variables are set. The Admin page shows **Not configured** until then.
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
   domains. It cannot accept or decline invites for other people.
+- An account connected before Meet recording was added does not have
+  `meetings.space.settings`. Calendar tools still work, but recording fails
+  until an admin connects the account again.
+- Google starts auto-recording only when a host or co-host joins the meeting
+  on the web. Junior is the host and never joins, and the Meet API can add
+  co-hosts only to meetings that the app created through the Meet API. Check
+  this on a live meeting before people depend on it. If it does not start,
+  an attendee can still select Record. The file goes to the same place.
+- Recordings stay in Junior's "Google Meet" Drive folder. This version does
+  not move them. Moving needs the restricted `drive` scope, because
+  `drive.file` does not cover files that Meet creates. To give a team access,
+  share that folder with a Google group. New files get the folder's access.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

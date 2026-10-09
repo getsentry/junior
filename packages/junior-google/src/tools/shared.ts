@@ -6,11 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { emailDomain } from "../config";
-import {
-  GOOGLE_API_DOMAIN,
-  GOOGLE_OPERATIONS,
-  type GoogleOperation,
-} from "../credentials";
+import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
 
 /** Runtime capabilities the Calendar tools use. */
 export interface GoogleToolContext {
@@ -93,7 +89,7 @@ const googleErrorSchema = z.object({
   error: z.object({ message: z.string().optional() }).optional(),
 });
 
-/** Call one Google Calendar API operation through host-owned egress. */
+/** Call one Google Calendar or Meet API operation through host-owned egress. */
 export async function googleApiRequest(
   ctx: GoogleToolContext,
   input: {
@@ -103,7 +99,8 @@ export async function googleApiRequest(
     query?: Record<string, string>;
   },
 ): Promise<{ body: unknown; status: number }> {
-  const url = new URL(`https://${GOOGLE_API_DOMAIN}${input.path}`);
+  const rule = GOOGLE_OPERATIONS[input.operation];
+  const url = new URL(`https://${rule.domain}${input.path}`);
   for (const [key, value] of Object.entries(input.query ?? {})) {
     url.searchParams.set(key, value);
   }
@@ -111,7 +108,7 @@ export async function googleApiRequest(
     operation: input.operation,
     provider: "google",
     request: new Request(url, {
-      method: GOOGLE_OPERATIONS[input.operation].method,
+      method: rule.method,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -208,6 +205,10 @@ export function attendeeResults(
 /** Event fields that Junior reads back from its own calendar. */
 export const ownEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
+  conferenceData: z
+    .object({ conferenceId: z.string().optional() })
+    .loose()
+    .optional(),
   description: z.string().optional(),
   end: z.object({ dateTime: z.string() }),
   hangoutLink: z.string().optional(),

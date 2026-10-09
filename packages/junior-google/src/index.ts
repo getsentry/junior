@@ -2,8 +2,9 @@
  * Google plugin runtime boundary.
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
- * that account out of band, through the dashboard Admin page or the CLI. Calendar
- * tools use host-owned egress, and the sandbox gets no Google credential.
+ * that account out of band, through the dashboard Admin page or the CLI.
+ * Calendar and Meet tools use host-owned egress, and the sandbox gets no
+ * Google credential.
  */
 import {
   defineJuniorPlugin,
@@ -20,6 +21,7 @@ import {
 } from "./config";
 import {
   GOOGLE_API_DOMAIN,
+  GOOGLE_MEET_API_DOMAIN,
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
@@ -40,7 +42,7 @@ export function googlePlugin(): PluginRegistration {
       displayName: "Google Workspace",
       description:
         "Google Calendar scheduling as Junior's own Google Workspace account",
-      domains: [GOOGLE_API_DOMAIN],
+      domains: [GOOGLE_API_DOMAIN, GOOGLE_MEET_API_DOMAIN],
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
         [GOOGLE_CLIENT_SECRET_ENV]: {},

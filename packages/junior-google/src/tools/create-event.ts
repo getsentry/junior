@@ -6,6 +6,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
+  RECORDING_NOTICE,
+  recordingOutputFields,
+  turnOnAutoRecording,
+} from "./meet-recording";
+import {
   emailListSchema,
   googleApiError,
   googleApiRequest,
@@ -99,6 +104,12 @@ const inputSchema = z
     repeat: repeatSchema
       .optional()
       .describe("Make a repeating series, such as a weekly 1:1."),
+    record: z
+      .boolean()
+      .optional()
+      .describe(
+        "Turn on Google Meet auto-recording, for example for an incident postmortem. Set only when the requester asks to record. Junior adds a recording notice to the description.",
+      ),
   })
   .strict();
 
@@ -106,6 +117,7 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("createCalendarEvent"),
   created: z.boolean(),
   ...ownEventOutputFields,
+  ...recordingOutputFields,
 });
 
 /**
@@ -137,7 +149,8 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       const repeat = input.repeat
         ? `, repeating ${recurrenceRule(input.repeat)}`
         : "";
-      return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
+      const record = input.record ? " with Google Meet auto-recording" : "";
+      return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat}${record} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
     },
     description:
       "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
@@ -166,6 +179,9 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
         ctx.allowedDomains,
       );
 
+      const description = input.record
+        ? [input.description, RECORDING_NOTICE].filter(Boolean).join("\n\n")
+        : input.description;
       const eventId = calendarEventId(options.toolCallId);
       const response = await googleApiRequest(ctx, {
         body: {
@@ -179,9 +195,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
               requestId: eventId,
             },
           },
-          ...(input.description
-            ? { description: input.description }
-            : undefined),
+          ...(description ? { description } : undefined),
           end: { dateTime: input.end, timeZone },
           guestsCanModify: false,
           id: eventId,
@@ -216,10 +230,14 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
         throw googleApiError("google.calendar.event.create", response);
       }
 
+      const ownEvent = ownEventSchema.parse(event.body);
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
+        ...ownEventResult(ownEvent, timeZone),
+        ...(input.record
+          ? await turnOnAutoRecording(ctx, ownEvent)
+          : undefined),
       };
     },
   });

@@ -8,8 +8,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
-  GOOGLE_CALENDAR_SCOPES,
   GOOGLE_IDENTITY_SCOPES,
+  GOOGLE_TOOL_SCOPES,
   type GoogleConfig,
 } from "./config";
 import { saveGoogleAccount, type GoogleDb } from "./store";
@@ -80,7 +80,7 @@ export function googleAuthorizationUrl(input: {
     prompt: "consent select_account",
     redirect_uri: input.redirectUri,
     response_type: "code",
-    scope: [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_CALENDAR_SCOPES].join(" "),
+    scope: [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_TOOL_SCOPES].join(" "),
     state: input.request.state,
   }).toString();
   return url.toString();
@@ -121,7 +121,7 @@ function grantedScopes(tokens: TokenResponse): string[] {
 }
 
 /**
- * Check that a sign-in granted the configured account every Calendar scope.
+ * Check that a sign-in granted the configured account every tool scope.
  *
  * The token response comes straight from Google over TLS, so the identity
  * token claims are trusted without a signature check (OpenID Connect Core
@@ -149,10 +149,10 @@ function verifyGrant(
     };
   }
   const granted = new Set(grantedScopes(tokens));
-  const missing = GOOGLE_CALENDAR_SCOPES.filter((scope) => !granted.has(scope));
+  const missing = GOOGLE_TOOL_SCOPES.filter((scope) => !granted.has(scope));
   if (missing.length > 0) {
     return {
-      reason: `Google did not grant every Calendar permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,
+      reason: `Google did not grant every requested permission. Start again and allow all requested access. Missing: ${missing.join(", ")}`,
     };
   }
   if (!tokens.refresh_token) {

@@ -292,6 +292,80 @@ describe("Google Calendar tools", () => {
       },
     ]);
   });
+  it("turns on Meet auto-recording when asked, and reports when Google refuses", async () => {
+    const event = {
+      attendees: [{ email: REQUESTER }],
+      conferenceData: { conferenceId: "abc-defg-hij" },
+      end: { dateTime: "2026-10-12T11:00:00-07:00" },
+      hangoutLink: "https://meet.google.com/abc-defg-hij",
+      id: "event1",
+      start: { dateTime: "2026-10-12T10:00:00-07:00" },
+      summary: "INC-123 postmortem",
+    };
+    const input = {
+      attendees: [],
+      description: "Timeline: https://example.com/inc-123",
+      end: "2026-10-12T11:00:00-07:00",
+      record: true,
+      start: "2026-10-12T10:00:00-07:00",
+      timeZone: "America/Los_Angeles",
+      title: "INC-123 postmortem",
+    };
+
+    const { fetch, tools } = calendarTools(
+      Response.json(event),
+      Response.json({ name: "spaces/jQCFfuBOdN5z" }),
+      Response.json({ name: "spaces/jQCFfuBOdN5z" }),
+    );
+    const result = await tools.createCalendarEvent!.execute!(
+      tools.createCalendarEvent!.prepareArguments!(input),
+      { toolCallId: "call-rec" },
+    );
+    const createBody = await fetch.mock.calls[0]![0].request.json();
+    // Invitees see the notice before they join.
+    expect(createBody.description).toBe(
+      "Timeline: https://example.com/inc-123\n\nThis meeting is recorded. Google Meet starts the recording automatically.",
+    );
+    const get = fetch.mock.calls[1]![0];
+    expect(get.operation).toBe("google.meet.space.get");
+    expect(get.request.url).toBe(
+      "https://meet.googleapis.com/v2/spaces/abc-defg-hij",
+    );
+    const update = fetch.mock.calls[2]![0];
+    const updateUrl = new URL(update.request.url);
+    expect(update.operation).toBe("google.meet.space.update");
+    expect(update.request.method).toBe("PATCH");
+    expect(updateUrl.pathname).toBe("/v2/spaces/jQCFfuBOdN5z");
+    expect(updateUrl.searchParams.get("updateMask")).toBe(
+      "config.artifactConfig.recordingConfig.autoRecordingGeneration",
+    );
+    expect(await update.request.json()).toEqual({
+      config: {
+        artifactConfig: { recordingConfig: { autoRecordingGeneration: "ON" } },
+      },
+    });
+    expect(result).toMatchObject({ created: true, recording: "on" });
+
+    // The invites are already sent, so a refusal is reported, not thrown.
+    const refused = calendarTools(
+      Response.json(event),
+      Response.json(
+        { error: { message: "Request had insufficient scopes." } },
+        { status: 403 },
+      ),
+    );
+    const refusedResult = await refused.tools.createCalendarEvent!.execute!(
+      refused.tools.createCalendarEvent!.prepareArguments!(input),
+      { toolCallId: "call-rec-2" },
+    );
+    expect(refusedResult).toMatchObject({
+      created: true,
+      eventId: "event1",
+      recording: "failed",
+    });
+    expect(refusedResult.recordingError).toContain("reconnect");
+  });
+
   it("reads a colleague's calendar and reports calendars Junior cannot see", async () => {
     const { fetch, tools } = calendarTools(
       Response.json({

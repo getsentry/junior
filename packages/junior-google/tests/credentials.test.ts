@@ -9,7 +9,7 @@ import { getGoogleAccount, saveGoogleAccount } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  TOOL_SCOPE,
   createGoogleDb,
   stubGoogleEnv,
 } from "./fixture";
@@ -45,6 +45,21 @@ describe("Google egress policy", () => {
         url: "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all",
       }),
     ).toMatchObject({ access: "write", name: "account" });
+    // Meet operations stay on the Meet API host.
+    expect(
+      grantFor({
+        method: "PATCH",
+        operation: "google.meet.space.update",
+        url: "https://meet.googleapis.com/v2/spaces/abc123?updateMask=config",
+      }),
+    ).toMatchObject({ access: "write", name: "account" });
+    expect(() =>
+      grantFor({
+        method: "PATCH",
+        operation: "google.meet.space.update",
+        url: "https://www.googleapis.com/v2/spaces/abc123",
+      }),
+    ).toThrow(EgressPolicyDenied);
   });
 });
 
@@ -88,7 +103,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: TOOL_SCOPE,
     });
     const fetch = vi.fn(async () =>
       Response.json({ access_token: "access-token", expires_in: 3600 }),
@@ -106,6 +121,10 @@ describe("Google credential issuing", () => {
             domain: "www.googleapis.com",
             headers: { Authorization: "Bearer access-token" },
           },
+          {
+            domain: "meet.googleapis.com",
+            headers: { Authorization: "Bearer access-token" },
+          },
         ],
       },
     });
@@ -120,7 +139,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: TOOL_SCOPE,
     });
     vi.stubGlobal(
       "fetch",

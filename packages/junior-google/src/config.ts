@@ -11,7 +11,7 @@ export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
 
 /**
- * Scopes the Calendar tools need. Request nothing broader.
+ * Scopes the Google tools need. Request nothing broader.
  *
  * - `calendar.events.freebusy`: availability for `findMeetingTimes`.
  * - `calendar.events.readonly`: events that Junior's account can see on other
@@ -19,11 +19,14 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  *   still decide how much detail each calendar shows.
  * - `calendar.events.owned`: create and change events on Junior's own
  *   calendar.
+ * - `meetings.space.settings`: turn on auto-recording for the Meet space of
+ *   an event that Junior organizes. It cannot read recordings.
  */
-export const GOOGLE_CALENDAR_SCOPES = [
+export const GOOGLE_TOOL_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",
   "https://www.googleapis.com/auth/calendar.events.owned",
   "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/meetings.space.settings",
 ] as const;
 
 /** Identity scopes used only to verify which account signed in. */

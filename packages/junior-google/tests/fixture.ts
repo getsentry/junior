@@ -40,5 +40,5 @@ export function idToken(claims: Record<string, unknown>): string {
   return `${encode({ alg: "RS256" })}.${encode(claims)}.signature`;
 }
 
-export const CALENDAR_SCOPE =
-  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly";
+export const TOOL_SCOPE =
+  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/meetings.space.settings";

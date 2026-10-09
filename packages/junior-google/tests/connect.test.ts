@@ -9,7 +9,7 @@ import { getGoogleAccount, type GoogleDb } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  TOOL_SCOPE,
   CLIENT_ID,
   createGoogleDb,
   idToken,
@@ -71,7 +71,7 @@ function callback(app: PluginRouteApp, cookie: string, state: string) {
 
 function googleTokenEndpoint(
   claims: Record<string, unknown>,
-  scope = CALENDAR_SCOPE,
+  scope = TOOL_SCOPE,
 ) {
   const fetch = vi.fn(async (url: string | URL | Request) => {
     const href = String(url instanceof Request ? url.url : url);
