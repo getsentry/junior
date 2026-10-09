@@ -109,6 +109,22 @@ describe("automation run result", () => {
     });
   });
 
+  it("posts only the declared message when the model also writes text", () => {
+    const result = automationTurnResult({
+      newMessages: [
+        assistantStop("I checked the queue. Here is the digest for the team."),
+        declared({ result: "send_message", message: "The digest." }),
+      ],
+    });
+
+    expect(
+      finishedRunReply(result, {
+        declaresResult: true,
+        outcomes: [{ action: "send_message" }],
+      }),
+    ).toBe("The digest.");
+  });
+
   it("keeps a result that an earlier slice saved when a later slice errs", () => {
     const saved = declared({ result: "send_message", message: "The digest." });
 
