@@ -80,7 +80,15 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
       if (response.status !== 204 && response.status !== 410) {
         throw googleApiError("google.calendar.event.delete", response);
       }
-      return { ...result, cancelled: response.status === 204 };
+      return {
+        ...result,
+        // Keep the card in the Conversation, and show that the event is gone.
+        objectAnnotations: result.objectAnnotations.map((annotation) => ({
+          ...annotation,
+          status: "cancelled",
+        })),
+        cancelled: response.status === 204,
+      };
     },
   });
 }

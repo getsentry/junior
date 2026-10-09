@@ -99,6 +99,8 @@ Canonical words used across Junior's code and documentation.
 - **Ticket**: an issue or planned work item from a provider. Object annotations
   store this type as `task`.
 - **Deployment**: a revision sent to a target environment.
+- **Calendar event**: a meeting on a calendar. Object annotations store this
+  type as `calendar_event`.
 - **Item**: a linked object without a more specific native type.
 - **Message card**: a reference to an Annotation attached to a Message. Each
   surface shows the latest saved facts and owns its layout. A card does not

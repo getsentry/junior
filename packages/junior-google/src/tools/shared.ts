@@ -1,5 +1,6 @@
 import {
   PluginToolInputError,
+  type ObjectAnnotation,
   type PluginEgress,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -145,14 +146,15 @@ export function formatInterval(
     timeZone,
     weekday: "short",
   }).format(startMs);
-  const time = new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    timeZone,
-    timeZoneName: "short",
-  });
-  return `${day}, ${time.format(startMs)} – ${time.format(endMs)}`;
+  const time = (timeZoneName?: "short") =>
+    new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName,
+    });
+  return `${day}, ${time().format(startMs)} – ${time("short").format(endMs)}`;
 }
 
 /** Longest event Junior may create or move an event to. */
@@ -161,6 +163,7 @@ export const MAX_EVENT_MS = 8 * 60 * 60 * 1000;
 /** Google attendee fields that tools read and return. */
 export const googleAttendeeSchema = z
   .object({
+    displayName: z.string().optional(),
     email: z.string(),
     optional: z.boolean().optional(),
     resource: z.boolean().optional(),
@@ -203,6 +206,7 @@ export function attendeeResults(
 /** Event fields that Junior reads back from its own calendar. */
 export const ownEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
+  description: z.string().optional(),
   end: z.object({ dateTime: z.string() }),
   hangoutLink: z.string().optional(),
   htmlLink: z.string().optional(),
@@ -213,21 +217,57 @@ export const ownEventSchema = z.object({
   recurringEventId: z.string().optional(),
   start: z.object({ dateTime: z.string() }),
   summary: z.string().optional(),
+  updated: z.string().optional(),
 });
 
 export type OwnEvent = z.infer<typeof ownEventSchema>;
 
-/** Shape one event on Junior's calendar for a tool result. */
+/**
+ * Shape one event on Junior's calendar for a tool result.
+ *
+ * Core saves the Calendar event annotation and shows its card with the next
+ * reply. The event id is the key, so a change replaces the saved card. The
+ * label is the short date for the sidebar; the card shows the full time.
+ */
 export function ownEventResult(event: OwnEvent, timeZone: string) {
+  const startMs = Date.parse(event.start.dateTime);
+  const when = formatInterval(
+    startMs,
+    Date.parse(event.end.dateTime),
+    timeZone,
+  );
+  const annotation: ObjectAnnotation = {
+    kind: "object",
+    key: event.id,
+    label: new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      month: "short",
+      timeZone,
+    }).format(startMs),
+    objectType: "calendar_event",
+    // People can edit the event in Calendar. Shorten long values so a
+    // completed change never fails on the annotation schema.
+    title: (event.summary?.trim() || "Untitled event").slice(0, 512),
+    url: event.htmlLink ?? null,
+    description: event.description?.trim().slice(0, 4000) || undefined,
+    sourceUpdatedAt: event.updated,
+    facts: {
+      type: "calendar_event",
+      when,
+      attendees: (event.attendees ?? [])
+        .filter((attendee) => attendee.resource !== true)
+        .slice(0, 5)
+        .map((attendee) =>
+          (attendee.displayName?.trim() || attendee.email).slice(0, 160),
+        ),
+    },
+  };
   return {
+    objectAnnotations: [annotation],
     attendees: attendeeResults(event.attendees),
     end: event.end.dateTime,
     eventId: event.id,
-    label: formatInterval(
-      Date.parse(event.start.dateTime),
-      Date.parse(event.end.dateTime),
-      timeZone,
-    ),
+    label: when,
     start: event.start.dateTime,
     ...(event.summary ? { title: event.summary } : undefined),
     ...(event.location ? { location: event.location } : undefined),

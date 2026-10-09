@@ -1,4 +1,7 @@
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  objectAnnotationSchema,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { recurrenceRule } from "../src/tools/create-event";
@@ -173,7 +176,7 @@ describe("Google Calendar tools", () => {
       // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York.
       slots: [
         {
-          otherTimeZoneLabels: ["Mon, Oct 12, 13:00 EDT – 13:30 EDT"],
+          otherTimeZoneLabels: ["Mon, Oct 12, 13:00 – 13:30 EDT"],
           start: "2026-10-12T17:00:00.000Z",
         },
       ],
@@ -201,11 +204,15 @@ describe("Google Calendar tools", () => {
 
   it("creates one event per tool call and returns the existing event on retry", async () => {
     const event = {
-      attendees: [{ email: REQUESTER }, { email: "bob@example.com" }],
+      attendees: [
+        { email: REQUESTER },
+        { displayName: "Bob Smith", email: "bob@example.com" },
+      ],
       end: { dateTime: "2026-10-12T10:30:00-07:00" },
       hangoutLink: "https://meet.google.com/abc-defg-hij",
       htmlLink: "https://calendar.google.com/event?eid=1",
       start: { dateTime: "2026-10-12T10:00:00-07:00" },
+      summary: "Sync",
     };
     const input = {
       attendees: ["bob@example.com"],
@@ -262,8 +269,27 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       created: false,
       eventId: body.id,
+      label: "Mon, Oct 12, 10:00 – 10:30 PDT",
       videoCallUrl: "https://meet.google.com/abc-defg-hij",
     });
+    // Core saves this annotation and shows its card with the next reply.
+    expect(
+      objectAnnotationSchema.array().parse(result.objectAnnotations),
+    ).toEqual([
+      {
+        kind: "object",
+        key: body.id,
+        label: "Oct 12",
+        objectType: "calendar_event",
+        title: "Sync",
+        url: "https://calendar.google.com/event?eid=1",
+        facts: {
+          type: "calendar_event",
+          when: "Mon, Oct 12, 10:00 – 10:30 PDT",
+          attendees: [REQUESTER, "Bob Smith"],
+        },
+      },
+    ]);
   });
   it("reads a colleague's calendar and reports calendars Junior cannot see", async () => {
     const { fetch, tools } = calendarTools(
@@ -442,6 +468,9 @@ describe("Google Calendar tools", () => {
         ],
         end: { dateTime: input.end },
         start: { dateTime: input.start },
+        // Someone renamed the event in Calendar past the annotation limit.
+        summary: "S".repeat(600),
+        updated: "2026-10-08T12:00:00.000Z",
       }),
     );
     const result = await tools.updateCalendarEvent!.execute!(
@@ -472,6 +501,16 @@ describe("Google Calendar tools", () => {
         { email: "dana@example.com", optional: true },
       ],
       eventId: "event1",
+      // The same key replaces the saved card with the new time.
+      objectAnnotations: [
+        {
+          key: "event1",
+          label: "Oct 13",
+          facts: { when: "Tue, Oct 13, 11:00 – 11:30 PDT" },
+          sourceUpdatedAt: "2026-10-08T12:00:00.000Z",
+          title: "S".repeat(512),
+        },
+      ],
       start: input.start,
     });
   });
@@ -527,6 +566,8 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       cancelled: true,
       eventId: "event1",
+      // The saved card now shows that the event is cancelled.
+      objectAnnotations: [{ key: "event1", status: "cancelled" }],
       title: "Sync",
     });
 

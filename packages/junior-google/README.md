@@ -34,6 +34,10 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 - `cancelCalendarEvent` deletes an event that Junior organizes. Google removes
   it from every attendee's calendar and emails them a cancellation. Only
   people invited to the event can ask to cancel it.
+- `createCalendarEvent` and `updateCalendarEvent` save a Calendar event
+  annotation on the Conversation. Junior shows its card with the next reply.
+  The card shows the title, time, and attendees, and links to the event. A
+  change to an event replaces its card.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
