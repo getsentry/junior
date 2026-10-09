@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/google/calendar.eval.ts > Google Calendar > when asked what is on a colleague's calendar, read their shared events",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "721a47e1cdfb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_088603746fda6237016ac849051b8c87d28b5de54227058035\",\"reasoningEncryptedContent\":\"gAAAAABqyEkGCnYZO-7_4vcv2HQMdFPfzkFqa1AUaJCOGG7bM54_r2vKbykeCkgKiMaKn9gtANvFDFc4MQaWnzTMU0k_hBmZdcwGt5mEHCD6mlu_PnTvo5BO4qloFUNFeiGUi_wY-p5236TvQrBX0I2bt3bs8M_S454nRjFdFyIuLq9UXtIDHLewoDTh26k6W-YvPU84VuEDs6e_2PCne6EBY01_h-SWWq0O5APk3da2f7Ibs-S3XQeaDzlihtzgIYMrCJiTqYv42nFs6mYQ6YRwCJU1AynNQZde64DEvwnoQs4mMe8hOkIfOd7H8DB6oQ1ajkFOMYFTuUfV6krVHJg0hpRgRJhlz1ntwQ829gnT5coaZEqdVaBwvctUg35RC9J8C9G5m6Bu3d2WRUKa0Fboot1gopuQRZjdjb6i3dnXeRebGNP42mw1DnAx5Inv5dFNhivz4bev5Uz68enC9pMQCQ5MEPWmLiYfGu_FWnX-dHvXVDeWeTpPaHCI8raZSFSo0XtgMEqkNeZjZ8knbSFMp1pXUAwwH21zwRwdUaxSo7o3U_YzFX_Oyt5Yu9-Dkg0pIimLIgvmszvuFTqE9yuyuqueLblFmO3fYflT16DEGt027ux0HzyFCxb2gs8yXoWnEcrpSRbgTpnHzjJVZZNaIAIyOjpx_xcIX_5tEdWsw93bpTU9DLpn6eli2wcpcb9KtQyvm0Py2eqiybUASENskYyC1sFU_AmfsuypdIYgUfI46OB6namsqxoqrx9Udie3yWKkcw6QjfTQLJTfv5PhgKQyc8ZcFAP5-Bow-vZC_1k33KL_VWtgjTjQ3CPDSGawYKCWTxezCfVIhC-S5coSB8fr4YjvfsLjcIwlQTmOgNRHg_82xL5QYeqtEXEAd6Utsojj92pvOpDplOTDnqjfkV6slQ5PVbpPwoXa7_M6BBC8jChkUKw9E5Jdl-rrOtYxa1bFELon0zzBwDyYLn0VrK5TbN1KdLv4Ij0Vq73p2oaCyPV3Qta2O-TK4Pc3dqrGWkrogfbgOZjhNGcuqccFmBzmgrbvfsSKmYm_VlQGFR594uieRJTac4n0IOPicjgcIUxEV5VjeUD-9z8Cp_ycOCed9smeml6xGphHbahH1CjQMXLxJgjHVgiEjdth_7KderpVrYWhSYlEC20ZUZnnUAUvN58AWRo5x8JrjWGUzs6PCBxKnFApaWgGJXUBZxqwsvCkFfqVJKYu82plziKh5n4bpneG5wkD_09o8NVpfD6i46hU2haA6hRs1nQYJUNt3jLG7t-w_8hlo1hFHSV6sZhFCxUELVIvd8gdHZUsN--_fs-T50PQIsqKgxJq1-73eOLCLG5opgh7FR7a_v6TeOUSVoZp7HVtnPAhJyOeYPum_10v7hkIIfpQKBQfjEZDh9ILNc_-v7LrWy6dbGIxv-YnpV6K_v6D9_dwJh0aRGWwkz1l5TYCcxkYeoMVGT4lZu8sImAQayZBZVYb5aVtw7g97SqP-Z0_MZMYnCJAFQ_hC_7x8mSoNIWTJQ9V4QCLUNHqc5UX3v4CJA4xOfRR8hgVHgxkm9E4ZDv6NG1wgQOXgOQzwt5NgM6yczO4rbTWOqb6E3fGs3SeMFATLgfDHivmx2TZ-FQh3HE5YvLk8NxIc_lCD7g=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.95,\\\"reason\\\":\\\"This is a calendar lookup requiring access to current external data; it is routine tool use.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_088603746fda6237016ac84905b32887d2a25304aa28f5ca25\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":599,\"noCache\":599,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":100,\"text\":47,\"reasoning\":53},\"raw\":{\"input_tokens\":599,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":100,\"output_tokens_details\":{\"reasoning_tokens\":53},\"total_tokens\":699}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_088603746fda6237016ac84903d56087d2b4d1e5a006ef5ef8\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791510787751,\"endTime\":1791510790284,\"providerRequestId\":\"req_028a3fb4d1fe46f582125d5a6aba5076\",\"statusCode\":200,\"providerResponseId\":\"resp_088603746fda6237016ac84903d56087d2b4d1e5a006ef5ef8\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"d23053513558dd2c6a44350a1777b1b3\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001099\",\"marketCost\":\"0.0001099\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001099\",\"inferenceCost\":\"0.0001099\",\"inputInferenceCost\":\"0.0000599\",\"outputInferenceCost\":\"0.00005\",\"generationId\":\"gen_01M4F5TDMDVH4XDTVXN8HSBE6B\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

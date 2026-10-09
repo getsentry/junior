@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/google/calendar.eval.ts > Google Calendar > when Junior's Google account is not connected, say that an admin must connect it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "13fa7f7843e9",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0bcf0d1c2aba053d016ac85734842487d2952b49c29a197951\",\"reasoningEncryptedContent\":\"gAAAAABqyFc2fyFxkpG-jP6W8ps5tUr6kth5wdklLp_OShm1u2xPABDmLDW4--OfAf9txRkqiwpHLfol-GHB5iJuzNX1Cw06GldDuW55lJ9YV7UCSJonbm11J838z1JGP4u0TqMni7IqmPFfU7mgE75BESQyCLzpTcZngLV10M3ERl1TwPCYXYkogRI5MUlBRWoQ1sMVXnlYEkQr_cRwwMCrkFfwBf-62T_ClUYm__wKNH1EibejeXQbCtgW2xBzDrakE4UVbhgXk_adrezHEqbwxo9lhf6-U3IfyjA_1kLQEP7A7Z5ceurA2Dbb6VRR1ynqVVAvVicfC090s5C8TuW9nDOz7dyDXu0OjST0QtfYzoEzJrdIfkiGGWf3kQdBVRt0vm2b8ZbgB6mP73E-_8gTgK_gRZj_RQjW8uDoEkqota7H4kxyrWBvSUo1xtKuyuT0wTqgcAChCT8cx4L7EGHfZDAChALJzE6MFrvOnrcBtmYprLtubeRGFowmChY6U2MTeOdk_zbZq6Ec26P5zf4a66iKCuxFDp2n63LZOpsJu65J0uhvFEJYnXyYoKNtIyr9szDpfO_RGYKmqRVP_EOMsJBkju3Rl3NM0MJ4eN-Up_tyoMqYsGfnJhVWaThiv6o6jqp-hFASAazcNhIutc2fL8nLwEOzhWGuxqkmXceAo_pPlO1yvZWYtE6-MR5I85IexUD0yJ4ghuxchI7SvOjsKGq12uiAeqisLIlr7LW2EtEFr_bdmpo-jfee0hs6ZF7dFLKA_monLQg2S4nz_Dimc7zKBS_mb5ztkEzu9vNsi5k7ePSap-8FgnrJDHQz7LMPpBNBQlq4tz_sZZe3F1k3ulLyvfwNdBGddIAJR9Up2RR_unascHAOYjvBiegXOoTH2nUj4YC_Pju4lRRvn2eFY4z7jdak186-9L3sat_3qP5HyBMkptgxKTzw8spmyGk3mJENvGELJdw0fw2PFM50XHGk1srpozXCKfiK6jg6h58GU9qW_KG7QZ8FuRp0qQMXckanDDoz26tkmOgnmrK2ZN3wYHvc4KQqmXddIGXukmLpvWuGKkzAOVcWoJwkVX2X_4hIawLomyfiN3b8Lf5rBRdIdvhS91vtJG_F5DLXiaYePAnt7babBoDvu3fiFyI3Ykdy2D00Quprywj0zFKZYtgCuWQ9OG8XQCFRi9HB5fQXzeTisFNIYAUeIUxLsfUy7wxy_X_Z13sLJU6k7hKZLQcsY-_d7nhsQzOmgCdqD1FaqFCdXH9no4NcdJiLsZ6c-mM6x10h2yPQppuHUJxsJH7gJPPP5L2v9_lmF_4baB20oPkiNBG-ctSAuiwthoN7FVIgtcWmIBHX3HKwM0id-ihlNN8idegkOrINhizoCp23eKCCvfnQKH38QSGg50PphBrlTYw8q-DJ01sBA_dnJdyVWdKaeKGkB2ivz_k8flq2ZspHtx4a3uxkfwEl6DiuVGma7FxsPeNGPQGfFpH0d3yNFahK_1BKhkxhj5_YhUQNS_eWR9-ft2ZcVYXNhrizTl6BKLaLbTcIlbo6NwFqXcwdpN5OLjxhdQMDFFtynOuDSRqHKyWtFKl4qqsFYuVycK4yP8wbmzUvdKhYi2GCqPzbGcw_Rb3RpuJr7TNZWszG9n74o95zz1AIoCKELKsy5qfBeE_wUhSSGoCUDZPsbodkxk7nDWoFHHGDEI-zKJyQg6TJhAqWkBMT8kJVD1gPp5ptqV_LTKEgYAv3PLgEg1oQpzjUbbA1Py3-uJomoAVUKed7hDMKtxFMfdquwCHuMAwuQpgOF1WHZi0NGjd_EeOnHN8geF8cSpOc4d095eickEoanoDqA5MrkIle149nV2oEiU3IxgHPMpUVmeOXhDcYMSihpQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"This read-only search checks free/busy for the requested 30-minute meeting with Sam during the remaining time this week and returns only available slots.\\\",\\\"riskLevel\\\":\\\"low\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0bcf0d1c2aba053d016ac8573565b487d28a05a559ec79c127\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":4388,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":2564},\"outputTokens\":{\"total\":162,\"text\":55,\"reasoning\":107},\"raw\":{\"input_tokens\":4388,\"input_tokens_details\":{\"cache_write_tokens\":2564,\"cached_tokens\":1821},\"output_tokens\":162,\"output_tokens_details\":{\"reasoning_tokens\":107},\"total_tokens\":4550}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0bcf0d1c2aba053d016ac85733c45887d28368ab88e62ce582\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791514419683,\"endTime\":1791514422065,\"providerRequestId\":\"req_710acfbbed504e5aa2fd682d86e572c8\",\"statusCode\":200,\"providerResponseId\":\"resp_0bcf0d1c2aba053d016ac85733c45887d28368ab88e62ce582\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"ba881b6d18ba15196e4a88c677b07a5a\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00042001\",\"marketCost\":\"0.00042001\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00042001\",\"inferenceCost\":\"0.00042001\",\"inputInferenceCost\":\"0.00033901\",\"outputInferenceCost\":\"0.000081\",\"generationId\":\"gen_01M4F998E89P85HP477QJCMMZ4\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

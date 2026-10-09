@@ -577,6 +577,11 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   users: {
     /** Resolve the current actor's stored identity and linked user. */
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+    /**
+     * Resolve the current actor's IANA timezone. Uses their profile when
+     * Junior knows it, else the install default. Always returns a timezone.
+     */
+    resolveTimezone(): Promise<string>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

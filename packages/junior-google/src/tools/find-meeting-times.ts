@@ -49,7 +49,7 @@ const inputSchema = z
         "End of the search window, RFC 3339 with offset. Defaults to 7 days after timeMin. At most 14 days after timeMin.",
       ),
     timeZone: timeZoneSchema.describe(
-      "The requester's IANA time zone, such as America/Los_Angeles. Slot labels use it. It is also the working-hours zone for anyone whose calendar time zone Junior cannot read.",
+      "IANA time zone for slot labels, such as America/Los_Angeles. Omit to use the requester's time zone. It is also the working-hours zone for anyone whose calendar time zone Junior cannot read.",
     ),
     workdayStart: clockTimeSchema
       .default("09:00")
@@ -357,6 +357,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const timeMinMs = Math.max(
         input.timeMin ? Date.parse(input.timeMin) : 0,
         Date.now(),
@@ -412,8 +413,11 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           unavailable.push({ email, reason: error ?? "notFound" });
           return;
         }
-        const timeZone = timeZones[index];
-        checked.push({ email, ...(timeZone ? { timeZone } : undefined) });
+        const calendarZone = timeZones[index];
+        checked.push({
+          email,
+          ...(calendarZone ? { timeZone: calendarZone } : undefined),
+        });
         slotAttendees.push({
           busy: calendar.busy.map((interval) => ({
             endMs: Date.parse(interval.end),
@@ -421,7 +425,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
           })),
           email,
           required: required.has(email),
-          timeZone: timeZone ?? input.timeZone,
+          timeZone: calendarZone ?? timeZone,
         });
       });
 
@@ -433,23 +437,23 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             maxResults: input.maxResults,
             timeMaxMs,
             timeMinMs,
-            timeZone: input.timeZone,
+            timeZone,
             workdayEnd: input.workdayEnd,
             workdayStart: input.workdayStart,
           });
       const otherTimeZones = [
         ...new Set(slotAttendees.map((attendee) => attendee.timeZone)),
-      ].filter((timeZone) => timeZone !== input.timeZone);
+      ].filter((zone) => zone !== timeZone);
       return {
         target: "findMeetingTimes" as const,
         checked,
         slots: slots.map((slot) => ({
           end: new Date(slot.endMs).toISOString(),
-          label: formatInterval(slot.startMs, slot.endMs, input.timeZone),
+          label: formatInterval(slot.startMs, slot.endMs, timeZone),
           ...(otherTimeZones.length
             ? {
-                otherTimeZoneLabels: otherTimeZones.map((timeZone) =>
-                  formatInterval(slot.startMs, slot.endMs, timeZone),
+                otherTimeZoneLabels: otherTimeZones.map((zone) =>
+                  formatInterval(slot.startMs, slot.endMs, zone),
                 ),
               }
             : undefined),
@@ -458,7 +462,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
             : undefined),
           start: new Date(slot.startMs).toISOString(),
         })),
-        timeZone: input.timeZone,
+        timeZone,
         unavailable,
       };
     },

@@ -29,6 +29,7 @@ import type {
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   annotateToolResult,
@@ -713,7 +714,21 @@ export function getPluginTools(
       events,
       sandbox,
       state: createPluginState(pluginName),
-      users: { resolveActor },
+      users: {
+        resolveActor,
+        async resolveTimezone() {
+          const actor = context.actor;
+          const resolved = await resolveActor();
+          return await resolveUserTimezone({
+            db: getDb(),
+            nowMs: Date.now(),
+            ...(actor?.platform === "slack"
+              ? { slack: { teamId: actor.teamId, userId: actor.userId } }
+              : undefined),
+            ...(resolved?.user ? { userId: resolved.user.id } : undefined),
+          });
+        },
+      },
       workspaces: {
         async findByRepository(input: { provider: string; repo: string }) {
           return await listWorkspaceNamesByRepository(getDb(), input);

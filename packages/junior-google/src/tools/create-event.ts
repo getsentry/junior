@@ -96,7 +96,6 @@ const inputSchema = z
     optionalAttendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to invite as optional attendees."),
-    addVideoCall: z.boolean().default(true).describe("Add a Google Meet link."),
     repeat: repeatSchema
       .optional()
       .describe("Make a repeating series, such as a weekly 1:1."),
@@ -141,10 +140,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
     },
     description:
-      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
+      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
     inputSchema,
     outputSchema,
     async execute(input, options) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const startMs = Date.parse(input.start);
       const endMs = Date.parse(input.end);
       if (endMs <= startMs) {
@@ -173,33 +173,29 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
             ...attendees.map((email) => ({ email })),
             ...optionalAttendees.map((email) => ({ email, optional: true })),
           ],
-          ...(input.addVideoCall
-            ? {
-                conferenceData: {
-                  createRequest: {
-                    conferenceSolutionKey: { type: "hangoutsMeet" },
-                    requestId: eventId,
-                  },
-                },
-              }
-            : undefined),
+          conferenceData: {
+            createRequest: {
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+              requestId: eventId,
+            },
+          },
           ...(input.description
             ? { description: input.description }
             : undefined),
-          end: { dateTime: input.end, timeZone: input.timeZone },
+          end: { dateTime: input.end, timeZone },
           guestsCanModify: false,
           id: eventId,
           ...(input.location ? { location: input.location } : undefined),
           ...(input.repeat
             ? { recurrence: [recurrenceRule(input.repeat)] }
             : undefined),
-          start: { dateTime: input.start, timeZone: input.timeZone },
+          start: { dateTime: input.start, timeZone },
           summary: input.title,
         },
         operation: "google.calendar.event.create",
         path: "/calendar/v3/calendars/primary/events",
         query: {
-          conferenceDataVersion: input.addVideoCall ? "1" : "0",
+          conferenceDataVersion: "1",
           sendUpdates: "all",
         },
       });
@@ -223,7 +219,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), input.timeZone),
+        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
       };
     },
   });

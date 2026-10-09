@@ -3,6 +3,7 @@
  * server clock into the canonical schedule persisted by core.
  */
 import { z } from "zod";
+import { isValidTimeZone } from "@/chat/identities/timezone";
 import {
   getFirstRunAtMs,
   getZonedDateTimeParts,
@@ -212,16 +213,6 @@ function localDateAt(timestampMs: number, timezone: string): string {
         : String(value).padStart(2, "0"),
     )
     .join("-");
-}
-
-/** Whether the runtime accepts this IANA timezone name. */
-export function isValidTimeZone(timezone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function plural(value: number, unit: string): string {

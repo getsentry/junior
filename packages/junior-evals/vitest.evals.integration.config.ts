@@ -6,6 +6,7 @@ import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { authSuite } from "./src/suites/auth";
 import { codingSuite } from "./src/suites/coding";
+import { googleSuite } from "./src/suites/google";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
@@ -78,6 +79,8 @@ const projectTest = {
 const authSuiteRoot = "evals/integration/auth";
 // The integration directory of the coding suite. See `src/suites/coding.ts`.
 const codingSuiteRoot = "evals/integration/coding";
+// The integration directory of the Google suite. See `src/suites/google.ts`.
+const googleSuiteRoot = "evals/integration/google";
 
 export default defineConfig({
   resolve,
@@ -105,6 +108,7 @@ export default defineConfig({
             ...configDefaults.exclude,
             `${authSuiteRoot}/**`,
             `${codingSuiteRoot}/**`,
+            `${googleSuiteRoot}/**`,
           ],
         },
       },
@@ -122,6 +126,14 @@ export default defineConfig({
           ...projectTest,
           ...codingSuite,
           include: [`${codingSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...googleSuite,
+          include: [`${googleSuiteRoot}/**/*.eval.ts`],
         },
       },
     ],

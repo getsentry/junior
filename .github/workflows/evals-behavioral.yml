@@ -42,6 +42,7 @@ jobs:
               - 'packages/junior-evals/evals/agent/**'
               - 'packages/junior-evals/evals/coding/**'
               - 'packages/junior-evals/evals/conversation/**'
+              - 'packages/junior-evals/evals/google/**'
               - 'packages/junior-evals/evals/memory/**'
               - 'packages/junior-evals/evals/scheduler/**'
               - 'packages/junior-evals/evals/sentry/**'

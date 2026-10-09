@@ -150,6 +150,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const timeMinMs = Date.parse(input.timeMin);
       const timeMaxMs = Date.parse(input.timeMax);
       if (timeMaxMs <= timeMinMs) {
@@ -170,13 +171,13 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
           singleEvents: "true",
           timeMax: new Date(timeMaxMs).toISOString(),
           timeMin: new Date(timeMinMs).toISOString(),
-          timeZone: input.timeZone,
+          timeZone,
         },
       });
       const result = {
         target: "listCalendarEvents" as const,
         calendar,
-        timeZone: input.timeZone,
+        timeZone,
       };
       // Google returns 404 when Junior's account cannot see the calendar.
       if (response.status === 404) {
@@ -194,7 +195,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
           .map((event) => ({
             end: event.end.dateTime ?? lastAllDayDate(event.end) ?? "",
             eventId: event.id,
-            label: eventLabel(event.start, event.end, input.timeZone),
+            label: eventLabel(event.start, event.end, timeZone),
             start: event.start.dateTime ?? event.start.date ?? "",
             ...(event.summary ? { title: event.summary } : undefined),
             ...(event.location ? { location: event.location } : undefined),

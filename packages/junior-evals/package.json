@@ -18,6 +18,7 @@
     "@earendil-works/pi-ai": "catalog:",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-google": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
