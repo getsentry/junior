@@ -19,7 +19,8 @@
   },
   "files": [
     "dist",
-    "migrations"
+    "migrations",
+    "skills"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",

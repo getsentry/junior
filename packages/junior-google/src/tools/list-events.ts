@@ -5,7 +5,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
+  attendeeOutputSchema,
+  attendeeResults,
   formatInterval,
+  googleAttendeeSchema,
   googleApiError,
   googleApiRequest,
   requireAllowedEmails,
@@ -22,7 +25,10 @@ const inputSchema = z
       .trim()
       .toLowerCase()
       .pipe(z.email())
-      .describe("Email address of the person whose calendar to read."),
+      .optional()
+      .describe(
+        "Email address of the person whose calendar to read. Omit to read Junior's own calendar, which holds every event Junior organizes.",
+      ),
     timeMin: z.iso
       .datetime({ offset: true })
       .describe("Start of the window, RFC 3339 with offset."),
@@ -37,12 +43,23 @@ const inputSchema = z
   .strict();
 
 const eventSchema = z.object({
-  attendees: z.array(z.string()).optional(),
+  attendees: z.array(attendeeOutputSchema).optional(),
   end: z.string(),
   eventId: z.string(),
   label: z.string(),
   location: z.string().optional(),
   organizer: z.string().optional(),
+  organizedByJunior: z
+    .boolean()
+    .describe(
+      "True when Junior organizes the event, so Junior can change or cancel it with this eventId.",
+    ),
+  seriesEventId: z
+    .string()
+    .optional()
+    .describe(
+      "Set when this is one occurrence of a repeating event. It is the id of the whole series.",
+    ),
   start: z.string(),
   title: z.string().optional(),
   url: z.string().optional(),
@@ -67,13 +84,14 @@ const listResponseSchema = z.object({
   items: z
     .array(
       z.object({
-        attendees: z.array(z.object({ email: z.string() })).optional(),
+        attendees: z.array(googleAttendeeSchema).optional(),
         end: eventTimeSchema,
         hangoutLink: z.string().optional(),
         htmlLink: z.string().optional(),
         id: z.string(),
         location: z.string().optional(),
         organizer: z.object({ email: z.string().optional() }).optional(),
+        recurringEventId: z.string().optional(),
         start: eventTimeSchema,
         status: z.string().optional(),
         summary: z.string().optional(),
@@ -128,7 +146,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List events on a colleague's Google Calendar, as seen by Junior's own Google account. Shows titles, times, locations, organizer, and attendees when the calendar's sharing settings allow it. Events without a title are busy blocks the owner did not share. Only calendars in the company's Google Workspace domains can be read. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
+      "List events on a colleague's Google Calendar or on Junior's own calendar, as seen by Junior's own Google account. Shows titles, times, locations, organizer, and attendee responses when the calendar's sharing settings allow it. Use it to find an event to change or cancel, check who accepted, or see what someone has coming up. Events without a title are busy blocks the owner did not share. Only calendars in the company's Google Workspace domains can be read. Calendar details can be private: share only what the requester needs, and avoid repeating them in public channels.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -140,11 +158,12 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       if (timeMaxMs - timeMinMs > MAX_WINDOW_MS) {
         throw new PluginToolInputError("Read at most 31 days at a time.");
       }
-      requireAllowedEmails([input.calendar], ctx.allowedDomains);
+      const calendar = input.calendar ?? ctx.accountEmail;
+      requireAllowedEmails([calendar], ctx.allowedDomains);
 
       const response = await googleApiRequest(ctx, {
         operation: "google.calendar.events.list",
-        path: `/calendar/v3/calendars/${encodeURIComponent(input.calendar)}/events`,
+        path: `/calendar/v3/calendars/${calendar === ctx.accountEmail ? "primary" : encodeURIComponent(calendar)}/events`,
         query: {
           maxResults: String(input.maxResults),
           orderBy: "startTime",
@@ -156,7 +175,7 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
       });
       const result = {
         target: "listCalendarEvents" as const,
-        calendar: input.calendar,
+        calendar,
         timeZone: input.timeZone,
       };
       // Google returns 404 when Junior's account cannot see the calendar.
@@ -182,8 +201,13 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
             ...(event.organizer?.email
               ? { organizer: event.organizer.email }
               : undefined),
+            organizedByJunior:
+              event.organizer?.email?.toLowerCase() === ctx.accountEmail,
+            ...(event.recurringEventId
+              ? { seriesEventId: event.recurringEventId }
+              : undefined),
             ...(event.attendees
-              ? { attendees: event.attendees.map((person) => person.email) }
+              ? { attendees: attendeeResults(event.attendees) }
               : undefined),
             ...(event.htmlLink ? { url: event.htmlLink } : undefined),
             ...(event.hangoutLink

@@ -13,6 +13,8 @@ import {
 
 /** Runtime capabilities the Calendar tools use. */
 export interface GoogleToolContext {
+  /** The Workspace account Junior acts as, in lowercase. */
+  accountEmail: string;
   allowedDomains: string[];
   egress: PluginEgress;
   users: {
@@ -155,31 +157,70 @@ export function formatInterval(
 /** Longest event Junior may create or move an event to. */
 export const MAX_EVENT_MS = 8 * 60 * 60 * 1000;
 
+/** Google attendee fields that tools read and return. */
+export const googleAttendeeSchema = z
+  .object({
+    email: z.string(),
+    optional: z.boolean().optional(),
+    resource: z.boolean().optional(),
+    responseStatus: z.string().optional(),
+  })
+  .loose();
+
+/** One attendee in a tool result. */
+export const attendeeOutputSchema = z.object({
+  email: z.string(),
+  optional: z.boolean().optional(),
+  response: z
+    .enum(["accepted", "declined", "tentative", "needsAction"])
+    .optional(),
+});
+
+const RESPONSES = new Set(["accepted", "declined", "tentative", "needsAction"]);
+
+/** Shape Google attendees for a tool result. Room resources are left out. */
+export function attendeeResults(
+  attendees: Array<z.infer<typeof googleAttendeeSchema>> | undefined,
+): Array<z.infer<typeof attendeeOutputSchema>> {
+  return (attendees ?? [])
+    .filter((attendee) => attendee.resource !== true)
+    .map((attendee) => ({
+      email: attendee.email.toLowerCase(),
+      ...(attendee.optional ? { optional: true } : undefined),
+      ...(attendee.responseStatus && RESPONSES.has(attendee.responseStatus)
+        ? {
+            response: attendee.responseStatus as
+              | "accepted"
+              | "declined"
+              | "tentative"
+              | "needsAction",
+          }
+        : undefined),
+    }));
+}
+
 /** Event fields that Junior reads back from its own calendar. */
 export const ownEventSchema = z.object({
-  attendees: z
-    .array(
-      z
-        .object({ email: z.string(), responseStatus: z.string().optional() })
-        .loose(),
-    )
-    .optional(),
+  attendees: z.array(googleAttendeeSchema).optional(),
   end: z.object({ dateTime: z.string() }),
   hangoutLink: z.string().optional(),
   htmlLink: z.string().optional(),
   id: z.string(),
+  location: z.string().optional(),
   organizer: z.object({ self: z.boolean().optional() }).optional(),
+  recurrence: z.array(z.string()).optional(),
+  recurringEventId: z.string().optional(),
   start: z.object({ dateTime: z.string() }),
+  status: z.string().optional(),
   summary: z.string().optional(),
 });
 
+export type OwnEvent = z.infer<typeof ownEventSchema>;
+
 /** Shape one event on Junior's calendar for a tool result. */
-export function ownEventResult(
-  event: z.infer<typeof ownEventSchema>,
-  timeZone: string,
-) {
+export function ownEventResult(event: OwnEvent, timeZone: string) {
   return {
-    attendees: (event.attendees ?? []).map((attendee) => attendee.email),
+    attendees: attendeeResults(event.attendees),
     end: event.end.dateTime,
     eventId: event.id,
     label: formatInterval(
@@ -189,6 +230,11 @@ export function ownEventResult(
     ),
     start: event.start.dateTime,
     ...(event.summary ? { title: event.summary } : undefined),
+    ...(event.location ? { location: event.location } : undefined),
+    ...(event.recurrence ? { repeats: true } : undefined),
+    ...(event.recurringEventId
+      ? { seriesEventId: event.recurringEventId }
+      : undefined),
     ...(event.htmlLink ? { url: event.htmlLink } : undefined),
     ...(event.hangoutLink ? { videoCallUrl: event.hangoutLink } : undefined),
   };
@@ -196,12 +242,79 @@ export function ownEventResult(
 
 /** Output fields shared by the tools that create or change Junior's events. */
 export const ownEventOutputFields = {
-  attendees: z.array(z.string()),
+  attendees: z.array(attendeeOutputSchema),
   end: z.string(),
   eventId: z.string(),
   label: z.string(),
+  location: z.string().optional(),
+  repeats: z
+    .boolean()
+    .optional()
+    .describe("True when this event id is a whole repeating series."),
+  seriesEventId: z
+    .string()
+    .optional()
+    .describe(
+      "Set when this is one occurrence of a repeating event. Use it as eventId to change or cancel the whole series.",
+    ),
   start: z.string(),
   title: z.string().optional(),
   url: z.string().optional(),
   videoCallUrl: z.string().optional(),
 };
+
+/** Event id input for tools that act on an event Junior organizes. */
+export const ownEventIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_]{5,1024}$/, "Use an event id from a Calendar tool")
+  .describe(
+    "Event id from a Calendar tool. An occurrence of a repeating event has its own id; its seriesEventId is the whole series.",
+  );
+
+/**
+ * Read an event that Junior organizes, for a requester who is invited to it.
+ *
+ * Only invited people may change or cancel an event. This keeps one requester
+ * from moving or cancelling a meeting that Junior set up for others.
+ */
+export async function readOwnEventForRequester(
+  ctx: GoogleToolContext,
+  eventId: string,
+  action: "change" | "cancel",
+): Promise<{ event: OwnEvent; path: string }> {
+  const requester = await requesterEmail(ctx);
+  if (!requester) {
+    throw new PluginToolInputError(
+      `Junior does not know the requester's email, so it cannot check that they may ${action} this event.`,
+    );
+  }
+  const path = `/calendar/v3/calendars/primary/events/${eventId}`;
+  const response = await googleApiRequest(ctx, {
+    operation: "google.calendar.event.get",
+    path,
+  });
+  if (response.status === 404 || response.status === 410) {
+    throw new PluginToolInputError(
+      `Junior's calendar has no event ${eventId}. Junior can only ${action} events it organizes; ask the organizer instead.`,
+    );
+  }
+  if (response.status !== 200) {
+    throw googleApiError("google.calendar.event.get", response);
+  }
+  const event = ownEventSchema.parse(response.body);
+  if (event.organizer?.self !== true) {
+    throw new PluginToolInputError(
+      `Junior does not organize this event, so it cannot ${action} it. Ask the organizer instead.`,
+    );
+  }
+  if (
+    !(event.attendees ?? []).some(
+      (attendee) => attendee.email.toLowerCase() === requester,
+    )
+  ) {
+    throw new PluginToolInputError(
+      `Only people invited to this event can ask Junior to ${action} it.`,
+    );
+  }
+  return { event, path };
+}

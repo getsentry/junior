@@ -32,6 +32,11 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/calendar\/v3\/calendars\/primary\/events$/,
   },
+  "google.calendar.event.delete": {
+    access: "write",
+    method: "DELETE",
+    path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
+  },
   "google.calendar.event.get": {
     access: "read",
     method: "GET",

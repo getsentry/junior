@@ -27,6 +27,11 @@ const inputSchema = z
       .describe(
         "Email addresses of the people who must attend. Junior adds the requester automatically when it knows their email.",
       ),
+    optionalAttendees: emailListSchema(20)
+      .default([])
+      .describe(
+        "Email addresses of people who are nice to have. Their conflicts do not block a slot; slots where they are free come first.",
+      ),
     durationMinutes: z.number().int().min(15).max(480),
     timeMin: z.iso
       .datetime({ offset: true })
@@ -39,7 +44,9 @@ const inputSchema = z
     timeZone: timeZoneSchema,
     workdayStart: clockTimeSchema
       .default("09:00")
-      .describe("Earliest local start time in timeZone, 24-hour HH:MM."),
+      .describe(
+        "Earliest local start time in timeZone, 24-hour HH:MM. When attendees work in other time zones, narrow the window to hours that are inside everyone's working day.",
+      ),
     workdayEnd: clockTimeSchema
       .default("17:00")
       .describe("Latest local end time in timeZone, 24-hour HH:MM."),
@@ -50,6 +57,10 @@ const inputSchema = z
 const slotSchema = z.object({
   end: z.string(),
   label: z.string(),
+  optionalBusy: z
+    .array(z.string())
+    .optional()
+    .describe("Optional attendees who are busy at this time."),
   start: z.string(),
 });
 
@@ -95,22 +106,89 @@ function clockMinutes(value: string): number {
   return hours * 60 + minutes;
 }
 
+interface Interval {
+  endMs: number;
+  startMs: number;
+}
+
+interface Candidate extends Interval {
+  date: string;
+  optionalBusy: string[];
+}
+
+function overlaps(busy: Interval, startMs: number, endMs: number): boolean {
+  return busy.endMs > startMs && busy.startMs < endMs;
+}
+
+/** Pick the option farthest from the ones already chosen on that day. */
+function farthestOption(
+  options: Candidate[],
+  chosen: Candidate[],
+): Candidate | undefined {
+  if (chosen.length === 0) return options[0];
+  let best: Candidate | undefined;
+  let bestGap = -1;
+  for (const option of options) {
+    const gap = Math.min(
+      ...chosen.map((slot) => Math.abs(slot.startMs - option.startMs)),
+    );
+    if (gap > bestGap) {
+      best = option;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/**
+ * Take options from each day in turn, so people get a real choice instead of
+ * back-to-back slots on the first free morning.
+ */
+function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
+  const days = new Map<string, Candidate[]>();
+  for (const candidate of candidates) {
+    days.set(candidate.date, [...(days.get(candidate.date) ?? []), candidate]);
+  }
+  const chosen = new Map<string, Candidate[]>();
+  const result: Candidate[] = [];
+  let progress = true;
+  while (result.length < max && progress) {
+    progress = false;
+    for (const [date, options] of days) {
+      if (result.length >= max) break;
+      const picked = chosen.get(date) ?? [];
+      const next = farthestOption(options, picked);
+      if (!next) continue;
+      options.splice(options.indexOf(next), 1);
+      picked.push(next);
+      chosen.set(date, picked);
+      result.push(next);
+      progress = true;
+    }
+  }
+  return result;
+}
+
 /**
  * Find shared free slots on weekdays inside local working hours.
+ *
+ * Required attendees must be free. Slots where optional attendees are also
+ * free come first. Options are spread across days and across each day.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
  */
 export function findFreeSlots(input: {
-  busy: Array<{ endMs: number; startMs: number }>;
+  busy: Interval[];
   durationMinutes: number;
   maxResults: number;
+  optionalBusy?: Array<Interval & { email: string }>;
   timeMaxMs: number;
   timeMinMs: number;
   timeZone: string;
   workdayEnd: string;
   workdayStart: string;
-}): Array<{ endMs: number; startMs: number }> {
+}): Array<Interval & { optionalBusy: string[] }> {
   const durationMs = input.durationMinutes * 60_000;
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
   const format = new Intl.DateTimeFormat("en-US", {
@@ -125,13 +203,10 @@ export function findFreeSlots(input: {
   });
   const dayStart = clockMinutes(input.workdayStart);
   const dayEnd = clockMinutes(input.workdayEnd);
-  const slots: Array<{ endMs: number; startMs: number }> = [];
+  const candidates: Candidate[] = [];
 
   let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
-  while (
-    startMs + durationMs <= input.timeMaxMs &&
-    slots.length < input.maxResults
-  ) {
+  while (startMs + durationMs <= input.timeMaxMs) {
     const endMs = startMs + durationMs;
     const start = localParts(startMs, format);
     const end = localParts(endMs, format);
@@ -141,18 +216,40 @@ export function findFreeSlots(input: {
       start.date === end.date &&
       start.minutes >= dayStart &&
       end.minutes <= dayEnd;
-    const free = input.busy.every(
-      (busy) => busy.endMs <= startMs || busy.startMs >= endMs,
-    );
+    const free = input.busy.every((busy) => !overlaps(busy, startMs, endMs));
     if (inWorkday && free) {
-      slots.push({ startMs, endMs });
+      const optionalBusy = [
+        ...new Set(
+          (input.optionalBusy ?? [])
+            .filter((busy) => overlaps(busy, startMs, endMs))
+            .map((busy) => busy.email),
+        ),
+      ];
+      candidates.push({ date: start.date, endMs, optionalBusy, startMs });
       // Do not offer overlapping options.
       startMs = endMs;
     } else {
       startMs += stepMs;
     }
   }
-  return slots;
+
+  const picked = spreadAcrossDays(
+    candidates.filter((slot) => slot.optionalBusy.length === 0),
+    input.maxResults,
+  );
+  picked.push(
+    ...spreadAcrossDays(
+      candidates.filter((slot) => slot.optionalBusy.length > 0),
+      input.maxResults - picked.length,
+    ),
+  );
+  return picked
+    .sort((a, b) => a.startMs - b.startMs)
+    .map(({ endMs, optionalBusy, startMs }) => ({
+      endMs,
+      optionalBusy,
+      startMs,
+    }));
 }
 
 /** Find times when everyone is free, using free/busy data only. */
@@ -165,7 +262,7 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every attendee is free, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Only people in the company's Google Workspace domains can be checked. People listed in `unavailable` were not checked; tell the user instead of treating them as free.",
+      "Find meeting times when every required attendee is free, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times so the requester gets a real choice. Only people in the company's Google Workspace domains can be checked. People listed in `unavailable` were not checked; tell the user instead of treating them as free.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -185,11 +282,16 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         );
       }
       const attendees = await withRequester(ctx, input.attendees);
-      requireAllowedEmails(attendees, ctx.allowedDomains);
+      const required = new Set(attendees);
+      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
+        (email) => !required.has(email),
+      );
+      const everyone = [...attendees, ...optionalAttendees];
+      requireAllowedEmails(everyone, ctx.allowedDomains);
 
       const response = await googleApiRequest(ctx, {
         body: {
-          items: attendees.map((id) => ({ id })),
+          items: everyone.map((id) => ({ id })),
           timeMax: new Date(timeMaxMs).toISOString(),
           timeMin: new Date(timeMinMs).toISOString(),
         },
@@ -203,8 +305,9 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
 
       const checked: string[] = [];
       const unavailable: Array<{ email: string; reason: string }> = [];
-      const busy: Array<{ endMs: number; startMs: number }> = [];
-      for (const email of attendees) {
+      const busy: Interval[] = [];
+      const optionalBusy: Array<Interval & { email: string }> = [];
+      for (const email of everyone) {
         const calendar = calendars[email];
         const error = calendar?.errors?.[0]?.reason;
         if (!calendar || error) {
@@ -213,32 +316,40 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
         }
         checked.push(email);
         for (const interval of calendar.busy) {
-          busy.push({
+          const parsed = {
             endMs: Date.parse(interval.end),
             startMs: Date.parse(interval.start),
-          });
+          };
+          if (required.has(email)) {
+            busy.push(parsed);
+          } else {
+            optionalBusy.push({ ...parsed, email });
+          }
         }
       }
 
-      const slots =
-        checked.length === 0
-          ? []
-          : findFreeSlots({
-              busy,
-              durationMinutes: input.durationMinutes,
-              maxResults: input.maxResults,
-              timeMaxMs,
-              timeMinMs,
-              timeZone: input.timeZone,
-              workdayEnd: input.workdayEnd,
-              workdayStart: input.workdayStart,
-            });
+      const slots = !checked.some((email) => required.has(email))
+        ? []
+        : findFreeSlots({
+            busy,
+            durationMinutes: input.durationMinutes,
+            maxResults: input.maxResults,
+            optionalBusy,
+            timeMaxMs,
+            timeMinMs,
+            timeZone: input.timeZone,
+            workdayEnd: input.workdayEnd,
+            workdayStart: input.workdayStart,
+          });
       return {
         target: "findMeetingTimes" as const,
         checked,
         slots: slots.map((slot) => ({
           end: new Date(slot.endMs).toISOString(),
           label: formatInterval(slot.startMs, slot.endMs, input.timeZone),
+          ...(slot.optionalBusy.length
+            ? { optionalBusy: slot.optionalBusy }
+            : undefined),
           start: new Date(slot.startMs).toISOString(),
         })),
         timeZone: input.timeZone,
