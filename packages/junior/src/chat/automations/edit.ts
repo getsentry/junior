@@ -139,7 +139,8 @@ function editView(
   return {
     ...common,
     kind: "event",
-    status: automation.task.status === "paused" ? "paused" : "active",
+    status:
+      automation.task.status === "deleted" ? "active" : automation.task.status,
     trigger: automation.task.trigger,
     triggerAvailable: eventAutomationTriggerAvailable(
       automation.task,

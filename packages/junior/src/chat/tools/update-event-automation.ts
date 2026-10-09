@@ -11,7 +11,10 @@ import { automationRevision } from "@/chat/automations/revision";
 import { editEventAutomation } from "@/chat/event-automations/edit";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
-import { saveEventAutomation } from "@/chat/event-automations/store";
+import {
+  saveEventAutomation,
+  setEventAutomationStatus,
+} from "@/chat/event-automations/store";
 import {
   eventAutomationToolResult,
   eventAutomationToolResultSchema,
@@ -39,7 +42,7 @@ export function createUpdateEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, or credential use for an event automation.",
+      "Update the instruction, registered trigger, credential use, or status of an event automation.",
     inputSchema: z
       .object({
         automationId: z.string().min(1),
@@ -63,6 +66,13 @@ export function createUpdateEventAutomationTool(
             "Set creator to make the task's original creator credentials available, or system to disable them. Creator always means the task's createdBy actor, never the current requester. Only that original creator may enable creator mode. Omit or use null to leave unchanged.",
           )
           .optional(),
+        status: z
+          .enum(["active", "paused"])
+          .nullable()
+          .describe(
+            "Set active to resume a paused or blocked automation, or paused to stop it. Omit or use null to leave unchanged.",
+          )
+          .optional(),
       })
       .strict(),
     prepareArguments(args) {
@@ -74,15 +84,23 @@ export function createUpdateEventAutomationTool(
         > | null;
         outcomes?: TaskOutcomeInput[] | null;
         credentialMode?: "creator" | "system" | null;
+        status?: "active" | "paused" | null;
       };
-      const { credentialMode, outcomes, instruction, trigger, ...prepared } =
-        input;
+      const {
+        credentialMode,
+        outcomes,
+        instruction,
+        trigger,
+        status,
+        ...prepared
+      } = input;
       return {
         ...prepared,
         ...(instruction != null ? { instruction } : undefined),
         ...(trigger != null ? { trigger } : undefined),
         ...(outcomes != null ? { outcomes } : undefined),
         ...(credentialMode != null ? { credentialMode } : undefined),
+        ...(status != null ? { status } : undefined),
       };
     },
     outputSchema: eventAutomationToolResultSchema,
@@ -93,13 +111,13 @@ export function createUpdateEventAutomationTool(
       );
       const { actor } = requireEventAutomationSlackContext(context);
       const isCreator = actor.userId === current.createdBy.slackUserId;
-      if (
-        input.title === undefined &&
-        input.instruction === undefined &&
-        input.trigger === undefined &&
-        input.outcomes == null &&
-        input.credentialMode == null
-      ) {
+      const edits =
+        input.title !== undefined ||
+        input.instruction !== undefined ||
+        input.trigger !== undefined ||
+        input.outcomes != null ||
+        input.credentialMode != null;
+      if (!edits && input.status == null) {
         throw new ToolInputError("Event automation update requires a change.");
       }
       if (
@@ -108,30 +126,42 @@ export function createUpdateEventAutomationTool(
       ) {
         requireRequesterMention(input.instruction, actor);
       }
-      const next = await editEventAutomation(
-        current,
-        {
-          title: input.title,
-          instruction: input.instruction ?? undefined,
-          trigger: input.trigger ?? undefined,
-          outcomes: input.outcomes ?? undefined,
-          credentialMode: input.credentialMode ?? undefined,
-        },
-        isCreator,
-        catalog,
-      );
-      const saved = await saveEventAutomation(
-        getDb(),
-        next,
-        automationRevision(current),
-        {
-          slackUserId: actor.userId,
-          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-          ...(actor.userName ? { userName: actor.userName } : undefined),
-        },
-      );
-      if (!saved) {
-        throw new ToolInputError("Event automation was not found.");
+      let saved = current;
+      if (edits) {
+        const next = await editEventAutomation(
+          current,
+          {
+            title: input.title,
+            instruction: input.instruction ?? undefined,
+            trigger: input.trigger ?? undefined,
+            outcomes: input.outcomes ?? undefined,
+            credentialMode: input.credentialMode ?? undefined,
+          },
+          isCreator,
+          catalog,
+        );
+        const edited = await saveEventAutomation(
+          getDb(),
+          next,
+          automationRevision(current),
+          {
+            slackUserId: actor.userId,
+            ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+            ...(actor.userName ? { userName: actor.userName } : undefined),
+          },
+        );
+        if (!edited) {
+          throw new ToolInputError("Event automation was not found.");
+        }
+        saved = edited;
+      }
+      if (input.status != null) {
+        saved = await setEventAutomationStatus(
+          getDb(),
+          saved.id,
+          input.status,
+          automationRevision(saved),
+        );
       }
       return eventAutomationToolResult(
         context.conversationId,
