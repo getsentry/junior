@@ -95,8 +95,10 @@ describe("Thread Continuity", () => {
 - A call returns when the agent is idle: the in-process queue is empty, and
   the work that turns started, such as titles and plugin tasks, is finished.
   A call fails when the agent is not idle within 60 seconds. The product
-  delays some queued deliveries; for example, a watch delivery waits 30
-  seconds for more events. The 60 seconds start when the last delivery is due.
+  delays some queued deliveries; for example, the worker checks a busy
+  Conversation again after 15 seconds. The fixture starts a delayed delivery
+  at once when nothing else runs. The 60 seconds start when the last delivery
+  is due.
 - A channel `slackMention()` arrives as Slack sends it: an `app_mention` event
   without a channel type, then a `message` event with the same `ts` and the
   channel type. Slack does not fix the order, and Junior stores the first
@@ -300,6 +302,11 @@ Tunnel startup uses normal system DNS and retains failed attempts and logs.
 Global setup reports the Postgres, egress, and snapshot phases before cases
 start. Egress teardown stops the tunnel and closes its remaining HTTP
 connections.
+
+Snapshot warmup keeps the snapshot ids in
+`~/.cache/junior-evals/sandbox-snapshots.json`, so a later run does not build
+the snapshots again. Delete the file to build them again. In CI, the Actions
+cache keeps the file for the later runs of a pull request.
 
 ## Web Search
 

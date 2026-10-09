@@ -146,6 +146,13 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
+      # The evals build a sandbox snapshot only when this file does not have it.
+      - name: Keep sandbox snapshot ids
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/junior-evals/sandbox-snapshots.json
+          key: eval-sandbox-snapshots-${{ github.run_id }}
+          restore-keys: eval-sandbox-snapshots-
       - name: Run integration evals
         env:
           VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json
