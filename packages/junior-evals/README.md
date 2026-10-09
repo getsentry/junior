@@ -76,8 +76,9 @@ describe("Thread Continuity", () => {
   Put an eval that needs the GitHub plugin in this suite. Do not set up the
   plugin in the test.
 - The `google` suite has the Google plugin. `src/suites/google.ts` has its
-  settings. Its evals are in `evals/google/`. `src/fixture/google.ts`
-  connects Junior's Google account and mocks the Calendar APIs.
+  settings. Its integration evals are in `evals/integration/google/`, and its
+  behavioral evals are in `evals/google/`. `src/fixture/google.ts` connects
+  Junior's Google account and mocks the Calendar APIs.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
@@ -241,7 +242,7 @@ Not in scope:
 
 - Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, and scheduler create/credential/management contracts
+  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-automation contracts, scheduler create/credential/management contracts, and Google Calendar find/read/book contracts
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, and output shape
 - Behavioral agent cases: `evals/agent/`

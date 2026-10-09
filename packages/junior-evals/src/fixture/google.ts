@@ -3,8 +3,8 @@
  *
  * `connectGoogleAccount()` stores the connection of Junior's Google account
  * through the plugin store. `mockGoogleCalendars()` answers the Google token,
- * free/busy, and event list APIs from calendars that repeat each week, so the
- * calendars are the same on each run date.
+ * free/busy, event list, and event create APIs from calendars that repeat each
+ * week, so the calendars are the same on each run date.
  */
 import { http, HttpResponse } from "msw";
 import { getDb } from "@/chat/db";
@@ -156,11 +156,11 @@ export function mockGoogleCalendars(calendars: MockCalendar[]): void {
           return HttpResponse.json({}, { status: 404 });
         }
         const query = new URL(request.url).searchParams;
-        const events = occurrences(
-          calendar,
-          query.get("timeMin") ?? "",
-          query.get("timeMax") ?? "",
-        );
+        const timeMin = query.get("timeMin");
+        const timeMax = query.get("timeMax");
+        // `findMeetingTimes` reads only the calendar time zone, with no window.
+        const events =
+          timeMin && timeMax ? occurrences(calendar, timeMin, timeMax) : [];
         return HttpResponse.json({
           items: events.map((event) => ({
             end: { dateTime: event.end },
@@ -168,8 +168,18 @@ export function mockGoogleCalendars(calendars: MockCalendar[]): void {
             start: { dateTime: event.start },
             summary: event.title,
           })),
+          timeZone: TIME_ZONE,
         });
       },
     ),
+    // Google answers with the stored event. The fixture stores nothing.
+    http.post(`${GOOGLE_API}/calendars/primary/events`, async ({ request }) => {
+      const event = (await request.json()) as { id: string };
+      return HttpResponse.json({
+        ...event,
+        htmlLink: `https://calendar.google.com/calendar/event?eid=${event.id}`,
+        organizer: { email: GOOGLE_ACCOUNT_EMAIL, self: true },
+      });
+    }),
   );
 }

@@ -23,7 +23,7 @@ const findMeetingTimesTool = {
       "Google Calendar scheduling as Junior's own Google Workspace account",
   },
   description:
-    "Find meeting times when every attendee is free, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Only people in the company's Google Workspace domains can be checked. People listed in `unavailable` were not checked; tell the user instead of treating them as free.",
+    "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
   dispatcherName: "executeTool",
   identity: {
     id: "google.findMeetingTimes",

@@ -2,7 +2,9 @@
  * The Google suite: the Google plugin and no other plugin or skill.
  *
  * A suite is a Vitest project for one directory. It sets the default agent
- * options for its tests. See `src/fixture/test.ts`.
+ * options for its tests. See `src/fixture/test.ts`. The integration and
+ * behavioral configs each run this suite on their own directory, so the
+ * settings are here and not in one config.
  */
 import path from "node:path";
 
