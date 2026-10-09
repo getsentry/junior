@@ -96,7 +96,7 @@
     "commander": "^14.0.3",
     "diff": "^8.0.4",
     "drizzle-orm": "catalog:",
-    "hono": "^4.12.27",
+    "hono": "^4.13.7",
     "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
