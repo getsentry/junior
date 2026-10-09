@@ -250,7 +250,7 @@ it("saves plugin object results once per reply, leaves background updates silent
         label: "Oct 12",
         description: "Agenda stays in the detail panel.",
         objectType: "calendar_event" as const,
-        status: undefined,
+        status: "cancelled",
         facts: {
           type: "calendar_event" as const,
           when: "Mon, Oct 12, 10:00 – 10:30 PDT",
@@ -334,6 +334,7 @@ it("saves plugin object results once per reply, leaves background updates silent
               },
             },
             custom_fields: [
+              { key: "status", value: "cancelled" },
               { key: "when", value: "Mon, Oct 12, 10:00 – 10:30 PDT" },
               { key: "attendees", value: "Sam, Alex" },
             ],

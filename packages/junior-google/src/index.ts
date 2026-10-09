@@ -25,6 +25,7 @@ import {
 } from "./credentials";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
+import { createCancelCalendarEventTool } from "./tools/cancel-event";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createListCalendarEventsTool } from "./tools/list-events";
@@ -66,11 +67,13 @@ export function googlePlugin(): PluginRegistration {
           return {};
         }
         const toolContext = {
+          accountEmail: config.accountEmail,
           allowedDomains: config.allowedDomains,
           egress: ctx.egress,
           users: ctx.users,
         };
         return {
+          cancelCalendarEvent: createCancelCalendarEventTool(toolContext),
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),

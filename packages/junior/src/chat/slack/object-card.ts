@@ -41,10 +41,12 @@ export function renderSlackObjectCard(
   const deployment =
     card.objectType === "deployment" ||
     (card.objectType === "item" && card.facts?.type === "deployment");
-  const status = details || deployment ? card.status : undefined;
-  const warning = details || deployment ? card.warning : undefined;
-  // Calendar event previews show the time and attendees, not the agenda.
+  // Calendar event previews show the time, attendees, and a cancellation, not
+  // the agenda.
   const calendarEvent = card.objectType === "calendar_event";
+  const status =
+    details || deployment || calendarEvent ? card.status : undefined;
+  const warning = details || deployment ? card.warning : undefined;
   const facts = objectFactFields(card.facts).filter(
     (field) =>
       details || calendarEvent || (deployment && field.key === "environment"),
