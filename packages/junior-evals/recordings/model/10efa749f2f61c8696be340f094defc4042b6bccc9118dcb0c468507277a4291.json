@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when asked to pause and then resume an event automation, change its status",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "a1af2b29c38f",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0b4726ee5bb13021016ac92aef50d887d1bea829f28900854f\",\"reasoningEncryptedContent\":\"gAAAAABqySrvy5yYGrnknCPOQpLXuN8ms2dfBbDKQJag_ELXfLh66urq6ZNNss-pX-7heTjk_yABUNbCW5tWxnNXyKr620Tw44FsZ-g6g1Cq7rhx7lHlP1PezbN87FPoLET0W_BcLs0aDRikV4l9Nug_Nb6QnKjHMfCbNoavqmRJMXK-1fmCFulx9w7lmKOrNEUVugLjUvszdjDXA54mXR_hJ-Rj0D3Hm0ojylKBLZdWqWCXl30URoLUMzKovIMr9X85ZJLNZhcDYWoh7DoBmWcIacMlN1MTHoNWgx6fYowbj9vJweeZSNgWFQobPN1L0YMvrnI9gJXFMG68rKdVhah-oBMWzR6DGOev1kR71P8kzFeWfrAnCb9fijl4dzwHDCUSdaD6JfzvtS61BQXAplTcw8cHDCrQA2BRBjjQpsUx_OfeWr4e3vbJH0heZA5l1jP1Vukf9C7eJbrZ3CbdLlus8yT-zR586oj4FAywRc_25Cvv99sGnyaWapWame6ypOFwFsHu-sHOy5dT-1pbeMyREgEjOZ2QrsPirl1AqmtdIdQz0llN8ET5qBjak-NzM8RvR18IVNpklI2Jpt-UUR_TF4tCa0Fj9VjZVCJpRCaMfa7EGAA4KKxTU1GM2FN4WDAHTTbwY3twA1HAzFcGdeITg6tVARYxdQrYnYlZHYv4RQXalFsVJQq_poIiBoE6ds47b5XeXpZI5s8aTfSAYe-0seL9n-n19_8LyrdGzH6q-xZyr53VwnYlf_2e6pEKIoDdjEaTK-2HT22VGmrUKk_WvqxUXqi0JF_SwNc8A1PpW52AaM8VrNrLmS-c29_PCerETl-CN1qDpmETir3HnKe8IFAF_5FcaI627lsRq2UQzMW8B1iRH-0MIm_GIk4t7XUBs_5taOCz33ntAJiwVxZE6mfIYOYDfs4RJ9Neez5iL4IRdtuOpVmc__GfoDQbfm8BT3Qyy07CQEpy9EvNscHY77KPsg3_YZV51a25gQHr0FKHUC5kWcrQqUptmQW9juqY7DJERgY9vjZdfYu_mRu3mIdUMQ1zlrJlzsaiDDl0giCG6xITYxHj8C6XM2lXBQdDfmUB0eolV7UwFrhw4BRVcDimvp51eGlGUEOFmY9Pe97Ji7TSor-V_qt8z9JqegcZAXB3Ymj4FL9Py2rcWq1uXYy_2byqjuoblwO2VNqIbDKr5kO-pQ7AzPf_YCeTucs4U1miK_RUCMXaQYqGYvh-_wEEUHVx7KtEm0g_1Y097hakHoiNfZkdP96-Z29HB09FYIjLEq5eJNK2CeZ4JZIWMkVBecpRCBS4Pku3wXyZ858Fkgw4DWN3orHxfyyi8V_TeOuAhLVEGE9a6jRkHbuc9t2x62wJ1FEtmEpPtUGmxtG4ruG9hftxfpZqpA67yMavidDJzUgYFpetv8lgHoKk3LJVoK3dXrapxO8gehr9R2EXITDbMsZHpMPOC4JTSZc-fq8HGJusJj9OhRUBVKm7UW7_WjqBpKsrTtNsn-ZZRXRrO3ns06b1_GWl5bRYEbAY5NmnZwPt1JeXxC5Evu9sGDisv-RhG9uFZCAhCoxGXuMBECwQweY=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0b4726ee5bb13021016ac92aefc4e487d1abb96ade1210f23a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1944,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1941},\"outputTokens\":{\"total\":58,\"text\":14,\"reasoning\":44},\"raw\":{\"input_tokens\":1944,\"input_tokens_details\":{\"cache_write_tokens\":1941,\"cached_tokens\":0},\"output_tokens\":58,\"output_tokens_details\":{\"reasoning_tokens\":44},\"total_tokens\":2002}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0b4726ee5bb13021016ac92aeef06087d1b8340ef9b6deeb03\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568622856,\"endTime\":1791568623955,\"providerRequestId\":\"req_49e6cb371bb645f6a645affeb3764fcd\",\"statusCode\":200,\"providerResponseId\":\"resp_0b4726ee5bb13021016ac92aeef06087d1b8340ef9b6deeb03\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e117919abf7125408bfe929d9458c5dd\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000271925\",\"marketCost\":\"0.000271925\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000271925\",\"inferenceCost\":\"0.000271925\",\"inputInferenceCost\":\"0.000242925\",\"outputInferenceCost\":\"0.000029\",\"generationId\":\"gen_01M4GWZD5GGXTQF6T2FABMA57Q\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

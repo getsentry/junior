@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "81cb807f4e77",
+      "messages[1]": "8654c490e344",
+      "messages[2]": "92b7a3bd4a97",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GX2C135E4ZNF16VR1A02BV\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User request:** Ship the release using `mcp__eval-operation__release-push`, then report the final remote status using `mcp__eval-operation__release-status`.\\n- **Progress:** No release action has been performed. An attempt was made to switch profiles via `functions.handoff` with `{\\\"profile\\\":\\\"standard\\\"}`, but it returned “No result provided.”\\n- **Next steps:** Use the available release-push tool, then call release-status and report its final remote status to the user.\\n- **Context:** The prior assistant described the task as routine tool use. No release details, constraints, or status results are available yet.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":247,\"output_tokens\":141},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_04da6c1dd2d5cc85016ac92b50020087d18f518613e160b10e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568719930,\"endTime\":1791568722211,\"providerRequestId\":\"req_e305805697af42aa88ee12ffcc61a92e\",\"statusCode\":200,\"providerResponseId\":\"resp_04da6c1dd2d5cc85016ac92b50020087d18f518613e160b10e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"a2bc1f6a7b2bd8d27a1d1cae0fad7b08\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000952\",\"marketCost\":\"0.0000952\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000952\",\"inferenceCost\":\"0.0000952\",\"inputInferenceCost\":\"0.0000247\",\"outputInferenceCost\":\"0.0000705\",\"generationId\":\"gen_01M4GX2C135E4ZNF16VR1A02BV\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}
