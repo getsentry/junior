@@ -28,6 +28,12 @@ import {
   type AutomationDraft,
 } from "./automationDraft";
 
+/** Headings for edit fields whose key is not a readable label. */
+const CHANGE_LABELS: Partial<Record<string, string>> = {
+  credentialMode: "Credentials",
+  visibility: "Who can see it",
+};
+
 /** Keep edits until the user saves or discards them. */
 export function AutomationEditor(props: {
   automation: AutomationEdit;
@@ -202,11 +208,7 @@ export function AutomationEditor(props: {
             {Object.entries(changes).map(([key, value]) => (
               <section key={key} className="my-4">
                 <h3 className="text-sm font-semibold capitalize">
-                  {key === "credentialMode"
-                    ? "Credentials"
-                    : key === "visibility"
-                      ? "Who can see it"
-                      : key}
+                  {CHANGE_LABELS[key] ?? key}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>

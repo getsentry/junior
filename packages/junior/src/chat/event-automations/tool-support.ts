@@ -27,6 +27,7 @@ import {
 } from "@/chat/events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { effectiveAutomationVisibility } from "@/chat/automations/visibility";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
@@ -180,7 +181,8 @@ export function eventAutomationMatchesDestination(
 /**
  * Return whether the active destination may update or delete this automation.
  * Same-destination automations stay local. Public automations may be managed by id from
- * another destination in the same workspace.
+ * another destination in the same workspace. The creator's visibility override
+ * wins over the Destination visibility, the same as on the web.
  */
 export function eventAutomationIsWritableFrom(
   task: EventAutomation,
@@ -191,7 +193,10 @@ export function eventAutomationIsWritableFrom(
   }
   return (
     task.destination.channelId === destination.channelId ||
-    task.destinationVisibility === "public"
+    effectiveAutomationVisibility(
+      task.visibility,
+      task.destinationVisibility,
+    ) === "public"
   );
 }
 

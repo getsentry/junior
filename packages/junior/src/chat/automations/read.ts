@@ -247,7 +247,6 @@ function accessFields(
       task.visibility,
       destination.visibility,
     ),
-    visibilityOverride: task.visibility ?? null,
   };
 }
 

@@ -28,7 +28,7 @@ export async function mockAutomationEditor(
     },
     createdBy: { slackUserId: "U123" },
     ownedByViewer: summary.ownedByViewer,
-    visibility: summary.visibilityOverride,
+    visibility: null,
   };
   const value = automationEditSchema.parse(
     kind === "scheduled"

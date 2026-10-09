@@ -53,8 +53,6 @@ const automationSummaryBaseSchema = z.object({
   totalRuns: z.number().int().nonnegative(),
   /** Who can see the Automation: the creator override, else the Destination. */
   visibility: automationVisibilitySchema,
-  /** Creator override. Null follows the Destination. */
-  visibilityOverride: automationVisibilitySchema.nullable(),
 });
 
 export const scheduledAutomationSummarySchema = automationSummaryBaseSchema

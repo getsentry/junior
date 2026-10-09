@@ -277,7 +277,6 @@ describe("Automation edit API", () => {
               id,
               ownedByViewer: false,
               visibility: "public",
-              visibilityOverride: "public",
               // The private channel name stays hidden from readers outside it.
               destination: { label: "Private channel", visibility: "private" },
             },

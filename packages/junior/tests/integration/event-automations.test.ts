@@ -753,6 +753,25 @@ describe("event automations", () => {
       credentialMode: "system",
       task: { text: "Change a public task from another channel." },
     });
+
+    // A private override keeps the task in its own channel.
+    await fixture.sql
+      .db()
+      .update(juniorEventAutomations)
+      .set({ visibility: "private" })
+      .where(eq(juniorEventAutomations.id, created.automation.id));
+    await expect(
+      execute(
+        createUpdateEventAutomationTool(
+          context("U999", "COTHER"),
+          EVENT_CATALOG,
+        ),
+        {
+          automationId: created.automation.id,
+          instruction: "Change a hidden task from another channel.",
+        },
+      ),
+    ).rejects.toThrow("Event automation was not found.");
   });
 
   it("keeps private task updates in the owning channel or DM", async () => {

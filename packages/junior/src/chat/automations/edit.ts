@@ -224,9 +224,7 @@ async function saveViewerEdit(
     );
     const task = await saveEventAutomation(
       getDb(),
-      restored
-        ? { ...next, title: restored.title, visibility }
-        : { ...next, visibility },
+      { ...next, ...(restored && { title: restored.title }), visibility },
       input.revision,
       editedBy,
     );

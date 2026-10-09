@@ -22,8 +22,8 @@ Only the creator can change the override. Send `visibility` in the edit PATCH:
 The override does not change Conversation visibility. For a reader outside a
 private Destination, the API shows the Destination label as "Private channel"
 and omits run Conversation titles. Run transcripts keep the Destination access
-rules. Slack tools still use the Destination visibility to find public
-Automations from another channel.
+rules. Slack event automation tools use the same rule when they manage a
+public Automation by id from another channel.
 
 Scheduled automations run through the heartbeat. Event automations run when a
 matching event arrives. The dashboard can edit Automations that the user owns
