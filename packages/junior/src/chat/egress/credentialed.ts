@@ -315,53 +315,21 @@ async function requestBodyBytes(
 }
 
 /**
- * Read the forwarded body, or build a controlled error when it is unreadable.
+ * Explain a request body that the runtime delivered already used.
  *
- * The Vercel runtime can deliver an already-used body stream, for example for
- * a POST that the sandbox sent without a body. Forwarding headers do not show
- * whether the body was empty, so Junior must not guess and send a credentialed
- * write without its payload. It returns an error that names Junior as the
- * source and links the Sentry event.
+ * The forwarded headers cannot show whether the body was empty, so the proxy
+ * does not send a credentialed write upstream without its payload.
  */
-async function readForwardedBody(input: {
-  egressId: string;
-  provider: string;
-  request: Request;
-  upstreamUrl: URL;
-}): Promise<{ body: ArrayBuffer | undefined } | { response: Response }> {
-  try {
-    return { body: await requestBodyBytes(input.request) };
-  } catch (error) {
-    if (!(error instanceof TypeError)) {
-      throw error;
-    }
-    const eventId = logException(
-      error,
-      "sandbox.egress.request_body.unreadable",
-      {
-        ...egressAttributes({
-          egressId: input.egressId,
-          host: input.upstreamUrl.hostname,
-          method: input.request.method,
-          path: input.upstreamUrl.pathname,
-          provider: input.provider,
-          status: 500,
-        }),
-        ...routingAttributes(input.request, input.upstreamUrl),
-      },
-    );
-    return {
-      response: Response.json(
-        {
-          source: "junior-egress",
-          error:
-            "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
-          ...(eventId ? { sentryEventId: eventId } : undefined),
-        },
-        { status: 500, headers: { "cache-control": "no-store" } },
-      ),
-    };
-  }
+function unreadableBodyResponse(eventId: string | undefined): Response {
+  return Response.json(
+    {
+      source: "junior-egress",
+      error:
+        "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+      ...(eventId ? { sentryEventId: eventId } : undefined),
+    },
+    { status: 500, headers: { "cache-control": "no-store" } },
+  );
 }
 
 type GitHubBodyInspection = "graphql" | "pull-request-review";
@@ -650,26 +618,34 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  const bodyRead = (): Promise<
-    { body: ArrayBuffer | undefined } | { response: Response }
-  > =>
-    readForwardedBody({
-      egressId: activeEgressId,
-      provider,
-      request,
-      upstreamUrl,
-    });
-  const grantSelectionRead = githubBodyInspection({
+  let body: ArrayBuffer | undefined;
+  try {
+    body = await requestBodyBytes(request);
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
+    return unreadableBodyResponse(
+      logException(error, "sandbox.egress.request_body.unreadable", {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 500,
+        }),
+        ...routingAttributes(request, upstreamUrl),
+      }),
+    );
+  }
+  const bodyForGrantSelection = githubBodyInspection({
     provider,
     requestMethod: request.method,
     upstreamUrl,
   })
-    ? await bodyRead()
+    ? body
     : undefined;
-  if (grantSelectionRead && "response" in grantSelectionRead) {
-    return grantSelectionRead.response;
-  }
-  const bodyForGrantSelection = grantSelectionRead?.body;
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
@@ -793,14 +769,6 @@ export async function executeCredentialedEgressRequest(input: {
   }
 
   const fetchImpl = deps.fetch ?? fetch;
-  let body = bodyForGrantSelection;
-  if (body === undefined) {
-    const read = await bodyRead();
-    if ("response" in read) {
-      return read.response;
-    }
-    body = read.body;
-  }
   // One retry after upstream 403: clear/replace the cached lease, then try again.
   let retriedAfter403 = false;
 

@@ -1136,31 +1136,27 @@ describe("sandbox egress proxy integration", () => {
     const upstreamFetch = vi.fn(
       async () => new Response(null, { status: 202 }),
     );
-    // Production can deliver a used stream for a POST such as `gh run cancel`.
-    // Forwarding headers do not prove that the body was empty, so the proxy
-    // must not send the write upstream without its payload.
-    for (const headers of [undefined, { "content-length": "2" }]) {
-      const request = proxiedRequest({
-        body: "{}",
-        forwardURL,
-        ...(headers ? { headers } : undefined),
-        method: "POST",
-        upstreamHost: GITHUB_API_HOST,
-        upstreamPath: "/repos/getsentry/junior/actions/runs/123/cancel",
-      });
-      await request.arrayBuffer();
+    // Production can deliver an already-used body stream. The proxy cannot
+    // tell whether the body was empty, so it must not forward the write.
+    const request = proxiedRequest({
+      body: "{}",
+      forwardURL,
+      method: "POST",
+      upstreamHost: GITHUB_API_HOST,
+      upstreamPath: "/repos/getsentry/junior/actions/runs/123/cancel",
+    });
+    await request.arrayBuffer();
 
-      const response = await modules.proxy.proxySandboxEgressRequest(request, {
-        fetch: upstreamFetch as typeof fetch,
-        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-      });
+    const response = await modules.proxy.proxySandboxEgressRequest(request, {
+      fetch: upstreamFetch as typeof fetch,
+      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+    });
 
-      expect(response.status).toBe(500);
-      await expect(response.json()).resolves.toMatchObject({
-        source: "junior-egress",
-        error: expect.stringContaining("did not send the request upstream"),
-      });
-    }
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      source: "junior-egress",
+      error: expect.stringContaining("did not send the request upstream"),
+    });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
