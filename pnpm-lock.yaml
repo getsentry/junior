@@ -456,6 +456,9 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github
+      '@sentry/junior-google':
+        specifier: workspace:*
+        version: link:../junior-google
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory

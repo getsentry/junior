@@ -5,6 +5,7 @@ import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 import { codingSuite } from "./src/suites/coding";
+import { googleSuite } from "./src/suites/google";
 import { memorySuite } from "./src/suites/memory";
 import { sentrySuite } from "./src/suites/sentry";
 import { skillsSuite } from "./src/suites/skills";
@@ -78,6 +79,8 @@ const projectTest = {
 
 // The behavioral directory of the coding suite. See `src/suites/coding.ts`.
 const codingSuiteRoot = "evals/coding";
+// The directory of the Google suite. See `src/suites/google.ts`.
+const googleSuiteRoot = "evals/google";
 // The directory of the memory suite. See `src/suites/memory.ts`.
 const memorySuiteRoot = "evals/memory";
 // The directory of the Sentry suite. See `src/suites/sentry.ts`.
@@ -108,6 +111,7 @@ export default defineConfig({
             "evals/integration/**",
             "evals/router/**",
             `${codingSuiteRoot}/**`,
+            `${googleSuiteRoot}/**`,
             `${memorySuiteRoot}/**`,
             `${sentrySuiteRoot}/**`,
             `${skillsSuiteRoot}/**`,
@@ -120,6 +124,14 @@ export default defineConfig({
           ...projectTest,
           ...codingSuite,
           include: [`${codingSuiteRoot}/**/*.eval.ts`],
+        },
+      },
+      {
+        resolve,
+        test: {
+          ...projectTest,
+          ...googleSuite,
+          include: [`${googleSuiteRoot}/**/*.eval.ts`],
         },
       },
       {
