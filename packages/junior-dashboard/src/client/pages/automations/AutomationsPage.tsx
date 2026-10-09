@@ -187,7 +187,7 @@ export function AutomationsPage(props: {
       ) : null}
       {props.view === "overview" ? (
         <PageHeader
-          description="Scheduled and event-driven work created by users."
+          description="[Visual diff test] Scheduled and event-driven work created by users."
           onRangeChange={setRange}
           range={range}
           title="Automations"

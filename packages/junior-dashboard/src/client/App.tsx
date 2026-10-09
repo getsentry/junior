@@ -331,7 +331,7 @@ export function DashboardShell() {
               loading ? (
                 <AutomationsPageLayout>
                   <AutomationsRouteLoading
-                    description="Scheduled and event-driven work created by users."
+                    description="[Visual diff test] Scheduled and event-driven work created by users."
                     label="Loading automations"
                     title="Automations"
                     variant="stats"
