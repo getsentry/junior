@@ -48,7 +48,8 @@ or credentials that it needs, and only the creator can fix that. A blocked row
 keeps the reason in `status_reason` and does not match new events. Resume
 clears the reason and makes the row active. A row that was paused when its run
 blocked stays paused and keeps the reason, so resume returns it to blocked.
-The dashboard and the automation tools show the status and the reason.
+The dashboard and the automation tools show the status and the reason. Only
+the creator can pause or resume, from the Automation settings or from chat.
 
 The dispatched agent input uses shared framing from `task-input.ts`. See
 `chat/README.md` for the input format. The stored automation text remains the

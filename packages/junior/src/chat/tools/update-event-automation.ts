@@ -70,7 +70,7 @@ export function createUpdateEventAutomationTool(
           .enum(["active", "paused"])
           .nullable()
           .describe(
-            "Set active to resume a paused or blocked automation, or paused to stop it. Omit or use null to leave unchanged.",
+            "Set active to resume a paused or blocked automation, or paused to stop it. Only the creator can change the status. Omit or use null to leave unchanged.",
           )
           .optional(),
       })
@@ -119,6 +119,12 @@ export function createUpdateEventAutomationTool(
         input.credentialMode != null;
       if (!edits && input.status == null) {
         throw new ToolInputError("Event automation update requires a change.");
+      }
+      // Pause and resume belong to the creator, as in the Automation settings.
+      if (input.status != null && !isCreator) {
+        throw new ToolInputError(
+          "Only the creator of this event automation can pause or resume it.",
+        );
       }
       if (
         input.instruction != null &&

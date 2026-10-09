@@ -100,6 +100,15 @@ describe("event automation blocking", () => {
     });
     expect(await ingest("github:blocked-2")).toEqual({ dispatched: 0 });
 
+    // Another person in the channel cannot resume it.
+    await expect(
+      execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
+        automationId: automation.id,
+        status: "active",
+      }),
+    ).rejects.toThrow("Only the creator");
+    expect(await read()).toMatchObject({ status: "blocked" });
+
     await setStatus("active");
     expect(await read()).toMatchObject({ status: "active" });
     expect(await read()).not.toHaveProperty("statusReason");

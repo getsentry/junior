@@ -166,6 +166,8 @@ export async function createEventAutomation(
         namespace: parsed.trigger.namespace,
         identifier: parsed.trigger.identifier,
         status: "active",
+        // A reason from before the delete must not block the new row.
+        statusReason: null,
         title,
         task: parsed,
       })
