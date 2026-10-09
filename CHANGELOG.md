@@ -1,4 +1,13 @@
 # Changelog
+## 0.239.0
+
+### New Features ✨
+
+#### Google
+
+- Annotate Conversations with Calendar events by @sentry-junior in [#2082](https://github.com/getsentry/junior/pull/2082)
+- Let Junior cancel its events and schedule like an assistant by @sentry-junior in [#2083](https://github.com/getsentry/junior/pull/2083)
+
 ## 0.238.1
 
 ### New Features ✨
