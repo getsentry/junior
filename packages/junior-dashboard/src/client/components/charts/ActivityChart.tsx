@@ -191,8 +191,8 @@ function chartSvgScale(box: ChartBox | undefined, layout: ActivityChartLayout) {
 /**
  * Render the shared SVG chart shell and provide its live screen scale to labels.
  * SVG text uses user units, so labels invert this scale to remain 12px on screen.
- * Derive it from the latest element size and the current viewBox so it never
- * keeps a value measured during an earlier layout.
+ * The scale comes from the current element size and viewBox, so a measurement
+ * from an earlier layout is never reused.
  */
 export function ChartSvg(props: {
   "aria-label": string;

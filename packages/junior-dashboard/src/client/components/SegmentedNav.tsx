@@ -113,9 +113,9 @@ export function SegmentedNav(props: {
           : { end, start },
       );
     };
-    // When the row or a link changes size, place the row from its start so
-    // the result depends only on the current layout, not on earlier ones.
-    // A row hidden at this breakpoint has no width until it is shown.
+    // Recompute the scroll position from the start on every size change so it
+    // depends only on the current layout. A row hidden at this breakpoint has
+    // no width until it is shown.
     const observer = new ResizeObserver(() => {
       row.scrollLeft = 0;
       revealCurrentLink(row);
@@ -124,7 +124,8 @@ export function SegmentedNav(props: {
     updateEdges();
     row.addEventListener("scroll", updateEdges, { passive: true });
     observer.observe(row);
-    // Links change width when web fonts load, without resizing the row.
+    // Links can change width, for example when a web font loads, without
+    // resizing the row.
     for (const link of row.children) observer.observe(link);
     return () => {
       row.removeEventListener("scroll", updateEdges);
