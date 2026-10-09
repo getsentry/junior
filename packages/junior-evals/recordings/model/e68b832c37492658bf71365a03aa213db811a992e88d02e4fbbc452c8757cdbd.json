@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation reveals operational knowledge, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "966976b50780",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_06383db0cde514b6016ac91f39ba6887d19b415be96ff03b15\",\"reasoningEncryptedContent\":\"gAAAAABqyR86oPJRosLBoGBWH_wWIfqf2Kh8jzA8K54VwQLUIFWZBh3FPUBGqsT9vO7IwAMigksNp2St1lgHlWLLAGLT0Xk6BT6o5LvdDy-VDMQoEoNClLqZrrqYd9OzSD7reJtNlhk1tJFJ-DDYoQxE-WtFpvqJerTawRqGAeC4LWI0GY20PKtA2-kedxln4Fqm5HTAK7Xvz-fj1SzAq9Sknwv_8fpWd7pqvhSp2UQMceeMvFiad9RKh6WkCEmtHlpWP3oQjY6hfM4nlCHxrz9uOfFAPpSrlqxbCXZ3CmhO7pMXWiruM5kPeS-nnqfGxVHkzEGzhr1sAI80guo-grY4T3CqHMS-bM1dEkKiozM4jL9_RQyzzGZLAD0AF-mOqyn3Ksfag4i1909UexHps41OT_mvsRmLyCmjezTqO9o9It78dHb2DUcZhAlwafCBdRR2b-KcKykBLpw4HN98qZiqep7SbMDkQ--R24M083y1eJkpTxjMyFEalHgJTvG8Ug-JEj11ljFkRZcWdlUjKTsW0slNC_8F2y5sVVEtegiNTpJDY3_-eUYySGErWzXZTc9TrcIWKXoiNMrQP8BaWMikQwmmBPlyLXSQ0aXW9txwkjrpq231px2HDqQay1zeJPlFSicn5eoj-1z1AhvVnTdGdo1SSunnHitAzYbfEaCR4SIZfETDCk6V1Ncv1nbmz1IHnb4DfueSaaayp-R7bqTAndrerMyuIor7JExox0yF7Iq_QA4ynkL3VBh8r7ORj-00RQSl5FLX2pnR319BCmlfTBXIxHr1wKugsPfSWESVHgfyb7G-H579_sWKLpuAbMASlUO0kg-E8ZMNCQyXTQKkBeL44brAhFtXZV1fmEExBkomMQV8NoPrvFEBnX1x5B8xaHTpkm_lZAgiWIlEbKHf3HpcPe3IIh6sIdjXK0b5zg-Qn8IEQN3W0j7VkybyhfE2P5jB9MhNfQ9rBU9l1Kxhsox8VY7t9MpjqXtnlOsl3u3jo5ciFZ6fZZbWHuKC2oGwFIpPuWZwEJ8Zba0-pFjicdnRZSVpAUL_p47UCObtIgq6tP4c4j8_TSjrkfIXivW5HCkfagdf9pocO7tmL9Ti9gSNaADurtxE0BQ-_WtreUoITx_tAAGR7qJpnknXQtwfhYsFaK3vy7_wE3GbH6VAnCUdIbytcFOHEBLNEXyqFBBqvgGsADclTPgJXfH56ZT_loKBXqanbZjFcsyKP4HeN_-Dzg4Wz1wetVV7lNqMnL2gH8ivDUfMt2aE5p322ph8S0AO91wsS0f-3E7lCORw-qsBclrKw_R1aLnu80rBejyjHaGeESpgHic4ucnfPpkxO1icz1Aap3pe4dpjq_Y4dx3jKuIdCrf8A83Yna5pl-Gt1MkICYyJj2S2vagparTJk7S1NEJVuFSm9FBjDDS5s58pt8kuDGmSSZtmP1RQszB4HnpdJDEt45JPTliP1xeI9Lkt1iPW0YuKCxZldO_x74dkyyJJVQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"Branch QA runbooks require risk notes before summary notes.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_06383db0cde514b6016ac91f39fb1487d1a82d922c9c69f0c3\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1477,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1474},\"outputTokens\":{\"total\":84,\"text\":46,\"reasoning\":38},\"raw\":{\"input_tokens\":1477,\"input_tokens_details\":{\"cache_write_tokens\":1474,\"cached_tokens\":0},\"output_tokens\":84,\"output_tokens_details\":{\"reasoning_tokens\":38},\"total_tokens\":1561}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_06383db0cde514b6016ac91f393ba887d190d3dc334e22934f\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565625137,\"endTime\":1791565626477,\"providerRequestId\":\"req_1c58cf1590ca442dbe39bd2611a4108c\",\"statusCode\":200,\"providerResponseId\":\"resp_06383db0cde514b6016ac91f393ba887d190d3dc334e22934f\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"487e196e36cf58e25f52010b010f8925\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00022655\",\"marketCost\":\"0.00022655\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00022655\",\"inferenceCost\":\"0.00022655\",\"inputInferenceCost\":\"0.00018455\",\"outputInferenceCost\":\"0.000042\",\"generationId\":\"gen_01M4GT3XQ843964R409P8PNJR6\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
