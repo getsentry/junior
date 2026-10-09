@@ -199,10 +199,10 @@ importers:
         version: 4.29.0(@opentelemetry/api@1.9.1)(ai@6.0.190(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-agent-core':
         specifier: 'catalog:'
-        version: 0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+        version: 0.84.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
-        version: 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+        version: 0.85.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.12.27)(zod@4.5.4)
@@ -210,8 +210,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       '@modelcontextprotocol/sdk':
-        specifier: 1.29.0
-        version: 1.29.0(zod@4.5.4)
+        specifier: 1.31.0
+        version: 1.31.0(zod@4.5.4)
       '@neondatabase/serverless':
         specifier: ^1.1.0
         version: 1.1.0
@@ -2597,8 +2597,8 @@ packages:
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
 
-  '@modelcontextprotocol/sdk@1.29.0':
-    resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
+  '@modelcontextprotocol/sdk@1.31.0':
+    resolution: {integrity: sha512-UvTMgnNlnIBO/22ob2RcVGDlcvOslQs8T59+FTGdA0L27a39fdGF/EDETNtDVK4DZGpwomlsYpRdA8UXcVL/pw==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -9931,9 +9931,9 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@earendil-works/pi-agent-core@0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
+  '@earendil-works/pi-agent-core@0.84.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)':
     dependencies:
-      '@earendil-works/pi-ai': 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-ai': 0.85.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)
       '@earendil-works/pi-telemetry': 0.84.1
       diff: 8.0.4
       ignore: 7.0.5
@@ -9947,12 +9947,12 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
+  '@earendil-works/pi-ai@0.84.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@4.5.4)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.84.1
-      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))
+      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))
       '@mistralai/mistralai': 2.2.6(@opentelemetry/api@1.9.0)
       '@opentelemetry/api': 1.9.0
       '@smithy/node-http-handler': 4.7.3
@@ -9969,12 +9969,12 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)':
+  '@earendil-works/pi-ai@0.85.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.123.0(zod@4.5.4)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.85.1
-      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))
+      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))
       '@smithy/node-http-handler': 4.7.3
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
@@ -10563,14 +10563,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))':
+  '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))':
     dependencies:
       google-auth-library: 10.6.2
       p-retry: 4.6.2
       protobufjs: 7.6.1
       ws: 8.20.1
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.5.4)
+      '@modelcontextprotocol/sdk': 1.31.0(zod@4.5.4)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -10845,7 +10845,7 @@ snapshots:
 
   '@mixmark-io/domino@2.2.0': {}
 
-  '@modelcontextprotocol/sdk@1.29.0(zod@4.5.4)':
+  '@modelcontextprotocol/sdk@1.31.0(zod@4.5.4)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.27)
       ajv: 8.20.0
@@ -12247,11 +12247,11 @@ snapshots:
       '@chat-adapter/slack': 4.29.0(ai@6.0.190(zod@4.5.4))(zod@4.5.4)
       '@chat-adapter/state-memory': 4.29.0(ai@6.0.190(zod@4.5.4))(zod@4.5.4)
       '@chat-adapter/state-redis': 4.29.0(@opentelemetry/api@1.9.1)(ai@6.0.190(zod@4.5.4))(zod@4.5.4)
-      '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
-      '@earendil-works/pi-ai': 0.84.1(@modelcontextprotocol/sdk@1.29.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-agent-core': 0.84.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)
+      '@earendil-works/pi-ai': 0.84.1(@modelcontextprotocol/sdk@1.31.0(zod@4.5.4))(zod@4.5.4)
       '@hono/zod-validator': 0.9.0(hono@4.12.27)(zod@4.5.4)
       '@logtape/logtape': 2.1.1
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.5.4)
+      '@modelcontextprotocol/sdk': 1.31.0(zod@4.5.4)
       '@neondatabase/serverless': 1.1.0
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
