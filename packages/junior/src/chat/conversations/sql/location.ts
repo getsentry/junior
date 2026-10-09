@@ -1,8 +1,11 @@
 import type { Destination } from "@sentry/junior-plugin-api";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
-import type { juniorDestinations } from "@/db/schema";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorConversations, type juniorDestinations } from "@/db/schema";
+import type { ProviderConversationBinding } from "./bindings";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
 
@@ -115,4 +118,27 @@ export function visibilityFromLocationRow(
     return row.visibility;
   }
   return undefined;
+}
+
+/** Store a channel-level Location's first bound post as its thread. */
+export async function startLocationThread(
+  executor: JuniorSqlDatabase,
+  binding: ProviderConversationBinding,
+): Promise<void> {
+  const location = juniorConversations.location;
+  await executor
+    .db()
+    .update(juniorConversations)
+    .set({
+      location: sql`${location} || jsonb_build_object('threadTs', ${binding.providerConversationId}::text)`,
+    })
+    .where(
+      and(
+        eq(juniorConversations.conversationId, binding.conversationId),
+        sql`${location}->>'provider' = ${binding.provider}`,
+        sql`${location}->>'teamId' = ${binding.providerTenantId}`,
+        sql`${location}->>'channelId' = ${binding.providerDestinationId}`,
+        isNull(sql`${location}->>'threadTs'`),
+      ),
+    );
 }
