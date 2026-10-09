@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/auth/oauth.eval.ts > OAuth Workflows > when MCP auth pauses a turn, resume and reuse the stored credential on the next turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "9a54ba9d62bb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0fe1619e28cd6255016ac91c381fd887d1bfe2bd5ac42d1d53\",\"reasoningEncryptedContent\":\"gAAAAABqyRw5TGiCRh4UrGs5mrz-ss1XOJueYVvG4NxM3iS6c_fKc_DaLtvnMSimURP6lKae_Cr_FoJdBHfyuda09mrxbXvB0EEMYUYG4GkYR01eGEo-zUbTuhf78hHKnFS4f5kd-lFHgokCkKHHWDmzhL7CWisZvVNC-lWGgIILmzowwQ5zGuONY8BabCuQfvwxt_7GSS6B1R8bv4JhotbJTpyaLEyex-fV1lAawmbibVKFiGJJOelQDJwVS5syY9BKzmP_RoZttFH690NfEKvSJbyFgFycYsPhh5dqO3bAokdYQ8wRPCdHmvjuF5F8wZAv2_r_1HSyNM2r57EF89qO4f1x4BZYXBPD_M2wUvTAO6IaGATQo1wmWgmobD3zjoRWK8hfOIXwpalM7Az4J_8nf0wpVAuTtHriLnqJX7PPKWM6xRUzJ7nlPE9DsZkbfNo8-BZo4heKSpnvTK2fiWgszNssRhenm_6ViRIwxWnJEtCXLtRZMTS-_tCWbPI-0v-3GGiXmuYGXRU4on5IXzLq4nxpV2LqebZ-5APZgAqER3yHgU6M2JhhIrH289bOlOXjZbGNmWD9vZNK01pxLYE_Gwix-cS16qDECeQZxEV70soGihDNaR14gjXV2cIUjl6HmiSTvl3wQ_HvIKH806MP58qb5N9Ef-Q0MN_AAaKNeKBgM84DYPTTCktaSVbjlLhiUdkpMmZOKxKea2J5wHBjIZQLktzFS3g0w0pAbYslhmN9xl3mnAj_NjRVvc9j2Lj_NGYmj85mOxRSsEUC0Xkj720lrotP9vQtCWqRCODHdWlm8XOZh2gtSDISgoWUK6yt2CHz8t1ZsPnbqQx472xGMHIy7FsnGxeBNLJbz6koVbfv1gNK7L6yySJQr9bGdutJd7aqfZOzRibDBsPPq933d_z4Re17rPKUV2EvfGBdc3M8837Fk_9kFKfioyCLzYKZVBZfVGcq9SpITuB3GJ3HaOf7mwQjzPnCQ6aK2hnr8f_Smhk8z2EUQV_RxVALxIAy1OFndC1s-HIDX4nM5b6DkB8ObDQ9z5BOcTAFdoxP92-_NdAE-hAXvHHU1flZdH1w3KQZQD0V4UUd2pIJyto1G5Z0TEI04kC_MMRL1vQ9wYMPD7M40miVOoTq11KwX-GNmLo-oPh3kQwNDiDg2MnKFK5G2sDPA3c32mjaXDTBKp8mZPfQp-hnQrQxDJwP9gEpjnVP8YM0wMZStYZQH7XWuTgAtKeyTlVnsGTeOq5t4CC-6otniVgEgesngzfhqcBsNUlB6DViwrP-P7-uwiQGLW1ojMicLgFcCgPFlhmp8IYVc8NUH7zqhp-vZSrPmjG6GBZ63u0R-FATFwPAyNxGzRjP6mgy8l6PxOpf4mco2liqrU-GG1zkAwdgeN7OxYN_CLaBWyj0i4mabnMzYeTt8roMkxfXGy_nMaY47tWRekwRQsyyBgibGigfMsG5VDmTCZ4f0SWB4ji_wB5nYGGjm1A_p6lRHSPjMmvxgjEnI-5EXvvob32ys0kME5UvqD-XCmW0RTZRBYfdtrD1I3r1AA6-Jys0QP9RJUpiAXC2pN9xiwnoWRiwz9I9-aUHUKMkHwb0OgFqPaxNm97Wq5cSJDQoaQY8_aci0Tnm41t23tu_TZW8T7nkocGmjlzWM733KWjsx2we2CiGSgOp176VOChvw8elOmoDcI6yH_9uaMFotSdq2z1DNjqBrdNsnGWo720uRolQo7-dHm91af2EjhlQXy5Tup2gctSGzNWCQV7kmR7_kD3uFN2cmm5zihQsWccuKZGnqG3UeDQRomea7rBBVX5SB_qN08wgLgDbCXR1vCTg8g4JYnXUsWLIhc8IODfgFfQVYFhxB5606xPTiZLVMPew8drMPZmD3HoZFG01ZWlJAzEgLXQ82FD1RV4uLOJyrtuHjxRlL0G3R-65U7fkLP-h6w==\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly asked to reuse the eval-auth connection and verify the lookup, and this bounded provider call does so without exposing credentials.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0fe1619e28cd6255016ac91c39049087d1a86a52b98abbd332\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":4193,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":2369},\"outputTokens\":{\"total\":144,\"text\":52,\"reasoning\":92},\"raw\":{\"input_tokens\":4193,\"input_tokens_details\":{\"cache_write_tokens\":2369,\"cached_tokens\":1821},\"output_tokens\":144,\"output_tokens_details\":{\"reasoning_tokens\":92},\"total_tokens\":4337}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0fe1619e28cd6255016ac91c37aaa087d18345611948e53bcc\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564855566,\"endTime\":1791564857883,\"providerRequestId\":\"req_33945d1b40104752a00fed94b9a36972\",\"statusCode\":200,\"providerResponseId\":\"resp_0fe1619e28cd6255016ac91c37aaa087d18345611948e53bcc\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"7e7b68e2b73af4688f9f559b46f70639\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000386635\",\"marketCost\":\"0.000386635\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000386635\",\"inferenceCost\":\"0.000386635\",\"inputInferenceCost\":\"0.000314635\",\"outputInferenceCost\":\"0.000072\",\"generationId\":\"gen_01M4GSCE79BRNN6AAW7VDAC1A1\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
