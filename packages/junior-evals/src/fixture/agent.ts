@@ -552,7 +552,8 @@ export async function createFixtureAgent(
             "send() needs a Conversation from slackMention() or webMessage()",
           );
         }
-        await sendInput(target, input);
+        // The handler runs during a delivery of the worker.
+        await queue.asInput(() => sendInput(target, input));
         sentInputs += 1;
       },
     };
