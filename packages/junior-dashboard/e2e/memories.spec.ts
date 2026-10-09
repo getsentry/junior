@@ -286,6 +286,7 @@ test("searches, paginates, and forgets plugin page records", async ({
     }),
   ).toBeVisible();
   await expect(page.locator("mark")).toHaveText(["runbook"]);
+  await screenshot(page, "memories-search");
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
