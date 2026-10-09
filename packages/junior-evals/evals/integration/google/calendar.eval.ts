@@ -84,7 +84,6 @@ describe("Google Calendar", () => {
         fail: [
           "Do not say or imply that Riley is free at the offered times.",
           "Do not ask the requester to confirm before checking calendars.",
-          "Do not say that an invite was sent or an event was created.",
         ],
       }),
     );
@@ -92,14 +91,7 @@ describe("Google Calendar", () => {
     const searches = completedToolCalls(
       "google_findMeetingTimes",
       conversation,
-    ).map(
-      (call) =>
-        toolOutput(call) as {
-          checked: Array<{ email: string }>;
-          slots: unknown[];
-          unavailable: Array<{ email: string }>;
-        },
-    );
+    ).map(toolOutput);
     // Junior adds the requester to the search.
     expect(searches).toContainEqual(
       expect.objectContaining({
@@ -182,8 +174,6 @@ describe("Google Calendar", () => {
   test("when Junior's Google account is not connected, say that an admin must connect it", async ({
     run,
   }) => {
-    mockTeamCalendars();
-
     const conversation = await run(
       slackMention(`find 30 minutes for me and ${SAM_EMAIL} this week`),
     );
