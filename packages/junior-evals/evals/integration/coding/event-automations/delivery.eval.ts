@@ -115,7 +115,7 @@ describe("Event automation delivery", () => {
       checkSuitePassed(2081, "Warden", 102),
       checkSuitePassed(2081, "Socket Security", 103),
     ]);
-    expect(burst.turns.map((turn) => turn.status)).toEqual(["completed"]);
+    expect(burst.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
     expect(burst.replies).toHaveLength(1);
     expect(burst.replies[0]!.text).toMatch(/^\W*Update 1\b/);
 
@@ -123,14 +123,14 @@ describe("Event automation delivery", () => {
     const late = await burst.continue(
       checkSuitePassed(2081, "Cursor Bugbot", 104),
     );
-    expect(late.turns.map((turn) => turn.status)).toEqual(["completed"]);
+    expect(late.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
     expect(late.replies).toHaveLength(1);
     expect(late.replies[0]!.text).toMatch(/^\W*Update 2\b/);
 
     // Another pull request has its own Conversation and history.
     const other = await run(pullRequestOpened(2082));
     expect(other.conversationId).not.toBe(burst.conversationId);
-    expect(other.turns.map((turn) => turn.status)).toEqual(["completed"]);
+    expect(other.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
     expect(other.replies).toHaveLength(1);
     expect(other.replies[0]!.text).toMatch(/^\W*Update 1\b/);
   });
