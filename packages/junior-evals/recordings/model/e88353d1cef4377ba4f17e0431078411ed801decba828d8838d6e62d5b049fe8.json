@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when Slack rejects the reply, the turn fails and the next turn does not use the lost reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "d31aa38f665a",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_00a84ca800729dac016ac82a6992b487d193ebb3fe5beb9dcd\",\"reasoningEncryptedContent\":\"gAAAAABqyCpqlKLdBPZJqzQaZqBjIOCeY2-z-QqR4Eqljslra08GVLCDTp72qxGtqGbEk_q7Sw86JAR0nevkneBcmTI77VlfV4dNY0oP94WN6nfCzxirhGglRLex4LWsYwpAOrLq5QwgiKmzjwp63fWNDjzXbu04G9dRtrq-OfB6r5gx_3M0VVnv-uTLQtu9PbU9IrN3USkcMV6KOvCA0-XDN8xUUhF9EDU0wvDlU9AP_Q5ljRWwPutmrq_CSi08qOHA5JQtUk7PeyQA-AvIcMGkW3YKHWqoWbS5EMMfUrpZKoq3W4RaDV0zeBV96WSTHgXxGMmGpuq50Xuyx-DtDkDcnH6N2srbQMMPUtut_ZM7Cx0cC0iaLjqO-XltnM5vZ6swGsmspvfsBlc7IAizqZ5bsJlEqtP00QgZLCACc_1TIQBF3aMz1IPrqFJvV-DIobZuPOJXe3wD2-XbD9vxwWO8NSj8RSiZ1BTliRAMx1kg-nh7lA3VI-Mzu6QgtukVjGfePwxosjz6-WHoDBRwhhubA7t5ktulRYwqshSXP2PaZvd2lLPbIb3AdW8zUkBRFacBvx71O1xEwiOKj-qO-Mrd-qoA1g_zba9wJ4CV8IAZJcoRkF7mD2keK_yODVIoNQqeStW1Y-yqmTXnZrG5laIfMjhrG42WimWhvkCuPv3k3A-C_X9WDGqUXcLFVzjhaJ6YtUr6LP4UX3CqNDFwr9syt9Vj12bCxO-771turh-9AuCysgXCAQUCpuLMCaFO8kM7ofjmuBsUx_2x1yM3nYnHW-B8ps4N3tX9Fg8SyYw4wW3ICGGFwb8MnaIx9ePkbgXN4t_0TDqqXExs8hR1xtBJRSaJFnJKg2Lya2oG4fg8f-2fWwbP7pGS_jhVsz3Z8sfbf3JJoi7znAD8GU-0roGx82N9UrANd2OgQSQNmlq3z7Ka7tA-krVxm8hv9U6eJKflRY9eZSX70TRCdujXmNy0ltrA3EYefzFnSbUqsgmkdENgurtBeexYBZurO5N5PdZX88ZqcNPL_mrur1mSAN_TvRpRh0hRMQrIKAH8sn0NnIl6rqBZNqo9QV1VK2vDHhSls9DuXxg3bSyIKwCgVhQQA55ctvZMPZvM_6LCcmKwIXkBOkZ-W4_uQYkHHoezfcdVJV5w4tUBFteE_76smfH4RI1fTV0cjJRVUlR_1P8a4UjpM1L3kf7-N3rLPFOyjOHsMAa73-d-5yv9qZsrUzej--HfWzBM9pmZgxkd7Zes7swtAwXhCa3_p8MSDzyGRUIiqqp8p7ggmBrUleVWcPUIp5UX6xrluFmpWTkHVQrQ4wWBp_mfGyCWVANkap861cMWpB61CN8X1sog9_pwVLffWMxK4b9uVtjFYpV3B5FYHvg6JdZagXBryt_oE7YoiYhZPfVUeA9ztE-t-RYbEHFumgHHekKn5jTjlT47bzJF6tHfZYF-tBZ4pEYIe7UQpd66f5nol8DpKBZv9ekWSEB0mqk1nnfmPw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a simple one-step request to choose a four-digit number; no research or tool use is needed.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_00a84ca800729dac016ac82a6a002c87d1b92ecafca4d2771c\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":591,\"noCache\":591,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":89,\"text\":51,\"reasoning\":38},\"raw\":{\"input_tokens\":591,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":89,\"output_tokens_details\":{\"reasoning_tokens\":38},\"total_tokens\":680}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_00a84ca800729dac016ac82a68ed7887d1920002bcedeb43cd\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791502952831,\"endTime\":1791502954564,\"providerRequestId\":\"req_ceffa5daf5254b84935753dab6fe9daa\",\"statusCode\":200,\"providerResponseId\":\"resp_00a84ca800729dac016ac82a68ed7887d1920002bcedeb43cd\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"1ed78538e096ddbe700c7409c8ad8d0b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001036\",\"marketCost\":\"0.0001036\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001036\",\"inferenceCost\":\"0.0001036\",\"inputInferenceCost\":\"0.0000591\",\"outputInferenceCost\":\"0.0000445\",\"generationId\":\"gen_01M4EYBA77R1ZQ9RQVW4KVPQVP\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

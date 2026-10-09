@@ -94,7 +94,15 @@ const IDLE_TIMEOUT_MS = 60_000;
  */
 const INPUT_SETTLE_MS = 1_500;
 
-export type TurnProgress = GatewayProgress | { type: "reply"; text: string };
+export type TurnProgress =
+  | GatewayProgress
+  | { type: "reply"; text: string }
+  /**
+   * A turn stopped before it finished, for example at its deadline, and
+   * Junior queued the rest of it. The rest waits until the handler finishes,
+   * so a sent input arrives before the turn continues.
+   */
+  | { type: "paused" };
 
 export interface CallOptions {
   /** Earlier turns as items, or a recorded conversation. */
@@ -550,11 +558,35 @@ export async function createFixtureAgent(
     };
     if (options.onProgress) {
       const onProgress = options.onProgress;
-      gateway.setProgressHook(async (progress) => {
+      const report = async (progress: TurnProgress) => {
         const before = sentInputs;
         await onProgress(progress, progressActions);
         if (sentInputs > before) {
           await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
+        }
+      };
+      gateway.setProgressHook(report);
+      queue.setRequeueHook(async (conversationId) => {
+        if (
+          typeof target === "function" ||
+          conversationId !== target.conversationId
+        ) {
+          return;
+        }
+        // The worker also queues work for a message that waits for its own
+        // turn. A turn is paused only when the reporting API still shows it
+        // as started.
+        const { turns } = readCallEvents({
+          afterSeq: BEFORE_FIRST_EVENT,
+          conversationId,
+          detail: await readConversationDetail(
+            api,
+            conversationId,
+            target.viewerEmail,
+          ),
+        });
+        if (turns.some((turn) => turn.status === "started")) {
+          await report({ type: "paused" });
         }
       });
       slack.setReplyHook(async (post) => {
@@ -579,6 +611,7 @@ export async function createFixtureAgent(
       throw error;
     } finally {
       gateway.setProgressHook(undefined);
+      queue.setRequeueHook(undefined);
       slack.setReplyHook(undefined);
     }
     const record = typeof target === "function" ? target() : target;
