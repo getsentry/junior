@@ -488,6 +488,7 @@ describe("userLookup", () => {
         count: 3,
         searched_pages: 3,
         truncated: true,
+        note: expect.stringContaining("Slack user ID"),
       });
     });
 
@@ -514,6 +515,7 @@ describe("userLookup", () => {
         searched_pages: 2,
         truncated: false,
       });
+      expect(result).not.toHaveProperty("note");
     });
 
     it("reports a missing user scope with repair guidance", async () => {

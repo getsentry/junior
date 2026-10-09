@@ -28,7 +28,7 @@ const inputSchema = z
     attendees: emailListSchema(20)
       .min(1)
       .describe(
-        "Work emails of the people who must attend. Resolve names with userLookup. Junior adds the requester automatically when it knows their email.",
+        "Work emails of the people who must attend. Resolve people with userLookup, by Slack user ID when the conversation shows one. Junior adds the requester automatically when it knows their email.",
       ),
     optionalAttendees: emailListSchema(20)
       .default([])

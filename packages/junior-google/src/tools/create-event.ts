@@ -91,7 +91,7 @@ const inputSchema = z
       .describe("Event end, RFC 3339 with offset."),
     timeZone: timeZoneSchema,
     attendees: emailListSchema(50).describe(
-      "Email addresses of required attendees. Junior adds the requester automatically when it knows their email.",
+      "Email addresses of required attendees. Resolve people with userLookup, by Slack user ID when the conversation shows one. Junior adds the requester automatically when it knows their email.",
     ),
     optionalAttendees: emailListSchema(50)
       .default([])
