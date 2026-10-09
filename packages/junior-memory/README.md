@@ -20,7 +20,8 @@ exported types, tools, and tests are authoritative.
   `memory/memories_captured` events. The System plugin report uses the same
   event-cost feed.
 - Authenticated REST clients can list and search authorized memories through
-  `GET /api/plugins/memory/memories`, read one through
+  `GET /api/plugins/memory/memories`, count matches by visibility through
+  `GET /api/plugins/memory/counts`, read one through
   `GET /api/plugins/memory/memories/:id`, and forget an authorized private
   memory through `DELETE /api/plugins/memory/memories/:id`. Public memory is
   read-only in the dashboard and REST API.

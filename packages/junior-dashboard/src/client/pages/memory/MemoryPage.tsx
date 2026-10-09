@@ -34,9 +34,11 @@ import { cn } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
+  useMemorySearchCounts,
 } from "./memoryDashboard";
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
 import { MemoryPageLayout } from "./MemoryPageLayout";
+import { MemorySearchHighlight } from "./MemorySearchHighlight";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
@@ -151,6 +153,11 @@ function MemoryLibrary(props: {
     setSearchText,
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
+  const searchCountsQuery = useMemorySearchCounts(searchQuery);
+  // Tab totals follow the search. Without a search, the summary owns them.
+  const counts = searchQuery
+    ? searchCountsQuery.data
+    : dashboardQuery.data?.stats;
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -217,17 +224,17 @@ function MemoryLibrary(props: {
         ariaLabel="Memory collections"
         items={[
           {
-            count: dashboardQuery.data?.stats?.active,
+            count: counts?.active,
             label: "All",
             value: "",
           },
           {
-            count: dashboardQuery.data?.stats?.personal,
+            count: counts?.personal,
             label: "Private",
             value: "private",
           },
           {
-            count: dashboardQuery.data?.stats?.public,
+            count: counts?.public,
             label: "Public",
             value: "public",
           },
@@ -274,6 +281,7 @@ function MemoryLibrary(props: {
                   )
                 }
                 record={record}
+                searchQuery={searchQuery}
                 selected={record.id === memoryId}
               />
             ))}
@@ -472,6 +480,7 @@ function MemoryRow(props: {
   first: boolean;
   onSelect(): void;
   record: PluginUserPageRecord;
+  searchQuery: string;
   selected: boolean;
 }) {
   const kind = metadataValue(props.record, "Type");
@@ -506,7 +515,10 @@ function MemoryRow(props: {
               size={14}
             />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
-              {props.record.title}
+              <MemorySearchHighlight
+                query={props.searchQuery}
+                text={props.record.title}
+              />
             </h3>
           </div>
           <div className="mt-1.5 truncate font-mono text-xs leading-relaxed text-dashboard-text-muted">

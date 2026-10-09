@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { fetchDashboardJson } from "../../http";
@@ -61,6 +61,39 @@ export function useMemoryDashboardData() {
         signal,
       ),
     queryKey: ["dashboard", "plugin-user-page", "memory", "summary"],
+    retry: false,
+  });
+}
+
+const memoryCountsSchema = z
+  .object({
+    active: z.number().int().min(0),
+    personal: z.number().int().min(0),
+    public: z.number().int().min(0),
+  })
+  .strict();
+
+/**
+ * Load viewer-scoped memory totals that match a search query. The query stays
+ * idle without a search, because the dashboard summary owns unfiltered totals.
+ */
+export function useMemorySearchCounts(searchQuery: string) {
+  return useQuery({
+    enabled: Boolean(searchQuery),
+    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        memoryCountsSchema,
+        `/api/plugins/memory/counts?${new URLSearchParams({ q: searchQuery })}`,
+        signal,
+      ),
+    queryKey: [
+      "dashboard",
+      "plugin-user-page",
+      "memory",
+      "counts",
+      searchQuery,
+    ],
     retry: false,
   });
 }
