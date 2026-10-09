@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/files.eval.ts > Coding File Tools > when making a targeted source edit, update the value and report the changed path",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "029fe1910984",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_02a385760c768821016ac92bfc6a4487d1beea2ab49e9531da\",\"reasoningEncryptedContent\":\"gAAAAABqySv-b621OyHhnNjmKvNL_WUCrHhB44eK8LMKFjevGQs9OgUAjwXCH8TeTH1NJkPaE9FQpjbJKme6BXyqx3scFBz7bi-cqLx5DvD0wz2oqXAy2cYPPyuyfGvfnAiGY_LCaJqleBgwrFF4sXkdrQdicVtoZf-PMUCyVwZ8H5AISwqKM5Wx2c6sU2dImrnPouH9GxmfdfywL48U5-oYNsA2Vwg5PqagD8Cl0qtBz46j_lHjTdQuYK8bCCrwpUKVNe5Cvl8hzEKTlosP_O2hf3JOS-b0Ngtq5NNWg5VHQqCbAaK8psdDLxusd6Eg0O39mKrrOXPmXdEQY_7AoEcxCkdE6xBdqwXpd-lODRL_zQfSAz29kvKvo_yLfa8gT34Zs2h3Hvx26sCpKwRcvRMPnaBHvAnXIfD3LMjtMqg-u0HwqtzKZFMluderKUsI8yviSae77250tZAW1NieFfeLDXdGlXsgsQxSIRiOPqD2Tz0p0xigtCfMC5js8zPbrOvMmg-Bxeju8bTvI7qKWmj3ZxGNL99eKAVk82Mgik6J7vamuKdgYZm5uLHgg01BulBGpKsmsWrU-48z9dGZioulLA54o-4TA1r1mLx8qe-3Ao4M6nJohcrWsYyrFixEWe_w4qv-boxzOudmr5L8XCmQpCwbJtjQkl7t89NhgJEk4FEkt-Fz2J89ZePQ4j1VYgpqZ7z50qEWG1tShVo4ACBTLkilMOSqYsA-WzqDFgT-IMcOcerHbxwaPhhpkKtvd1h7h0AVJDrK1Ff4dQ_OP3HwrFNKvmPILM1EjL5yninUzbo3B_MhiXbKWaO6XnZi-BTYZRKWtYQW7msU7pYlh0ZC9rpFaB23LTf6DXgbrka4Bvu0Hi5tCmtpcch6oCszPGUWerPfM3gkVJ4uUyOb1T-c262ZyYsOxklriIZWwRZLzHpHAAW6yIPDbQYDOQiQzNb8Zc_WdqC9R_B6vxxfoiqq4s61yKOuLBa6ijKYS518L-Y-FuxRPNlfbNfqBOYzwIPhkf0YCYzaZblkug-LLRpsu3MvYObsWh0WcPv4iNSo7VFW8eCwm0ldTuCOJI6ufomirronZOWZCaTBL1rAE4Z5gEYypTskTtmBtytT-ipAdfKZPEod1UZZhYaWhFEI1nz69gsBdnxfmP6mbSqcu6wmPfKIlNEV82988JXUmbPAGim5nFTAhiEuh1aA3yXS6X9Q7TJP3ZJhF435ApNNpMYulrLVPkhgBUIYGaShKFQjhJSud3QU_EzK2cThEeU0ZJUg1mwsCNL75jCkJgTRzql_1-3yF93GEAMil6f5c5QM00QIKdcdfNuoXtUBnhrnH3YSsyrr9GiTCEndieo1_ptchMdDvy_h0UFxxbwMnNDGgTKZX4d_O84-da97RWAvGQ2RtRXaLGl67mBXV8XtvnDzzLgAeD8sM_VCYqwJy4FhbDKhKlEDHTbvJm823kFvoeq65WjjnMx74iyZRfW2Fm_ZY9BejxHz4uza4as-ZqgjllVCOynP0p94VKFk4D78zPPe5lW6nE3O1fhiHTwPoyaW7ESyW1ie8KiPK0HlP9JE_-cvaczmENdjXqOKESWwJ5v3bhuLJIYspAkTOjmSKOc29mKl_IdJErviZcwqi9yEhO9W6yVV23Q0LC2w2vK3Cdy8BLS-Ene-_NSz4czwrEMmG6IZtNDExsKVszrPeSajLWIujAgT01FzC_DWidFvX8rUvWe4lxH76vXG0mkn6JkQOHokWqyZmH8Ag1N_NA885wFQ1PZcxt3JXAiYnOXnCNslbx6pq0Vs1sxYWLPSLnYxR5xAMXF4BVxC6CkzsBkC8ZUFYHlfiNePIw0jll3bvsB1IqM6JSa5WxxlVxAGY3g9VMxy2jm53lehiMQt6Y8gfdIwhUp0Z8rf5UXSNS1WPw9Ps7SBdameELf9Y_3kMxGsoj01GvSpv4_vLQpUMsCCQ1XQYLn6OYxY1xDyjDrrraXm_3ky1-7IwIfX1_rfHzBM2Uuehmh6tn65XHGRABBWA6BOqDdNEpJDfU2nD9dzj7NkzUXFKGDJfuG2ezuOrCShPGX0bN35uhgnz-MRAEZRyRgCGISMt-LYwiHQYoEWFILIbX_7YavnOJEb4p45e1Zbkzv9k1TnDC2EpcgWT3WntLv4qQDBBaGVGbmONUDtJNhI-pjEwR1Wd84OZEg4exMb5SE5A9PtZNjqEJCMZph9vPSsqr76NI7FBUTCbD-xnMCKLZJILjI95TUdd8coBwdTm_M4TQgapuK7dEw6RI-uIr1qulKVNCkfbjdhHeUYubJ3nUUxef21f8fcUAQro1E3pG0r4qHz-3K7MDgiDtQxngqsu0Gzzto=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"For coding workspace fixture tasks, inspect relevant files before editing, make only the requested change, and report the changed file paths and result.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_02a385760c768821016ac92bfd9ed887d1b2fb55cbd31a37fe\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2040,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2037},\"outputTokens\":{\"total\":208,\"text\":62,\"reasoning\":146},\"raw\":{\"input_tokens\":2040,\"input_tokens_details\":{\"cache_write_tokens\":2037,\"cached_tokens\":0},\"output_tokens\":208,\"output_tokens_details\":{\"reasoning_tokens\":146},\"total_tokens\":2248}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_02a385760c768821016ac92bfbb5dc87d1932364c7f0d1f0ff\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568891550,\"endTime\":1791568894398,\"providerRequestId\":\"req_5271d886b3934b5f9c9dd90b7fb1356c\",\"statusCode\":200,\"providerResponseId\":\"resp_02a385760c768821016ac92bfbb5dc87d1932364c7f0d1f0ff\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"2bde727146d487ab03c3eabf0ae8baab\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000358925\",\"marketCost\":\"0.000358925\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000358925\",\"inferenceCost\":\"0.000358925\",\"inputInferenceCost\":\"0.000254925\",\"outputInferenceCost\":\"0.000104\",\"generationId\":\"gen_01M4GX7KM6G4JM2SX32QWWCN91\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
