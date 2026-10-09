@@ -43,12 +43,17 @@ export function renderSlackObjectCard(
     (card.objectType === "item" && card.facts?.type === "deployment");
   const status = details || deployment ? card.status : undefined;
   const warning = details || deployment ? card.warning : undefined;
+  // Calendar event previews show the time and attendees, not the agenda.
+  const calendarEvent = card.objectType === "calendar_event";
   const facts = objectFactFields(card.facts).filter(
-    (field) => details || (deployment && field.key === "environment"),
+    (field) =>
+      details || calendarEvent || (deployment && field.key === "environment"),
   );
   const description = details
     ? (card.description?.trim() ?? "")
-    : descriptionPreview(card.description);
+    : calendarEvent
+      ? ""
+      : descriptionPreview(card.description);
   const text = [
     escapeSlackMrkdwnText(type),
     card.url ? formatSlackLink(card.url, title) : escapeSlackMrkdwnText(title),

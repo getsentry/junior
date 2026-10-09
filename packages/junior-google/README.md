@@ -20,10 +20,10 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 - `updateCalendarEvent` changes the title, description, time, or attendees of
   an event that Junior organizes. Google emails the attendees about the
   change. Only people invited to the event can ask for a change.
-- `createCalendarEvent` and `updateCalendarEvent` return a Calendar event
-  annotation. Junior saves it on the Conversation and shows a card with the
-  next reply. The card shows the title, time, link, and description. Calendar
-  events use the `item` object type, so the card has the generic item icon.
+- `createCalendarEvent` and `updateCalendarEvent` save a Calendar event
+  annotation on the Conversation. Junior shows its card with the next reply.
+  The card shows the title, time, and attendees, and links to the event. A
+  change to an event replaces its card.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.

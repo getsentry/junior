@@ -245,6 +245,20 @@ it("saves plugin object results once per reply, leaves background updates silent
       },
       {
         ...annotation,
+        plugin: "objects",
+        key: "event-1",
+        label: "Oct 12",
+        description: "Agenda stays in the detail panel.",
+        objectType: "calendar_event" as const,
+        status: undefined,
+        facts: {
+          type: "calendar_event" as const,
+          when: "Mon, Oct 12, 10:00 – 10:30 PDT",
+          attendees: ["Sam", "Alex"],
+        },
+      },
+      {
+        ...annotation,
         plugin: "junior",
         key: "daily",
         objectType: "automation" as const,
@@ -313,6 +327,22 @@ it("saves plugin object results once per reply, leaves background updates silent
           entity_type: "slack#/entities/item",
           entity_payload: {
             attributes: {
+              display_id: "Oct 12",
+              display_type: "Calendar event",
+              product_icon: {
+                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/calendar.png",
+              },
+            },
+            custom_fields: [
+              { key: "when", value: "Mon, Oct 12, 10:00 – 10:30 PDT" },
+              { key: "attendees", value: "Sam, Alex" },
+            ],
+          },
+        },
+        {
+          entity_type: "slack#/entities/item",
+          entity_payload: {
+            attributes: {
               display_type: "Automation",
               product_icon: {
                 url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
@@ -333,9 +363,16 @@ it("saves plugin object results once per reply, leaves background updates silent
       "Revision:",
       "Branch:",
       "blocked",
+      "Agenda",
     ])
       expect(mixedPost?.text).not.toContain(hidden);
-    for (const type of ["Code change", "Ticket", "Deployment", "Automation"])
+    for (const type of [
+      "Code change",
+      "Ticket",
+      "Deployment",
+      "Calendar event",
+      "Automation",
+    ])
       expect(mixedPost?.text).toContain(type);
     setDashboardConversationLinkOptions(undefined);
     await sendSlackReply({

@@ -127,7 +127,10 @@ describe("Google Calendar tools", () => {
 
   it("creates one event per tool call and returns the existing event on retry", async () => {
     const event = {
-      attendees: [{ email: REQUESTER }, { email: "bob@example.com" }],
+      attendees: [
+        { email: REQUESTER },
+        { displayName: "Bob Smith", email: "bob@example.com" },
+      ],
       end: { dateTime: "2026-10-12T10:30:00-07:00" },
       hangoutLink: "https://meet.google.com/abc-defg-hij",
       htmlLink: "https://calendar.google.com/event?eid=1",
@@ -179,23 +182,27 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       created: false,
       eventId: body.id,
-      objectAnnotations: [
-        {
-          kind: "object",
-          key: body.id,
-          label: "Mon, Oct 12, 10:00 PDT – 10:30 PDT",
-          objectType: "item",
-          displayType: "Calendar event",
-          title: "Sync",
-          url: "https://calendar.google.com/event?eid=1",
-        },
-      ],
+      label: "Mon, Oct 12, 10:00 – 10:30 PDT",
       videoCallUrl: "https://meet.google.com/abc-defg-hij",
     });
-    // Core saves only annotations that match the shared schema.
-    expect(() =>
+    // Core saves this annotation and shows its card with the next reply.
+    expect(
       objectAnnotationSchema.array().parse(result.objectAnnotations),
-    ).not.toThrow();
+    ).toEqual([
+      {
+        kind: "object",
+        key: body.id,
+        label: "Oct 12",
+        objectType: "calendar_event",
+        title: "Sync",
+        url: "https://calendar.google.com/event?eid=1",
+        facts: {
+          type: "calendar_event",
+          when: "Mon, Oct 12, 10:00 – 10:30 PDT",
+          attendees: [REQUESTER, "Bob Smith"],
+        },
+      },
+    ]);
   });
   it("reads a colleague's calendar and reports calendars Junior cannot see", async () => {
     const { fetch, tools } = calendarTools(
@@ -347,12 +354,12 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       attendees: [REQUESTER, "carol@example.com"],
       eventId: "event1",
-      // The card shows the new time.
+      // The same key replaces the saved card with the new time.
       objectAnnotations: [
         {
           key: "event1",
-          label: "Tue, Oct 13, 11:00 PDT – 11:30 PDT",
-          title: "Sync",
+          label: "Oct 13",
+          facts: { when: "Tue, Oct 13, 11:00 – 11:30 PDT" },
           sourceUpdatedAt: "2026-10-08T12:00:00.000Z",
         },
       ],
