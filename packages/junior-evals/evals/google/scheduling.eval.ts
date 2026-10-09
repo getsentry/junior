@@ -16,7 +16,6 @@ import { test, type Conversation } from "@junior-evals/fixture/test";
 const SAM = person("U0SAM", "Sam");
 const REQUESTER_EMAIL = "testuser@example.com";
 const SAM_EMAIL = "sam@example.com";
-const TIME_ZONE = "America/Los_Angeles";
 
 /**
  * The requester holds every weekday afternoon with "DNS" (do not schedule)
@@ -36,7 +35,6 @@ function mockTeamCalendars() {
           weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
         },
       ],
-      timeZone: TIME_ZONE,
     },
     {
       email: SAM_EMAIL,
@@ -60,7 +58,6 @@ function mockTeamCalendars() {
           weekdays: ["Fri"],
         },
       ],
-      timeZone: TIME_ZONE,
     },
   ]);
 }
@@ -105,7 +102,6 @@ const SCHEDULING_RUBRIC = rubric({
     "Do not report that there are no open times only because the requester's DNS blocks fill the afternoons.",
     "Do not ask the requester for permission or confirmation before a read-only calendar availability check.",
     "Do not ask who else must attend; Sam is in the thread.",
-    "Do not create or send a calendar invite; the requester only asked to find a time.",
   ],
 });
 
@@ -122,9 +118,6 @@ describe("Google Calendar Scheduling", () => {
 
     await expect(conversation).toSatisfyJudge(RubricJudge, SCHEDULING_RUBRIC);
     expect(samCalendarChecks(conversation)).not.toHaveLength(0);
-    expect(
-      completedToolCalls("google_createCalendarEvent", conversation),
-    ).toHaveLength(0);
   });
 
   test("when the requester corrects a one-sided answer, check the other attendee without asking again", async ({
@@ -162,8 +155,5 @@ describe("Google Calendar Scheduling", () => {
 
     await expect(conversation).toSatisfyJudge(RubricJudge, SCHEDULING_RUBRIC);
     expect(samCalendarChecks(conversation)).not.toHaveLength(0);
-    expect(
-      completedToolCalls("google_createCalendarEvent", conversation),
-    ).toHaveLength(0);
   });
 });

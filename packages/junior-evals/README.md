@@ -75,11 +75,9 @@ describe("Thread Continuity", () => {
   `evals/integration/coding/`, and its behavioral evals are in `evals/coding/`.
   Put an eval that needs the GitHub plugin in this suite. Do not set up the
   plugin in the test.
-- The `google` suite has the Google plugin and no other plugin or skill.
-  `src/suites/google.ts` has its settings. Its evals are in `evals/google/`.
-  `connectGoogleAccount()` in `src/fixture/google.ts` stores the connection
-  of Junior's Google account, and `mockGoogleCalendars()` answers the Google
-  token, free/busy, and event list APIs from weekly calendars.
+- The `google` suite has the Google plugin. `src/suites/google.ts` has its
+  settings. Its evals are in `evals/google/`. `src/fixture/google.ts`
+  connects Junior's Google account and mocks the Calendar APIs.
 - The `memory` suite has the memory plugin and no other plugin or skill.
   `src/suites/memory.ts` has its settings. Its evals are in `evals/memory/`.
 - The `sentry` suite has the Sentry plugin. `src/suites/sentry.ts` has its
@@ -253,7 +251,7 @@ Not in scope:
 - Behavioral coding suite cases: `evals/coding/`
   - file tools, GitHub skill workflows, watch intent, summary quality, a fix after a failed check, and a mention during a watch delivery, with the GitHub plugin
 - Behavioral feature cases:
-  - `evals/google/` (calendar scheduling with the Google plugin)
+  - `evals/google/` (calendar scheduling)
   - `evals/memory/`
   - `evals/scheduler/` (due-occurrence delivery quality)
   - `evals/sentry/`

@@ -1,11 +1,10 @@
 /**
  * Google Calendar for tests that run the agent with the Google plugin.
  *
- * `connectGoogleAccount()` stores the connection of Junior's own Google
- * account through the plugin store, as an admin sign-in does.
- * `mockGoogleCalendars()` answers the Google token, free/busy, and event list
- * APIs from weekly calendars. Busy blocks and events come from the window of
- * each request, so the calendars have the same shape on each run date.
+ * `connectGoogleAccount()` stores the connection of Junior's Google account
+ * through the plugin store. `mockGoogleCalendars()` answers the Google token,
+ * free/busy, and event list APIs from calendars that repeat each week, so the
+ * calendars are the same on each run date.
  */
 import { http, HttpResponse } from "msw";
 import { getDb } from "@/chat/db";
@@ -17,153 +16,115 @@ import {
 import { GOOGLE_ACCOUNT_EMAIL } from "../suites/google";
 
 const GOOGLE_API = "https://www.googleapis.com/calendar/v3";
-const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
-const CALENDAR_SCOPE = [
-  "https://www.googleapis.com/auth/calendar.events.freebusy",
-  "https://www.googleapis.com/auth/calendar.events.owned",
-  "https://www.googleapis.com/auth/calendar.events.readonly",
-].join(" ");
+const TIME_ZONE = "America/Los_Angeles";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-type Weekday = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
-
-/** An event that repeats each week at the same local time. */
+/** An event that repeats each week. Times are Pacific time, 24-hour `HH:MM`. */
 export interface WeeklyEvent {
-  /** Local end time, 24-hour `HH:MM`. */
   end: string;
-  /** Local start time, 24-hour `HH:MM`. */
   start: string;
   title: string;
-  weekdays: Weekday[];
+  weekdays: Array<(typeof WEEKDAYS)[number]>;
 }
 
 /** The calendar of one person, as Junior's Google account sees it. */
 export interface MockCalendar {
   email: string;
   events: WeeklyEvent[];
-  /** IANA time zone of the event times, such as `America/Los_Angeles`. */
-  timeZone: string;
 }
 
-/**
- * Store the connection of Junior's Google account. The Calendar tools then
- * get an access token from the mocked token endpoint.
- */
+/** Store the connection of Junior's Google account. */
 export async function connectGoogleAccount(): Promise<void> {
   await saveGoogleAccount(getDb() as unknown as GoogleDb, {
     accountEmail: GOOGLE_ACCOUNT_EMAIL,
     connectedAtMs: Date.now(),
     connectedBy: "admin@example.com",
     refreshToken: "eval-google-refresh-token",
-    scope: CALENDAR_SCOPE,
+    scope: "calendar",
   });
 }
 
-interface Occurrence {
-  endMs: number;
-  id: string;
-  startMs: number;
-  title: string;
-}
-
-function localDay(ms: number, timeZone: string) {
+/** The offset of Pacific time from UTC at one instant. */
+function offsetMs(ms: number): number {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
-      day: "2-digit",
-      month: "2-digit",
-      timeZone,
-      weekday: "short",
-      year: "numeric",
-    })
-      .formatToParts(ms)
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    day: Number(parts.day),
-    month: Number(parts.month),
-    weekday: parts.weekday as Weekday,
-    year: Number(parts.year),
-  };
-}
-
-/** The offset of `timeZone` from UTC at one instant, in milliseconds. */
-function zoneOffsetMs(ms: number, timeZone: string): number {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", {
-      day: "2-digit",
-      hour: "2-digit",
+      day: "numeric",
+      hour: "numeric",
       hourCycle: "h23",
-      minute: "2-digit",
-      month: "2-digit",
-      second: "2-digit",
-      timeZone,
+      minute: "numeric",
+      month: "numeric",
+      timeZone: TIME_ZONE,
       year: "numeric",
     })
       .formatToParts(ms)
-      .map((part) => [part.type, part.value]),
+      .map((part) => [part.type, Number(part.value)]),
   );
   const wall = Date.UTC(
-    Number(parts.year),
-    Number(parts.month) - 1,
-    Number(parts.day),
-    Number(parts.hour),
-    Number(parts.minute),
-    Number(parts.second),
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
   );
-  return wall - Math.floor(ms / 1000) * 1000;
+  return wall - Math.floor(ms / 60_000) * 60_000;
 }
 
-/** The instant of one local wall-clock time in `timeZone`. */
-function localTimeMs(
-  day: { day: number; month: number; year: number },
-  clock: string,
-  timeZone: string,
-): number {
+/** The instant of a Pacific time on a day, given as UTC midnight. */
+function pacificMs(dayMs: number, clock: string): number {
   const [hours, minutes] = clock.split(":").map(Number);
-  const wall = Date.UTC(day.year, day.month - 1, day.day, hours, minutes);
-  const guess = wall - zoneOffsetMs(wall, timeZone);
-  // A second pass corrects the guess on days when the offset changes.
-  return wall - zoneOffsetMs(guess, timeZone);
+  const wall = dayMs + hours * 3_600_000 + minutes * 60_000;
+  // A second pass corrects the offset on days when it changes.
+  return wall - offsetMs(wall - offsetMs(wall));
 }
 
-/** The occurrences of a weekly calendar that overlap one window. */
-function occurrences(
-  calendar: MockCalendar,
-  timeMinMs: number,
-  timeMaxMs: number,
-): Occurrence[] {
-  const found: Occurrence[] = [];
-  for (let ms = timeMinMs - DAY_MS; ms <= timeMaxMs + DAY_MS; ms += DAY_MS) {
-    const day = localDay(ms, calendar.timeZone);
-    calendar.events.forEach((event, index) => {
-      if (!event.weekdays.includes(day.weekday)) return;
-      const startMs = localTimeMs(day, event.start, calendar.timeZone);
-      const endMs = localTimeMs(day, event.end, calendar.timeZone);
-      if (endMs <= timeMinMs || startMs >= timeMaxMs) return;
-      const date = `${day.year}${String(day.month).padStart(2, "0")}${String(day.day).padStart(2, "0")}`;
-      const id = `evt${index}_${date}`;
-      if (found.some((item) => item.id === id)) return;
-      found.push({ endMs, id, startMs, title: event.title });
-    });
+/** The events of a calendar that overlap one window, in start order. */
+function occurrences(calendar: MockCalendar, timeMin: string, timeMax: string) {
+  const minMs = Date.parse(timeMin);
+  const maxMs = Date.parse(timeMax);
+  const firstDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+  }).format(minMs);
+  const found = [];
+  for (
+    let dayMs = Date.parse(`${firstDay}T00:00:00Z`);
+    dayMs < maxMs + DAY_MS;
+    dayMs += DAY_MS
+  ) {
+    const weekday = WEEKDAYS[new Date(dayMs).getUTCDay()];
+    const date = new Date(dayMs).toISOString().slice(0, 10).replaceAll("-", "");
+    for (const [index, event] of calendar.events.entries()) {
+      const startMs = pacificMs(dayMs, event.start);
+      const endMs = pacificMs(dayMs, event.end);
+      if (
+        event.weekdays.includes(weekday) &&
+        endMs > minMs &&
+        startMs < maxMs
+      ) {
+        found.push({
+          end: new Date(endMs).toISOString(),
+          id: `evt${index}_${date}`,
+          start: new Date(startMs).toISOString(),
+          title: event.title,
+        });
+      }
+    }
   }
-  return found.sort((a, b) => a.startMs - b.startMs);
+  return found.sort((a, b) => a.start.localeCompare(b.start));
 }
 
 /**
- * Answer Google APIs from these calendars in the current test. A calendar
- * that is not in the list is one that Junior's account cannot see.
+ * Answer Google APIs from these calendars in the current test. Junior's
+ * account cannot see a calendar that is not in the list.
  */
 export function mockGoogleCalendars(calendars: MockCalendar[]): void {
-  const byEmail = new Map(
-    calendars.map((calendar) => [calendar.email.toLowerCase(), calendar]),
-  );
+  const find = (email: string) =>
+    calendars.find((calendar) => calendar.email === email.toLowerCase());
   mswServer.use(
-    http.post(GOOGLE_TOKEN_ENDPOINT, () =>
+    http.post("https://oauth2.googleapis.com/token", () =>
       HttpResponse.json({
         access_token: "eval-google-access-token",
         expires_in: 3600,
-        scope: CALENDAR_SCOPE,
-        token_type: "Bearer",
       }),
     ),
     http.post(`${GOOGLE_API}/freeBusy`, async ({ request }) => {
@@ -172,63 +133,41 @@ export function mockGoogleCalendars(calendars: MockCalendar[]): void {
         timeMax: string;
         timeMin: string;
       };
-      const timeMinMs = Date.parse(body.timeMin);
-      const timeMaxMs = Date.parse(body.timeMax);
-      return HttpResponse.json({
-        calendars: Object.fromEntries(
-          body.items.map(({ id }) => {
-            const calendar = byEmail.get(id.toLowerCase());
-            if (!calendar) {
-              return [id, { busy: [], errors: [{ reason: "notFound" }] }];
-            }
-            return [
-              id,
-              {
-                busy: occurrences(calendar, timeMinMs, timeMaxMs).map(
-                  (item) => ({
-                    end: new Date(item.endMs).toISOString(),
-                    start: new Date(item.startMs).toISOString(),
-                  }),
+      const entries = body.items.map(({ id }) => {
+        const calendar = find(id);
+        return [
+          id,
+          calendar
+            ? {
+                busy: occurrences(calendar, body.timeMin, body.timeMax).map(
+                  ({ end, start }) => ({ end, start }),
                 ),
-              },
-            ];
-          }),
-        ),
-        kind: "calendar#freeBusy",
-        timeMax: body.timeMax,
-        timeMin: body.timeMin,
+              }
+            : { busy: [], errors: [{ reason: "notFound" }] },
+        ];
       });
+      return HttpResponse.json({ calendars: Object.fromEntries(entries) });
     }),
     http.get(
       `${GOOGLE_API}/calendars/:calendarId/events`,
       ({ params, request }) => {
-        const email = decodeURIComponent(String(params.calendarId));
-        const calendar = byEmail.get(email.toLowerCase());
+        const calendar = find(decodeURIComponent(String(params.calendarId)));
         if (!calendar) {
-          return HttpResponse.json(
-            { error: { code: 404, message: "Not Found" } },
-            { status: 404 },
-          );
+          return HttpResponse.json({}, { status: 404 });
         }
         const query = new URL(request.url).searchParams;
-        const maxResults = Number(query.get("maxResults") ?? "250");
-        const all = occurrences(
+        const events = occurrences(
           calendar,
-          Date.parse(query.get("timeMin") ?? ""),
-          Date.parse(query.get("timeMax") ?? ""),
+          query.get("timeMin") ?? "",
+          query.get("timeMax") ?? "",
         );
         return HttpResponse.json({
-          items: all.slice(0, maxResults).map((item) => ({
-            end: { dateTime: new Date(item.endMs).toISOString() },
-            id: item.id,
-            organizer: { email: calendar.email },
-            start: { dateTime: new Date(item.startMs).toISOString() },
-            status: "confirmed",
-            summary: item.title,
+          items: events.map((event) => ({
+            end: { dateTime: event.end },
+            id: event.id,
+            start: { dateTime: event.start },
+            summary: event.title,
           })),
-          ...(all.length > maxResults
-            ? { nextPageToken: "eval-next-page" }
-            : undefined),
         });
       },
     ),

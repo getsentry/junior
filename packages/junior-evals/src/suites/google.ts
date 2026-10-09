@@ -12,9 +12,9 @@ export const GOOGLE_ACCOUNT_EMAIL = "junior@example.com";
 /** Project settings of the Google suite. The config adds `include`. */
 export const googleSuite = {
   name: "google",
-  // The host settings that turn on the Calendar tools. Slack people in the
-  // fixture have `example.com` emails, which is also the domain of this
-  // account, so Junior may check and invite them.
+  // These settings turn on the Calendar tools. Slack people in the fixture
+  // have `example.com` emails, the domain of this account, so Junior may
+  // check their calendars.
   env: {
     GOOGLE_CLIENT_ID: "eval-google-client-id.apps.googleusercontent.com",
     GOOGLE_CLIENT_SECRET: "eval-google-client-secret",
