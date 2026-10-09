@@ -65,6 +65,7 @@ async function dispatch(args: {
   nowMs: number;
   options: BoundDispatchOptions;
   plugin: string;
+  queueDelayMs?: number;
 }) {
   await verifyDispatchCredentialSubjectAccess(args.options, args.plugin);
   const result = await createOrGetDispatch({
@@ -76,6 +77,9 @@ async function dispatch(args: {
     await enqueueAgentDispatch(result.record, {
       queue: args.conversationWorkQueue,
       nowMs: args.nowMs,
+      ...(args.queueDelayMs !== undefined
+        ? { queueDelayMs: args.queueDelayMs }
+        : undefined),
     });
   }
   return {
@@ -128,11 +132,17 @@ export function createHeartbeatContext(args: {
   };
 }
 
-/** Create and enqueue one core-owned event automation dispatch. */
+/**
+ * Create and enqueue one core-owned event automation dispatch.
+ *
+ * Related Events share `conversationId`. The wake waits `queueDelayMs` so one
+ * Turn can take a burst of Events.
+ */
 export async function dispatchEventAutomation(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
+    conversationId: string;
     credentialSubject?: {
       allowedWhen: "event-automation";
       taskId: string;
@@ -140,9 +150,11 @@ export async function dispatchEventAutomation(args: {
       userId: string;
     };
   };
+  queueDelayMs: number;
 }) {
   const plugin = "junior";
-  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
+  const { conversationId, credentialSubject, outcomes, ...unboundOptions } =
+    args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindEventAutomationCredentialSubject({
@@ -155,6 +167,7 @@ export async function dispatchEventAutomation(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
+    conversationId,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: { kind: "event_automation" },
@@ -164,6 +177,7 @@ export async function dispatchEventAutomation(args: {
     nowMs: args.nowMs,
     options,
     plugin,
+    queueDelayMs: args.queueDelayMs,
   });
 }
 

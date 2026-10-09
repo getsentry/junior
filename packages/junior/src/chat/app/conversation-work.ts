@@ -14,7 +14,7 @@ import { createPausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
-  resolveAgentDispatchId,
+  resolveAgentDispatchIds,
 } from "@/chat/agent-dispatch/work";
 import {
   createAgentInvocationWorker,
@@ -173,9 +173,9 @@ export function createConversationWork(
     if (invocationId) {
       return await invocationWorker(context, invocationId);
     }
-    const dispatchId = await resolveAgentDispatchId(context);
-    if (dispatchId) {
-      return await dispatchWorker(context, dispatchId);
+    const dispatchIds = await resolveAgentDispatchIds(context);
+    if (dispatchIds) {
+      return await dispatchWorker(context, dispatchIds);
     }
     return await destinationWorker(context);
   };

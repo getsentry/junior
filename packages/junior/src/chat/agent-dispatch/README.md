@@ -13,8 +13,16 @@ adapter owns destination delivery.
   the dispatch. Queue payloads only wake the conversation.
 - The session record is authoritative for the active turn, resume state,
   accepted delivery receipt, and explicit terminal dispatch outcome.
-- A dispatch uses one isolated conversation and one stable turn across all runs
-  and execution slices.
+- A dispatch uses one stable turn across all runs and execution slices. It
+  uses an isolated conversation unless the record names a shared
+  `conversationId`. Event automations share one conversation for each Event
+  object.
+- When a shared conversation has several pending dispatches, one Turn runs
+  them. The newest dispatch owns the Turn. The others complete as coalesced
+  when the Turn input is saved.
+- The owner records the dispatches that its Turn holds. A resumed Turn
+  completes only those. A dispatch that reached the mailbox after the Turn
+  started stays pending, and the next wake runs it in a new Turn.
 
 The mailbox carries no credential authority. The first Run reads Actor,
 credential subject, Source, Destination, and plugin metadata from the dispatch

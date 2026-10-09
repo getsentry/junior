@@ -217,8 +217,9 @@ same way.
   on the Conversation only. Watches check the limit before they wake the
   Conversation. After the limit, further watch wakes stay quiet until a user
   message clears the pause. The Turn that hits the limit posts a plain notice.
-  Event-automation dispatches do not use this limit. Each dispatch runs in its
-  own Conversation, and the limit is not counted for a Destination.
+  Event-automation dispatches do not use this limit. They run in one
+  Conversation for each automation and Event object, and the limit is not
+  counted for a Destination.
 - Once destination accepts a tool-free assistant reply, the turn is finished for
   that reply. Hard timeout must complete the turn. It must not park a shorter
   history. Soft yield after a pure assistant tail already cannot park; soft yield

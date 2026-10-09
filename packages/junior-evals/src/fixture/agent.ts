@@ -36,6 +36,7 @@ import { installWebReplay } from "./web";
 import type {
   AutomationInput,
   FileInput,
+  GitHubWebhookInput,
   HistoryItem,
   HistoryReply,
   Input,
@@ -162,7 +163,8 @@ export interface FixtureTestContext {
 
 /**
  * A Conversation that an automation started. Its replies are the Slack posts
- * of the call, and it takes no further input.
+ * of the call. It takes no further input, except a GitHub webhook that its
+ * event automation delivers to it.
  */
 type AutomationConversation = { conversationId: string; surface: "automation" };
 
@@ -312,7 +314,7 @@ export async function createFixtureAgent(
     record: ConversationRecord,
     input: Input,
   ): Promise<void> => {
-    if (record.surface === "automation") {
+    if (record.surface === "automation" && input.kind !== "github_webhook") {
       throw new Error("A Conversation from an automation takes no input");
     }
     if (isAutomationInput(input)) {
@@ -720,8 +722,24 @@ export async function createFixtureAgent(
       record.started = true;
     }
     const inputs = Array.isArray(input) ? input : [input];
+    const sentIndex = queue.sentConversationIds().length;
+    // An event for an automation Conversation must reach that Conversation.
+    const target =
+      record.surface === "automation"
+        ? () => {
+            const startedIds = [
+              ...new Set(queue.sentConversationIds().slice(sentIndex)),
+            ].filter((id) => !knownConversationIds.has(id));
+            if (startedIds.length > 0) {
+              throw new Error(
+                `github_webhook started ${startedIds.length} other Conversations; expected 0`,
+              );
+            }
+            return record;
+          }
+        : record;
     return await call(
-      record,
+      target,
       async () => {
         // Inputs in one call arrive before the worker runs, as one batch.
         if (inputs.length > 1) queue.hold();
@@ -809,11 +827,15 @@ export async function createFixtureAgent(
     fork: (reply) => runEvalWork(() => fork(record, reply)),
   });
 
-  /** Send an automation input and return the Conversation it started. */
+  /**
+   * Send automation inputs, in order, and return the one Conversation they
+   * started. Each input is a separate delivery, as the provider sends it.
+   */
   const runAutomation = async (
-    input: AutomationInput,
+    inputs: AutomationInput[],
     options: CallOptions,
   ): Promise<Conversation> => {
+    const kind = inputs[0]!.kind;
     const sentIndex = queue.sentConversationIds().length;
     return await call(
       () => {
@@ -822,7 +844,7 @@ export async function createFixtureAgent(
         ].filter((id) => !knownConversationIds.has(id));
         if (startedIds.length !== 1) {
           throw new Error(
-            `${input.kind} started ${startedIds.length} Conversations; expected 1`,
+            `${kind} started ${startedIds.length} Conversations; expected 1`,
           );
         }
         const record = newRecord(
@@ -832,7 +854,9 @@ export async function createFixtureAgent(
         record.started = true;
         return record;
       },
-      async () => await postAutomationInput(input),
+      async () => {
+        for (const input of inputs) await postAutomationInput(input);
+      },
       options,
     );
   };
@@ -842,10 +866,17 @@ export async function createFixtureAgent(
     const [first] = inputs;
     if (!first) throw new Error("run() needs an input");
     if (isAutomationInput(first)) {
-      if (inputs.length > 1 || hasHistory(options.history)) {
+      // GitHub sends a burst of webhooks for one change, such as a pull
+      // request that opens and its check suites.
+      const webhooks = inputs.filter(
+        (next): next is GitHubWebhookInput => next.kind === "github_webhook",
+      );
+      const burst =
+        first.kind === "github_webhook" && webhooks.length === inputs.length;
+      if ((inputs.length > 1 && !burst) || hasHistory(options.history)) {
         throw new Error(`run(${first.kind}) takes no other input or history`);
       }
-      return await runAutomation(first, options);
+      return await runAutomation(burst ? webhooks : [first], options);
     }
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");

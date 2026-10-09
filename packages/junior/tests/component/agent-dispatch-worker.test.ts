@@ -104,7 +104,7 @@ describe("agent dispatch worker contract", () => {
     });
     const { context } = createContext(dispatch, overrides);
 
-    await expect(worker(context, dispatch.id)).rejects.toThrow(
+    await expect(worker(context, [dispatch.id])).rejects.toThrow(
       /belongs to|destination does not match/,
     );
     expect(runTurn).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe("agent dispatch worker contract", () => {
     });
     const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).rejects.toThrow(
+    await expect(worker(context, [dispatch.id])).rejects.toThrow(
       "returned without a durable outcome",
     );
     expect(ack).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe("agent dispatch worker contract", () => {
       });
       const { ack, context } = createContext(dispatch);
 
-      await expect(worker(context, dispatch.id)).resolves.toEqual({
+      await expect(worker(context, [dispatch.id])).resolves.toEqual({
         status: "completed",
       });
 
@@ -185,6 +185,85 @@ describe("agent dispatch worker contract", () => {
       });
     },
   );
+
+  it("keeps a dispatch that arrived after a resumed shared Turn started", async () => {
+    const shared = async (idempotencyKey: string) =>
+      (
+        await createOrGetDispatch({
+          nowMs: Date.now(),
+          options: {
+            conversationId: "event-automation:shared",
+            destination,
+            destinationVisibility: "private",
+            idempotencyKey,
+            input: `Event ${idempotencyKey}.`,
+            source: { kind: "event_automation" },
+          },
+          plugin: "junior",
+        })
+      ).record;
+    const joined = await shared("joined");
+    const owner = await shared("owner");
+    const late = await shared("late");
+    // The owner's Turn started with the joined input, then lost its lease
+    // before the mailbox ack. The late dispatch arrived after that.
+    await markDispatchRunning(owner.id, { joinedDispatchIds: [joined.id] });
+    const summary = {
+      actor: owner.actor,
+      conversationId: "event-automation:shared",
+      destination,
+      destinationVisibility: owner.destinationVisibility,
+      dispatchId: owner.id,
+      source: owner.source,
+      surface: "api" as const,
+      turnId: getDispatchTurnId(owner.id),
+    };
+    await recordTurnSummary({ ...summary, sliceId: 1, state: "running" });
+    const runTurn = vi.fn(async () => ({ outcome: "completed" as const }));
+    const resumeTurn = vi.fn(async () => {
+      await recordTurnSummary({
+        ...summary,
+        dispatchOutcome: "completed",
+        sliceId: 2,
+        state: "completed",
+      });
+    });
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+    const messages = [joined, owner, late].map((record) =>
+      buildAgentDispatchInboundMessage(record),
+    );
+    const { ack, context } = createContext(owner, {
+      conversationId: "event-automation:shared",
+    });
+    context.attempt.messages = messages;
+
+    await expect(
+      worker(context, [joined.id, owner.id, late.id]),
+    ).resolves.toEqual({ delayMs: 0, status: "deferred" });
+    expect(resumeTurn).toHaveBeenCalledOnce();
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    await expect(getDispatchRecord(joined.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(getDispatchRecord(late.id)).resolves.toMatchObject({
+      status: "pending",
+    });
+
+    // The next wake runs the late input alone in a new Turn.
+    await expect(
+      worker(context, [joined.id, owner.id, late.id]),
+    ).resolves.toEqual({ status: "completed" });
+    expect(runTurn).toHaveBeenCalledOnce();
+    expect(runTurn.mock.calls[0]![0]).toMatchObject({
+      id: late.id,
+      input: late.input,
+    });
+    expect(ack).toHaveBeenCalledOnce();
+  });
 
   it("uses a delivery receipt without starting or resuming a turn", async () => {
     const dispatch = await createDispatch("delivery-receipt-fence");
@@ -209,7 +288,7 @@ describe("agent dispatch worker contract", () => {
     });
     const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
+    await expect(worker(context, [dispatch.id])).resolves.toEqual({
       status: "completed",
     });
 

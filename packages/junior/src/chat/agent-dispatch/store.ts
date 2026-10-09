@@ -53,6 +53,7 @@ const dispatchActorSchema = z
 const dispatchRecordSchema = z
   .object({
     actor: dispatchActorSchema,
+    conversationId: nonEmptyExactStringSchema.optional(),
     createdAtMs: z.number().finite(),
     credentialSubject: credentialSubjectSchema.optional(),
     destination: destinationSchema,
@@ -61,6 +62,7 @@ const dispatchRecordSchema = z
     id: nonEmptyExactStringSchema,
     idempotencyKey: z.string().min(1),
     input: z.string().min(1),
+    joinedDispatchIds: z.array(nonEmptyExactStringSchema).optional(),
     metadata: z.record(z.string(), z.string()).optional(),
     plugin: nonEmptyExactStringSchema,
     replyAttribution: replyAttributionSchema.optional(),
@@ -177,11 +179,11 @@ export function parseDispatchRecord(
   return parsed.success ? (parsed.data as DispatchRecord) : undefined;
 }
 
-/** Return the isolated durable conversation id for one dispatch. */
+/** Return the durable conversation id that runs one dispatch. */
 export function getDispatchConversationId(
-  dispatch: Pick<DispatchRecord, "id">,
+  dispatch: Pick<DispatchRecord, "conversationId" | "id">,
 ): string {
-  return `agent-dispatch:${dispatch.id}`;
+  return dispatch.conversationId ?? `agent-dispatch:${dispatch.id}`;
 }
 
 /** Return the stable synthetic input message id for one dispatch turn. */
@@ -317,6 +319,9 @@ export async function createOrGetDispatch(args: {
     const metadata = normalizeMetadata(args.options.metadata);
     const record: DispatchRecord = {
       actor: { platform: "system", name: args.plugin },
+      ...(args.options.conversationId
+        ? { conversationId: args.options.conversationId }
+        : undefined),
       createdAtMs: args.nowMs,
       ...(args.options.credentialSubject
         ? { credentialSubject: args.options.credentialSubject }
@@ -372,15 +377,31 @@ async function transitionDispatch(
   });
 }
 
-/** Mark a dispatch projection as actively running. */
+/**
+ * Mark a dispatch projection as actively running.
+ *
+ * A new Turn passes `joinedDispatchIds` to record the dispatches whose input
+ * it holds. A resumed Turn omits it and keeps the recorded set.
+ */
 export async function markDispatchRunning(
   id: string,
+  options: { joinedDispatchIds?: readonly string[] } = {},
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : { ...record, status: "running", errorMessage: undefined },
-  );
+  const { joinedDispatchIds } = options;
+  return await transitionDispatch(id, (record) => {
+    if (isTerminalDispatchStatus(record.status)) {
+      return record;
+    }
+    const { joinedDispatchIds: _previous, ...rest } = record;
+    return {
+      ...(joinedDispatchIds ? rest : record),
+      ...(joinedDispatchIds && joinedDispatchIds.length > 0
+        ? { joinedDispatchIds: [...joinedDispatchIds] }
+        : undefined),
+      status: "running",
+      errorMessage: undefined,
+    };
+  });
 }
 
 /** Project a durable awaiting-resume turn state to the plugin API. */
@@ -458,6 +479,22 @@ export async function markDispatchCompleted(
   );
   await recordEventAutomationExecution(previous, next, "completed");
   return next;
+}
+
+/**
+ * Complete a dispatch whose input joined another dispatch's Turn.
+ *
+ * The Turn that ran owns the automation execution record, so this does not
+ * record a second execution.
+ */
+export async function markDispatchCoalesced(
+  id: string,
+): Promise<DispatchRecord | undefined> {
+  return await transitionDispatch(id, (record) =>
+    isTerminalDispatchStatus(record.status)
+      ? record
+      : { ...record, errorMessage: undefined, status: "completed" },
+  );
 }
 
 /** Project a terminal conversation turn failure to the plugin API. */

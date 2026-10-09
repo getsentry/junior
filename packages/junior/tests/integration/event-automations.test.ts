@@ -48,6 +48,16 @@ vi.hoisted(() => {
 
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
+
+/** Load the dispatch records behind each queued conversation wake. */
+async function sentDispatches(adapter = queue) {
+  return await Promise.all(
+    adapter.sentRecords().map(async ({ idempotencyKey }) => {
+      const id = idempotencyKey?.replace(/^agent-dispatch:/, "");
+      return id ? await getDispatchRecord(id) : undefined;
+    }),
+  );
+}
 function jsonSchemaAllowsNull(schema: unknown): boolean {
   if (!schema || typeof schema !== "object") {
     return false;
@@ -298,12 +308,7 @@ describe("event automations", () => {
     });
 
     expect(queue.sentRecords()).toHaveLength(3);
-    const dispatches = await Promise.all(
-      queue.sentRecords().map(async ({ conversationId }) => {
-        const id = conversationId.replace(/^agent-dispatch:/, "");
-        return await getDispatchRecord(id);
-      }),
-    );
+    const dispatches = await sentDispatches();
     expect(dispatches).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -415,11 +420,7 @@ describe("event automations", () => {
         { queue, teamId },
       );
 
-      const [{ conversationId }] = queue.sentRecords();
-      expect(conversationId).toBeDefined();
-      const dispatch = await getDispatchRecord(
-        conversationId!.replace(/^agent-dispatch:/, ""),
-      );
+      const [dispatch] = await sentDispatches();
       const destination = { platform: "slack", teamId, channelId };
       expect(dispatch?.destination).toEqual(destination);
       expect(dispatch?.destinationVisibility).toBe(destinationVisibility);
@@ -478,10 +479,7 @@ describe("event automations", () => {
       { queue, teamId },
     );
 
-    const [{ conversationId }] = queue.sentRecords();
-    const dispatch = await getDispatchRecord(
-      conversationId!.replace(/^agent-dispatch:/, ""),
-    );
+    const [dispatch] = await sentDispatches();
     expect(dispatch?.destination).toEqual(destination);
     expect(dispatch?.outcomes).toEqual(outcomes);
 
@@ -699,10 +697,7 @@ describe("event automations", () => {
       ),
     ).resolves.toEqual({ dispatched: 1 });
 
-    const [{ conversationId }] = queue.sentRecords();
-    const dispatch = await getDispatchRecord(
-      conversationId!.replace(/^agent-dispatch:/, ""),
-    );
+    const [dispatch] = await sentDispatches();
     expect(dispatch?.destination).toMatchObject({ teamId });
   });
 

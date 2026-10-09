@@ -22,6 +22,7 @@ function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
 }
 
+/** Publish a pull request Event for the pull request and its repository. */
 function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
   const { terminal: _terminal, ...repositoryEvent } = event;
   return [
@@ -29,6 +30,7 @@ function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
     {
       ...repositoryEvent,
       identifier: gitHubRepositoryResource({ repo }).identifier,
+      objectIdentifier: event.identifier,
     },
   ];
 }

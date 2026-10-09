@@ -870,6 +870,24 @@ function requirePublishedEvent(
   }
 }
 
+/** Apply the plugin identifier convention to every identifier on an Event. */
+function normalizeEventIdentifiers<
+  T extends { identifier: string; objectIdentifier?: string },
+>(registration: PluginRegistration["events"], event: T): T {
+  return {
+    ...event,
+    identifier: normalizeEventIdentifier(registration, event.identifier),
+    ...(event.objectIdentifier
+      ? {
+          objectIdentifier: normalizeEventIdentifier(
+            registration,
+            event.objectIdentifier,
+          ),
+        }
+      : undefined),
+  };
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   events: {
@@ -909,11 +927,7 @@ export function getPluginRoutes(options: {
           const parsed = eventInputSchema.parse(event);
           requirePublishedEvent(plugin, parsed.eventType);
           return await options.events.hasMatch({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
+            ...normalizeEventIdentifiers(plugin.events, parsed),
             namespace: pluginName,
           });
         },
@@ -941,11 +955,7 @@ export function getPluginRoutes(options: {
           const parsed = eventInputSchema.parse(event);
           requirePublishedEvent(plugin, parsed.eventType);
           await options.events.publish({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
+            ...normalizeEventIdentifiers(plugin.events, parsed),
             namespace: pluginName,
           });
         },
