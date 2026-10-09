@@ -170,7 +170,8 @@ export interface FixtureTestContext {
 
 /**
  * A Conversation that an automation started. Its replies are the Slack posts
- * of the call, and it takes no further input.
+ * of the call. It takes no input until the automation posts; then it is the
+ * Slack thread of the first post.
  */
 type AutomationConversation = { conversationId: string; surface: "automation" };
 
@@ -321,7 +322,9 @@ export async function createFixtureAgent(
     input: Input,
   ): Promise<void> => {
     if (record.surface === "automation") {
-      throw new Error("A Conversation from an automation takes no input");
+      throw new Error(
+        "A Conversation from an automation takes no input before its first post",
+      );
     }
     if (isAutomationInput(input)) {
       // On a started Conversation, the automation input reaches its watches.
@@ -716,7 +719,7 @@ export async function createFixtureAgent(
       name: "junior",
       run: combinedRun(calls, usage, startedAtMs),
     };
-    return conversationResult(record, {
+    const result = conversationResult(record, {
       ...callRun,
       ...(authorizationPrompt
         ? { authorizationPrompt: authorizationPrompt.label }
@@ -731,6 +734,17 @@ export async function createFixtureAgent(
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
+    // A person can reply in the thread of the automation's first post.
+    const [firstPost] = record.surface === "automation" ? callPosts : [];
+    if (firstPost) {
+      Object.assign(record, {
+        channelId: firstPost.channel,
+        channelType: firstPost.channel.startsWith("D") ? "im" : "channel",
+        surface: "slack",
+        threadTs: firstPost.threadTs ?? firstPost.ts,
+      });
+    }
+    return result;
   };
 
   /** Load history, then send the inputs as one call. */

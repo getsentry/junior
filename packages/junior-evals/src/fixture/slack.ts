@@ -289,15 +289,14 @@ export function installSlackMock(testName: string): SlackMock {
       if (authorizationUrl) {
         authorizationLinks.push({ channel, url: authorizationUrl });
       }
-      if (post.threadTs) {
-        addThreadMessage(channel, {
-          bot_id: "B_TEST_BOT",
-          text: post.text,
-          thread_ts: post.threadTs,
-          ts: post.ts,
-          user: SLACK_BOT_USER_ID,
-        });
-      }
+      // A post at the channel top level is the root of its own thread.
+      addThreadMessage(channel, {
+        bot_id: "B_TEST_BOT",
+        text: post.text,
+        thread_ts: post.threadTs ?? post.ts,
+        ts: post.ts,
+        user: SLACK_BOT_USER_ID,
+      });
       await replyHook?.(post);
       return HttpResponse.json(chatPostMessageOk({ channel, ts: post.ts }));
     }),
@@ -347,9 +346,11 @@ export function installSlackMock(testName: string): SlackMock {
     http.get("https://slack.com/api/users.info", ({ request }) =>
       usersInfo(new URL(request.url).searchParams.get("user")),
     ),
-    http.post("https://slack.com/api/users.info", async ({ request }) =>
-      usersInfo((await readSlackParams(request)).user ?? null),
-    ),
+    // Read a copy, so the shared handler can answer for an unknown person.
+    http.post("https://slack.com/api/users.info", async ({ request }) => {
+      const params = await readSlackParams(request.clone());
+      return usersInfo(params.user ?? null);
+    }),
   );
 
   return {

@@ -9,6 +9,7 @@ Hard-fail scheduler system contracts and their helpers live under `evals/integra
 - rescheduling existing tasks
 - delivering a due reminder to its creator
 - finishing a due automation with no message outcome without a post
+- answering a person's reply to a delivered reminder as a normal chat reply
 
 The notification-default case asks for nightly fix PRs without asking for
 silence. The broader "fix failing CI" request lives in Guardian's
@@ -22,6 +23,7 @@ This folder keeps behavioral due-occurrence delivery quality:
 - addressing the known task creator without a name lookup
 - delivering a reminder in the creator's direct message as the reminder itself
 - reminders that mention nobody when the task names nobody
+- ending a run that cannot work as `misconfigured`, without a post
 
 ## Automation run failures
 

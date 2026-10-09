@@ -6,6 +6,7 @@ import {
   slackDirectMessage,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 describe("Scheduled Delivery", () => {
@@ -102,5 +103,25 @@ describe("Scheduled Delivery", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a due automation needs a provider that Junior does not have, end it as misconfigured without a post", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      task: "Post the number of open tickets in our Zendesk support queue.",
+    });
+
+    const blocked = await run(heartbeat());
+
+    // Nobody reads the channel for run problems. The reason goes to the
+    // creator through the blocked run, not into a post.
+    expect(blocked.replies).toEqual([]);
+    expect(
+      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
+    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
   });
 });
