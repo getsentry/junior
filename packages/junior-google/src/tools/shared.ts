@@ -4,6 +4,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { calendarEventAnnotation } from "../annotations";
 import { emailDomain } from "../config";
 import {
   GOOGLE_API_DOMAIN,
@@ -164,6 +165,7 @@ export const ownEventSchema = z.object({
         .loose(),
     )
     .optional(),
+  description: z.string().optional(),
   end: z.object({ dateTime: z.string() }),
   hangoutLink: z.string().optional(),
   htmlLink: z.string().optional(),
@@ -171,22 +173,39 @@ export const ownEventSchema = z.object({
   organizer: z.object({ self: z.boolean().optional() }).optional(),
   start: z.object({ dateTime: z.string() }),
   summary: z.string().optional(),
+  // Annotation metadata only. Do not fail a completed change on a bad value.
+  updated: z.iso.datetime({ offset: true }).optional().catch(undefined),
 });
 
-/** Shape one event on Junior's calendar for a tool result. */
+/**
+ * Shape one event on Junior's calendar for a tool result.
+ *
+ * The result includes the event annotation, so core saves it on the
+ * Conversation and shows its card with the next reply.
+ */
 export function ownEventResult(
   event: z.infer<typeof ownEventSchema>,
   timeZone: string,
 ) {
+  const label = formatInterval(
+    Date.parse(event.start.dateTime),
+    Date.parse(event.end.dateTime),
+    timeZone,
+  );
+  const annotation = calendarEventAnnotation({
+    description: event.description,
+    eventId: event.id,
+    label,
+    sourceUpdatedAt: event.updated,
+    title: event.summary,
+    url: event.htmlLink,
+  });
   return {
+    ...(annotation && { objectAnnotations: [annotation] }),
     attendees: (event.attendees ?? []).map((attendee) => attendee.email),
     end: event.end.dateTime,
     eventId: event.id,
-    label: formatInterval(
-      Date.parse(event.start.dateTime),
-      Date.parse(event.end.dateTime),
-      timeZone,
-    ),
+    label,
     start: event.start.dateTime,
     ...(event.summary ? { title: event.summary } : undefined),
     ...(event.htmlLink ? { url: event.htmlLink } : undefined),

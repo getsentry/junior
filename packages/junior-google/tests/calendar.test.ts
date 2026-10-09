@@ -1,4 +1,7 @@
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  objectAnnotationSchema,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src";
 import { findFreeSlots } from "../src/tools/find-meeting-times";
@@ -129,6 +132,7 @@ describe("Google Calendar tools", () => {
       hangoutLink: "https://meet.google.com/abc-defg-hij",
       htmlLink: "https://calendar.google.com/event?eid=1",
       start: { dateTime: "2026-10-12T10:00:00-07:00" },
+      summary: "Sync",
     };
     const input = {
       attendees: ["bob@example.com"],
@@ -175,8 +179,23 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       created: false,
       eventId: body.id,
+      objectAnnotations: [
+        {
+          kind: "object",
+          key: body.id,
+          label: "Mon, Oct 12, 10:00 PDT – 10:30 PDT",
+          objectType: "item",
+          displayType: "Calendar event",
+          title: "Sync",
+          url: "https://calendar.google.com/event?eid=1",
+        },
+      ],
       videoCallUrl: "https://meet.google.com/abc-defg-hij",
     });
+    // Core saves only annotations that match the shared schema.
+    expect(() =>
+      objectAnnotationSchema.array().parse(result.objectAnnotations),
+    ).not.toThrow();
   });
   it("reads a colleague's calendar and reports calendars Junior cannot see", async () => {
     const { fetch, tools } = calendarTools(
@@ -303,6 +322,7 @@ describe("Google Calendar tools", () => {
         attendees: [{ email: REQUESTER }, { email: "carol@example.com" }],
         end: { dateTime: input.end },
         start: { dateTime: input.start },
+        updated: "2026-10-08T12:00:00.000Z",
       }),
     );
     const result = await tools.updateCalendarEvent!.execute!(
@@ -327,6 +347,15 @@ describe("Google Calendar tools", () => {
     expect(result).toMatchObject({
       attendees: [REQUESTER, "carol@example.com"],
       eventId: "event1",
+      // The card shows the new time.
+      objectAnnotations: [
+        {
+          key: "event1",
+          label: "Tue, Oct 13, 11:00 PDT – 11:30 PDT",
+          title: "Sync",
+          sourceUpdatedAt: "2026-10-08T12:00:00.000Z",
+        },
+      ],
       start: input.start,
     });
   });
