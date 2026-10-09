@@ -230,7 +230,7 @@ export function createUserLookupTool(
 ) {
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. An ID returns that exact profile, including email. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Pass an enabled `provider` and its provider subject ID or handle. For `slack`, pass the person's Slack user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. The `slack` provider also accepts email and name searches. Use name search only for people with no known ID, because it can miss people in large workspaces. Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
