@@ -34,6 +34,12 @@ export interface InProcessQueue extends ConversationWorkQueue {
   hold(): void;
   release(): void;
   /**
+   * Post an input of the test. A progress handler posts input during a
+   * delivery, and the app can send a queue message for that input, as it does
+   * for a stop. That message is not from the worker.
+   */
+  asInput<T>(post: () => Promise<T>): Promise<T>;
+  /**
    * Called before a delivery starts when the worker sent its message. The
    * delivery waits until the hook finishes.
    */
@@ -136,6 +142,7 @@ export function createInProcessQueue(): InProcessQueue {
         schedule();
       }
     },
+    asInput: (post) => inDelivery.exit(post),
     setRequeueHook(hook) {
       requeueHook = hook;
     },
