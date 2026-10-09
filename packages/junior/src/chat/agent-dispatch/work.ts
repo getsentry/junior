@@ -87,6 +87,10 @@ export function buildDispatchRoutingContext(
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
       outcomes: dispatch.outcomes,
+      ...(dispatch.source.kind === "scheduled_automation" ||
+      dispatch.source.kind === "event_automation"
+        ? { declaresResult: true }
+        : undefined),
     },
     surface: "api",
   };
@@ -314,7 +318,8 @@ async function projectDispatchTurnResult(
     case "blocked":
       await markDispatchBlocked(
         dispatchId,
-        "Dispatch requires authorization that is unavailable for background work",
+        result.errorMessage ??
+          "Dispatch requires authorization that is unavailable for background work",
         result.resultMessageTs,
       );
       break;

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked for nightly fix PRs, omit success notifications by default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "8792775fb021",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d00b3583b93a963016ac91939ead887d1935e75da4d61967b\",\"reasoningEncryptedContent\":\"gAAAAABqyRlC9Ry-LVYBCU_oLuVamu6Izz50vONcQa6khPFARSJhyJ3QTgWpAAd4eVo0RMXns9tjXsCEZ0rcH2dC1wHy39e3l2JAX7pH6jPGQrGtV4J-jYl95OOtiokQ38AIcbI95zHXbn7NlAjY1zO1DKr7EQMpv3CYQvCeq2GciFxXTgZKGFN2lRZh6HzLAm0TdohW82l2PBY6FzszKGAmNIDo38nItg7b6g73lDoPzxKuaE8jwzkj_MoO8BAUuK1v11f2Anm-jdMqsMoT99A-M36M7dLvtaK-aLMtrpwy8Uoz_wlCRkaUtI-f1AoBu01GuXHTK3ZWrqJW0yTBxXE097we_PK6IskexugRQ-JXnzUH30Vz8_Tb6GoJaJrGwXB_bj7q4OX-K1haoYZPQHslryAaIglUlX5t4Da6lbd6giMr9VgVfQVOAWdyZAcOTLBwgWCO7u-MfaWTSdMtlAx-SPMwCXPFd244O5ryeeD9ABlEix6AUoVLk_ZBsCNHR7krbV55-EXVj5ZO90tHonm9tktx4vTGvf77INg_Di_9bllI4DWZvFSjTwjTfykBQ2YJHbQFoFzOm3wkG-jMryVyGRltJS-DJpB9ot4mjLpqwLYPPt85oMpYQANcSyVlGicwaBUi1jDWj0AD5DNIeupBuyCdvMkdqlLmifLbW5glRe_hLTCLH8XSRYOmrmu8xC3bOP0ilZ5IKcwubcJ-K3xCw-TTVsWluYmMNqsCyafy1-_4YPpjhIRQ9jDozJRKPaS0SarpP1t5r_BhNAsmiYPH552i_3ZuUEO2584fU3lPEU4VuWqcg3asGXTrct1ipKqh7aHEKR2_spIx9iDZ3uWzDmKMptPRq_8039krJN9lXHWjU2jkqdXD0MsMJ0ikMkLFv8o1Aof9b2RcZ5UtO6oNzC90MHuexiPwXv3-cApIkC_p63djsQ9qYkR-CdrcstKVYQJz51EXNUmMlugjgqNlN9ixde8Zy5uL9h508K_D9O-rVaU3t6TiXPJ9p9No3pL10q1TxKjPpIKSBuwPLqENh4iFHPhSlUOEZ79yQqtyGrMSK-DnFc709Yg-SnJP8pReRUe3IqVxxTbnU66zDzPlhyvjCzRISDzPeTFf4ZPzK7GjdBwVsQ8XXbHeOyk9lb9zrP3OJgHXZxuY9HiTDm1ASN5QMibyIwwiYgO5qch0mMJn60CltoFXJCAIFFZQUNvbouc88ylx1e9uptUi3-04XBNGKKYJOtVr7iPSeHbHjr4mAJHtmzX_fKPvK-p4IdOi5yA-edCSuLoz_HfTN3q9hs3UXUVctxVvGW5craqEuROz558FmSiLdi5Mhb9L_iF-WCHKBFbf5Cga4WAI6sYpvuPIqQX7ZkJolu2paLYIEErEJiV3ktYJxXxps8Op5MLobor1YmyQYa8e27qMj85NMvBWMBhzrwnEbl8Tt7zD1zbo-zMb7pVZrunKE58sbnYkVnBnOdCGBUgpUZYYovcaaB8k42Ct6bylU0S0n9VCJLAD5NGMDHhsB2kyqPUhmQBmvmYQjdMKmWyB89h_upsCk5U4N6JMf5c4hqgrEnKmQznFkAeSLC9Rl_gcJixwkmk8xEgWrb65QDC8gqLImWypzdXk1WiwHpRQeJ4GyxKmD4Q7GJlmE7WOT-lcGQS5F5H_oltb0DDK50OX6lnqXbUePb4E4RAmSRzN_fHIc3tb7eRlNWuUZ-bgWCzn3gd8p5UCzAj2Xo7ka9eLpkP0k8IeCQ03uNR2XP1cdtbTBb0jnbHm0lPg61MKtGDBxB44kHisgIuz74vIVTwfGjiQVEjNTV3Zy6GV4axvkbFB1-jQdN5B8MbFyFBFGA7K2UwpGqWHJakFxPvB_wGtFpVJqD_3dc99iYS4RoypymQ7SpaSC_WJKNDx6owU_gwILDZMDNz2_lTd4fQsh7DLP582XZM259l0TSZtJPNOJP_re5cMamE5XcI5I_-dapJSOsyAuD_41_Gr-d2aElLymN6s4kmqomxfBDU8QgdKNtu0IufXBcKCXnU3yd5OeTMepJca53tvlHxTAQHNNLbFWfY4HDI0NDXbq7g8GIvtxVrXrVAPi05R2c35L6ORiGRaxhRl3MN9QAu3CCKxoZxIDn8HL5BoKa_XrTK6zeoSYreBF0SR31nCIgL_26Q=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly authorized a nightly 2 a.m. Pacific automation to open non-duplicate CI-fix PRs in getsentry/junior; the repository scope is bounded and PRs remain reviewable.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d00b3583b93a963016ac9193b098887d1894bdb9d75ca431f\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2833,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1009},\"outputTokens\":{\"total\":199,\"text\":68,\"reasoning\":131},\"raw\":{\"input_tokens\":2833,\"input_tokens_details\":{\"cache_write_tokens\":1009,\"cached_tokens\":1821},\"output_tokens\":199,\"output_tokens_details\":{\"reasoning_tokens\":131},\"total_tokens\":3032}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d00b3583b93a963016ac919395d1487d1a2aebcbec85b418b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564089269,\"endTime\":1791564098706,\"providerRequestId\":\"req_73f3b97c48294feb8700e5fa876febb5\",\"statusCode\":200,\"providerResponseId\":\"resp_0d00b3583b93a963016ac919395d1487d1a2aebcbec85b418b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"372aaccfac50ffbfd7c7991edf35e013\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000244135\",\"marketCost\":\"0.000244135\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000244135\",\"inferenceCost\":\"0.000244135\",\"inputInferenceCost\":\"0.000144635\",\"outputInferenceCost\":\"0.0000995\",\"generationId\":\"gen_01M4GRN1X1MZACN8ZPEZM6WJ2A\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

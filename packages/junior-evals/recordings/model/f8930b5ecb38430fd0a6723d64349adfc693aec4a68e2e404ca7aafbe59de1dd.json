@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/handoff.eval.ts > Handoff task continuity > when the turn hands off, do the new request",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "8d6edef81845",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0848f83b32643cea016ac91857222887d1a288d6d318d8d5ab\",\"reasoningEncryptedContent\":\"gAAAAABqyRhYP509vTS3Mg7RTkcFjjYx2q1EPCbH--m4UJJ1tPmfoycBrqJygHtMDKjx9b43YHfbXWsodDwFtKaWaepB-M6k55oSZ2ybbQxxckcuf8quaYmLAafp5moHuVnOMt9zaMW9Lirt5wudK_x69et6ZgHdz3jY4f5UhPK_KwpuvCfpiDOBeDxG4RVHTfWfUGB01N08M3Jaq0y7qhhBt4l-ZQ6mCMkcAwUNcZ7EUYQ-Yr08hDEOSremsdCNBUHHuPhz39tuzom1PyfWz5in60IxTz-iT3FvExX5kPBIc3XmrFyqHyXEqmke9sJB8H7Nre-65tXvt46Qah-da8XTj8VSCVkH5bkuap2hTQMX-FjgiQVvs2DQM6n95yA-0GOhqNRTGYgSM5ZAO1hU6zKO2sVjTZVUeKATwAF5BJnQq3OvEnH5koCBot2bdOvDdT6SC8jszLr-IEGKWcJ6aKcX9Jkzhfka4DqcOWuSBbx6N1VlP28eZrSyJw1WHvd95NtT_qvt8tg0BCdHmo-28IQRPPjgsftOqFFSVu3ir5Qihv9spnq6mmIUrWe3VCjRm_KWsYmm8Xba7aywANkKbjOZ-0GyvDn0e9hrubY6usqfmLeWkJC8DneckPjxYq-GFp87rGt5BXB0CPD39t_t07CMVFEYOkM-vRhkMiksiZQXRSzIzihMnHnn2zF7Vwhdk1lZm8dPaMmZVPvlDOBQHwqxOPNE3zLudWkHuNyeNgJqOGvqzE8BgBVRVA1fsyi0yETNq0ezEnWHnjnQagsRdKByWxvJSehpShb4qLyCKW4S98dgQwWLRvNsIIF5ubnU97vLuIS1I-X7uPb0dmIHHGQDJDG_M6vV4s1H1kEup1qpow7-37gtUPpS8Hmf68dr-I2AXKQLnZS90bvTZ8ncNEuATDS2DTI304TebOZ1P7tShfSbvcUX9wKCxawhxG5T99bb9Khzmzw23fCOjFF2F89snxvVFeywDGRjjrVKoOKaINyqybWfv1yaZTGgof22x8MRaVppODp4D28DQqIOkmg4TCQdAoRLwRUwQAhdpov547gMSGkXrXFLj9wbaM8d4sVQs9bMDKZITdnlBp8xasAITLXNrw6UnGCyUShCBXXFoLnXc9GOxm8oV11BW4DvxWIKxt02qYDyuxuSL1EROHC8XqUGc_PdCcdV9IAvtCrutkBCVEO0-hctU62Wc7WPfkKBKUq1zk0EHaiFG2jsz_cs24tOi3hwMlWZHSXH57AafWxyHwk9ISkyIuocuoTI8UdpFR2OKa-dGfItsimY88DupmL-uwZa3ek8aoQWFmJoS9mQ8BPph9Lvmkg9eAFN2yXJ5X_FpGpHaowlOhN3Ofvd_NGootyKlQhtGrRQpjd1zMCdHO_JKTkM7MjAOUY5HeOvr7UGP-95WJFzDR6SpRgOrMkWjiP8SCSI3SNonPrW2H5X-O8N32MYOGKYaNDaB0kPuCn3qDU-q_8ZjyhXrsAKuis9aFckconTgKdXf3zzfrxcJjEn3SmKkijRcnwdM3XyzwXyKbcVKWKmRyhAzKot4DGTv3mYCgtKfpRFmBp_kHjVdjwlefvgAtfMXSfGzZmp6ho_pDvmew6of4MpdZshYLVX5HXXbwGwMnyPYPRihgRcvSTuw8zTo8V-0D4TE3G1GdeV9CzvcdA0AM0WXr6l6PD8AJgfrX7smti8Gnqv_3ji4nrXJI8sv-DvUnJLkodss0jnkYUownHi84J44ztOhw2d_7b9WS2FFYbVfmI2PCkYLppd6Jb9KJiQRRul93GCcHQ9erTiaRTVLaK073Ob4ZJuUGyOagm5oM1eRHh7BbA3LqEhtLKgMEvXIPZybbMxUBHuWmqnC6VybAcERvbQR77wGCXz5sSSyWFHsqMqgNLVl3SzrZH_IWvUu7NQt7GiRJUMYxMSJqQIU6AOIW2KPk4_VnDJqBHvFWrrBYxLVTweriA4q_lkxv7XHn2uKNBX93rOQUhKT_PLnexra9fij_i1EcCLnwxL-hr7R-cEO1lRFQ8P6iU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0848f83b32643cea016ac918582b2887d1bf89234041db7f8e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2277,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2274},\"outputTokens\":{\"total\":121,\"text\":14,\"reasoning\":107},\"raw\":{\"input_tokens\":2277,\"input_tokens_details\":{\"cache_write_tokens\":2274,\"cached_tokens\":0},\"output_tokens\":121,\"output_tokens_details\":{\"reasoning_tokens\":107},\"total_tokens\":2398}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0848f83b32643cea016ac9185655e087d1baac144a6da3dd7a\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791563862255,\"endTime\":1791563864412,\"providerRequestId\":\"req_836d15738df941e69cabd02699222545\",\"statusCode\":200,\"providerResponseId\":\"resp_0848f83b32643cea016ac9185655e087d1baac144a6da3dd7a\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"48db4d4549fa9cb4a31b5ead7c6b4070\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00034505\",\"marketCost\":\"0.00034505\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00034505\",\"inferenceCost\":\"0.00034505\",\"inputInferenceCost\":\"0.00028455\",\"outputInferenceCost\":\"0.0000605\",\"generationId\":\"gen_01M4GRE46QPV7ACBH6TVNSF5GJ\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -77,6 +77,48 @@ describe("prompt builders", () => {
     expect(prompt).toContain("- dispatch.metadata.taskId: sched_plugin_1");
   });
 
+  it("renders stored outcome destinations for automation dispatches", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+      dispatch: {
+        declaresResult: true,
+        source: { kind: "scheduled_automation" },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        outcomes: [
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: "T123",
+              channelId: "C123",
+              threadTs: "1700000000.000100",
+            },
+          },
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: "T123",
+              channelId: "D456",
+            },
+          },
+        ],
+      },
+    });
+
+    expect(prompt).toContain(
+      "- dispatch.outcome.1: send_message to a slack channel (channel_id=C123 thread_ts=1700000000.000100)",
+    );
+    expect(prompt).toContain(
+      "- dispatch.outcome.2: send_message to the creator's direct message (channel_id=D456)",
+    );
+  });
+
   it("omits follow-up runtime context once session bootstrap exists", () => {
     expect(
       buildTurnContextPrompt({

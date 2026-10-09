@@ -66,6 +66,16 @@ export function slackChannel(): SlackChannel {
   return { ...destination, platform: "slack" };
 }
 
+/** Return the direct message channel of a Slack person in the test workspace. */
+export function slackDirectMessage(): SlackChannel {
+  const suffix = fixtureId("direct-message", 9).toUpperCase();
+  return {
+    channelId: `DEVALDM${suffix}`,
+    platform: "slack",
+    teamId: SLACK_TEAM_ID,
+  };
+}
+
 function resolveAuthor(author: SlackAuthor | undefined) {
   const userId = author?.userId ?? DEFAULT_SLACK_AUTHOR.userId;
   return {
@@ -101,6 +111,11 @@ export async function insertScheduledAutomation(args: {
   due?: boolean;
   /** Run one time instead of every week. */
   once?: boolean;
+  /**
+   * Where a successful run sends its message. The default is `destination`.
+   * An empty list stores no outcomes, so a successful run posts nothing.
+   */
+  sendTo?: SlackChannel[];
   task: string;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
@@ -121,7 +136,10 @@ export async function insertScheduledAutomation(args: {
     destination: args.destination,
     executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
     nextRunAtMs: args.due ? nowMs : nowMs + 7 * 24 * 60 * 60 * 1000,
-    outcomes: [{ action: "send_message", destination: args.destination }],
+    outcomes: (args.sendTo ?? [args.destination]).map((destination) => ({
+      action: "send_message",
+      destination,
+    })),
     schedule: args.once
       ? {
           description: "Once at 9:00 AM Pacific",

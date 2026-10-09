@@ -215,7 +215,8 @@ Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
 `agent.turn.empty_output.retrying`,
-`agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
+`agent.turn.empty_output.exhausted`, `agent.turn.automation_result.reminded`,
+`assistant.reply.generation.failed`,
 `guardian.action_review.retrying`, `guardian.action_review.exhausted`
 
 `guardian.action_review.exhausted` is a tool-boundary Sentry capture after three
@@ -226,7 +227,7 @@ Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
-`gen_ai.response.finish_reasons`, `app.ai.outcome`,
+`gen_ai.response.finish_reasons`, `app.ai.outcome`, `app.automation.result`,
 `app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
 `gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
 `gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,

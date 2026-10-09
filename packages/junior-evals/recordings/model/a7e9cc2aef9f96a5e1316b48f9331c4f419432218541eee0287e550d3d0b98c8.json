@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/delivery.eval.ts > Scheduled Delivery > when a due automation has no message outcome, do the work without posting",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "432d67f24da9",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0db19d18fd663b1f016ac91a0b7f3887d1a1ae6328e2189245\",\"reasoningEncryptedContent\":\"gAAAAABqyRoMMjBZ39CXScqaHLda1U8o4HRrx5qMTWpq4ZSOyIBxTM1sP-mM-iZCnHPtACG-hkJIY8BSubBW0RoVVHKMxrQdbuGA-ddFrlz9DSgYBN1Ahjg4przwNspiMsmY_hzLZZajE-_qYl7_8akJv1Fy5cFLqBnt8xrRd0H5hpxqmCgxmXFQlidF2euJR0ZKww2xdme0N3X7s-k1vzoUQeuto7cVfPw2hElpWeOL2z6fyNUdouY9UqtJX-o6OHC6O-ZB7024eXcTZyDxgnDU0mQzrMCVnlY1QpQfAXBFYju6OOgnroCjJd5wxRGAPrZSG7f-dNsIDQde0egrbVkDzrLdnoJ5EJVRuCvuYfxY_zqeGk8EdPhhv3rsKqKkKAJ2MJ2gPBOMXwkWQidtESoCJp2aQT51-fyiTXCYTVCgp4FcruUxMn8rEV8-8b05rnZEPIy4tefUXva8G8W-QTm9dnzMcf1lyRpAmezuwNYz-3-CdhpkXnsfeDvhS7d0gFsnDemOXSc-3t-GGqpMNxNwsv3-b8Rp94RKnOkhVEw4ntIrV4llHrWnoCeElpNoGw6Day2eMdNNgcltqlZtXla9wY2CgZtl3jQCK9qyt_h72vB-Dg4xakICIIWKpolWvBRjDzYq0bspIdAW44waIB6H7lp0GcRyqudwYN63QUCIUbWFSJ_DJcfn2RLJi40W1dsCUI2h-MjaaK3rgogO_8a5ei0OUlLWm7r044tGqbPQDldw4aPibak-qpF-_MHSjd5qYhsBi4Q4bUkziAljgqpI-8XKL6Xezevu286YtwKSMo3P87WotVzseK4eaX8NH8njp7SpMd6q1e_mFZW6WZ0q8CDeQN7VrMfHcjv0CmDrpAFgQveOulw60mzOTyDcvMoxL_4IMEz2tTG3yDaRXUYXBBvWJ-BnSzrVYb6tc-gbi2DyMH44vlXR76Q3rNNP6XwHrh5j9R1OLWAoGjec_XJlzyTOoCLPdBwp_LGf052ohjPZyyyjbA8adpOiZhu3K8Rxty7he5o4jhAthwo8DoXfhdPfg7y39ICZiGHhu3Gf7KzuoTAyfQsXvU88sgzENnWjuxm8xiY7PQRGT9Lw6GXZLFDF9wubR7UD9LFRC3fJ8xby7jY8z7XVKtk3Dq8KWlLAtJ7qTRDfww3gQaDw8MTfdiQ2UzsJeB8csUFoBsRoAPA5oxOuSNgRhXcMyVrb6Qty83e29YSG9yf1z8t8JTW67m35LhbOhNNSBwwTBiZTV9C6vnqOaOGmFGe3bN2ItTr41Y_NBX_ItSsZ4tjvvbLnC467gXBS7M3_QL-RL9IWdW_R7qisip0Owk3OrHo1eeN98IUPACmzbpwcVrV6biEmOjyiMl5HufVh59z8R-QhRDMSCGULDPmBb2zq7JAdeiw5Xe3NRd8cWMGqT0aYRVEMzB6rzEl_pMoTgqKXmVpPjGoMvRL6PB4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"Checking the current UTC time requires a current-time lookup; the requested finishAutomationRun ending does not change the routing classification.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0db19d18fd663b1f016ac91a0bf73c87d18e07115a8217c216\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":672,\"noCache\":672,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":85,\"text\":53,\"reasoning\":32},\"raw\":{\"input_tokens\":672,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":85,\"output_tokens_details\":{\"reasoning_tokens\":32},\"total_tokens\":757}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0db19d18fd663b1f016ac91a0a5ac087d1b365baca8309045b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564298247,\"endTime\":1791564300899,\"providerRequestId\":\"req_2ae1df53fa5d4d9a888659c6d1bc3ad1\",\"statusCode\":200,\"providerResponseId\":\"resp_0db19d18fd663b1f016ac91a0a5ac087d1b365baca8309045b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"999b4a5bb6cb9bef7f9ed6b6e46dc149\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001097\",\"marketCost\":\"0.0001097\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001097\",\"inferenceCost\":\"0.0001097\",\"inputInferenceCost\":\"0.0000672\",\"outputInferenceCost\":\"0.0000425\",\"generationId\":\"gen_01M4GRVDZGX748WZBXZ7E5HSF6\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

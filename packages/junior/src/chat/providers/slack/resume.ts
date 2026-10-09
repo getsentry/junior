@@ -21,18 +21,25 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  finishedRunReply,
+  runDispatchOutcome,
+  deliversFinalText,
+} from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   logException,
+  setSpanAttributes,
   setTags,
   withLogContext,
   type LogContext,
 } from "@/chat/logging";
 import {
   finalizeFailedTurnReplyWithEvent,
+  getAgentTurnDiagnosticsAttributes,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -343,7 +350,7 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    ...(savedRun.dispatch?.outcomes?.length === 0 ? undefined : { delivery }),
+    ...(deliversFinalText(savedRun.dispatch) ? { delivery } : undefined),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {
@@ -628,13 +635,14 @@ async function resumeSlackTurnInContext(
         logException,
       });
       const reply = finalized.reply;
-      const dispatchErrorMessage =
-        run.dispatch && reply.diagnostics.outcome !== "success"
-          ? (reply.diagnostics.errorMessage ??
-            `Agent turn ended with ${reply.diagnostics.outcome}.`)
-          : undefined;
-      if (reply.diagnostics.outcome !== "success") {
-        await deliverAssistantMessage(reply.text);
+      setSpanAttributes(getAgentTurnDiagnosticsAttributes(reply));
+      const dispatchResult = runDispatchOutcome(reply);
+      const dispatchErrorMessage = run.dispatch
+        ? dispatchResult.errorMessage
+        : undefined;
+      const replyText = finishedRunReply(reply, run.dispatch);
+      if (replyText !== undefined) {
+        await deliverAssistantMessage(replyText);
       }
       runResultHandled = true;
 
@@ -653,8 +661,7 @@ async function resumeSlackTurnInContext(
           destination: run.destination,
           destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
-          dispatchOutcome:
-            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          dispatchOutcome: dispatchResult.outcome,
           ...(dispatchErrorMessage
             ? { errorMessage: dispatchErrorMessage }
             : undefined),
@@ -672,8 +679,7 @@ async function resumeSlackTurnInContext(
           destination: run.destination,
           destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
-          dispatchOutcome:
-            reply.diagnostics.outcome === "success" ? "completed" : "failed",
+          dispatchOutcome: dispatchResult.outcome,
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
             : undefined),

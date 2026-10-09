@@ -58,8 +58,9 @@ describe("agent dispatch recovery", () => {
     ).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       outcome: "failed",
-      resultMessageTs: expect.any(String),
     });
+    // A failed Automation run posts no internal error to its outcomes.
+    expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
@@ -87,7 +88,6 @@ describe("agent dispatch recovery", () => {
     expect(replay.queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
-      resultMessageTs: expect.any(String),
       status: "failed",
     });
   });
@@ -120,8 +120,24 @@ describe("agent dispatch recovery", () => {
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
-        { type: "toolCall", name: "systemTime", arguments: {} },
-        { type: "text", text: "Resumed scheduled digest" },
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Resumed scheduled digest",
+          },
+        },
+        // The declared result is final. The resumed slice must not call the
+        // model again and replace it.
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: {
+            result: "send_message",
+            message: "Replaced scheduled digest",
+          },
+        },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
@@ -138,7 +154,7 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the tool result is saved.
+        // Pause the first slice after the declared result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });
@@ -177,6 +193,7 @@ describe("agent dispatch recovery", () => {
       source: { kind: "scheduled_automation" },
       surface: "api",
     });
+    expect(resumedRun).not.toHaveProperty("delivery");
     expect(resumedRun?.instruction.text).toBe(dispatch.input);
     expect(resumedRun?.instruction.context).toBeUndefined();
   });

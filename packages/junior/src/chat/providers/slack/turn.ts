@@ -146,6 +146,11 @@ import {
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  finishedRunReply,
+  runDispatchOutcome,
+  deliversFinalText,
+} from "@/chat/automation-result";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -1133,9 +1138,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            ...(options.execution?.dispatch?.outcomes?.length === 0
-              ? undefined
-              : { delivery: deliverAssistantMessage }),
+            ...(deliversFinalText(options.execution?.dispatch)
+              ? { delivery: deliverAssistantMessage }
+              : undefined),
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,
@@ -1171,17 +1176,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               finalResult = finalized.reply;
               failureEventId = finalized.eventId;
               failureReason = finalized.failureReason;
-              await deliverAssistantMessage(finalResult.text);
             }
-            const turnResult: DispatchTurnResult =
-              finalResult.diagnostics.outcome === "success"
-                ? { outcome: "completed" }
-                : {
-                    errorMessage:
-                      finalResult.diagnostics.errorMessage ??
-                      `Agent turn ended with ${finalResult.diagnostics.outcome}.`,
-                    outcome: "failed",
-                  };
+            const reply = finishedRunReply(
+              finalResult,
+              options.execution?.dispatch,
+            );
+            if (reply !== undefined) {
+              await deliverAssistantMessage(reply);
+            }
+            const turnResult = runDispatchOutcome(finalResult);
             runResultHandled = true;
             shouldPersistFailureState = false;
             boundaryFailureCode = "agent_run_failed";
@@ -1210,10 +1213,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   destinationVisibility,
                   source,
                   sliceId: 1,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(options.execution?.dispatch && turnResult.errorMessage
                     ? { errorMessage: turnResult.errorMessage }
                     : undefined),
@@ -1241,10 +1241,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   source,
                   surface: options.execution?.surface ?? "slack",
                   dispatchId: options.execution?.dispatch?.id,
-                  dispatchOutcome:
-                    finalResult.diagnostics.outcome === "success"
-                      ? "completed"
-                      : "failed",
+                  dispatchOutcome: turnResult.outcome,
                   ...(acceptedDeliveryId
                     ? { resultMessageId: acceptedDeliveryId }
                     : undefined),

@@ -1,0 +1,29 @@
+{
+  "session": "evals/scheduler/delivery.eval.ts > Scheduled Delivery > when a due automation needs a provider that Junior does not have, end it as misconfigured without a post",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "52528730b966",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_07a7424aaac39f4a016ac91767c63c87d1acbf13ac5ba3fe41\",\"reasoningEncryptedContent\":\"gAAAAABqyRdpk-jomnKRKrvlf-n3lO_vhahU0wegd_5O9FE_KbRDsNgpK4Dr_ffIvDJGD_4UHuCy33TFl1Y-jybTJiDtUhNQnyYtKRPDoN43-5tOpK0cEpoE_rhpf7hPlhKIi2CvthjyB3zVix4r4RleTvnZpBusW1FjXBl0rq6F6hQs1-Fx3sqDDdy7mY2OmQaJtiA0RFXXXCEZeiQDqC-Hyl5wNNpEWRPqBDLGV84VvjVwIymxIe3IKWdoYkU2Ovnn_HZqW2TUUUcsRRI4TIPXby5KBTNGsPF6jS0BOAiCwvVKypA5d3qaeF9GiCWljdOyefxSzVoPwbTpGlIJhyuRx1ICM2aFBmVI4dpI7yyOKwW4s-ZhTBp80Ua1YMu_SboRi35e9hIio7GS_C_pysh1CGwjzobFiKGVAJVFTD1KZAFWcB3h1QGibjD5v9sY2HECIAvC53Lq2GMEkTXM2PG9O7R1zNoaD0BacNCnwnx5-xQ_decV7IDAFCfe_tFG7Oi9LfGG61MiVbJz7K8KVYgR5tgOP_zDBtiXjU3rWhKa22pU_9vx8xeFcUmgJPdsmN_8qTfo8WYpwps9lvlE3x9g8DpT4Fy96VKoURUXOURL1zk8bP2vK08EyRHjIOsUVimFuH3aH1r0DZ1ylhAg5siH-MdbVr6OJh6o8Zg9ODWF8uPOoBzsxMHu48sE8827ocVh89kKIFcrxDuBQz94b25HSifZ5ICuUKqPq9cTtmt1vJTZ9pGLDOpE9hrWWBYRydtgyhoXO-GXpt_QF-wKwGpqDXf-5eKIXWJpztHmPfrYxStL2ckulFENEv6vYZEJ9h0ESGHpGO5UEtyW2xaMd2S-jZkSuXWUFNK63HLIPAtRTpCvl1uJ2FkCHH1q35GRKFTBPqejpch2nEOnwERXS0gJOcz5cKbPie8FQYCUp6p7cIUYrpN_og6UZEAzYtUj4cd2y7pEdM71xOjiexFLVB8VMQi0y1Viiw0V8tSaMdP1J36T8cqfkSV0iGvz8WZOhQsh5V-m7J146VSAIb8CIr4Lip55DVm3HZ5lRHcfG0CxSfstXLFTgpXSWUrTJu9U9ivFnJkJ-hUYeZStWZhUVlR1EL4N3wOrU9vsR_B9qsDE_Qy_qubmIcOM5n5M1cOppv_AAaMQoUj4_L8Yt-ERVEqQRpBGgqGrthhcs-i3NOCojALxgnlBgjfYa2isFOlGFzDMovSHhZvzfJPC713RnQ3azKs2BtojJLHkj2vzAo34HyGTzoAzU3Lhhr0NncK9ohhy0k4lSclbjhng9RHEnU9AHY_yVrjh6tdlHLWaLIXpw3AQeTBEgxAGlOGYgGpOlp8MQcxeB3m2YUVUjzDQcok5QPR74MFA14aZUgfmityL6y8lHHu7SfdZlDvZ5ToiL3pQ2ITfqdsueiyUaojrbQAWG42Noba01xLag-8mftMKBAa43YdMKPPOo2JAhjM5oEehTB_-8DS4q2XHWQm83c5kiknlUw8nke8us8Lc391gbLJ_LVJmBjIFuRKqJkZxD7pjOPLqlnzxVIyXrJlY9B0wjPfPx5-c2JUJYLqn6jFrDFe01-qH3OXwCanUFBNU6ZdjwZzrf5KqrjMkm0meE-7RLFCCjf37C6LEZRXI749ms2gRQBBjHrxIo2lFbxXddHuBzhbZ-z0v\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"Requires checking current Zendesk queue data and posting the count, a routine external-tool task.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_07a7424aaac39f4a016ac9176897d487d1b5289750b45e89dc\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":679,\"noCache\":679,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":115,\"text\":47,\"reasoning\":68},\"raw\":{\"input_tokens\":679,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":115,\"output_tokens_details\":{\"reasoning_tokens\":68},\"total_tokens\":794}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_07a7424aaac39f4a016ac917675e9087d185cd7c23936ec385\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791563623273,\"endTime\":1791563625260,\"providerRequestId\":\"req_4b07d1814686477fadcd851c1c350076\",\"statusCode\":200,\"providerResponseId\":\"resp_07a7424aaac39f4a016ac917675e9087d185cd7c23936ec385\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"a2149c8fd95f03324a6e67a6d80f30b1\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001254\",\"marketCost\":\"0.0001254\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001254\",\"inferenceCost\":\"0.0001254\",\"inputInferenceCost\":\"0.0000679\",\"outputInferenceCost\":\"0.0000575\",\"generationId\":\"gen_01M4GR6TSCD09EANHKTEQ65CDH\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

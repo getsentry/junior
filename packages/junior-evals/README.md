@@ -168,8 +168,10 @@ describe("Thread Continuity", () => {
 - `run(heartbeat())` returns the Conversation that a due automation started.
   Make an automation due with `insertScheduledAutomation({ due: true })`.
   `run(githubWebhook(...))` returns the Conversation that a matching
-  `insertEventAutomation()` started. The agent needs the GitHub plugin. These
-  Conversations take no further input.
+  `insertEventAutomation()` started. The agent needs the GitHub plugin. When
+  the automation posts, `conversation.continue(slackMention(...))` is a
+  person's reply in the thread of its first post. An automation that posts
+  nothing takes no further input.
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.

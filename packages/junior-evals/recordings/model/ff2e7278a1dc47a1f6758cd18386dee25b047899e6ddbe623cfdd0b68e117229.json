@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/google/calendar.eval.ts > Google Calendar > when asked to find a time with colleagues, check everyone's free/busy without asking and say whose calendar it could not check",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "2400bf302a2c",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0903370dffb36a53016ac9186b94a087d19ec92c8fe50745f3\",\"reasoningEncryptedContent\":\"gAAAAABqyRht44YROm4VJnV5TDXTpg_dIHia2RJUVg0q7mLJcO50OqFSE-ApQaral_fSF4V5PwozBYfIyG0JeznLK4_2IFx3rF-Ha4vOHmdMx801wVyyJVZvNg9XbtmwVoLbrFnSQqCR7DAIq8dAClc1tXjtSTasfE4BBWrQUi3QmtKIQfWjXyGaGZgeVoQq2fO0h7awZYsBdjPES05-2kC9fFFKnJnsD3bppM0QclrjhnE5_mxp4EVm72lEYYHwALqggm8BUqut15LkhMdU7zT-jPwc0tuRTR5XgoY_cdmqKYDm-c2muQUMsVGdrGgWbIDu49PqWduEP7jpggIBMiDcSAMLKrU3eautW0lW6gykMSqpJpegQtH462QtHNylATxiR_ur6adNElV4BerUhVLLQtj-1jY3zlRr7a4Tuaxj1-isw1HYSWq48oI4q0j1mZ2sEP4oDhsqWqhDq8Tqvwuaq-gr7Jf15ECSZ00YMa9jiE2FpHKEp_QhhYOXiy02mW6j22WIweqT5mWXB6PkrFOXJsraSJkEkzNgLXVjUWSAzw9qiLj0vFpjUba2PUNO8pGBGfbLAFvsE7A_71itS-EyIY-33te2hemiirAvndeD_qzArfrbBGtjtRE7esWCpP8nX5rQjRlq_iR33SxfXGpWZBEwxORE6tnsD5tT2Om5V_ccTEkCFWkKWMy9OPEXSR5SUHYjoIHPOh4DSl3C1gAcjvNycIyJ1KFKazDqZ0GKtOjeYsCDJTXFYQ4qMci_QYq2_YS6Z-3Nr9ENOAooIflcoaUVg8pbj3d31dKA8bUVR8pOIPNzoBZpvp1dIsEIKNyv4WjyNSOJFuKyCqqXE9968961qNtQVDHGjYHPIutxonrvriEWN2EDGcBby76T3Pbh4YrweVbwGqF3fJPHK0CGQvDS63fBYhQfNF5bUNEeKKzoRvxRpr977tgkS63ZZDw7cSZK27m0aApeBcbuytJG5BI-g4t0FFd4PkwnwWmZr4no0nCmDqyKFJVOgyNKexpArr04aCFTpAmJ_6t8QZ-iPy8E46sHOsERPTMr-w2xNRftfrr-tV5JbtcHnnZOASR1wr9F9hrkcHjevWMc1Xc4M-FGMsY4M19qYXd0UwjL6JrMp_Y84w1DqcZfpYe5imv6yTDG3IlOKMySguaL5cPQDI_2yG_d5xyz-LTU1ZcAQM0az0y3xidJAR02uY3fd-b6EBVmMrMJZWEyyoWSP1BGFoYKhLfrclVE8bvBAXBGgc6jxXydSXIObpnsOoA6RIH8uP_nJK5r-pOFL0Xf4DxCBTJu6BIFpoWCqDX79Xl67ThMRgfkxBusib-y_qsqOqvxQNvWIj4kh9jmZ2Eg-dBUWfJdehQDT925ai92QQaVy8tbK2aFJYuvfZL8lw3zUASYHwiYLwzl6EJiNtNui41Yd950ia93ei1myUaY-0rqPuUl3S4canPNHQk8o5yqmsduObNhYGZgYJvyCo96mXOLMJ3hW1iplObTT8gaEFXlZqxf9cBu9PrimmSyl7xHDbSIvLd-bPUgMipUS6w3doZnHQlj69Az5YwiduxlgBZ9C4_23d74Bbxq1UvEWQYHmLY6_hRB7w5iZywWnDCDRl31JRm_WxGuoUazjc_3CllUB-_5nFZhCcRCAx-idehjZ-GIba-ZL479hdlgosbrdV6_M8q_IkR0l7LKc7dt9XgeG1WmK5qtv8G9oFtCzx-OCqGaXzil-FSIW2ENlZ6j9DJyu2_jowNuVzB3PYMa6c-tS7c0q6QDrwbtEFRzAB2TMCWXiFXdHXmRtJ-v9NDo-YsZebnVSGFdf2xZjkdRhqzSbppiSulhM5nfeyCBmgQfFYxLXtNgWVVYslLZwie-BtiQAm5GF5U51WcRkV4P9B1zmRlKEzto9BxSCPi7BwYgzaBOpVX7N0G3F0Q5n5eTfC_iq_U2IaoM0xEHQBr2fKGSu8e0Y79PAfNbrhRLEMsb5VPnWCf7CQegUewMh0CqdfqVKAmzUV92am5tKt6c2FKKTNqGGR2iOEw=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested a 30-minute opening with these attendees in the next few days, and this read-only query checks only free/busy availability in that window.\\\",\\\"riskLevel\\\":\\\"low\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0903370dffb36a53016ac9186cb34087d1b5fd4e977cc14632\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":4284,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":2460},\"outputTokens\":{\"total\":178,\"text\":59,\"reasoning\":119},\"raw\":{\"input_tokens\":4284,\"input_tokens_details\":{\"cache_write_tokens\":2460,\"cached_tokens\":1821},\"output_tokens\":178,\"output_tokens_details\":{\"reasoning_tokens\":119},\"total_tokens\":4462}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0903370dffb36a53016ac9186b161c87d1934e0605cb81723d\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791563882958,\"endTime\":1791563885442,\"providerRequestId\":\"req_dab2f04ffc144d38853664fde4ed29d3\",\"statusCode\":200,\"providerResponseId\":\"resp_0903370dffb36a53016ac9186b161c87d1934e0605cb81723d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"1a82beb81bcfa629be638bfa1fe84b9a\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00041501\",\"marketCost\":\"0.00041501\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00041501\",\"inferenceCost\":\"0.00041501\",\"inputInferenceCost\":\"0.00032601\",\"outputInferenceCost\":\"0.000089\",\"generationId\":\"gen_01M4GRERDRVK8J0HBHG5ZHQT56\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

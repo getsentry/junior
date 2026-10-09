@@ -29,6 +29,15 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
+/** Model output that ends an Automation run with a declared message. */
+function sendMessage(message: string) {
+  return {
+    type: "toolCall" as const,
+    name: "finishAutomationRun",
+    arguments: { result: "send_message", message },
+  };
+}
+
 describe("agent dispatch conversation work", () => {
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -49,9 +58,7 @@ describe("agent dispatch conversation work", () => {
       undefined,
       input,
     );
-    const modelStream = vi.fn(
-      createModelStream([{ type: "text", text: "Done" }]),
-    );
+    const modelStream = vi.fn(createModelStream([sendMessage("Done")]));
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(modelStream),
     );
@@ -98,7 +105,7 @@ describe("agent dispatch conversation work", () => {
       { label: "Scheduled automation", detail: "Weekly" },
     );
     const agentRunner = createModelAgentRunner(
-      createModelStream([{ type: "text", text: "Scheduled digest" }]),
+      createModelStream([sendMessage("Scheduled digest")]),
     );
     const run = vi.spyOn(agentRunner, "run");
     const {
@@ -170,7 +177,7 @@ describe("agent dispatch conversation work", () => {
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(
-        createModelStream([{ type: "text", text: "Scheduled digest" }]),
+        createModelStream([sendMessage("Scheduled digest")]),
       ),
     );
 
@@ -207,9 +214,7 @@ describe("agent dispatch conversation work", () => {
       ],
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
-      createModelAgentRunner(
-        createModelStream([{ type: "text", text: "Work complete" }]),
-      ),
+      createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
 
     await enqueueAgentDispatch(dispatch, { queue, state });
@@ -234,7 +239,13 @@ describe("agent dispatch conversation work", () => {
       [],
     );
     const agentRunner = createModelAgentRunner(
-      createModelStream([{ type: "text", text: "Maintenance complete" }]),
+      createModelStream([
+        {
+          type: "toolCall",
+          name: "finishAutomationRun",
+          arguments: { result: "no_action", reason: "Maintenance complete" },
+        },
+      ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =

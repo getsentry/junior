@@ -109,6 +109,11 @@ export type AgentDispatch = {
   replyAttribution?: ReplyAttribution;
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
+  /**
+   * The run ends with one declared Automation result. It gets no Delivery,
+   * and only a declared message posts. The dispatch layer sets this once.
+   */
+  declaresResult?: boolean;
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
