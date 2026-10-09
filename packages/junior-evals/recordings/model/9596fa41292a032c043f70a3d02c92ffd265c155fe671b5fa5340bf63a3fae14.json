@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/user.eval.ts > User Memory > when explicitly asked to remember a first-person preference, store one private memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "87a7e50a04e4",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_06d3df050dec64bb016ac92a83e8b087d18527a06799ee525f\",\"reasoningEncryptedContent\":\"gAAAAABqySqEv5u-V-X2Uavzg-RduFZbLZD0G0wieVM00yZfPE9DnyugD2mnZm-YEHN4YF9_sxi7ktvKfhFei-9Mb9n9pXipN7_JkaBz34USpYApQIFP8osptY_Oo_4DkkzohcZ68XD120InrrS5lFgLtGcWN6Ax6lxg_43YLfJhp6740Dfjz2FY-C9ifag6IA3TbL9eM7fterlHGH5LwNUPq03cjz3ID75ve-8biSI1UnGk5stY0arwfUBZdJYo8BuQX8wQPtKFrUFLcX7SNpZnn37HbzSdEc9pIFU0_TpYefK9oy3wP5LuvAeB-9AsamJ-Ub17MOZfPcXToNiIq3PzzVvH6U4BYsBv2JVFP9OQJ5nFhF0ebDuFezCTh6sNS-nzKnfkx10Z9b0bbEoHXc6LEsYaVu8vOLgA-frZRPb5hPnfS-YdaD5nUVradZKV1UX7_q-H3s1tXbCmctftxSONjvhoVbdXRRy50-ZG6dmNDiLD8pExnb3j7Ff3p9uWcn8DcIg_0Ktbd4WeImdqaLB1Chm0zXFuSe3pleFA5e7nrCSpgvcZwchqWj5GDyuEkBxObcEUpYXAcirxz7KB5NUhKKsL3iYEuH9kJ7TWFXrlKPsbHcNLob9qCrLp7X8rG4W5i29Rayn2xlqx_Q8hzir0uHBzDHrL4-Ba72RYQPmmyLYWrB-grFK2rriDhaXSiDL4VLsgYpqDGjDISsKu4pCQ5PksvzT_RGK9Hoi1lwElge-ROmgo79qiDRgv3egnxCv3cBLgEHN8lfsirZGUQu6XniTQjpX11yTwYTNfzyMUNfAHWv6YG7NZEMNx4aYAbvG8J92Rjr7Ox7Xz0h4N4KPnD_lfVVoAyDiNm7AuyecrOKVTD3ldNxe_5gXnhkHeW9mlCw0uiXP_qRJH59kI5ypTTHgxn2xAlki1CF16KqQydj1c9wkjA6gsB2NYH5K0EGifh59DgATb3r3KiEncuPTVDjp_luMWwEkux0Wh7Yfea-JwqJOQZ7XVPZqS214_RxKzhRZz_bq-DoQATljWTz2VhQmeDUWU5oxfUJD1LpZAbFUDJ0sajYXgm1gOurRNVhqrioV1yBV7015NhZNg3xG6vZK3U5BvJLlMLjtfnMsLGES28io3M1BdmqWosBQPQ51cSsRBt-qtmVUT9dnJqNAHb0OaLBZJYzvVQXFaK6AjGEZB_VVlWCl6XgnBg7omMSEPISZSfumt9iTWCj6dsPlm6GmIKtykW5ebpieiSs2DuWkqJx8OK36uAbIev4fMWZopvo91k1eI1hUfTHgMdFzM7LyEtAWOERbDfnC7an_AeGsqikWrJH8=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_06d3df050dec64bb016ac92a84107487d1981cd25886090ab6\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2326,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2323},\"outputTokens\":{\"total\":27,\"text\":14,\"reasoning\":13},\"raw\":{\"input_tokens\":2326,\"input_tokens_details\":{\"cache_write_tokens\":2323,\"cached_tokens\":0},\"output_tokens\":27,\"output_tokens_details\":{\"reasoning_tokens\":13},\"total_tokens\":2353}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_06d3df050dec64bb016ac92a8369bc87d19ed6439f4cbc3198\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568515336,\"endTime\":1791568516266,\"providerRequestId\":\"req_624c8854e394467eaea2ec9445bb9a81\",\"statusCode\":200,\"providerResponseId\":\"resp_06d3df050dec64bb016ac92a8369bc87d19ed6439f4cbc3198\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"b30d2efebce276f559d9e4c8ea638e7c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000304175\",\"marketCost\":\"0.000304175\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000304175\",\"inferenceCost\":\"0.000304175\",\"inputInferenceCost\":\"0.000290675\",\"outputInferenceCost\":\"0.0000135\",\"generationId\":\"gen_01M4GWW47P0J4M97RMXM0G7JAE\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

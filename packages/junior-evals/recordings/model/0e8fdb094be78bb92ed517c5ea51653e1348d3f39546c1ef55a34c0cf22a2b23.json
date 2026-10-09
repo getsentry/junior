@@ -1,0 +1,29 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation reveals operational knowledge, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "d0fe6f1209eb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_07b342de5a555a30016ac92a6e559087d1a54a93081fa82895\",\"reasoningEncryptedContent\":\"gAAAAABqySpvEufLyeAxPsz5O4WNIJ8cMr1Qjfldcfk-DL00LrkFiqIGk96WQd2uDG68nngMO9XiUG5mUBQQ_6lek_6psNDQY5ysd8-34Sqt-k7-kAx95OZZBs2MCCZxvWryadl1xuEegZcNpA-HnOYAOeRjiN_xmeRIXttLJ3YXjjcGCv_1EyLFerDKiloFzhwCA-yQakMiLRACxCbsD5R508jnR3rzegklKGORuss2sm6FQxVcOjefuma075QRToadbgiJQKLw0pWSlAFtyt90U5Pz_Out85NCM_DgVsngAH86r9t4KHiQeOuAAi_inAIz0GT587vv5iH126DD4Ud4pGZbZWXEBldH-uwZOt34VPbfJEPg2vcWeDgmUkfISTicFo7LIrlxAU40VNAN3r4ev0snBlM9xRwPGRogjrWX6dqadzVoBpvrE2TsxwC1A2SFUBxlXo4GFa_xMJAGMYZ3UoalgMSHwKY6tojmpXps6hDXZG2xiqgT73HMzcnmGFQqUeOJfCH4xVP3CpDZu9ygJdyzaaXfwD5ljqdzieTPBDbtYLCv3TH4Ra6fmjYEoLhyio5G5zdTxxgZmlNr6s82bZiFJZXj_6Lsx3mVQ106ruUEA6NB3Al5XPyQXDoYu5kKeguWHS-vvc7EZFTCA33PmVjHDERev0svrwZg_yhBO7OzEIIHWCjwTT1Thz9S4Jc-iMFKLfGFhdmeir3orRvBwL3RbPJJAfecHiT1sfl_zgpCR-ouIKCJZquwTRDsRni0hqN8hBxJACiUkUE2YyE4XkLQafB-nOGLeZsmXZAyTwRs1L6r83uLMyHjpQvQgVrnmAlI7lBeOkUpn8Q_vj0eRWYE35ZsZRNdyNyrtu1GnBzVgfLPlzxL_OQBIw6U1uIiWI7Aq7l0mze41_p60XKqZ2ztllVA6pCpU6W7UJpd89600RnVe9vp-Jc3VHvx69Gd1Xpwj8RMCMO8I9IFTTETUOzcQbV8-UjlFZ75GWRTD8UKrXtyet2l9codqd2NpltGNz_m97ockp_ySWDiCqm2BdPsSQCfC9tfFMTGajcbvqlv0Ef19OXgAHOeKI6lumGLi-7_T9ETIR5hdjpqD_tppb00XBR87SLR6j83QCRS2gaKbsiKh3-WYAN23eyLShJFYc0PcY54VJ29GXwVEEJELIeyds3t3oeOvDB9TpaQcfhWpNHukCPIEuw5jcMasBibFlVzAMccamDVjMsInEqXV3IWYifWjbXC0pVrUacsWnkeRqxJrLVnUVs93m1yCy_jyyqu0eYaFbmjgt77Q3Ecg10HI6IAgOFvuBjcuysN1NZOZhGS7OUoul6OpsRYsnQOlckVVOB7xx8cEKiqiIMlpby31R3qzRt0jCP3Gy0b0LJ9mLC018DhmNWM1T2wMvL6j7Xbh-EF\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a straightforward thread-context follow-up: identify the stated ordering requirement for branch QA runbooks.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_07b342de5a555a30016ac92a6eaa6c87d19297fbdb935b32ec\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":760,\"noCache\":760,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":71,\"text\":49,\"reasoning\":22},\"raw\":{\"input_tokens\":760,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":71,\"output_tokens_details\":{\"reasoning_tokens\":22},\"total_tokens\":831}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_07b342de5a555a30016ac92a6ca78087d18ab7596ca79bfbf2\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568492558,\"endTime\":1791568495363,\"providerRequestId\":\"req_865a6517351c478a89918fe54f8c35be\",\"statusCode\":200,\"providerResponseId\":\"resp_07b342de5a555a30016ac92a6ca78087d18ab7596ca79bfbf2\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"ab6a70facd1506fd8364b7e702a9a1e3\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001115\",\"marketCost\":\"0.0001115\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001115\",\"inferenceCost\":\"0.0001115\",\"inputInferenceCost\":\"0.000076\",\"outputInferenceCost\":\"0.0000355\",\"generationId\":\"gen_01M4GWVDZY0981HST50JZ0AAC1\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

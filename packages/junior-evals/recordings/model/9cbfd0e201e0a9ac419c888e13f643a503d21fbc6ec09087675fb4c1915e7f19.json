@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when directly mentioned during a watch delivery, answer the mention in its own turn",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "2635925602f1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_013b903d4b91d230016ac92b1c9ad887d1b110f87f7d21f93c\",\"reasoningEncryptedContent\":\"gAAAAABqySse06rjRjsVH01mwbUrhxMKISd6C0iHmUYixdF1ZPN1mqOUZC9GWU2CwoFOZY9w_9yZ-flj6bKy2DOmvIS4APOlilMSXkSjz1-lOErw-prfJ3Tl0T0Kui5qcrln72_NCG7bR-4wnk_424rix-Pzq-ISUUhEGsS2w4zYvd3DYfMF-PMCcpP-qVjq1J-GJf5PMxNdX3O8VgFjWgjWEBduZlJHQGi0GULW-PLM5xZdDO9wJJ1jsTqgSMS4_2Hdf_sn6NzOjTtIkZ0h6QMOwjFKngzDnVtMOfLcLUqlhYaVlPGx11JkIq0fPM5UDEZ_94N0sSbkYC8WbWYml4bODomDkomAE9sWrxz4EBuUYGGnviGkNI5pEHGqfelbS9tP4LckoZTjpiWsw8L2B1N6imJdsh7bWMyiSkH9Zt880-07Hjpc7RJDdwgxNNaynRnQNUHHKBV6FcdA1Ro-jCJ_oAtMPMQg_kFNVHf4rBB_KUb6g6JUvAL5-Ng2JvDOT8EnRmz5_sdyGEiztZfvbTqK99rWO3_vFrRjxxsTJvO1HEpd7mXQ7TFnJ8RJXj-t5WzqTRm-53gTAH9xwjFm6F6OAtcYWZl9rvq-Uacum_Op1zhgVDdHFaB_ZVgbygVHJCvU_3Y4QiMhdDWPrGApioXNJ1Y2FYiKkZWLSWbWegcCFmF1ECHzA9xLrtiDRSDs-D5rCF8p8OT7eHs7_qioV86WNDSMwWQB195afLovV2OhHxJS5_F-gNqHDPpOB0JENXLs_S7vFvnaBdZgmL2o6VD4wZNG66uVaJqsbn0i6w_Iowkw8A8WmA4quZ0C94gVC_UpkY72IXFQb3PAHVouhewleoOr8zS1WOiAy1NGY01ayZ241D1Pp2pv24em8B0UJg-sRzVxMOX_ukB1Tmw-CZHv0zj5JSJLO0JPhh4eXYAzC4h29hK5cy1FmFpknY_3yEa5geNUMF4d2gD2I5Ku6cxf0QpG7GdVZISF8nkfrUySbS-9r65P-7rJeNTNwUUb8DyHTWCi3KcR06gE9K-JCp9e_hlcvxmCAva3UkIAk_XzxU12LSftRYBEcS51hBlKHG5_MiUyAuhoeq5cnxDMHsH_irJhtJYSrwuoBhOUHzJ9N4zIoF2AhBksyd4Prf8395m6jaR48AH1IxQ4dhe0h7aGfdW1GtcUJNlHLCaexxEGfFoLTnxBGL9teBG8KBy7hR4e2iJbodgurImGpbtF3GLciUk7HibNiY-PIMmit_SVHD1apPyXFkZipExc3-Kky6W46QtVZGL4k3uk1DXc5L1NTrcJtpY3_oQ6zyPv0XKDK-fegDHW8OOng08s65waI1FlvFe72U4BKWig763WOdPvauR5ejMDbSDMh-JkJh_0wd4Z_WWgIiidI6ayiyLAf9pkCMMdEP4En0b2OKn41gCWdaA5H_OS_92L0myuTUb33HWiUSHj-yprSXMIXVpKWsFBe-e2o0Vdxr8QFGg0KImyV1hOCC7y9iJ5J28-6PMOPzdN7eRal6hb-SXw4FrNLencUuU-OhxW56-cgdG2c0Q_zhAUGqKM0b9av6zD1l5scYAv5PG85IQ75gfxBtIcoUoGRqEU_pLBfvZkO5Q6qzQkBsY5HFnWSZEuv_qN1FjWu1ChKNTBzqfg_y6rOXMRwvboV1gc8-P3uKWaJNvdDMbxL-BQKyRjzKHXKkmJZwJluHsqF5utDv4lSp-geerYmx_CtYxYQymKrUQcR59XgItQ2jz1AharK_MhcVeQxNovrSHCqDEEVFPPVPcs0GLcFmpmL8f3ko3RcqXvRlZCFuIuJj4s2Di78Bf-gRGspqMR7Aatk5c3dth8IZihSVE35aBZ9gcb9jeQdMUh7gblrMZzHw_iuGrFrbR_NaTP6YrxRy1g-7MQCsWQSwXuqJLBX6oozxwWpA3-kGXGBZUeuWCnTJ-MgpgM31Z7Etnb3vU6WDoxpfSXpk0ZVPJ24ONRIRH7vbvpoJph3VWQB0ClhR9FxI0Y2K0JudU2Y4S6ydJMj-9mFVN4mQy6XanA3zgtDE0RtDsAoNiatlbk8AyITKdRFSOZhasMvXBgluchJ_CsUYU1qFiN0tFQGIB0vz2cmIIargKUO0WJxWlwH3MZUs8wcAkhtwdS6AeIAcw-FlKmenz95Cj9ToctoLqI0ZtFXdxja5tccZUNCHS08eQd6P_xF6ro0CYesaRebJyA_fE7YshUNPDAl47OyDLdxyZgUjDpkndGDK1d\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"This is a PR-status notification based on supplied thread context; report that PR #691 was merged.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_013b903d4b91d230016ac92b1e0d5c87d1962c28e623d5972a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":723,\"noCache\":723,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":184,\"text\":49,\"reasoning\":135},\"raw\":{\"input_tokens\":723,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":184,\"output_tokens_details\":{\"reasoning_tokens\":135},\"total_tokens\":907}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_013b903d4b91d230016ac92b1c102087d1b648b953dcb28353\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568667968,\"endTime\":1791568670642,\"providerRequestId\":\"req_8f09dc3d66a547a08665f6f0b37d3dec\",\"statusCode\":200,\"providerResponseId\":\"resp_013b903d4b91d230016ac92b1c102087d1b648b953dcb28353\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"57293d14dc79c61841e1d7f555d05a62\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001643\",\"marketCost\":\"0.0001643\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001643\",\"inferenceCost\":\"0.0001643\",\"inputInferenceCost\":\"0.0000723\",\"outputInferenceCost\":\"0.000092\",\"generationId\":\"gen_01M4GX0S9HGP375Q1MTHEDH3SD\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
