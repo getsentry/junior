@@ -181,6 +181,15 @@ test("searches, paginates, and forgets plugin page records", async ({
     dashboardRequestCount += 1;
     await route.fallback();
   });
+  const countQueries: string[] = [];
+  await page.route("**/api/plugins/memory/counts*", async (route) => {
+    countQueries.push(new URL(route.request().url()).searchParams.get("q")!);
+    await route.fulfill({
+      json: forgotMemory
+        ? { active: 0, personal: 0, public: 0 }
+        : { active: 3, personal: 1, public: 2 },
+    });
+  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -261,7 +270,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
-  const privateTab = page.getByRole("tab", { name: /^Private/ });
+  await expect(page.getByRole("tab", { name: "All 3" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Public 2" })).toBeVisible();
+  expect(countQueries).toEqual(["runbook"]);
+  const privateTab = page.getByRole("tab", { name: "Private 1" });
   await privateTab.click();
   await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
@@ -273,6 +285,7 @@ test("searches, paginates, and forgets plugin page records", async ({
       name: /^View memory details: Deploy runbooks live in Notion/,
     }),
   ).toBeVisible();
+  await expect(page.locator("mark")).toHaveText(["runbook"]);
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
@@ -315,6 +328,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "All 0" })).toBeVisible();
   expect(forgetRequests).toBe(1);
   await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
 

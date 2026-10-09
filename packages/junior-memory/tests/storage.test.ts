@@ -22,6 +22,7 @@ import {
   conversationMemoryListResponseSchema,
   createMemoryApi,
   memoryApiSchema,
+  memoryCountsResponseSchema,
   memoryDashboardResponseSchema,
   memoryListResponseSchema,
 } from "../src/api";
@@ -2698,6 +2699,15 @@ describe("memory plugin storage", () => {
       expect(
         memoryListResponseSchema.parse(await searchResponse.json()).memories,
       ).toEqual([expect.objectContaining({ id: second.memory.id })]);
+
+      const searchCountsResponse = await api.fetch(
+        new Request("http://localhost/counts?q=memory"),
+        requestContext,
+      );
+      expect(searchCountsResponse.status).toBe(200);
+      expect(
+        memoryCountsResponseSchema.parse(await searchCountsResponse.json()),
+      ).toEqual({ active: 2, personal: 1, public: 1 });
 
       const detailResponse = await api.fetch(
         new Request(`http://localhost/memories/${first.memory.id}`),

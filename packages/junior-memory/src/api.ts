@@ -14,6 +14,7 @@ import {
 import type { MemoryDb } from "./store";
 import {
   archiveMemory,
+  countMemories,
   getMemory,
   getMemoryStats,
   getMemoryTimeline,
@@ -105,11 +106,21 @@ export const memoryDashboardResponseSchema = z
   })
   .strict();
 
+/** Active memory totals for one search query, split by visibility. */
+export const memoryCountsResponseSchema = z
+  .object({
+    active: z.number().int().min(0),
+    personal: z.number().int().min(0),
+    public: z.number().int().min(0),
+  })
+  .strict();
+
 export type MemoryApi = z.output<typeof memoryApiSchema>;
 export type MemoryDashboardResponse = z.output<
   typeof memoryDashboardResponseSchema
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
+export type MemoryCountsResponse = z.output<typeof memoryCountsResponseSchema>;
 
 const memoryListQuerySchema = z
   .object({
@@ -117,6 +128,10 @@ const memoryListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(50).default(25),
     q: z.string().trim().max(200).optional(),
   })
+  .strict();
+
+const memoryCountsQuerySchema = z
+  .object({ q: z.string().trim().max(200).optional() })
   .strict();
 
 interface MemoryApiOptions {
@@ -181,7 +196,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
+      const isCounts = url.pathname === "/counts";
+      if (
+        !isCollection &&
+        !isDashboard &&
+        !isCounts &&
+        !memoryPath &&
+        !conversationPath
+      ) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -240,6 +262,28 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             recallDays,
             recallHours,
             stats: { ...dashboardStats, personal },
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (isCounts && isRead) {
+          const query = memoryCountsQuerySchema.parse({
+            q: url.searchParams.get("q") ?? undefined,
+          });
+          const counts = await countMemories(
+            options.db,
+            userId,
+            query.q || undefined,
+          );
+          const body = memoryCountsResponseSchema.parse({
+            active: counts.active,
+            personal: counts.private,
+            public: counts.public,
           });
           return request.method === "HEAD"
             ? new Response(null, {
