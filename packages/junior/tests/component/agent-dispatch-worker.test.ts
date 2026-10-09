@@ -258,10 +258,10 @@ describe("agent dispatch worker contract", () => {
       worker(context, [joined.id, owner.id, late.id]),
     ).resolves.toEqual({ status: "completed" });
     expect(runTurn).toHaveBeenCalledOnce();
-    expect(runTurn.mock.calls[0]![0]).toMatchObject({
-      id: late.id,
-      input: late.input,
-    });
+    expect(runTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: late.id, input: late.input }),
+      expect.anything(),
+    );
     expect(ack).toHaveBeenCalledOnce();
   });
 

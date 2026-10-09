@@ -375,20 +375,18 @@ async function persistBlockedDispatchTurn(
 }
 
 /**
- * Join the input of every dispatch in one Turn, oldest first.
- *
- * The newest dispatch owns the Turn. Earlier dispatches only add their input.
+ * Give the owner the input of every dispatch in its Turn, in mailbox order.
  */
 function joinDispatchInput(
-  dispatch: DispatchRecord,
-  joined: readonly DispatchRecord[],
+  owner: DispatchRecord,
+  dispatches: readonly DispatchRecord[],
 ): DispatchRecord {
-  if (joined.length === 0) {
-    return dispatch;
+  if (dispatches.length < 2) {
+    return owner;
   }
   return {
-    ...dispatch,
-    input: [...joined, dispatch].map((record) => record.input).join("\n\n"),
+    ...owner,
+    input: dispatches.map((record) => record.input).join("\n\n"),
   };
 }
 
@@ -546,7 +544,7 @@ export function createAgentDispatchConversationWorker(
         result = await readDispatchTurnResult(dispatch);
       } else {
         const runtimeResult = await options.runTurn(
-          joinDispatchInput(dispatch, joined),
+          joinDispatchInput(dispatch, unfinished),
           {
             ack: acknowledge,
             shouldYield: context.shouldYield,

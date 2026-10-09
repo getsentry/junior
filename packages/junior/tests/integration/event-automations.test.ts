@@ -50,9 +50,9 @@ let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
 /** Load the dispatch records behind each queued conversation wake. */
-async function sentDispatches(adapter = queue) {
+async function sentDispatches() {
   return await Promise.all(
-    adapter.sentRecords().map(async ({ idempotencyKey }) => {
+    queue.sentRecords().map(async ({ idempotencyKey }) => {
       const id = idempotencyKey?.replace(/^agent-dispatch:/, "");
       return id ? await getDispatchRecord(id) : undefined;
     }),

@@ -392,15 +392,16 @@ export async function markDispatchRunning(
     if (isTerminalDispatchStatus(record.status)) {
       return record;
     }
-    const { joinedDispatchIds: _previous, ...rest } = record;
-    return {
-      ...(joinedDispatchIds ? rest : record),
-      ...(joinedDispatchIds && joinedDispatchIds.length > 0
-        ? { joinedDispatchIds: [...joinedDispatchIds] }
-        : undefined),
+    const next: DispatchRecord = {
+      ...record,
       status: "running",
       errorMessage: undefined,
     };
+    if (joinedDispatchIds) {
+      next.joinedDispatchIds =
+        joinedDispatchIds.length > 0 ? [...joinedDispatchIds] : undefined;
+    }
+    return next;
   });
 }
 

@@ -29,8 +29,6 @@ namespace, and the object. The Conversation runs one Turn at a time. The wake
 waits for the event delay, so a burst of Events (open, comments, check suites)
 joins one Turn. Events that arrive during a Turn join the next Turn. Each Turn
 sees the history of earlier Turns, so it can see work that is already done.
-The newest dispatch in a Turn owns the Turn and its execution record. The other
-dispatches in that Turn complete when the Turn input is saved.
 
 Dispatches do not use the consecutive automated-turn limit. The limit is not
 counted for a Destination. A shared Destination count paused unrelated
