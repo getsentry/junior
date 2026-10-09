@@ -113,15 +113,19 @@ export function SegmentedNav(props: {
           : { end, start },
       );
     };
-    // A row hidden at this breakpoint has no width. Reveal the current link
-    // when it gets one.
+    // When the row or a link changes size, place the row from its start so
+    // the result depends only on the current layout, not on earlier ones.
+    // A row hidden at this breakpoint has no width until it is shown.
     const observer = new ResizeObserver(() => {
+      row.scrollLeft = 0;
       revealCurrentLink(row);
       updateEdges();
     });
     updateEdges();
     row.addEventListener("scroll", updateEdges, { passive: true });
     observer.observe(row);
+    // Links change width when web fonts load, without resizing the row.
+    for (const link of row.children) observer.observe(link);
     return () => {
       row.removeEventListener("scroll", updateEdges);
       observer.disconnect();
