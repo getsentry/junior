@@ -305,7 +305,7 @@ watch). Call sites pass facts only. Unit snapshots in
 | 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.    |
 | 2   | Origin              | yes      | `This is a task, not a message from a person.`              |
 | 3   | `About:`            | no       | One-line resource label.                                    |
-| 4   | `Created by:`       | no       | Creator mention, and the rule to write it for "me" or "my". |
+| 4   | `Created by:`       | no       | Creator mention. "Me" and "my" mean them; the reply has it. |
 | 5   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
 | 6   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
 | 7   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
