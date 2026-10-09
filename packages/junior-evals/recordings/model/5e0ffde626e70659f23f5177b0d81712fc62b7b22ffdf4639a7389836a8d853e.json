@@ -1,0 +1,34 @@
+{
+  "session": "evals/integration/coding/handoff.eval.ts > Handoff task continuity > when the turn hands off, do the new request",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "e7f6c011776e",
+      "messages[0]": "6be0e18e3c18",
+      "messages[1]": "bc98169be115",
+      "messages[2]": "20cb939e8013",
+      "messages[3]": "c0041ae349cd",
+      "messages[4]": "00e61c9eebb4",
+      "messages[5]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GT5HJKTP4S3WA1PMC3T62R\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"### Handoff summary\\n\\n- **Code task:** User asked to make Work Object IDs stable across threads in `skills/coding-workspace-fixture/project/src/work-object.ts`.\\n- **Progress:** The source was edited using `editFile`. IDs now derive from `[object.provider, object.key]`, without `threadId`. A Node check passed for the expected serialized ID.\\n- **Decisions:** User accepted a clean cutover with no compatibility layer; old references may stop resolving. Changes must remain local—**do not push or edit GitHub**.\\n- **PR maintenance task:** `example/widgets#42` had a preview URL and screenshot report, but no actionable review feedback or failed checks. Per its instructions, take no action and stay silent unless actionable feedback or a merge/closure event occurs.\\n- **Latest request:** “Switch to the other configured profile first. Gut check.” A handoff to profile `handoff` was attempted, but returned no result. Earlier system state reported a switch to `standard`; current profile is therefore uncertain.\\n- **Next steps:** Confirm/switch to the requested other profile if possible, then give a brief gut check of the implementation. No additional code changes or GitHub actions were requested.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":253,\"cache_creation_input_tokens\":1597},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_01786f9a9eb5c70f016ac91f6e494887d18d7425ba27372f95\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565678209,\"endTime\":1791565682252,\"providerRequestId\":\"req_0d273275aa364b19974c00a9da0e5622\",\"statusCode\":200,\"providerResponseId\":\"resp_01786f9a9eb5c70f016ac91f6e494887d18d7425ba27372f95\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"bfb01e241bd2992a2c4203006c28f245\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000326425\",\"marketCost\":\"0.000326425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000326425\",\"inferenceCost\":\"0.000326425\",\"inputInferenceCost\":\"0.000199925\",\"outputInferenceCost\":\"0.0001265\",\"generationId\":\"gen_01M4GT5HJKTP4S3WA1PMC3T62R\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}
