@@ -1,5 +1,6 @@
 import type { JuniorDatabase } from "@/db/db";
 import { readUserTimezone, saveUserTimezone } from "@/chat/identities/sql";
+import { isValidTimeZone } from "@/chat/scheduled-automations/cadence";
 import { lookupSlackUser } from "@/chat/slack/user";
 
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
@@ -7,16 +8,6 @@ const DEFAULT_TIMEZONE = "America/Los_Angeles";
 /** The install timezone, used when Junior does not know a person's timezone. */
 export function defaultTimezone(): string {
   return process.env.JUNIOR_TIMEZONE?.trim() || DEFAULT_TIMEZONE;
-}
-
-/** Check that a value is an IANA timezone that this runtime knows. */
-export function isValidTimeZone(timezone: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
