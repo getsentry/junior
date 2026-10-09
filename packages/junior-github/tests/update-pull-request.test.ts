@@ -153,9 +153,7 @@ describe("updatePullRequest", () => {
         new Response(
           JSON.stringify({
             data: {
-              markPullRequestReadyForReview: {
-                pullRequest: { isDraft: false },
-              },
+              result: { pullRequest: { isDraft: false } },
             },
           }),
         ),
@@ -223,7 +221,7 @@ describe("updatePullRequest", () => {
         new Response(
           JSON.stringify({
             data: {
-              convertPullRequestToDraft: { pullRequest: { isDraft: true } },
+              result: { pullRequest: { isDraft: true } },
             },
           }),
         ),

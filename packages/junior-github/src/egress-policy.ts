@@ -381,9 +381,9 @@ function githubApiWriteGrantName(
 }
 
 /**
- * GraphQL-only writes that typed host tools send. Each one binds a named
- * operation and mutation field to a repository-scoped egress operation, so
- * sandbox traffic, which cannot set an operation, stays denied.
+ * GraphQL writes that host tools may send. A request matches only when its
+ * egress operation starts with the prefix and its operation name and mutation
+ * field match. Sandbox requests have no egress operation, so they stay denied.
  */
 const HOST_GRAPHQL_MUTATIONS = [
   {

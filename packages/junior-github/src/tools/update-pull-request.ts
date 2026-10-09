@@ -63,20 +63,25 @@ const inputSchema = z
   );
 
 // GitHub's REST API cannot change draft state; only these GraphQL mutations can.
-const DRAFT_MUTATIONS = {
-  false: {
-    field: "markPullRequestReadyForReview",
-    query:
-      "mutation MarkPullRequestReadyForReview($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-    operationName: "MarkPullRequestReadyForReview",
-  },
-  true: {
-    field: "convertPullRequestToDraft",
-    query:
-      "mutation ConvertPullRequestToDraft($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
-    operationName: "ConvertPullRequestToDraft",
-  },
-} as const;
+// Both alias the mutation field to `result` so one schema reads either response.
+const MARK_READY_FOR_REVIEW = {
+  operationName: "MarkPullRequestReadyForReview",
+  query:
+    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
+};
+const CONVERT_TO_DRAFT = {
+  operationName: "ConvertPullRequestToDraft",
+  query:
+    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
+};
+const draftMutationResponseSchema = z.object({
+  data: z.object({
+    result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
+  }),
+});
+const graphqlErrorsSchema = z.object({
+  errors: z.array(z.object({ message: z.string() })).min(1),
+});
 
 const pullRequestSchema = z.object({
   base: z.string(),
@@ -140,7 +145,7 @@ async function setPullRequestDraft(input: {
   nodeId: string;
   repo: string;
 }): Promise<boolean> {
-  const mutation = DRAFT_MUTATIONS[`${input.draft}`];
+  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
   const response = await input.egress.fetch({
     provider: "github",
     operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
@@ -155,17 +160,9 @@ async function setPullRequestDraft(input: {
     }),
   });
   const payload = await readJson(response);
-  const result = z
-    .object({
-      data: z.record(
-        z.string(),
-        z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
-      ),
-    })
-    .safeParse(payload);
-  const isDraft = result.success
-    ? result.data.data[mutation.field]?.pullRequest.isDraft
-    : undefined;
+  const isDraft =
+    draftMutationResponseSchema.safeParse(payload).data?.data.result.pullRequest
+      .isDraft;
   if (!response.ok || isDraft !== input.draft) {
     throw new Error(
       `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`,
@@ -175,21 +172,10 @@ async function setPullRequestDraft(input: {
 }
 
 function githubGraphqlErrorMessage(payload: unknown): string {
-  const errors =
-    payload && typeof payload === "object" && !Array.isArray(payload)
-      ? (payload as { errors?: unknown }).errors
-      : undefined;
-  if (Array.isArray(errors)) {
-    const messages = errors
-      .map((error) =>
-        error && typeof error === "object"
-          ? (error as { message?: unknown }).message
-          : undefined,
-      )
-      .filter((message): message is string => typeof message === "string");
-    if (messages.length > 0) return messages.join("; ");
-  }
-  return githubApiErrorMessage(payload);
+  const result = graphqlErrorsSchema.safeParse(payload);
+  return result.success
+    ? result.data.errors.map((error) => error.message).join("; ")
+    : githubApiErrorMessage(payload);
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */

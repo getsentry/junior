@@ -1,6 +1,6 @@
 # GitHub commands and permissions
 
-Use the tools in `SKILL.md` to create or update a PR (including draft/ready state), submit a review, or resolve a review thread. Those tools send the few GraphQL mutations Junior supports from the host. Use supported REST endpoints for other writes. Do not send GraphQL mutations from the sandbox; they are denied.
+Use the tools in `SKILL.md` to create or update a PR, mark it ready for review or draft, submit a review, or resolve a review thread. Use supported REST endpoints for other writes. Do not send GraphQL mutations, for example with `gh api graphql`. The egress proxy denies them.
 
 ## Repo targeting
 
@@ -20,31 +20,31 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 
 ## Commands
 
-| Operation                | Command                                                                                         |
-| ------------------------ | ----------------------------------------------------------------------------------------------- |
-| Clone (default shallow)  | `gh repo clone owner/repo [DIR] -- --depth=1`                                                   |
-| Fetch bounded base       | `git -C DIR fetch --depth=N origin BASE:refs/remotes/origin/BASE`                               |
-| Deepen base              | `git -C DIR fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                              |
-| Unshallow                | `git -C DIR fetch --unshallow origin`                                                           |
-| Shallow check            | `git -C DIR rev-parse --is-shallow-repository`                                                  |
-| Branch / status          | `git -C DIR branch --show-current` / `git -C DIR status --short --branch`                       |
-| Log / diff vs base       | `git -C DIR log origin/BASE..HEAD --oneline` / `git -C DIR diff origin/BASE...HEAD`             |
-| Default branch           | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                   |
-| Create branch            | `git -C DIR checkout -b BRANCH`                                                                 |
-| Commit                   | `git -C DIR add -A && git -C DIR commit -m "message"`                                           |
-| Push                     | `git -C DIR push -u origin BRANCH`                                                              |
-| Workflow dispatch        | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                           |
-| Rerun / cancel           | `gh run rerun RUN_ID -R owner/repo [--failed]` / `gh run cancel RUN_ID -R owner/repo`           |
-| Ready for review / draft | `github_updatePullRequest` with `draft: false` / `draft: true`                                  |
-| Request reviewers        | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
-| Submit review            | `github_submitPullRequestReview`                                                                |
-| Set feedback status      | `github_updatePullRequestFeedback`                                                              |
-| Resolve review thread    | `github_resolvePullRequestReviewThread`                                                         |
-| Inline review comment    | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
-| View PR / checks         | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
-| Diff PR                  | `gh pr diff NUMBER --repo owner/repo`                                                           |
-| List runs                | `gh run list -R owner/repo --workflow WORKFLOW`                                                 |
-| View / watch run         | `gh run view RUN_ID -R owner/repo` / `gh run watch RUN_ID -R owner/repo --exit-status`          |
+| Operation               | Command                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| Clone (default shallow) | `gh repo clone owner/repo [DIR] -- --depth=1`                                                   |
+| Fetch bounded base      | `git -C DIR fetch --depth=N origin BASE:refs/remotes/origin/BASE`                               |
+| Deepen base             | `git -C DIR fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                              |
+| Unshallow               | `git -C DIR fetch --unshallow origin`                                                           |
+| Shallow check           | `git -C DIR rev-parse --is-shallow-repository`                                                  |
+| Branch / status         | `git -C DIR branch --show-current` / `git -C DIR status --short --branch`                       |
+| Log / diff vs base      | `git -C DIR log origin/BASE..HEAD --oneline` / `git -C DIR diff origin/BASE...HEAD`             |
+| Default branch          | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                   |
+| Create branch           | `git -C DIR checkout -b BRANCH`                                                                 |
+| Commit                  | `git -C DIR add -A && git -C DIR commit -m "message"`                                           |
+| Push                    | `git -C DIR push -u origin BRANCH`                                                              |
+| Workflow dispatch       | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                           |
+| Rerun / cancel          | `gh run rerun RUN_ID -R owner/repo [--failed]` / `gh run cancel RUN_ID -R owner/repo`           |
+| Mark PR ready / draft   | `github_updatePullRequest` with `draft: false` / `draft: true`                                  |
+| Request reviewers       | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
+| Submit review           | `github_submitPullRequestReview`                                                                |
+| Set feedback status     | `github_updatePullRequestFeedback`                                                              |
+| Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
+| Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
+| View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
+| Diff PR                 | `gh pr diff NUMBER --repo owner/repo`                                                           |
+| List runs               | `gh run list -R owner/repo --workflow WORKFLOW`                                                 |
+| View / watch run        | `gh run view RUN_ID -R owner/repo` / `gh run watch RUN_ID -R owner/repo --exit-status`          |
 
 ## Notes
 
@@ -52,7 +52,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
-- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or sandbox GraphQL mutations.
+- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.
