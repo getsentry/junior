@@ -17,6 +17,9 @@ for the Location and does not repeat it.
 The Conversation row stores the complete Location in `location_json`. Local
 Conversations have no Location.
 
+An automation run starts with a channel-level Location. Its first post at the
+channel top level becomes the Location's thread.
+
 TODO(dcramer): Remove `sessionSource` after resume reads the saved Turn Source
 and every Conversation place reader uses Location.
 

@@ -35,7 +35,6 @@ import type {
 import {
   bindProviderConversation,
   getConversationIdByProviderConversation,
-  getFirstProviderConversationId,
   type ProviderConversationBinding,
   type ProviderConversationReference,
 } from "./bindings";
@@ -351,12 +350,6 @@ export class SqlStore implements ConversationStore {
     args: ProviderConversationReference,
   ): Promise<string | undefined> {
     return await getConversationIdByProviderConversation(this.executor, args);
-  }
-
-  async getFirstProviderConversationId(
-    args: Omit<ProviderConversationBinding, "providerConversationId">,
-  ): Promise<string | undefined> {
-    return await getFirstProviderConversationId(this.executor, args);
   }
 
   async bindProviderConversation(
