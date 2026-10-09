@@ -83,29 +83,34 @@ function checkSuitePassed(number: number, app: string, id: number) {
   });
 }
 
+/** A repository automation that posts numbered updates for each pull request. */
+async function insertPullRequestUpdates() {
+  await insertEventAutomation({
+    destination: slackChannel(),
+    task: "Post one short Slack update about the new activity on the pull request. Start the update with `Update N:`, where N counts the updates that you posted for this pull request, starting at 1. Do not use tools.",
+    trigger: {
+      events: [
+        "pull_request.opened",
+        "pull_request.ready_for_review",
+        "pull_request.comment.created",
+        "pull_request.checks.recovered",
+      ],
+      identifier: "getsentry/junior",
+      label: "GitHub repository getsentry/junior",
+      namespace: "github",
+      resourceType: "repository",
+    },
+  });
+}
+
 describe("Event automation delivery", () => {
   // getsentry/junior#2081: one opened pull request sent about 17 webhooks.
   // Each one ran the automation in its own Conversation, and four runs posted
   // the same review.
-  test("when one pull request sends a burst of events, run one Turn in one Conversation per pull request", async ({
+  test("when one pull request sends a burst of events, run one Turn that later events continue", async ({
     run,
   }) => {
-    await insertEventAutomation({
-      destination: slackChannel(),
-      task: "Post one short Slack update about the new activity on the pull request. Start the update with `Update N:`, where N counts the updates that you posted for this pull request, starting at 1. Do not use tools.",
-      trigger: {
-        events: [
-          "pull_request.opened",
-          "pull_request.ready_for_review",
-          "pull_request.comment.created",
-          "pull_request.checks.recovered",
-        ],
-        identifier: "getsentry/junior",
-        label: "GitHub repository getsentry/junior",
-        namespace: "github",
-        resourceType: "repository",
-      },
-    });
+    await insertPullRequestUpdates();
 
     // run() fails unless the burst starts exactly one Conversation.
     const burst = await run([
@@ -126,13 +131,22 @@ describe("Event automation delivery", () => {
     expect(late.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
     expect(late.replies).toHaveLength(1);
     expect(late.replies[0]!.text).toMatch(/^\W*Update 2\b/);
+  });
 
-    // Another pull request has its own Conversation and history.
-    const other = await run(pullRequestOpened(2082));
-    expect(other.conversationId).not.toBe(burst.conversationId);
-    expect(other.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
-    expect(other.replies).toHaveLength(1);
-    expect(other.replies[0]!.text).toMatch(/^\W*Update 1\b/);
+  test("when events are about different pull requests, run each in its own Conversation", async ({
+    run,
+  }) => {
+    await insertPullRequestUpdates();
+
+    const first = await run(pullRequestOpened(2081));
+    const second = await run(pullRequestOpened(2082));
+
+    expect(second.conversationId).not.toBe(first.conversationId);
+    for (const delivery of [first, second]) {
+      expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+      expect(delivery.replies).toHaveLength(1);
+      expect(delivery.replies[0]!.text).toMatch(/^\W*Update 1\b/);
+    }
   });
 
   test("when an event matches, execute the task with provider text as data", async ({
