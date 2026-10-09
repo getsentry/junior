@@ -178,6 +178,7 @@ export function AutomationsPage(props: {
     : [];
   const showExecutionCharts = executionSeries.length > 0;
 
+  // Test-only comment: this change must not alter any rendered pixels.
   return (
     <>
       {location.state?.automationSaved ? (
@@ -187,7 +188,7 @@ export function AutomationsPage(props: {
       ) : null}
       {props.view === "overview" ? (
         <PageHeader
-          description="[Visual diff test] Scheduled and event-driven work created by users."
+          description="Scheduled and event-driven work created by users."
           onRangeChange={setRange}
           range={range}
           title="Automations"
