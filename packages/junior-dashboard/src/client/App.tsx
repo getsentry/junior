@@ -618,6 +618,7 @@ export function DashboardShell() {
         <span
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
+          data-dashboard-noise=""
           style={dashboardNoise}
         />
       </VisualViewportShell>
