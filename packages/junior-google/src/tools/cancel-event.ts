@@ -21,18 +21,18 @@ const inputSchema = z
   })
   .strict();
 
-const { eventId: eventIdField, ...eventDetailFields } = ownEventOutputFields;
-
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("cancelCalendarEvent"),
-  cancelled: z
-    .boolean()
-    .describe(
-      "False when the event was already cancelled before this call. Event details are then missing.",
-    ),
-  eventId: eventIdField,
-  ...z.object(eventDetailFields).partial().shape,
-});
+// An event that was already cancelled has no details to return.
+const outputSchema = pluginToolOutputSchema
+  .extend({
+    target: z.literal("cancelCalendarEvent"),
+    cancelled: z
+      .boolean()
+      .describe(
+        "False when the event was already cancelled before this call. Event details are then missing.",
+      ),
+    ...ownEventOutputFields,
+  })
+  .partial({ attendees: true, end: true, label: true, start: true });
 
 /**
  * Cancel an event that Junior organizes and email the attendees.
