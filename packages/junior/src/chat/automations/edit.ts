@@ -1,5 +1,5 @@
 /**
- * Web edits. Owners and public Destination readers can edit. Creator-only
+ * Web edits. Owners and public readers can edit. Creator-only
  * rules still apply, and lifecycle actions stay creator-only.
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
@@ -31,6 +31,7 @@ import {
 } from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { automationRevision, requireAutomationRevision } from "./revision";
+import type { AutomationVisibility } from "./visibility";
 import {
   resolveViewerTaskCandidate,
   ViewerTaskNotFoundError,
@@ -78,7 +79,7 @@ async function requireOwnedAutomation(
   return { kind, task };
 }
 
-/** Owners and public Destination readers can edit. Others get not found. */
+/** Owners and public readers can edit. Others get not found. */
 async function requireEditableAutomation(
   user: User,
   kind: AutomationEdit["kind"],
@@ -124,6 +125,7 @@ function editView(
     outcomes: task.outcomes,
     destination: task.destination,
     createdBy: task.createdBy,
+    visibility: task.visibility ?? null,
   };
   if (automation.kind === "scheduled") {
     const status = automation.task.status;
@@ -169,6 +171,25 @@ export async function updateViewerAutomation(
   return saveViewerEdit(user, current, input);
 }
 
+/**
+ * Return the visibility override to save. Only the creator can change it,
+ * because it decides who else can read and edit the Automation.
+ */
+function editedVisibility(
+  current: TaskCandidate,
+  input: AutomationUpdate,
+  isCreator: boolean,
+): AutomationVisibility | undefined {
+  if (input.visibility === undefined) return current.task.visibility;
+  if (!isCreator) {
+    throw new AutomationEditError(
+      "Only the automation creator can change who can see it.",
+      "visibility",
+    );
+  }
+  return input.visibility ?? undefined;
+}
+
 /** `restored` carries version values that edit input cannot express, such as a cleared title. */
 async function saveViewerEdit(
   user: User,
@@ -178,6 +199,7 @@ async function saveViewerEdit(
 ): Promise<AutomationEdit> {
   const isCreator = current.ownedByViewer;
   const editedBy = viewerEditor(user, current);
+  const visibility = editedVisibility(current, input, isCreator);
   if (input.kind === "scheduled" && current.kind === "scheduled") {
     const next = await editScheduledAutomation(
       current.task,
@@ -187,7 +209,7 @@ async function saveViewerEdit(
     );
     const task = await saveScheduledAutomation(
       getDb(),
-      restored ? { ...next, ...restored } : next,
+      { ...next, ...restored, visibility },
       input.revision,
       editedBy,
     );
@@ -202,7 +224,9 @@ async function saveViewerEdit(
     );
     const task = await saveEventAutomation(
       getDb(),
-      restored ? { ...next, title: restored.title } : next,
+      restored
+        ? { ...next, title: restored.title, visibility }
+        : { ...next, visibility },
       input.revision,
       editedBy,
     );

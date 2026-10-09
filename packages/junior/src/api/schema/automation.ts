@@ -12,6 +12,7 @@ import {
 } from "@/chat/automations/edit-schema";
 import { eventMatchSchema, taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { automationVisibilitySchema } from "@/chat/automations/visibility";
 
 const automationDestinationSchema = z
   .object({
@@ -50,6 +51,10 @@ const automationSummaryBaseSchema = z.object({
   /** Short display title; falls back from instruction when unset. */
   title: z.string().min(1),
   totalRuns: z.number().int().nonnegative(),
+  /** Who can see the Automation: the creator override, else the Destination. */
+  visibility: automationVisibilitySchema,
+  /** Creator override. Null follows the Destination. */
+  visibilityOverride: automationVisibilitySchema.nullable(),
 });
 
 export const scheduledAutomationSummarySchema = automationSummaryBaseSchema
@@ -315,6 +320,8 @@ const automationEditBaseSchema = scheduledAutomationSchema
     outcomes: z.array(taskOutcomeSchema).max(5),
     /** Creator-only rules apply when false. */
     ownedByViewer: z.boolean(),
+    /** Creator override. Null follows the Destination. */
+    visibility: automationVisibilitySchema.nullable(),
   });
 
 /** Edit values for owners and public readers. Read schemas also retain legacy values. */
@@ -337,6 +344,11 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+/** Creator-only. Null clears the override so the Destination decides. */
+const automationVisibilityUpdateSchema = automationVisibilitySchema
+  .nullable()
+  .optional();
+
 /** Partial edits require the revision returned by the edit read. */
 export const automationUpdateSchema = z.discriminatedUnion("kind", [
   scheduledAutomationEditSchema
@@ -344,12 +356,14 @@ export const automationUpdateSchema = z.discriminatedUnion("kind", [
     .extend({
       kind: z.literal("scheduled"),
       revision: automationRevisionSchema,
+      visibility: automationVisibilityUpdateSchema,
     })
     .strict(),
   eventAutomationEditSchema
     .extend({
       kind: z.literal("event"),
       revision: automationRevisionSchema,
+      visibility: automationVisibilityUpdateSchema,
     })
     .strict(),
 ]);

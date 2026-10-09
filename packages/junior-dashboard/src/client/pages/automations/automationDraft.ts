@@ -26,6 +26,7 @@ export type AutomationDraft = {
   instruction: string;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
+  visibility: AutomationEdit["visibility"];
   schedule?: AutomationScheduleDraft;
   trigger?: Extract<AutomationEdit, { kind: "event" }>["trigger"];
 };
@@ -37,6 +38,7 @@ export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
     instruction: value.instruction,
     credentialMode: value.credentialMode,
     outcomes: value.outcomes,
+    visibility: value.visibility,
     trigger: value.kind === "event" ? value.trigger : undefined,
   };
 }
@@ -99,6 +101,8 @@ export function automationDraftChanges(
     changes.credentialMode = draft.credentialMode;
   if (JSON.stringify(draft.outcomes) !== JSON.stringify(original.outcomes))
     changes.outcomes = draft.outcomes;
+  if (draft.visibility !== original.visibility)
+    changes.visibility = draft.visibility;
   if (original.kind === "scheduled" && draft.schedule)
     changes.schedule = draft.schedule;
   if (

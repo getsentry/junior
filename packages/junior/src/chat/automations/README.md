@@ -1,16 +1,33 @@
 # Automations
 
 This module projects scheduled and event automations for signed-in users. It
-includes automations that the user owns and automations in public destinations
-in the user's linked Slack workspaces.
+includes automations that the user owns and public automations in the user's
+linked Slack workspaces.
 
 The collection filters, sorts, and pages all accessible Automations in SQL.
-Counts use the same access rules. Public access and Destination labels come
-from the Destination directory. Missing or private entries do not grant access.
+Counts use the same access rules. Destination visibility and labels come from
+the Destination directory. Missing or private entries do not grant access.
+
+## Visibility
+
+An Automation is public when its creator override is `public`, or when there
+is no override and its Destination is public. The override is the nullable SQL
+`visibility` column on both Automation tables. It is not in the JSON payload,
+so older workers keep it when they rewrite a row. It is not part of the
+versioned definition.
+
+Only the creator can change the override. Send `visibility` in the edit PATCH:
+`"public"`, `"private"`, or `null` to follow the Destination again.
+
+The override does not change Conversation visibility. For a reader outside a
+private Destination, the API shows the Destination label as "Private channel"
+and omits run Conversation titles. Run transcripts keep the Destination access
+rules. Slack tools still use the Destination visibility to find public
+Automations from another channel.
 
 Scheduled automations run through the heartbeat. Event automations run when a
 matching event arrives. The dashboard can edit Automations that the user owns
-or can read through a public Destination. Pause, resume, and delete stay
+or can read because they are public. Pause, resume, and delete stay
 creator-only on the web.
 
 Deleted automations keep their execution history and title. They do not match

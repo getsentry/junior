@@ -20,7 +20,7 @@ import {
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const retainedScheduledAutomationSchema = scheduledAutomationSchema
-  .omit({ creatorIdentityId: true, title: true })
+  .omit({ creatorIdentityId: true, title: true, visibility: true })
   .extend({
     // Retained rows can predate the channel-only Destination invariant.
     destination: slackDestinationSchema,
@@ -31,7 +31,7 @@ const retainedScheduledAutomationSchema = scheduledAutomationSchema
 
 type ScheduledAutomationRow = Pick<
   typeof juniorSchedulerTasks.$inferSelect,
-  "creatorIdentityId" | "record" | "title"
+  "creatorIdentityId" | "record" | "title" | "visibility"
 >;
 
 /** Decode a retained scheduler task row and reject invalid routing context. */
@@ -43,6 +43,8 @@ export function parseScheduledAutomationRow(
   const {
     creatorIdentityId: legacyCreatorIdentityId,
     title: legacyTitle,
+    // Visibility is SQL-column-backed; ignore any JSON key.
+    visibility: _visibility,
     ...retained
   } = record.data;
   // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
@@ -100,6 +102,7 @@ export function parseScheduledAutomationRow(
     creatorIdentityId,
     status,
     ...(title ? { title } : undefined),
+    ...(row.visibility ? { visibility: row.visibility } : undefined),
   } satisfies ScheduledAutomation;
 }
 
@@ -145,7 +148,7 @@ function requireStoredTask(task: ScheduledAutomation): ScheduledAutomation {
 function scheduledAutomationJsonRecord(
   task: ScheduledAutomation,
 ): ScheduledAutomationRecord {
-  const { title: _title, ...record } = task;
+  const { title: _title, visibility: _visibility, ...record } = task;
   return record;
 }
 
@@ -169,6 +172,7 @@ async function upsertScheduledAutomation(
       status: task.status,
       teamId: task.destination.teamId,
       title,
+      visibility: task.visibility ?? null,
     })
     .onConflictDoUpdate({
       target: juniorSchedulerTasks.id,
@@ -182,6 +186,7 @@ async function upsertScheduledAutomation(
         status: sql`excluded.status`,
         teamId: sql`excluded.team_id`,
         title: sql`excluded.title`,
+        visibility: sql`excluded.visibility`,
       },
     });
 }
@@ -196,6 +201,7 @@ export async function readScheduledAutomation(
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
       title: juniorSchedulerTasks.title,
+      visibility: juniorSchedulerTasks.visibility,
     })
     .from(juniorSchedulerTasks)
     .where(eq(juniorSchedulerTasks.id, taskId))
@@ -212,6 +218,7 @@ async function readListedScheduledAutomations(
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
       title: juniorSchedulerTasks.title,
+      visibility: juniorSchedulerTasks.visibility,
     })
     .from(juniorSchedulerTasks)
     .where(

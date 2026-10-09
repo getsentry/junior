@@ -615,6 +615,7 @@ describe("Slack schedule tools", () => {
     const parsed = parseScheduledAutomationRow({
       creatorIdentityId: task.creatorIdentityId,
       title: task.title ?? null,
+      visibility: null,
       record: {
         ...record,
         destination: legacyDestination,

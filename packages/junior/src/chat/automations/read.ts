@@ -65,6 +65,10 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
+import {
+  effectiveAutomationVisibility,
+  PRIVATE_DESTINATION_LABEL,
+} from "./visibility";
 
 const TASK_EXECUTION_LIST_LIMIT = 100;
 const AUTOMATION_VERSION_LIST_LIMIT = 100;
@@ -224,6 +228,29 @@ async function destinationDetails(
   );
 }
 
+/** Summary fields that depend on the Destination and the creator override. */
+function accessFields(
+  task: ScheduledAutomation | StoredEventAutomation,
+  ownedByViewer: boolean,
+  destination: DestinationDetails,
+) {
+  const insideDestination =
+    ownedByViewer || destination.visibility === "public";
+  return {
+    destination: {
+      channelId: task.destination.channelId,
+      label: insideDestination ? destination.label : PRIVATE_DESTINATION_LABEL,
+      teamId: task.destination.teamId,
+      visibility: destination.visibility,
+    },
+    visibility: effectiveAutomationVisibility(
+      task.visibility,
+      destination.visibility,
+    ),
+    visibilityOverride: task.visibility ?? null,
+  };
+}
+
 function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
   return {
     lastRunStatus: stats?.lastRunStatus,
@@ -263,12 +290,7 @@ function scheduledAutomationSummary(
     createdBy: creatorLabel(task.createdBy),
     createdByEmail: creator?.email,
     createdByAvatarUrl: creator?.avatarUrl,
-    destination: {
-      channelId: task.destination.channelId,
-      label: destination.label,
-      teamId: task.destination.teamId,
-      visibility: destination.visibility,
-    },
+    ...accessFields(task, ownedByViewer, destination),
     id: task.id,
     instruction,
     kind: "scheduled",
@@ -304,12 +326,7 @@ function eventAutomationSummary(
     createdBy: creatorLabel(task.createdBy),
     createdByEmail: creator?.email,
     createdByAvatarUrl: creator?.avatarUrl,
-    destination: {
-      channelId: task.destination.channelId,
-      label: destination.label,
-      teamId: task.destination.teamId,
-      visibility: destination.visibility,
-    },
+    ...accessFields(task, ownedByViewer, destination),
     events: task.trigger.events,
     match: task.trigger.match,
     id: task.id,
@@ -342,7 +359,7 @@ function viewerTeamIds(user: User): string[] {
   ];
 }
 
-/** Resolve an Automation the viewer owns or can read through a public Destination. */
+/** Resolve an Automation the viewer owns or can read because it is public. */
 export async function resolveViewerTaskCandidate(
   user: User,
   kind: "scheduled" | "event",
@@ -359,7 +376,10 @@ export async function resolveViewerTaskCandidate(
     const destination = destinations.get(destinationKey(task.destination));
     const publicToViewer =
       teamIds.includes(task.destination.teamId) &&
-      destination?.visibility === "public";
+      effectiveAutomationVisibility(
+        task.visibility,
+        destination?.visibility,
+      ) === "public";
     if (!ownedByViewer && !publicToViewer) return undefined;
     return {
       kind: "scheduled",
@@ -374,7 +394,8 @@ export async function resolveViewerTaskCandidate(
   const destination = destinations.get(destinationKey(task.destination));
   const publicToViewer =
     teamIds.includes(task.destination.teamId) &&
-    destination?.visibility === "public";
+    effectiveAutomationVisibility(task.visibility, destination?.visibility) ===
+      "public";
   if (!ownedByViewer && !publicToViewer) return undefined;
   return {
     kind: "event",
@@ -518,8 +539,11 @@ export async function readViewerAutomations(
   const visible = selected.filter(
     (candidate) =>
       candidate.ownedByViewer ||
-      destinations.get(destinationKey(candidate.task.destination))
-        ?.visibility === "public",
+      effectiveAutomationVisibility(
+        candidate.task.visibility,
+        destinations.get(destinationKey(candidate.task.destination))
+          ?.visibility,
+      ) === "public",
   );
   const collection = viewerAutomationCollection(user);
   const access = exists(
@@ -596,6 +620,7 @@ async function readDeletedOwnedScheduledAutomations(
       id: juniorSchedulerTasks.id,
       record: juniorSchedulerTasks.record,
       title: juniorSchedulerTasks.title,
+      visibility: juniorSchedulerTasks.visibility,
     })
     .from(juniorSchedulerTasks)
     .where(
@@ -623,6 +648,14 @@ async function readDeletedOwnedEventAutomations(
     user,
     TASK_EXECUTION_LIST_LIMIT,
   );
+}
+
+/** Drop a run Conversation title, which is derived from Destination content. */
+function withoutConversationTitle<T extends { title?: string }>(
+  execution: T,
+): Omit<T, "title"> {
+  const { title: _title, ...rest } = execution;
+  return rest;
 }
 
 function automationTitleForRun(
@@ -669,6 +702,12 @@ export async function readViewerAutomationRuns(
     kind: "scheduled" | "event";
     automationId: string;
   }> = [];
+  // Run titles come from Destination content. Hide them outside the Destination.
+  const hiddenRunTitles = new Set(
+    taskList
+      .filter((task) => !task.owned && !task.destinationPublic)
+      .map((task) => `${task.kind}:${task.id}`),
+  );
   for (const task of taskList) {
     automationTitles.set(
       `${task.kind}:${task.id}`,
@@ -724,7 +763,9 @@ export async function readViewerAutomationRuns(
   });
   return {
     runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
-      ...run,
+      ...(hiddenRunTitles.has(`${run.kind}:${run.automationId}`)
+        ? withoutConversationTitle(run)
+        : run),
       automationTitle: automationTitleForRun(run, automationTitles),
     })),
     truncated: runs.length > TASK_EXECUTION_LIST_LIMIT,
@@ -763,11 +804,17 @@ export async function readViewerAutomationExecutions(
         automationId: id,
       }),
     ]);
+  const showTitles =
+    automation.ownedByViewer || automation.destination.visibility === "public";
   return {
     executionDays,
     executionHours,
     executionSixHours: automationExecutionStatusSixHours(executionHours),
-    executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
+    executions: executions
+      .slice(0, TASK_EXECUTION_LIST_LIMIT)
+      .map((execution) =>
+        showTitles ? execution : withoutConversationTitle(execution),
+      ),
     automation,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
   };

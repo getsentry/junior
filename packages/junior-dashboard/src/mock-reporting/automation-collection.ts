@@ -27,8 +27,7 @@ export function mockAutomationCollection(
         `${automation.title} ${automation.instruction} ${automation.kind === "event" ? automation.resource : ""}`.toLowerCase();
       return (
         (input.scope !== "mine" || automation.ownedByViewer) &&
-        (input.scope !== "public" ||
-          automation.destination.visibility === "public") &&
+        (input.scope !== "public" || automation.visibility === "public") &&
         (input.scope !== "attention" ||
           (automation.status !== "paused" &&
             automation.status !== "completed" &&
@@ -71,12 +70,10 @@ export function mockAutomationCollection(
     counts: {
       all: all.length,
       mine: all.filter((automation) => automation.ownedByViewer).length,
-      public: all.filter(
-        (automation) => automation.destination.visibility === "public",
-      ).length,
-      private: all.filter(
-        (automation) => automation.destination.visibility === "private",
-      ).length,
+      public: all.filter((automation) => automation.visibility === "public")
+        .length,
+      private: all.filter((automation) => automation.visibility === "private")
+        .length,
     },
     creators: [
       ...new Map(

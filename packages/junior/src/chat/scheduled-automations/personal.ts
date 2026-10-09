@@ -145,6 +145,7 @@ export async function listViewerScheduledAutomations(
         id: juniorSchedulerTasks.id,
         record: juniorSchedulerTasks.record,
         title: juniorSchedulerTasks.title,
+        visibility: juniorSchedulerTasks.visibility,
       })
       .from(juniorSchedulerTasks)
       .where(

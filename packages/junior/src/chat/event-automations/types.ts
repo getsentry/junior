@@ -7,6 +7,7 @@ import {
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import type { AutomationVisibility } from "@/chat/automations/visibility";
 
 /** Keep indexed event-automation selectors within PostgreSQL B-tree entry limits. */
 export const EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH = 300;
@@ -64,4 +65,6 @@ export type EventAutomation = z.output<typeof eventAutomationSchema> & {
    * SQL-backed column; never stored inside the JSON task payload.
    */
   title?: string;
+  /** SQL-backed creator override. Missing follows the Destination. */
+  visibility?: AutomationVisibility;
 };

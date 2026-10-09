@@ -164,7 +164,7 @@ test("public non-creators edit settings without creator-only controls", async ({
   const state = await mockAutomationEditor(page, "event", "event-2");
   await page.goto(`${dashboard.baseURL}/automations/event/event-2/edit`);
   await expect(
-    page.getByText(/You can edit it because it is in a public channel/),
+    page.getByText(/You can edit it because it is\s+public/),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Add message" })).toHaveCount(
     0,

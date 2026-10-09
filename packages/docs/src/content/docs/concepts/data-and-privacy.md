@@ -35,6 +35,8 @@ Junior uses normalized events instead of storing complete webhook payloads. Secr
 
 The Slack destination controls conversation visibility. Private transcripts are available only to authorized participants. Child conversations, artifacts, and plugin records inherit the parent boundary.
 
+Automation visibility follows the destination by default. The creator can make an automation public or private in the dashboard editor. This setting controls who can find and edit the automation. It does not change conversation visibility. People outside a private destination do not see its name or run titles, and they cannot open its run transcripts.
+
 Read access does not grant permission to act with another user's connected account.
 
 ## Redaction and Retention

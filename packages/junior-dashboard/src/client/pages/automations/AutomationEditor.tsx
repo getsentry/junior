@@ -16,6 +16,7 @@ import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
+import { AutomationVisibilityFields } from "./AutomationVisibilityFields";
 import {
   AutomationOutcomeFields,
   AutomationOutcomeList,
@@ -201,7 +202,11 @@ export function AutomationEditor(props: {
             {Object.entries(changes).map(([key, value]) => (
               <section key={key} className="my-4">
                 <h3 className="text-sm font-semibold capitalize">
-                  {key === "credentialMode" ? "Credentials" : key}
+                  {key === "credentialMode"
+                    ? "Credentials"
+                    : key === "visibility"
+                      ? "Who can see it"
+                      : key}
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -236,9 +241,10 @@ export function AutomationEditor(props: {
       ) : null}
       {owned ? null : (
         <p className="mt-0 mb-6 max-w-2xl text-sm leading-relaxed text-dashboard-text-muted">
-          {creator} created this automation. You can edit it because it is in a
-          public channel. Only {creator} can change where results go or turn on
-          their connected accounts. Version history keeps every saved change.
+          {creator} created this automation. You can edit it because it is
+          public. Only {creator} can change where results go, change who can see
+          it, or turn on their connected accounts. Version history keeps every
+          saved change.
         </p>
       )}
       <fieldset disabled={save.isPending} className="min-w-0">
@@ -404,6 +410,14 @@ export function AutomationEditor(props: {
             <p role="alert">{fieldError("credentialMode")}</p>
           ) : null}
         </AutomationFormSection>
+        <AutomationVisibilityFields
+          value={draft.visibility}
+          destination={props.summary.destination}
+          owned={owned}
+          creator={creator}
+          error={fieldError("visibility")}
+          onChange={(visibility) => change({ visibility })}
+        />
       </fieldset>
       <p className="mb-5 text-xs leading-relaxed text-dashboard-text-muted sm:hidden">
         Changes apply to future work. Saving does not run this automation.

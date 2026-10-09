@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import type { AutomationVisibility } from "@/chat/automations/visibility";
 import type {
   ScheduledRun,
   ScheduledAutomationRecord,
@@ -20,6 +21,8 @@ export const juniorSchedulerTasks = pgTable(
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     /** Short display title generated from the task instruction. */
     title: text("title"),
+    /** Creator override for who can see the Automation. Null follows the Destination. */
+    visibility: text("visibility").$type<AutomationVisibility>(),
     record: jsonb("record").$type<ScheduledAutomationRecord>().notNull(),
   },
   (table) => [

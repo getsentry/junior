@@ -14,6 +14,7 @@ import {
   juniorEventAutomations,
   type EventAutomationStatus,
 } from "@/db/schema/event-automations";
+import type { AutomationVisibility } from "@/chat/automations/visibility";
 import { eventAutomationSchema, type EventAutomation } from "./types";
 
 // Older workers can still write thread destinations during deployment.
@@ -26,6 +27,7 @@ type EventAutomationRow = {
   status?: EventAutomationStatus | null;
   task: unknown;
   title: string | null;
+  visibility: AutomationVisibility | null;
 };
 
 /** Live event automation plus retained SQL status for history after delete. */
@@ -40,6 +42,7 @@ function eventAutomationJsonPayload(
   const {
     status: _status,
     title: _title,
+    visibility: _visibility,
     ...payload
   } = task as StoredEventAutomation;
   return payload;
@@ -56,9 +59,10 @@ export function parseEventAutomationRow(
           unknown
         >)
       : row.task;
-  // Title is SQL-column-backed; ignore any legacy JSON title key.
-  if (raw && typeof raw === "object" && "title" in raw) {
-    delete raw.title;
+  // Title and visibility are SQL-column-backed; ignore any JSON keys.
+  if (raw && typeof raw === "object") {
+    delete (raw as Record<string, unknown>).title;
+    delete (raw as Record<string, unknown>).visibility;
   }
   // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
   // are unsupported. Migration 0041 backfills all rows present at upgrade time.
@@ -84,6 +88,7 @@ export function parseEventAutomationRow(
     }),
     status: row.status ?? "active",
     ...(title ? { title } : undefined),
+    ...(row.visibility ? { visibility: row.visibility } : undefined),
   };
 }
 
@@ -101,6 +106,7 @@ export async function getEventAutomation(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     })
     .from(juniorEventAutomations)
     .where(eq(juniorEventAutomations.id, id))
@@ -115,6 +121,7 @@ export async function createEventAutomation(
 ): Promise<StoredEventAutomation> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
+  const visibility = task.visibility ?? null;
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(juniorEventAutomations)
@@ -126,6 +133,7 @@ export async function createEventAutomation(
         createdAtMs: parsed.createdAtMs,
         status: "active",
         title,
+        visibility,
         task: parsed,
       })
       .onConflictDoNothing()
@@ -133,6 +141,7 @@ export async function createEventAutomation(
         status: juniorEventAutomations.status,
         task: juniorEventAutomations.task,
         title: juniorEventAutomations.title,
+        visibility: juniorEventAutomations.visibility,
       });
     if (inserted[0]) {
       const created = parseEventAutomationRow(inserted[0]);
@@ -159,6 +168,7 @@ export async function createEventAutomation(
         identifier: parsed.trigger.identifier,
         status: "active",
         title,
+        visibility,
         task: parsed,
       })
       .where(
@@ -171,6 +181,7 @@ export async function createEventAutomation(
         status: juniorEventAutomations.status,
         task: juniorEventAutomations.task,
         title: juniorEventAutomations.title,
+        visibility: juniorEventAutomations.visibility,
       });
     if (!rows[0]) {
       return (
@@ -199,12 +210,14 @@ export async function saveEventAutomation(
 ): Promise<StoredEventAutomation | undefined> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
+  const visibility = task.visibility ?? null;
   return db.transaction(async (tx) => {
     const rows = await tx
       .select({
         status: juniorEventAutomations.status,
         task: juniorEventAutomations.task,
         title: juniorEventAutomations.title,
+        visibility: juniorEventAutomations.visibility,
       })
       .from(juniorEventAutomations)
       .where(eq(juniorEventAutomations.id, parsed.id))
@@ -219,6 +232,7 @@ export async function saveEventAutomation(
         namespace: parsed.trigger.namespace,
         identifier: parsed.trigger.identifier,
         title,
+        visibility,
         task: parsed,
       })
       .where(eq(juniorEventAutomations.id, parsed.id))
@@ -226,6 +240,7 @@ export async function saveEventAutomation(
         status: juniorEventAutomations.status,
         task: juniorEventAutomations.task,
         title: juniorEventAutomations.title,
+        visibility: juniorEventAutomations.visibility,
       });
     const saved = parseEventAutomationRow(updated[0]!);
     await recordAutomationVersion(tx, "event", saved, current, editedBy);
@@ -246,6 +261,7 @@ export async function deleteEventAutomation(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     });
   return rows[0] ? parseEventAutomationRow(rows[0]) : undefined;
 }
@@ -260,6 +276,7 @@ export async function listEventAutomationsForTeam(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     })
     .from(juniorEventAutomations)
     .where(
@@ -320,6 +337,7 @@ export async function listDeletedEventAutomationsCreatedBy(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     })
     .from(juniorEventAutomations)
     .where(and(ownership, eq(juniorEventAutomations.status, "deleted")))
@@ -356,6 +374,7 @@ export async function collectEventAutomationMatchKeys(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     })
     .from(juniorEventAutomations)
     .where(
@@ -394,6 +413,7 @@ export async function findMatchingEventAutomations(
       status: juniorEventAutomations.status,
       task: juniorEventAutomations.task,
       title: juniorEventAutomations.title,
+      visibility: juniorEventAutomations.visibility,
     })
     .from(juniorEventAutomations)
     .where(

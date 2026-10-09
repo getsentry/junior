@@ -22,11 +22,13 @@ import {
   juniorEventAutomations,
   juniorSchedulerTasks,
 } from "@/db/schema";
+import { PRIVATE_DESTINATION_LABEL } from "./visibility";
 
 /**
  * The web collection applies access before counts, filter options, and paging.
  * Keep its ownership rules aligned with the direct Automation reader. A public
- * Destination only grants access inside a viewer's linked Slack workspaces.
+ * Automation only grants access inside a viewer's linked Slack workspaces. The
+ * creator's visibility override wins over the Destination visibility.
  */
 export function viewerAutomationCollection(user: User) {
   const db = getDb();
@@ -53,13 +55,25 @@ export function viewerAutomationCollection(user: User) {
       ),
     ) ?? sql`false`;
   const publicDestination = sql<boolean>`coalesce(${destination.visibility} = 'public', false)`;
+  // A creator override wins. Without one, the Destination decides.
+  function publicAutomation(visibility: SQLWrapper) {
+    return sql<boolean>`coalesce(${visibility} = 'public', ${destination.visibility} = 'public', false)`;
+  }
   const scheduledPublic = and(
     inArray(scheduled.teamId, teamIds),
-    publicDestination,
+    publicAutomation(scheduled.visibility),
     ne(scheduled.status, "completed"),
   )!;
-  const eventPublic = and(inArray(event.teamId, teamIds), publicDestination)!;
-  function fields(record: SQLWrapper, teamId: SQLWrapper) {
+  const eventPublic = and(
+    inArray(event.teamId, teamIds),
+    publicAutomation(event.visibility),
+  )!;
+  function fields(
+    record: SQLWrapper,
+    teamId: SQLWrapper,
+    visibility: SQLWrapper,
+    owned: SQLWrapper,
+  ) {
     return {
       creator:
         sql<string>`${teamId} || ':' || (${record}->'createdBy'->>'slackUserId')`.as(
@@ -73,11 +87,13 @@ export function viewerAutomationCollection(user: User) {
         sql<string>`${teamId} || ':' || (${record}->'destination'->>'channelId')`.as(
           "destination",
         ),
+      // Do not show a private Destination name to readers outside it.
       destinationLabel:
-        sql<string>`coalesce(nullif(${destination.displayName}, ''), ${record}->'destination'->>'channelId')`.as(
+        sql<string>`case when ${owned} or ${publicDestination} then coalesce(nullif(${destination.displayName}, ''), ${record}->'destination'->>'channelId') else ${PRIVATE_DESTINATION_LABEL} end`.as(
           "destination_label",
         ),
-      isPublic: publicDestination.as("is_public"),
+      destinationPublic: publicDestination.as("destination_public"),
+      isPublic: publicAutomation(visibility).as("is_public"),
       instruction: sql<string>`${record}->'task'->>'text'`.as("instruction"),
     };
   }
@@ -124,7 +140,12 @@ export function viewerAutomationCollection(user: User) {
           ),
         owned: sql<boolean>`${scheduledOwned}`.as("owned"),
         resource: sql<string>`''`.as("resource"),
-        ...fields(scheduled.record, scheduled.teamId),
+        ...fields(
+          scheduled.record,
+          scheduled.teamId,
+          scheduled.visibility,
+          scheduledOwned,
+        ),
       })
       .from(scheduled)
       .leftJoin(
@@ -159,7 +180,7 @@ export function viewerAutomationCollection(user: User) {
           sql<string>`concat_ws(' ', ${event.identifier}, ${event.task}->'trigger'->>'label', ${event.namespace})`.as(
             "resource",
           ),
-        ...fields(event.task, event.teamId),
+        ...fields(event.task, event.teamId, event.visibility, eventOwned),
       })
       .from(event)
       .leftJoin(destination, destinationJoin(event.task, event.teamId))

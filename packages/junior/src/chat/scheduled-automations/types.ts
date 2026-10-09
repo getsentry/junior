@@ -4,6 +4,7 @@ import {
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { automationVisibilitySchema } from "@/chat/automations/visibility";
 
 const scheduledAutomationStatusSchema = z.enum([
   "active",
@@ -113,6 +114,8 @@ export const scheduledAutomationSchema = z
     task: z.object({ text: z.string() }).strict(),
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),
+    /** SQL-backed creator override. Missing follows the Destination. */
+    visibility: automationVisibilitySchema.optional(),
     updatedAtMs: z.number(),
   })
   .strict();
@@ -136,7 +139,10 @@ export const scheduledRunSchema = z
 
 export type ScheduledAutomation = z.output<typeof scheduledAutomationSchema>;
 export type ScheduledRun = z.output<typeof scheduledRunSchema>;
-export type ScheduledAutomationRecord = Omit<ScheduledAutomation, "title">;
+export type ScheduledAutomationRecord = Omit<
+  ScheduledAutomation,
+  "title" | "visibility"
+>;
 export type ScheduledAutomationPrincipal = ScheduledAutomation["createdBy"];
 export type ScheduledAutomationExecutionActor = NonNullable<
   ScheduledAutomation["executionActor"]

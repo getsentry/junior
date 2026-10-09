@@ -35,6 +35,7 @@ import {
   context as eventContext,
 } from "../../fixtures/event-automations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+import { juniorDestinations } from "@/db/schema";
 
 const destination = {
   platform: "slack" as const,
@@ -231,6 +232,89 @@ describe("Automation edit API", () => {
         expect(
           await (await app.request(`${url}/versions`)).json(),
         ).toMatchObject({ versions: [{ version: 1 }] });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test.each(["scheduled", "event"] as const)(
+    "lets only the %s creator override who can see and edit it",
+    async (kind) => {
+      const { app, fixture, id, read, patch } = await setup(kind);
+      const reader = "reader@example.com";
+      const save = async (
+        fields: {
+          instruction?: string;
+          visibility?: "private" | "public" | null;
+        },
+        viewer?: string,
+      ) =>
+        patch({ kind, revision: (await read()).revision, ...fields }, viewer);
+      const setChannel = (visibility: "private" | "public") =>
+        getDb().update(juniorDestinations).set({ visibility });
+      const readerGet = async (path: string) =>
+        app.request(path, { headers: { "test-viewer": reader } });
+      const readerTotal = async () =>
+        (
+          (await (await readerGet("/api/automations")).json()) as {
+            total: number;
+          }
+        ).total;
+      try {
+        await setChannel("private");
+        expect(await readerTotal()).toBe(0);
+        expect((await save({ visibility: "public" }, reader)).status).toBe(404);
+        // The creator makes a private-channel Automation public.
+        expect((await save({ visibility: "public" })).status).toBe(200);
+        expect(await read()).toMatchObject({ visibility: "public" });
+        expect(
+          await (await readerGet("/api/automations")).json(),
+        ).toMatchObject({
+          total: 1,
+          automations: [
+            {
+              id,
+              ownedByViewer: false,
+              visibility: "public",
+              visibilityOverride: "public",
+              // The private channel name stays hidden from readers outside it.
+              destination: { label: "Private channel", visibility: "private" },
+            },
+          ],
+        });
+        // Public readers can edit, but cannot change who can see it.
+        expect(
+          (await save({ instruction: "Shared edit" }, reader)).status,
+        ).toBe(200);
+        const denied = await save({ visibility: null }, reader);
+        expect(denied.status).toBe(400);
+        expect(await denied.json()).toMatchObject({
+          fields: { visibility: [expect.any(String)] },
+        });
+        expect(await read()).toMatchObject({
+          instruction: "Shared edit",
+          visibility: "public",
+        });
+        // Clearing the override follows the Destination again.
+        expect((await save({ visibility: null })).status).toBe(200);
+        expect(await readerTotal()).toBe(0);
+        // A private override hides an Automation in a public channel.
+        await setChannel("public");
+        expect(await readerTotal()).toBe(1);
+        expect((await save({ visibility: "private" })).status).toBe(200);
+        expect(await readerTotal()).toBe(0);
+        expect(
+          (await readerGet(`/api/automations/${kind}/${id}/edit`)).status,
+        ).toBe(404);
+        // Visibility is not part of the versioned definition.
+        expect(
+          (
+            await (
+              await app.request(`/api/automations/${kind}/${id}/versions`)
+            ).json()
+          ).versions,
+        ).toHaveLength(2);
       } finally {
         await fixture.close();
       }

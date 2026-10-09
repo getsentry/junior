@@ -4,8 +4,8 @@ Core owns validation, edit access, creator-only rules, revision checks,
 Schedule previews, and the Event catalog. Preview requests cannot save or run
 work. Completed scheduled Automations remain read-only.
 
-Owners and public Destination readers can edit. For a public reader, the
-editor shows outcomes as read-only and blocks turning on creator credential
+Owners and public readers can edit. For a public reader, the editor shows
+outcomes and visibility as read-only and blocks turning on creator credential
 use. It warns that an instruction or event selector change switches to system
 credentials. Pause and resume stay creator-only.
 

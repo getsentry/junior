@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import type { AutomationVisibility } from "@/chat/automations/visibility";
 import type { EventAutomation } from "@/chat/event-automations/types";
 
 /** Lifecycle status for one retained event automation row. */
@@ -21,6 +22,8 @@ export const juniorEventAutomations = pgTable(
       .default("active"),
     /** Short display title generated from the task instruction. */
     title: text("title"),
+    /** Creator override for who can see the Automation. Null follows the Destination. */
+    visibility: text("visibility").$type<AutomationVisibility>(),
     task: jsonb("task_json").$type<EventAutomation>().notNull(),
   },
   (table) => [
