@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/actors.eval.ts > Memory with Multiple Actors > when a non-Actor states a first-person preference in a shared thread, store no user memory for the Actor",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "14ca3df71692",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_025c18f9d94e0df7016ac920494a9c87d1ba71034d685eeabc\",\"reasoningEncryptedContent\":\"gAAAAABqySBKR7VjrLdCZcmR7tsQXMj1hcLzhNnyhco6kSwfiTPoff0aAoJf6hLz56SbwA8R6045OM_el3jzMNFJECd3BVj_5_JKnLwaZkUj_VpnQk_hQaNphcbv1lJX8xXvuSUTOc5EFiZfGV22wCqE4Qlw6YMf_QckXCrxMJrvg0cmNYQmoAsmz6vIUsmpZl6OzT_b20XlV5nK6q2ISdfEv1c7KooDAVAAPtoS4cdXJY6LnFDIJmWBBevdQmDYNg4zoQw6p7StgXltKylv_fRiDEYEB0d_mHkN1zT7FYg-7EO_L7u1wEUurxFUUJzMLUno1A10fs74ojdv_wGbYbNQyIRM8aJDGycV8zrxQUqwIm0goRoSjD_08sCWGzrz3wmiliX_cDQGCGx0rqwkdcdxCcJhohxu41KAovMP1r7pwuvkOTty-JS4JMVm2fdtlEQKtAch9BaencojGeq8CFy5qxFC3oo-0oJNvCI9wHiReBqgtgdDCcFRA3qxi1W8WX6pzuJ_LxeZNlfY_9udtssmICa6WuLUZ5G3sahIJ8lRn5hUTuYl7cOilxGaf_Y6CAtG0TGaqww_m6CsyiFMTyy7vBIcmYL7oH938O42r6DlZF6mEo7muz31QMheB-34-63owFfHemTcDRr3K9l0yGuoJLDFNfb7HQGOp3dTw6IU3B3e3AZz6xDybOWZUk6PyIa-gAs6_RfBtw1i-FIOW4Ufj2FZnuVTvv6_8fkPt-S8MtjmM6s6_iQj1COjR9RRWXzMyB2OOG5-8Huy4YvGbNovnTbOyH2aZZbX4Njnv_jLt9HOkpEwbuTvf4hgLpt2UiC-7uzDH-AgWfcs8iSUKv_cR_M0Bccsq0VNiI81BAJbuTMrHVcC-SnMxsi87y3KEP3CnQ9AqMArJnmsDCWzrVoPWtRRjcj5wgvDDbWHI3bqluT_-G9dePtMitdHd4Wj8c2piy2oNYLRuJqH-YicajAz1ZjgeKpVnT6YMblZjuZeLoh3hEmnqmtUTb3M5zEY6FWtYhB_d-5kUzf7i_9Gkud2kn1fUpmnaMrBrjGvnUropI3h5mSxYyqSGnnLCV-auWd0rTNdXEp7tShy0Yte386nhz-q91YGpTtuYfpz5GCKcPbX8PjCWQfdaBetZN-EWsUv1VV2W7SGUHp90SGAPbyvh_T6TUlNdJYTHZG5qhcKbaUe6TtjcnzaLn0Y8rcSGH4wM2MRu4x5vzzGwcN-jOB5SeLV_VbXyC9Gz66cFIka-s-kPCX9bCUtPejkC7Iqux7GsL7Q6TQsQLoP9F63fE41EWWJk2uaEJDI-t0yL965g25pY89mepx9KzuBn2m-KTR1N45fdVob61v6EtnqWquCt9dbShYgucuu0wsCEW_7oyBDaYE4gXqyzD3TlWHjflwxCQnda3TxVyMRps_24iL3gunpdWneKnY0mmSDV9u-w_vLpFqVgck8IOqatIS1Tw-EJ6gDhicT8K3cQ-uO7T4JjEcb52Mn5u-G-txMZR9UzExkaFdh6Vq4TUS-hv47Lo-s_XynLHDRduQIGrLGZoaRuTF2H2X2b8GxT6YRc2xfl1-uP42-zgLwjubGRkiWPJuU63kKTUoPj3UMgQM7HZ2Mv5j9F_wLmy1qXkE86fFRA7w06RW_1ZrpOC3Upnb_dGdI4ow0cTXzaXrNzK4paL_F1KxNSz_BLS6nM8NmNGRr7yv_evSfekT5duuVopYAV7ArQ30JnXV3KHAUmIh84g-nMKbEYIO8glEAy4So0mkDF7VfV2vw9eC8QVzhkb-wVPhez50HUyAyo_i22SmFIQcuGlv0xSMfNmGz5cIXEdZs3PU8fBOS6357ChsoxptOmlz9TthASDvLuOTeQAt8IdXgBMYyTMu0wCa8y8vm3L-gVQOSoz26TtZz1IOKBnVFFWwt9gO9js5Fquyk1hUlpNnp0IojsLB4mw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"The rollout checklist omitted cache invalidation; support detected the issue through stale pages.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[1]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_025c18f9d94e0df7016ac9204a1fac87d1b96eaa988a2e9c32\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1639,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1636},\"outputTokens\":{\"total\":142,\"text\":51,\"reasoning\":91},\"raw\":{\"input_tokens\":1639,\"input_tokens_details\":{\"cache_write_tokens\":1636,\"cached_tokens\":0},\"output_tokens\":142,\"output_tokens_details\":{\"reasoning_tokens\":91},\"total_tokens\":1781}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_025c18f9d94e0df7016ac92048dc3c87d1a471996c101227e3\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565896785,\"endTime\":1791565899094,\"providerRequestId\":\"req_3362758b3aec4068926c1d9f63c26cec\",\"statusCode\":200,\"providerResponseId\":\"resp_025c18f9d94e0df7016ac92048dc3c87d1a471996c101227e3\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"0b43cf474360073e25b205f5d2cd48b8\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002758\",\"marketCost\":\"0.0002758\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002758\",\"inferenceCost\":\"0.0002758\",\"inputInferenceCost\":\"0.0002048\",\"outputInferenceCost\":\"0.000071\",\"generationId\":\"gen_01M4GTC71J45JD1500PZ6PWHKG\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

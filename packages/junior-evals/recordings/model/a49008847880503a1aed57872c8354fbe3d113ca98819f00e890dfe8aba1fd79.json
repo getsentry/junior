@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/files.eval.ts > Coding File Tools > when a coding request requires architecture reasoning, give a concrete recommendation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "1e0ce6d31d21",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0f4e6fe5eddb7e7d016ac91f560b9487d1befc592f71b05adb\",\"reasoningEncryptedContent\":\"gAAAAABqyR9X_aFVths2A6POl10iL9eCA4BCnO6MJw5t5deUDCONpArPNQRljTIHV9RQoaIoow7648WJHxPZIa1uw4h5_G-4WzNd0T_3at5j7E7mgQbjbheBbBpvWydIR2YRriDQSQN9Q7jUOVDjaWAqzcUq8Wt34kN8l4rnqBg6j6Z7WFhUhgJRkXEJkBup5VNEMkWHE1IUZv0ra4nHebztoqhyeFKSuYIsDKF57OHdrOkdMOL11AzFeobtAtZAf2y6Q7ich_E5OmbpPzM2ftDLtcgebwJ4IJwV3IMOahs4s9wPFFCxE0b94-uaopIc95VK9aB-CwoLJPp49qUs26ELk7lKlq9lnAGfjvZqQRtCGL4BRvnvhbOgauZjARwSkgCv8as8jGLfAsTkpH8pz-QcmLeqjRoNjHEje0mgHkS6_2WOmBZZhDzJ_9Pwjvw7ExaNJoaXn1sLO83N3397bkPWSVsS3CowZmVsMf6ZnGzOLV15zTUrWLsB7XJPv_-1p1bKqA2WRZJajNSQIvw1J5iUK82aYXAtDsnJO8xxuyJecr_TZp8jfCEKvbDkNN9fgmLYXh9HZwOXqCrogRQATua_xwHBDbmIn2XHMz4cwT2BmYTwbrLliJDVzYH5dqyenAPD-BPEj-fnFZ3RnISycUikg-KLd93g8wtTWuqoGMk93ViLLgEVNVhTMjGZXWVSxmJAiGMNW7SXMhwVUmhYLdhaJHbl_o6ZHzkQKHa_xRlrbapn4hmhFMHw89ZZK5g2VyFqGW2Y_zeVVksWO2gIAhtF1yMlGeDW3jF3FCEWBaDEg30Xgp4aq-zUe-jdD-aPnlNKjgHFnnn6hLRU3D-s8omWXqUuEdVIw_mJkxg8JZE7woKGGgqCFw2PufGRC1IKWMJP0mcuEUjWqiIrHb03xIFQzf-1AhanE30z3hT_7W9d-QuKQFjYnQNayYVvks3R55ZKK2Bj9UPGk4B-6Q6qt6zWa7esOWZLyhAT1q5n1E5bJKvdwn1d1mjDuPa3cbjGBw8wGJOY0tbwOL14b0bn78yIHG35_4WVDwdLVxKMTETx1Iml0Y35zCPakVClXWIVb3h4VnL35tnTuEmgwUHbkLvclqKz-MFiuo9H_ezpOIzQkya8jz2OrsLTtdYTrgGaQOyoxdAUwQmwkne8Q0P5NlyC6ytPAyp2fNgbbMt_RtZSJgJXAgZivbuXLKUupNHEQ-DEPlYLiRzjJZAiNcdeQvJ1N4FLgGiEm068q4svrtuRm_MitWRFYtBbhw3QyDs20ZLUW5Cktw4pIGujNGwHChkSPvjnTJT2m6VK92hvWezICy_NoyXc3TQ8qQns_2j0ywtWAuHWWFyUAdgsfrHSlZDZuhEibIuYI4UZit9Ko8MDFi74MqsZ1m8KVszp-mzWNndQbUwE945DEm57bH_uopcfcCUS8PhqkuIqO0A5mmQ4j0hYYynKLiRqjiXHboDbZ1e-hi9wpzSOXOLCBtLCWjB1xorGDgSflo-vmObdJZ-2AeQudSZ3KMk1-4YmRj-K9biiWCIMedQ1h7vmPCwyiutcDhknlvWO4Movr3-4-MldRie-KQoghBKyK9cVVhol7qB231kYrDYo8Bi7OPWORqjm5QaFCV-RvJQBjzp9PKtUZKS6Rp1ZLsWjTMAqTkZ0DmC3R7g5A_ky1P8org__AAuzTHJe2rPhlj1Fdmoc0Pc0EPCf3WMNpUC8_m13ZsL6wLNRf-B2LFYV8elcATn8JKYOelMAZIVRrRrIG0k4HCm0HPAuT6n-qRJf0Brwy0hZep_2jlqUbzZK9kudUgiek-KADo5YTt6iLmuQ9uIR1Qc7bd5SnzvbhW__gCQRcSsopBzPnxzPBqKMVRstpQ1l_64LucpRcEkdNyfsDgT8GP0UvsqP_9zh-Rq0263Wy0_8yhOQMOgN3TFJWPt2CrE9k3ONqAQELCG9Z8A6wOWtthm-oci7WWiGPnsD8pPvGZqeWjbuamBCr5PxbIoXf3-KzkqFoVClOmUQu8smldHScadrmaFnENrATqvmZW04hpiZozgOTkQ4r0ZC2GJOsnVj243sb69ik5oZtw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"The TypeScript worker's `config.ts` defines `emergencyMode`, while `alerts.ts` receives the mode as an independent argument.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f4e6fe5eddb7e7d016ac91f56feb887d1be60cdbf2d8ca3d4\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1728,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1725},\"outputTokens\":{\"total\":167,\"text\":63,\"reasoning\":104},\"raw\":{\"input_tokens\":1728,\"input_tokens_details\":{\"cache_write_tokens\":1725,\"cached_tokens\":0},\"output_tokens\":167,\"output_tokens_details\":{\"reasoning_tokens\":104},\"total_tokens\":1895}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0f4e6fe5eddb7e7d016ac91f5534f087d1930b061f27eea1bb\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565653107,\"endTime\":1791565655540,\"providerRequestId\":\"req_89dc813fc39440499216944c8dbdc8d8\",\"statusCode\":200,\"providerResponseId\":\"resp_0f4e6fe5eddb7e7d016ac91f5534f087d1930b061f27eea1bb\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"c435b15c7c6155a8c35168f4ab04dc9b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000299425\",\"marketCost\":\"0.000299425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000299425\",\"inferenceCost\":\"0.000299425\",\"inputInferenceCost\":\"0.000215925\",\"outputInferenceCost\":\"0.0000835\",\"generationId\":\"gen_01M4GT4S2X0WHKMBM5561JFP4S\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
