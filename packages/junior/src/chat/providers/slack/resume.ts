@@ -24,7 +24,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   finishedRunReply,
   runDispatchOutcome,
-  runGetsDelivery,
+  deliversFinalText,
 } from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -350,7 +350,7 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    ...(runGetsDelivery(savedRun.dispatch) ? { delivery } : undefined),
+    ...(deliversFinalText(savedRun.dispatch) ? { delivery } : undefined),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {

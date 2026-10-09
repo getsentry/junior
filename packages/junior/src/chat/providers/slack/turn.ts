@@ -149,7 +149,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   finishedRunReply,
   runDispatchOutcome,
-  runGetsDelivery,
+  deliversFinalText,
 } from "@/chat/automation-result";
 import type {
   DispatchTurnContext,
@@ -1138,7 +1138,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            ...(runGetsDelivery(options.execution?.dispatch)
+            ...(deliversFinalText(options.execution?.dispatch)
               ? { delivery: deliverAssistantMessage }
               : undefined),
             durability: {

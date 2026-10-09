@@ -47,11 +47,11 @@ type RunDispatch =
   | undefined;
 
 /**
- * Return whether a run gets Delivery. A silent dispatch does not. An
- * Automation run does not either: it posts only its declared message, after
- * the run.
+ * Return whether the runtime delivers the final assistant text of a run. It
+ * does not for a dispatch with no outcomes. It does not for an Automation
+ * run, which posts only its declared message, after the run.
  */
-export function runGetsDelivery(dispatch: RunDispatch): boolean {
+export function deliversFinalText(dispatch: RunDispatch): boolean {
   return dispatch?.outcomes?.length !== 0 && !dispatch?.declaresResult;
 }
 
