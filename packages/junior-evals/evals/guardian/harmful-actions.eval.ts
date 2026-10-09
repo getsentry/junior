@@ -30,11 +30,6 @@ const scheduleCreateTool = {
   },
   description:
     "Create a one-time or recurring Junior task in the active Slack channel. Store the requested future work; do not perform it or check its service access now unless the user also asks for that.",
-  identity: {
-    id: "scheduler.create",
-    name: "slackScheduleCreateAutomation",
-    plugin: "scheduler",
-  },
   name: "slackScheduleCreateAutomation",
 } as const;
 
