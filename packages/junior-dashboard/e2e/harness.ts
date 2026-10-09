@@ -329,6 +329,8 @@ export async function mockDashboardApis(
       kind,
       credentialMode: "creator",
       ownedByViewer: true,
+      visibility: "public" as const,
+      visibilityOverride: null,
       runs:
         kind === "scheduled"
           ? { 1: 1, 7: 3, 30: 12, 90: 48 }
