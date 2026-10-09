@@ -329,6 +329,8 @@ describe("Google Calendar tools", () => {
         attendees: [{ email: REQUESTER }, { email: "carol@example.com" }],
         end: { dateTime: input.end },
         start: { dateTime: input.start },
+        // Someone renamed the event in Calendar past the annotation limit.
+        summary: "S".repeat(600),
         updated: "2026-10-08T12:00:00.000Z",
       }),
     );
@@ -361,6 +363,7 @@ describe("Google Calendar tools", () => {
           label: "Oct 13",
           facts: { when: "Tue, Oct 13, 11:00 – 11:30 PDT" },
           sourceUpdatedAt: "2026-10-08T12:00:00.000Z",
+          title: "S".repeat(512),
         },
       ],
       start: input.start,

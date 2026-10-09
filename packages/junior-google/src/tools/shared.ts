@@ -205,16 +205,20 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
       timeZone,
     }).format(startMs),
     objectType: "calendar_event",
-    title: event.summary || "Untitled event",
+    // People can edit the event in Calendar. Shorten long values so a
+    // completed change never fails on the annotation schema.
+    title: (event.summary?.trim() || "Untitled event").slice(0, 512),
     url: event.htmlLink ?? null,
-    description: event.description?.trim() || undefined,
+    description: event.description?.trim().slice(0, 4000) || undefined,
     sourceUpdatedAt: event.updated,
     facts: {
       type: "calendar_event",
       when,
       attendees: (event.attendees ?? [])
         .slice(0, 5)
-        .map((attendee) => attendee.displayName || attendee.email),
+        .map((attendee) =>
+          (attendee.displayName?.trim() || attendee.email).slice(0, 160),
+        ),
     },
   };
   return {
