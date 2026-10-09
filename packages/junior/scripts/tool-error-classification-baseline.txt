@@ -24,6 +24,8 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubError(listPayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubError(deletePayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubError(createPayload)}`, );
+packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
+packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 # Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
 packages/junior-vercel/src/tools/actions.ts	throw new Error(message);

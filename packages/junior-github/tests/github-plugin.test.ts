@@ -2208,6 +2208,46 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
+  it.each([
+    ["MarkPullRequestReadyForReview", "markPullRequestReadyForReview"],
+    ["ConvertPullRequestToDraft", "convertPullRequestToDraft"],
+  ])(
+    "allows only the typed %s mutation with repository scope",
+    async (operationName, field) => {
+      const bodyText = JSON.stringify({
+        operationName,
+        query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
+        variables: { id: "PR_kwDO" },
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.draft.update:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).resolves.toMatchObject({
+        name: "installation-write",
+        access: "write",
+      });
+      await expect(
+        grantForEgress({
+          method: "POST",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+      await expect(
+        grantForEgress({
+          method: "POST",
+          operation: "github.pull.review-thread.resolve:getsentry/junior",
+          url: "https://api.github.com/graphql",
+          bodyText,
+        }),
+      ).rejects.toThrow("GraphQL mutations are not enabled");
+    },
+  );
+
   it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(
       grantForEgress({

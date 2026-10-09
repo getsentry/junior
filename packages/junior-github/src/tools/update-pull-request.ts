@@ -44,16 +44,44 @@ const inputSchema = z
       .enum(["open", "closed"])
       .optional()
       .describe("Replacement pull request state."),
+    draft: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set false to mark a draft pull request ready for review, or true to convert it back to a draft.",
+      ),
   })
   .strict()
   .refine(
-    ({ title, body, base, state }) =>
+    ({ title, body, base, state, draft }) =>
       title !== undefined ||
       body !== undefined ||
       base !== undefined ||
-      state !== undefined,
+      state !== undefined ||
+      draft !== undefined,
     { message: "At least one pull request field must be provided." },
   );
+
+// GitHub's REST API cannot change draft state; only these GraphQL mutations can.
+// Both alias the mutation field to `result` so one schema reads either response.
+const MARK_READY_FOR_REVIEW = {
+  operationName: "MarkPullRequestReadyForReview",
+  query:
+    "mutation MarkPullRequestReadyForReview($id: ID!) { result: markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
+};
+const CONVERT_TO_DRAFT = {
+  operationName: "ConvertPullRequestToDraft",
+  query:
+    "mutation ConvertPullRequestToDraft($id: ID!) { result: convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }",
+};
+const draftMutationResponseSchema = z.object({
+  data: z.object({
+    result: z.object({ pullRequest: z.object({ isDraft: z.boolean() }) }),
+  }),
+});
+const graphqlErrorsSchema = z.object({
+  errors: z.array(z.object({ message: z.string() })).min(1),
+});
 
 const pullRequestSchema = z.object({
   base: z.string(),
@@ -110,6 +138,46 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
+/** Change draft state through GitHub GraphQL and return the confirmed value. */
+async function setPullRequestDraft(input: {
+  draft: boolean;
+  egress: PluginEgress;
+  nodeId: string;
+  repo: string;
+}): Promise<boolean> {
+  const mutation = input.draft ? CONVERT_TO_DRAFT : MARK_READY_FOR_REVIEW;
+  const response = await input.egress.fetch({
+    provider: "github",
+    operation: `github.pull.draft.update:${input.repo.toLowerCase()}`,
+    request: new Request("https://api.github.com/graphql", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operationName: mutation.operationName,
+        query: mutation.query,
+        variables: { id: input.nodeId },
+      }),
+    }),
+  });
+  const payload = await readJson(response);
+  const isDraft =
+    draftMutationResponseSchema.safeParse(payload).data?.data.result.pullRequest
+      .isDraft;
+  if (!response.ok || isDraft !== input.draft) {
+    throw new Error(
+      `GitHub pull request draft update failed with HTTP ${response.status}: ${githubGraphqlErrorMessage(payload)}`,
+    );
+  }
+  return isDraft;
+}
+
+function githubGraphqlErrorMessage(payload: unknown): string {
+  const result = graphqlErrorsSchema.safeParse(payload);
+  return result.success
+    ? result.data.errors.map((error) => error.message).join("; ")
+    : githubApiErrorMessage(payload);
+}
+
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(ctx: {
   actor?: Actor;
@@ -130,7 +198,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       readOnlyHint: false,
     },
     description:
-      "Update an existing GitHub pull request's title, body, base branch, or open/closed state. Use this instead of raw GitHub API calls when changing PR metadata.",
+      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -157,21 +225,22 @@ export function createGitHubUpdatePullRequestTool(ctx: {
         ...(update.base !== undefined ? { base: update.base } : undefined),
         ...(update.state !== undefined ? { state: update.state } : undefined),
       };
+      const pullUrl = `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${update.number}`;
+      const hasRestUpdate = Object.keys(payload).length > 0;
       const response = await ctx.egress.fetch({
         provider: "github",
-        operation: "github.pull.update",
-        request: new Request(
-          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${update.number}`,
-          {
-            method: "PATCH",
-            headers: {
-              Accept: "application/vnd.github+json",
-              "Content-Type": "application/json",
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-            body: JSON.stringify(payload),
+        operation: hasRestUpdate ? "github.pull.update" : "github.pull.get",
+        request: new Request(pullUrl, {
+          method: hasRestUpdate ? "PATCH" : "GET",
+          headers: {
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            ...(hasRestUpdate
+              ? { "Content-Type": "application/json" }
+              : undefined),
           },
-        ),
+          ...(hasRestUpdate ? { body: JSON.stringify(payload) } : undefined),
+        }),
       });
       const parsed = await readJson(response);
       if (!response.ok) {
@@ -186,11 +255,25 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           draft: z.boolean(),
           html_url: z.string(),
           merged: z.boolean(),
+          node_id: z.string().optional(),
           number: z.number(),
           state: z.string(),
           title: z.string(),
         })
         .parse(parsed);
+      if (update.draft !== undefined && update.draft !== providerResult.draft) {
+        if (!providerResult.node_id) {
+          throw new Error(
+            "GitHub pull request response did not include node_id.",
+          );
+        }
+        providerResult.draft = await setPullRequestDraft({
+          draft: update.draft,
+          egress: ctx.egress,
+          nodeId: providerResult.node_id,
+          repo: repo.ref,
+        });
+      }
       const subscribable = ctx.events.canSubscribe
         ? gitHubPullRequestSubscribable({
             number: providerResult.number,
@@ -210,7 +293,10 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       return {
         objectAnnotations: [
           githubObjectAnnotation({
-            ...githubObjectFacts("code_change", parsed),
+            ...githubObjectFacts("code_change", {
+              ...(parsed as object),
+              draft: providerResult.draft,
+            }),
             repo: repo.ref,
             number: providerResult.number,
             title: providerResult.title,

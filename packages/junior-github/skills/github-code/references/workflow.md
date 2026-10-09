@@ -35,7 +35,7 @@ Open this when making repository edits, not for read-only inspection.
 2. Commit with repo conventions, else `<type>(<scope>): <Subject>` imperative present, no agent branding.
 3. Push with `git push -u origin BRANCH`.
 4. Resolve the actual default branch.
-5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` unless ready-for-review is required).
+5. Update an existing PR for the branch with `github_updatePullRequest`, or create with `github_createPullRequest` (`draft: true` only when work, checks, or decisions remain; otherwise ready for review).
 6. PR title matches the current dominant change, same conventional form as commits.
 7. PR body: short, plain English, what changed and why. Only context the diff cannot show. No empty sections, file lists, commit logs, or Checks/Verification/Test plan blocks. Put local check results in the user report only.
 8. After material follow-up commits, refresh title and body against the current diff.

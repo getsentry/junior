@@ -11,6 +11,7 @@ Use `git` and `gh` for repository work.
 | ------------------------------- | ------------------------------------------------------------------------ |
 | Create PR                       | `github_createPullRequest` (not `gh pr create`)                          |
 | Update PR title/body/base/state | `github_updatePullRequest`                                               |
+| Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`           |
 | Submit PR review                | `github_submitPullRequestReview`                                         |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                  |
 | Clone missing repo              | `github_cloneRepository`; on Workspace match error use `switchWorkspace` |
@@ -33,7 +34,7 @@ Use `git` and `gh` for repository work.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.
 - Stop for an unclear target, missing access, destructive work, or a GitHub permission failure.
-- Unless the user opts out, push completed work and open a draft PR.
+- Unless the user opts out, push completed work and open a PR. Open it ready for review when the work is complete and the checks pass. Open a draft only when work, checks, or decisions remain.
 - Report repo, branch, PR, checks, and skipped checks.
 
 Do not install or repair the GitHub plugin from this skill.
