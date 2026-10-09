@@ -24,6 +24,10 @@ export default defineConfig({
         pluginApiPackageRoot,
         "src/index.ts",
       ),
+      "@sentry/junior-testing": path.resolve(
+        __dirname,
+        "../junior-testing/src",
+      ),
     },
     // Vite 8 resolves tsconfig `paths` natively here:
     // https://vite.dev/config/shared-options.html#resolve-tsconfigpaths

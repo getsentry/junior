@@ -17,7 +17,8 @@
       "@junior-tests/*": ["../junior/tests/*"],
       "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior-memory": ["../junior-memory/src/index.ts"],
-      "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"]
+      "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"],
+      "@sentry/junior-testing/*": ["../junior-testing/src/*"]
     }
   },
   "include": [

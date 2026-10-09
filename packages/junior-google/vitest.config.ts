@@ -8,6 +8,10 @@ export default defineConfig({
         __dirname,
         "../junior-plugin-api/src/index.ts",
       ),
+      "@sentry/junior-testing": path.resolve(
+        __dirname,
+        "../junior-testing/src",
+      ),
     },
   },
   test: {

@@ -39,6 +39,10 @@ export default defineConfig({
         pluginApiPackageRoot,
         "src/index.ts",
       ),
+      "@sentry/junior-testing": path.resolve(
+        __dirname,
+        "../junior-testing/src",
+      ),
     },
     tsconfigPaths: true,
   },

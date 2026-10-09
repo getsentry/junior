@@ -12,7 +12,8 @@
     "allowJs": false,
     "noEmit": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@sentry/junior-testing/*": ["../junior-testing/src/*"]
     },
     "types": ["node", "vitest/globals"],
     "incremental": true
