@@ -177,9 +177,22 @@ export function ChartAxisHtmlLabel(props: {
   );
 }
 
+type ChartBox = { height: number; width: number };
+
+/**
+ * Screen pixels per SVG user unit. The default `preserveAspectRatio` fits the
+ * whole viewBox inside the element box, so the smaller ratio wins.
+ */
+function chartSvgScale(box: ChartBox | undefined, layout: ActivityChartLayout) {
+  if (!box || box.width <= 0 || box.height <= 0) return 1;
+  return Math.min(box.width / layout.width, box.height / layout.height);
+}
+
 /**
  * Render the shared SVG chart shell and provide its live screen scale to labels.
  * SVG text uses user units, so labels invert this scale to remain 12px on screen.
+ * The scale comes from the current element size and viewBox, so a measurement
+ * from an earlier layout is never reused.
  */
 export function ChartSvg(props: {
   "aria-label": string;
@@ -188,21 +201,27 @@ export function ChartSvg(props: {
   layout: ActivityChartLayout;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [scale, setScale] = useState(1);
+  const [box, setBox] = useState<ChartBox>();
 
   useLayoutEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    const updateScale = () => {
-      const matrix = svg.getScreenCTM();
-      const nextScale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
-      setScale(nextScale > 0 ? nextScale : 1);
-    };
-    updateScale();
-    const observer = new ResizeObserver(updateScale);
+    const updateBox = (next: ChartBox) =>
+      setBox((previous) =>
+        previous?.width === next.width && previous.height === next.height
+          ? previous
+          : next,
+      );
+    // Measure before the first paint; the observer reports later changes.
+    updateBox({ height: svg.clientHeight, width: svg.clientWidth });
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateBox(entry.contentRect);
+    });
     observer.observe(svg);
     return () => observer.disconnect();
   }, []);
+
+  const scale = chartSvgScale(box, props.layout);
 
   return (
     <ChartSvgScaleContext value={scale}>
