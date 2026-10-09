@@ -272,9 +272,9 @@ export async function createFixtureAgent(
   const waitForIdle = async (): Promise<void> => {
     const startedAtMs = Date.now();
     for (;;) {
-      // The product delays some deliveries. For example, a watch delivery
-      // waits 30 seconds for more events. The budget starts when the last
-      // delivery is due to start.
+      // The product delays some deliveries. For example, the worker checks
+      // a busy Conversation again after 15 seconds. The budget starts when
+      // the last delivery is due to start.
       const deadline =
         Math.max(startedAtMs, queue.latestStartAtMs()) + IDLE_TIMEOUT_MS;
       const pending = [...queue.pending(), ...background];
@@ -284,6 +284,8 @@ export async function createFixtureAgent(
         if (queue.pending().length === 0 && background.size === 0) break;
         continue;
       }
+      // When only delayed deliveries are left, do not wait for the delay.
+      if (background.size === 0 && queue.startDelayedDelivery()) continue;
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
         throw new Error(

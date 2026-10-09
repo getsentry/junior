@@ -1,0 +1,29 @@
+{
+  "session": "evals/memory/actors.eval.ts > Memory with Multiple Actors > when a non-Actor states a first-person preference in a shared thread, store no user memory for the Actor",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "7cc15abb7ac0",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0ab709a9f763bd47016ac92043d4d487d1a44bf418ca479c48\",\"reasoningEncryptedContent\":\"gAAAAABqySBEr7j2VDiGYxDeM27f5ESO9bat-P1WcOcBOS_vqZrWG8Ja-YehzxmOnM-XapbFvtmmsGaLUALtX0MGDVNh3O5cYSe7mrcUqZgUFClYdqgpe7QnwrvavHsrxclVo2su1xbaClFDJo0cEC1Sx31sUhiIUbEIvOOtwf72PqdKCR_szRKGwalbns5UUgAOAOa06WIiB4zay8SopJwljZcMf2vaA5XBEYiqNIOtUDb5jvVjRzk4NFqowjkPkxu6nMKEQ-rMboCMgyfi1xY4jVlNDDS7g_ec7NwdlOZilUc8ArZVn7GDTHYXpRNwG1u7tsvW0doHkSGEOjd9Gjjb2SHM-8LA7VFSezlKC0pVjRuLyEDx38PHaeQKDiBSgXiDZ3mpam5DYBTYXMMkGHPsso49euIDA_2OLL2oDyqq4jMhWyKrlpni2O3MupkVdhGBGJ_phuHvzpuKMUXR9WCDNay25w22eWoGN_2QOtd0apN_AGjdJIwYfv4arSc1InU2Ow4N9jgMjs89_OeV1-qhiv5IJWQSx9K8W2C9HnUQGE_MghGRt6Ctmfm3T5gEo6E9D_8Bc7SAjjoMoWSbfyfGy7HmFgiHBz2_IVSlpYdTcESe44rd5DYTd4YgCORC0i4gkwcGuncooCIgKkRXiw3hJsr8dUr9XSUcdiEt_krmLdVmG-r-iuBR7mntv9LKjXiURiHCKgDXtMOZYJweTIpWgpi52dp2oeDqWr4b6zbt32kOU8A5zfTWnDD_1P7q9Q1iQv5sRQRqYljy3eoDLLHIGnRJAt0J54AtoVGJZjAaiuF4w_68cYv2VconwodZlHe_HT5wFYMlRKy-TwbQ33cRbNIpelmymqvO2t6xH4PGk6A4I081NFpkf-KzE6dq-8dUXwUgJblWsed4lRopFUnof38oRQDbq6yNRNqcmI0FJwsbA0CSV-D6TTCcOgW5REV4Ja4ovU8LMbvFkXbfoexPyJ3XIhvv7Mb4smPUprb1vXTgbC4pfmyiTzoF_2m0xrvm4j08jYwh-3VOeJ7sdxnvLDFfJbYctpam2qChdfaj1eJc89M7ywnm-SUQp3gjRaSE5-J7oPVnDJ2vjGewJZwe6rq00fLqhoZ2ySfZgx3nhRTfV2ch6uyrqcVu4utWD57D2Hj6b8JXbU9pBN4GPiYPiQk4E2p0jEGt8rL8mIywTke_I40lmNYV8neNUR4MJBDxjqWXiCia2RSqXOxc-Ul0ZJUP2ZOpZIC9LVgLg1mX8BL9MA3p6L_4xdo0pQWY3YrSSBtpvbO_HgDslEBLnGRy3KOXm6XgQkBMaYCYL2ciJEujOjfFciCgEHEGPodr2LwXdN2oIV4TU9P9HSsW2GLQViL6uysdHOzCwVao-R8o_j1EHXSaT_I5efkrergJNpk3IBsqCkDb\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"Summarize the retro takeaways from the thread context, preserving the reported issue and the requested short, emoji-heavy style.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0ab709a9f763bd47016ac92044297887d19538ed0749723588\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":945,\"noCache\":945,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":78,\"text\":54,\"reasoning\":24},\"raw\":{\"input_tokens\":945,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":78,\"output_tokens_details\":{\"reasoning_tokens\":24},\"total_tokens\":1023}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0ab709a9f763bd47016ac9204311f887d1a3a8aefd14fb7d76\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565891002,\"endTime\":1791565892771,\"providerRequestId\":\"req_ea685bdf9ac54599a306e08a0a9ee63f\",\"statusCode\":200,\"providerResponseId\":\"resp_0ab709a9f763bd47016ac9204311f887d1a3a8aefd14fb7d76\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"258de0a76e20090113903d85ab5264a2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001335\",\"marketCost\":\"0.0001335\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001335\",\"inferenceCost\":\"0.0001335\",\"inputInferenceCost\":\"0.0000945\",\"outputInferenceCost\":\"0.000039\",\"generationId\":\"gen_01M4GTC1D7WPP426RZ94J8A1NY\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

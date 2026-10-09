@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/actors.eval.ts > Memory with Multiple Actors > when the Actor and a bystander state conflicting first-person preferences, user memories only reflect the Actor's own statements",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "90a56a3cdce5",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_e9ceaa7d13c75cb2992eb8da66e02d33\",\"reasoningEncryptedContent\":\"rsn_rru6BQHgUc/VWS5vRIAlHwIFeCkgs5+X3Gs4diiR1LIPgqaVtVqE1wixv4JRQHHZOX/VAF8AAQAVYXdzLWNyeXB0by1wdWJsaWMta2V5AERBdHRHTGliMWJDZmZZd3FxdDR3QWl6RTlPRjAvamYrdDJtWlFWV3RzeEtZL3R5c1NnQjdmS1l2NUM4TStPcUtCV0E9PQABABFhd3Mta21zLWhpZXJhcmNoeQAKYmVybS1zdG9yZQBc4G7SlLMpt3qCbfHbQZh3NeyPbRlpkvvdbyGToATyexPQO0PepR8jRQ3zVYSboQDPqmIRIPBKFQ3aD2QxpTRwqOzbSoytedTNQik/GcWZ3Zl99ve3cWW7wZP+lSUCAAAQAPxnT6AOKRMZlbqYYBaVwKe+9Q3bjZ79rwz3tHztNEmzGNGS3dmJ0CZ5bIHFDt3Pmf////8AAAABAAAAAAAAAAAAAAABAAABedqcFdBYNdzK9N4exFLAPS9nag0hWvlwU4HAWrbzd2qO0BvM5rd4ycnBnF21Eks1HR6QMrikQTxnkXOxuJYlvoEUhQXi6Aub8OaMZ4QNVS+Bfel+bawEpWw7LoSXA//ynaFXpVRxqmL33n6wY3NOqcyXLjbInHZ1czSLVOgyvKRH0PKGLTjJ/vo26D2GCgECYpCGDoWtECU8bTsSL6QUXC0EUYUjxwPp6/ldzZdfavNd3gIs/UxFVx9BN9mgVNmzJn76gUOUK1Qcw+xszPLAKq29axptuLiNKE5GvDItq412+Qlac5F39dmAR8oQL1DwNRDvZz76w1PL/fzao96rJLootOxCz62YMcSueCLuBdQwCbVLjWKzD32BOud43ZC6jISd5sUU5YA0UFG7I/ApdM8B1j0Pe9XiA3Mrp+bvl99VWQkit3sVV/V2TANBRIEbAyrvy3kaxDjk1ZwUSEBv0ShsECCbQ1I1zxhTsT1cuL6U/t8Ws4VBAUBR3hCSOzInGo/P/lQgSNQ7PQBnMGUCMDYqmvZMMRs1NLZdL/LHgifv3GwaYZl+v9ZFn9Y+YvZFwdwjCGOYQjCCbiztIU7ocAIxALfimH86I7Lbbrixu/7jEtwVV2izZ4Nqti0v6hKcasFJdJc0UloEzTxtZKnA7+MIMQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"preference\\\",\\\"canonicalFact\\\":\\\"Prefers status updates to list risks first.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f05ec073b1a54f4944b4ac5670522cb\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1518,\"noCache\":2,\"cacheRead\":0,\"cacheWrite\":1516},\"outputTokens\":{\"total\":99,\"text\":45,\"reasoning\":54},\"raw\":{\"input_tokens\":1518,\"input_tokens_details\":{\"cache_write_tokens\":1516,\"cached_tokens\":0},\"output_tokens\":99,\"output_tokens_details\":{\"reasoning_tokens\":54},\"total_tokens\":1617}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_v2awju2bko2t7f4vmfbazpejaruhkodi7fo7t27bykkdzgmrhfia\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: bedrock(system) → azure(system) → openai(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"bedrock\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565904662,\"endTime\":1791565906520,\"providerRequestId\":\"9dc4efc1-c4b2-4ff0-ac77-8823898bdc75\",\"statusCode\":200}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e00dcff6165be57a8edd6e5e4e464135\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002392\",\"marketCost\":\"0.0002392\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002392\",\"inferenceCost\":\"0.0002392\",\"inputInferenceCost\":\"0.0001897\",\"outputInferenceCost\":\"0.0000495\",\"generationId\":\"gen_01M4GTCER2JJHGZ81N2CHADM65\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when managing an existing event automation, list update and delete it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "677746e23697",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_a70cb931d8215bc89f370e7c4ad362b9\",\"reasoningEncryptedContent\":\"rsn_rru6BQHgUc/VWS5vRIAlHwIFeAvxntWKst7mRj4bcR+fQmxZHTLtEgOA3CicLjJvGgMxAF8AAQAVYXdzLWNyeXB0by1wdWJsaWMta2V5AERBK2dUU2twVzhBKys5d2NNdGtKZkdQcHVhNnpDeDdza2lSUE8vSUExUUdDcFk5M3BLRHFMcm42MHNkbmQrUEZuVFE9PQABABFhd3Mta21zLWhpZXJhcmNoeQAKYmVybS1zdG9yZQBcdyO5lzzkfqOlgqLJJTxXP41ZPfUTSRxEUBCXjgTyexPQO0PepR8jRQ3zVYQVzQZKOThZJCLEqKcPMnrqGq3gHyGfjdqmbBefUeyho/8mCoeBxTBVHnTJy+MI+hACAAAQAO9X/8uQZ9kvv4VQmvlYUoCDXMJLOEy1tzIwHIDuEPsYC2AZhb0zveSiLFz9jjVIl/////8AAAABAAAAAAAAAAAAAAABAAACkixC53/NLazkRE6WSV/gmnGjkY2nozq9IRmG8W6sdtLI3lja6CXHDB4WZjGRBkTPxoi2gKOwzsmssyTiKcTTsD2m+ZHHSOvJzcYsahFR8ma0PSUyXzt3WPUPoL7jnW9BGBMI11ulensEMFF/dRkAj3NSZMw5gI9EJpmT62pH0EX11Js+XwlO3PP/u2AVubCvMVuD/KTXLKPgfXxh6kcP9CiNT6X3Wl8y6t8uFj8bhh4uVOYFs9RQ0BWa/dF+9iVL+mn2Zc2Wn1ZjdAs56GKMQXaH50PHhFZ30uyKkwHsDTvKaXGfrW4AiMHiJf7GJH72bYAUoIKhnbk74d4CH5upcYG6Uvra2axcZtTDqs0Z9O8jUKRmIrfhNHRieqgVXnW/4pa1IC6sYF+Qy8OzS2MXF143qBvLTgKPdBuW9gbFBWqbk6Zuy48bZiouXedqRIro5q7legtoOuQKDDLztM1YoIZJpHXdNCg3BL+OkxTeNREhqhKMDNtQIgIo6vycnBH28cbmNhYYU6K/1uXBTSN8VfmVKV/Y2n0tijwhwHevND76C2nWBVjiHPdvuHZEWEK3nwk5RdrL9TyX2taSoaWZtXYZ64Ht7Z2IUtcpC/tSEa6dc9Y7VthE3YMqC6U2dr6f8ZzESSNz4Z08NbEa8e3gU5Wjpz00Vr17dy+QaOhoZ86LWLm0qbJuiJVKD+KLZ0bHQoB0fdQDYadRm6QJA5yTsreg1zl0B7LPKWwWBQTI3Cnif6lfXggBkMAJf1f8qr1AqNlBc3f5gGz2Vd0xT80XnaqQTfPcuPoBQoEqw+RObynj0zeeWCj+tCecQDTgU7TeeJn8hvmqtzfPTwja9kyWZ/AjlLzwUhBwI865lUbKeXoI6l8qnogoXv+mvam5IZYw/UJTAGcwZQIxAIpnoI6/VGXKNwosvEtETVYTj25B6FUaqg/2nRggNP4rRstuNZWlyQInfG7eNABeKAIwBXEiQl4bYxp/a4ZV6Tl9RuQAW1nriHygQWV5LAtXgy988v8wk77Os9cHgzoDlNWT\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.85,\\\"reason\\\":\\\"This is a focused change to an existing channel automation. The prior thread identifies the automation and its current trigger/action, so the request requires interpreting that context and likely making a routine configuration update.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_d981f2c7a0155149b932608d89f29e52\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":797,\"noCache\":797,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":230,\"text\":67,\"reasoning\":163},\"raw\":{\"input_tokens\":797,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":230,\"output_tokens_details\":{\"reasoning_tokens\":163},\"total_tokens\":1027}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_wlg6hqa4izeggsl3hkoh4vvtxcpwkkup7rpp3cnupcwpyrm5ts7q\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: bedrock(system) → azure(system) → openai(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"bedrock\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565747766,\"endTime\":1791565755009,\"providerRequestId\":\"f00fcfbd-d881-496f-8a15-08012fee7f2b\",\"statusCode\":200}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"77f3f42ba9627f555bc9c9937fdfa07e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001947\",\"marketCost\":\"0.0001947\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001947\",\"inferenceCost\":\"0.0001947\",\"inputInferenceCost\":\"0.0000797\",\"outputInferenceCost\":\"0.000115\",\"generationId\":\"gen_01M4GT7NH3RV33MRB86EKGMFDW\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
