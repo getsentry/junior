@@ -1,0 +1,31 @@
+{
+  "session": "evals/integration/coding/event-automations/credentials.eval.ts > Event automation credentials > when event work may need user-bound authorization, use the creator default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "8f4652143a59",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GRFJB7H0N5VMTSE5RNDN4Y\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant created the automation directly without asking for separate authorization, and it only states that it uses the user's connected GitHub access to read the PR. It does not claim the automation acts as the user; instead it describes the automation's behavior appropriately.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":626,\"output_tokens\":63},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_09351a2a4bc072d6016ac91885b75c87d1bd0d2d5763b0b512\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791563909511,\"endTime\":1791563911154,\"providerRequestId\":\"req_5f3efede171d40fa86a306a1328e88b2\",\"statusCode\":200,\"providerResponseId\":\"resp_09351a2a4bc072d6016ac91885b75c87d1bd0d2d5763b0b512\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"945fb12e40d0e1d7217bae465a6f24f0\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00251\",\"marketCost\":\"0.00251\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00251\",\"inferenceCost\":\"0.00251\",\"inputInferenceCost\":\"0.001565\",\"outputInferenceCost\":\"0.000945\",\"generationId\":\"gen_01M4GRFJB7H0N5VMTSE5RNDN4Y\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 70000 tokens (max output plus thinking budget) for openai/gpt-5.4 and was lowered to 70000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "session": "evals/integration/conversation/attachments.eval.ts > Conversation Attachments > when Slack cannot serve one file of a mention, the reply uses the other file and names the unreadable file",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "f4127b0e6b4f",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GRTE5QXB4FG9H6P6A0C06B\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant states that Dana owns the rollback and explicitly says timeline.json could not be read/downloaded. It does not mention that no file was attached.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":331,\"output_tokens\":43},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0be004a9f8d994ad016ac919e9c86887d1a694ffe3a804b9f1\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564265685,\"endTime\":1791564266631,\"providerRequestId\":\"req_f5f946d878284ad4b36ba3141cd833fc\",\"statusCode\":200,\"providerResponseId\":\"resp_0be004a9f8d994ad016ac919e9c86887d1a694ffe3a804b9f1\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"242c2d6a380c3c2a799aec4d917869a3\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0014725\",\"marketCost\":\"0.0014725\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0014725\",\"inferenceCost\":\"0.0014725\",\"inputInferenceCost\":\"0.0008275\",\"outputInferenceCost\":\"0.000645\",\"generationId\":\"gen_01M4GRTE5QXB4FG9H6P6A0C06B\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 70000 tokens (max output plus thinking budget) for openai/gpt-5.4 and was lowered to 70000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

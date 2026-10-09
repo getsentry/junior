@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/forks.eval.ts > Conversation Forks > when a private Slack thread is forked, the fork continues from its reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "5daf6fc688cb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_b7e168e7fd265a39b0c91a9c121c2696\",\"reasoningEncryptedContent\":\"rsn_rru6BQHgUc/VWS5vRIAlHwIFeIZGZecbZ84Xtw2itKN6M8Uz3PbAJJny7ZlscyoDBEq9AF8AAQAVYXdzLWNyeXB0by1wdWJsaWMta2V5AERBNkVJTkxURUttZkFuRlAzd3dEdHB2a1lXUVZKMysxT1FRQVdoNmtubHM0cllHMzBRMDIrR2xoK0FTN3ZCQmwxS2c9PQABABFhd3Mta21zLWhpZXJhcmNoeQAKYmVybS1zdG9yZQBckVituc4owC0dyUGnxqFRYOKjHV/TfHjnshCC/gTyexPQO0PepR8jRQ3zVYSBfRadlgv+n4tNTwW9tHnBJ012lKbXUUvlzPAOZDBu8+LuxGLzXerIfb7OivB2Y6YCAAAQAJNiFoOUXIkHrJ8FNkkPNK3Att9ai0T4ZfuDhHw3hFHVpzPEonoJzMSbnVQCwqWIrv////8AAAABAAAAAAAAAAAAAAABAAABUpWgGRjJ+aF4gWEXq4gGXfFOBkWNBPYHX/Q2L08oBo2WQPOSWoB+DT3kw08N5T7XAUukM6QsnT3r8Ljh4C+majWwzxZgisSmNocIAqe/EBrV6ftwl4MuDYoGtMD+tas7U+SWWIMrletTastI5isfJqhJY2xQeUTZK9LMZQhaMbozSDa922rkZGdEXeBf/zI4YNP3rovyz/ijbsbQ3JOjGe3keGIn/tODYcDpNU7V68ZvBYELJGsXfnJH1CCJk6g1weTRoFpBoaLqn5e179fWCa7aMZA6tIXovRoWvf2uzF3rdg45QjpD55vlwIcTKZ451mn+W2uTxEE6jANfly9KKS5kWMRD028vtow7YCF/y/gmlepmQJahRzuOMRAskpS1cd6AXYKpSB6bw9FQhQvGn7bx1bJsWQ7OF4D9XkhiZI72jFPn/OeZ0sXq0EuOcPZSuLSbcruVVFTdyn8ZanumjXGh2wBnMGUCMQDKy6FbAjSgS3LzlHCeh5f4WSI1qhJS5KLN2R4jVKLmEMYaFT/B4s31eAcpl6o6h84CMFjapy3nZgHl7UdPYSKYwJa4uX/8w9L+w4y0tHuRKL024j9SR8eExpCGLkraGdI+PA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Answer requires retrieving a fact from the prior thread context.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_af813d92daa3562e97ff8544df5eba4d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":759,\"noCache\":759,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":78,\"text\":40,\"reasoning\":38},\"raw\":{\"input_tokens\":759,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":78,\"output_tokens_details\":{\"reasoning_tokens\":38},\"total_tokens\":837}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_xcuyhlgcaug7s37jcchxijwhynmyxjdz4po7pc4szxhwj3niny2a\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: bedrock(system) → azure(system) → openai(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"bedrock\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"bedrock\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564032741,\"endTime\":1791564035407,\"providerRequestId\":\"55959d09-c9e3-4f54-83a9-e0f95f9e935b\",\"statusCode\":200}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"c6cf7c6a8fe418e60ce89ccfc24a4fae\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001149\",\"marketCost\":\"0.0001149\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001149\",\"inferenceCost\":\"0.0001149\",\"inputInferenceCost\":\"0.0000759\",\"outputInferenceCost\":\"0.000039\",\"generationId\":\"gen_01M4GRKAPHJ82HK3Z7GQXEQTWF\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

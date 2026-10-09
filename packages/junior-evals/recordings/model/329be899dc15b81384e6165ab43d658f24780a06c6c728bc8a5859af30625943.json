@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/conversation/assistant-thread.eval.ts > Slack Thread Status and Title > when a direct message is not in a thread, Junior shows no status and gives no thread title",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "a9029030a454",
+      "messages[1]": "c2b6a99f68d4",
+      "messages[2]": "1d0a7d084e04",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GRNG6MWDSESST33KBWNCT4\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User’s request:** “How do I debug a Node.js memory leak in production?”\\n- **Progress:** No substantive answer has been given yet. An attempted profile handoff to `standard` returned no result.\\n- **Next step:** Answer directly with a practical, production-safe debugging workflow: confirm and trend heap/RSS/external memory, collect heap snapshots or profiles with minimal risk, compare snapshots to find retaining paths, inspect likely leak sources (listeners, caches, timers, closures, request-scoped objects), and validate a fix under representative load.\\n- **Constraints/preferences:** No additional user preferences or environment details provided. Avoid implying that heap snapshots are risk-free; note their memory, CPU, and disk impact, and recommend controlled capture/secure storage in production.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":229,\"output_tokens\":164},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0ad906d133326b3d016ac91947fe3887d1808cc204f1db9282\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564103910,\"endTime\":1791564109458,\"providerRequestId\":\"req_d44f13da8dd841f682d2d901a3e8ca34\",\"statusCode\":200,\"providerResponseId\":\"resp_0ad906d133326b3d016ac91947fe3887d1808cc204f1db9282\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"d459d2f3d1dda40efe184c362f46dbbc\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001049\",\"marketCost\":\"0.0001049\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001049\",\"inferenceCost\":\"0.0001049\",\"inputInferenceCost\":\"0.0000229\",\"outputInferenceCost\":\"0.000082\",\"generationId\":\"gen_01M4GRNG6MWDSESST33KBWNCT4\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

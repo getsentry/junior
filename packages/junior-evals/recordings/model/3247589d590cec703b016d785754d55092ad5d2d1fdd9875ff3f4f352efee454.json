@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/creation.eval.ts > Schedule Creation > when asked to schedule clear recurring work, create it in the active channel",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "10cb03ae1d19",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0b99dd48052318da016ac9194b747087d19f211bbadfd8693b\",\"reasoningEncryptedContent\":\"gAAAAABqyRlNT0gT8saXsbS06AaqbCNU-AYgj0HSZi7iPuLS0ZS1z-QfZaisptv0df0jWVRMkU4ZbZlZZGKFNP7uzhnrp9KRTImF9jslDt5_giBBmUSm1fTxlb8GRLKFu3YgKhHG03EBENlja1u6sdOJfEZKqsOPe60SfaYFEgGjDvGNhaYI_81lNYqVASZfj-gPVJcAiZCxqCENuInmXBfk2neD6CZDpyhWwLg3Qscj2zqx1Beq7Wrr9Z0MQsQZm1-HjK-zX0jkh-rI6miharTZfM-JQtfr0zqUsmVPMXu5iF1c4SvMZYGHtnOtkzXLXTLlCNsfmy0mUo_rDB_NWlhF7IPjjjjo7eLrDlCjvPJGqwUVGYsrNl3g1OUeJdoTxY1hjl7VYlhz0GTSjO8k9heVJVLBnoqLGJO4LlMsBW4TlLeZVsJpuYgSdpOUElbMkpzImt2Idx2DNENKHpCD2CktuDr0cFh_narb_o-hI2AxhhNQsrBa_6elfbhf-SXDpRcOxp0i6YZYQOrkKZfD7o2XaHWLwKZmtKUcReqXC9RB74HpdTI40ZbaWWVVhfQNvK5s7aXrAqLbIM3GJbFmynJJNkdt6KRn9k6yHLOuXEzE3vP8C2AauF_pO82dXjfRnVFmZ5GesoTEdGA1yzvsHzDbXxo6Frprrk5Tnazn3Ud0OV30Bf0ANLVDqGmpAP43z1TE1jGGXEGsEWhY2FasSkTVlYCqgRYPeGehJRocD9yEoyIZF42dRe1F4HbYzbb34jsPdXaomsuInmMS80PG8TGEYAcHtETWe_t0aYYysxCCbEeiB6qOE5E4-uxQHg-RarSH8r5VT3eVDnLBEE_mx1WnjQyzV8TjnExq6ylsXDJZGw0TBF5oYsGDU890dx0VEZzdADQ0yS5Ake-6-fTVm0xo-eJ8jxUS_fu2rfcBxjGZaFA0Wqo9OLFy4YQyWCfXtx0drUJ4sx7bHaD5w7cdNLg9gR8nofNdmCNVufi0dz2nNtWwBwSXGBrihgFduxYjknfRSe350FcS_3U66NnhQ3N62Y_qCNZVIMvmGxmL8RFrRXQGTr3daRySEzmC19dy_jM_jVHmtAbQfPDmURr81r6-m5JORhWT_9PlrIVmXAkcmrvwn9R4B9Et-juUfvsOC2jEbBQo6ssMMpUdJKVfGAdIVC3uGqDphvtuE9MvAADraw-FkeHQ-r1D6YYCeZ_v40oE3vIRzpp4_BQ4qSvN9kDjqun3NYLNjKMqxfUpTNjTiJdF7gMyVoRjbbOJaPw__GtUbj2Bew-rAkabFwId8MewuE15dz9sas2PcncLQCe9tk8m_krjlRbVQA98Qth2zOC3T0jc_K9y6p2UmlPA24UPcGf_99rhqJZPS5A9rTW99zqfX8JySfbGagr5Hp_ywZdXAygT2jCHJOHIlTGBn7EUfLlR2ZFs4FYviEnESzXxP20ecOdHIJr-i7CxDy1HwKwrj1atqYTUMnZT1tm5hu467UF3Gdtt528bXkxhgOMO0yhNaCpk1BxEY_XFPe3-3LuKejtEy61KRCpcruZJu5_efHb5sHqIXwcCx55Fgfvhdy8atMpCWZfe7kA1LU1W9WpI4S9D5nDpFBhiD5wNL6h8EJFo3mIkl05HSN-U7-BnvrRIifbPyJk7-Negt3RX06hcY153Y6nfvht9Ts5dVo_qXyN5Ctw9LhQGKffFIg6QQ_pl5WOnhDdvAqVLaUx502bjlA9wEaf5DqVxWvvUfwbZVvFkbk2eejyiFPKRxdIy11uPSEpkf3PRGYOeO31u-SD3owjxmPy0zedIw8z8ir0796S_9EvSPxzj4XiEnBByiBBiqgealh_GJwJ-6-Hksq38-SmV5bWsIrpLMgGShClPXo2A9sI9_wM0df4E3U2Iqf0ImK6ibL8wlTtOUzfCWeY0Yq1RHRNrO2FFbq8nNR9iTxtxd3HvSyzybUJX2zX4zct5ya_5B8U6X3bW9BEbye5jh-8PwamK-U851eKE5omYhSfepGjvXV9i6nRKO25mXabPnPanwZb6gRxBG7Psfe7B-5y25OZAYETwXHCvJZejB0BfF0DfURp-q9h3JM5ytbOXvU9rfKCv55b0_a1A9Heoy-8I6Ez3K3D6IL_kbOtm3jvaloXJ90Q1jCnCU2F_kjT-6VErgA3Ns_FaWMSTs-aAE8ICUxd9H2aeRvIQbTRldwPwg7VZK4Zh-ZIJTbNCMresapxyMTU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly authorized a weekly Monday 9am Pacific check of open scheduler-related GitHub issues and a short digest posted in this Slack channel; the recurring task is scoped to that request.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0b99dd48052318da016ac9194c8c9087d1b8419e0612b7d035\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2768,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":944},\"outputTokens\":{\"total\":193,\"text\":64,\"reasoning\":129},\"raw\":{\"input_tokens\":2768,\"input_tokens_details\":{\"cache_write_tokens\":944,\"cached_tokens\":1821},\"output_tokens\":193,\"output_tokens_details\":{\"reasoning_tokens\":129},\"total_tokens\":2961}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0b99dd48052318da016ac9194ae48087d196839233414d82f4\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564106773,\"endTime\":1791564109218,\"providerRequestId\":\"req_c88d73e81ef641c6ab9b904ffb78100b\",\"statusCode\":200,\"providerResponseId\":\"resp_0b99dd48052318da016ac9194ae48087d196839233414d82f4\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"a0566ec11304c9fc8ad727c6ec421c1e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00023301\",\"marketCost\":\"0.00023301\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00023301\",\"inferenceCost\":\"0.00023301\",\"inputInferenceCost\":\"0.00013651\",\"outputInferenceCost\":\"0.0000965\",\"generationId\":\"gen_01M4GRNJZV9ZZ8M8BH3FVRB6YA\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
