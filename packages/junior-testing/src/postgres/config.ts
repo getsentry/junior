@@ -47,6 +47,14 @@ function databaseUrl(
 export function createPostgresHarnessConfig(
   options: PostgresHarnessOptions,
 ): PostgresHarnessConfig {
+  // The harness drops and truncates databases, so it runs on a local server
+  // only.
+  const { hostname } = new URL(options.connectionString);
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    throw new Error(
+      `The Postgres test harness needs a database on localhost or 127.0.0.1, got ${hostname}`,
+    );
+  }
   const applicationName = options.applicationName ?? DEFAULT_APPLICATION_NAME;
   const prefix =
     options.databasePrefix ??

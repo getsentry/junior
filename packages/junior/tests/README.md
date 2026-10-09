@@ -64,10 +64,13 @@ control model output.
 
 ## Postgres Harness
 
-When `JUNIOR_TEST_DATABASE_URL` is configured, global setup creates a migrated
-template and isolated worker databases. Worker setup points normal product
-imports at the worker database and resets application tables before each test
-while preserving migration journals.
+When `DATABASE_URL` is configured, global setup creates a migrated template and
+isolated worker databases. Worker setup points normal product imports at the
+worker database and resets application tables before each test while
+preserving migration journals. The reset is in
+`@sentry/junior-testing/postgres`, and it truncates only the tables that have
+rows. CI keeps the Postgres data directory in memory, because each test file
+drops and clones a database.
 
 - Use normal product imports for integration and component tests.
 - Use `createMigratedJuniorSqlFixture()` only when a test needs one pinned,

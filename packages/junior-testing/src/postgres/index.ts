@@ -18,6 +18,7 @@ export {
   createEmptyPostgresDatabase,
   createPostgresTransactionFixture,
   getPostgresWorkerDatabaseUrl,
+  resetPostgresWorkerDatabase,
   type PostgresIsolatedDatabase,
   type PostgresTransactionFixture,
 } from "./transaction";
