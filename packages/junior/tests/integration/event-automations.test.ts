@@ -1,5 +1,4 @@
 import {
-  changesRequestedEvent,
   context,
   createTask,
   execute,
@@ -404,7 +403,14 @@ describe("event automations", () => {
       );
 
       await ingestEventAutomations(
-        changesRequestedEvent(`github:dispatch-access-${channelId}`),
+        {
+          eventKey: `github:dispatch-access-${channelId}`,
+          eventType: "pull_request.review.changes_requested",
+          occurredAtMs: Date.now(),
+          namespace: "github",
+          identifier: "getsentry/junior#1174",
+          trustedSummary: "A reviewer requested changes.",
+        },
         { queue, teamId },
       );
 
@@ -460,7 +466,14 @@ describe("event automations", () => {
       })
       .where(eq(juniorEventAutomations.id, task.id));
     await ingestEventAutomations(
-      changesRequestedEvent("github:stored-thread"),
+      {
+        eventKey: "github:stored-thread",
+        eventType: "pull_request.review.changes_requested",
+        occurredAtMs: Date.now(),
+        namespace: "github",
+        identifier: "getsentry/junior#1174",
+        trustedSummary: "A reviewer requested changes.",
+      },
       { queue, teamId },
     );
 
@@ -625,10 +638,17 @@ describe("event automations", () => {
     expect(created.automation.trigger.identifier).toBe("getsentry/junior#1174");
 
     await expect(
-      ingestEventAutomations(changesRequestedEvent("github:mixed-case-match"), {
-        queue,
-        teamId,
-      }),
+      ingestEventAutomations(
+        {
+          eventKey: "github:mixed-case-match",
+          eventType: "pull_request.review.changes_requested",
+          occurredAtMs: Date.now(),
+          namespace: "github",
+          identifier: "getsentry/junior#1174",
+          trustedSummary: "A reviewer requested changes.",
+        },
+        { queue, teamId },
+      ),
     ).resolves.toEqual({ dispatched: 1 });
   });
 
@@ -665,10 +685,17 @@ describe("event automations", () => {
     );
 
     await expect(
-      ingestEventAutomations(changesRequestedEvent("github:workspace-match"), {
-        queue,
-        teamId,
-      }),
+      ingestEventAutomations(
+        {
+          eventKey: "github:workspace-match",
+          eventType: "pull_request.review.changes_requested",
+          occurredAtMs: Date.now(),
+          namespace: "github",
+          identifier: "getsentry/junior#1174",
+          trustedSummary: "A reviewer requested changes.",
+        },
+        { queue, teamId },
+      ),
     ).resolves.toEqual({ dispatched: 1 });
 
     const [{ conversationId }] = queue.sentRecords();

@@ -7,7 +7,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const RESULT_GUIDANCE = [
   "Use `no_action` when nothing should be posted, including when a condition in the instruction is not met or cannot be verified.",
-  "Use `misconfigured` only when the automation cannot work until its creator changes it, such as a missing account or access, a target that no longer exists, or an instruction that cannot be done. This suspends the automation. Do not use it for a temporary failure or a condition that is not met.",
+  "Use `misconfigured` only when the automation cannot work until its creator changes it, such as a missing account or access, a target that no longer exists, or an instruction that cannot be done. Do not use it for a temporary failure or a condition that is not met.",
 ].join(" ");
 
 /** Create the tool that ends one Automation run with a declared result. */

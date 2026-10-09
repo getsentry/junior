@@ -94,10 +94,9 @@ describe("Sentry Skill Workflows", () => {
   test("when creator-bound scheduled Sentry work becomes due without a connected account, do not ask the channel to connect it", async ({
     run,
   }) => {
-    const destination = slackChannel();
     await insertScheduledAutomation({
       credentialMode: "creator",
-      destination,
+      destination: slackChannel(),
       due: true,
       task: "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
     });
@@ -106,13 +105,7 @@ describe("Sentry Skill Workflows", () => {
 
     // Nobody can connect Sentry during the run. The run does not wait for
     // authorization, and the channel gets no question, link, or apology.
-    // When the run blocks, only its creator gets the blocked notice, in a
-    // direct message.
-    expect(
-      digest.replies.filter(
-        (posted) => posted.channelId === destination.channelId,
-      ),
-    ).toEqual([]);
+    expect(digest.replies).toEqual([]);
     expect(digest.turns.map((turn) => turn.status)).not.toContain("started");
   });
 });

@@ -326,8 +326,7 @@ function eventAutomationSummary(
       instruction,
       "Untitled event automation",
     ),
-    status: task.status === "deleted" ? "active" : task.status,
-    statusReason: task.statusReason,
+    status: task.status === "paused" ? "paused" : "active",
     triggerAvailable: eventAutomationTriggerAvailable(task, getEventCatalog()),
   };
 }

@@ -33,8 +33,7 @@ import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
-    status: z.enum(["active", "blocked", "paused", "deleted"]),
-    statusReason: z.string().nullable(),
+    status: z.enum(["active", "paused", "deleted"]),
     title: z.string().min(1).nullable(),
     dashboardUrl: z.string().url().nullable(),
     instruction: z.string().min(1),
@@ -200,7 +199,7 @@ export function eventAutomationIsWritableFrom(
 export async function writableEventAutomation(
   context: ToolRuntimeContext,
   id: string,
-): Promise<StoredEventAutomation> {
+): Promise<EventAutomation> {
   const { destination } = requireEventAutomationSlackContext(context);
   const task = await getEventAutomation(getDb(), id);
   if (
@@ -239,7 +238,6 @@ export function compactEventAutomation(
   return compactEventAutomationResultSchema.parse({
     id: task.id,
     status: task.status,
-    statusReason: task.statusReason ?? null,
     title: task.title?.trim() || null,
     dashboardUrl: getDashboardTaskLink(task.id) ?? null,
     instruction: task.task.text,

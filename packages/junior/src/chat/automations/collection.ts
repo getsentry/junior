@@ -151,7 +151,7 @@ export function viewerAutomationCollection(user: User) {
         state: sql<string>`${event.status}`.as("state"),
         unavailable: sql<boolean>`not (${available})`.as("unavailable"),
         attention:
-          sql<boolean>`${event.status} <> 'paused' and (${event.status} = 'blocked' or not (${available}) or ${lastRunNeedsAttention("event", event.id)})`.as(
+          sql<boolean>`${event.status} <> 'paused' and (not (${available}) or ${lastRunNeedsAttention("event", event.id)})`.as(
             "attention",
           ),
         owned: sql<boolean>`${eventOwned}`.as("owned"),

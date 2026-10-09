@@ -2,11 +2,8 @@ import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 import type { EventAutomation } from "@/chat/event-automations/types";
 
-/**
- * Lifecycle status for one retained event automation row. A blocked
- * automation stops matching until its creator resumes it.
- */
-export type EventAutomationStatus = "active" | "blocked" | "paused" | "deleted";
+/** Lifecycle status for one retained event automation row. */
+export type EventAutomationStatus = "active" | "paused" | "deleted";
 
 export const juniorEventAutomations = pgTable(
   // Keep the deployed table name until a later storage migration.
@@ -22,8 +19,6 @@ export const juniorEventAutomations = pgTable(
       .$type<EventAutomationStatus>()
       .notNull()
       .default("active"),
-    /** Why a run blocked this automation. Kept while paused; cleared on resume. */
-    statusReason: text("status_reason"),
     /** Short display title generated from the task instruction. */
     title: text("title"),
     task: jsonb("task_json").$type<EventAutomation>().notNull(),

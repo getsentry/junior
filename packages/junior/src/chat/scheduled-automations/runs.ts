@@ -495,11 +495,7 @@ export async function markScheduledRunSkipped(
   );
 }
 
-/**
- * Advance a scheduled automation after a terminal run under its task lock.
- * Returns true only when this call stored the run's block reason, so the
- * caller can tell the creator once and only when the dashboard agrees.
- */
+/** Advance a scheduled automation after a terminal run under its task lock. */
 export async function advanceScheduledAutomationAfterRun(
   db: JuniorDatabase,
   args: {
@@ -508,15 +504,15 @@ export async function advanceScheduledAutomationAfterRun(
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";
   },
-): Promise<boolean> {
-  return await withScheduledAutomationLock(db, args.run.taskId, async (tx) => {
+): Promise<void> {
+  await withScheduledAutomationLock(db, args.run.taskId, async (tx) => {
     const current = await readScheduledAutomation(tx, args.run.taskId);
     if (
       !current ||
       current.status === "deleted" ||
       current.status === "completed"
     ) {
-      return false;
+      return;
     }
     if (current.status === "paused") {
       await saveScheduledAutomationInLock(
@@ -532,7 +528,7 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return args.status === "blocked";
+      return;
     }
     const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
     if (isRunNow) {
@@ -562,7 +558,7 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return args.status === "blocked";
+      return;
     }
     if (
       current.status !== "active" ||
@@ -577,7 +573,7 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return false;
+      return;
     }
     const nextRunAtMs =
       args.status === "blocked"
@@ -598,6 +594,5 @@ export async function advanceScheduledAutomationAfterRun(
       },
       current,
     );
-    return args.status === "blocked";
   });
 }

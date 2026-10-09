@@ -125,7 +125,7 @@ function automationStatus(automation: AutomationSummary): string | undefined {
   if (automation.kind === "scheduled") {
     return automation.status === "active" ? undefined : automation.status;
   }
-  if (automation.status !== "active") return automation.status;
+  if (automation.status === "paused") return "paused";
   return automation.triggerAvailable ? undefined : "Trigger unavailable";
 }
 

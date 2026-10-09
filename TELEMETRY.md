@@ -269,9 +269,7 @@ Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claim
 `scheduled_automation.run.failed`, `scheduled_automation.run.blocked`,
 `scheduled_automation.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
 skips), `scheduled_automations.heartbeat.dispatched`,
-`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`,
-`automation.blocked_notice.failed` (the creator notice for a blocked
-Scheduled automation or Event automation did not send)
+`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`
 
 Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateAutomation`; fire
 path `POST /api/internal/agent/continue` for the dispatch conversation
