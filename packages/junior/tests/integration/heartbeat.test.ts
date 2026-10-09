@@ -886,6 +886,8 @@ describe("plugin heartbeat", () => {
         "Scheduled automation dispatch metadata could not be built",
       ),
     });
+    // A block before dispatch tells the creator too.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
     await saveScheduledAutomation(db, {
       ...blockedTask!,
       nextRunAtMs: TEST_RUN_AT_MS,

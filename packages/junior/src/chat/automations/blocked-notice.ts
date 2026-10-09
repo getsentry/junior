@@ -38,7 +38,11 @@ function buildBlockedNoticeText(
  * also shows on the dashboard and in the Automation tools.
  */
 export async function notifyAutomationBlocked(
-  ref: BlockedAutomationRef & { dispatchId: string; reason: string },
+  ref: BlockedAutomationRef & {
+    /** The blocked dispatch. A run that blocked before dispatch has none. */
+    dispatchId?: string;
+    reason: string;
+  },
 ): Promise<void> {
   await runBestEffort(
     async () => {
@@ -63,7 +67,7 @@ export async function notifyAutomationBlocked(
     "automation.blocked_notice.failed",
     {
       "app.task.type": ref.kind,
-      "app.dispatch.id": ref.dispatchId,
+      ...(ref.dispatchId ? { "app.dispatch.id": ref.dispatchId } : undefined),
     },
   );
 }

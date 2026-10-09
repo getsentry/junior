@@ -296,12 +296,19 @@ async function finishClaimedRun(args: {
           startedAtMs: args.run.startedAtMs,
         });
   if (!finished) return;
-  await advanceScheduledAutomationAfterRun(args.db, {
+  const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
     errorMessage: args.errorMessage,
     nowMs: args.nowMs,
     run: args.run,
     status: args.status,
   });
+  if (storedBlock) {
+    await notifyAutomationBlocked({
+      automationId: args.run.taskId,
+      kind: "scheduled",
+      reason: args.errorMessage,
+    });
+  }
   await recordScheduledExecution({
     nowMs: args.nowMs,
     run: args.run,
