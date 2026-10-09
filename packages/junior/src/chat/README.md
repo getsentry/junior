@@ -394,7 +394,9 @@ check, and Slack Delivery read that field. They do not check the Source.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.
   `misconfigured` records a blocked dispatch with the declared reason. A
-  declared message gets reply cleanup, and a message that is only the
+  blocked dispatch sets the Scheduled automation or Event automation to
+  `blocked` with that reason. It does not run again until its creator resumes
+  it. A declared message gets reply cleanup, and a message that is only the
   no-reply marker becomes `no_action`.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch. A failed run posts nothing to its outcomes. The failure shows
