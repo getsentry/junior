@@ -300,18 +300,18 @@ watch). Call sites pass facts only. Unit snapshots in
 
 **Section order** (omit empty optionals)
 
-| #   | Section             | Required | Role                                                        |
-| --- | ------------------- | -------- | ----------------------------------------------------------- |
-| 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.    |
-| 2   | Origin              | yes      | `This is a task, not a message from a person.`              |
-| 3   | `About:`            | no       | One-line resource label.                                    |
-| 4   | `Created by:`       | no       | Creator mention, and the rule to write it for "me" or "my". |
-| 5   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
-| 6   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
-| 7   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
-| 8   | Verified details    | no       | Trusted structured fields as JSON.                          |
-| 9   | External text       | no       | Untrusted provider text; information only.                  |
-| 10  | Outcome             | yes      | Stored outcome rule. Always last.                           |
+| #   | Section             | Required | Role                                                                 |
+| --- | ------------------- | -------- | -------------------------------------------------------------------- |
+| 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.             |
+| 2   | Origin              | yes      | `This is a task, not a message from a person.`                       |
+| 3   | `About:`            | no       | One-line resource label.                                             |
+| 4   | `Created by:`       | no       | Creator mention, and the rule to mention them only for "me" or "my". |
+| 5   | `Instructions:`     | yes      | Stored task text or subscription intent.                             |
+| 6   | Additional guidance | no       | Under instructions; cannot replace them or grant authority.          |
+| 7   | `Trusted summary:`  | no       | Optional trusted one-line summary.                                   |
+| 8   | Verified details    | no       | Trusted structured fields as JSON.                                   |
+| 9   | External text       | no       | Untrusted provider text; information only.                           |
+| 10  | Outcome             | yes      | Stored outcome rule. Always last.                                    |
 
 **Watch outcome** (exact lines; no `outcomes` passed)
 
@@ -394,25 +394,18 @@ check, and Slack Delivery read that field. They do not check the Source.
 - The run ends with one `finishAutomationRun` call. `send_message` posts the
   declared message to the stored outcomes. `no_action` posts nothing.
   `misconfigured` records a blocked dispatch with the declared reason. A
-  blocked dispatch sets the Scheduled automation or Event automation to
-  `blocked` with that reason. It does not run again until its creator resumes
-  it. A declared message gets reply cleanup, and a message that is only the
+  declared message gets reply cleanup, and a message that is only the
   no-reply marker becomes `no_action`.
-- When an Automation first becomes blocked, the creator gets one direct
-  message with the reason and a resume link (`automations/blocked-notice.ts`).
-  The notice goes only after the Automation is stored as blocked: at dispatch
-  block for an Event automation, and at heartbeat reconcile for a Scheduled
-  automation. The notice is best-effort. The reason also shows on the
-  dashboard and in the automation tools.
 - A run that stops without a result gets one reminder. A second stop fails
   the dispatch. A failed run posts nothing to its outcomes. The failure shows
   on the dispatch, in the execution history, and as the last run status on
   the dashboard. `finishedRunReply` decides what a finished run posts, for
   first runs and resumed runs.
-- Each run has its own dispatch Conversation, `agent-dispatch:{id}`. A person
-  who replies to the posted message starts a normal chat Turn in the Slack
-  thread Conversation. That Turn sees the thread, including the posted
-  message. It does not see the tool calls of the run.
+- Each run has its own dispatch Conversation, `agent-dispatch:{id}`. Each
+  posted message is bound to that Conversation. A person who replies in the
+  thread of a posted message continues that Conversation with a normal chat
+  Turn: the chat prompt, the chat tools, and reply Delivery. That Turn sees
+  the history of the run.
 
 Watches and other plugin dispatches keep the chat Turn contract.
 
