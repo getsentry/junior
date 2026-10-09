@@ -19,10 +19,20 @@ Each matching automation receives an independent idempotent agent dispatch. A
 failure for one automation does not stop other matching automations. The ingress
 boundary receives the combined failure so the provider can retry. Dispatch
 identity binds the automation, plugin namespace, and provider event key. A
-provider retry does not run the same automation twice. Dispatches do not use the
-consecutive automated-turn limit. Each dispatch runs in its own Conversation, and
-the limit is not counted for a Destination. A shared Destination count paused
-unrelated automations in the same channel.
+provider retry does not run the same automation twice.
+
+Events about one object run in one Conversation for each automation. The object
+is the Event `objectIdentifier`, or `identifier` when the plugin does not set
+one. For example, the repository copy of a pull request Event names the pull
+request. The Conversation key is the automation, its Destination, the plugin
+namespace, and the object. The Conversation runs one Turn at a time. The wake
+waits for the event delay, so a burst of Events (open, comments, check suites)
+joins one Turn. Events that arrive during a Turn join the next Turn. Each Turn
+sees the history of earlier Turns, so it can see work that is already done.
+
+Dispatches do not use the consecutive automated-turn limit. The limit is not
+counted for a Destination. A shared Destination count paused unrelated
+automations in the same channel.
 
 Event automations target channels or DMs, not threads. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older

@@ -42,6 +42,7 @@ import {
   isTerminalDispatchStatus,
   markDispatchAwaitingResume,
   markDispatchBlocked,
+  markDispatchCoalesced,
   markDispatchCompleted,
   markDispatchFailed,
   markDispatchRunning,
@@ -96,6 +97,8 @@ interface EnqueueAgentDispatchOptions {
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
+  /** Delay the Conversation wake so related dispatches join one Turn. */
+  queueDelayMs?: number;
   state?: StateAdapter;
 }
 
@@ -163,15 +166,18 @@ export async function enqueueAgentDispatch(
     conversationStore: options.conversationStore,
     nowMs,
     queue: options.queue,
+    ...(options.queueDelayMs !== undefined
+      ? { queueDelayMs: options.queueDelayMs }
+      : undefined),
     state: options.state,
   });
   await confirmDispatchMailboxAppend(claimedDispatch.id);
 }
 
-/** Parse dispatch routing metadata from a durable mailbox message. */
-function dispatchIdFromMessages(
+/** Parse dispatch ids, in mailbox order, from durable mailbox messages. */
+function dispatchIdsFromMessages(
   messages: readonly InboundMessage[],
-): string | undefined {
+): string[] | undefined {
   if (messages.length === 0) {
     return undefined;
   }
@@ -184,32 +190,31 @@ function dispatchIdFromMessages(
   if (parsed.some((result) => !result.success)) {
     throw new Error("Conversation mailbox mixes dispatch and provider input");
   }
-  const ids = new Set(
-    parsed.map((result) => {
-      if (!result.success) {
-        throw new Error("Dispatch mailbox metadata failed validation");
-      }
-      return result.data.dispatchId;
-    }),
-  );
-  if (ids.size !== 1) {
-    throw new Error("Conversation mailbox contains multiple dispatches");
-  }
-  return ids.values().next().value;
+  return [
+    ...new Set(
+      parsed.map((result) => {
+        if (!result.success) {
+          throw new Error("Dispatch mailbox metadata failed validation");
+        }
+        return result.data.dispatchId;
+      }),
+    ),
+  ];
 }
 
 /**
- * Resolve a dispatch from concrete mailbox metadata or the active turn.
+ * Resolve dispatches from concrete mailbox metadata or the active turn.
  *
- * Provider source and conversation-id conventions are deliberately not
+ * A shared Conversation can hold several pending dispatches. They run in one
+ * Turn. Provider source and conversation-id conventions are deliberately not
  * execution routing authority.
  */
-export async function resolveAgentDispatchId(
+export async function resolveAgentDispatchIds(
   context: ConversationWorkerContext,
-): Promise<string | undefined> {
-  const mailboxDispatchId = dispatchIdFromMessages(context.attempt.messages);
-  if (mailboxDispatchId) {
-    return mailboxDispatchId;
+): Promise<string[] | undefined> {
+  const mailboxDispatchIds = dispatchIdsFromMessages(context.attempt.messages);
+  if (mailboxDispatchIds) {
+    return mailboxDispatchIds;
   }
   if (context.attempt.messages.length > 0) {
     return undefined;
@@ -233,26 +238,26 @@ export async function resolveAgentDispatchId(
   }
   const activeDispatchId = activeDispatchIds.values().next().value;
   if (activeDispatchId) {
-    return activeDispatchId;
+    return [activeDispatchId];
   }
   const durableDispatchIds = new Set(
     summaries
       .map((summary) => summary.dispatchId)
       .filter((id): id is string => Boolean(id)),
   );
-  if (durableDispatchIds.size > 1) {
+  const unfinishedDispatchIds: string[] = [];
+  for (const id of durableDispatchIds) {
+    const dispatch = await getDispatchRecord(id);
+    if (dispatch && !isTerminalDispatchStatus(dispatch.status)) {
+      unfinishedDispatchIds.push(id);
+    }
+  }
+  if (unfinishedDispatchIds.length > 1) {
     throw new Error(
-      `Conversation ${context.conversationId} has multiple dispatch sessions`,
+      `Conversation ${context.conversationId} has multiple unfinished dispatch sessions`,
     );
   }
-  const durableDispatchId = durableDispatchIds.values().next().value;
-  if (!durableDispatchId) {
-    return undefined;
-  }
-  const dispatch = await getDispatchRecord(durableDispatchId);
-  return dispatch && !isTerminalDispatchStatus(dispatch.status)
-    ? durableDispatchId
-    : undefined;
+  return unfinishedDispatchIds.length > 0 ? unfinishedDispatchIds : undefined;
 }
 
 async function readDispatchTurnResult(
@@ -369,34 +374,81 @@ async function persistBlockedDispatchTurn(
   );
 }
 
+/**
+ * Give the owner the input of every dispatch in its Turn, in mailbox order.
+ */
+function joinDispatchInput(
+  owner: DispatchRecord,
+  dispatches: readonly DispatchRecord[],
+): DispatchRecord {
+  if (dispatches.length < 2) {
+    return owner;
+  }
+  return {
+    ...owner,
+    input: dispatches.map((record) => record.input).join("\n\n"),
+  };
+}
+
+/**
+ * Split joined dispatches by whether the owner's existing Turn holds their
+ * input. Dispatches that reached the mailbox after that Turn started wait.
+ */
+function splitJoinedByTurn(
+  owner: DispatchRecord,
+  joined: readonly DispatchRecord[],
+): { held: DispatchRecord[]; waiting: DispatchRecord[] } {
+  const heldIds = new Set(owner.joinedDispatchIds ?? []);
+  return {
+    held: joined.filter((record) => heldIds.has(record.id)),
+    waiting: joined.filter((record) => !heldIds.has(record.id)),
+  };
+}
+
 /** Run one dispatch start or resume under the owning conversation lease. */
 export function createAgentDispatchConversationWorker(
   options: AgentDispatchConversationWorkerOptions,
 ): (
   context: ConversationWorkerContext,
-  dispatchId: string,
+  dispatchIds: readonly string[],
 ) => Promise<ConversationWorkerResult> {
-  return async (context, dispatchId) => {
-    const dispatch = await getDispatchRecord(dispatchId);
-    if (!dispatch) {
-      throw new Error(`Dispatch record is missing for ${dispatchId}`);
+  return async (context, dispatchIds) => {
+    const dispatches: DispatchRecord[] = [];
+    for (const dispatchId of dispatchIds) {
+      const record = await getDispatchRecord(dispatchId);
+      if (!record) {
+        throw new Error(`Dispatch record is missing for ${dispatchId}`);
+      }
+      const expectedConversationId = getDispatchConversationId(record);
+      if (context.conversationId !== expectedConversationId) {
+        throw new Error(
+          `Dispatch ${record.id} belongs to ${expectedConversationId}, not ${context.conversationId}`,
+        );
+      }
+      if (
+        !context.destination ||
+        context.destination.platform !== record.destination.platform ||
+        context.destination.teamId !== record.destination.teamId ||
+        context.destination.channelId !== record.destination.channelId
+      ) {
+        throw new Error(
+          `Dispatch ${record.id} destination does not match its conversation lease`,
+        );
+      }
+      dispatches.push(record);
     }
-    const expectedConversationId = getDispatchConversationId(dispatch);
-    if (context.conversationId !== expectedConversationId) {
-      throw new Error(
-        `Dispatch ${dispatch.id} belongs to ${expectedConversationId}, not ${context.conversationId}`,
-      );
-    }
-    if (
-      !context.destination ||
-      context.destination.platform !== dispatch.destination.platform ||
-      context.destination.teamId !== dispatch.destination.teamId ||
-      context.destination.channelId !== dispatch.destination.channelId
-    ) {
-      throw new Error(
-        `Dispatch ${dispatch.id} destination does not match its conversation lease`,
-      );
-    }
+    const unfinished = dispatches.filter(
+      (record) => !isTerminalDispatchStatus(record.status),
+    );
+    // A started dispatch keeps its Turn after a redelivery. Otherwise the
+    // newest dispatch owns the Turn.
+    const dispatch =
+      [...unfinished].reverse().find((record) => record.status !== "pending") ??
+      unfinished.at(-1);
+    const joined = unfinished.filter((record) => record !== dispatch);
+    // Joined dispatches that complete when the mailbox is acknowledged. A new
+    // Turn holds all of them. A resumed Turn holds only those it recorded.
+    let coalesced = joined;
 
     let acknowledged = context.attempt.messages.length === 0;
     const acknowledge = async (): Promise<void> => {
@@ -411,8 +463,12 @@ export function createAgentDispatchConversationWorker(
         );
       }
       acknowledged = true;
+      // Joined input is now durable in this Turn. The Turn owns the outcome.
+      for (const record of coalesced) {
+        await markDispatchCoalesced(record.id);
+      }
     };
-    if (isTerminalDispatchStatus(dispatch.status)) {
+    if (!dispatch) {
       await acknowledge();
       return { status: "completed" };
     }
@@ -423,19 +479,36 @@ export function createAgentDispatchConversationWorker(
       durableResult.outcome === "failed"
     ) {
       await projectDispatchTurnResult(dispatch.id, durableResult);
+      const { held, waiting } = splitJoinedByTurn(dispatch, joined);
+      if (waiting.length > 0) {
+        // Keep the mailbox, so the next wake starts a Turn for the waiting
+        // dispatches.
+        for (const record of held) {
+          await markDispatchCoalesced(record.id);
+        }
+        return { status: "deferred", delayMs: 0 };
+      }
       await acknowledge();
       return { status: "completed" };
     }
     if (Date.now() - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
-      await markDispatchFailed(
-        dispatch.id,
-        "Dispatch exceeded its maximum processing age",
-      );
+      for (const record of [...joined, dispatch]) {
+        await markDispatchFailed(
+          record.id,
+          "Dispatch exceeded its maximum processing age",
+        );
+      }
       await acknowledge();
       return { status: "completed" };
     }
 
-    const runningDispatch = await markDispatchRunning(dispatch.id);
+    const resumesDurableTurn = durableResult.hasResumableRun === true;
+    const runningDispatch = await markDispatchRunning(
+      dispatch.id,
+      resumesDurableTurn
+        ? {}
+        : { joinedDispatchIds: joined.map((record) => record.id) },
+    );
     if (!runningDispatch) {
       throw new Error(`Dispatch record disappeared for ${dispatch.id}`);
     }
@@ -443,12 +516,25 @@ export function createAgentDispatchConversationWorker(
       await acknowledge();
       return { status: "completed" };
     }
+    // Dispatches that reached the mailbox after the resumed Turn started.
+    // Their input is not in that Turn, so the mailbox keeps them for the next.
+    let waiting: DispatchRecord[] = [];
     try {
-      const resumesDurableTurn = durableResult.hasResumableRun === true;
       if (resumesDurableTurn && context.attempt.messages.length > 0) {
-        // A durable run proves the original input was already committed. The
-        // mailbox item is only a redelivery wake-up and must not restart it.
-        await acknowledge();
+        ({ held: coalesced, waiting } = splitJoinedByTurn(
+          runningDispatch,
+          joined,
+        ));
+        if (waiting.length === 0) {
+          // A durable run proves the original input was already committed.
+          // The mailbox item is only a redelivery wake-up and must not
+          // restart it.
+          await acknowledge();
+        } else {
+          for (const record of coalesced) {
+            await markDispatchCoalesced(record.id);
+          }
+        }
       }
       let result: DispatchTurnResult;
       if (resumesDurableTurn) {
@@ -457,10 +543,13 @@ export function createAgentDispatchConversationWorker(
         });
         result = await readDispatchTurnResult(dispatch);
       } else {
-        const runtimeResult = await options.runTurn(dispatch, {
-          ack: acknowledge,
-          shouldYield: context.shouldYield,
-        });
+        const runtimeResult = await options.runTurn(
+          joinDispatchInput(dispatch, unfinished),
+          {
+            ack: acknowledge,
+            shouldYield: context.shouldYield,
+          },
+        );
         result = runtimeResult.outcome
           ? runtimeResult
           : {
@@ -474,6 +563,11 @@ export function createAgentDispatchConversationWorker(
         );
       }
       await projectDispatchTurnResult(dispatch.id, result);
+      if (waiting.length > 0) {
+        // Leave the mailbox unacknowledged. The next wake starts a Turn for
+        // the waiting dispatches after this one finishes.
+        return { status: "deferred", delayMs: 0 };
+      }
       if (result.outcome && !acknowledged) {
         await acknowledge();
       }

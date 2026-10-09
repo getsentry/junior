@@ -358,7 +358,8 @@ describe("event delivery", () => {
       expect(queue.sentRecords()).toEqual(
         expect.arrayContaining([
           {
-            conversationId: expect.stringMatching(/^agent-dispatch:/),
+            conversationId: expect.stringMatching(/^event-automation:/),
+            delayMs: 30_000,
             idempotencyKey: expect.stringMatching(/^agent-dispatch:/),
           },
           {
@@ -371,12 +372,12 @@ describe("event delivery", () => {
       const dispatchRecord = queue
         .sentRecords()
         .find(({ conversationId }) =>
-          conversationId.startsWith("agent-dispatch:"),
+          conversationId.startsWith("event-automation:"),
         );
-      expect(dispatchRecord).toBeDefined();
-      const dispatch = dispatchRecord
+      expect(dispatchRecord?.idempotencyKey).toBeDefined();
+      const dispatch = dispatchRecord?.idempotencyKey
         ? await getDispatchRecord(
-            dispatchRecord.conversationId.replace(/^agent-dispatch:/, ""),
+            dispatchRecord.idempotencyKey.replace(/^agent-dispatch:/, ""),
           )
         : undefined;
       expect(dispatch).toMatchObject({

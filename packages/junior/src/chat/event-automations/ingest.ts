@@ -3,6 +3,10 @@
  *
  * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
+ *
+ * Events about one object, such as one pull request, run in one Conversation
+ * per automation. That Conversation runs one Turn at a time, joins Events that
+ * wait together, and keeps the history of earlier Turns.
  */
 import { slackMention } from "@/chat/slack/mrkdwn";
 import { createHash } from "node:crypto";
@@ -21,6 +25,7 @@ import { findMatchingEventAutomations } from "@/chat/event-automations/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { eventGuidance } from "@/chat/events/catalog";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
 /** Bind provider delivery identity to one automation's durable dispatch. */
@@ -31,6 +36,26 @@ function eventAutomationDispatchKey(
 ): string {
   return `event-automation:${createHash("sha256")
     .update(`${taskId}\0${namespace}\0${eventKey}`)
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+/** Bind one automation, Destination, and Event object to one Conversation. */
+function eventAutomationConversationId(
+  task: EventAutomation,
+  event: Event,
+): string {
+  const objectIdentifier = event.objectIdentifier ?? event.identifier;
+  return `event-automation:${createHash("sha256")
+    .update(
+      [
+        task.id,
+        task.destination.teamId,
+        task.destination.channelId,
+        event.namespace,
+        objectIdentifier,
+      ].join("\0"),
+    )
     .digest("hex")
     .slice(0, 32)}`;
 }
@@ -108,6 +133,7 @@ export async function ingestEventAutomations(
         conversationWorkQueue: options.queue,
         nowMs,
         options: {
+          conversationId: eventAutomationConversationId(task, event),
           idempotencyKey,
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination: task.destination,
@@ -117,6 +143,7 @@ export async function ingestEventAutomations(
           replyAttribution: replyAttribution(task),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
+        queueDelayMs: EVENT_WAIT_MS,
       });
       if (dispatch.status === "created") {
         dispatched += 1;

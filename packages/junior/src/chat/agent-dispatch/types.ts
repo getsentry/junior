@@ -36,6 +36,11 @@ export interface BoundDispatchOptions extends Omit<
   "credentialSubject"
 > {
   credentialSubject?: CredentialSubject;
+  /**
+   * Shared Conversation for related dispatches. Omit it to run the dispatch in
+   * its own Conversation.
+   */
+  conversationId?: string;
   source:
     | EventAutomationSource
     | PluginDispatchSource
@@ -44,6 +49,8 @@ export interface BoundDispatchOptions extends Omit<
 
 export interface DispatchRecord {
   actor: CredentialSystemActor;
+  /** Shared Conversation id. Omitted when the dispatch owns its Conversation. */
+  conversationId?: string;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
@@ -52,6 +59,11 @@ export interface DispatchRecord {
   id: string;
   idempotencyKey: string;
   input: string;
+  /**
+   * Dispatches whose input this dispatch's Turn holds. Set when the Turn
+   * starts, so a resumed Turn knows which mailbox dispatches it already ran.
+   */
+  joinedDispatchIds?: string[];
   metadata?: Record<string, string>;
   plugin: string;
   replyAttribution?: ReplyAttribution;

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/delivery.eval.ts > Event automation delivery > when one pull request sends a burst of events, run one Turn that later events continue",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "7e54f93dd782",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_04534b22f50def66016ac83e9c887487d2bb5898d3f8fe86f1\",\"reasoningEncryptedContent\":\"gAAAAABqyD6eZqSmCzNtOqKZm8j6MsM7kt4dxhGZCTV8akKPnTuIamXJsB-3Qf6qCfBYAnB7NV2CsszS0bH_Hmy_HldDchVUGq7cVjnXZSfZg7rgIwjpuqaYgS-6l7HDXaytoQdYkRrLTFzQuMmF35RHqYXzKN6I0DahnaFrOr9WPeG-iQIBpQtY-NzKvO82OwtlKUOnmx4HcgJjCiRpMFb2MDvgVcoJa2HGHkuoVl9A5VfSvDuNYSe-qk6IDrNVYrpa0OxIkqgbsLhQa3rkpnfFUeL0BPao_WEd5MXYLT5fKyPB7KJ5NVH4aDsCS1c-QFLX02b714nC8XDsS96aWzzwlTZXc_1dP8BAs3ZSA4SKpVsbBCVAz0MulSFNkgvo0QLmROWKLdUU3-5zi9Qyz7g0W7sFJjt5XtRf0RWhlVdQYvZlpK1p--eQrt29U7-A89Sufj1e5LypgCmhIb85lBPy9_Z2cW6wmZUi4qY4WXXiZDv6jR2FslboR1u6f6_jm7tXUlawVR6w79qfvEKwiKuK4lgOmrG34NypKI540wJKkPbrGbkwaNEkXmMW_s8uT0CgsNit8ksV6hdtLGSolK03QhsL23V_LWAepVlQ9bgawB1D6TCDMJ4K8-X4NDEtFJzhBnG5voewuqSJyQF2ncUwSA36QfQyjwCWRYzJvnc7i3vb1vCPenlMTDMFbEMlRUvBZm1Bj0yO9PZop12NxRt6Uf8kgfUCeBfd7Ay8d7U4TuM6UlwCUOT8bwNDM6mJtUI5mjfPbTvMu6wW5SwMFgBCJ-NKLrd6BAMHA2jyo_6Hjmq6c16yi8OLeWQX4OSjHiGE300iPXuvJXF-BrIPDzs_E2K8qZAhpfT32CDLZxKnPqzntIZhWNfvnHi9wF-lihuniSKOfshb42njW3OCMyFcIoA7NxY831abgSy2ecM165j47CAttFo8F8k-uAhtP71_dACdY0S8DRMR6f4VMZuxnxKIaq5pVnGXjsOcNiagUbvAnn-GXr8PGoGHT_pd0Kk2_EDVxBRG8qfMcq8ZrmwLEb6zQUh1ZUIL59IMxaCSJ60gE81aEjFnmW8vu5EAzl5jp_6-jsm7lAG_b_y0cGvWFkTdcXwQMW7PdpfB0sfqHT4CnfyLOVlp5m2XWZ8tGBCqpvTvNxl-LPhFGNNt4ptjh4hGTRQmNHg9_mgjnpnnPgzOEejHrcGq8d6woCGbHLY3094sOdJEMVYTGKJjjXoJwJHAFfRG03hrhMC_FPsdfqbQFc_XaYuoVZKNwBc7HojKHC7sGrTXlHyvEWiIODfNnZ4ZAhs7SD7ryndUbg6RE1Ze1S26m-bsrsG-K9GjxUalgR5h8f0pseZt7xNr-XN3nRQiW0U3K8ZFeXbpmQkCldsOwiNsKnQb1ogLFkzK7Gpor1tpLBY9G22czkQg_VJ3qvO83uDrvkvWU2PcVGCsVVoJ0MAl3L4aqLa0cdLZwV8EQIh9K7cCTDnTc_o-bo9sXVJFHfuFeCMFgSZHJHZhGbc1O8xnCxHJXKuMm1cSemReXRG_6gD-W6QBZQwHTCyYVrXKwsmNPtCROCTnrOK4AzWlTup0bJgQ9ygZt8hX3VV3Audvg7hhjNtLk9nJsYBxxrKT-cyY0sUoHgJYvFt2e-pWC_7LuuYH3EivAkOHL-0tAoTgKINdYhE9xkg9k1fqGST7ZLpscXb-uK73-tcGWvnz3jzg5V4sJjigbaVHdHaMmIi-PUtmWMf-z_S3cfyhk24fD2zvpUw08VKyfTirKEisCFkMudLXeoCU0teg9l26gv0n8L9zdKPSq6PZ81RjADGEPD_8fy1QyMZpOmSLDFBlYZcKVTVRuKa4BdC0mMyyIozuqW2c3WVkze3ncIyZ6dYcP5Su5R-LZke7nma498dZW7MJ2x9ly4kpX3fYfWtJBtPWgdatI-WuGt3Qb2Oc8Y0yp6TwpXPJHd12Ut9zNBRO-iQ3e0WBdvFt6kCitS0P3GockHqpJ54RYIWCnsO2gvIxF2KsfCRAmVROD1onNPE6d-FblLqozIwZqcJJdgtqO0oCZWFwrgZdqGKMwnJI-y7qVgwhdzWN-HGJmVpQAGCAArlf3siSZwkxCkPxjnVqE6TkYVmAMTRVD1BhXVIrAs69ZGy77p8OBtbekRNNafJWJNaAqnjhSqGXpcuZuAmw5zuoVugUPnz4nYyIXEBJGBzHllodh-B98gMb1vkP-3PwJk9A2XTL0RKS56diFZFXq2Jcw91fejarfKm5sDLSCk8bDgQc1n_yvpbin4yPbf14xTu7oC84ZIPBJFUknsw2MJDxsKbEq2-SBKEJBaQlnxexbVMaksGT9msrdCd4_5PgL0pjFA8=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"This is a short but context-dependent drafting task: summarize the latest check-suite recovery and determine the update numbering from the thread instructions.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_04534b22f50def66016ac83e9daa5087d2b463cd9f25a367f2\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2467,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2464},\"outputTokens\":{\"total\":199,\"text\":55,\"reasoning\":144},\"raw\":{\"input_tokens\":2467,\"input_tokens_details\":{\"cache_write_tokens\":2464,\"cached_tokens\":0},\"output_tokens\":199,\"output_tokens_details\":{\"reasoning_tokens\":144},\"total_tokens\":2666}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_04534b22f50def66016ac83e9c0e2c87d2bbb2464f0f0340e9\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791508123982,\"endTime\":1791508126554,\"providerRequestId\":\"req_7cc7aa2729fb43d09b05683c6405c7ec\",\"statusCode\":200,\"providerResponseId\":\"resp_04534b22f50def66016ac83e9c0e2c87d2bbb2464f0f0340e9\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"1e230f14cd1b99eaf971af662819721f\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0004078\",\"marketCost\":\"0.0004078\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0004078\",\"inferenceCost\":\"0.0004078\",\"inputInferenceCost\":\"0.0003083\",\"outputInferenceCost\":\"0.0000995\",\"generationId\":\"gen_01M4F3949N66MD311VQ72SY3SN\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -29,6 +29,7 @@ function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
     {
       ...repositoryEvent,
       identifier: gitHubRepositoryResource({ repo }).identifier,
+      objectIdentifier: event.identifier,
     },
   ];
 }

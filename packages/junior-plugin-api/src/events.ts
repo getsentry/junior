@@ -285,6 +285,13 @@ export const eventInputSchema = z
     eventKey: z.string().min(1),
     eventType: eventTypeSchema,
     identifier: z.string().min(1),
+    /**
+     * Identifier of the object that this Event is about, when it differs from
+     * `identifier`. For example, the repository copy of a pull request Event
+     * keeps the pull request here. Event automations use it to run related
+     * Events in one Conversation. Defaults to `identifier`.
+     */
+    objectIdentifier: z.string().min(1).optional(),
     occurredAtMs: z.number().finite(),
     terminal: z.boolean().optional(),
     trustedSummary: z

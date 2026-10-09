@@ -86,6 +86,7 @@ function pullRequestTargets(event: EventInput, repo: string): EventInput[] {
     {
       ...repositoryEvent,
       identifier: gitHubRepositoryResource({ repo }).identifier,
+      objectIdentifier: event.identifier,
     },
   ];
 }
@@ -348,6 +349,7 @@ function normalizeIssueCommentEvents(
       eventType: "issue.comment.created",
       occurredAtMs: Date.now(),
       identifier: repository.identifier,
+      objectIdentifier: issue.identifier,
       trustedSummary: `${issue.label} received a comment${author ? ` from ${author}` : ""}.`,
       untrustedText: parsed.data.comment.body,
     },
@@ -421,6 +423,7 @@ function normalizeIssueEvents(deliveryId: string, body: unknown): EventInput[] {
       eventType: `issue.${state}`,
       occurredAtMs,
       identifier: repository.identifier,
+      objectIdentifier: issue.identifier,
       trustedSummary: `${issue.label} was ${state}.`,
       ...(untrustedText ? { untrustedText } : undefined),
     },

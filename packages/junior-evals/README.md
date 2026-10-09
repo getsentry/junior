@@ -148,8 +148,12 @@ describe("Thread Continuity", () => {
 - `run(heartbeat())` returns the Conversation that a due automation started.
   Make an automation due with `insertScheduledAutomation({ due: true })`.
   `run(githubWebhook(...))` returns the Conversation that a matching
-  `insertEventAutomation()` started. The agent needs the GitHub plugin. These
-  Conversations take no further input.
+  `insertEventAutomation()` started. The agent needs the GitHub plugin.
+  `run([githubWebhook(...), ...])` sends a burst of deliveries in order, as
+  GitHub does for one change, and fails unless they start exactly one
+  Conversation. These Conversations take no further input except
+  `conversation.continue(githubWebhook(...))`, which delivers a later event to
+  the automation and fails when the event starts another Conversation.
 - `conversation.continue(githubWebhook(...))` delivers the event to the
   watches of that Conversation. The agent can create the watch in an earlier
   turn, or `insertWatch({ conversation, ... })` stores one.
