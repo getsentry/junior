@@ -3,10 +3,10 @@
  * server clock into the canonical schedule persisted by core.
  */
 import { z } from "zod";
-import { isValidTimeZone } from "@/chat/identities/timezone";
 import {
   getFirstRunAtMs,
   getZonedDateTimeParts,
+  isValidTimeZone,
   resolveLocalScheduleAtMs,
 } from "./cadence";
 import type {

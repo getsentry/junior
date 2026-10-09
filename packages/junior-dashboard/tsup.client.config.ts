@@ -5,6 +5,10 @@ export default defineConfig({
     client: "src/client.tsx",
   },
   format: "esm",
+  // Fail the build when server-only code (Node builtins, @sentry/node) leaks
+  // into the browser bundle. With the default "node" platform, esbuild keeps
+  // those imports and the dashboard fails only at runtime in the browser.
+  platform: "browser",
   tsconfig: "tsconfig.build.json",
   dts: false,
   outDir: "dist",
