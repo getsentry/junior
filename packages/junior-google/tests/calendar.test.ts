@@ -21,22 +21,31 @@ function calendarTools(...responses: Response[]) {
   return { fetch, tools };
 }
 
+const LA = "America/Los_Angeles";
+
 describe("findFreeSlots", () => {
   it("spreads non-overlapping weekday slots across days inside local working hours", () => {
     // Friday 2026-10-09 through Monday 2026-10-12, Los Angeles (UTC-7).
     const slots = findFreeSlots({
-      busy: [
-        // Busy Friday 09:00-12:00 local.
+      attendees: [
         {
-          startMs: Date.parse("2026-10-09T16:00:00Z"),
-          endMs: Date.parse("2026-10-09T19:00:00Z"),
+          // Busy Friday 09:00-12:00 local.
+          busy: [
+            {
+              startMs: Date.parse("2026-10-09T16:00:00Z"),
+              endMs: Date.parse("2026-10-09T19:00:00Z"),
+            },
+          ],
+          email: REQUESTER,
+          required: true,
+          timeZone: LA,
         },
       ],
       durationMinutes: 60,
       maxResults: 4,
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
       timeMinMs: Date.parse("2026-10-09T15:00:00Z"),
-      timeZone: "America/Los_Angeles",
+      timeZone: LA,
       workdayEnd: "14:00",
       workdayStart: "09:00",
     });
@@ -51,36 +60,40 @@ describe("findFreeSlots", () => {
     ]);
   });
 
-  it("prefers slots where optional attendees are free and reports their conflicts", () => {
-    // Monday 2026-10-12, Los Angeles (UTC-7), 09:00-11:00 local.
+  it("keeps slots inside each attendee's own working hours", () => {
+    // Monday 2026-10-12. With 08:00-17:00 hours, Los Angeles (UTC-7) and
+    // London (UTC+1) share only 08:00-09:00 in Los Angeles.
     const slots = findFreeSlots({
-      busy: [],
-      durationMinutes: 60,
-      maxResults: 2,
-      optionalBusy: [
+      attendees: [
+        { busy: [], email: REQUESTER, required: true, timeZone: LA },
         {
+          busy: [],
+          email: "bob@example.com",
+          required: true,
+          timeZone: "Europe/London",
+        },
+        {
+          busy: [],
           email: "dana@example.com",
-          startMs: Date.parse("2026-10-12T16:00:00Z"),
-          endMs: Date.parse("2026-10-12T17:00:00Z"),
+          required: false,
+          timeZone: "Asia/Tokyo",
         },
       ],
+      durationMinutes: 60,
+      maxResults: 3,
       timeMaxMs: Date.parse("2026-10-13T00:00:00Z"),
-      timeMinMs: Date.parse("2026-10-12T16:00:00Z"),
-      timeZone: "America/Los_Angeles",
-      workdayEnd: "11:00",
-      workdayStart: "09:00",
+      timeMinMs: Date.parse("2026-10-12T00:00:00Z"),
+      timeZone: LA,
+      workdayEnd: "17:00",
+      workdayStart: "08:00",
     });
 
     expect(slots).toEqual([
       {
-        startMs: Date.parse("2026-10-12T16:00:00Z"),
-        endMs: Date.parse("2026-10-12T17:00:00Z"),
-        optionalBusy: ["dana@example.com"],
-      },
-      {
-        startMs: Date.parse("2026-10-12T17:00:00Z"),
-        endMs: Date.parse("2026-10-12T18:00:00Z"),
-        optionalBusy: [],
+        // 08:00 LA, 16:00 London, 00:00 Tuesday Tokyo.
+        startMs: Date.parse("2026-10-12T15:00:00Z"),
+        endMs: Date.parse("2026-10-12T16:00:00Z"),
+        optionalConflicts: ["dana@example.com"],
       },
     ]);
   });
@@ -108,7 +121,7 @@ describe("Google Calendar tools", () => {
     vi.unstubAllEnvs();
   });
 
-  it("checks the requester and attendees, and reports people it could not check", async () => {
+  it("checks the requester and attendees in their own time zones, and reports people it could not check", async () => {
     const { fetch, tools } = calendarTools(
       Response.json({
         calendars: {
@@ -121,31 +134,49 @@ describe("Google Calendar tools", () => {
           "carol@example.com": { busy: [], errors: [{ reason: "notFound" }] },
         },
       }),
+      Response.json({ timeZone: LA }),
+      Response.json({ timeZone: "America/New_York" }),
+      Response.json({}, { status: 404 }),
     );
 
     const result = await tools.findMeetingTimes!.execute!(
       tools.findMeetingTimes!.prepareArguments!({
         attendees: ["Bob@example.com", "carol@example.com"],
-        durationMinutes: 30,
         maxResults: 1,
         timeMax: "2026-10-13T00:00:00Z",
         timeMin: "2026-10-12T16:00:00Z",
-        timeZone: "America/Los_Angeles",
+        timeZone: LA,
       }),
       { toolCallId: "call-1" },
     );
 
-    const call = fetch.mock.calls[0]![0];
-    expect(call.operation).toBe("google.calendar.freebusy.query");
-    expect(call.provider).toBe("google");
-    expect((await call.request.json()).items).toEqual([
+    const [freeBusy, ...timeZones] = fetch.mock.calls.map((call) => call[0]);
+    expect(freeBusy.operation).toBe("google.calendar.freebusy.query");
+    expect(freeBusy.provider).toBe("google");
+    expect((await freeBusy.request.json()).items).toEqual([
       { id: REQUESTER },
       { id: "bob@example.com" },
       { id: "carol@example.com" },
     ]);
+    const bobZone = new URL(timeZones[1].request.url);
+    expect(timeZones[1].operation).toBe("google.calendar.events.list");
+    expect(bobZone.pathname).toBe(
+      "/calendar/v3/calendars/bob%40example.com/events",
+    );
+    // Without a timeZone parameter, Google returns the calendar's own zone.
+    expect(bobZone.searchParams.has("timeZone")).toBe(false);
     expect(result).toMatchObject({
-      checked: [REQUESTER, "bob@example.com"],
-      slots: [{ start: "2026-10-12T17:00:00.000Z" }],
+      checked: [
+        { email: REQUESTER, timeZone: LA },
+        { email: "bob@example.com", timeZone: "America/New_York" },
+      ],
+      // 10:00 in Los Angeles, after Bob's 12:00-13:00 in New York.
+      slots: [
+        {
+          otherTimeZoneLabels: ["Mon, Oct 12, 13:00 EDT – 13:30 EDT"],
+          start: "2026-10-12T17:00:00.000Z",
+        },
+      ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],
     });
   });
@@ -454,7 +485,12 @@ describe("Google Calendar tools", () => {
       start: { dateTime: "2026-10-12T10:00:00-07:00" },
       summary: "Sync",
     };
-    const input = { eventId: "event1", timeZone: "America/Los_Angeles" };
+    // People often paste the Google Calendar link instead of an id.
+    const input = {
+      eventId:
+        "https://www.google.com/calendar/event?eid=ZXZlbnQxIGp1bmlvckBleGFtcGxlLmNvbQ==",
+      timeZone: "America/Los_Angeles",
+    };
     const cancel = (tools: ReturnType<typeof calendarTools>["tools"]) =>
       tools.cancelCalendarEvent!.execute!(
         tools.cancelCalendarEvent!.prepareArguments!(input),

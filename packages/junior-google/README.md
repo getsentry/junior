@@ -8,11 +8,13 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 
 ## Surfaces
 
-- `findMeetingTimes` finds times when every required attendee is free. It
-  reads free/busy data only. It never reads event titles or details. Optional
-  attendees do not block a slot. Slots where they are free come first, and
-  each slot names the optional attendees who are busy. Slots are spread across
-  days and across each day, so the requester gets a real choice.
+- `findMeetingTimes` finds times when every required attendee is free and
+  inside working hours (09:00 to 17:00 by default) in the time zone of their
+  own calendar. It reads free/busy data and calendar time zones only. It never
+  reads event titles or details. Optional attendees do not block a slot.
+  Slots where they are free come first, and each slot names the optional
+  attendees who are busy or off hours. Slots are spread across days and
+  across each day, so the requester gets a real choice.
 - `createCalendarEvent` creates an event on Junior's own calendar. It sends
   invites and can add a Google Meet link, a location, optional attendees, and
   a simple repeat rule (weekdays, weekly, or monthly). A retry of the same
@@ -23,6 +25,8 @@ This version supports Calendar only. Drive and Gmail are out of scope.
   shared as free/busy only shows busy blocks without titles. It never returns
   event descriptions. Each event says whether Junior organizes it, and gives
   attendee responses and the series id of a repeating event.
+- `updateCalendarEvent` and `cancelCalendarEvent` accept an event id or a
+  Google Calendar event link.
 - `updateCalendarEvent` changes the title, description, time, location, video
   call, or attendees of an event that Junior organizes. Google emails the
   attendees about the change. Only people invited to the event can ask for a
@@ -30,8 +34,6 @@ This version supports Calendar only. Drive and Gmail are out of scope.
 - `cancelCalendarEvent` deletes an event that Junior organizes. Google removes
   it from every attendee's calendar and emails them a cancellation. Only
   people invited to the event can ask to cancel it.
-- The `google-calendar` skill holds the scheduling workflow: how to resolve
-  the request, offer times, write the invite, and reply.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -117,7 +119,11 @@ variables are set. The Admin page shows **Not configured** until then.
 - Anyone who can talk to Junior can ask it to read a colleague's calendar.
   Junior returns what its own account can see, so set the sharing default
   with that in mind.
-- Junior cannot book meeting rooms, because room calendars are outside the
-  allowed domains. It cannot accept or decline invites for other people.
+- Google does not expose the working hours that people set in Calendar.
+  Junior uses each calendar's time zone and one shared workday instead.
+- Junior cannot find or book meeting rooms. Room discovery needs the Admin
+  SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
+  admin role on Junior's account. Room emails are also outside the allowed
+  domains. It cannot accept or decline invites for other people.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

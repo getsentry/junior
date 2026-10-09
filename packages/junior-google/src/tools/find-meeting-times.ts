@@ -9,13 +9,16 @@ import {
   formatInterval,
   googleApiError,
   googleApiRequest,
+  isTimeZone,
   requireAllowedEmails,
   timeZoneSchema,
   withRequester,
   type GoogleToolContext,
 } from "./shared";
 
-const MAX_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_WINDOW_MS = 14 * DAY_MS;
+const DEFAULT_WINDOW_MS = 7 * DAY_MS;
 const clockTimeSchema = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
@@ -25,48 +28,72 @@ const inputSchema = z
     attendees: emailListSchema(20)
       .min(1)
       .describe(
-        "Email addresses of the people who must attend. Junior adds the requester automatically when it knows their email.",
+        "Work emails of the people who must attend. Resolve names with userLookup. Junior adds the requester automatically when it knows their email.",
       ),
     optionalAttendees: emailListSchema(20)
       .default([])
       .describe(
-        "Email addresses of people who are nice to have. Their conflicts do not block a slot; slots where they are free come first.",
+        'Work emails of people the requester calls optional or "if free". Their conflicts do not block a slot; slots where they are free come first.',
       ),
-    durationMinutes: z.number().int().min(15).max(480),
+    durationMinutes: z.number().int().min(15).max(480).default(30),
     timeMin: z.iso
       .datetime({ offset: true })
-      .describe("Start of the search window, RFC 3339 with offset."),
+      .optional()
+      .describe(
+        "Start of the search window, RFC 3339 with offset. Defaults to now. For an exact requested time, search only that slot.",
+      ),
     timeMax: z.iso
       .datetime({ offset: true })
+      .optional()
       .describe(
-        "End of the search window, RFC 3339 with offset. At most 14 days after timeMin.",
+        "End of the search window, RFC 3339 with offset. Defaults to 7 days after timeMin. At most 14 days after timeMin.",
       ),
-    timeZone: timeZoneSchema,
+    timeZone: timeZoneSchema.describe(
+      "The requester's IANA time zone, such as America/Los_Angeles. Slot labels use it. It is also the working-hours zone for anyone whose calendar time zone Junior cannot read.",
+    ),
     workdayStart: clockTimeSchema
       .default("09:00")
       .describe(
-        "Earliest local start time in timeZone, 24-hour HH:MM. When attendees work in other time zones, narrow the window to hours that are inside everyone's working day.",
+        "Earliest local start, 24-hour HH:MM, in each attendee's own calendar time zone.",
       ),
     workdayEnd: clockTimeSchema
       .default("17:00")
-      .describe("Latest local end time in timeZone, 24-hour HH:MM."),
-    maxResults: z.number().int().min(1).max(20).default(5),
+      .describe(
+        "Latest local end, 24-hour HH:MM, in each attendee's own calendar time zone.",
+      ),
+    maxResults: z.number().int().min(1).max(20).default(3),
   })
   .strict();
 
 const slotSchema = z.object({
   end: z.string(),
-  label: z.string(),
-  optionalBusy: z
+  label: z.string().describe("The slot in the requester's time zone."),
+  otherTimeZoneLabels: z
     .array(z.string())
     .optional()
-    .describe("Optional attendees who are busy at this time."),
+    .describe("The slot in the other attendees' time zones."),
+  optionalConflicts: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Optional attendees who are busy or outside their working hours at this time.",
+    ),
   start: z.string(),
 });
 
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("findMeetingTimes"),
-  checked: z.array(z.string()),
+  checked: z.array(
+    z.object({
+      email: z.string(),
+      timeZone: z
+        .string()
+        .optional()
+        .describe(
+          "Time zone of the person's calendar. Missing when Junior cannot read it; their hours then use the requester's time zone.",
+        ),
+    }),
+  ),
   slots: z.array(slotSchema),
   timeZone: z.string(),
   unavailable: z.array(z.object({ email: z.string(), reason: z.string() })),
@@ -83,6 +110,8 @@ const freeBusyResponseSchema = z.object({
     }),
   ),
 });
+
+const calendarTimeZoneSchema = z.object({ timeZone: z.string().optional() });
 
 interface LocalParts {
   date: string;
@@ -101,6 +130,19 @@ function localParts(ms: number, format: Intl.DateTimeFormat): LocalParts {
   };
 }
 
+function localFormat(timeZone: string): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone,
+    weekday: "short",
+    year: "numeric",
+  });
+}
+
 function clockMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -111,9 +153,18 @@ interface Interval {
   startMs: number;
 }
 
+/** One checked attendee, with busy times from Google free/busy. */
+export interface SlotAttendee {
+  busy: Interval[];
+  email: string;
+  required: boolean;
+  /** IANA time zone used for this person's working hours. */
+  timeZone: string;
+}
+
 interface Candidate extends Interval {
   date: string;
-  optionalBusy: string[];
+  optionalConflicts: string[];
 }
 
 function overlaps(busy: Interval, startMs: number, endMs: number): boolean {
@@ -170,62 +221,71 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
 }
 
 /**
- * Find shared free slots on weekdays inside local working hours.
+ * Find slots inside every required attendee's working hours, in their own
+ * time zone, when they are all free.
  *
- * Required attendees must be free. Slots where optional attendees are also
- * free come first. Options are spread across days and across each day.
+ * Optional attendees who are busy or outside their hours do not block a slot.
+ * Slots without such conflicts come first. Options are spread across the days
+ * of `timeZone` and across each day.
  *
  * Exported for tests. Busy intervals come from Google free/busy only, so
  * Junior never sees event titles or details.
  */
 export function findFreeSlots(input: {
-  busy: Interval[];
+  attendees: SlotAttendee[];
   durationMinutes: number;
   maxResults: number;
-  optionalBusy?: Array<Interval & { email: string }>;
   timeMaxMs: number;
   timeMinMs: number;
   timeZone: string;
   workdayEnd: string;
   workdayStart: string;
-}): Array<Interval & { optionalBusy: string[] }> {
+}): Array<Interval & { optionalConflicts: string[] }> {
   const durationMs = input.durationMinutes * 60_000;
   const stepMs = (input.durationMinutes < 30 ? 15 : 30) * 60_000;
-  const format = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    month: "2-digit",
-    timeZone: input.timeZone,
-    weekday: "short",
-    year: "numeric",
-  });
   const dayStart = clockMinutes(input.workdayStart);
   const dayEnd = clockMinutes(input.workdayEnd);
+  const formats = new Map<string, Intl.DateTimeFormat>();
+  const partsIn = (ms: number, timeZone: string) => {
+    let format = formats.get(timeZone);
+    if (!format) {
+      format = localFormat(timeZone);
+      formats.set(timeZone, format);
+    }
+    return localParts(ms, format);
+  };
+  const available = (
+    attendee: SlotAttendee,
+    startMs: number,
+    endMs: number,
+  ) => {
+    const start = partsIn(startMs, attendee.timeZone);
+    const end = partsIn(endMs, attendee.timeZone);
+    return (
+      start.weekday !== "Sat" &&
+      start.weekday !== "Sun" &&
+      start.date === end.date &&
+      start.minutes >= dayStart &&
+      end.minutes <= dayEnd &&
+      attendee.busy.every((busy) => !overlaps(busy, startMs, endMs))
+    );
+  };
+  const required = input.attendees.filter((attendee) => attendee.required);
+  const optional = input.attendees.filter((attendee) => !attendee.required);
   const candidates: Candidate[] = [];
 
   let startMs = Math.ceil(input.timeMinMs / stepMs) * stepMs;
   while (startMs + durationMs <= input.timeMaxMs) {
     const endMs = startMs + durationMs;
-    const start = localParts(startMs, format);
-    const end = localParts(endMs, format);
-    const inWorkday =
-      start.weekday !== "Sat" &&
-      start.weekday !== "Sun" &&
-      start.date === end.date &&
-      start.minutes >= dayStart &&
-      end.minutes <= dayEnd;
-    const free = input.busy.every((busy) => !overlaps(busy, startMs, endMs));
-    if (inWorkday && free) {
-      const optionalBusy = [
-        ...new Set(
-          (input.optionalBusy ?? [])
-            .filter((busy) => overlaps(busy, startMs, endMs))
-            .map((busy) => busy.email),
-        ),
-      ];
-      candidates.push({ date: start.date, endMs, optionalBusy, startMs });
+    if (required.every((attendee) => available(attendee, startMs, endMs))) {
+      candidates.push({
+        date: partsIn(startMs, input.timeZone).date,
+        endMs,
+        optionalConflicts: optional
+          .filter((attendee) => !available(attendee, startMs, endMs))
+          .map((attendee) => attendee.email),
+        startMs,
+      });
       // Do not offer overlapping options.
       startMs = endMs;
     } else {
@@ -234,25 +294,56 @@ export function findFreeSlots(input: {
   }
 
   const picked = spreadAcrossDays(
-    candidates.filter((slot) => slot.optionalBusy.length === 0),
+    candidates.filter((slot) => slot.optionalConflicts.length === 0),
     input.maxResults,
   );
   picked.push(
     ...spreadAcrossDays(
-      candidates.filter((slot) => slot.optionalBusy.length > 0),
+      candidates.filter((slot) => slot.optionalConflicts.length > 0),
       input.maxResults - picked.length,
     ),
   );
   return picked
     .sort((a, b) => a.startMs - b.startMs)
-    .map(({ endMs, optionalBusy, startMs }) => ({
+    .map(({ endMs, optionalConflicts, startMs }) => ({
       endMs,
-      optionalBusy,
+      optionalConflicts,
       startMs,
     }));
 }
 
-/** Find times when everyone is free, using free/busy data only. */
+/**
+ * Read the time zone of one person's calendar.
+ *
+ * Google does not expose people's working hours, so the calendar time zone is
+ * the closest signal. Returns undefined when Junior's account cannot see the
+ * calendar.
+ */
+async function calendarTimeZone(
+  ctx: GoogleToolContext,
+  email: string,
+): Promise<string | undefined> {
+  const response = await googleApiRequest(ctx, {
+    operation: "google.calendar.events.list",
+    path: `/calendar/v3/calendars/${encodeURIComponent(email)}/events`,
+    // No `timeZone` parameter: Google then answers with the calendar's own.
+    query: { fields: "timeZone", maxResults: "1" },
+  });
+  if (response.status === 403 || response.status === 404) {
+    return undefined;
+  }
+  if (response.status !== 200) {
+    throw googleApiError("google.calendar.events.list", response);
+  }
+  const { timeZone } = calendarTimeZoneSchema.parse(response.body);
+  return timeZone && isTimeZone(timeZone) ? timeZone : undefined;
+}
+
+/**
+ * Find times when everyone is free and inside their working hours.
+ *
+ * Uses free/busy data and each calendar's time zone only.
+ */
 export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
   return definePluginTool({
     annotations: {
@@ -262,12 +353,17 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find meeting times when every required attendee is free, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times so the requester gets a real choice. Only people in the company's Google Workspace domains can be checked. People listed in `unavailable` were not checked; tell the user instead of treating them as free.",
+      "Find meeting times when every required attendee is free and inside working hours in their own calendar time zone, using Google Calendar free/busy data from Junior's own Google account. Returns open slots only, never event details. Slots are spread across days and times; offer them as a short list. Only people in the company's Google Workspace domains can be checked. People in `unavailable` were not checked: say so instead of treating them as free. If no slot is free, widen the window or shorten the meeting once, then offer the closest option.",
     inputSchema,
     outputSchema,
     async execute(input) {
-      const timeMinMs = Math.max(Date.parse(input.timeMin), Date.now());
-      const timeMaxMs = Date.parse(input.timeMax);
+      const timeMinMs = Math.max(
+        input.timeMin ? Date.parse(input.timeMin) : 0,
+        Date.now(),
+      );
+      const timeMaxMs = input.timeMax
+        ? Date.parse(input.timeMax)
+        : timeMinMs + DEFAULT_WINDOW_MS;
       if (timeMaxMs <= timeMinMs) {
         throw new PluginToolInputError(
           "timeMax must be after timeMin and now.",
@@ -289,66 +385,76 @@ export function createFindMeetingTimesTool(ctx: GoogleToolContext) {
       const everyone = [...attendees, ...optionalAttendees];
       requireAllowedEmails(everyone, ctx.allowedDomains);
 
-      const response = await googleApiRequest(ctx, {
-        body: {
-          items: everyone.map((id) => ({ id })),
-          timeMax: new Date(timeMaxMs).toISOString(),
-          timeMin: new Date(timeMinMs).toISOString(),
-        },
-        operation: "google.calendar.freebusy.query",
-        path: "/calendar/v3/freeBusy",
-      });
+      const [response, ...timeZones] = await Promise.all([
+        googleApiRequest(ctx, {
+          body: {
+            items: everyone.map((id) => ({ id })),
+            timeMax: new Date(timeMaxMs).toISOString(),
+            timeMin: new Date(timeMinMs).toISOString(),
+          },
+          operation: "google.calendar.freebusy.query",
+          path: "/calendar/v3/freeBusy",
+        }),
+        ...everyone.map((email) => calendarTimeZone(ctx, email)),
+      ]);
       if (response.status !== 200) {
         throw googleApiError("google.calendar.freebusy.query", response);
       }
       const { calendars } = freeBusyResponseSchema.parse(response.body);
 
-      const checked: string[] = [];
+      const checked: Array<{ email: string; timeZone?: string }> = [];
       const unavailable: Array<{ email: string; reason: string }> = [];
-      const busy: Interval[] = [];
-      const optionalBusy: Array<Interval & { email: string }> = [];
-      for (const email of everyone) {
+      const slotAttendees: SlotAttendee[] = [];
+      everyone.forEach((email, index) => {
         const calendar = calendars[email];
         const error = calendar?.errors?.[0]?.reason;
         if (!calendar || error) {
           unavailable.push({ email, reason: error ?? "notFound" });
-          continue;
+          return;
         }
-        checked.push(email);
-        for (const interval of calendar.busy) {
-          const parsed = {
+        const timeZone = timeZones[index];
+        checked.push({ email, ...(timeZone ? { timeZone } : undefined) });
+        slotAttendees.push({
+          busy: calendar.busy.map((interval) => ({
             endMs: Date.parse(interval.end),
             startMs: Date.parse(interval.start),
-          };
-          if (required.has(email)) {
-            busy.push(parsed);
-          } else {
-            optionalBusy.push({ ...parsed, email });
-          }
-        }
-      }
+          })),
+          email,
+          required: required.has(email),
+          timeZone: timeZone ?? input.timeZone,
+        });
+      });
 
-      const slots = !checked.some((email) => required.has(email))
+      const slots = !slotAttendees.some((attendee) => attendee.required)
         ? []
         : findFreeSlots({
-            busy,
+            attendees: slotAttendees,
             durationMinutes: input.durationMinutes,
             maxResults: input.maxResults,
-            optionalBusy,
             timeMaxMs,
             timeMinMs,
             timeZone: input.timeZone,
             workdayEnd: input.workdayEnd,
             workdayStart: input.workdayStart,
           });
+      const otherTimeZones = [
+        ...new Set(slotAttendees.map((attendee) => attendee.timeZone)),
+      ].filter((timeZone) => timeZone !== input.timeZone);
       return {
         target: "findMeetingTimes" as const,
         checked,
         slots: slots.map((slot) => ({
           end: new Date(slot.endMs).toISOString(),
           label: formatInterval(slot.startMs, slot.endMs, input.timeZone),
-          ...(slot.optionalBusy.length
-            ? { optionalBusy: slot.optionalBusy }
+          ...(otherTimeZones.length
+            ? {
+                otherTimeZoneLabels: otherTimeZones.map((timeZone) =>
+                  formatInterval(slot.startMs, slot.endMs, timeZone),
+                ),
+              }
+            : undefined),
+          ...(slot.optionalConflicts.length
+            ? { optionalConflicts: slot.optionalConflicts }
             : undefined),
           start: new Date(slot.startMs).toISOString(),
         })),

@@ -36,7 +36,8 @@ export const timeZoneSchema = z
     "IANA time zone used to read and show times, such as America/Los_Angeles.",
   );
 
-function isTimeZone(value: string): boolean {
+/** True when the runtime knows this IANA time zone. */
+export function isTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value });
     return true;
@@ -263,13 +264,38 @@ export const ownEventOutputFields = {
   videoCallUrl: z.string().optional(),
 };
 
-/** Event id input for tools that act on an event Junior organizes. */
+/** Event id or link input for tools that act on an event Junior organizes. */
 export const ownEventIdSchema = z
   .string()
-  .regex(/^[A-Za-z0-9_]{5,1024}$/, "Use an event id from a Calendar tool")
+  .trim()
+  .min(5)
+  .max(2048)
   .describe(
-    "Event id from a Calendar tool. An occurrence of a repeating event has its own id; its seriesEventId is the whole series.",
+    "Event id from a Calendar tool, or a Google Calendar event link. An occurrence of a repeating event has its own id; its seriesEventId is the whole series.",
   );
+
+const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
+
+/**
+ * Return the event id from an id or a Google Calendar event link.
+ *
+ * A link's `eid` value is base64 for `<eventId> <calendar email>`.
+ */
+export function parseEventId(value: string): string {
+  let eventId = value;
+  if (/^https?:\/\//.test(value)) {
+    const eid = URL.parse(value)?.searchParams.get("eid");
+    eventId = eid
+      ? (Buffer.from(eid, "base64").toString("utf8").split(" ")[0] ?? "")
+      : "";
+  }
+  if (!EVENT_ID_PATTERN.test(eventId)) {
+    throw new PluginToolInputError(
+      "Use an event id from a Calendar tool or a Google Calendar event link.",
+    );
+  }
+  return eventId;
+}
 
 /**
  * Read an event that Junior organizes, for a requester who is invited to it.
@@ -279,9 +305,10 @@ export const ownEventIdSchema = z
  */
 export async function readOwnEventForRequester(
   ctx: GoogleToolContext,
-  eventId: string,
+  eventIdOrLink: string,
   action: "change" | "cancel",
 ): Promise<{ event: OwnEvent; path: string }> {
+  const eventId = parseEventId(eventIdOrLink);
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
