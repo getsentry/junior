@@ -536,5 +536,19 @@ describe("Google Calendar tools", () => {
       Response.json({ error: { message: "Gone" } }, { status: 410 }),
     );
     expect(await cancel(retry.tools)).toMatchObject({ cancelled: false });
+
+    // A later call reads the deleted event back as a stub without attendees.
+    for (const deleted of [
+      Response.json({ id: "event1", status: "cancelled" }),
+      Response.json({ error: { message: "Deleted" } }, { status: 410 }),
+    ]) {
+      const again = calendarTools(deleted);
+      expect(await cancel(again.tools)).toEqual({
+        target: "cancelCalendarEvent",
+        cancelled: false,
+        eventId: "event1",
+      });
+      expect(again.fetch).toHaveBeenCalledTimes(1);
+    }
   });
 });

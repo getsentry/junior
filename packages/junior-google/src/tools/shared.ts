@@ -212,7 +212,6 @@ export const ownEventSchema = z.object({
   recurrence: z.array(z.string()).optional(),
   recurringEventId: z.string().optional(),
   start: z.object({ dateTime: z.string() }),
-  status: z.string().optional(),
   summary: z.string().optional(),
 });
 
@@ -297,17 +296,28 @@ export function parseEventId(value: string): string {
   return eventId;
 }
 
+const cancelledEventSchema = z.object({ status: z.literal("cancelled") });
+
+/** Result of reading an event that Junior organizes. */
+export type OwnEventRead =
+  | { event: OwnEvent; eventId: string; path: string; status: "active" }
+  | { eventId: string; path: string; status: "cancelled" };
+
 /**
  * Read an event that Junior organizes, for a requester who is invited to it.
  *
  * Only invited people may change or cancel an event. This keeps one requester
  * from moving or cancelling a meeting that Junior set up for others.
+ *
+ * A deleted event on Junior's calendar comes back as `cancelled`. Google
+ * returns it as HTTP 410, or as a stub with only `id` and `status`, so it has
+ * no organizer or attendees to check. Callers must not change it.
  */
 export async function readOwnEventForRequester(
   ctx: GoogleToolContext,
   eventIdOrLink: string,
   action: "change" | "cancel",
-): Promise<{ event: OwnEvent; path: string }> {
+): Promise<OwnEventRead> {
   const eventId = parseEventId(eventIdOrLink);
   const requester = await requesterEmail(ctx);
   if (!requester) {
@@ -320,7 +330,14 @@ export async function readOwnEventForRequester(
     operation: "google.calendar.event.get",
     path,
   });
-  if (response.status === 404 || response.status === 410) {
+  if (
+    response.status === 410 ||
+    (response.status === 200 &&
+      cancelledEventSchema.safeParse(response.body).success)
+  ) {
+    return { eventId, path, status: "cancelled" };
+  }
+  if (response.status === 404) {
     throw new PluginToolInputError(
       `Junior's calendar has no event ${eventId}. Junior can only ${action} events it organizes; ask the organizer instead.`,
     );
@@ -343,5 +360,5 @@ export async function readOwnEventForRequester(
       `Only people invited to this event can ask Junior to ${action} it.`,
     );
   }
-  return { event, path };
+  return { event, eventId, path, status: "active" };
 }

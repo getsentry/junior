@@ -21,12 +21,17 @@ const inputSchema = z
   })
   .strict();
 
+const { eventId: eventIdField, ...eventDetailFields } = ownEventOutputFields;
+
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("cancelCalendarEvent"),
   cancelled: z
     .boolean()
-    .describe("False when the event was already cancelled before this call."),
-  ...ownEventOutputFields,
+    .describe(
+      "False when the event was already cancelled before this call. Event details are then missing.",
+    ),
+  eventId: eventIdField,
+  ...z.object(eventDetailFields).partial().shape,
 });
 
 /**
@@ -52,18 +57,19 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
-      const { event, path } = await readOwnEventForRequester(
-        ctx,
-        input.eventId,
-        "cancel",
-      );
+      const read = await readOwnEventForRequester(ctx, input.eventId, "cancel");
+      if (read.status === "cancelled") {
+        return {
+          target: "cancelCalendarEvent" as const,
+          cancelled: false,
+          eventId: read.eventId,
+        };
+      }
+      const { event, path } = read;
       const result = {
         target: "cancelCalendarEvent" as const,
         ...ownEventResult(event, input.timeZone),
       };
-      if (event.status === "cancelled") {
-        return { ...result, cancelled: false };
-      }
 
       const response = await googleApiRequest(ctx, {
         operation: "google.calendar.event.delete",

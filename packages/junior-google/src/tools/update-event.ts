@@ -136,16 +136,13 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
         [...input.addAttendees, ...input.addOptionalAttendees],
         ctx.allowedDomains,
       );
-      const { event, path } = await readOwnEventForRequester(
-        ctx,
-        input.eventId,
-        "change",
-      );
-      if (event.status === "cancelled") {
+      const read = await readOwnEventForRequester(ctx, input.eventId, "change");
+      if (read.status === "cancelled") {
         throw new PluginToolInputError(
           "This event is cancelled. Create a new event instead.",
         );
       }
+      const { event, path } = read;
       const attendees = event.attendees ?? [];
       // Google can return directory capitalization; inputs are lowercased.
       const emailKey = (email: string) => email.toLowerCase();
