@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/assistant-thread.eval.ts > Slack Thread Status and Title > when a person writes in an assistant thread, Junior shows a status and gives the thread the title of the request one time",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "db37b55f0c9c",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e9e59c635da26e1016ac920bd1f3c87d182d7eae4f822c673\",\"reasoningEncryptedContent\":\"gAAAAABqySC-yrMVTJEVSg8ZK4OWuhAsmhE_42FzIMlLqwXcfjPts821yXIsZgb3iH80cWYBRuimACDFs8OwDeUMmu8fgemyhxbhDYPjF-hihNkCYafecmRwvz-7WmMDxn8K_KsJ3TeHqcSmfUHF5TxzzsjP8p8yI8C8krwrCsKo3OpRUDTtEdSlLpRyevBGIwwPSt043OznP8-jtnsqweQpmGwLr9vEIcEfpY1fXsV203EyEA7qvuXrvcFp05DiRdHh2-zkZmRnAF7mEV1cOK5yfA2zs3vAyfg78Qm-Rva5fO4YgOiOaotkjIEPbWb5g6TKAnd-BVH2HgbuDXC_-mTGSbcodxcyD3g8duX5GQCBLbFTytTdNskL-XEDXWUDhRWO0Pjskq1F6lnZ-FVO0lmhrXsB3OKzdoKyvSJH080urkmbY6a9XYRcHDCMHwu_li8FlmmzqbGK_gVLgNlYx4fZsUC5nCx9TEPyYSYRD_io-7Z4VpyY3YCgpVwTdGruMOKKWzGYgwWi2a5xZoAViKOc3KoGIyihaDZL_bm0JtRF1-55xeJxjEnPzqTviOxjowyIvuN-HwE-r8gqUh51-FOLidWvuLpsuuRVBgSNJsuoeYOn1pnGAWBzXJ3S7LxuMXM6aPk7iknynYGREfkIrZGRzifeo5MEKOSj416KnF-rxmCn724SAZmGPxFKZ8OMFX-AXk_RkNSyMIaz4i8P-mpTTBNjPsKWd2TfN-w70vdSnACBrH38gpSEel3ySYoFezY-9Z93c-dfpjT1xo2SaPZE54QzOqVk6l_u2HiobfGFQwqYCAlggLaXw8iWW8zAB5EdZkrZLaW278jCu-D6I1F0V8v8hgAaQ9Q77RIpn23dxkIKaFZXutZirbnyAMegNMXR8k9uIEEPI798sF1bed7s0D-rZAfZMKmEA1JPSoKoBtUwHOHn0qGxqunJSYI2fUUmtTkguC4WbnroulVHjnTUQw1mI6Vo6W61dAOef2rgNvJpGJ7IzMFNWrctKoA3y5_yUFyP42tNDk87V3kGOdzx-RUGlrdVo5Y6HMRfwUIlK9Ivx-3Z99ned0UqGLGyHtBTHTzYWxVwQ0-P_c7IY0dgnwsyPPSXsvIR1cAEjs_-IQ8YovRa5rQkwxr1TgQIeOv-6TUo9JMjySTAGYRD1RmlbwJRqjlMMG2culzt9-rgB68dC43RO3dLorFUcKX7EXuvkk4saNAX6zbI6Eanqf9U0-hSRmbRd7Qs8zBRqAEfszKPJNGiZv1bn1BRDZQV_Oua4vHGZkXs8eCTJnoCpG585E8Jc-wdfCfurvgVIEQ3Dq510MDO9JM5DuTTMuNKrWKISry01X3FhqMA1uj9aI1yyLolfOfcAiLQcqFlMF6Px8d6TrR9Qp9kLqNebC1aAwACzXlXjsaJPT3Eq5gA4K7JQwlaiT4tx0LPFt-Ll_RmPZGi-XPfs2Jee8V_EB0iW1AzxrGbkMHsZgxTf7Cf720d47LO400gJRG4nhzczKwBxOws9pKc69VgnxYRnQCrbIEQMxxBJGHEAARKPOEI_SWYFixmh1S-gDpo55l2twe6QYYqzzfMkr57cac3ZFobRHoLec18FFRKR6YMYoZc8H4qm-Jucl3adAc1imSpvPEsprk2iDDFlVo=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"This is a focused follow-up about diagnosing a running Node.js process; answering requires interpreting the prior context and identifying the relevant inspection tool.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e9e59c635da26e1016ac920bdc18487d1a28162dd36dbed1d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1076,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1073},\"outputTokens\":{\"total\":112,\"text\":56,\"reasoning\":56},\"raw\":{\"input_tokens\":1076,\"input_tokens_details\":{\"cache_write_tokens\":1073,\"cached_tokens\":0},\"output_tokens\":112,\"output_tokens_details\":{\"reasoning_tokens\":56},\"total_tokens\":1188}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e9e59c635da26e1016ac920bb265887d19e9ae875f9952dbd\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791566011056,\"endTime\":1791566014647,\"providerRequestId\":\"req_7691ea126b9d454cb7e134a7dc9849c5\",\"statusCode\":200,\"providerResponseId\":\"resp_0e9e59c635da26e1016ac920bb265887d19e9ae875f9952dbd\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"a6b46ea7d7ae1801197817151eeb9a2b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000190425\",\"marketCost\":\"0.000190425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000190425\",\"inferenceCost\":\"0.000190425\",\"inputInferenceCost\":\"0.000134425\",\"outputInferenceCost\":\"0.000056\",\"generationId\":\"gen_01M4GTFPN0XTE2MTR5CN6YRHBM\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

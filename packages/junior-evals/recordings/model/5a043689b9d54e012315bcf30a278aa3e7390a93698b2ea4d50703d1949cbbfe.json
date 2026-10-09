@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when managing an existing event automation, list update and delete it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "827566d731b2",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_05ea842f82a39b63016ac91fb105f887d1a674dca854ce8cfc\",\"reasoningEncryptedContent\":\"gAAAAABqyR-ynUTK7tdXOq1FQ__oyhMy7hg0xBGycVclt_MZluPpZw9RwAqclx8ehQ4VlqpTwxAXJoTij89BTffZYF4y3zXeHxt8p1hGNEHOIjJjcY4KxEBY4m2XzasllywF85VGTOFIq_fKvaRjvHGL_Z5_7J4s--G67rONLbFcXv5pupeWO3dSKxZXkmRWPycdQXl-x1g8ya0JeWKu6dVOq9NEjIpjENSlyxexszi4z5MCzKP4fCcvnVjFU2eq9UApnwrY06v6yr6MNP9iLXNM0gh1y6VZX53t-d1PsNd4HyOsh9kRW788_bvZFEl7bpyaWP9ce2w3Ss8uX1LMhuWFDuMsbnYd--gEtZYcE9_GiZ-ENXmQfQ5BHHgTt4iCbelxqAmYTUhMstIOP9oGwK65Xi5fSDGh_k-Cz-y7Y1UDMN0ZzGr1eoZrk8w5gMO5AY0TsDY75MUCknl0mgx_y-hMpkdaL4Y-uR23m6tkmbTU5WPLDoPPcpHzP-iBOkmks84qgplz4v19NJE-8ln_KUVhgiYjBmRud5LrHc-nc4y2W8zijaimJdMG-WpXVy3MsbNS6wv9fyOFfI5jH2EsBpFFBBlm1YDtxs_Cl2FPA5PzIilx7bUPFNpFBJBX-yvZmkSPHW_u3OGUUNx7k0ffH2b0jL6Mjb1Q5pq6LgIsALWTfczhlxOE-7XlpQAAB3k8CgIwpz_selT6go9Gl-286O5Ex2AU_NEVfHzkzLc_4kbfzNoyS57Kmbd154bRLNVZw8yb9kPM6wbthUB0A7amWtJfXmTlev4kA2GNaFYXh0XUAJ08c34uUzu_whXhvZ8t9sbOQQ6RqCF2xA6-nc6ohFFA6pL1BRmNsAXaCw3swU4LwhoGep3j7u5vmTfL6F0JlVIZ2FdJDtDo8RiipDjr90QdrQBO-MflBBzffbMYJH9mS2wE9yYlwFdZlHhfAOIofbLNpsWsOT2k7w7RZo6aFwtJoW4JCFgfl8mY-gA8A-8uwW0MeXqi-gPtp8uPHRnR_xIw-au3Q26p5fV33dRYxMifvp9NgThUoPCGM6pEDUM3UPohYNz0FLQmizYGoW_vZqOXbvqZ6aqvk0ILJB9f8WDPewBjE-O6rQW7lv44frKrsGsUsTiSUJWXbmcug5AZP2CO20vVURsTi8Dqk9mY6wjaqRCTx8ujIcPRHAMEFhOMlb-AzUTvIStb1ucIjwVecdza9PZXGhVX5nwb9Y3E2HfM2YffSKgHn_hZB440smaToxKQilyg-escRiW61niKDF8-gDRzR3H-3aSDpKaBwkXgrxpeQvk0uSzTEQlabLNse0kU7PlOeL4k2zDVWdTfr9an7UHo7kPPP3_ugH5ysNwaNkK5xerWr2OIbUmT9ahaUGEDv5kKmeJy2jz7baxBRIXuctA5DT8CN3TkZKNGaoqM8heSfYhVYv8adiOeUofIPelTVyvzuQed7nawN0sL0-GRtpauIZzd77MFCuXK09LyjbTS1KNhfEZ1asRS73ad_9vbTfFCD2M3B0PSnIrOMCXT5MgbMj25mQSIW4conlCCb11G3kx_5Emu6fpyx5a2P4mVTlbAqJc=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_05ea842f82a39b63016ac91fb1715487d1acb35b18cdc00263\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1666,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1663},\"outputTokens\":{\"total\":59,\"text\":14,\"reasoning\":45},\"raw\":{\"input_tokens\":1666,\"input_tokens_details\":{\"cache_write_tokens\":1663,\"cached_tokens\":0},\"output_tokens\":59,\"output_tokens_details\":{\"reasoning_tokens\":45},\"total_tokens\":1725}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_05ea842f82a39b63016ac91fb0a3e887d1a2fbe60cab3f485b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565744537,\"endTime\":1791565746096,\"providerRequestId\":\"req_f0331201f4344be3a0dc74ef3f75966e\",\"statusCode\":200,\"providerResponseId\":\"resp_05ea842f82a39b63016ac91fb0a3e887d1a2fbe60cab3f485b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"3ab8f13fb97f14782e3d1e2f8c4db63d\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000237675\",\"marketCost\":\"0.000237675\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000237675\",\"inferenceCost\":\"0.000237675\",\"inputInferenceCost\":\"0.000208175\",\"outputInferenceCost\":\"0.0000295\",\"generationId\":\"gen_01M4GT7JBWDRSF5JKYNQRVJYE4\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

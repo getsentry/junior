@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/forks.eval.ts > Conversation Forks > when a private Slack thread is forked, the fork continues from its reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "5daf6fc688cb",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0efb3bdc1e4d4d51016ac92071c2a487d19d022a0bbb7ac8c1\",\"reasoningEncryptedContent\":\"gAAAAABqySByL17TqJdFfBks0fDG2g3pNxF2aW0GKA3E2b5L4WHXG5r5ts9aR3EQT3sJ0X5dsXCbf2igemPAsu0rPpdFJJ6J2s7GXCpecvdtvlwsbjszNMUAopfUB8K0LQwfcWMbkydlg2qfvBENYQWYRPL24I_XSmO61jnbFcox9JUBn9AZF1UySF03nnszoGrk75BRFFF4SXtpPRfbxbA55dGlQWMI01hZoEvMRmG3Z5J3onaZnGu5S3tHc6aceELPq6JR31Wef5F390nOg3AV3qap6WkPZIYTYGwZ33EzctjhF8iq1V0-HNd6LYBgbPItldBuuDWb18APssjUWs6l6Dh0C1tJyhwV6jU_IQchv1W36Y8VqTOWd4AofQG4QwgdSI2KuhjoZ_4G9KQE1-926nBmtq7PyPjdr7pGyORBMAD8siTqJvMen_u6-6R3BD0CF-Nuhz5fY_XDlkc3OVBrtXkUdXRGKk8q3c3G38Wzb5cXxGQpOJp4bqrDpHPXZkVINqM4rBeRpIxVin0nPIfgdf9qygu1oYReEBSPIFjvW0vFu2FnSvQX4scHlpkdBv4MudpdTm43JUiBmQ-NggHsEmQlH_qHuSo_yuBdIA8hp9nxFIRJqvBGbdaRyohNVId5GYTsyZQhlHIuwYjxvip8QcRYDIA9Y1h2UcCLYDKLm53XngP_Buw1GppA-WTDVTBTsRI0U7Ph5OfKJ8fVzUW1xVgygOwZZXZoHnV45dRp0VmxVT6ZDb5FusWa68020a_aMuwTdERY4cUahm7Ig5hY7TlewTF_twA-4NYTJNwvtoA71S0u8XNgZpP9f_8w09iiJ-HeLzE9b9vFseK4dCw9VFiFErUSUNUpsjcFI-Zh2zUC-v9VVYwV_ZONojE5T7MRaPbamdH_T2PzAgDL-BRcYCJu095LIks5ml2KkFHEVntLlmROB-Ed5aT1x8kddRH-mTl7pC_bvCPVfUr4vojSEAiIAmdSV2mRxDRza0jkSunma17CBpWgJgYQWTpC0ppn-4S8jfPmqW1sQMoMo9kxDWddgPUkM4rVR4NdXHlGx0hZWlc1hN-7BJbQeIhoWIMhRZrK1F41XBtF-X1FLl-2ViX6jDB2BwBJs3S_i2pNv8FgbsMLQODYsc9gU7kT5WgDFvLP-VVYinpZ4XsnPTbcuCPylbzhRwrqR3JH9sjAvW5AMsECKRtoxoDntG49PfOo3-KMUKNCSBdRt0TwdbyXub4h92hhoRjScptCv0gKvg7Goa4B9CcUf4BUWEtv6V888SnsS4-PZBKdNKxtVuqvUx_-9P7lde6rQPTYN3Vneom9etbF3WTUJBmhBmaHwZtRWinoqJZpA775EaRKhxrpT2nTqX23uETZ0jjijnUsPz-G8Ug-lqVKji58xmyEZhIsmimmiNv8XizcmCSr0fbmNOArgarsEUXKb5FZeKfpmnmJANQ6dy4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Answering requires checking the prior thread context; it identifies the release codename as Maple.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0efb3bdc1e4d4d51016ac920722e9087d1bb3c3a4b84ce7ee3\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":744,\"noCache\":744,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":77,\"text\":47,\"reasoning\":30},\"raw\":{\"input_tokens\":744,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":77,\"output_tokens_details\":{\"reasoning_tokens\":30},\"total_tokens\":821}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0efb3bdc1e4d4d51016ac9207136e087d1ad12a068e94296a1\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565937148,\"endTime\":1791565938747,\"providerRequestId\":\"req_66498d195a5145f79f105910d57b58fe\",\"statusCode\":200,\"providerResponseId\":\"resp_0efb3bdc1e4d4d51016ac9207136e087d1ad12a068e94296a1\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"c40a1e7016349f669348127f83d79661\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001129\",\"marketCost\":\"0.0001129\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001129\",\"inferenceCost\":\"0.0001129\",\"inputInferenceCost\":\"0.0000744\",\"outputInferenceCost\":\"0.0000385\",\"generationId\":\"gen_01M4GTDEF1GJTTPZWZFJ8211HC\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

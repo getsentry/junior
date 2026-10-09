@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/credentials.eval.ts > Scheduled Credentials > when scheduled work may need user-bound authorization, use the creator default",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "26754654389e",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_05010b75e6d9b6cc016ac9201a8abc87d1a62f084ce5336a1b\",\"reasoningEncryptedContent\":\"gAAAAABqySAc_m2-KGqaL6fMOSzAZ_jLr8cEnNFJoLs8cPzPnc-2QQAGITKjBj7YW242F1wE_407URpQnm7qyxdeiX-FQm-nyduQwFN6PsBh3NcuCMPunnktgos3EGsP4m2OtL6XPa8rORNwUtNQzqyUkC8SuW8FLGMirpCioWN6kQILUAh3Ipr7nCEBSrsYjHZ_TU4R2xWqxodEHMUeXj5F0iLIyfCUTxwjs4ee_SMWFFEFyzEw5N5HtYXm6qdPnm29wqrtB3NetjIFVkZyIheLKX5EHJG_m1-MF7JduTucS1dwGA2jlryhXUfTOgPdFcjkf6PTvJsziVxEnqFzXl9CAKIuv02lPbFGoiBMTqLd71jNHovxYHiTG8C6Q1NplMiwfB3agmFS5WaIGZcO3VPLmBqMgphofjXOkomMy7s8-ttC6iQKaVyDldcmdk07tiCOSxGlnMzKbUhMw4GWZkHF0mXM_kJVx1mbMsWUl80wuKPEmFQE-wYr5Kzc3SA9WZEJKMtiULh_ZqE_yMYeYz2tER6Gf2rLZRMy27wtPjZiUNQ3kK4LZHv_YiVEmWQE12igYrfKFW8CdTIWcbpYeVji1AxD3u4d0mUZb8bCn_kykj8NmlKGc0Ytzx-DU4tzlquBDkXuhzL7RqPuM86mGTjo3_T8gcbBVyLLarMQX2Lf_A1iWzkm49RShre5BW08J03uoWr73a97JdcWs4mYr-c3T7gTAKfuW6-WHzLfmrLG8jcFg1dAltxC50RTT2drTDDwUp8DOc-FhTqhhcK2jvRPsEJq41uGpAdJ51VsQieiuZu-CSr4ipxmukIlfn4ASRc0ehudouKVIgacfXG1RTJzA-qBpT007hSbOv6pa1hd7yY8ORKyQDAte9geg1raqRd6qN-8ZMmtVpqsDtsXa3t7VwUwHoQVAvj4TO_B9mEkmjA7BFw9NV_n5fnrzN0CFXen4li52uWMmooAMD2VFtVCtXmySLmHUiK_0n8K1mKeKZqVVIQ6eIGiiJTGFJTIhCmDYnz6y_ydrkrAckHjws97txu_g2MY3DxITCiuHF-R36jS0SZb4UOARFI86LXTUiYgZ-T23xrhgpUIKOaqjbwctIphERa3H4PEm9nHi4yKECJe3ao1Y6JaRu3zesQttIr22joaZkTOqWUcKuWHSMLbEmRwJjqbI-BLCua5FQnJ_vsSd4Jen8zcsJ5uMIadDFPjh20IksjpV2WNkbcgWTCLgy4Oa_Hd04OcOFP2LK825zxz5p2AwEY6tuBHsL9Cu8rdB_1MxdsV64eXH1Zhn3tSlfwVh9dPNZAAddUqsej32HTZGvjHYqQGAXcPutBSHZV3kJxUpZIvPBkgQ4dW0mTwdnKB0sG0O4jdSGPnra7spP-lqPINerXP3F-58JPicxM0z6o05zbHIH4Zk_D9VRjVDUtFh7dnETc7yngU7BgtRkFblHV_S8JoyFVwMHJT5h0Nv3wCLxcW30vzymHc_oxaDfdNB1R-SojEeqd-gE-8PR6SLrh6_ToTMcMFAxXAfa07DDEsWxuV3T5PmPiyfCdPcX6XBio1GXC8NQ0hhdU2Z3nDwvlnjBje7bFovdc3sc1UwLhjGGyyWYuwzEFxRlnsgk_dC8KwxwIG8Et2c-j8yWq8kndkwyPjTyHOtCWivh2Wa4eTYzYNMreqkhqrNvGXnS7jouSExTezB4aDeElQaUhWSgaxn6SVYe3RRrnngTG7JpYNk8zqeikYVYxAhySHgLPmAA8eh6dsXUdZHdUqeuBiNFmlUF25Jw2-_YuSVwDhxhR7ByiGsZSV1jsHP8jrDc5V0-r70B1bDGwUhkr7nxxYXS9AoRG0eiPChZK0ulMnE8IBC_g-lvKctWZ0RUydTCnZpP6IkuFjeu-TPQNJ3bHR75b4eyN6Gp-RR9Hq1kxK0NCqCiTXghlHDbS76FhIPdVHAIBKU__VJzNydwIvflAqAb0X_9qnofoXreXB3MG4A3bwmVXq\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly requested a weekly Monday 9am Pacific digest of unresolved Acme Sentry issues posted in this channel, authorizing this recurring task and its scoped service reads and posts.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_05010b75e6d9b6cc016ac9201b8b9087d18cc67e1cb4b1772e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2758,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":934},\"outputTokens\":{\"total\":160,\"text\":63,\"reasoning\":97},\"raw\":{\"input_tokens\":2758,\"input_tokens_details\":{\"cache_write_tokens\":934,\"cached_tokens\":1821},\"output_tokens\":160,\"output_tokens_details\":{\"reasoning_tokens\":97},\"total_tokens\":2918}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_05010b75e6d9b6cc016ac9201a049c87d1bcd66ff553e44a16\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791565849940,\"endTime\":1791565852375,\"providerRequestId\":\"req_ab4a6201f57d473fb5791a8596dafc28\",\"statusCode\":200,\"providerResponseId\":\"resp_05010b75e6d9b6cc016ac9201a049c87d1bcd66ff553e44a16\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"ab3793ffa6c3e440e112ca83c95fd4eb\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00021526\",\"marketCost\":\"0.00021526\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00021526\",\"inferenceCost\":\"0.00021526\",\"inputInferenceCost\":\"0.00013526\",\"outputInferenceCost\":\"0.00008\",\"generationId\":\"gen_01M4GTAS9WWZV0J3XAZ9Z6TG2Z\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
