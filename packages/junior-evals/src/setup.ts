@@ -1,5 +1,13 @@
-import { afterAll, afterEach, beforeEach, inject } from "vitest";
+import { afterAll, afterEach, beforeEach, inject, vi } from "vitest";
 import "./eval-context";
+
+// The product waits 30 seconds after a watched event for more events. An
+// eval sends its events as one batch, so the wait only adds time.
+// `event-wake-delay.test.ts` in `packages/junior` covers the wait.
+vi.mock("@/chat/events/notification", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/events/notification")>()),
+  EVENT_WAIT_MS: 0,
+}));
 
 const context = inject("juniorEvalContext");
 if (!context) {

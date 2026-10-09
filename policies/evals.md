@@ -75,3 +75,7 @@ Suite policy:
   are the behavior under test.
 - Shared vocabulary that is part of the product contract is allowed, but copied
   scenario phrases should be replaced with neutral prompt examples.
+- An eval must not wait in real time for a product timer. The harness may set
+  a product wait to zero when a core test covers the wait.
+- Global setup may give the product the Sandbox snapshot ids of an earlier
+  run, so that a run does not build the snapshots again.

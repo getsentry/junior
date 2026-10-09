@@ -87,14 +87,18 @@ describe("Lifecycle and Resilience", () => {
     // The runtime records the interrupted call as timed out and resumes the
     // turn, so the resumed turn knows that the push happened.
     // The deadline must fall during the push, not during the model requests
-    // before it. Live model requests can take more than 15 seconds, and a
-    // replay returns them at once, so a short deadline gives a recording that
-    // a replay cannot follow. The push stalls for 45 seconds.
+    // before it. Live model requests can take more than 15 seconds, so a run
+    // that can make them needs 30 seconds. Strict replay returns every
+    // request at once and never makes a live one, so 10 seconds are enough
+    // there. The push stalls for 45 seconds.
     // A person writes again while the turn waits to continue. The continued
     // turn takes that message too.
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
-      limits: { turnTimeoutMs: 30_000 },
+      limits: {
+        turnTimeoutMs:
+          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+      },
     });
     let sentWhilePaused = false;
     const conversation = await run(

@@ -8,6 +8,10 @@
  * The worker also sends messages itself, for example to continue a turn that
  * stopped at its deadline. The queue knows such a message because the worker
  * sends it during a delivery.
+ *
+ * A delivery only tells the worker to check a Conversation. So the fixture
+ * starts a delayed delivery early when nothing else runs. If the product then
+ * asks for more time, the queue waits for that time.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
@@ -30,6 +34,11 @@ export interface InProcessQueue extends ConversationWorkQueue {
   pending(): Promise<void>[];
   /** When the last delivery was due to start, or 0 before the first one. */
   latestStartAtMs(): number;
+  /**
+   * Start the delayed delivery that is due first, now. Returns false when a
+   * delivery runs or is held, or when none can start early.
+   */
+  startDelayedDelivery(): boolean;
   /** Hold deliveries until `release()`, so inputs form one mailbox batch. */
   hold(): void;
   release(): void;
@@ -66,32 +75,60 @@ export function createInProcessQueue(): InProcessQueue {
   const pending = new Set<Promise<void>>();
   const errors: unknown[] = [];
   const sentConversationIds: string[] = [];
-  // Set while the worker runs a delivery.
-  const inDelivery = new AsyncLocalStorage<true>();
+  // Set while the worker runs a delivery. `early` is true when the delivery
+  // started before its delay ended.
+  const inDelivery = new AsyncLocalStorage<{ early: boolean }>();
+  const delayed = new Set<{
+    dueAtMs: number;
+    canStartEarly: boolean;
+    startNow(): void;
+  }>();
   let requeueHook: ((conversationId: string) => Promise<void>) | undefined;
 
   const deliver = (
     message: ConversationQueueMessage,
     messageId: string,
     delayMs: number,
-    fromWorker: boolean,
+    sender: { early: boolean } | undefined,
   ) => {
+    const fromWorker = sender !== undefined;
     latestStartAtMs = Math.max(latestStartAtMs, Date.now() + delayMs);
     const delivery = new Promise<void>((resolve) => {
-      const start = async () => {
+      const start = async (early: boolean) => {
         if (fromWorker) await requeueHook?.(message.conversationId);
         const run = consume;
         if (closed || !run) return;
-        await inDelivery.run(true, () => run(message, { messageId }));
+        await inDelivery.run({ early }, () => run(message, { messageId }));
       };
-      const startAndSettle = () => {
-        start()
+      const startAndSettle = (early: boolean) => {
+        start(early)
           .catch((error: unknown) => {
             errors.push(error);
           })
           .finally(resolve);
       };
-      const schedule = () => setTimeout(startAndSettle, delayMs);
+      const schedule = () => {
+        if (delayMs === 0) {
+          setTimeout(() => startAndSettle(false), 0);
+          return;
+        }
+        const wait = {
+          dueAtMs: Date.now() + delayMs,
+          // When an early delivery sent this message, the product asked
+          // for more time.
+          canStartEarly: sender?.early !== true,
+          startNow: () => {
+            clearTimeout(timer);
+            delayed.delete(wait);
+            startAndSettle(true);
+          },
+        };
+        const timer = setTimeout(() => {
+          delayed.delete(wait);
+          startAndSettle(false);
+        }, delayMs);
+        delayed.add(wait);
+      };
       if (held) {
         waiting.push(schedule);
       } else {
@@ -123,7 +160,7 @@ export function createInProcessQueue(): InProcessQueue {
         message,
         messageId,
         Math.max(0, options?.delayMs ?? 0),
-        inDelivery.getStore() === true,
+        inDelivery.getStore(),
       );
       return { messageId };
     },
@@ -133,6 +170,16 @@ export function createInProcessQueue(): InProcessQueue {
     },
     pending: () => [...pending],
     latestStartAtMs: () => latestStartAtMs,
+    startDelayedDelivery() {
+      // A pending delivery that does not wait for its delay runs or is held.
+      if (pending.size !== delayed.size) return false;
+      const [next] = [...delayed]
+        .filter((wait) => wait.canStartEarly)
+        .sort((left, right) => left.dueAtMs - right.dueAtMs);
+      if (!next) return false;
+      next.startNow();
+      return true;
+    },
     hold() {
       held = true;
     },
