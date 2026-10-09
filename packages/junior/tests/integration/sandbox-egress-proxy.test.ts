@@ -1120,6 +1120,46 @@ describe("sandbox egress proxy integration", () => {
     expect(tokenRequests).toEqual([{}]);
   });
 
+  it("returns a Junior egress error instead of forwarding an unreadable body", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({ appPermissions: { actions: "write" } });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      modules.policy.buildSandboxEgressNetworkPolicy({ credentialToken }),
+      GITHUB_API_HOST,
+    );
+    const upstreamFetch = vi.fn(
+      async () => new Response(null, { status: 202 }),
+    );
+    // Production can deliver an already-used body stream. The proxy cannot
+    // tell whether the body was empty, so it must not forward the write.
+    const request = proxiedRequest({
+      body: "{}",
+      forwardURL,
+      method: "POST",
+      upstreamHost: GITHUB_API_HOST,
+      upstreamPath: "/repos/getsentry/junior/actions/runs/123/cancel",
+    });
+    await request.arrayBuffer();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(request, {
+      fetch: upstreamFetch as typeof fetch,
+      verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+    });
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      source: "junior-egress",
+      error: expect.stringContaining("did not send the request upstream"),
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
   it("records GitHub GraphQL repository access errors without rewriting the response", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
