@@ -57,6 +57,7 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const read = await readOwnEventForRequester(ctx, input.eventId, "cancel");
       if (read.status === "cancelled") {
         return {
@@ -68,7 +69,7 @@ export function createCancelCalendarEventTool(ctx: GoogleToolContext) {
       const { event, path } = read;
       const result = {
         target: "cancelCalendarEvent" as const,
-        ...ownEventResult(event, input.timeZone),
+        ...ownEventResult(event, timeZone),
       };
 
       const response = await googleApiRequest(ctx, {

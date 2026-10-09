@@ -20,6 +20,7 @@ export interface GoogleToolContext {
   egress: PluginEgress;
   users: {
     resolveActor(): Promise<{ user?: User } | undefined>;
+    resolveTimezone(): Promise<string>;
   };
 }
 
@@ -33,8 +34,9 @@ export const timeZoneSchema = z
   .string()
   .min(1)
   .refine(isTimeZone, "timeZone must be an IANA time zone")
+  .optional()
   .describe(
-    "IANA time zone used to read and show times, such as America/Los_Angeles.",
+    "IANA time zone used to read and show times, such as America/Los_Angeles. Omit to use the requester's time zone.",
   );
 
 /** True when the runtime knows this IANA time zone. */

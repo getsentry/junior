@@ -66,7 +66,8 @@ reports, and other typed hook surfaces exported by this package.
   one subject user on a person profile. Core owns viewer authorization,
   collection, sanitization, and browser rendering.
 - Tool hooks may resolve the active Actor's Identity and User through
-  `ctx.users.resolveActor()`.
+  `ctx.users.resolveActor()`, and the Actor's timezone through
+  `ctx.users.resolveTimezone()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
   User lookup. Routes that do not need User data do not query identity storage.
 - User page readers receive the signed-in `User`. Plugins return limited data.

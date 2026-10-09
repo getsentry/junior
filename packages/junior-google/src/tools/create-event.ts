@@ -145,6 +145,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input, options) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       const startMs = Date.parse(input.start);
       const endMs = Date.parse(input.end);
       if (endMs <= startMs) {
@@ -186,14 +187,14 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
           ...(input.description
             ? { description: input.description }
             : undefined),
-          end: { dateTime: input.end, timeZone: input.timeZone },
+          end: { dateTime: input.end, timeZone },
           guestsCanModify: false,
           id: eventId,
           ...(input.location ? { location: input.location } : undefined),
           ...(input.repeat
             ? { recurrence: [recurrenceRule(input.repeat)] }
             : undefined),
-          start: { dateTime: input.start, timeZone: input.timeZone },
+          start: { dateTime: input.start, timeZone },
           summary: input.title,
         },
         operation: "google.calendar.event.create",
@@ -223,7 +224,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), input.timeZone),
+        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
       };
     },
   });

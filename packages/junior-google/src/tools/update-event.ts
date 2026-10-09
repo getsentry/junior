@@ -123,6 +123,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input) {
+      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
       if (input.start && input.end) {
         const durationMs = Date.parse(input.end) - Date.parse(input.start);
         if (durationMs <= 0) {
@@ -175,8 +176,8 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
           }),
           ...(input.start &&
             input.end && {
-              end: { dateTime: input.end, timeZone: input.timeZone },
-              start: { dateTime: input.start, timeZone: input.timeZone },
+              end: { dateTime: input.end, timeZone },
+              start: { dateTime: input.start, timeZone },
             }),
           ...(input.location !== undefined && { location: input.location }),
           ...(attendeesChanged && { attendees: [...kept, ...added] }),
@@ -201,7 +202,7 @@ export function createUpdateCalendarEventTool(ctx: GoogleToolContext) {
       }
       return {
         target: "updateCalendarEvent" as const,
-        ...ownEventResult(ownEventSchema.parse(response.body), input.timeZone),
+        ...ownEventResult(ownEventSchema.parse(response.body), timeZone),
       };
     },
   });

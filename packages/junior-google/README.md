@@ -15,6 +15,9 @@ This version supports Calendar only. Drive and Gmail are out of scope.
   Slots where they are free come first, and each slot names the optional
   attendees who are busy or off hours. Slots are spread across days and
   across each day, so the requester gets a real choice.
+- Every Calendar tool takes an optional `timeZone` for the times it reads and
+  shows. Without it, the tool uses the requester's timezone from
+  `ctx.users.resolveTimezone()`, so Junior does not have to ask for one.
 - `createCalendarEvent` creates an event on Junior's own calendar. It sends
   invites and can add a Google Meet link, a location, optional attendees, and
   a simple repeat rule (weekdays, weekly, or monthly). A retry of the same

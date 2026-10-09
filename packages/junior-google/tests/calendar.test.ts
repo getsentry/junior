@@ -19,6 +19,7 @@ function calendarTools(...responses: Response[]) {
       resolveActor: async () => ({
         user: { email: REQUESTER, id: "user-1", identities: [] },
       }),
+      resolveTimezone: async () => "America/Los_Angeles",
     },
   } as never);
   return { fetch, tools };
