@@ -116,21 +116,7 @@ ORDER BY tablename ASC
     );
     const names = tables.rows.map((row) => row.name);
     if (names.length > 0) {
-      // A TRUNCATE of the full schema takes about 10 ms, even when no table
-      // has rows, and most tests write to no table or to a few. So this
-      // truncates only the tables that have rows.
-      const used = await client.query<{ index: number }>(
-        names
-          .map(
-            (name, index) =>
-              `SELECT ${index} AS index WHERE EXISTS (SELECT 1 FROM ${name})`,
-          )
-          .join(" UNION ALL "),
-      );
-      if (used.rows.length > 0) {
-        const usedNames = used.rows.map((row) => names[row.index]);
-        await client.query(`TRUNCATE TABLE ${usedNames.join(", ")} CASCADE`);
-      }
+      await client.query(`TRUNCATE TABLE ${names.join(", ")} CASCADE`);
     }
 
     const sequences = await client.query<{ name: string }>(
