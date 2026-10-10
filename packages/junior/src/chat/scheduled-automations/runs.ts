@@ -497,8 +497,9 @@ export async function markScheduledRunSkipped(
 
 /**
  * Advance a scheduled automation after a terminal run under its task lock.
- * Returns true only when this call stored the run's block reason, so the
- * caller can tell the creator once and only when the dashboard agrees.
+ * Returns true only when this call set the automation to blocked, so the
+ * caller can tell the creator once and only when the dashboard agrees. A
+ * paused automation keeps the reason and stays paused.
  */
 export async function advanceScheduledAutomationAfterRun(
   db: JuniorDatabase,
@@ -532,7 +533,9 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return args.status === "blocked";
+      // It stays paused. Resume returns it to blocked, and its creator sees
+      // the reason then.
+      return false;
     }
     const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
     if (isRunNow) {

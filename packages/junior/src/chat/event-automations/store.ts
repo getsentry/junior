@@ -456,8 +456,9 @@ export async function setEventAutomationStatus(
  * Stop an event automation after a run reports a problem that only its
  * creator can fix. An active automation becomes blocked. A paused automation
  * stays paused and keeps the reason, so resume returns it to blocked.
- * Deleted automations do not change. Returns true only when this call
- * stored the block, so a redelivered block can skip the creator notice.
+ * Deleted automations do not change. Returns true only when this call set
+ * the automation to blocked, so the creator notice goes once and never for
+ * an automation that the dashboard shows as paused.
  */
 export async function blockEventAutomation(
   db: JuniorDatabase,
@@ -482,6 +483,6 @@ export async function blockEventAutomation(
         ),
       ),
     )
-    .returning({ id: juniorEventAutomations.id });
-  return updated.length > 0;
+    .returning({ status: juniorEventAutomations.status });
+  return updated[0]?.status === "blocked";
 }

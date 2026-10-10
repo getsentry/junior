@@ -773,17 +773,25 @@ describe("plugin heartbeat", () => {
   );
 
   it.each([
-    { case: "blocks it", rescheduled: false, status: "blocked", notices: 1 },
+    { case: "blocks it", change: undefined, status: "blocked", notices: 1 },
     // The creator moved the schedule during the run, so it stays active.
     {
       case: "keeps it active",
-      rescheduled: true,
+      change: { nextRunAtMs: TEST_RUN_AT_MS + 24 * 60 * 60 * 1000 },
       status: "active",
+      notices: 0,
+    },
+    // The creator paused it during the run. The dashboard shows paused, so
+    // a notice that says blocked would be wrong.
+    {
+      case: "keeps it paused",
+      change: { status: "paused" as const },
+      status: "paused",
       notices: 0,
     },
   ])(
     "tells the creator about a blocked run only when the heartbeat $case",
-    async ({ rescheduled, status, notices: expectedNotices }) => {
+    async ({ change, status, notices: expectedNotices }) => {
       const db = scheduledAutomationDb();
       await saveScheduledAutomation(db, createTask());
       const notices = () => getCapturedSlackApiCalls("conversations.open");
@@ -793,12 +801,9 @@ describe("plugin heartbeat", () => {
         `sched_plugin_1:${TEST_RUN_AT_MS}`,
       );
       await markDispatchBlocked(run!.dispatchId!, "Channel archived.");
-      if (rescheduled) {
+      if (change) {
         const current = await readScheduledAutomation(db, "sched_plugin_1");
-        await saveScheduledAutomation(db, {
-          ...current!,
-          nextRunAtMs: TEST_RUN_AT_MS + 24 * 60 * 60 * 1000,
-        });
+        await saveScheduledAutomation(db, { ...current!, ...change });
       }
       // The Scheduled automation is still active, so no notice goes yet.
       expect(notices()).toHaveLength(0);
