@@ -344,6 +344,13 @@
       "when": 1791490138625,
       "tag": "0048_user_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791557647756,
+      "tag": "0049_event_automation_status_reason",
+      "breakpoints": true
     }
   ]
 }

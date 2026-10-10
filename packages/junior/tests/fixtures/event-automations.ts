@@ -77,6 +77,18 @@ export async function execute<TInput>(
   });
 }
 
+/** Build the review event that `createTask` Automations match. */
+export function changesRequestedEvent(eventKey: string) {
+  return {
+    eventKey,
+    eventType: "pull_request.review.changes_requested",
+    occurredAtMs: Date.now(),
+    namespace: "github",
+    identifier: "getsentry/junior#1174",
+    trustedSummary: "A reviewer requested changes.",
+  };
+}
+
 /** Create an event Automation through its production tool. */
 export async function createTask(
   instruction: string,

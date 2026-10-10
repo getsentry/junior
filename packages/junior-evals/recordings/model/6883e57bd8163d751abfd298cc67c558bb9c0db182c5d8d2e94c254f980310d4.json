@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/auth/oauth.eval.ts > OAuth Workflows > when the user explicitly asks to connect, confirm the completed connection",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "c8013a4aea80",
+      "messages[1]": "d3a08a7eed39",
+      "messages[2]": "a4f76720f38f",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GSF6Q9D7YWF02C1CVP2GCD\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User request:** “Connect my eval-oauth account so I can use it here.”\\n- **Progress:** A handoff tool was invoked with `{\\\"profile\\\":\\\"handoff\\\"}`, but it returned no result. No account connection or authentication is confirmed.\\n- **Next steps:** Continue the account-connection flow. Check whether an OAuth integration or authorization tool is available; if so, initiate it and guide the user through any required consent. If not, explain what’s needed to connect the account.\\n- **Constraints/preferences:** No additional user preferences or account details were provided.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":178,\"output_tokens\":125},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_049bc91eda1136ba016ac91c9242b887d1803c13e955fcaabe\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791564946174,\"endTime\":1791564948239,\"providerRequestId\":\"req_814613acaa3a4153a3bcca444006e1a6\",\"statusCode\":200,\"providerResponseId\":\"resp_049bc91eda1136ba016ac91c9242b887d1803c13e955fcaabe\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"fa436651e618a13ccfefb35cf18b4569\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000803\",\"marketCost\":\"0.0000803\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000803\",\"inferenceCost\":\"0.0000803\",\"inputInferenceCost\":\"0.0000178\",\"outputInferenceCost\":\"0.0000625\",\"generationId\":\"gen_01M4GSF6Q9D7YWF02C1CVP2GCD\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 54000 tokens (max output plus thinking budget) for openai/gpt-6-luna and was lowered to 54000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

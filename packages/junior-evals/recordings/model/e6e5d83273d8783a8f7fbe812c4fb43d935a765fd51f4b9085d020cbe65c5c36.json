@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watch asks for a fix and the PR checks fail, commit and push the fix without a person",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "97cf7c3ec841",
+      "prompt[1]": "43800c8d095f",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0f3b28b72f1b8cc2016ac92a93a97087d1a4812ab3d6a1e435\",\"reasoningEncryptedContent\":\"gAAAAABqySqUvKA7VKwmsxY6aK5qhY-qQlxpaGyioSElqRXJjflx-h3Kx5QErUApfxljG3hFLUJF08XSYab4c2fVhFTQBSxqDw-PTi6dO7wZXUjRYvMAOAU6E94ZaO-MVSK7mU8xhGppkug6d0mIFikw6Jce2Bv4zy-C-Udd7fbbzmzFzGtL8QwdCe9UwNUhaBnZ2zgYcduDtKYWEY58kr7pIiZkdPi2K0HiRkp71OVU0F36pSOOJbZoNQhhJmrIFfVSKUtHjzzUc9iEOcdkdXxAMpb3kehQsQsJqeNAbJbwONqo8NnE2Sr9vPC43pKl7pywhiuAsB-4xX7VlEuIzGVP_o2kPOBzKm4ZBhB3wZuqR6TIF2FI3FTrLl0LO00yN-3z3n8eaOAELfT91b1yk-VGx7Wr1DVLxLX7fLieeeIXnxbVqSGDqXFrRsZrcItwRIxiC6MxktP7Oeo61hYs38ugezNSJ7UlZfZRiQcyXX957Oszi-f4r1zW5-RwJZoXKiQzX1YiUU1henpBfYbSk7Lmnt4ILUJJHZFbtA2g9twMgbF1bscx6TsVVnQijHzZq1_MnowblsrgRvr5S01mERQPKXOwGW0LAe2nh8531er6m5_g8H9QHaywPdaeklC-G0BhjjhWaLEsipD8jxm2N18c83oA6V2r9LThzxzkYgDPq67GGEo93KNuzKfV5YDujBlh_PcNZUjsnxnn6PNdg9itDlEwyNrNil6lrvB02DAe7pIdq3u7uKRVd8yGXQLUSr0acZhZpLsvy_gxXlu6DovBOxa2OVOulcIm8V8B7l9f71w8i5tEaEeYTuJQS6_ySGEXLjGFL1MsvHcNqFkkxbhCWnZC7R52AGRB0BQLNLhCc1PxAg3Y721W05wyMULFl-8-IF4leNVPXlDgrFPxXen7-oT49ajkf5B4jR_6hzG1XEfPqgquhlUmp6qqi755oQ5688oFs59NWc9_7dBXcLlMbDkdMSQnPbXPw4N9qlIrte2Ht3KRyZ-77Qt1YvjMYnfws1PPtTDpDuphXzSMEa18Scg0x2qrSbH1LAT2A0SaeHKOPqQLZ9ZAg5NWMT7GbTSHsPQWeXiWR7eBsiclynbmVekMl2I7FUtArVmQQi8tM_69cDR7SnI_hw-0v-EC6zJ804mlZyCRkBcvaw18qMdioyBB92G-kiLl7Jnf9kr8yPWCuy7bO9SUR2a8yFo8_t-qEYdEOgxfdcQT1ghTVp9udjwxSIuTO37MVdchSV65HZp4oyO72zjQo1kJEGg2hCb7RtODV2K7OIovkDHwMPkUzVRgUmnRvaoRWL7pItXkyIfw2lcdT5QmwWqfGBLQdDD206pp__RvDc2jwTMIRByG8comwWAC_HLrItY3KdLVyA77GxZBKIONZxL01h9uasEwLcmaM3DS0hmXT3UExFYVfTv4Zdo56bZcUOVvC0yd05pM8LPua5E=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"xhigh\\\",\\\"profile\\\":\\\"handoff\\\",\\\"confidence\\\":1,\\\"reason\\\":\\\"This requires modifying a project to fix a failed check, committing and pushing an existing branch, and running verification.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0f3b28b72f1b8cc2016ac92a9424c087d1ac7e18741a5d1733\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1295,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1292},\"outputTokens\":{\"total\":79,\"text\":51,\"reasoning\":28},\"raw\":{\"input_tokens\":1295,\"input_tokens_details\":{\"cache_write_tokens\":1292,\"cached_tokens\":0},\"output_tokens\":79,\"output_tokens_details\":{\"reasoning_tokens\":28},\"total_tokens\":1374}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0f3b28b72f1b8cc2016ac92a92978887d19e4d5053faa74940\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568530521,\"endTime\":1791568532746,\"providerRequestId\":\"req_b47e6d4ca5cd45c3983fb5ce47c42441\",\"statusCode\":200,\"providerResponseId\":\"resp_0f3b28b72f1b8cc2016ac92a92978887d19e4d5053faa74940\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"108a3db43f21076eef070d04fc6861d4\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0002013\",\"marketCost\":\"0.0002013\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0002013\",\"inferenceCost\":\"0.0002013\",\"inputInferenceCost\":\"0.0001618\",\"outputInferenceCost\":\"0.0000395\",\"generationId\":\"gen_01M4GWWK1Z2FPM3W4V7595X5AB\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

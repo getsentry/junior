@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when confirming an explicit issue reference, use that issue as target",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "374af4df960e",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e6dacff9a0b1ebc016ac92b78495087d195cf13aaaaa2805f\",\"reasoningEncryptedContent\":\"gAAAAABqySt53b0i9gdSUjg4BVOlep9jG0_NvDEek0sVdAiDn1qAdnNcd1qFlbh6QF_muZMAdqYQFZPJ-GavJRFIUUiBi6E4ofWZHv5pQg5h8I8wKVTEBxXjSOtLesgRs67D5-et7p3PYeZHKWWHtKLi7AAU_i92Ri3NXyhs-oGQCeahS_eS9DXS_Ppa5JfA-6MjHnXEYpy0t9Hi5R2MLL6mt7ub3b-1OIbzsXa6wg9LySkqsiwMcJxm374dCHxWSldcVKHxsckd9GHlM2q3htbZgfI14cJFi8Is_i57wey7-tYSFA2eGtnwPFERZftuJWBrcUoPRfi09XYZKLruTh96_O8elyXIR3JylgEN4hz6hOaR095UCS_vMcIa19evwuiOlUmdHPngp0aUUpBhVAjGZFKBsbXac_RMBTZGcnJ3qm9L5M6Gs-7PLMFTUcIVdUsxh3THBNf1p4jr0phs1mgpPoRuYdD7ibZVJrRRK9n0Hayd9CDLvWMo5V2jacaoBKKVJfWGBBBBWZSGXgcyCtdbr7_NWGYRmn7Spw0NPlSpSO6G6Wn3GsmHcMjIPaEmDRIoG27C4NHcl5PdfIc4N1BSQVJE22UaMnbu0VjCoa3MEqh034Xo3AQPzeoL3X6HdOBi-Llw5yvhPL-iBdsyh9T8H_LuLVR1Vrs9lwfaWqjo9XJz1G7zxWwf93qnTyCpZGVbTj5cFkURdWhFJ9F0ccAZduFJLUEpAdFS5QwRxy0WM9Nd5fYtU6HWe9Wu54OjGVMk5JsJXiq7ieHEjdVl22eFgsQ5m_czr01PxdaBbYpAvqnwLl0_2hFLMhE2KwafChXBjnCeKIiDxatuf4gia573URDI1XRXWyRxupiUa9Y3KF5TaiHsEG0KhyFO3UkW6l8Fc8HOrBS9dQZfa19P3QkLWo_dG2wnjpVy8WE8zltHaGVW9eLe863nBWG3epjo4V3aQmSXwsGywV9xIpiEuy_kRlrP_XrHTysKpdAHyvscpxRBw6V5LwJGeZZ7D9wNk4FEuYdt_eYIOuIliRfEUCASFLa5_Y4aXixi8mYPdR7yxJbRBllwAA2HNM2IWgcjrSVr3GCThnBswm7P3vQcWPtguMyB2bKOOUjMtntP5elCRlIvEUbHxbemHvcsGklrTz58p2wwJSOQcBI-QUTLKJ6eZZScsm-PG67THnrbuw_5zKKdi3LHtOi_LlkFQBLn19SuZfLsk7F2T-m6jhQKZKJEz1R6DNx5Z2mDj7cfsOGQ1kkU2IMhc8OoUgyMHI_yBjff3Py86G5ZJeipJNbD8F1t550EgC_fkdqGSB8Yldlz9ycS6Fhyn9YpAkgVbsBqs0i838d9FS_KE4MVsHNZ0paoRPKLXkyX3_7mnrTss62IugcBgMN5LosJUpBVE9Lv2-5JkCIfXwvHcjf91JK5fnn7R0mcSvt5eWCh_IHSa0yo3Ehip0tgdBtAz5WT9PN3uTT9ByabNPeemly88NinbXL6tTfaEMgbQ1mWgikcM755JZ385dz43RWbP34saJr-iBbFMdcRZXzSsMY6-mV-x8Yn1YkqDLbRcJGPJ5yRN6zyUeN0Vr6URDrCMdYLQHN902oxmaHdE95eoHn0DRBb2ccej7Rsn-BGrDIZKYfLE8_64fhf430xT2OfWkidPZ898BHrdLC7LjIoX6WSsa58n4H8xjYVbN0VxyLFAtrFP57Gq3EYZQg33_lgXsdPwSGdiPpmX_2jaTZO1QVUl5FMjr6YintNQyNpPa-SwIoXABrPcDlSgquh5ddBY_xHydK6FAG_jo9qzgz_NGjUfF1uWc-RwKMXwERUjb5MtuiaWmYIg-Nx6z4vkkKwPDUXjhXeZzd0FIXSEf-Sh4weV7G6ipOLjhFZu3Wxl56TA0wx17A2UYyKW-rj-IycjdoiE08QdwX576b9iJkwChgj3dbG1vQOm2Hm8HX-HCeCj_eIEVHIhyqs5g3f6nEMt10UUPfwPxQvw8Ua7CpLIvClL8u9mRDrAXt5SrkTZSxTiRl68lEmY8CSkz-t_gCmD3TaafTX3QJGhKFKa8O5TSVQYagfcJIbZd7BeIYYvh85Fkj3o2XrxdO-TN8k6tMiA94FEMI2XF24JDB-tnf--4nK6HOXWbxBGP0jFR060hQCy35bNMVP4XkErmfrf0MrURW8wDatTbcVXqSoojq9aUsKKbAeFFYCBF84Ww8QZqrd2oC2a-RvDXfiEGh9mXHpByRsqN1_L1j0JHAMGnT-xQulgSV1lQitd91dCwmo3p9EQzbp2oyE2YOiT8gsUn7774q56ojVwuv_wmAHHK3l7NF8FaB-kemEX2Q6NztUGd26ACqvHfIOaa_DHyMtxtU=\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e6dacff9a0b1ebc016ac92b795b8487d19c4aa85d884001ff\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":5308,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":5305},\"outputTokens\":{\"total\":156,\"text\":14,\"reasoning\":142},\"raw\":{\"input_tokens\":5308,\"input_tokens_details\":{\"cache_write_tokens\":5305,\"cached_tokens\":0},\"output_tokens\":156,\"output_tokens_details\":{\"reasoning_tokens\":142},\"total_tokens\":5464}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e6dacff9a0b1ebc016ac92b77bafc87d1ad2a48a8dda4db07\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568759641,\"endTime\":1791568761517,\"providerRequestId\":\"req_d6dcd9ae1e14401db4ebc565fe7bfb2f\",\"statusCode\":200,\"providerResponseId\":\"resp_0e6dacff9a0b1ebc016ac92b77bafc87d1ad2a48a8dda4db07\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"8a624504992027db5aff4ccaa3869d70\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000741425\",\"marketCost\":\"0.000741425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000741425\",\"inferenceCost\":\"0.000741425\",\"inputInferenceCost\":\"0.000663425\",\"outputInferenceCost\":\"0.000078\",\"generationId\":\"gen_01M4GX3JSN6VV9084NJPVYSZJH\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

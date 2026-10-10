@@ -10,10 +10,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { blockEventAutomation } from "@/chat/event-automations/store";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -419,13 +420,25 @@ async function recordEventAutomationExecution(
   });
 }
 
-/** Project a blocked turn to the plugin API. */
+/**
+ * Project a blocked turn to the plugin API. An Event automation is blocked
+ * first, so a retry after a failed write still blocks it. The heartbeat
+ * blocks a Scheduled automation.
+ */
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
   const previous = await getDispatchRecord(id);
+  const eventAutomationId = previous?.metadata?.eventAutomationId;
+  if (
+    previous?.plugin === "junior" &&
+    eventAutomationId &&
+    !isTerminalDispatchStatus(previous.status)
+  ) {
+    await blockEventAutomation(getDb(), eventAutomationId, errorMessage);
+  }
   const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record

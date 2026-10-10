@@ -1,0 +1,1 @@
+ALTER TABLE "junior_event_tasks" ADD COLUMN "status_reason" text;

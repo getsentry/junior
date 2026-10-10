@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/scheduler/management.eval.ts > Schedule Management > when asked to reschedule an existing task, replace its cadence",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "94f26745c571",
+      "maxOutputTokens": "81a83544cf93",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "fef2d33928c2",
+      "prompt[1]": "be3ea220ce68",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e0665d550fcb2e6016ac92bca3a0887d1ad52c326a37922d3\",\"reasoningEncryptedContent\":\"gAAAAABqySvLlrPXVpl6GcoCqKYffT_QEyqsMIfXbDGkfYKg82N79hQYQK1oZeAMfFZdenRNW04iry_cJPA_yqOnYyhS9bEXbyQ7xRC9GBPfhpdf5J45Mz9fNaIEwO8W90hn0hMhib3Bd-KqG61PsxBUq7eccScMZ0BvEVhBmzI4PZf9Xoc85U6N7BPCcxdsLUN3LXkyXPzJZn-RkI9aETjHs0X-9FTt5K1IioUQsYygTDWcIs-eGmRma3Krxl0Sj5m4lcE7JOMpa7O7G-n64ZOIvcCUnxmFvlvGv5hFjafmJyYX66E26xCQwyDDDj9ofip_70_npnpTL7n1yLx9V5jSS9ZEzvHWxGPwnZuqUL8r3wGm9egTO_O7eA4uOrCXW-5eJ268g6uSxc5CAAwpa05uRe-bSK3GxthRttb4batq3QrbpLl8mqHgAxX2GpzyU0XzuuvnYOgEVYTyu5tDyYaNIipSTTCONuC2ERan2gicQOliVDY0F6M5YE5suoyCPtc-miE3iMwkHbBVnGwqTVw8DcSDZy8SiVrXu13CjCH9i7GNnxijsX6PHaPmxfXoVna67qFWNgwsq6YqUa3xqe3XvrAhXBfY-sS4hgzx4-L2sP5RpNYgs6lbowo5Z-hNruGn7Ge0EOOpWtU-4bg3U5r_yBxxKjapt38-pQ1E2QhU5Ks71cd8j9gVrH4Is3VrR1nUgsh1i7z_FajXQASqrsYRq9cgdNPcsWQd1vGb0YCHVKc43rV4bVULTLvWftWwF6mWlIohFdXUlMm290pAh_hAKdYKSwfwmWEiTy1tGRezt2UhBUfSJMOKMFIq5gTC0NafN4xYoCyif9m_M4NEIShWIht4VYXqmPRLHnO_f5Fv29wNaKejcl8wFYA-r5YM05JgHpzSTYRHbwWu8TwXfz83hLM-T16XcdTGyTnlfm91J65fNVpB0kfoB3YHIK1cIouHItYnlg402su4hbw0HtzFN9Lti4dpQnax2afOStli_uMo-KIAMV6T1GTLsZOgJWwl5P2aQYfctMhoMfTvuPi4VKN0SrO2NYMFzg5qjugzpMlr9HWUV7tUPjSGf2JkUxju9_aDD5n3J7Sd-K6Zxr3BYRizdqrQMEaXwxUt7g5czbgVK_RZMq7dSN-tl46MLONhM2ElWxJe8_kuLY-EwS3DmdQSqFXkPqka5Zz0dbhum020WkXXlZ4ld4duKZtWFPcJV_l0zsjGS-LJqnNfo1v_qZWTNPVm6Z16ADnfErvIYIrf_Q_Xb0DpHLl0fP21XgRZ3oVB5mynyJf3kPKu4cY1gUIAPBtxjsjuUxshxnflPrCkgCdHS9Dj0P1nd7kf9U8wOKRhctLc0fZ0JX5stTJ8c1IuNDhAVztMR-Wvjp6uUQoL65eHpytAK-9Qgp2DbRSbmXQrMWHhcISMpauFmA_w8tcV_IJquDTit8_WPC4-rE9AFUJuXO7Nhse0EIRhTqk1w3A56jFxJ88ikS9oHkJx5juJ5dUED8PSgIE1jAAyAxuB6H6cDBKeTBogJVyRi6pnLw57ndB_ehuNGnoIxZowQeSh5hybAPXU7EqQCxg1QkQS_tMB_7WR6xyjr7Z3OiqMNNjrt_y7i7X9MnkM8oF9dZz2v2JJ04rmxvkiuFqIHq4LzYs5NM6owHTkBpx6qAiJwZgMlg08r40iotA_G6AL79vrvfqATbGumwUxpxf5hRk5aVQ6HNA2vb5a8OYxqYAouHesVKBm7qGsV563w8wkg947ZAOpP5fmpycNN_4d1B46OVfnS-4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"decision\\\":\\\"allow\\\",\\\"reason\\\":\\\"The user explicitly confirmed changing the existing planning reminder to Tuesdays at 10:00 AM Pacific; the update keeps it active and changes only the schedule.\\\",\\\"riskLevel\\\":\\\"medium\\\",\\\"userAuthorization\\\":\\\"high\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e0665d550fcb2e6016ac92bcabd7887d1b1f7e8635f48dc36\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":3075,\"noCache\":3,\"cacheRead\":1821,\"cacheWrite\":1251},\"outputTokens\":{\"total\":129,\"text\":56,\"reasoning\":73},\"raw\":{\"input_tokens\":3075,\"input_tokens_details\":{\"cache_write_tokens\":1251,\"cached_tokens\":1821},\"output_tokens\":129,\"output_tokens_details\":{\"reasoning_tokens\":73},\"total_tokens\":3204}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e0665d550fcb2e6016ac92bc98b4887d18f16cc29e71d97bf\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568841449,\"endTime\":1791568843338,\"providerRequestId\":\"req_36fe4e21cac3489fb1a68bb0634f34e0\",\"statusCode\":200,\"providerResponseId\":\"resp_0e0665d550fcb2e6016ac92bc98b4887d18f16cc29e71d97bf\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"291640158236d2cefa842bae242750e3\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000239385\",\"marketCost\":\"0.000239385\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000239385\",\"inferenceCost\":\"0.000239385\",\"inputInferenceCost\":\"0.000174885\",\"outputInferenceCost\":\"0.0000645\",\"generationId\":\"gen_01M4GX62PT8FRDXQ3X13SSJH8Z\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

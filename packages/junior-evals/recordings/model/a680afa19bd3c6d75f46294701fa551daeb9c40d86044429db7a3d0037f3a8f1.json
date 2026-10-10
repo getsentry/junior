@@ -1,0 +1,31 @@
+{
+  "session": "evals/skills/providers.eval.ts > Skill Providers > when asked to double-check a source-backed fact, use the source and answer completely",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "c2b73ea549da",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4GX88VJS91N6GHGYSNVB8W8\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant explicitly states that closed tracking issues do not prove capability support and cites the source-handbook note. It also says proof requires implementation evidence or the reason for closure, including linked PRs, release notes, and issue comments. It does not suggest checking later, omit the rule, or claim a closed issue is sufficient.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":502,\"output_tokens\":78},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_00dde6577008bd86016ac92c11895087d185c3765706e38e96\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568913458,\"endTime\":1791568914890,\"providerRequestId\":\"req_906d97c0d4814b2db3cc97f94d37b67b\",\"statusCode\":200,\"providerResponseId\":\"resp_00dde6577008bd86016ac92c11895087d185c3765706e38e96\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"eae3dd545bdf9c1da12637eff638b29d\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.002425\",\"marketCost\":\"0.002425\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.002425\",\"inferenceCost\":\"0.002425\",\"inputInferenceCost\":\"0.001255\",\"outputInferenceCost\":\"0.00117\",\"generationId\":\"gen_01M4GX88VJS91N6GHGYSNVB8W8\",\"warnings\":[{\"type\":\"compatibility\",\"feature\":\"maxOutputTokens\",\"details\":\"maxOutputTokens 128000 exceeds the output token limit of 70000 tokens (max output plus thinking budget) for openai/gpt-5.4 and was lowered to 70000.\"}]}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

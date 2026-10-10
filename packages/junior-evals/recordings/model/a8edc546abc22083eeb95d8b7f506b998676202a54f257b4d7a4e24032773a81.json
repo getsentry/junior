@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/files.eval.ts > Coding File Tools > when comparing fixture behavior, cite the relevant files and leave them unchanged",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "11ee0d19d53f",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_007dfb87b49e89c1016ac92a5a5f4c87d193aa55bc2fccfd76\",\"reasoningEncryptedContent\":\"gAAAAABqySpcg-qlUU1NBzH-QVSnr_D2ihJ75GsFCK7pT9CHiX3bobiOIB1dGLN1_Xaw0JxD7p6SPt_bPcNhIHCJt-zNmVmqWZK9zmKMixUeUnw4Z7qVaUvK4i95jmMjhwzn7ZEtqy1n6ZVtf3Xzm6gsrpomselMk-FFHqAefE8OBbbRUPIkJsPdE_Swqbdwkjsby3RMiaijfkRYocwhsq-IB2ccWpHIFiMG7w5uNV-4GvpaA4qx_GcewRHsv6DMlB2_gKaVroGhu6vKc3vqKhgK2EpOG5w8udLsgJP2Edfwo7BSbnNnonZmP9cjXDSof9z6v6n6A2_-ZCpebWQwGH-D_mDcThyOaFK-fl-y8DCSJfSSEyL_YW7OxKuaoFvAX7te5PkicBFY3k5N_3Oa60QI-3m8wmc7vi8H3pYZIyxyItNHuSXCbtiiPvkNx_kPbfvpeKj6kPunFxREzFuC2lTXqXtH026IzxKbQZpvdzGerM6L9VGXxoIXa1eovlnEH6zwdGsaVGzDET0dwe3u6BQf__TrHUKs-gLia1RXh96DBUJeo3RZozXHY72WQQHkWZqM5j3QKOf25impAav8flSQj0tGGiyJc_u_diRlWEEFthdIYTONPWvfxWTVG5mzBwL0NS_m_FD06NUQQLfDaHc2gFMf7OXOOS-Pp5PYVvBzq8UOhu-Enfl4Ad5KVUxkebOvNRkZYB6eZIOKU_oKqLqMmYGH6ZvF0kOIbKZeNoyWNGgsVivyTskMmARdoGx3h8vQH89JvRq8Klowvn9T7PY4RvlIEp_LJfOCQxKQeeb29lHC5GmFFihE6knKvwyu0sooBmXCA7vgBcQxWdOvY2TpiVJvg1R2jngpSmgEjLYdE1VFNgcnDLDEtlU_Z24fZK89gsxZ3kJ9OqR5dOGKCrx1EvK4ewzA1_J7BWISb5YV1j1pJ-XYcNtYSTXaSaoyaMGBtXchGT1HN-bvXk3Ydt9rV-AOxK2Isg8SnDqV4VNzZxyjxI88IntCZvGRscW3ySaBVgs2CRATRjCYaNi84zzQ6j_eK55LoZvaKlGWocfd0z4Malp9Wrdwzov-rTpq7k4Stt6tcKLz7lH6JxadvIQrODIxBoM9lgMt6ES1Qg7pYH9ohtVi7U8MMq0DBOQUihCRVO4-LkZW3qKNdrWi-4PZEnuEV0P2OTZuI4J6xKUf6tCQFYsaQf-kzGhGzEuhiXJtrXoLa82Z2GHpJ2kBKDqH5oFnBcqsSudRkyjvV599ewIUnTkbGLsGneRxSLqBWa8FVefTc-17GIZv2kTEof8-Au4fKlj7J0tGJxebOKZ3Wq6i8m1UZkborEPPW-9t_SqsOjNHO-F_MZ3t7jafXMOUXg4dwlRSS_0xXGo6x_Krc_cQOJ3coNj3ltGJY_ej07y0i_1lbXlvHdzzqJ-Rad-DUVvMUaeSFEZQIj8x1ljcj4VE1OwRZngndFzFmqqo1U8eLhvE1pCDR-1l_Jm3BdAIqw7YNmMaUtXcHDr68JkOvp-aY7w0SOejZIlZ9-fn9hhzpmWnFRXaD6Eas_RvZGqtyixqvzCVN35LlQYQ2Ird_YwFiUj4eLgVApdMsqEQyJy1UFPcsVO812Pl9o2rkQYccJXYrtphwAfTOz-sQHheA6bl3ysBCW-qmYx8-BKvArfvqK_R06WwHdu-prusIPmKH0_eWdvka1jNVSD9DhlecqqWmwPHhdH5aBjjI1yMXdZSwriUbgJnabrb8bn_lqvK_SAPdHDEnop7zqP9F6XWq2f6gQp5OZ39aM--yqp9vrE2z7CBqueRhiM8jsEo86XwWkqoSosFFe0pqArCXHwk3pBG8rw4JtHRmPW-76wt8hvSJCb2c-om1rkK6t4bF8zQUyfjDJPXKBPrhelR2Zrhne13D6Z7b8YdLq7OlmABBrYTl_rpDMLEvmRKFMLZd3EgwSV-kGtIMUKSYUMldzXY5eV15f1bz_Y27G58Ffb_HDdCpElJL6rx8sJVQQDYxVjXKbMFA81eyA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"knowledge\\\",\\\"canonicalFact\\\":\\\"In `project/src/alerts.ts`, emergency alerts are routed to `#ops-critical` and prefixed `[EMERGENCY]`; normal alerts are routed to `#ops-notices` and prefixed `[notice]`.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[2]},{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"Emergency mode is reserved for incidents requiring immediate operator action; the incident owner must acknowledge the page before routine retry processing continues.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[3]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_007dfb87b49e89c1016ac92a5b68c087d18cb64db28cc35768\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2129,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2126},\"outputTokens\":{\"total\":232,\"text\":126,\"reasoning\":106},\"raw\":{\"input_tokens\":2129,\"input_tokens_details\":{\"cache_write_tokens\":2126,\"cached_tokens\":0},\"output_tokens\":232,\"output_tokens_details\":{\"reasoning_tokens\":106},\"total_tokens\":2361}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_007dfb87b49e89c1016ac92a59cae887d198776317158900c4\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791568473694,\"endTime\":1791568476319,\"providerRequestId\":\"req_1f59aa4896e04dfcac95df03b5479be6\",\"statusCode\":200,\"providerResponseId\":\"resp_007dfb87b49e89c1016ac92a59cae887d198776317158900c4\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"cef8a21d2b9c4f037fd857a1faa1a841\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00038205\",\"marketCost\":\"0.00038205\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00038205\",\"inferenceCost\":\"0.00038205\",\"inputInferenceCost\":\"0.00026605\",\"outputInferenceCost\":\"0.000116\",\"generationId\":\"gen_01M4GWTVJDWFR2PKW9FV7N2QTK\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

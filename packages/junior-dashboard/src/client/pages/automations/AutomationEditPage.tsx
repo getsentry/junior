@@ -39,8 +39,8 @@ export function AutomationEditPage(props: { enabled: boolean }) {
   const value = summary.data;
   const status =
     value?.kind === "event"
-      ? value.status === "paused"
-        ? "paused"
+      ? value.status !== "active"
+        ? value.status
         : value.triggerAvailable
           ? "active"
           : "unavailable"
