@@ -495,7 +495,12 @@ export async function markScheduledRunSkipped(
   );
 }
 
-/** Advance a scheduled automation after a terminal run under its task lock. */
+/**
+ * Advance a scheduled automation after a terminal run under its task lock.
+ * Returns true only when this call set the automation to blocked, so the
+ * caller can tell the creator once and only when the dashboard agrees. A
+ * paused automation keeps the reason and stays paused.
+ */
 export async function advanceScheduledAutomationAfterRun(
   db: JuniorDatabase,
   args: {
@@ -504,15 +509,15 @@ export async function advanceScheduledAutomationAfterRun(
     run: ScheduledRun;
     status: "blocked" | "completed" | "failed";
   },
-): Promise<void> {
-  await withScheduledAutomationLock(db, args.run.taskId, async (tx) => {
+): Promise<boolean> {
+  return await withScheduledAutomationLock(db, args.run.taskId, async (tx) => {
     const current = await readScheduledAutomation(tx, args.run.taskId);
     if (
       !current ||
       current.status === "deleted" ||
       current.status === "completed"
     ) {
-      return;
+      return false;
     }
     if (current.status === "paused") {
       await saveScheduledAutomationInLock(
@@ -528,7 +533,9 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return;
+      // It stays paused. Resume returns it to blocked, and its creator sees
+      // the reason then.
+      return false;
     }
     const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
     if (isRunNow) {
@@ -558,7 +565,7 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return;
+      return args.status === "blocked";
     }
     if (
       current.status !== "active" ||
@@ -573,7 +580,7 @@ export async function advanceScheduledAutomationAfterRun(
         },
         current,
       );
-      return;
+      return false;
     }
     const nextRunAtMs =
       args.status === "blocked"
@@ -594,5 +601,6 @@ export async function advanceScheduledAutomationAfterRun(
       },
       current,
     );
+    return args.status === "blocked";
   });
 }

@@ -346,6 +346,16 @@ function getDispatchBlockingError(
     : undefined;
 }
 
+// A system-credential run has no account to connect, so name the real fix.
+function missingAuthorizationReason(
+  dispatch: DispatchRecord,
+  provider: string,
+): string {
+  return dispatch.credentialSubject
+    ? `This run needs a connected ${provider} account.`
+    : `This run uses system credentials, which have no ${provider} access. Switch it to creator credentials and connect a ${provider} account.`;
+}
+
 async function persistBlockedDispatchTurn(
   dispatch: DispatchRecord,
   error: AuthorizationFlowDisabledError | PluginCredentialFailureError,
@@ -369,7 +379,7 @@ async function persistBlockedDispatchTurn(
   await markDispatchBlocked(
     dispatch.id,
     error instanceof AuthorizationFlowDisabledError
-      ? `Dispatch requires ${error.provider} authorization.`
+      ? missingAuthorizationReason(dispatch, error.provider)
       : error.message,
   );
 }

@@ -19,6 +19,7 @@ import { getDb } from "@/chat/db";
 import {
   getDispatchRecord,
   getDispatchStorageKey,
+  markDispatchBlocked,
   markDispatchCompleted,
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -69,6 +70,19 @@ function testHeartbeat(
     conversationWorkQueue:
       options.conversationWorkQueue ?? conversationWorkQueue,
   });
+}
+
+/** Run one authorized heartbeat and wait for the work it started. */
+async function runAuthorizedHeartbeat(): Promise<void> {
+  const waitUntil = createWaitUntilCollector();
+  const response = await testHeartbeat(
+    new Request("https://example.invalid/api/internal/heartbeat", {
+      headers: { authorization: "Bearer heartbeat-secret" },
+    }),
+    waitUntil.fn,
+  );
+  expect(response.status).toBe(202);
+  await waitUntil.flush();
 }
 
 const scheduledAutomationDb = (): JuniorDatabase => getDb();
@@ -644,15 +658,7 @@ describe("plugin heartbeat", () => {
       }),
     );
 
-    const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      firstWaitUntil.fn,
-    );
-    expect(firstResponse.status).toBe(202);
-    await firstWaitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     const running = await readScheduledRun(
       db,
@@ -693,15 +699,7 @@ describe("plugin heartbeat", () => {
 
     await markDispatchCompleted(running!.dispatchId!, "1700000000.000001");
 
-    const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      secondWaitUntil.fn,
-    );
-    expect(secondResponse.status).toBe(202);
-    await secondWaitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
       status: "completed",
@@ -745,15 +743,7 @@ describe("plugin heartbeat", () => {
         }),
       );
 
-      const waitUntil = createWaitUntilCollector();
-      const response = await testHeartbeat(
-        new Request("https://example.invalid/api/internal/heartbeat", {
-          headers: { authorization: "Bearer heartbeat-secret" },
-        }),
-        waitUntil.fn,
-      );
-      expect(response.status).toBe(202);
-      await waitUntil.flush();
+      await runAuthorizedHeartbeat();
 
       const running = await readScheduledRun(
         db,
@@ -782,6 +772,50 @@ describe("plugin heartbeat", () => {
     30_000,
   );
 
+  it.each([
+    { case: "blocks it", change: undefined, status: "blocked", notices: 1 },
+    // The creator moved the schedule during the run, so it stays active.
+    {
+      case: "keeps it active",
+      change: { nextRunAtMs: TEST_RUN_AT_MS + 24 * 60 * 60 * 1000 },
+      status: "active",
+      notices: 0,
+    },
+    // The creator paused it during the run. The dashboard shows paused, so
+    // a notice that says blocked would be wrong.
+    {
+      case: "keeps it paused",
+      change: { status: "paused" as const },
+      status: "paused",
+      notices: 0,
+    },
+  ])(
+    "tells the creator about a blocked run only when the heartbeat $case",
+    async ({ change, status, notices: expectedNotices }) => {
+      const db = scheduledAutomationDb();
+      await saveScheduledAutomation(db, createTask());
+      const notices = () => getCapturedSlackApiCalls("conversations.open");
+      await runAuthorizedHeartbeat();
+      const run = await readScheduledRun(
+        db,
+        `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      );
+      await markDispatchBlocked(run!.dispatchId!, "Channel archived.");
+      if (change) {
+        const current = await readScheduledAutomation(db, "sched_plugin_1");
+        await saveScheduledAutomation(db, { ...current!, ...change });
+      }
+      // The Scheduled automation is still active, so no notice goes yet.
+      expect(notices()).toHaveLength(0);
+      await runAuthorizedHeartbeat();
+      await runAuthorizedHeartbeat();
+      const task = await readScheduledAutomation(db, "sched_plugin_1");
+      expect(task).toMatchObject({ status });
+      expect(notices()).toHaveLength(expectedNotices);
+    },
+    30_000,
+  );
+
   it("fails scheduled runs when their dispatch record disappeared", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
@@ -790,15 +824,7 @@ describe("plugin heartbeat", () => {
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(db, createTask());
 
-    const firstWaitUntil = createWaitUntilCollector();
-    const firstResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      firstWaitUntil.fn,
-    );
-    expect(firstResponse.status).toBe(202);
-    await firstWaitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     const running = await readScheduledRun(
       db,
@@ -812,15 +838,7 @@ describe("plugin heartbeat", () => {
     await state.connect();
     await state.delete(getDispatchStorageKey(running!.dispatchId!));
 
-    const secondWaitUntil = createWaitUntilCollector();
-    const secondResponse = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      secondWaitUntil.fn,
-    );
-    expect(secondResponse.status).toBe(202);
-    await secondWaitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
       status: "failed",
@@ -873,6 +891,8 @@ describe("plugin heartbeat", () => {
         "Scheduled automation dispatch metadata could not be built",
       ),
     });
+    // A block before dispatch tells the creator too.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
     await saveScheduledAutomation(db, {
       ...blockedTask!,
       nextRunAtMs: TEST_RUN_AT_MS,
@@ -902,15 +922,7 @@ describe("plugin heartbeat", () => {
     const task = createDailyTask();
     await saveScheduledAutomation(db, task);
 
-    const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     await expect(
       readScheduledRun(db, `${task.id}:${task.nextRunAtMs}`),
@@ -942,15 +954,7 @@ describe("plugin heartbeat", () => {
     await saveScheduledAutomation(db, first);
     await saveScheduledAutomation(db, duplicate);
 
-    const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
+    await runAuthorizedHeartbeat();
 
     await expect(
       readScheduledRun(db, `${duplicate.id}:${duplicate.nextRunAtMs}`),

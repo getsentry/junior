@@ -25,7 +25,10 @@ import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -64,9 +67,9 @@ describe("event automation blocking", () => {
     vi.restoreAllMocks();
   });
 
-  it("blocks an event automation after a blocked run until its creator resumes it", async () => {
+  it("blocks an event automation after a blocked run and tells its creator once", async () => {
     const { automation } = await createTask("Add the release-train label.");
-    const reason = "Dispatch requires github authorization.";
+    const reason = "This run needs a connected github account.";
     const db = fixture.sql.db();
     const read = async () => (await getEventAutomation(db, automation.id))!;
     // The creator resumes or pauses it from chat.
@@ -90,10 +93,27 @@ describe("event automation blocking", () => {
       );
 
     expect(await ingest("github:blocked-1")).toEqual({ dispatched: 1 });
+    // A redelivered block must not notify the creator again.
+    await blockRun(0);
     await blockRun(0);
 
-    // Nothing posts to the Destination.
-    expect(slackApiOutbox.messages()).toEqual([]);
+    // Nothing posts to the Destination. The creator gets one private notice.
+    expect(
+      getCapturedSlackApiCalls("conversations.open").map(
+        ({ params }) => params.users,
+      ),
+    ).toEqual(["U123"]);
+    expect(
+      slackApiOutbox.messages().map(({ params }) => ({
+        channel: params.channel,
+        text: params.text,
+      })),
+    ).toEqual([
+      {
+        channel: expect.stringMatching(/^D/),
+        text: expect.stringContaining(reason),
+      },
+    ]);
     expect(await read()).toMatchObject({
       status: "blocked",
       statusReason: reason,
@@ -122,6 +142,8 @@ describe("event automation blocking", () => {
       status: "paused",
       statusReason: reason,
     });
+    // The dashboard shows paused, so no second notice says blocked.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
     await setStatus("active");
     expect(await read()).toMatchObject({
       status: "blocked",

@@ -6,8 +6,8 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const RESULT_GUIDANCE = [
-  "Use `no_action` when nothing should be posted, including when a condition in the instruction is not met or cannot be verified.",
-  "Use `misconfigured` only when the automation cannot work until its creator changes it, such as a missing account or access, a target that no longer exists, or an instruction that cannot be done. Do not use it for a temporary failure or a condition that is not met.",
+  "Use `no_action` when the run worked and nothing should be posted, such as when a condition in the instruction is not met, or when a temporary failure stopped the work.",
+  "Use `misconfigured` when the run cannot do its job until its creator changes the automation: a provider, tool, account, or access that the job needs is missing, a target no longer exists, or the instruction cannot be done. Do not use it for a temporary failure or a condition that is not met.",
 ].join(" ");
 
 // TODO(dcramer): Make the declared result the output format of the run when

@@ -51,6 +51,13 @@ blocked stays paused and keeps the reason, so resume returns it to blocked.
 The dashboard and the automation tools show the status and the reason. Only
 the creator can pause or resume, from the Automation settings or from chat.
 
+When a Scheduled automation or an Event automation first becomes blocked, its
+creator gets one direct message with the reason and a resume link
+(`automations/blocked-notice.ts`). The notice goes only after the Automation is
+stored as blocked: at dispatch block for an Event automation, and at heartbeat
+reconcile for a Scheduled automation. The notice is best-effort. A failed send
+logs `automation.blocked_notice.failed`.
+
 The dispatched agent input uses shared framing from `task-input.ts`. See
 `chat/README.md` for the input format. The stored automation text remains the
 instruction. Event text does not add instructions. Destination

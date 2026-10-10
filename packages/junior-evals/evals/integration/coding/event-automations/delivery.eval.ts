@@ -99,4 +99,37 @@ describe("Event automation delivery", () => {
       ).toEqual([expect.objectContaining({ result: "no_action" })]);
     },
   );
+
+  test("when an event automation cannot work, block it and tell only its creator", async ({
+    run,
+  }) => {
+    const destination = slackChannel();
+    await insertEventAutomation({
+      destination,
+      task: "Post the number of open tickets in our Zendesk support queue.",
+      trigger: reviewTrigger,
+    });
+
+    const blocked = await run(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository: { full_name: "getsentry/junior" },
+        review: {
+          body: "Please rename `parseRows` to `readRows` before merging.",
+          state: "changes_requested",
+          user: { login: "reviewer" },
+        },
+      }),
+    );
+
+    expect(
+      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
+    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
+    // The only post is the blocked notice, in the creator's direct message.
+    expect(blocked.replies).toHaveLength(1);
+    expect(blocked.replies[0]!.text).toContain("is blocked");
+    expect(blocked.replies[0]!.channelId).not.toBe(destination.channelId);
+    expect(blocked.replies[0]!.channelId).toMatch(/^D/);
+  });
 });

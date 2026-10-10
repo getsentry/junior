@@ -14,6 +14,7 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import type { JuniorDatabase } from "@/db/db";
 import {
   advanceScheduledAutomationAfterRun,
@@ -212,12 +213,21 @@ async function applyDispatchResult(args: {
       startedAtMs: args.run.startedAtMs!,
     });
     if (!blocked) return false;
-    await advanceScheduledAutomationAfterRun(args.db, {
+    const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
       errorMessage: blocked.errorMessage,
       nowMs: args.nowMs,
       run: args.run,
       status: "blocked",
     });
+    // Notify only when the block is stored, so the dashboard matches.
+    if (storedBlock) {
+      await notifyAutomationBlocked({
+        automationId: args.run.taskId,
+        dispatchId: args.dispatch.id,
+        kind: "scheduled",
+        reason: blocked.errorMessage ?? "Dispatch blocked.",
+      });
+    }
     await recordScheduledExecution({
       nowMs: args.nowMs,
       run: args.run,
@@ -286,12 +296,19 @@ async function finishClaimedRun(args: {
           startedAtMs: args.run.startedAtMs,
         });
   if (!finished) return;
-  await advanceScheduledAutomationAfterRun(args.db, {
+  const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
     errorMessage: args.errorMessage,
     nowMs: args.nowMs,
     run: args.run,
     status: args.status,
   });
+  if (storedBlock) {
+    await notifyAutomationBlocked({
+      automationId: args.run.taskId,
+      kind: "scheduled",
+      reason: args.errorMessage,
+    });
+  }
   await recordScheduledExecution({
     nowMs: args.nowMs,
     run: args.run,
