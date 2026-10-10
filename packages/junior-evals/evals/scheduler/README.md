@@ -43,6 +43,10 @@ Each failure seen in production has one realistic case:
   `evals/integration/coding/event-automations/delivery.eval.ts`.
 - Runs find missing credentials and ask the channel to connect them (#2014):
   the missing account case in `evals/sentry/skills.eval.ts`.
+- A run that cannot work ends in silence and runs again on the next event:
+  the blocked case in
+  `evals/integration/coding/event-automations/delivery.eval.ts`. The
+  automation becomes blocked, and only its creator gets the notice.
 
 Run the suites with:
 
