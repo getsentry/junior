@@ -807,6 +807,27 @@ describe("github plugin", () => {
     });
   });
 
+  it("allows stacked pull request writes that carry only PR numbers", async () => {
+    for (const path of ["stacks", "stacks/12/add", "stacks/12/unstack"]) {
+      expect(
+        await grantForEgress({
+          method: "POST",
+          url: `https://api.github.com/repos/getsentry/junior/${path}`,
+        }),
+      ).toMatchObject({
+        name: "installation-write",
+        access: "write",
+        reason: "github.installation-write",
+      });
+    }
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        url: "https://api.github.com/repos/getsentry/junior/stacks/12",
+      }),
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
+  });
+
   it("creates issues with deterministic requester attribution", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
