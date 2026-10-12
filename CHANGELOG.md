@@ -1,4 +1,10 @@
 # Changelog
+## 0.242.0
+
+### New Features ✨
+
+- (github) Support stacked pull requests with gh stack by @sentry-junior in [#2104](https://github.com/getsentry/junior/pull/2104)
+
 ## 0.241.0
 
 ### New Features ✨
