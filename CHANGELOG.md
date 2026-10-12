@@ -1,4 +1,27 @@
 # Changelog
+## 0.241.0
+
+### New Features ✨
+
+#### Automations
+
+- Tell the creator when an automation becomes blocked by @dcramer in [#2096](https://github.com/getsentry/junior/pull/2096)
+- Block an Event automation when its run is blocked by @dcramer in [#2095](https://github.com/getsentry/junior/pull/2095)
+- Run automations in their own mode with a declared result by @sentry-junior in [#2052](https://github.com/getsentry/junior/pull/2052)
+
+#### Other
+
+- (memory) Count and highlight memory search matches by @sentry-junior in [#2085](https://github.com/getsentry/junior/pull/2085)
+- (slack) Stop the active Turn from Slack's native stop button by @sentry-junior in [#2103](https://github.com/getsentry/junior/pull/2103)
+
+### Bug Fixes 🐛
+
+- (slack) Prefer Slack user IDs in userLookup by @sentry-junior in [#2094](https://github.com/getsentry/junior/pull/2094)
+
+### Internal Changes 🔧
+
+- (evals) Reuse sandbox snapshots and do not wait for product timers by @dcramer in [#2097](https://github.com/getsentry/junior/pull/2097)
+
 ## 0.240.0
 
 ### New Features ✨
