@@ -40,6 +40,9 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Link stacked PRs        | `gh stack link PR_NUMBER PR_NUMBER...` (bottom to top)                                          |
 | Add to a stack          | `gh stack link STACK_NUMBER PR_NUMBER...`                                                       |
 | Unstack PRs             | `gh stack unstack STACK_NUMBER`                                                                 |
+| Check out a stack       | `gh stack checkout STACK_NUMBER`                                                                |
+| Restack                 | `gh stack rebase`, then `gh stack push`                                                         |
+| Sync with base          | `gh stack sync`                                                                                 |
 | Submit review           | `github_submitPullRequestReview`                                                                |
 | Set feedback status     | `github_updatePullRequestFeedback`                                                              |
 | Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
@@ -55,7 +58,9 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
-- Stacked PRs: push each branch. Open each PR with `github_createPullRequest`, and set its `base` to the branch below it. Then link the PRs with `gh stack link`. Use `github_updatePullRequest` to change a base or draft state. Do not use `gh stack submit`, `push`, `rebase`, `merge`, or `--open`. They force-push, merge, or send blocked GraphQL mutations.
+- Stacked PRs: push each branch. Open each PR with `github_createPullRequest`, and set its `base` to the branch below it. Then link the PRs with `gh stack link` or `gh stack submit --auto`. Open the PRs first: for a branch with no PR, `gh stack` sends a blocked GraphQL mutation. Use `github_updatePullRequest` to change a base or draft state.
+- Restack: if the checkout has no local stack, run `gh stack checkout STACK_NUMBER`. Deepen the clone first. Then run `gh stack rebase` and `gh stack push`, or run `gh stack sync`. These force-push the stack branches with `--force-with-lease`. Restack only a stack that Junior opened or that the requester asked you to change. Never force-push with `git push`.
+- Do not use `gh stack merge` or `--open`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
