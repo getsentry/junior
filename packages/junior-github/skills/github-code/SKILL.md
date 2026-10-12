@@ -29,7 +29,8 @@ Use `git` and `gh` for repository work.
 - Use the requested repo. Otherwise read `github.repo` with standalone `jr-rpc config get github.repo`.
 - Pass `--repo owner/repo` to `gh`. Use `git -C PATH` for local repos.
 - Read each applicable `AGENTS.md` before edits.
-- Keep unrelated work. Never force-push, delete refs, or make destructive merges.
+- Keep unrelated work. Never delete refs or make destructive merges.
+- Force-push only with `--force-with-lease`, and only to branches Junior pushed or the requester named.
 - Use repository evidence. Report only checks you ran.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.

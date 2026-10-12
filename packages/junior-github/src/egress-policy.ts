@@ -346,6 +346,14 @@ function githubApiWriteGrantName(
   }
   if (
     method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/stacks(?:\/[^/]+\/(add|unstack))?$/.test(pathname)
+  ) {
+    // Stack create/add/unstack writes carry only PR numbers. PR creation and
+    // base or draft changes stay with the typed pull request tools.
+    return "installation-write";
+  }
+  if (
+    method === "POST" &&
     /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/comments(?:\/[^/]+\/replies)?$/.test(
       pathname,
     )
