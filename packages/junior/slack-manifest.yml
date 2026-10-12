@@ -52,6 +52,7 @@ settings:
       - entity_details_requested
       - assistant_thread_started
       - assistant_thread_context_changed
+      - agent_session_stopped
       - app_mention
       - message.channels
       - message.groups
