@@ -15,6 +15,9 @@ import {
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
+import { SLACK_SESSION_STOP_ACK } from "@/chat/ingress/slack-webhook";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import { hasConversationStop } from "@/chat/task-execution/state";
 import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 
@@ -49,7 +52,24 @@ function ingress() {
       ),
       services,
     });
-  return { adapter, queue, send, state };
+  const sendSessionStop = () =>
+    handleSlackWebhookAndFlush({
+      request: slackWebhookRequest({
+        type: "event_callback",
+        team_id: "T123",
+        event_id: "Ev_SESSION_STOP",
+        event: {
+          type: "agent_session_stopped",
+          channel: CHANNEL_ID,
+          event_ts: "1712345.000900",
+          streaming_message_ts: [],
+          thread_ts: THREAD_TS,
+          user: "U123",
+        },
+      }),
+      services,
+    });
+  return { adapter, queue, send, sendSessionStop, state };
 }
 
 describe("Slack ingress: thread messages", () => {
@@ -83,6 +103,63 @@ describe("Slack ingress: thread messages", () => {
     }
     expect(queue.queuedMessages()).toHaveLength(1);
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+  });
+
+  it("stops the active Turn from Slack's native stop button and keeps the thread", async () => {
+    const { queue, send, sendSessionStop, state } = ingress();
+    const statusClears = () =>
+      slackApiOutbox
+        .calls("assistant.threads.setStatus")
+        .filter(
+          (call) =>
+            call.params.channel_id === CHANNEL_ID &&
+            call.params.thread_ts === THREAD_TS &&
+            call.params.status === "",
+        );
+    const stopAcks = () =>
+      slackApiOutbox
+        .messages()
+        .filter((call) => call.params.text === SLACK_SESSION_STOP_ACK);
+
+    // Slack leaves the session in `processing` until the app changes it, so
+    // an idle stop still clears the status but has nothing to confirm.
+    await expect(sendSessionStop()).resolves.toMatchObject({ status: 200 });
+    expect(statusClears()).toHaveLength(1);
+    expect(stopAcks()).toHaveLength(0);
+
+    await send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
+      ts: THREAD_TS,
+    });
+    await state.subscribe(CONVERSATION_ID);
+    expect(queue.queuedMessages()).toHaveLength(1);
+
+    await expect(sendSessionStop()).resolves.toMatchObject({ status: 200 });
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: work?.execution.runId ?? "",
+        state,
+      }),
+    ).resolves.toBe(true);
+    expect(slackApiOutbox.reactionRemovals()).toHaveLength(1);
+    expect(statusClears()).toHaveLength(2);
+    expect(stopAcks()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: CHANNEL_ID,
+          thread_ts: THREAD_TS,
+        }),
+      }),
+    ]);
+    // Unlike the `stop` keyword, the native button does not opt out.
+    await expect(state.isSubscribed(CONVERSATION_ID)).resolves.toBe(true);
   });
 
   it("ignores a late stop that arrives after a newer mention subscribed the thread", async () => {

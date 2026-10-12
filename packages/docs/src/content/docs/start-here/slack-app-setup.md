@@ -73,8 +73,11 @@ Subscribe to the events that match your usage:
 | `app_home_opened`             | Connected-account App Home view.                     |
 | `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
+| `agent_session_stopped`       | Slack's stop button for a running Junior Turn.       |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
+
+Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn. The thread stays subscribed. The `stop` keyword also makes Junior leave the thread.
 
 For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 

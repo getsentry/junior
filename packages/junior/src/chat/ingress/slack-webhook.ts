@@ -72,6 +72,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
+import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
 import {
   logException,
   setSpanAttributes,
@@ -384,6 +385,61 @@ async function handleSlackThreadStop(args: {
   await thread.post(THREAD_OPTOUT_ACK);
 }
 
+/** Acknowledge a native Slack stop that interrupted active work. */
+export const SLACK_SESSION_STOP_ACK = "Stopped.";
+
+/**
+ * Stop the active Turn when a user clicks Slack's native agent stop button.
+ *
+ * Unlike the `stop` keyword, this only interrupts current work. The thread
+ * stays subscribed and resource watches stay active. Slack does not leave the
+ * `processing` status by itself, so clear the status even when no work runs.
+ * https://docs.slack.dev/reference/events/agent_session_stopped
+ */
+async function handleSlackSessionStop(args: {
+  adapter: SlackAdapter;
+  channelId: string;
+  conversationStore?: ConversationStore;
+  installation: SlackInstallationContext;
+  queue: ConversationWorkQueue;
+  state: StateAdapter;
+  threadTs: string;
+}): Promise<void> {
+  const canonicalThreadId = `slack:${args.channelId}:${args.threadTs}`;
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  const stopped = await stopConversationTurn({
+    conversationId,
+    conversationStore: args.conversationStore,
+    queue: args.queue,
+    state: args.state,
+  });
+  await createSlackWebApiStatusSender({
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+  })("");
+  if (stopped.status !== "requested") {
+    return;
+  }
+
+  await clearSlackPendingReactions({
+    getSlackAdapter: () => args.adapter,
+    messages: stopped.pendingMessages,
+    state: args.state,
+  });
+  const thread = new ThreadImpl({
+    adapter: args.adapter,
+    stateAdapter: args.state,
+    id: canonicalThreadId,
+    channelId: args.adapter.channelIdFromThreadId(canonicalThreadId),
+    isDM: args.adapter.isDM(canonicalThreadId),
+  });
+  await thread.post(SLACK_SESSION_STOP_ACK);
+}
+
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
   event: SlackInboundEvent;
@@ -573,6 +629,35 @@ async function handleSlackEvent(args: {
 
         if (event.type === "app_home_opened" && event.user) {
           await publishAppHomeViewBestEffort(event.user);
+          return;
+        }
+
+        if (
+          event.type === "agent_session_stopped" &&
+          event.channel &&
+          event.thread_ts
+        ) {
+          if (!(await isSlackWorkspaceMember(event, state))) return;
+          const channelId = event.channel;
+          const threadTs = event.thread_ts;
+          const routed = await withLock(
+            state,
+            `slack:ingress:slack:${channelId}:${threadTs}`,
+            () =>
+              handleSlackSessionStop({
+                adapter,
+                channelId,
+                conversationStore: args.services.conversationStore,
+                installation,
+                queue: args.services.queue,
+                state,
+                threadTs,
+              }),
+            { keepAlive: true, waitMs: 10_000 },
+          );
+          if (!routed.acquired) {
+            throw new Error("Could not acquire Slack ingress lock");
+          }
           return;
         }
 
