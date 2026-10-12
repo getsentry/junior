@@ -30,7 +30,7 @@ Use `git` and `gh` for repository work.
 - Pass `--repo owner/repo` to `gh`. Use `git -C PATH` for local repos.
 - Read each applicable `AGENTS.md` before edits.
 - Keep unrelated work. Never delete refs or make destructive merges.
-- Never force-push, except `gh stack push` or `gh stack sync` to restack stacked PR branches. See `references/api-surface.md`.
+- Force-push only with `--force-with-lease`, and only to a branch that Junior pushed or that the requester asked you to change. If a push is rejected for missing history, fetch and rebase. Do not force-push around it.
 - Use repository evidence. Report only checks you ran.
 - Push before `github_createPullRequest`. Never ask for a token for bot pushes.
 - When an error names a tool, use it. Change permissions only when GitHub rejected the request.

@@ -59,7 +59,7 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
 - Push `head` and read the default `base` before `github_createPullRequest`.
 - Stacked PRs: push each branch. Open each PR with `github_createPullRequest`, and set its `base` to the branch below it. Then link the PRs with `gh stack link` or `gh stack submit --auto`. Open the PRs first: for a branch with no PR, `gh stack` sends a blocked GraphQL mutation. Use `github_updatePullRequest` to change a base or draft state.
-- Restack: if the checkout has no local stack, run `gh stack checkout STACK_NUMBER`. Deepen the clone first. Then run `gh stack rebase` and `gh stack push`, or run `gh stack sync`. These force-push the stack branches with `--force-with-lease`. Restack only a stack that Junior opened or that the requester asked you to change. Never force-push with `git push`.
+- Restack: if the checkout has no local stack, run `gh stack checkout STACK_NUMBER`. Deepen the clone first. Then run `gh stack rebase` and `gh stack push`, or run `gh stack sync`. These force-push the stack branches with `--force-with-lease`.
 - Do not use `gh stack merge` or `--open`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, auto-merge, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
