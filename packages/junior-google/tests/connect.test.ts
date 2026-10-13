@@ -9,7 +9,7 @@ import { getGoogleAccount, type GoogleDb } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  ACCOUNT_SCOPE,
   CLIENT_ID,
   createGoogleDb,
   idToken,
@@ -71,7 +71,7 @@ function callback(app: PluginRouteApp, cookie: string, state: string) {
 
 function googleTokenEndpoint(
   claims: Record<string, unknown>,
-  scope = CALENDAR_SCOPE,
+  scope = ACCOUNT_SCOPE,
 ) {
   const fetch = vi.fn(async (url: string | URL | Request) => {
     const href = String(url instanceof Request ? url.url : url);
@@ -160,6 +160,10 @@ describe("Google account setup", () => {
     );
     expect(location.searchParams.get("code_challenge_method")).toBe("S256");
     expect(location.searchParams.get("access_type")).toBe("offline");
+    // Request exactly the scopes the tools need, and nothing broader.
+    expect(location.searchParams.get("scope")).toBe(
+      `openid email ${ACCOUNT_SCOPE}`,
+    );
 
     const fetch = googleTokenEndpoint({ email: ACCOUNT_EMAIL });
     const response = await callback(app, cookie, state);
@@ -211,14 +215,18 @@ describe("Google account setup", () => {
       "https://oauth2.googleapis.com/revoke",
     );
 
+    // A Calendar-only grant from before Meet access is refused.
     const partial = await startSignIn(app);
     googleTokenEndpoint(
       { email: ACCOUNT_EMAIL },
-      "https://www.googleapis.com/auth/calendar.events.freebusy",
+      ACCOUNT_SCOPE.replace(
+        " https://www.googleapis.com/auth/meetings.space.readonly",
+        "",
+      ),
     );
     const missing = await callback(app, partial.cookie, partial.state);
     expect(missing.status).toBe(400);
-    expect(await missing.text()).toContain("calendar.events.owned");
+    expect(await missing.text()).toContain("meetings.space.readonly");
 
     expect(await getGoogleAccount(fixture.db(), ACCOUNT_EMAIL)).toBeUndefined();
   });

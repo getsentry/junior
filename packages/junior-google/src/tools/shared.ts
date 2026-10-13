@@ -6,13 +6,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { emailDomain } from "../config";
-import {
-  GOOGLE_API_DOMAIN,
-  GOOGLE_OPERATIONS,
-  type GoogleOperation,
-} from "../credentials";
+import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
 
-/** Runtime capabilities the Calendar tools use. */
+/** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
@@ -93,7 +89,7 @@ const googleErrorSchema = z.object({
   error: z.object({ message: z.string().optional() }).optional(),
 });
 
-/** Call one Google Calendar API operation through host-owned egress. */
+/** Call one declared Google API operation through host-owned egress. */
 export async function googleApiRequest(
   ctx: GoogleToolContext,
   input: {
@@ -103,7 +99,8 @@ export async function googleApiRequest(
     query?: Record<string, string>;
   },
 ): Promise<{ body: unknown; status: number }> {
-  const url = new URL(`https://${GOOGLE_API_DOMAIN}${input.path}`);
+  const rule = GOOGLE_OPERATIONS[input.operation];
+  const url = new URL(`https://${rule.domain}${input.path}`);
   for (const [key, value] of Object.entries(input.query ?? {})) {
     url.searchParams.set(key, value);
   }
@@ -111,7 +108,7 @@ export async function googleApiRequest(
     operation: input.operation,
     provider: "google",
     request: new Request(url, {
-      method: GOOGLE_OPERATIONS[input.operation].method,
+      method: rule.method,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

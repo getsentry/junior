@@ -26,6 +26,24 @@ export const GOOGLE_CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.readonly",
 ] as const;
 
+/**
+ * Scopes the Meet transcript tool needs. Request nothing broader.
+ *
+ * - `meetings.space.readonly`: read conference records, participants, and
+ *   transcripts of meetings that Junior's account can see. It cannot create,
+ *   change, or join meetings. Google itself decides which meetings that is.
+ *   The tool adds its own invite checks on top.
+ */
+export const GOOGLE_MEET_SCOPES = [
+  "https://www.googleapis.com/auth/meetings.space.readonly",
+] as const;
+
+/** Every scope a connected account must grant. */
+export const GOOGLE_ACCOUNT_SCOPES = [
+  ...GOOGLE_CALENDAR_SCOPES,
+  ...GOOGLE_MEET_SCOPES,
+] as const;
+
 /** Identity scopes used only to verify which account signed in. */
 export const GOOGLE_IDENTITY_SCOPES = ["openid", "email"] as const;
 

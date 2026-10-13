@@ -3,7 +3,8 @@
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI. Calendar
- * tools use host-owned egress, and the sandbox gets no Google credential.
+ * and Meet tools use host-owned egress, and the sandbox gets no Google
+ * credential.
  */
 import {
   defineJuniorPlugin,
@@ -19,7 +20,7 @@ import {
   readGoogleConfig,
 } from "./config";
 import {
-  GOOGLE_API_DOMAIN,
+  GOOGLE_DOMAINS,
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
@@ -29,6 +30,7 @@ import { createCancelCalendarEventTool } from "./tools/cancel-event";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
 import { createListCalendarEventsTool } from "./tools/list-events";
+import { createReadMeetingTranscriptTool } from "./tools/read-meeting-transcript";
 import { createUpdateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
@@ -39,8 +41,8 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling as Junior's own Google Workspace account",
-      domains: [GOOGLE_API_DOMAIN],
+        "Google Calendar scheduling and Meet transcripts as Junior's own Google Workspace account",
+      domains: GOOGLE_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
         [GOOGLE_CLIENT_SECRET_ENV]: {},
@@ -77,6 +79,7 @@ export function googlePlugin(): PluginRegistration {
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
+          readMeetingTranscript: createReadMeetingTranscriptTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
       },
