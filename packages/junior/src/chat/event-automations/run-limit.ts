@@ -1,0 +1,105 @@
+/**
+ * Caps how often one Event automation can start a run.
+ *
+ * The cap applies to each Automation, not to a trigger type. A noisy trigger
+ * blocks only the Automation that it fires. Each run costs a full agent Turn,
+ * and Event automations do not use the consecutive automated-turn limit.
+ */
+import type { StateAdapter } from "chat";
+import { z } from "zod";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+
+const RUN_LIMIT_PREFIX = "junior:event_automation_run_limit:v1";
+const RUN_LIMIT_LOCK_WAIT_MS = 2_000;
+
+/** Most runs that one Event automation can start in one window. */
+export const EVENT_AUTOMATION_MAX_RUNS = 30;
+
+/** Length of the rolling window for the run limit. */
+export const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 60 * 1000;
+
+const runLogSchema = z.array(
+  z
+    .object({
+      atMs: z.number().finite().nonnegative(),
+      key: z.string().min(1),
+    })
+    .strict(),
+);
+
+type RunLog = z.output<typeof runLogSchema>;
+
+function runLogKey(automationId: string): string {
+  return `${RUN_LIMIT_PREFIX}:${automationId}`;
+}
+
+function parseRunLog(value: unknown): RunLog {
+  const parsed = runLogSchema.safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+/** Reason stored on an Event automation that the run limit blocked. */
+export function eventAutomationRunLimitReason(): string {
+  return (
+    `This automation started ${EVENT_AUTOMATION_MAX_RUNS} runs in the last hour, ` +
+    "the most one automation can start. Check that its trigger is not too broad, then resume it."
+  );
+}
+
+/**
+ * Admit one run of an Event automation, or refuse when its window is full.
+ *
+ * `runKey` is the dispatch idempotency key. A provider retry of the same Event
+ * uses the same key, so it does not count again.
+ */
+export async function admitEventAutomationRun(args: {
+  automationId: string;
+  nowMs: number;
+  runKey: string;
+  state?: StateAdapter;
+}): Promise<"allowed" | "limited"> {
+  const state = args.state ?? getStateAdapter();
+  await state.connect();
+  const key = runLogKey(args.automationId);
+  const result = await withLock(
+    state,
+    `${key}:lock`,
+    async () => {
+      const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
+      const log = parseRunLog(await state.get(key)).filter(
+        (entry) => entry.atMs > windowStartMs,
+      );
+      if (log.some((entry) => entry.key === args.runKey)) {
+        return "allowed" as const;
+      }
+      if (log.length >= EVENT_AUTOMATION_MAX_RUNS) {
+        return "limited" as const;
+      }
+      log.push({ atMs: args.nowMs, key: args.runKey });
+      await state.set(key, log, EVENT_AUTOMATION_RUN_WINDOW_MS);
+      return "allowed" as const;
+    },
+    { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: RUN_LIMIT_LOCK_WAIT_MS },
+  );
+  if (!result.acquired) {
+    throw new Error(
+      `Could not acquire event automation run limit lock for ${args.automationId}`,
+    );
+  }
+  return result.value;
+}
+
+/**
+ * Forget the runs counted for one Event automation.
+ *
+ * Resume calls this so the creator's fix takes effect at once. Without it, the
+ * next Event would block the automation again until the window ends.
+ */
+export async function clearEventAutomationRuns(
+  automationId: string,
+  state: StateAdapter = getStateAdapter(),
+): Promise<void> {
+  await state.connect();
+  await state.delete(runLogKey(automationId));
+}

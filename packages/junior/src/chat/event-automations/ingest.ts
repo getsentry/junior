@@ -17,7 +17,16 @@ import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
-import { findMatchingEventAutomations } from "@/chat/event-automations/store";
+import {
+  blockEventAutomation,
+  findMatchingEventAutomations,
+} from "@/chat/event-automations/store";
+import {
+  admitEventAutomationRun,
+  eventAutomationRunLimitReason,
+} from "@/chat/event-automations/run-limit";
+import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { logWarn } from "@/chat/logging";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { eventGuidance } from "@/chat/events/catalog";
@@ -95,6 +104,26 @@ export async function ingestEventAutomations(
         event.namespace,
         event.eventKey,
       );
+      const admission = await admitEventAutomationRun({
+        automationId: task.id,
+        nowMs,
+        runKey: idempotencyKey,
+      });
+      if (admission === "limited") {
+        const reason = eventAutomationRunLimitReason();
+        logWarn("event_automation.run_limit.exceeded", {
+          "app.task.id": task.id,
+          "app.task.type": "event",
+        });
+        if (await blockEventAutomation(db, task.id, reason)) {
+          await notifyAutomationBlocked({
+            automationId: task.id,
+            kind: "event",
+            reason,
+          });
+        }
+        continue;
+      }
       const credentialSubject =
         task.credentialMode === "creator"
           ? {

@@ -53,6 +53,8 @@ whenever a new issue is created in Linear team SRE, investigate it and comment f
 
 If the plugin is disabled, the automation remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 
+Each event automation can start at most 30 runs in an hour. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
+
 ## Access and Delivery
 
 - Automations run as Junior and deliver to the Slack channel or DM currently set as the automation destination.

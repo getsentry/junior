@@ -14,6 +14,7 @@ import {
   juniorEventAutomations,
   type EventAutomationStatus,
 } from "@/db/schema/event-automations";
+import { clearEventAutomationRuns } from "./run-limit";
 import { eventAutomationSchema, type EventAutomation } from "./types";
 
 // Older workers can still write thread destinations during deployment.
@@ -415,7 +416,8 @@ export async function findMatchingEventAutomations(
  * Change lifecycle under the same row lock as edits, without changing
  * credentials. A pause keeps an unresolved block reason, so resuming a paused
  * blocked automation returns it to blocked. Resume a blocked automation to
- * clear the reason.
+ * clear the reason. A resume that makes the automation active also clears its
+ * run-limit count.
  */
 export async function setEventAutomationStatus(
   db: JuniorDatabase,
@@ -423,7 +425,7 @@ export async function setEventAutomationStatus(
   status: "active" | "paused",
   revision: string,
 ): Promise<StoredEventAutomation> {
-  return db.transaction(async (tx) => {
+  const saved = await db.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(juniorEventAutomations)
@@ -450,6 +452,10 @@ export async function setEventAutomationStatus(
       ...(next.statusReason ? { statusReason: next.statusReason } : undefined),
     };
   });
+  if (saved.status === "active") {
+    await clearEventAutomationRuns(id);
+  }
+  return saved;
 }
 
 /**

@@ -5,6 +5,10 @@ import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
+import {
+  EVENT_AUTOMATION_MAX_RUNS,
+  EVENT_AUTOMATION_RUN_WINDOW_MS,
+} from "@/chat/event-automations/run-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
@@ -148,6 +152,65 @@ describe("event automation blocking", () => {
     expect(await read()).toMatchObject({
       status: "blocked",
       statusReason: reason,
+    });
+  });
+
+  it("limits runs for each event automation, not for its trigger", async () => {
+    const { automation } = await createTask("Add the release-train label.");
+    const db = fixture.sql.db();
+    const ingest = (eventKey: string, nowMs: number) =>
+      ingestEventAutomations(changesRequestedEvent(eventKey), {
+        nowMs,
+        queue,
+        teamId,
+      });
+    const fill = async (prefix: string, count: number, nowMs: number) => {
+      for (let index = 0; index < count; index += 1) {
+        expect(await ingest(`${prefix}-${index}`, nowMs)).toEqual({
+          dispatched: 1,
+        });
+      }
+    };
+
+    const firstHourMs = Date.now();
+    await fill("github:burst", EVENT_AUTOMATION_MAX_RUNS, firstHourMs);
+    // A provider retry of a counted Event does not count again.
+    expect(await ingest("github:burst-0", firstHourMs)).toEqual({
+      dispatched: 0,
+    });
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "active",
+    });
+
+    // Old runs leave the rolling window.
+    const nextHourMs = firstHourMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
+    await fill("github:next", EVENT_AUTOMATION_MAX_RUNS, nextHourMs);
+
+    // A second automation on the same trigger has its own count.
+    const { automation: sibling } = await createTask(
+      "Post a summary.",
+      "sibling-call",
+    );
+    expect(await ingest("github:over", nextHourMs)).toEqual({ dispatched: 1 });
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "blocked",
+      statusReason: expect.stringContaining(
+        `${EVENT_AUTOMATION_MAX_RUNS} runs in the last hour`,
+      ),
+    });
+    expect(await getEventAutomation(db, sibling.id)).toMatchObject({
+      status: "active",
+    });
+    // The creator gets one private notice.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
+
+    // Resume clears the count, so the next Event runs at once.
+    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
+      automationId: automation.id,
+      status: "active",
+    });
+    expect(await ingest("github:after-resume", nextHourMs)).toEqual({
+      dispatched: 2,
     });
   });
 });

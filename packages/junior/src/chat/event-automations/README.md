@@ -43,6 +43,17 @@ Deletion keeps the row and execution history.
 
 Deploy all workers before using pause. Older workers still match paused rows.
 
+Each Event automation can start at most 30 runs in a rolling hour
+(`run-limit.ts`). The limit applies to one Automation, not to its trigger or
+namespace. Another Automation on the same trigger keeps its own count. Event
+automations do not use the consecutive automated-turn limit, so this limit is
+what stops a noisy trigger from starting a full agent Turn for every Event.
+Ingest counts a run before dispatch. A provider retry of a counted Event uses
+the same dispatch idempotency key and does not count again. When the window is
+full, ingest skips the dispatch and blocks the Automation with a reason, and its
+creator gets the blocked notice. Resume clears the count, so the next Event
+runs at once. The count is in the state adapter and expires with the window.
+
 A blocked dispatch blocks its Automation: a run could not get the authorization
 or credentials that it needs, and only the creator can fix that. A blocked row
 keeps the reason in `status_reason` and does not match new events. Resume
