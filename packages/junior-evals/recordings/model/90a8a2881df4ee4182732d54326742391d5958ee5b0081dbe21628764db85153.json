@@ -1,0 +1,29 @@
+{
+  "session": "evals/router/reasoning.eval.ts > Turn Router Reasoning Snapshots > when the user asks for a fixed text transform, use low reasoning",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "53237581f787",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0436af2f8e46375d016aceb08153e087d1a237a355de7e497a\",\"reasoningEncryptedContent\":\"gAAAAABqzrCCzxBXZtj6_sOT7mZ0mCep0hm51G7_d7k68guN8Qj8z9i_7FcoUtvz74YKJjd5r9ImGlj0CCctqGjo6ylb5TxpCTs9zZko9CyNPu-jQe8lvo7E8zQ526K4RzTKaNmGz876t4UtCFXUoplh8sOQxDERiHPXfSrsCE70WUdLTde0ZCNrB-IJh970Gk9KBThdCISrtZa0GEiN1JMYHwdArN8CX-drsEAWo0WJ9Kwr4TQOZSvue0YddW0wGR7akt21mFgGKertWhHsKkpO84mz4JYbHIAZ3F_E1Lk8GmewXr8-k9bXliNZTQdxXtrWZA9xzy4lVyGqoMH66XNLJZon6ekf_602F44csyHHCZjtxWL16BCFFMY07Lo4OTzmtYGhrb4BzdlTOK8vVwLBnQQZKU2okaXVB_3gUnPIjfmEeRHI2WrsXvFy1s50j4XvKi5uubf6E-L2K64GLQGam95shJBM4fimLsm-jMsMfdZl2J566ZVxWWYB40_oOmCwBaGVhq65ot4RfkvtWvrToyubNCx3zx4ILG-b3cwtnHHOOFXql4Hm-wKoOafD5YTYp0pj2JOiBR200frnvJEv7EBnQ3DgUcczjeKgjpg71kJOGogO_hNMeGKkEtfng5EiFdR4XPIMZ6LkbaDIAK1aZC7iXBgcVt3Z4BAyPgtsb2d0lBbh6Zqe1gciupbuoOWrYJno8EFhj1UNzM-liBm2u0pxJrclxjD8MPHJHReV4KhLyLAvrEPu_fFhW9CdGPjnPiy8PFzzlgNlBUvOb4jQXCwoF6khdY8R_VkP-woWGPQPUDkAG96HNjqYDM-CFqeEzgf_PovoAhtaLVFo723ypCG9D4ptWvQkWObQPY2LOdWS0BGMCzmCVZ9bBNvpOGmlHFuAgnoFL_8wX03oHfi92x3kLcxnGqIKxLWaxmB1oeTlbO6QTsZJE379UJoVKrl-uenvlmXZWXS302IEUNfV2WPZliaGKFdmQOwGM2Uty9tqMi0STryxwdeRT3Qnk5Tf0vuQ5R9p3w_SiFFVwuMIIuntxXZJ2R6_EzPwWo0QoHJAbGwSaq_B5ema8DFacoT_grtwflTz3DeTbTZfc69IIAvbIw9SnTdTHxCRavgg31HgYxY4Ms7wiG7AjopQATngPLz7fEMmwtu4ritQLoWsqjYwNAQkwLlbaVZK5lCroUJ11DyTIxz5X1cYH7AbX63jfYbD7aXx_vXZ3NkwR5h8M2rjZqGzESwoEQ9i03l2I9yfu3U4LgwiN1WpvUyL1L4a1VGUKJp6dm-Wde99EC6hOo3ogbLe88ddic1ts52t3d04kL5_fNMj5iQ6F_P-7KEhS-qdGqxjabSQ3M7FWeJxZ-kun8sIdUC9clkeUKC3876-Hc5Nn9YvyX6al2QWpM55LdOGA8RP_birnHHlcAwqePb47FMHIR2qyuKOsw8v6hB3iM6B0jbcfUSNEsiomhq4vH1n_M2rUgU6FfiJIk12UfrwPyuPxZiRW-HHFiZ-hrA7x5b4WieKkxbA3hogYXi9GJe5bXX4SR04i5WGtefJCV2YkczwdXLFdf4lQr0vYtIg58DwidJjgHj0WgpM69JrcUsIpxLy_5f0pdqLCAslz4QNgfA2h3bLmJ4oGtJNsriSgQ5kR_cA72LHW4BKRwAi6zCPGHpTytVRancT8bOWWjyi411_SLGpRBRE3JLCm_PfkBEII92rTq7b3OmldBZIE9kRa36Y\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a straightforward alphabetization task.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0436af2f8e46375d016aceb0818b4487d193484c2ef7b27efe\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":585,\"noCache\":585,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":55,\"text\":37,\"reasoning\":18},\"raw\":{\"input_tokens\":585,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":55,\"output_tokens_details\":{\"reasoning_tokens\":18},\"total_tokens\":640}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0436af2f8e46375d016aceb0800d4487d191bc500f728f380c\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791930495974,\"endTime\":1791930498309,\"providerRequestId\":\"req_5b252ac964f84efd8f2e43945000101b\",\"statusCode\":200,\"providerResponseId\":\"resp_0436af2f8e46375d016aceb0800d4487d191bc500f728f380c\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"10384aa91ed84e56e5d801646f379903\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000086\",\"marketCost\":\"0.000086\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000086\",\"inferenceCost\":\"0.000086\",\"inputInferenceCost\":\"0.0000585\",\"outputInferenceCost\":\"0.0000275\",\"generationId\":\"gen_01M4VP2WY81GNJB9YG5JNEEW84\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

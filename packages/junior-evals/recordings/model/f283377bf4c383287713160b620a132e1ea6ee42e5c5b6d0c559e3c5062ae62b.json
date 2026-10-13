@@ -1,0 +1,29 @@
+{
+  "session": "evals/router/profiles.eval.ts > Task-fit Profile Selection > keeps verification attached to unfinished implementation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f8fda953a667",
+      "prompt[1]": "1bc5a89885c0",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0fde4b3fdfd074ba016aceb098b37c87d1963adc430ac69e23\",\"reasoningEncryptedContent\":\"gAAAAABqzrCa8rWs66ewwJDkj9C_m8VA4kbWOKk6AMIfSyGMzhJ93GKj6IrhPXXaFqUgPZgg9cK0yx0hnBjKOMveRlrEk5EMg9ZSjcjspYUxgSxy6qemL_WDXv3crCygYsS_fpLNAX8qsjEFKJNstO422xhgQbbW8zpmWVztB_xg7Yl4JBbgt82ZrXKP8ONelCXlGhMhR9KWaQytVztHHIrilZqL8XJKt8sb_ndgJIL9OUxVDB5387guolSHdHnZZQ5muw0Tr5tVO8ZuRuESIoSFOB2V6Ym5VedFCrvrPAXfrLUUmvdELIOCRrzBI5x6B328ZyypZAOnXD8DV0K8mUPCwerLNpY2bc7ZC2pkxg6qhYPxZnMeU3HJWiaq77MaJ4Cx8FmBv2xOcCytyw9NUmlMGOJ99OccXGJ5DI2Thyk6uRtKsdWI3-w4kykumTSs5ywlanREhhRWHjUPLO479BFTjEFuWy5hcgejVcfs0dj1K8ZZJ4oaREo1xPTpyugeiLkMpEAQEsIpjDKete6VJ7s7ljYbRL85hkW8nTT8NGrbX9jGLU7sAicAYTX3yUFEv2Us_JrPyMhTMMOFQ51dV8lk2pH5aqX2wcq1FY93WQIFCC8duTTJeQlfdBPViTGKgn8ebb7XGerTMDlQusiPbGgI_UAndDG3GOmdsOSFUASul0LIAXHLxeedqyQv8jRB7ScHQXLbWG5VuXorEWp1Cm5doB_zGrEDzZrS_d4Rx42DSGpNsfPBgxKtHbs8h3-TU-SUMI1r2NxWV_CqV-H7RzGe9Isz8Yzu-mWrJAhDmFaMBvBaIpL1imZXf1apQ9To1pBFawiE_xleSTycqKAfoJoWm-_YCWGS8orb_SyT8oInFTeeKtvZLKE1kWPPyrs41wIWdH3szwXybZVUG7VlZT0nNFYYhyrSCLjymyM0jkB_h-w4bfUSdm8jvavrPYsMnP4hsTYqV5kFV99mv5wWWI3LBmq9u3g6HMI9U1ggMnzKJjmdssXrbyIV7225UiWFWP_EBk2mc-X_AFN-mpRrPIoyxPRqGrHnJqMJy4CQU3Iel6GyUBq71X7PWcNeXs56xDqWgPgTGhN75eS_L3MzlTbWAQebcxDzPGhXfSdFe1kOuLfELDNwG8aPYnYewfjJiI6kAOa6DJxUxkrhQgQuIvqkcF0AepuJXFroYwJ_K2MD7-zNXbddhWIp4tBVVru38dxQ_Wnkgx94akSdczSC848CpoTrokxEmBkt1OKes6PU31rW0-wq04HScDCzPKZPeIzR-HIyGcTkPtRjGFUO5KipbYsVQQ28vKqi6E0pGtX9kpp-JZQYZBbP4safuxQB14tEg6mFqz8NA7HTM36PKVVxfPS6Kg1xYmifhiJV4idxN3dnjsHMr8AlO4YnNYanpUcbvGcgx1qpzVbj4oABpW8yrW7DsYAKVwcF2QJNDqzf_9GslRlFMUlk1CQGnSpYU-dXzhEIKoM5Pk--ywlY1-v4ylma2MrMFDr6fRrOqa5wDFxmx9XttsvQKF-3aI7KdwHmxz-gfe_zRwMv0aHLwlCl4yFgbIyUa6WA80APtFHMXtLV4FzB3NKSMGs9E_EqJKIHWj8H9C4-T_VvhyvBojG2FXEahvj2tZENNQMzn5ow_ePGYm_zj1eDVlVo7pv5eaSqtsM9HP9WX-1NmdLGEHcb6bbmxlN2weYAtHJXRwzobGVOjXlivvnUNFSJK9R-IC9ePL2IKHG5brWOw-w_C5AP_lTQo9gXO4HbB7Z9IIlQegx57jnydCoOOyBcb7vul-SJIKuQ3vvWNtnGubvoy9Va38EVzXnoV1cC59gw4bNti5TS4NuEa-N5P_jyh9LtCFLkG_HnxhQSoQqb8SiAEzDy1K4GoVivRYaOFiigpLNvz9QhkW8s8nM=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"xhigh\\\",\\\"profile\\\":\\\"handoff\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The follow-up asks to verify an unfinished retry-logic change addressing duplicate deliveries after worker restart, which requires regression testing and potentially debugging.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0fde4b3fdfd074ba016aceb0992b9487d1bf783a9f55be061a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":622,\"noCache\":622,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":87,\"text\":58,\"reasoning\":29},\"raw\":{\"input_tokens\":622,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":87,\"output_tokens_details\":{\"reasoning_tokens\":29},\"total_tokens\":709}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0fde4b3fdfd074ba016aceb097a9c887d1b6cb6069754856ba\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791930519571,\"endTime\":1791930522071,\"providerRequestId\":\"req_a9b0ea8ea43648a696ad94d5ebdb3210\",\"statusCode\":200,\"providerResponseId\":\"resp_0fde4b3fdfd074ba016aceb097a9c887d1b6cb6069754856ba\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"f3b10ad1168da0bc3eb40e757c6a3391\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001057\",\"marketCost\":\"0.0001057\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001057\",\"inferenceCost\":\"0.0001057\",\"inputInferenceCost\":\"0.0000622\",\"outputInferenceCost\":\"0.0000435\",\"generationId\":\"gen_01M4VP3KZFYMBDD9YJS1GWF3F3\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
