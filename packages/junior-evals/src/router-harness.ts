@@ -21,6 +21,7 @@ import { selectTurnRoute, type TurnRoute } from "@/chat/services/turn-router";
 const ROUTER_EVAL_TIMEOUT_MS = 60_000;
 interface RouterEvalInput {
   conversationContext?: string;
+  currentProfile?: string;
   expectedProfile: string;
   expectedReasoningLevel: TurnReasoningLevel;
   messageText: string;
@@ -49,7 +50,7 @@ async function routeTask(
   return selectTurnRoute({
     completeObject: (args) => completeObject({ ...args, signal: routeSignal }),
     conversationContext: input.conversationContext,
-    defaultProfile: "standard",
+    currentProfile: input.currentProfile ?? "standard",
     fastModelId: botConfig.fastModelId,
     messageText: input.messageText,
     profiles: input.profiles ?? DEFAULT_MODEL_PROFILES,

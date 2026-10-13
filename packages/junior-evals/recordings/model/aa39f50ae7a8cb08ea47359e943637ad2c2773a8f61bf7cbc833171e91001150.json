@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/participation.eval.ts > Passive Behavior > when a terse clarification comes right after Junior's answer, treat it as directed back to Junior",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "2072b8f87822",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_03789ad9b7f33331016aceb2c08bbc87d18c708905ca83e859\",\"reasoningEncryptedContent\":\"gAAAAABqzrLB4jtxD5TGJ-P2QjZVA5D4-PYsW3lzqD5QEOxsrDc1VlODu21cyZa2C-d67JgEpEaNrlH3hIeJdAc5QR7uAezAaN-bMCkMNc9sZ1qj-lYXzcBWCi5ETso_MqNocNqx3u7L-hhl7cZGwWIr9ySYMIqtwuHilGrjYcMLTsWHqWLgH0ArB8OHFpTWLkNS_VPdIWVPVYxWG5KHWSMoIc4NzGFoj_6_oWbdn4ruZp9bNn3JPwCZ6aoYPGXXzMFewGsSYOV_zh_eSWZx2J0XPZ8Sn6K68AmCG5AtGYfJ9R7dz5BXMnVGv14SFoZyh7RKNk6Mv5XJ-OU1LfjB96YMkLE77H0RrNeDlbHoG5vUd5Lt9UN3CgOR86otbrsfCJfeNwswrqAEOgwtLTqqFZYcVbv_glOkT3OvsUr_uVJb1kOJ1lut9UqywAqANfbeuee0fGuaSG8aOsSiucl2KIjeDT5OfEyQfVZq-CUSvuLCAlGK9gyHbVexe9nmkuzqwi44cusKk2lJAWpCltXG5WBggf01Xe_gA-ixc97myF5-PX0MWFPMFEwREF3D2VPQPHD349isIpy_2o-qRy2xP36yCYMKYdePqHIX-u-2xFo3uYEKGLPszgoMqKrG4W61X9cbZjMi0x8Foga3xFJlBXWoQXC3v4s56JhQ9B7MnDbnT9O2l4qqrFYvGuF0hBzUOJeVUE3erUQ1f3QYmueBiMlkPViGK8oF-gkEMKpJJs1NHeuiyDz0FjIGsV4-a42ZGZYJ520XuPGnUR77-D6Dwd6919Zz4YhuTbEz_qXlggzyxvaiflqhzfS3xaSTNRze8-pZnz0lw2AwRemE6zFpMN2GERjoDhvXGBrJGGmfaa5BP_LdLwtutPT9JVFE8P84JxTSdGf52xZJOJQY1QhWOQBjUjNSmj2uVTZGpDz7onGJZ_MQN-7Go9Wl62yCxOcWh3zMpt81Ym9qy4zgXKq9zNb5BSfQauNqArVmyGVDiBQWyEodJmKkVJnRMy_MNjQxPwpF62-qEVVXwH8kwf1a2zUOUxj9GPdLnZkitCo8dtgfJV692QNTPpLMyhlPDWQ0srOiEizHUcWHhYD-tR_e0vjvqkS7xtgLpu0tk46omZjQhBaZFMaHOqAjIW4qxZIsuENsJaWbqBWrxbsvlbMp3L8qUAW6q5EMsp774aV3_x4VMp3NZ63vg7EVBJ-_LnuCJgR1oPygBIt1Exy_TKMdWnLHWH0eBTr5_K8Fbxf79A6VoBKKym8AQ2aZ5VxBIw7RmXpvCEEfB1SC4XykxyHi9Y5n1owyyley4o_c_xnSXsA9yk88ld0hbuzbXSZyrS1P8irnSPtHWCsVU4YqOSVsGDEhxPJShYpmgxRE25-IWosvdghcdZbmNn5cOmeKU6nZxKw1ZsMR7cVft_Qqfhp2-0wW9YQZSnYXDrJEgJb0NNBXt35CombunoJhhy0kMMaSfD53CR2OZ0IXgl8qrP488PaEWksMkFK-yReojWKjA9kU4KakSFWod1aGl_SyenZJLftxnvEU15AVZJ-VdcXkydReYchYXUEOGQSFACmnVsYrUxKCr95l_xS9ISoG6fMbkVUWYO3X5_eZp4LDDh6w-BhUv87tWMLgQcdZH9MHbE1qvETXVrLiTw9RLVdN-dXuTRMOCXvHq0-UfApjRr6FZrnxBB7pIwszdh282FLdi54tTAftLuUB-Gpb4Nc7-YIjFW_b-4e7A7ojkUE-M2jUgrwL5qbil7FanCXfBrvb9hAjYR6kk4wwleZaRAZbuwu8U-0VW7OJ7l0HyXGM98ig4z5i0DpXSFBVE3ulS66LTcAwd3G3gXuCYlgqqmwzCyFuMQUSFTJX-jRk8SNiGxatZY0xlh1Ut1aTKHMJ75P5hCsAsL5X2Dy8fSGKhQvlBfZQmQXaeo0Jqy2dvXYIDzp8XIIGLatJEV_aQgY79wuByhxCdl5fZ3WFcR4tA32sWZAawZSMz5R0gJUWf8FeuoxmiITxbXyv75AXz-zcWhlI7rh6zGMRq3zKNP4LwJFrZrxPWhpa1UB9MFg4JSPgipmQhgKvCVC9A_e_fpIcgQtylF4SQHbSbI-ibPUrtQ5p7hlsiZRzqz9pQfp890-PKI1BoGj75SfcHyP-BLy5eSlXj_hglIDfyKU2JHqxR2ZhEXqnvRzAyrKmthVVO4pvCKqUhrS7VrRiFp0hC5FZyW1Mhm_NGUeKqVM0vcu8Gw4c0uNDAfrps2waerh5EK2q9YvITWNWd4t5Zec1AurQq5w-lehWDeyjCYX-XZ7VjHYmrDZiGMyrAxmqchFM\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"The follow-up “Which one?” is ambiguous because the prior reply named three deploy areas; resolving it requires interpreting the thread and likely asking for clarification.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_03789ad9b7f33331016aceb2c13aec87d19ca8e29823b0a799\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":729,\"noCache\":729,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":120,\"text\":59,\"reasoning\":61},\"raw\":{\"input_tokens\":729,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":120,\"output_tokens_details\":{\"reasoning_tokens\":61},\"total_tokens\":849}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_03789ad9b7f33331016aceb2bfed8487d1a8a264c32742479c\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931071822,\"endTime\":1791931073924,\"providerRequestId\":\"req_2e0e431fe79c49abb19414a56f79b87a\",\"statusCode\":200,\"providerResponseId\":\"resp_03789ad9b7f33331016aceb2bfed8487d1a8a264c32742479c\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"8cef164bcc6881710ee06850b8fe5468\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001329\",\"marketCost\":\"0.0001329\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001329\",\"inferenceCost\":\"0.0001329\",\"inputInferenceCost\":\"0.0000729\",\"outputInferenceCost\":\"0.00006\",\"generationId\":\"gen_01M4VPMF98CYMZYSW859JRZG4S\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/routing.eval.ts > Conversation Routing > when asked to post in another named channel, explain the limitation instead",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "5906eacd72ac",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0bd26faa53276b7b016aceb3cb91b887d1bd1bc5a5bc7bcc5b\",\"reasoningEncryptedContent\":\"gAAAAABqzrPMwX13tvjv4EdYtRHY4z7kmC1btrFurfMxLnn3WWqOXuPXjXohdJFhgg5qKFqJ5P-F4TUnw-L5Ok70LGJOhAt1GYxe_nVphGmSxsyVaDUP7r_S4IKSWsipRS_VQt99-KecwHtj5iJBfVTdYy5C4KAzme4D1FNWhQ185MeehZwx08NZUf5I9-vMFPHf3P-W0NZ3gTBj5bvOaeYCBkcTJMbfU5DH1iUtTkOQBvvfRg2dYVDEi1yeRIWuVkUPHYPcXlOxpwcQF6iM993xBf2w3Yzpd44iDArKDm_ILbFt0ccEgXbgDrdcglwhslKpliTPiRZCvMT0sg87pjUEXmDQVZXDFu3-7sjgXDoCEJh5Me2Z7FXWzxKyToED4DdPjBpGmF0KALB3J9mqARGMpCRCJ6btTKIdcJlwD-s83XBkKAs-GCr2ntQ6kV0R3UM3R08z4kEDg6QrM1KaUi1l6Qs4_jdejwISnOq46z0VPQBr79cxQZuKsePD6eKlgqfz-Kp5c4PZZDCuYKQQftaSnnRZjOyExm_huClrbuh64_0WR_aa01MMtv_Md_J75K3Sf0VlbFjzKfQd_kBUdYPbNbRo3Zo3Q7Y3Kbqof6ehzyy38qenXgoF2kTbPln_Ns8IWyhIuI7RwMTfow6F1TePDfjNQIWuAGhy8RX-hJSKtrHzUPm5rreUnRbN6gZWa3EPhX7kHelLeHxZMuIqr_TTfXIAqU7G37yT6wzVLjWSoYJJ-nh5a3_bQdUKL01P4V21DhXqZZt2HSP8b7nAgTyBl2lgnO-_LS6QDvT1VQ-PQ_zeiqCYvwMZMWRpZfxUdtukRr5bvqa8b3po1hU79sVXBBQ7-eLrKaA5ZjYGdDnI9HqCdX6Bsb29K1qTUa8M-6FGIUJE7QVahSTSUydw0NpcHcTguiLxrvPCAApmTGYZj3W6YZwud13WKgLmPo9TccJW-gYCadLVtd5CuhEAUIjskxZDobU4uyFk_BsnUwALyO_MnGiVg1P0UWJiztXrs9N4hSgPFnaZ-Hz3AQ2sxWJxKcj6Q5QJKSsepIRtUDf49mzFXR95_QxhVX0WUg6nTRReqZzZLi9XFi0I5sYMbL0eoFjZQ-oY2a4BqhObwrvLRQBDK1q6qvEPYGyX-6RwseU8ExqBoOUZaHBuMFl-GSQ49cWHxz96ModMmX7q9jyS8N7AyA8g-VFWKejPCuZ4JpZTJKpL7kmuUU7ugqBUENH9YB-D9WlyeS8VRuByph3k1Rf7liQaDu4A853Zdie7twSlGnTOUIsmDZ5xwZNSnY0bAOwoZ5F1-BKnX3raUBRU5huhFs3HX_ex9Sufnm0_RsmrjvhlLaOhW_PU2RldnKObdec0kMp2D87t-7E0yRI1DbxveEpqnhb4I5tOgES3H1HoCpXrpz7UroVUhJZXJhaOG1_OG6FeVdJ5HDNYalDsmcfb7gIg4Jz9Cpbh7b1rHfCr67i9UoJGd7Qe3Jq168gyRswCAROpyl2EgzL-9WCReVbWXuhyZo2ZO0owvsF79U2jpjDSTwXB8wN3GaQjDQSr9FXzt218f-IND5pzEWoeANFkZXhge9_musCSHoRacQhG7IkBu2_bvQ3Uyd4MA_KX1SC745MWIpjuWZ8wsGolgm8hj8IvuNsZpbXv8YeoguXu7keXjWZbhAob18TfzbhTheNe9sarmwueopPXAp8asUELJlfXHc7WKh8IFyzS0WUj9pRgLOOU2QDB6A9Q21DRUEFdSa99mhTdyprIjgM0oVVm99_BwDO7lDxMS7U2V5K4sqwRn72I9BdcHrk2KIHkm_qfYHemE60XNFRf7WdWlnWHdigWDCiDn4w20gewlTOGeESLnxPxewMjmZ9quovDYN9N_9zks2yOAIoK7lhVJt40aN5ys8hhshIdIKx_qZMLtq1hDQRgd5I4h-GMi7Pjb5_CN-VoYyTliIgAWvmvHcoYFQpUNuqiRH6ShswCjUFPWoMHJ7nkue49oe4LodA8QfiRDHArOyzO1IM0Ko9CIlKwGJULdUTtkULAiz6zIk1ekYgjB0uFRpBx0LwZFOWrg0qhNWnhAQ7cz6AFpvY2Y5gqinDGG0YZoZhZd1lmqFAv6ujaDz7WNVwUSHo_3I0ZkpWR1Tv1HSbEeumDXE1K1nhku3xMQjE9cl0aOmDZpID3WbDlMjcLfTSON1fyeVPJOV938e8rvOkqoqUcfEtulsfkDYZyl_l3sJD-zRZGfmQQmaaOWlkPabuZFaaKczIPLOvlkKWuJ9AxGmjgFk6LAzcBGpd-alvSvvmUm94u8Jp4KfPT_gThbOtwG92AZvb49xUQf96nsLAI7SrdXSwZNrw8_OsYYFt6moJTUr_XEBLhiqkDecDKb41usBDouRAwn8vuB5PR5iKa5HLisYu2LnAWxR4xGW9c9zUpsbVorR7kw7XIRloM\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"This is a straightforward request to post a specified message in a channel, requiring routine tool use.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0bd26faa53276b7b016aceb3cc54cc87d1b5c8f6a86fdb4713\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":596,\"noCache\":596,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":117,\"text\":48,\"reasoning\":69},\"raw\":{\"input_tokens\":596,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":117,\"output_tokens_details\":{\"reasoning_tokens\":69},\"total_tokens\":713}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0bd26faa53276b7b016aceb3ca904c87d1aadf9a89912de93d\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931338490,\"endTime\":1791931340844,\"providerRequestId\":\"req_68badd82e5d6449ebb0c006ca5577521\",\"statusCode\":200,\"providerResponseId\":\"resp_0bd26faa53276b7b016aceb3ca904c87d1aadf9a89912de93d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"9fe5cc6e3e6d11ddc3e9224f3573392b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001181\",\"marketCost\":\"0.0001181\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001181\",\"inferenceCost\":\"0.0001181\",\"inputInferenceCost\":\"0.0000596\",\"outputInferenceCost\":\"0.0000585\",\"generationId\":\"gen_01M4VPWKQ3AT2YM6J0N12Q6W8R\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

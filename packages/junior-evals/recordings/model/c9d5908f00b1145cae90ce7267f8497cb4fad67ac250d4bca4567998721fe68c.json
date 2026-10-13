@@ -1,0 +1,29 @@
+{
+  "session": "evals/router/profiles.eval.ts > Task-fit Profile Selection > does not carry difficult work into a new routine request",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "f8fda953a667",
+      "prompt[1]": "05dd237447fd",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0bcf4d9242650170016aceb09af60087d1982d96b3e82fd1fb\",\"reasoningEncryptedContent\":\"gAAAAABqzrCcxr5i5jGd_1Llq5WqONyURWojtPmNkcOJ0irhr5r8MmywoZh-nwCG5ff5LRcJp2A0dat6mpsTlzEcvX38qapOque50oIJK54ougbQqaA1T01uDaNrhdG9wKG0ZBcKJJ4J5elbtUxk5AdVv4cmxmt4fHmsPgSqbSUqDq5TySViG4Cpm2btJCBo9UY3NsxI4TXRnLZZY6xbmkYtQCuW1BKvGAU2n1TrYL7phi8_sa5J0l4q8qGz9mlrB-tQ7eyvJBJ73U2IiyqfAauhd1KjdIV99vqUtA7v6ejzznZLmzUdhoHQKLbRr-jSlr24MdDTKk7caZrsVSQwirULbq451U0UIGROGDrK0FhCuJHNccn19P3rmum7STuuk5BrSXFSomFJ1nkwa4dJNoK-RjaLmGmfrwwUn3PoBm1Qf8GuS8irODzusencCwDFKBM4FHmLXduCNGO6CFl_CtVDxFOsXg85k-6rUyDXX35r7n3aMl2cUHCut5VYHHt-4W6mIpVnw9MmLeTfa-IeOBdzXu67RRLhzg0xnbedo3CdEBjobNNHJIl1cOqK_Ll8CtIb8jAiYc5Z0aTgBJGGhSMjULch-w1esuVvVdW6DUe38Bl3c1ii8rLvMX-49sv3siclfnmW2-8FC8hY0yXCz0Oh00kZ2SHb2Sr-A_zu5nEs3t2Z5gaxCiJyaWGS9aLn-UI6FMWXHmJSL2dxcxqUzVMt5RI5JXhryB3bfACc3IMPkaEouHsRuTwdvm8Zp8KmqP_iog-K96wkGDGYEobRAXb4S5M8td_cLJufq4X5zoY1lsDHTNx7EqB7n4qHH3-VAgQdiOvFXtCWgd7dJgAbSKt7PaUzwujNt4NOdH-lHrKGxrnsnb_TZWCRxKh4BSDcxveoxsT7wIhmQXU205kiOds5GYcLHY7rKqQQdpiiqOUcZX6jXx8Q0Z9u0fx4xOQEOkbdQbsUyH5kr9qU6K9JFVikdsr10SYHGlhQvsQGpCq1rpJ1o3gU5kfqEKzK6Au7YoemvzKwYzJwi680DeL51LoodkKApIqCLRmsTsyns65nkNY_3yQg8R4RQZbqfgVPrJ4rZzXocjBM1NZRaddKbLKFd1eYB98DsHavalWadephSo7BawVLh-lY4F1TvmB6cqCNt_jqV5y9HPyfK2Oa8DXlCm-8B0oItre2y28ctgai59-AWBbiuGgCwDv5PUZj1eLu4B44VvtUaE5K0fUDvdPLRKO_ejHgxA0d7Eq06UculgIyZt-iRxz5jY5u5QR12pReSyPsZypI93I9hoomw1uEPa-dtvDUcs01I9TL86cJBwiVDMGf3vb1bCWg63Wtmz22Z1dLoqYX9DbxgDfnZGO9D3dIJs8_EtrhuKbB3JAGOatj-wkVtDgO_ZteRRyASdb5zuIlAEUtcbzhRjrpNcREqDbAjOwp0jBBr3hwRqnJLMlbJ-egB8LU4HT5Be-pgr-DCdesRQcfcIkupFHATDPgJbAr8INxmcaUVNiWwsfPdbQaynhNHIwjslsbylUGREqikShqO_rfBybWYytpSQaNEKq21mKj-SulrfU__U6IvLGx0zvglmMxljXIbV8ogMjciQ2XnCm0uLqZOna67lyKGdnkVr_WEoX23Ft2nIyqOXT4Q7KMbkBZP7CHUHYFY0I3PATmQF48QyWXo5okzn0TmXAMQGcXurdpNMp6uwHfQFZMzb_zPRYjnfCgxLS_ZcGKwXEQyBZyYM0QywAXzL9CCHY6HTu1P6UEFoYDNbJMhXavXDGuOhxMeipSzjo4ibv9n04RyvSWBvWX37eF0Y-NTTbZTnqY3cwLiixVrY3IqZatdjsTKSgH1bANed_AvaIk6aE-3MfPFoAxtpj2NVBvmvNGfsYLHUMpj4AyKKT7lmBuaE00DNA_BXsTI0h7R3EiXx1CFsflfO0kGph79QV4mSRqvLW4UPiIY4J8XfAjdKaeHXrfyy9QvUcdKTYU7dxcIqT7h-eei5EeOybHyCPr7X6ZPCh6k99FGZwiy2NvqaKsGm9pwk4FozS7HQgd3thME1wlnonP\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"Checking whether a public status page currently lists an active incident requires a current external lookup; it is a new routine request, separate from the completed task-queue work.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0bcf4d9242650170016aceb09b7ee487d1840e5251b3176018\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":639,\"noCache\":639,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":102,\"text\":62,\"reasoning\":40},\"raw\":{\"input_tokens\":639,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":102,\"output_tokens_details\":{\"reasoning_tokens\":40},\"total_tokens\":741}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0bcf4d9242650170016aceb09a554487d1ad50b044c26a2f90\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791930522199,\"endTime\":1791930524247,\"providerRequestId\":\"req_0ccbcd3b30a543fd92c2e38a5732522a\",\"statusCode\":200,\"providerResponseId\":\"resp_0bcf4d9242650170016aceb09a554487d1ad50b044c26a2f90\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"8e9405110b849eae8627cb7e176e7a89\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001149\",\"marketCost\":\"0.0001149\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001149\",\"inferenceCost\":\"0.0001149\",\"inputInferenceCost\":\"0.0000639\",\"outputInferenceCost\":\"0.000051\",\"generationId\":\"gen_01M4VP3PJ1R46WZ5C7SZ51NSAX\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

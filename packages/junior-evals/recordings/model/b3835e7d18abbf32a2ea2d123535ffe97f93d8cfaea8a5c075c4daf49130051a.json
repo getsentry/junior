@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watched PR is merged, report completion without extra work",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "514d3a375d97",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0c9bc72e9f2652d1016aceb318642087d1a6cf3ea13faa8518\",\"reasoningEncryptedContent\":\"gAAAAABqzrMZcwk82-Nglp90huXOzrZ6I6Xwnicglpk8Gch_ugIwXrNH9uZaVWjldAf8KpCF3w3LFQ7uvWEfQAuMFHXopEWwhQX56uTJkpQofwulrTvq2sqlVaatqf0p8zscxIE0fGm9sUu7p0bz3-6h8DXXX6PpFT_OcBzIMqBGuCgCtCfXu4SPYhuQ9yrsg6BoZCawbqzqcvTP3I8y9OJtOMDdzqdk9auzVxyleM0RIRHMcLvhkIyAOCZYl3px3YD0lXQ0uyLaaTRRdPsRQk_DVzrRgKTn3yPuZit_1aNOugMN20OXZdXYYsGCNikmV54-5hpYmxd2b3z1Z-ousW1b_KnjDxQnafgdupG8FtYRkyG3nHNPzqKgIe4WvlgtnOsVlJ3M1BzT10x-EW1fxtK3nR582ovUKTC3GUX4xluCIHfT5yqSSvFFeMJU6m4RXTw3DPIghCBLETHbiD5drwuXXyYsVTYSjrUtEExOImBbCuYzhwDinWRRPOjbRxSKLkDLz4GeKQ4wHPshF8sPNjU4QNNqzzpjqU-CaoJRQ2jA-AU9OoRZ9LJ6jVJcyCZQ4R1Q85IGwcV76jXgMJReRKG_PHDWHLl7ehjY_eNjlbb3VGWv_nhJ7h52Yt6-QuLebdR5Cf7OwmW5Zuk22UfZKQixO1uHFJZX-XSbwbnmUbl_gDYH7YszpleYtyz_C-G-dq1JT5T1x2jUlzhadoOSUVLuml6PWKYtnYSwBa0Bmr17oS9midwDQB6biAPmT7hn1Pbsne9isPLxz9Mi26kUfnTqjF0oC-GVxfK04YnAdIp3dxTYYtvNm-qnPl9Hq_69iRsMUhSOa7kwIuBCrpgoDvFIBdQRGHZEret5itSqXhFPhs6FEsVqpmnuUyJShQj8LI3nzxqRZf8qpbhHxLvOBwgcA26w6-GAgL7yeJL9z_oK26O3m00_gWE5p1KUcqpu2UnbhO3SBjC0-fN_ZEnNlPRrDtbRzUKz7Irkg78R4JX_tEtr0qS_ZX3XcjTxAS7QzzBfYpwKetNqZxrv1L9HMFcoWgKZ2LZT_eQB_fwNVZgDVqaiRg60eAURRRDwXg40BoPcTjqvEJxRBtO_sOe6N4VAsDqJa8RIXPoEnHbSy6BFz8TQ-d-BjU4KOjTo1lDgN_1oanEwWbSF5zLLOWVBnjemLd9zPGfLqtZrUMzXR4mAEVI6_K8TSsR2NWZfeuiNVLGo_4ifKpPgNe76T3KbNZR1K_vwWFD0UwnYYacUBPHtLxwaXfKdTgGYs9xaDlfWGwCqVWEnaUlwLiL4dcLbeIzR3oxO96IBv_JavrtDKCWDjYyvQtDACsihl_WZbzKwjr8osIbJdK6dyW7nJw33oyZrDz62rnee5FgsC7QqlRqkR49FO6kTPC4zkXydp9WIVtEJ6_Ymf-BuBgOvWmGbc4YoqQ9pMY0N9kj-vNsFTr7EzvTnvtlX8umE9Jvf5zvftlr_AJUWsd-yBAlYbNRO0ENq6m-B3XI5aZ9xtaiDlO2KbwpceUrvWsn6Ga0iExyocMpenXOQXCv0P2-YshOTVtyN9rKDgxVDznf4YhnTLs8q4Ue0GDZgDE7AJLxDOM0QJf6svM0kmApvn8WauVg3J1iEoJlKefKWvYm_kygHdEiaJSsMNTLASS_zDv0AtteI5SPpOBkExMmtWdeBbb5XYAyGJ-lXPAMDmK4L_puR9BpmeOJm8G7NS5iDT9_VsEI8rOKl1HSwZci10R_8WR7QBIV7mjna1f5_9xniIjlgjVlkHYewgLpnJeoiC9sZ-LHtRC-O3DipmKylVVxc3LSJcIxiXG0TZ9RvdaXLJCrw4MKz9gZCMfyH0Uuw04XCzXNeb88jHpn4y00KuPMu2Hi5NGC7bOK_3AW0DnXGYbo8rUGoGdMJf60HBIFKaXoi9q7kA9iWHlImsd16vNghoxpIBGg6HLmfDLWxmwo99uFcP7iN7TpgLs771lpyTj0dZc7YPCdK75Aii7YcFeZCzxKxdkXap_oZscwO19V8hCHJouVA69tMug3Gy-M77MDUDSApgolctPYoklCovV39IyohbyViW2kjMQqe77cy_9LCEqOwrCu9-8EDew8ujXYeN8DHL9xMGq2N5tBfG4cBLFZYYp0OIIHEZ3pb8b477Je8sriPOmfOUuFm9fa7Mq17d-SmiFbsuMWBrncatRBiU1LScBhKGwqAz4duK3Vd2e4ex6EOHJ7ubgFmnrjN3bBmC9xqaMEb4HF5G2gYd7Fz51hJC7Bhs9ydSpke6zo8-v9e5UVCBvihI6J75K0=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.97,\\\"reason\\\":\\\"This is a routine thread follow-up about a GitHub PR status; the trusted summary says PR #691 merged, so reporting that event is the relevant action.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0c9bc72e9f2652d1016aceb31918f087d183fe7266f53c340d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":860,\"noCache\":860,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":119,\"text\":61,\"reasoning\":58},\"raw\":{\"input_tokens\":860,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":119,\"output_tokens_details\":{\"reasoning_tokens\":58},\"total_tokens\":979}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0c9bc72e9f2652d1016aceb317eea487d19cbeed887c7d0342\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931159858,\"endTime\":1791931161834,\"providerRequestId\":\"req_f83fd231fd6d4ea0b36dc526fbdf5444\",\"statusCode\":200,\"providerResponseId\":\"resp_0c9bc72e9f2652d1016aceb317eea487d19cbeed887c7d0342\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"cb0cf0dd731ed75d2f53d66c683df770\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001455\",\"marketCost\":\"0.0001455\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001455\",\"inferenceCost\":\"0.0001455\",\"inputInferenceCost\":\"0.000086\",\"outputInferenceCost\":\"0.0000595\",\"generationId\":\"gen_01M4VPQ58XSGCYW7ZSPW13ZG8V\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

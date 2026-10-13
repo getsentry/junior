@@ -1,0 +1,29 @@
+{
+  "session": "evals/google/scheduling.eval.ts > Google Calendar Scheduling > when the requester corrects a one-sided answer, check the other attendee without asking again",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "c141efe930fa",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VPN9QY85GRM148JDVJXJAK\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Check It for Me and Sam\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":57,\"output_tokens\":10},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0dfe3b7c3fb7dabb016aceb2dafa2487d1b2481d8118b680ef\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931098909,\"endTime\":1791931099513,\"providerRequestId\":\"req_1c2c077235db4991b9d4a8939edc8599\",\"statusCode\":200,\"providerResponseId\":\"resp_0dfe3b7c3fb7dabb016aceb2dafa2487d1b2481d8118b680ef\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"confirmed\",\"pinnedProvider\":\"openai\"},\"clientSessionId\":\"f56ff5a21ec9de9a79fd110229284899\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000107\",\"marketCost\":\"0.0000107\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000107\",\"inferenceCost\":\"0.0000107\",\"inputInferenceCost\":\"0.0000057\",\"outputInferenceCost\":\"0.000005\",\"generationId\":\"gen_01M4VPN9QY85GRM148JDVJXJAK\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

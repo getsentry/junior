@@ -777,6 +777,24 @@ export async function recordSubscribedReplyRoute(args: {
   ]);
 }
 
+/**
+ * Load the profile of the newest Turn route or handoff.
+ *
+ * The projection profile is not enough: a Turn route does not replace history.
+ */
+export async function loadLastModelProfile(
+  args: ScopedConversation,
+): Promise<ModelProfile | undefined> {
+  const page = await getConversationEventStore().query(args.conversationId, {
+    limit: 1,
+    types: ["turn_routed", "handoff"],
+  });
+  const data = page.events[0]?.data;
+  return data?.type === "turn_routed" || data?.type === "handoff"
+    ? data.modelProfile
+    : undefined;
+}
+
 /** Load a previously selected model profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;

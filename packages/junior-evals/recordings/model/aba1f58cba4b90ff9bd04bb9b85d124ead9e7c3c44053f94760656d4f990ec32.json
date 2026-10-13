@@ -1,0 +1,29 @@
+{
+  "session": "evals/sentry/skills.eval.ts > Sentry Skill Workflows > when creator-bound scheduled Sentry work becomes due, use the creator's account",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "7b2a57ed08ec",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_08c6b77d77f272b6016aceb2f104f487d1a053dbc0a51fb361\",\"reasoningEncryptedContent\":\"gAAAAABqzrLyDuYmnXbHe5K2SXMJI0PGAdbReryAYEJ-v4tGrZDlApa6cQEcYB86zwnH-gL-IKFgnMSGR9FjNEsdpKl9w9xxOFnXUrjP7CKA-EC83F9kzXicAKcC0jXlzg3L1bDK7kF257FsnQV3PefZo3ZO5SRg5Qv0gHzPA7Ddb_QsBXDejdrNo05F_7-5sQ3oyOb-Kb_lLwFDHZL2qbtz4ZdS_Fdj855B1sI-JbWU-dpCSeHBDrrJGXurrI7B4cTyMnQxLRpgGtyycGglkyAPJh5frcjhhfYeP9eGUXRILu10OSyxXfkeXO8OFGo77JhLid8YD-X93A9wCB-TqQ3_lvoN1noGJ_s2Kb-0s7fAJp6z4uJhDcStaPKzH5ixd7GMxuS7CkYqfvqfab6fqEmc2kPuEu4c2I6953i8ZLyaNQNNcOOaxhQwidqiyiOjuWnr1w5g3sLeuPmp-AGtl63kDKrIBlc_uHvaAIJGrqK-HbJdc6UTjWB9lz5WGTQ8CaeSlnxEkuIx8CTrNN43Cj0SaSTn1uP76PJ17dXzgGnxgbWOfk6obJ7kukmivw4_6kN69P4l8Z8iBQ9Gwk1zeWNM6dXAagI6ZPlMrJnariezcsJEv8B2woKIvIZGKNvTfYk-dfGvJhBsysSY2Q13peMkKJDTTtgn3DgbC8VhwzWWxhjZh_e9-yxaBH9l4ZQXJCDiFPQdhLA95JOq-sgh1WcxHDcrRB0tTmdzwvtjEdXV80nf6eJfDmVdURGdfZvxQJbfpI6nvdGgJKnfXy6IkwkTD3bWJpL45pk3LJbZUU7rUzSyreR0t1_XLjpOuemhbKWZCBCxUQ92dN7-fe7XvoP8O7Iv-V_bDOtcSgtwFtspmILHwE-Q-1cPcrkVFL1BxkQ2dEDwAXuwWvuqhV8N01lh3d7PF3_5vJySkvQmX3G7bkrGh7NIQXJCe0Ut49vmYrwMH_E7IwTLsNTJUDYA6tgf5JL_ZU3teDbNnfQmRD9OCO_OLz9kNLL5RbIGgAv6Im_5Dv0mctPjxJu7xeEX3K2YmkwzA2YFmJYaM7ECU_Niornc0nugl_VrCvMSEVrcTgAvyt1PdDyDfWFmSo7Z-K7VawFZYvJEdN4ZqFaWEhdO_-pIJ_e0ts04RdUXexZhWE_LCaVP7CldOBFgnQjrFyZtFsr66uAaxlH7aiwjCseLS24OUQO_MAlIsGU0dxZgqgf3LR9EXpSbf-LHr73NavkwLRGYmzMtCMxVSUfgl8HvObmiIFEndsA4WbRjHR-_P4dq-bgqBGH1FMoFSj0a51V3-di35IccdDMQQbLi1wnMSg8G9oLOCQ21RDKooBBzEAstc-FDzxoC_sFsH47dKGkVLi0NlRvkPR3Byn7NsIkkLXE-IgHm8H5T4Htfbe6BXk0AJCsoYBYAdl5q_5CT7alhS4-iIs-HJBYavh9XysZJdLYXAXXU8iuNimjOZr9y3CRC9xOGBraKbhe9vD_MQpt9pShHW0AY4IsbX3VGA8DU3D21wOZz3QpXgZpfC6Tbh0j7lbq9-u0ciW2rytBAOvgMIHc4zU2jsdn4nD8ZF1fEwD0-CUCvNXM9BACozHIVIl8tD9afH6AwfBIyQuAYBTFU4_BSkd4G2NQe0Nv250qaxfS_NGGP8eaM1Gm9xG2YBkdjaHqyFe-XkByPBbojyTRMz1mxMfLsZnTWhPGsUsTzHXSMuJhNu1s7bm6novj4WJq_b4aCu2n3IPz_NyPClprJXlL8rChfv7uJJis_WjAJulRiKCUGSAtMKcLAP-k5r0kjQcU_mVzmQ4e9kaW4s8q20RV4mf5dsgTCNTM4w6MHm3Md8UET0mPcfOwGy8lE8SfChhc3C7eNw0ZLzsQGWev6G2Lgq-u8hyMG7n6yO641CPev29UEgih7ZnTrznGQ-ohpmlL4o3bapbCdDhMAQIZ69omYltu5vwqejQytwhzj3SRSsVURVdK9VewQt_oWvqZ2N8ObCnhPbFZAXm4xzKO9n8hweC35jkm1bLK-s_zDZK36P1YLhISG78Ta5XaUoTSNmN0jDWrW7dOPDXz7_EBckAu71GVaEfmDfMY4TgVeuS5-VRMwryzJMj5GTpYPF-s0aJmPGsLYEPsumchy4lAgl4egQWyUGkH-0uSWRgUXppAi_cr8uOPWtS58f7c54kinjYQ7ZYj4paiOiT20MA1uH1pUwfcOlzPBIFuOmhlDERHnBSpFPChR7v6y2ldMYHwl9mTIj_j6PoNRmBmxFf1rX-FYjjkSOirDdwFH0HxdNgyErFnvcCqD72SzXRO72hKtXtCCaFER82G_OlOW7UBCYwEe9sPkhW3OPdKAoBH_VBhHw1uNHXFOFC9fRitPps31L-6JfSOs3S94iGQUJ1-ra0h5ZuEnZoW_joIHdA4F91gCECXq8a4=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.96,\\\"reason\\\":\\\"This requires querying current unresolved issues in Sentry and posting a concise digest, so it involves external tool use and a real-world action.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_08c6b77d77f272b6016aceb2f1c33087d18f4f21ebffc9a74a\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":683,\"noCache\":683,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":122,\"text\":56,\"reasoning\":66},\"raw\":{\"input_tokens\":683,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":122,\"output_tokens_details\":{\"reasoning_tokens\":66},\"total_tokens\":805}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_08c6b77d77f272b6016aceb2f07c6887d1ac33ebbdf5458bf0\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931120401,\"endTime\":1791931122594,\"providerRequestId\":\"req_d1471fbfad8e4be5aad26ba11e9ff2bc\",\"statusCode\":200,\"providerResponseId\":\"resp_08c6b77d77f272b6016aceb2f07c6887d1ac33ebbdf5458bf0\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"aa3d0655edc1097fe4f6122cfb24c09a\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001293\",\"marketCost\":\"0.0001293\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001293\",\"inferenceCost\":\"0.0001293\",\"inputInferenceCost\":\"0.0000683\",\"outputInferenceCost\":\"0.000061\",\"generationId\":\"gen_01M4VPNYQ7AMJTXTS6T9C6H23F\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
