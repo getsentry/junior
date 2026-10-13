@@ -12,7 +12,7 @@ import {
   type GoogleOperation,
 } from "../credentials";
 
-/** Runtime capabilities the Calendar tools use. */
+/** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
@@ -90,14 +90,25 @@ export async function withRequester(
 }
 
 const googleErrorSchema = z.object({
-  error: z.object({ message: z.string().optional() }).optional(),
+  error: z
+    .object({
+      details: z.array(z.object({ reason: z.string().optional() })).optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
 });
 
-/** Call one Google Calendar API operation through host-owned egress. */
+/**
+ * Call one Google API operation through host-owned egress.
+ *
+ * A JSON response body is parsed. Other bodies, such as a Drive export, are
+ * returned as text.
+ */
 export async function googleApiRequest(
   ctx: GoogleToolContext,
   input: {
     body?: unknown;
+    headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
     query?: Record<string, string>;
@@ -115,11 +126,14 @@ export async function googleApiRequest(
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        ...input.headers,
       },
       body: input.body === undefined ? undefined : JSON.stringify(input.body),
     }),
   });
-  const body: unknown = await response.json().catch(() => undefined);
+  const body: unknown = response.headers.get("content-type")?.includes("json")
+    ? await response.json().catch(() => undefined)
+    : (await response.text()) || undefined;
   return { body, status: response.status };
 }
 
@@ -129,7 +143,20 @@ export function googleApiError(
   response: { body: unknown; status: number },
 ): Error {
   const parsed = googleErrorSchema.safeParse(response.body);
-  const detail = parsed.success ? parsed.data.error?.message : undefined;
+  const error = parsed.success ? parsed.data.error : undefined;
+  // A grant made before a tool needed a scope lacks it. Only a new sign-in
+  // can add it.
+  if (
+    response.status === 403 &&
+    error?.details?.some(
+      (detail) => detail.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+    )
+  ) {
+    return new Error(
+      `Junior's Google account does not have the permission that ${operation} needs. A Junior admin must reconnect it on the dashboard Admin page or with \`junior google connect\`.`,
+    );
+  }
+  const detail = error?.message;
   const message = `Google ${operation} failed with HTTP ${response.status}${detail ? `: ${detail}` : ""}`;
   return response.status === 400
     ? new PluginToolInputError(message)

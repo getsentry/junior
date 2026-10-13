@@ -57,6 +57,26 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
+  "google.drive.comments.list": {
+    access: "read",
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/comments$/,
+  },
+  "google.drive.file.export": {
+    access: "read",
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/export$/,
+  },
+  "google.drive.file.get": {
+    access: "read",
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
+  },
+  "google.drive.files.list": {
+    access: "read",
+    method: "GET",
+    path: /^\/drive\/v3\/files$/,
+  },
 } as const satisfies Record<
   string,
   { access: "read" | "write"; method: string; path: RegExp }

@@ -9,7 +9,7 @@ import { getGoogleAccount, type GoogleDb } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  API_SCOPES,
   CLIENT_ID,
   createGoogleDb,
   idToken,
@@ -71,7 +71,7 @@ function callback(app: PluginRouteApp, cookie: string, state: string) {
 
 function googleTokenEndpoint(
   claims: Record<string, unknown>,
-  scope = CALENDAR_SCOPE,
+  scope = API_SCOPES,
 ) {
   const fetch = vi.fn(async (url: string | URL | Request) => {
     const href = String(url instanceof Request ? url.url : url);
@@ -160,6 +160,11 @@ describe("Google account setup", () => {
     );
     expect(location.searchParams.get("code_challenge_method")).toBe("S256");
     expect(location.searchParams.get("access_type")).toBe("offline");
+    expect(location.searchParams.get("scope")?.split(" ")).toEqual([
+      "openid",
+      "email",
+      ...API_SCOPES.split(" "),
+    ]);
 
     const fetch = googleTokenEndpoint({ email: ACCOUNT_EMAIL });
     const response = await callback(app, cookie, state);
