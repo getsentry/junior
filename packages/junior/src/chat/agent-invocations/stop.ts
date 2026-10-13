@@ -1,26 +1,29 @@
 import type { StateAdapter } from "chat";
 import { stopConversationWork } from "@/chat/task-execution/store";
-import { stopChildAgent } from "./store";
+import { stopChildAgentInvocations } from "./store";
+import { recordSubagentEnded } from "./work";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
- * it. SQL marks the work `stopped` first. Then a stop request for each
- * Conversation aborts a run that is still working. The worker of each run
- * reads the `stopped` agent invocation and sends no result.
+ * it. The parent gets no result. SQL stops the work first. Then a
+ * Conversation stop request aborts each run that is still working.
  *
  * Returns undefined when the child does not belong to the parent.
  */
-export async function stopAgent(args: {
+export async function stopChildAgent(args: {
   childConversationId: string;
   parentConversationId: string;
   state?: StateAdapter;
 }): Promise<{ stoppedCount: number } | undefined> {
-  const stopped = await stopChildAgent(args);
-  if (!stopped) {
+  const result = await stopChildAgentInvocations(args);
+  if (!result) {
     return undefined;
   }
-  for (const conversationId of stopped.conversationIds) {
+  for (const invocation of result.stopped) {
+    await recordSubagentEnded(invocation);
+  }
+  for (const conversationId of result.conversationIds) {
     await stopConversationWork({ conversationId, state: args.state });
   }
-  return { stoppedCount: stopped.stoppedCount };
+  return { stoppedCount: result.stopped.length };
 }

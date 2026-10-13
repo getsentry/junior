@@ -215,7 +215,7 @@ export async function startAgentInvocationsForChildResults(
   }
   for (const [index, message] of messages.entries()) {
     const result = await getResultInvocation(message, invocationIds[index]!);
-    // `stopChildAgent` skips results that a stopped child has not received.
+    // The child was stopped after this result was sent.
     if (result.parentMailboxStatus === "skipped") {
       continue;
     }

@@ -104,6 +104,13 @@ async function recordSubagentStarted(
   ]);
 }
 
+const SUBAGENT_OUTCOMES = {
+  blocked: "blocked",
+  completed: "success",
+  failed: "error",
+  stopped: "aborted",
+} as const satisfies Record<TerminalAgentInvocation["status"], string>;
+
 /**
  * Record in the parent Conversation how one agent invocation ended. The
  * heartbeat result repair also calls this, because the child work can be
@@ -118,12 +125,7 @@ export async function recordSubagentEnded(
       data: {
         type: "subagent_ended",
         subagentInvocationId: invocation.invocationId,
-        outcome:
-          invocation.status === "completed"
-            ? "success"
-            : invocation.status === "blocked"
-              ? "blocked"
-              : "error",
+        outcome: SUBAGENT_OUTCOMES[invocation.status],
       },
       createdAtMs: invocation.terminalAtMs,
     },
@@ -236,8 +238,8 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A stop request can outlive the run it stopped and wake the child again.
-  // The stopped agent invocation handles that wake and clears the request.
+  // A stop request can outlive the run that it stopped and wake the child
+  // again. The stopped agent invocation handles that wake.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
@@ -265,8 +267,8 @@ async function persistTerminalLifecycle(
       outcome: invocation.result?.trim() ? "success" : "no_reply",
     });
   } else if (invocation.status === "stopped") {
-    // A child stopped between slices keeps a paused Turn record. Abandon it
-    // so nothing resumes it.
+    // A child stopped between slices has a paused Turn record. Nothing may
+    // resume it.
     await abandonTurnRecord({
       conversationId: common.conversationId,
       errorMessage: "Turn cancelled",
@@ -487,12 +489,11 @@ export function createAgentInvocationWorker(
       acknowledged = true;
     };
 
-    // Read the stop signal before any terminal return, so the worker clears a
-    // stop request that this wake handles.
+    // Read the signal before any early return, so the worker clears a stop
+    // request that this wake handles.
     const stopSignal = context.stopSignal?.();
-    // `stopChildAgent` marks the agent invocation `stopped` before it stops
-    // the run. Another stop, such as a direct stop of the child
-    // Conversation, records it here and reports it to the parent.
+    // `stopChildAgent` already marked its work `stopped`. Any other stop is
+    // recorded here and reported to the parent.
     const finishStopped = async (): Promise<ConversationWorkerResult> => {
       await finish(
         await completeAgentInvocation({

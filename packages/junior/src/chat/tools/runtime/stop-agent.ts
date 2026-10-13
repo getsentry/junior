@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { stopAgent } from "@/chat/agent-invocations/stop";
+import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -37,7 +37,7 @@ export function createStopAgentTool(conversationId: string) {
       .strict(),
     outputSchema: stopAgentOutputSchema,
     execute: async (input) => {
-      const stopped = await stopAgent({
+      const stopped = await stopChildAgent({
         childConversationId: input.conversation_id,
         parentConversationId: conversationId,
       });

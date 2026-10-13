@@ -20,9 +20,6 @@ import {
   createAndEnqueueAgentInvocation,
   routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { createSqlStore } from "@/chat/conversations/sql/store";
-import { getConversationEventStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -33,22 +30,16 @@ import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
+  invocationInput,
+  loadSubagentEvents,
+  loadTurnEvents,
+  parentConversationId,
+  prepareParentConversation,
+} from "../fixtures/agent-invocations";
+import {
   createConversationWorkQueueTestAdapter,
   deferred,
 } from "../fixtures/conversation-work";
-import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
-
-const parentConversationId = "local:test:agent-invocation-stop";
-const destination = {
-  conversationId: parentConversationId,
-  platform: "local",
-} as const;
-const baseInput = {
-  actor: { name: "parent-agent", platform: "system" } as const,
-  destination,
-  input: "Do the delegated work.",
-  parentConversationId,
-};
 
 async function stopAgent(
   conversationId: string,
@@ -80,15 +71,7 @@ async function waitForAbort(run: AgentRun): Promise<never> {
 }
 
 async function createHarness() {
-  const fixture = createConfiguredJuniorSqlFixture();
-  await migrateSchema(fixture.sql);
-  const conversationStore = createSqlStore(fixture.sql);
-  await conversationStore.recordActivity({
-    conversationId: parentConversationId,
-    destination,
-    nowMs: 1_000,
-    source: "local",
-  });
+  const { conversationStore, fixture } = await prepareParentConversation();
   const state = getStateAdapter();
   await state.connect();
   const queue = createConversationWorkQueueTestAdapter();
@@ -124,7 +107,7 @@ async function createHarness() {
       },
     ) =>
       await createAndEnqueueAgentInvocation(
-        { ...baseInput, ...overrides },
+        { ...invocationInput, ...overrides },
         { conversationStore, queue, state },
       ),
     state,
@@ -191,14 +174,24 @@ describe("stopping child agents", () => {
       });
       // The parent asked for the stop, so no result Turn wakes it.
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
-      const events = await getConversationEventStore().loadHistory(
-        running.childConversationId,
-      );
-      expect(events.map((event) => event.data)).toContainEqual(
+      await expect(
+        loadTurnEvents(running.childConversationId),
+      ).resolves.toContainEqual(
         expect.objectContaining({
-          outcome: "cancelled",
-          turnId: getAgentInvocationTurnId(running.invocationId),
-          type: "turn_completed",
+          data: expect.objectContaining({
+            outcome: "cancelled",
+            turnId: getAgentInvocationTurnId(running.invocationId),
+            type: "turn_completed",
+          }),
+        }),
+      );
+      await expect(
+        loadSubagentEvents(parentConversationId),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          outcome: "aborted",
+          subagentInvocationId: running.invocationId,
+          type: "subagent_ended",
         }),
       );
       await expect(listAgents()).resolves.toEqual([
@@ -321,16 +314,16 @@ describe("stopping child agents", () => {
     const harness = await createHarness();
     try {
       const child = await createAgentInvocation({
-        ...baseInput,
+        ...invocationInput,
         idempotencyKey: "tree-child",
       });
       const openHelper = await createAgentInvocation({
-        ...baseInput,
+        ...invocationInput,
         idempotencyKey: "tree-open-helper",
         parentConversationId: child.childConversationId,
       });
       const doneHelper = await createAgentInvocation({
-        ...baseInput,
+        ...invocationInput,
         idempotencyKey: "tree-done-helper",
         parentConversationId: child.childConversationId,
       });

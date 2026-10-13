@@ -250,8 +250,8 @@ function childAgentFromInvocations(
       ? { errorMessage: terminal.errorMessage }
       : undefined),
     // A `replaced` result means open child work starts a later agent
-    // invocation on this child, so the child has not finished. Only
-    // `stopChildAgent` skips a result, so a `skipped` child was stopped.
+    // invocation on this child, so the child has not finished. Only a stop
+    // skips a result.
     status:
       terminal?.parentMailboxStatus === "replaced"
         ? "pending"
@@ -703,13 +703,7 @@ export async function completeAgentInvocation(
   return await getAgentInvocation(args.invocationId);
 }
 
-/** Error recorded on the agent invocations that `stopChildAgent` stops. */
-const STOPPED_BY_PARENT_MESSAGE = "Stopped by the parent conversation";
-
-/**
- * List one child Conversation and every Conversation below it that its agent
- * invocations started, the child first.
- */
+/** List one child Conversation and every Conversation below it, child first. */
 async function listAgentConversationTree(
   childConversationId: string,
 ): Promise<string[]> {
@@ -732,21 +726,18 @@ async function listAgentConversationTree(
 }
 
 /**
- * Stop one direct child agent of a parent Conversation and every child agent
- * below it. Open agent invocations become `stopped`. Results that the stopped
- * work still has to send or receive become `skipped`, so the stopped work
- * starts no more agent invocations and sends no report. The parent asked for
- * the stop, so it gets no result.
- *
- * Returns the stopped Conversations, the child first, and how many agent
- * invocations stopped. Returns undefined when the child does not belong to
- * the parent.
+ * Stop the agent invocations of one direct child agent and of every child
+ * agent below it. Open agent invocations become `stopped`. Results that would
+ * still start or report work in the tree become `skipped`. Returns undefined
+ * when the child does not belong to the parent.
  */
-export async function stopChildAgent(args: {
+export async function stopChildAgentInvocations(args: {
   childConversationId: string;
   nowMs?: number;
   parentConversationId: string;
-}): Promise<{ conversationIds: string[]; stoppedCount: number } | undefined> {
+}): Promise<
+  { conversationIds: string[]; stopped: TerminalAgentInvocation[] } | undefined
+> {
   const db = getSqlExecutor().db();
   const now = new Date(args.nowMs ?? Date.now());
   const owned = await db
@@ -771,12 +762,12 @@ export async function stopChildAgent(args: {
   const conversationIds = await listAgentConversationTree(
     args.childConversationId,
   );
-  // Stop open work first. A stopped agent invocation cannot finish later, so
-  // after this write no new result can start in the tree.
+  // Stop open work first. After this write no agent invocation in the tree
+  // can finish, so no new result can appear.
   const stopped = await db
     .update(juniorAgentInvocations)
     .set({
-      errorMessage: STOPPED_BY_PARENT_MESSAGE,
+      errorMessage: "Stopped by the parent conversation",
       parentMailboxStatus: "skipped",
       result: null,
       status: "stopped",
@@ -792,56 +783,31 @@ export async function stopChildAgent(args: {
         ),
       ),
     )
-    .returning({ invocationId: juniorAgentInvocations.invocationId });
-  // A result for a Conversation in the tree that no agent invocation has
-  // received yet would start new work there.
-  const sent = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        inArray(juniorAgentInvocations.parentConversationId, conversationIds),
-        inArray(juniorAgentInvocations.parentMailboxStatus, [
-          "pending",
-          "appended",
-        ]),
-      ),
-    );
-  const received =
-    sent.length === 0
-      ? []
-      : await db
-          .select({ invocationId: juniorAgentInvocations.invocationId })
-          .from(juniorAgentInvocations)
-          .where(
-            inArray(
-              juniorAgentInvocations.invocationId,
-              sent.map((row) =>
-                getAgentInvocationIdForResult(row.invocationId),
-              ),
-            ),
-          );
-  const receivedIds = new Set(received.map((row) => row.invocationId));
-  const unreceived = sent
-    .map((row) => row.invocationId)
-    .filter((id) => !receivedIds.has(getAgentInvocationIdForResult(id)));
-  if (unreceived.length > 0) {
-    await db
-      .update(juniorAgentInvocations)
-      .set({ parentMailboxStatus: "skipped", updatedAt: now })
-      .where(inArray(juniorAgentInvocations.invocationId, unreceived));
-  }
-  // No later agent invocation sends a `replaced` report anymore.
+    .returning();
   await db
     .update(juniorAgentInvocations)
     .set({ parentMailboxStatus: "skipped", updatedAt: now })
     .where(
-      and(
-        inArray(juniorAgentInvocations.childConversationId, conversationIds),
-        eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
+      or(
+        // A result sent to the tree would start new work there.
+        and(
+          inArray(juniorAgentInvocations.parentConversationId, conversationIds),
+          inArray(juniorAgentInvocations.parentMailboxStatus, [
+            "pending",
+            "appended",
+          ]),
+        ),
+        // No later agent invocation in the tree sends a `replaced` report.
+        and(
+          inArray(juniorAgentInvocations.childConversationId, conversationIds),
+          eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
+        ),
       ),
     );
-  return { conversationIds, stoppedCount: stopped.length };
+  return {
+    conversationIds,
+    stopped: stopped.map(invocationFromRow).filter(isTerminalAgentInvocation),
+  };
 }
 
 /** Return whether an agent invocation has finished. */

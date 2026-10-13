@@ -62,9 +62,10 @@ dashboard pairs them to show the child and its status.
   call, the parent tool call id. The agent invocation stores that id, so a
   repaired mailbox append writes the same event.
 - `subagent_ended` is written when the agent invocation is terminal, before the
-  parent result is sent. Its outcome is `success`, `blocked`, or `error`. The
-  heartbeat result repair also writes it, because the child work can be
-  acknowledged before the worker sends the result.
+  parent result is sent. Its outcome is `success`, `blocked`, `error`, or
+  `aborted` for a stopped child. The heartbeat result repair also writes it,
+  because the child work can be acknowledged before the worker sends the
+  result.
 - Both events have an idempotency key from the agent invocation id, so retries
   and repairs do not add a second row.
 - An agent invocation that receives a nested result has no tool call, but it
@@ -149,23 +150,20 @@ of its latest one. Two more rules apply to nested child agents:
   started. An agent invocation that gives a grandchild result to the child is
   not a task.
 
-`stopAgent` is exposed with `spawnAgent`. It stops one direct child agent of
-the current Conversation and every child agent below it:
+`stopAgent` is exposed with `spawnAgent`. It stops one direct child agent and
+every child agent below it:
 
-1. SQL marks each open agent invocation in that tree `stopped`. A `stopped`
-   agent invocation is terminal, so it frees its name and its place in the
-   active-child limit.
-2. Results that the tree has not received yet, and `replaced` results, become
-   `skipped`. No later agent invocation sends or receives them.
-3. A Conversation stop request for each child Conversation aborts a run that
-   is still working. This is the same stop request that Slack and ACP use.
+1. SQL marks each open agent invocation in the tree `stopped`. This frees the
+   child's name and its place in the active-child limit.
+2. Results that would still start or report work in the tree become
+   `skipped`.
+3. A Conversation stop request aborts each run that is still working. Slack and
+   ACP use the same stop request.
 
-The parent asked for the stop, so it gets no result Turn. `listAgents` shows a
-child whose latest result is `skipped` as `stopped`. A stop that does not come
-from `stopAgent`, such as a direct stop of the child Conversation, also ends
-the agent invocation as `stopped`. That result is `pending`, so the parent gets
-an `agent_invocation.stopped` Event.
+The parent asked for the stop, so it gets no result Turn. `listAgents` shows the
+child as `stopped`. Any other stop of a child, such as a direct stop of the
+child Conversation, also ends its agent invocation as `stopped`. Then the
+parent gets an `agent_invocation.stopped` Event.
 
-A stop request can outlive the run that it stopped. When it wakes the child
-again, the latest `stopped` agent invocation handles the wake and clears the
-request.
+A stop request can outlive the run that it stopped. If it wakes the child
+again, the latest `stopped` agent invocation handles the wake.
