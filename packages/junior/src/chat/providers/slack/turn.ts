@@ -300,6 +300,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       ? resolveSlackChannelTypeFromMessage(message)
       : await resolveSlackChannelType(message, channelId);
     const slackConversation = resolveSlackConversationContext({
+      botUserId: deps.getSlackAdapter().botUserId,
       channelId,
       channelName,
       channelType: slackChannelType,
