@@ -15,6 +15,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
@@ -204,6 +205,7 @@ export function createTools(
 
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    tools.listAgents = createListAgentsTool(context.conversationId);
   }
 
   if (context.automation) {

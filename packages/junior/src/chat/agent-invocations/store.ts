@@ -9,6 +9,7 @@ import {
   type AgentBinding,
   type AgentInvocation,
   type AgentInvocationStatus,
+  type ChildAgent,
   type CreateAgentInvocationInput,
   type TerminalAgentInvocation,
 } from "./types";
@@ -212,6 +213,89 @@ export async function getLatestAgentInvocationForConversation(
     .orderBy(desc(juniorAgentInvocations.createdAt))
     .limit(1);
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/** Bound the agent invocations that one child agent listing reads. */
+const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
+
+/** Return the child state that one child's agent invocations show. */
+function childAgentFromInvocations(
+  invocations: readonly AgentInvocation[],
+  resultInvocationIds: ReadonlySet<string>,
+): ChildAgent {
+  // `invocations` is newest first. The oldest open agent invocation is the
+  // one that runs, so it owns the status.
+  const latest = invocations[0]!;
+  let current = latest;
+  for (const invocation of invocations) {
+    if (!isTerminalAgentInvocation(invocation)) {
+      current = invocation;
+    }
+  }
+  // An agent invocation that gives a grandchild result to the child holds
+  // that result, not a task from the parent.
+  const task =
+    invocations.find(
+      (invocation) => !resultInvocationIds.has(invocation.invocationId),
+    ) ?? invocations[invocations.length - 1]!;
+  const terminal = isTerminalAgentInvocation(current) ? current : undefined;
+  return {
+    ...(latest.agentName ? { agentName: latest.agentName } : undefined),
+    childConversationId: latest.childConversationId,
+    ...(terminal && terminal.status !== "completed"
+      ? { errorMessage: terminal.errorMessage }
+      : undefined),
+    // A `replaced` result means open child work starts a later agent
+    // invocation on this child, so the child has not finished.
+    status:
+      terminal?.parentMailboxStatus === "replaced" ? "pending" : current.status,
+    task: task.input,
+    updatedAtMs: Math.max(
+      ...invocations.map((invocation) => invocation.updatedAtMs),
+    ),
+  };
+}
+
+/**
+ * List the direct child agents of one parent Conversation, with the newest
+ * activity first. The state comes from SQL agent invocation records, not from
+ * model output.
+ */
+export async function listChildAgents(
+  parentConversationId: string,
+): Promise<ChildAgent[]> {
+  const db = getSqlExecutor().db();
+  const rows = await db
+    .select()
+    .from(juniorAgentInvocations)
+    .where(
+      eq(juniorAgentInvocations.parentConversationId, parentConversationId),
+    )
+    .orderBy(desc(juniorAgentInvocations.createdAt))
+    .limit(CHILD_AGENT_LIST_INVOCATION_LIMIT);
+  if (rows.length === 0) {
+    return [];
+  }
+  const byChild = new Map<string, AgentInvocation[]>();
+  for (const invocation of rows.map(invocationFromRow)) {
+    const invocations = byChild.get(invocation.childConversationId) ?? [];
+    invocations.push(invocation);
+    byChild.set(invocation.childConversationId, invocations);
+  }
+  const grandchildren = await db
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      inArray(juniorAgentInvocations.parentConversationId, [...byChild.keys()]),
+    );
+  const resultInvocationIds = new Set(
+    grandchildren.map((row) => getAgentInvocationIdForResult(row.invocationId)),
+  );
+  return [...byChild.values()]
+    .map((invocations) =>
+      childAgentFromInvocations(invocations, resultInvocationIds),
+    )
+    .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
 }
 
 async function getNonTerminalAgentInvocationForConversation(
