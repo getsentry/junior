@@ -1137,30 +1137,30 @@ async function executeAgentRunInPrivacyContext(
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
           const handoffUpdate = applyPendingHandoff();
+          // Pi appends steering after this hook returns, so add AGENTS.md
+          // context first to commit the same message order.
+          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
+            handoffUpdate,
+            nextTurn.context,
+          );
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate
+            contextUpdate
               ? currentAgentMessages()
               : (nextTurn.context.messages as PiMessage[]),
             hookSignal,
             pendingMessages,
             true,
           );
-          const combinedUpdate = capacityUpdate
-            ? { ...handoffUpdate, ...capacityUpdate }
-            : handoffUpdate;
-          const repositoryInstructionsUpdate =
-            await repositoryInstructionsContext.applyUpdate(
-              combinedUpdate,
-              nextTurn.context,
-            );
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return repositoryInstructionsUpdate;
+          return capacityUpdate
+            ? { ...contextUpdate, ...capacityUpdate }
+            : contextUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));

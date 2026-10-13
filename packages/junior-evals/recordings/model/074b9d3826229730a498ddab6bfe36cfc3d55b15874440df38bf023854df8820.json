@@ -1,0 +1,28 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watch asks for a fix and the PR checks fail, commit and push the fix without a person",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4fc22ed872f0",
+      "maxOutputTokens": "26d228663f13",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "7310d426fab4",
+      "prompt[1]": "59bcec63ce59",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0805117db8e007e1016acea7af13b887d19f69a5206e834763\",\"reasoningEncryptedContent\":\"gAAAAABqzqevbZOiMyUVQXjTOrJvshGHOwdOpSeNJ97kQZlZHVW73Rp2zIV0B4vakLFXeVZMHtmExfpu14WqPUEI68-FvbszH7nOR3Gn74nT1yTMR40eMZNrqoE9OET8YBnxN8FCAKk9F8psPaqavmSoMCdQC7pgNOddoN8NTqkvxWPfNYQff7IjV43-fGMSXXaYzBpkhf2ZrlSgb4OWEmbaxDfDPa2CSl-_AIEOZVxtplVJ29D3HXy2yNBv_VxzR2Wg_KeOvejLUmnk0HnbsMtAgzp4_7kQBf79R6QNXaZo7EKaMNLjn8PumHMEXz7q-hSHvmV9Q7BsBNn82_efGWVZzwUhM3-Ts6L4HuLUWrV9bj5tw4yX9yFYNwbBO3xshpeTfSOrdVqnY-d9NCvidkE0DOy4HgDIjnlhKQQ5-5u8Ycwq7J95lsyVJrtqWxRTjw6nY6XYXYykyx_hm6NFjy0RmgPV0AYjfIg5oHclO7hcns--r5bCI1i4Jnt2dNXA8R68uzLanCj9C39ifb4eit1y06CcudHpPn6Cbe4ODE6XfipiAg0KdrCPBs4OMcQf-o4i5EweDQJsomTHjNVnKCEYdRzWl2b_Soept76Po4yaVjAkqgZOPgQEOHlp4YW9FusCv2HDumNMZvOq9XkgBUcK4Q96c7ppM14bVIYWzCHHzVguLrFm73TTNWRAOTEWT0l0BusGlk1bu64Vg5HyaBVGzUcSeobf9OIc8QUzwn0hoeWjTLW0Ledu2g2hL8SRut25i1HxBLQi8sgQgPc9pg1sDqsDg4LfakEf4RxEHERSbx5Vj1Zf47WYiRnOKccmYRVWLUttthpNGrvYW4QhvZz4OEMVt2dSyi9f5ywRX95pDg8YSmTEwV76tnfUlWtBy8l5U9yXJCSRAb0HbydACCqNN6oep9p9EMAtvDKzFzTePrxtdj1LeDK3eud3PY0FfKQl5gEoNjfC6IOZdH3aLZLXozESU54dILwzXruUn9Zwdhx8Ezq5VnN8ERs3ASDHMWLCZAicH_xvL95UkU8mbLW816ags7B6cjCe1ZCnrzwgEBg9LIc6mK9NVxSYLsw9vvsdKBoAwX0ku5HRPPqWLgy3i59DR86XrwzVTP8VkpM1xgfeGawq7AOlbiFmuNp2-CYcPjiHd__Zc-frBkli5_xmIAQMdVHFQcGOvxsMncprR9i0Df7o9Fx3n_MEaR3YVMkZfMTOtnlxMjm-kDPQTtZ8MRocb6WAXQmV0B2-GNktlMY6G5_immEmkJzplpf8cvYE-IoFp2ZmbFMrez7rBLNkvynYCqwzR1KqIcdf68JoHe5b9LwxNa4I2YXfvQOoIuvIB-j_RRaZ4_QrSb1Olft7dZ09ngnSJUT_YtjvIDDhQryHrHx_ahexd0N5BBa5ogGjAni4plVthcuIBLsrVHbxNZVXRqwkusFIIedIy2Cl1c7aGP9RZUFd3ub0PqTZfyJwcNRzfIblbxglxi4luef0ocEexyRT6CCyFYy0IijEm_2CdN4phxyCs-hhZPIBbohT4G3NyBiyAPMVymQaxGjpKhFjYl6V4eqaQsxfOlU5ElSUzj8XVjNcvyBD7fU2K_OCGHtf9_oN-zVw17QGxWZDgzBezynuU4Uj6pv0pabJNrUtLJUoThl8d-q1azzRYZNIBkr6P_zrgOYgKrc7qZbI3s5L4MU-uA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"relevantIds\\\":[\\\"<<uuid:1>>\\\"]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0805117db8e007e1016acea7af4b4c87d1bb05f0291c353e1c\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":657,\"noCache\":657,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":54,\"text\":39,\"reasoning\":15},\"raw\":{\"input_tokens\":657,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":54,\"output_tokens_details\":{\"reasoning_tokens\":15},\"total_tokens\":711}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0805117db8e007e1016acea7aea68487d19329cb13c3c1e489\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791928238549,\"endTime\":1791928239950,\"providerRequestId\":\"req_41d812fdfe7948448ef7a6d872dbc897\",\"statusCode\":200,\"providerResponseId\":\"resp_0805117db8e007e1016acea7aea68487d19329cb13c3c1e489\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"7bd766966135f542211095ac56e0cb23\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000927\",\"marketCost\":\"0.0000927\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000927\",\"inferenceCost\":\"0.0000927\",\"inputInferenceCost\":\"0.0000657\",\"outputInferenceCost\":\"0.000027\",\"generationId\":\"gen_01M4VKY0E2K6EP3Q49EYMYANJF\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
