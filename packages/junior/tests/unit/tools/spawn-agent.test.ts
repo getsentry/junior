@@ -9,7 +9,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 describe("spawnAgent", () => {
   it("normalizes nullable optional fields before invoking the runtime control", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
-      invocationId: "agent-invocation:one",
+      childConversationId: "agent:one",
     });
     const tool = createSpawnAgentTool(spawnAgent);
 
@@ -23,7 +23,7 @@ describe("spawnAgent", () => {
         { toolCallId: "call-1" },
       ),
     ).resolves.toEqual({
-      invocation_id: "agent-invocation:one",
+      conversation_id: "agent:one",
     });
     expect(spawnAgent).toHaveBeenCalledWith(
       { task: "Investigate the failing checks." },
@@ -58,7 +58,9 @@ describe("spawnAgent", () => {
     ).rejects.toSatisfy(
       (error) =>
         error instanceof ToolInputError &&
-        error.message.includes('Named agent "researcher" already has active work'),
+        error.message.includes(
+          'Named agent "researcher" already has active work',
+        ),
     );
   });
 

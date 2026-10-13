@@ -44,6 +44,8 @@ export function bindSpawnAgent(
       },
       { ...options, queue },
     );
-    return { invocationId: invocation.invocationId };
+    return {
+      childConversationId: invocation.childConversationId,
+    };
   };
 }

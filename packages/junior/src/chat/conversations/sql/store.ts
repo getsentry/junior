@@ -388,9 +388,6 @@ export class SqlStore implements ConversationStore {
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
-          if (parent.parentConversationId) {
-            throw new Error("Recursive agent delegation is not enabled");
-          }
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,

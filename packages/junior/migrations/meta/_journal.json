@@ -351,6 +351,13 @@
       "when": 1791557647756,
       "tag": "0049_event_automation_status_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791907696692,
+      "tag": "0050_agent_invocation_parent_mailbox",
+      "breakpoints": true
     }
   ]
 }

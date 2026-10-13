@@ -154,19 +154,18 @@ import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
+/** Read visibility from the Conversation, or from its nearest parent with one. */
 async function readRunConversationVisibility(
   conversationId: string,
 ): Promise<ConversationPrivacy | undefined> {
   const conversationStore = getConversationStore();
-  const conversation = await conversationStore.get({ conversationId });
-  if (conversation?.visibility || !conversation?.parentConversationId) {
-    return conversation?.visibility;
-  }
-  return (
-    await conversationStore.get({
+  let conversation = await conversationStore.get({ conversationId });
+  while (!conversation?.visibility && conversation?.parentConversationId) {
+    conversation = await conversationStore.get({
       conversationId: conversation.parentConversationId,
-    })
-  )?.visibility;
+    });
+  }
+  return conversation?.visibility;
 }
 
 /** Preserve delivery-error ownership across the agent generation boundary. */

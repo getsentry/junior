@@ -46,11 +46,15 @@ import {
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
   isTerminalAgentInvocation,
-  markAgentInvocationAwaitingResume,
+  markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
 } from "./store";
-import type { AgentInvocation, CreateAgentInvocationInput } from "./types";
+import type {
+  AgentInvocation,
+  CreateAgentInvocationInput,
+  TerminalAgentInvocation,
+} from "./types";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -323,8 +327,40 @@ async function saveAgentInvocationResult(args: {
       };
 }
 
-/** Build the invocation consumer that advances work through the shared runner. */
-export function createAgentInvocationWorker(agentRunner: AgentRunner) {
+/**
+ * Read how many parents a child Conversation has and the root Conversation's
+ * Location. A child of the root has depth 1.
+ */
+async function readChildDepthAndRootLocation(
+  conversationId: string,
+): Promise<{ depth: number; location?: Location }> {
+  const conversationStore = getConversationStore();
+  let depth = 0;
+  let conversation = await conversationStore.get({ conversationId });
+  while (conversation?.parentConversationId) {
+    depth += 1;
+    conversation = await conversationStore.get({
+      conversationId: conversation.parentConversationId,
+    });
+  }
+  return { depth, location: conversation?.location };
+}
+
+/**
+ * Build the invocation consumer that advances work through the shared runner.
+ * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
+ * only where the parent has no mailbox, such as the local CLI.
+ * `maxAgentDepth` is the number of child agent levels that can start their
+ * own child agents. The default, 0, lets only the root start child agents.
+ */
+export function createAgentInvocationWorker(
+  agentRunner: AgentRunner,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
+  } = {},
+) {
+  const maxAgentDepth = options.maxAgentDepth ?? 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -333,6 +369,16 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
     if (!invocation) {
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
+    // Enqueue the result before ack so a failed parent append retries this work.
+    const finish = async (
+      terminal: AgentInvocation | undefined,
+    ): Promise<void> => {
+      if (!terminal || !isTerminalAgentInvocation(terminal)) {
+        return;
+      }
+      await persistTerminalLifecycle(terminal);
+      await options.enqueueResult?.(terminal);
+    };
 
     let acknowledged = context.attempt.messages.length === 0;
     const acknowledge = async (): Promise<void> => {
@@ -356,6 +402,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
+    let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
         throw new Error(
@@ -368,13 +415,13 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
         );
       }
       if (isTerminalAgentInvocation(invocation)) {
-        await persistTerminalLifecycle(invocation);
+        await finish(invocation);
         await acknowledge();
         return { status: "completed" };
       }
       const projected = await projectTerminalTurn(invocation);
       if (projected && isTerminalAgentInvocation(projected)) {
-        await persistTerminalLifecycle(projected);
+        await finish(projected);
         await acknowledge();
         return { status: "completed" };
       }
@@ -388,19 +435,17 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
         surface: "internal",
         turnId,
       });
-      const [persisted, projection] = await Promise.all([
+      const [persisted, projection, tree] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
+        readChildDepthAndRootLocation(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
-      location = (
-        await getConversationStore().get({
-          conversationId: invocation.parentConversationId,
-        })
-      )?.location;
+      location = tree.location;
+      canSpawn = tree.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };
@@ -414,9 +459,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           error instanceof Error ? error.message : "Agent invocation failed",
         status: "failed",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
@@ -443,7 +486,9 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+          disabledFeatures: canSpawn
+            ? ["handoff", "interactive-auth"]
+            : ["handoff", "interactive-auth", "subagents"],
           reasoning: invocation.reasoningLevel,
           state: {
             sandboxRef,
@@ -482,9 +527,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           errorMessage: blocking.message,
           status: "blocked",
         });
-        if (terminal) {
-          await persistTerminalLifecycle(terminal);
-        }
+        await finish(terminal);
         await acknowledge();
         return { status: "completed" };
       }
@@ -499,15 +542,13 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
             : "Agent invocation failed",
         status: "failed",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
 
     if (outcome.status === "suspended") {
-      await markAgentInvocationAwaitingResume(invocation.invocationId);
+      await markAgentInvocationPaused(invocation.invocationId);
       return { status: "yielded" };
     }
     if (outcome.status === "awaiting_auth") {
@@ -516,13 +557,16 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
         errorMessage: `Agent invocation requires ${outcome.providerDisplayName} authorization`,
         status: "blocked",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
 
+    // executeTurn already recorded the terminal Turn; only enqueue the result.
+    const terminal = await getAgentInvocation(invocation.invocationId);
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await options.enqueueResult?.(terminal);
+    }
     await acknowledge();
     return { status: "completed" };
   };
