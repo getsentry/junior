@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, or } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
@@ -58,18 +58,13 @@ export function getNamedAgentConversationId(
 }
 
 /**
- * Return the stable identity of the agent invocation that gives one result to
- * the child Conversation that started it. `parentConversationId` is the parent
- * of that child Conversation.
+ * Return the stable identity of the agent invocation that gives one child
+ * agent result to the child Conversation that started that child agent.
  */
-export function getAgentInvocationResultInvocationId(
-  parentConversationId: string,
+export function getAgentInvocationIdForResult(
   resultInvocationId: string,
 ): string {
-  return getAgentInvocationId(
-    parentConversationId,
-    `result:${resultInvocationId}`,
-  );
+  return stableId("agent-invocation", "result", resultInvocationId);
 }
 
 /** Return the stable turn identity advanced by one agent invocation. */
@@ -373,10 +368,7 @@ export async function createAgentInvocationForResult(
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
-  const invocationId = getAgentInvocationResultInvocationId(
-    args.latest.parentConversationId,
-    args.resultInvocationId,
-  );
+  const invocationId = getAgentInvocationIdForResult(args.resultInvocationId);
   await getSqlExecutor()
     .db()
     .insert(juniorAgentInvocations)
@@ -409,58 +401,49 @@ export async function createAgentInvocationForResult(
 }
 
 /**
- * Return whether a child Conversation still has work that will start another
- * agent invocation on it: a queued agent invocation, a running child agent,
- * or a child agent result that no agent invocation has received yet.
+ * Return whether a child Conversation has work that will start another agent
+ * invocation on it: another open agent invocation, an open child agent, or a
+ * sent child agent result that no agent invocation has received yet.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const db = getSqlExecutor().db();
-  const [queued, children] = await Promise.all([
-    db
-      .select({ invocationId: juniorAgentInvocations.invocationId })
-      .from(juniorAgentInvocations)
-      .where(
-        and(
-          eq(
-            juniorAgentInvocations.childConversationId,
-            invocation.childConversationId,
-          ),
-          ne(juniorAgentInvocations.invocationId, invocation.invocationId),
-          inArray(
-            juniorAgentInvocations.status,
-            NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-          ),
+  const conversationId = invocation.childConversationId;
+  const open = await db
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        or(
+          eq(juniorAgentInvocations.childConversationId, conversationId),
+          eq(juniorAgentInvocations.parentConversationId, conversationId),
         ),
-      )
-      .limit(1),
-    db
-      .select({
-        invocationId: juniorAgentInvocations.invocationId,
-        status: juniorAgentInvocations.status,
-      })
-      .from(juniorAgentInvocations)
-      .where(
-        eq(
-          juniorAgentInvocations.parentConversationId,
-          invocation.childConversationId,
+        ne(juniorAgentInvocations.invocationId, invocation.invocationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
         ),
       ),
-  ]);
-  if (queued.length > 0) {
-    return true;
-  }
-  if (children.length === 0) {
-    return false;
-  }
-  if (
-    children.some(
-      (child) =>
-        !TERMINAL_AGENT_INVOCATION_STATUSES.includes(
-          child.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
-        ),
     )
-  ) {
+    .limit(1);
+  if (open.length > 0) {
     return true;
+  }
+  // A `replaced` child result is never sent. A later agent invocation of
+  // that child agent sends its report instead.
+  const sent = await db
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.parentConversationId, conversationId),
+        inArray(juniorAgentInvocations.parentMailboxStatus, [
+          "pending",
+          "appended",
+        ]),
+      ),
+    );
+  if (sent.length === 0) {
+    return false;
   }
   const received = await db
     .select({ invocationId: juniorAgentInvocations.invocationId })
@@ -468,15 +451,10 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
     .where(
       inArray(
         juniorAgentInvocations.invocationId,
-        children.map((child) =>
-          getAgentInvocationResultInvocationId(
-            invocation.parentConversationId,
-            child.invocationId,
-          ),
-        ),
+        sent.map((row) => getAgentInvocationIdForResult(row.invocationId)),
       ),
     );
-  return received.length < children.length;
+  return received.length < sent.length;
 }
 
 /** List bounded invocation records whose mailbox append still needs repair. */

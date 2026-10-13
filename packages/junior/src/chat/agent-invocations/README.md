@@ -75,29 +75,32 @@ mailbox metadata and wait window as Watch Events, but it has no
   history with `searchConversationEvents`.
 - The local CLI has no parent mailbox, so it does not send results.
 
-### Nested Children
+### Results for a Child
 
-A child Conversation has no Location, so a result for a child cannot run an
-Event Turn. Instead, each result starts a new agent invocation on that child.
-Its id comes from the result's agent invocation id, so retries do not start a
-second one. It uses the parent, Actor, and credentials of the child's latest
-agent invocation, and it skips the busy and active-count checks.
+A child Conversation has no Location, so it cannot run an Event Turn. When
+`limits.maxAgentDepth` lets a child start its own children, each of their
+results starts a new agent invocation on that child instead. Its id comes from
+the result's agent invocation id, so retries do not start a second one. It uses
+the parent, Actor, and credentials of the child's latest agent invocation, and
+it skips the busy and active-count checks.
 
-The parent gets one report for the child's work. When a child agent
-invocation finishes, it is `replaced` instead of sent if the child still has
-open work: a queued agent invocation, a running child, or a child result that
-no agent invocation has received yet. That open work always starts a later
-agent invocation on the child, which sends the report. The worker already
-holds new mailbox input while a child is paused, so one child runs one agent
-invocation at a time.
+The parent gets one report for the child's work. A finished agent invocation
+is `replaced` instead of sent when the child still has open work: another open
+agent invocation, an open child, or a sent child result that no agent
+invocation has received yet. That work always starts a later agent invocation
+on the child, and that agent invocation sends the report. The worker holds
+mailbox input while a child is paused, so a child runs one agent invocation at
+a time.
+
+## Child Conversations
 
 A Conversation created for an Agent invocation stores `parentConversationId`.
 It uses the same Conversation type as all other work. It does not copy the
 root Conversation's Location or receive Delivery. Its Run reads the root
-Conversation's Location and visibility when tools need them. Output stays inside Junior. Agent
-invocation fields still carry the Actor, credentials, Source, and Destination
-until the final Run interface removes Destination. The final Run carries the
-parent Location once, separate from Source and Delivery.
+Conversation's Location and visibility when tools need them. Output stays
+inside Junior. Agent invocation fields still carry the Actor, credentials,
+Source, and Destination until the final Run interface removes Destination. The
+final Run carries the root Location once, separate from Source and Delivery.
 
 ## Current Boundary
 

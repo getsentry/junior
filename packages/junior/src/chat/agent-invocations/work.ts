@@ -327,29 +327,23 @@ async function saveAgentInvocationResult(args: {
       };
 }
 
-// Parent links never form a cycle, so this only guards against bad data.
-const MAX_CONVERSATION_ANCESTORS = 100;
-
 /**
- * Read how many parents a child Conversation has and the root Conversation
+ * Read how many parents a child Conversation has and the root Conversation's
  * Location. A child of the root has depth 1.
  */
-async function readChildAncestry(
+async function readChildDepthAndRootLocation(
   conversationId: string,
 ): Promise<{ depth: number; location?: Location }> {
+  const conversationStore = getConversationStore();
   let depth = 0;
-  let currentId = conversationId;
-  while (depth <= MAX_CONVERSATION_ANCESTORS) {
-    const conversation = await getConversationStore().get({
-      conversationId: currentId,
-    });
-    if (!conversation?.parentConversationId) {
-      return { depth, location: conversation?.location };
-    }
+  let conversation = await conversationStore.get({ conversationId });
+  while (conversation?.parentConversationId) {
     depth += 1;
-    currentId = conversation.parentConversationId;
+    conversation = await conversationStore.get({
+      conversationId: conversation.parentConversationId,
+    });
   }
-  throw new Error(`Conversation ${conversationId} has too many parents`);
+  return { depth, location: conversation?.location };
 }
 
 /**
@@ -441,17 +435,17 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, ancestry] = await Promise.all([
+      const [persisted, projection, tree] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
-        readChildAncestry(invocation.childConversationId),
+        readChildDepthAndRootLocation(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
-      location = ancestry.location;
-      canSpawn = ancestry.depth <= maxAgentDepth;
+      location = tree.location;
+      canSpawn = tree.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };

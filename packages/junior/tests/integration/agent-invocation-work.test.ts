@@ -6,7 +6,7 @@ import {
   getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationMessageId,
-  getAgentInvocationResultInvocationId,
+  getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
@@ -519,7 +519,7 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("gives a nested child's result to its parent child before the root", async () => {
+  it("sends each nested child's report to its parent once its own children finish", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -529,7 +529,7 @@ describe("agent invocation conversation work", () => {
       messages: InboundMessage[] = [],
     ): ConversationWorkerContext => ({
       attempt: {
-        ack: vi.fn(async () => undefined),
+        ack: async () => undefined,
         conversationId,
         drain: async () => [],
         isFinalAttempt: false,
@@ -542,6 +542,35 @@ describe("agent invocation conversation work", () => {
     const mailbox = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
+    const complete = async (invocationId: string, result: string) =>
+      (await completeAgentInvocation({
+        invocationId,
+        result,
+        status: "completed",
+      })) as TerminalAgentInvocation;
+    // Send one result to its parent child, as the worker does, and return the
+    // agent invocation that the result starts there.
+    const sendToChild = async (result: TerminalAgentInvocation) => {
+      await enqueueAgentInvocationResult(result, { queue, state });
+      const messages = (await mailbox(result.parentConversationId)).filter(
+        (message) =>
+          message.inboundMessageId ===
+          getAgentInvocationResultMessageId(result.invocationId),
+      );
+      expect(messages).toHaveLength(1);
+      // A retried delivery starts the same agent invocation.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(
+          startAgentInvocationsForChildResults(
+            context(result.parentConversationId, messages),
+            { queue, state },
+          ),
+        ).resolves.toEqual({ status: "completed" });
+      }
+      return (await getAgentInvocation(
+        getAgentInvocationIdForResult(result.invocationId),
+      ))!;
+    };
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -552,8 +581,13 @@ describe("agent invocation conversation work", () => {
         idempotencyKey: "nested-helper",
         parentConversationId: child.childConversationId,
       });
+      const grandHelper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "nested-grand-helper",
+        parentConversationId: helper.childConversationId,
+      });
 
-      // Depth 1 can spawn with maxAgentDepth 1. Depth 2 cannot. Both read
+      // With maxAgentDepth 1, depth 1 can spawn and depth 2 cannot. Both read
       // the root Location.
       const runs: AgentRun[] = [];
       const worker = createAgentInvocationWorker(
@@ -582,91 +616,51 @@ describe("agent invocation conversation work", () => {
         channelId: "C123",
       });
 
-      // The child finishes while its helper runs, so its result waits.
-      await expect(
-        completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Started a helper.",
-          status: "completed",
-        }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      const helperResult = await completeAgentInvocation({
-        invocationId: helper.invocationId,
-        result: "Helper fact: 42.",
-        status: "completed",
-      });
-      expect(helperResult).toMatchObject({ parentMailboxStatus: "pending" });
-      await enqueueAgentInvocationResult(
-        helperResult as TerminalAgentInvocation,
-        { queue, state },
-      );
-
-      // The helper result starts a new agent invocation on the child, once.
-      const helperMessages = await mailbox(child.childConversationId);
-      expect(helperMessages).toHaveLength(1);
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const attemptContext = context(
-          child.childConversationId,
-          helperMessages,
-        );
+      // A child that finishes while its own child runs does not report yet.
+      for (const invocation of [child, helper]) {
         await expect(
-          startAgentInvocationsForChildResults(attemptContext, {
-            queue,
-            state,
-          }),
-        ).resolves.toEqual({ status: "completed" });
-        expect(attemptContext.attempt.ack).toHaveBeenCalledOnce();
+          complete(invocation.invocationId, "Started a helper."),
+        ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       }
-      const resultInvocationId = getAgentInvocationResultInvocationId(
-        slackParentConversationId,
-        helper.invocationId,
+
+      const grandResult = await complete(
+        grandHelper.invocationId,
+        "Grand helper fact: 42.",
       );
-      const resultInvocation = await getAgentInvocation(resultInvocationId);
-      expect(resultInvocation).toMatchObject({
+      expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
+      const helperContinuation = await sendToChild(grandResult);
+      expect(helperContinuation).toMatchObject({
         actor: slackInvocationInput.actor,
-        childConversationId: child.childConversationId,
-        input: expect.stringContaining("Helper fact: 42."),
-        mailboxStatus: "appended",
-        parentConversationId: slackParentConversationId,
+        childConversationId: helper.childConversationId,
+        input: expect.stringContaining("Grand helper fact: 42."),
+        parentConversationId: child.childConversationId,
         status: "pending",
       });
-      expect(
-        (await mailbox(child.childConversationId)).map(
-          (message) => message.inboundMessageId,
-        ),
-      ).toEqual([
-        getAgentInvocationResultMessageId(helper.invocationId),
-        getAgentInvocationMessageId(resultInvocationId),
-      ]);
 
-      // With the helper result received, the child reports to the root once.
-      const finalResult = await completeAgentInvocation({
-        invocationId: resultInvocationId,
-        result: "Final answer with the helper fact.",
-        status: "completed",
-      });
-      expect(finalResult).toMatchObject({ parentMailboxStatus: "pending" });
-      await enqueueAgentInvocationResult(
-        finalResult as TerminalAgentInvocation,
-        { queue, state },
+      // Each child reports once, from the agent invocation that received the
+      // last result of its own children.
+      const helperResult = await complete(
+        helperContinuation.invocationId,
+        "Helper fact: 42.",
       );
-      const rootMessages = await mailbox(slackParentConversationId);
-      expect(rootMessages).toEqual([
+      expect(helperResult).toMatchObject({ parentMailboxStatus: "pending" });
+      const childContinuation = await sendToChild(helperResult);
+      const childResult = await complete(
+        childContinuation.invocationId,
+        "Final answer: 42.",
+      );
+      expect(childResult).toMatchObject({ parentMailboxStatus: "pending" });
+      await enqueueAgentInvocationResult(childResult, { queue, state });
+      expect(await mailbox(slackParentConversationId)).toEqual([
         expect.objectContaining({
-          inboundMessageId:
-            getAgentInvocationResultMessageId(resultInvocationId),
+          inboundMessageId: getAgentInvocationResultMessageId(
+            childContinuation.invocationId,
+          ),
           input: expect.objectContaining({
-            text: expect.stringContaining("Final answer with the helper fact."),
+            text: expect.stringContaining("Final answer: 42."),
           }),
         }),
       ]);
-      // A root Conversation runs results as Event Turns instead.
-      await expect(
-        startAgentInvocationsForChildResults(
-          context(slackParentConversationId, rootMessages),
-          { queue, state },
-        ),
-      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }
