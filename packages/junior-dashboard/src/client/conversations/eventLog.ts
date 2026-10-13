@@ -111,7 +111,8 @@ export function eventLogTone(data: ConversationReportEventData): string {
   }
   if (
     (data.type === "guardian_action_reviewed" && data.decision === "ask") ||
-    (data.type === "subagent" && data.status === "aborted")
+    (data.type === "subagent" &&
+      (data.status === "aborted" || data.status === "blocked"))
   ) {
     return "text-amber-200";
   }

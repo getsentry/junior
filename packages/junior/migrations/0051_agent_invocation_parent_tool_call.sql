@@ -1,0 +1,1 @@
+ALTER TABLE "junior_agent_invocations" ADD COLUMN "parent_tool_call_id" text;

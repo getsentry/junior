@@ -578,7 +578,7 @@ const conversationReportSubagentEventDataSchema = z
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
     parentToolCallId: z.string().min(1).optional(),
-    status: z.enum(["running", "completed", "error", "aborted"]),
+    status: z.enum(["running", "completed", "blocked", "error", "aborted"]),
   })
   .strict();
 
