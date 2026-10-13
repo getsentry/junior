@@ -110,7 +110,8 @@ type CalendarEvent = z.infer<typeof eventSchema>;
 const cancelledEventSchema = z.object({ status: z.literal("cancelled") });
 
 const eventListSchema = z.object({
-  items: z.array(eventSchema.partial({ end: true, start: true })),
+  // Google omits `items` on an empty page.
+  items: z.array(eventSchema.partial({ end: true, start: true })).default([]),
   nextPageToken: z.string().optional(),
 });
 
@@ -335,8 +336,9 @@ async function requireRequesterOnSharedLink(
       path: "/calendar/v3/calendars/primary/events",
       query: {
         maxResults: "250",
-        // One item per series, so a weekly meeting counts once.
-        singleEvents: "false",
+        // Expand series, so every occurrence in the window is checked with
+        // its own attendees. A series item alone has only its first times.
+        singleEvents: "true",
         timeMax: new Date(input.endMs + SHARED_LINK_WINDOW_MS).toISOString(),
         timeMin: new Date(input.startMs - SHARED_LINK_WINDOW_MS).toISOString(),
         ...(pageToken ? { pageToken } : undefined),

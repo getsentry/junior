@@ -104,6 +104,7 @@ describe("Google Meet transcripts", () => {
     expect(calendarList.searchParams.get("timeMin")).toBe(
       "2026-10-05T17:00:00.000Z",
     );
+    expect(calendarList.searchParams.get("singleEvents")).toBe("true");
 
     const { fetch, read } = meetTools(
       Response.json(event),
@@ -211,7 +212,8 @@ describe("Google Meet transcripts", () => {
   it("reports when Google denies Meet access instead of failing", async () => {
     const denied = meetTools(
       Response.json(event),
-      Response.json({ items: [event] }),
+      // Google omits \`items\` on an empty page.
+      Response.json({}),
       Response.json(
         { error: { code: 403, status: "PERMISSION_DENIED" } },
         { status: 403 },

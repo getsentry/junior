@@ -94,7 +94,8 @@ connected before Meet access was added still works for Calendar.
   meeting, and only when Junior is invited too.
 - Anyone can copy a Meet link onto a new event. So Junior also looks at its
   own calendar, from seven days before the meeting to seven days after. Every
-  event there that uses the same Meet link must include the requester.
+  event there that uses the same Meet link, including each occurrence of a
+  repeating meeting, must include the requester.
   Otherwise Junior does not read the transcript.
 - Meet egress allows only `GET` list calls for conference records,
   participants, transcripts, and transcript entries. Meet space, recording,
