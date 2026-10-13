@@ -26,6 +26,25 @@ export const GOOGLE_CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.readonly",
 ] as const;
 
+/**
+ * Scopes the Docs tools need. Request nothing broader.
+ *
+ * - `drive.readonly`: find, export, and read the comments of Docs that
+ *   Junior's account can open. Those are Docs shared with the account, and
+ *   Docs shared publicly by link. The Drive comments API accepts no narrower
+ *   read scope, so `documents.readonly` and `drive.metadata.readonly` are not
+ *   sufficient.
+ */
+export const GOOGLE_DOCS_SCOPES = [
+  "https://www.googleapis.com/auth/drive.readonly",
+] as const;
+
+/** Every API scope a connected grant must have. */
+export const GOOGLE_API_SCOPES = [
+  ...GOOGLE_CALENDAR_SCOPES,
+  ...GOOGLE_DOCS_SCOPES,
+] as const;
+
 /** Identity scopes used only to verify which account signed in. */
 export const GOOGLE_IDENTITY_SCOPES = ["openid", "email"] as const;
 

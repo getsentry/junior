@@ -4,7 +4,8 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar only. Drive and Gmail are out of scope.
+This version supports Calendar and reading Google Docs. Gmail and Drive
+writes are out of scope.
 
 ## Surfaces
 
@@ -41,6 +42,17 @@ This version supports Calendar only. Drive and Gmail are out of scope.
   annotation on the Conversation. Junior shows its card with the next reply.
   The card shows the title, time, and attendees, and links to the event. A
   change to an event replaces its card.
+- `searchGoogleDocs` finds Google Docs that are shared with Junior's account,
+  by words in the title or text. Docs that are only shared by public link are
+  not found, because Drive search only covers files the account has.
+- `readGoogleDoc` reads one Doc as Markdown, from a link or a document id. It
+  works for Docs shared with Junior's account and for Docs shared with anyone
+  who has the link. Drive exports the Doc, so the Docs API is not used. A
+  link's `resourcekey` value is sent to Google, because older Docs shared by
+  link need it. Results stop at 100,000 characters.
+- `listGoogleDocComments` reads the comments and replies on one Doc, 100 per
+  call. Each comment gives its author name, text, the Doc text it is attached
+  to, and whether it is resolved.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -57,20 +69,21 @@ own.
 2. Google sign-in opens with PKCE and a single-use state value.
 3. The admin signs in as the configured account, not as themselves.
 4. Junior checks that the identity token names the configured account. It also
-   checks that Google granted every Calendar scope. If a check fails, Junior
-   revokes the grant and stores nothing.
+   checks that Google granted every Calendar and Docs scope. If a check
+   fails, Junior revokes the grant and stores nothing.
 5. Junior stores the refresh token in the `junior_google_accounts` table.
 
 At runtime, the `issueCredential` hook exchanges the refresh token for a
 one-hour access token. Junior applies that token only to `www.googleapis.com`
 requests from this plugin's tools. The `grantForEgress` hook denies sandbox
 commands and any request that does not match a declared operation. Thus the
-model cannot use `curl` to read Junior's calendar and skip the tool rules.
+model cannot use `curl` to read Junior's calendar or Drive and skip the tool
+rules. The Drive operations are read-only.
 
 If Google rejects the refresh token (`invalid_grant`), Junior deletes it. The
 tools then report that an admin must connect the account again. If the stored
-grant does not have every scope the current tools need, the tools also ask an
-admin to reconnect.
+grant does not have every scope the current tools need, Google rejects the
+request and the tool asks an admin to reconnect.
 
 ## Rules in code
 
@@ -81,8 +94,12 @@ admin to reconnect.
   requester who is invited to the event. The `calendar.events.owned` scope
   also keeps events that other people organize out of reach.
 - Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
-  and `calendar.events.owned`. Junior also requests `openid email` to verify
-  the account during sign-in.
+  and `calendar.events.owned`.
+- The Docs scope is `drive.readonly`. The Drive comments API accepts no
+  narrower read scope, so `documents.readonly` and `drive.metadata.readonly`
+  are not sufficient. The egress policy permits only file search, file
+  metadata, export, and comment reads.
+- Junior also requests `openid email` to verify the account during sign-in.
 
 ## Setup
 
@@ -91,9 +108,10 @@ sign-in requests only its own scopes, so dashboard sign-in still asks only for
 identity.
 
 1. In the Google Cloud project of the dashboard OAuth client, enable the
-   Google Calendar API.
+   Google Calendar API and the Google Drive API.
 2. On the OAuth consent screen, use user type **Internal** and add the
-   Calendar scopes above.
+   Calendar and Docs scopes above. `drive.readonly` is a restricted scope.
+   An Internal app does not need Google verification for it.
 3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
    - `http://127.0.0.1:8765/oauth/callback`, for the CLI. Use another port with
@@ -126,6 +144,11 @@ variables are set. The Admin page shows **Not configured** until then.
 - Anyone who can talk to Junior can ask it to read a colleague's calendar.
   Junior returns what its own account can see, so set the sharing default
   with that in mind.
+- Anyone who can talk to Junior can also ask it to read any Doc shared with
+  Junior's account. Share a Doc with that account only when everyone who can
+  talk to Junior may read it.
+- `drive.readonly` lets the account read every Drive file it can open, not
+  only Docs. The tools read Google Docs only.
 - Google does not expose the working hours that people set in Calendar.
   Junior uses each calendar's time zone and one shared workday instead.
 - Junior cannot find or book meeting rooms. Room discovery needs the Admin
