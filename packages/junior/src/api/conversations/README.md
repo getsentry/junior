@@ -44,6 +44,11 @@ the delivered Message in the transcript. Tool starts and results do not repeat
 call usage. Router cost stays on `turn_routed.costUsd`. Opaque provider metadata
 and replacement history remain outside the reporting API.
 
+`/agents` lists the direct child agents of a Conversation. It reads agent
+invocation records, so each status comes from the runtime, not from model
+output. It uses the same rules as the `listAgents` tool. Viewers who cannot
+see private content get only the status and time of each child agent.
+
 Message attachments can appear after the source file finishes storing. Clients
 must compare attachment metadata as well as event sequence on refresh.
 
