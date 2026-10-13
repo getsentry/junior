@@ -8,6 +8,7 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorWindowMetrics,
+  ConversationChildAgentsReport,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -1813,6 +1814,39 @@ export function readMockConversationPendingMessages(
     conversationId,
     generatedAt: iso(nowMs),
     messages,
+  };
+}
+
+/** Return the child agents of one mock Conversation, matching its transcript. */
+export function readMockConversationChildAgents(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
+  const startedAtMs = NOW_MS - 5 * 60 * 60_000;
+  return {
+    agents: [
+      {
+        conversationId: DASHBOARD_QA_REVIEW_ID,
+        error: "GitHub access is needed to read the pull request.",
+        name: "reviewer",
+        status: "blocked",
+        task: "Review the open dashboard pull requests and list risky changes.",
+        updatedAt: iso(startedAtMs, 44_000),
+      },
+      {
+        conversationId: DASHBOARD_QA_PLAN_ID,
+        status: "completed",
+        task: "Review the dashboard plan before editing.",
+        updatedAt: iso(startedAtMs, 20_000),
+      },
+    ],
+    conversationId,
   };
 }
 

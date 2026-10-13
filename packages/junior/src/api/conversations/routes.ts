@@ -23,9 +23,11 @@ import {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
+import { requireConversationChildAgents } from "./child-agents";
 import {
   conversationAttachmentHeaders,
   requireConversationAttachment,
@@ -203,6 +205,23 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/agents",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationChildAgentsReportSchema,
+        await requireConversationChildAgents(conversationId, { viewer }),
+      );
     },
   );
 
