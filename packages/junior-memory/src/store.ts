@@ -29,9 +29,9 @@ import { z } from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
 import * as memorySqlSchema from "./db/schema";
 import {
-  juniorMemoryDuplicates,
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
+  juniorMemorySignals,
 } from "./db/schema";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
@@ -41,7 +41,7 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
-  type MemoryDuplicateReason,
+  type MemorySignal,
   type MemoryRuntimeContext,
   type MemorySourcePlatform,
 } from "./types";
@@ -83,8 +83,8 @@ const EMBEDDING_METRIC = "cosine";
  * Tuned for text-embedding-3-small; retune if the embedding model changes.
  */
 const RECALL_MAX_VECTOR_DISTANCE = 0.45;
-/** Keep duplicate capture rows long enough to weigh recent repeats. */
-const DUPLICATE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+/** Keep signal rows long enough to weigh recent activity. */
+const SIGNAL_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
@@ -819,36 +819,34 @@ async function rememberDuplicateIdempotency(args: {
 }
 
 /**
- * Log one capture that resolved to an existing memory, then drop that memory's
- * rows older than the retention window. Retries with the same key count once.
+ * Log one signal for a memory, then drop that memory's rows for the same
+ * signal older than the retention window. Retries with the same key count once.
  */
-async function recordDuplicateCapture(args: {
+async function recordMemorySignal(args: {
   db: MemoryDb;
   idempotencyKey: string;
   memoryId: string;
   nowMs: number;
-  reason: MemoryDuplicateReason;
   runtimeContext: MemoryRuntimeContext;
+  signal: MemorySignal;
 }): Promise<void> {
   await args.db
-    .insert(juniorMemoryDuplicates)
+    .insert(juniorMemorySignals)
     .values({
       conversationId: args.runtimeContext.conversationId,
       idempotencyKey: args.idempotencyKey,
       memoryId: args.memoryId,
       observedAtMs: args.nowMs,
-      reason: args.reason,
+      signal: args.signal,
     })
     .onConflictDoNothing();
   await args.db
-    .delete(juniorMemoryDuplicates)
+    .delete(juniorMemorySignals)
     .where(
       and(
-        eq(juniorMemoryDuplicates.memoryId, args.memoryId),
-        lt(
-          juniorMemoryDuplicates.observedAtMs,
-          args.nowMs - DUPLICATE_RETENTION_MS,
-        ),
+        eq(juniorMemorySignals.memoryId, args.memoryId),
+        eq(juniorMemorySignals.signal, args.signal),
+        lt(juniorMemorySignals.observedAtMs, args.nowMs - SIGNAL_RETENTION_MS),
       ),
     );
 }
@@ -1220,7 +1218,6 @@ export function createMemoryStore(
     duplicate: MemoryRecord;
     idempotencyKey: string;
     nowMs: number;
-    reason: MemoryDuplicateReason;
     scope: ResolvedMemoryScope;
     subject: ResolvedMemorySubject;
   }): Promise<CreateMemoryResult> {
@@ -1229,13 +1226,13 @@ export function createMemoryStore(
       db,
       runtimeContext,
     });
-    await recordDuplicateCapture({
+    await recordMemorySignal({
       db,
       idempotencyKey: args.idempotencyKey,
       memoryId: args.duplicate.id,
       nowMs: args.nowMs,
-      reason: args.reason,
       runtimeContext,
+      signal: "duplicate",
     });
     await storeEmbedding({
       content: args.duplicate.content,
@@ -1307,7 +1304,6 @@ export function createMemoryStore(
         duplicate: exactDuplicate,
         idempotencyKey: input.idempotencyKey,
         nowMs,
-        reason: "exact",
         scope,
         subject,
       });
@@ -1349,7 +1345,6 @@ export function createMemoryStore(
           duplicate: adjudication.memory,
           idempotencyKey: input.idempotencyKey,
           nowMs,
-          reason: "semantic",
           scope,
           subject,
         });

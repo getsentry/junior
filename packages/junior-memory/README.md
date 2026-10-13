@@ -52,10 +52,11 @@ exported types, tools, and tests are authoritative.
 - Embedding distance never decides that two memories are duplicates. It only
   selects candidates. Exact content and model review own duplicate decisions
   for every memory kind. Only user preferences can supersede old memories.
-- `junior_memory_duplicates` keeps one thin row (memory id, idempotency key,
-  reason, conversation, time) each time a capture resolves to an existing
-  memory. Rows older than 90 days are dropped when that memory repeats again.
-  Count recent rows, or distinct conversations, to weigh repeated memories.
+- `junior_memory_signals` is a thin log of things that happen to a stored
+  memory (memory id, signal, idempotency key, conversation, time). The only
+  signal today is `duplicate`: a capture resolved to an existing memory. Rows
+  older than 90 days are dropped when the same memory gets the same signal
+  again. Count recent rows, or distinct conversations, to weigh memories.
 - Writes are idempotent where a completed session or tool retry can repeat.
 - Removal and supersession preserve enough lifecycle information to prevent
   deleted facts from being recalled or silently recreated.

@@ -3361,14 +3361,14 @@ WHERE id = '${superseded.memory.id}'
         created: false,
         memory: { id: created.memory.id },
       });
-      const duplicateRows = () =>
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryDuplicates);
-      await expect(duplicateRows()).resolves.toEqual([
+      const signalRows = () =>
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemorySignals);
+      await expect(signalRows()).resolves.toEqual([
         expect.objectContaining({
           idempotencyKey: "memory-test:exact-dedup-repeat",
           memoryId: created.memory.id,
           observedAtMs: TEST_NOW_MS,
-          reason: "exact",
+          signal: "duplicate",
         }),
       ]);
       nowMs = TEST_NOW_MS + 91 * 24 * 60 * 60 * 1000;
@@ -3377,7 +3377,7 @@ WHERE id = '${superseded.memory.id}'
         kind: "preference",
         idempotencyKey: "memory-test:exact-dedup-later",
       });
-      await expect(duplicateRows()).resolves.toEqual([
+      await expect(signalRows()).resolves.toEqual([
         expect.objectContaining({
           idempotencyKey: "memory-test:exact-dedup-later",
           memoryId: created.memory.id,
@@ -5053,14 +5053,14 @@ INSERT INTO junior_memory_memories (
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
       await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryDuplicates),
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemorySignals),
       ).resolves.toEqual([
         {
           conversationId: context.conversationId,
           idempotencyKey: "memory-test:knowledge-duplicate",
           memoryId: oldMemory.memory.id,
           observedAtMs: TEST_NOW_MS + 2,
-          reason: "semantic",
+          signal: "duplicate",
         },
       ]);
     } finally {

@@ -1,94 +1,9 @@
 {
-  "id": "ddcfbc27-3080-4594-a326-ee97dbf3a30c",
+  "id": "be5d0560-a3fd-40b4-a4c6-6ba622774545",
   "prevId": "90b7d7a0-b8df-402b-afbd-dcf6dc898261",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.junior_memory_duplicates": {
-      "name": "junior_memory_duplicates",
-      "schema": "",
-      "columns": {
-        "memory_id": {
-          "name": "memory_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "observed_at_ms": {
-          "name": "observed_at_ms",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "junior_memory_duplicates_observed_idx": {
-          "name": "junior_memory_duplicates_observed_idx",
-          "columns": [
-            {
-              "expression": "memory_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "observed_at_ms",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_memory_duplicates_memory_id_junior_memory_memories_id_fk": {
-          "name": "junior_memory_duplicates_memory_id_junior_memory_memories_id_fk",
-          "tableFrom": "junior_memory_duplicates",
-          "tableTo": "junior_memory_memories",
-          "columnsFrom": ["memory_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_memory_duplicates_memory_id_idempotency_key_pk": {
-          "name": "junior_memory_duplicates_memory_id_idempotency_key_pk",
-          "columns": ["memory_id", "idempotency_key"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "junior_memory_duplicates_reason_check": {
-          "name": "junior_memory_duplicates_reason_check",
-          "value": "\"junior_memory_duplicates\".\"reason\" IN ('exact', 'semantic')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.junior_memory_embeddings": {
       "name": "junior_memory_embeddings",
       "schema": "",
@@ -201,8 +116,12 @@
           "name": "junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
           "tableFrom": "junior_memory_embeddings",
           "tableTo": "junior_memory_memories",
-          "columnsFrom": ["memory_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "memory_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -483,6 +402,105 @@
         "junior_memory_memories_source_platform_check": {
           "name": "junior_memory_memories_source_platform_check",
           "value": "\"junior_memory_memories\".\"source_platform\" IN ('slack', 'local', 'web')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.junior_memory_signals": {
+      "name": "junior_memory_signals",
+      "schema": "",
+      "columns": {
+        "memory_id": {
+          "name": "memory_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signal": {
+          "name": "signal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_at_ms": {
+          "name": "observed_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_memory_signals_observed_idx": {
+          "name": "junior_memory_signals_observed_idx",
+          "columns": [
+            {
+              "expression": "memory_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "signal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observed_at_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_memory_signals_memory_id_junior_memory_memories_id_fk": {
+          "name": "junior_memory_signals_memory_id_junior_memory_memories_id_fk",
+          "tableFrom": "junior_memory_signals",
+          "tableTo": "junior_memory_memories",
+          "columnsFrom": [
+            "memory_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_memory_signals_memory_id_signal_idempotency_key_pk": {
+          "name": "junior_memory_signals_memory_id_signal_idempotency_key_pk",
+          "columns": [
+            "memory_id",
+            "signal",
+            "idempotency_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_memory_signals_signal_check": {
+          "name": "junior_memory_signals_signal_check",
+          "value": "\"junior_memory_signals\".\"signal\" IN ('duplicate')"
         }
       },
       "isRLSEnabled": false

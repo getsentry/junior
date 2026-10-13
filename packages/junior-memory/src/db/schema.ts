@@ -18,10 +18,10 @@ import {
   vector,
 } from "drizzle-orm/pg-core";
 import {
-  MEMORY_DUPLICATE_REASONS,
   MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_EMBEDDING_METRICS,
   MEMORY_SCOPES,
+  MEMORY_SIGNALS,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
@@ -151,30 +151,33 @@ export const juniorMemoryEmbeddings = pgTable(
 );
 
 /**
- * One row for each capture that resolved to an existing memory instead of a
- * new row. Rows are thin so callers can count recent repeats per memory.
+ * Thin log of signals about stored memories, such as a capture that resolved
+ * to an existing memory. Callers count recent rows to weigh memories.
  */
-export const juniorMemoryDuplicates = pgTable(
-  "junior_memory_duplicates",
+export const juniorMemorySignals = pgTable(
+  "junior_memory_signals",
   {
     memoryId: text("memory_id")
       .notNull()
       .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
+    signal: text("signal", { enum: MEMORY_SIGNALS }).notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
-    reason: text("reason", { enum: MEMORY_DUPLICATE_REASONS }).notNull(),
-    /** Conversation where Junior saw the repeat, when known. */
+    /** Conversation where Junior saw the signal, when known. */
     conversationId: text("conversation_id"),
     observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.memoryId, table.idempotencyKey] }),
-    index("junior_memory_duplicates_observed_idx").on(
+    primaryKey({
+      columns: [table.memoryId, table.signal, table.idempotencyKey],
+    }),
+    index("junior_memory_signals_observed_idx").on(
       table.memoryId,
+      table.signal,
       table.observedAtMs,
     ),
     check(
-      "junior_memory_duplicates_reason_check",
-      sql`${table.reason} IN ('exact', 'semantic')`,
+      "junior_memory_signals_signal_check",
+      sql`${table.signal} IN ('duplicate')`,
     ),
   ],
 );
