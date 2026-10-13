@@ -116,6 +116,9 @@ function invocationFromRow(
     ...(row.parentMailboxStatus
       ? { parentMailboxStatus: row.parentMailboxStatus }
       : undefined),
+    ...(row.parentToolCallId
+      ? { parentToolCallId: row.parentToolCallId }
+      : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
@@ -339,6 +342,7 @@ export async function createAgentInvocation(
         source: { kind: "agent_invocation" },
         destination: input.destination,
         reasoningLevel: input.reasoningLevel ?? null,
+        parentToolCallId: input.parentToolCallId ?? null,
         status: "pending",
         mailboxStatus: "pending",
         createdAt: new Date(nowMs),

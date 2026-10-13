@@ -66,8 +66,6 @@ const agentInvocationMailboxMetadataSchema = z
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
   nowMs?: number;
-  /** The parent `spawnAgent` tool call that started this invocation. */
-  parentToolCallId?: string;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 };
@@ -83,7 +81,6 @@ const SUBAGENT_KIND = "agent";
  */
 async function recordSubagentStarted(
   invocation: AgentInvocation,
-  parentToolCallId: string | undefined,
 ): Promise<void> {
   await getConversationEventStore().append(invocation.parentConversationId, [
     {
@@ -93,7 +90,9 @@ async function recordSubagentStarted(
         subagentInvocationId: invocation.invocationId,
         subagentKind: SUBAGENT_KIND,
         childConversationId: invocation.childConversationId,
-        ...(parentToolCallId ? { parentToolCallId } : undefined),
+        ...(invocation.parentToolCallId
+          ? { parentToolCallId: invocation.parentToolCallId }
+          : undefined),
         ...(invocation.reasoningLevel
           ? { reasoningLevel: invocation.reasoningLevel }
           : undefined),
@@ -103,8 +102,12 @@ async function recordSubagentStarted(
   ]);
 }
 
-/** Record in the parent Conversation how one agent invocation ended. */
-async function recordSubagentEnded(
+/**
+ * Record in the parent Conversation how one agent invocation ended. The
+ * heartbeat result repair also calls this, because the child work can be
+ * acknowledged before the worker reports the result.
+ */
+export async function recordSubagentEnded(
   invocation: TerminalAgentInvocation,
 ): Promise<void> {
   await getConversationEventStore().append(invocation.parentConversationId, [
@@ -156,7 +159,7 @@ export async function enqueueAgentInvocation(
   if (invocation.mailboxStatus === "appended") {
     return;
   }
-  await recordSubagentStarted(invocation, options.parentToolCallId);
+  await recordSubagentStarted(invocation);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),

@@ -11,7 +11,10 @@ import {
   listPendingAgentInvocationResults,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  enqueueAgentInvocation,
+  recordSubagentEnded,
+} from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -166,6 +169,7 @@ export async function recoverPendingAgentInvocationResults(args: {
   );
   for (const invocation of invocations) {
     try {
+      await recordSubagentEnded(invocation);
       await enqueueAgentInvocationResult(invocation, {
         nowMs: args.nowMs,
         queue: args.conversationWorkQueue,

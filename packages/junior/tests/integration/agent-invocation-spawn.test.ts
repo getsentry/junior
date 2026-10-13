@@ -380,6 +380,7 @@ describe("agent invocation spawn and result delivery", () => {
         {
           ...invocationInput,
           idempotencyKey: "mailbox-repair-1",
+          parentToolCallId: "call-repair",
         },
         2_000,
       );
@@ -397,6 +398,15 @@ describe("agent invocation spawn and result delivery", () => {
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({ mailboxStatus: "appended" });
+      // The repair keeps the stored tool call, so the dashboard still pairs
+      // the child row with its `spawnAgent` call.
+      await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual([
+        expect.objectContaining({
+          type: "subagent_started",
+          subagentInvocationId: created.invocationId,
+          parentToolCallId: "call-repair",
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
@@ -459,6 +469,15 @@ describe("agent invocation spawn and result delivery", () => {
       expect(parentWork?.messages[0]?.input.text).toContain(
         "GitHub authorization is required",
       );
+      await expect(
+        loadSubagentEvents(slackParentConversationId),
+      ).resolves.toEqual([
+        {
+          type: "subagent_ended",
+          subagentInvocationId: created.invocationId,
+          outcome: "blocked",
+        },
+      ]);
     } finally {
       await fixture.close();
     }
