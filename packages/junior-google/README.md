@@ -4,7 +4,8 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar only. Drive and Gmail are out of scope.
+This version supports Calendar, and read-only Meet transcripts. Drive and
+Gmail are out of scope.
 
 ## Surfaces
 
@@ -41,6 +42,16 @@ This version supports Calendar only. Drive and Gmail are out of scope.
   annotation on the Conversation. Junior shows its card with the next reply.
   The card shows the title, time, and attendees, and links to the event. A
   change to an event replaces its card.
+- `readMeetingTranscript` reads the Google Meet transcript of one meeting on
+  Junior's calendar. Junior and the requester must both be invited to the
+  meeting. It checks this on the Calendar event before it calls Meet. It reads
+  only the calls of that one occurrence: the Meet code of the event, from one
+  hour before the start to the end. It returns each line with the speaker
+  name and time. It returns at most 60,000 characters and reports `truncated`.
+  If Google denies access, it returns `access_denied` with the reason. It does
+  not fail. The tool only reads. It does nothing because of what people said
+  in the call. Junior acts only on what the requester asks in the
+  Conversation, and normal action review applies.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -57,20 +68,20 @@ own.
 2. Google sign-in opens with PKCE and a single-use state value.
 3. The admin signs in as the configured account, not as themselves.
 4. Junior checks that the identity token names the configured account. It also
-   checks that Google granted every Calendar scope. If a check fails, Junior
+   checks that Google granted every Calendar and Meet scope. If a check fails, Junior
    revokes the grant and stores nothing.
 5. Junior stores the refresh token in the `junior_google_accounts` table.
 
 At runtime, the `issueCredential` hook exchanges the refresh token for a
 one-hour access token. Junior applies that token only to `www.googleapis.com`
-requests from this plugin's tools. The `grantForEgress` hook denies sandbox
+and `meet.googleapis.com` requests from this plugin's tools. The `grantForEgress` hook denies sandbox
 commands and any request that does not match a declared operation. Thus the
 model cannot use `curl` to read Junior's calendar and skip the tool rules.
 
 If Google rejects the refresh token (`invalid_grant`), Junior deletes it. The
-tools then report that an admin must connect the account again. If the stored
-grant does not have every scope the current tools need, the tools also ask an
-admin to reconnect.
+tools then report that an admin must connect the account again. An account
+connected before Meet access was added still works for Calendar.
+`readMeetingTranscript` then reports that an admin must connect it again.
 
 ## Rules in code
 
@@ -80,9 +91,15 @@ admin to reconnect.
 - Junior changes or cancels only events that it organizes, and only for a
   requester who is invited to the event. The `calendar.events.owned` scope
   also keeps events that other people organize out of reach.
+- Junior reads a Meet transcript only for a requester who is invited to the
+  meeting, and only when Junior is invited too.
+- Meet egress allows only `GET` list calls for conference records,
+  participants, transcripts, and transcript entries. Meet space, recording,
+  and settings calls are denied.
 - Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
-  and `calendar.events.owned`. Junior also requests `openid email` to verify
-  the account during sign-in.
+  and `calendar.events.owned`. The Meet scope is `meetings.space.readonly`.
+  It cannot create, change, or join meetings. Junior also requests
+  `openid email` to verify the account during sign-in.
 
 ## Setup
 
@@ -91,9 +108,9 @@ sign-in requests only its own scopes, so dashboard sign-in still asks only for
 identity.
 
 1. In the Google Cloud project of the dashboard OAuth client, enable the
-   Google Calendar API.
+   Google Calendar API and the Google Meet REST API.
 2. On the OAuth consent screen, use user type **Internal** and add the
-   Calendar scopes above.
+   Calendar and Meet scopes above.
 3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
    - `http://127.0.0.1:8765/oauth/callback`, for the CLI. Use another port with
@@ -132,5 +149,14 @@ variables are set. The Admin page shows **Not configured** until then.
   SDK `admin.directory.resource.calendar.readonly` scope and a Workspace
   admin role on Junior's account. Room emails are also outside the allowed
   domains. It cannot accept or decline invites for other people.
+- Google documents Meet records for the meeting owner and for participants.
+  It is not yet confirmed that an invited account that never joined the call
+  can read the transcript. If it cannot, `readMeetingTranscript` returns
+  `access_denied`. Reading the transcript document in Drive would then need
+  the restricted `drive.meet.readonly` scope.
+- Junior reads a transcript only when someone asks. No event starts the read
+  when a transcript is ready. Google sends that event only through Cloud
+  Pub/Sub, so it needs more setup. Tracking issue: getsentry/junior#2100.
+- Junior cannot turn on transcription. The organizer must turn it on.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

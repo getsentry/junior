@@ -9,7 +9,7 @@ import { getGoogleAccount, saveGoogleAccount } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  ACCOUNT_SCOPE,
   createGoogleDb,
   stubGoogleEnv,
 } from "./fixture";
@@ -45,6 +45,45 @@ describe("Google egress policy", () => {
         url: "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all",
       }),
     ).toMatchObject({ access: "write", name: "account" });
+  });
+
+  it("allows only read-only Meet transcript calls", () => {
+    expect(
+      grantFor({
+        method: "GET",
+        operation: "google.meet.transcriptEntries.list",
+        url: "https://meet.googleapis.com/v2/conferenceRecords/c1/transcripts/t1/entries?pageSize=100",
+      }),
+    ).toMatchObject({ access: "read", name: "account" });
+
+    for (const request of [
+      // A Meet operation cannot reach another Google host.
+      {
+        method: "GET",
+        operation: "google.meet.conferenceRecords.list",
+        url: "https://www.googleapis.com/v2/conferenceRecords",
+      },
+      // No Meet space calls, which can read or change meeting settings.
+      {
+        method: "GET",
+        operation: "google.meet.conferenceRecords.list",
+        url: "https://meet.googleapis.com/v2/spaces/abc",
+      },
+      // No writes, even on a declared path.
+      {
+        method: "POST",
+        operation: "google.meet.transcripts.list",
+        url: "https://meet.googleapis.com/v2/conferenceRecords/c1/transcripts",
+      },
+      // No path tricks to reach another collection.
+      {
+        method: "GET",
+        operation: "google.meet.participants.list",
+        url: "https://meet.googleapis.com/v2/conferenceRecords/c1/participants/../recordings",
+      },
+    ]) {
+      expect(() => grantFor(request)).toThrow(EgressPolicyDenied);
+    }
   });
 });
 
@@ -88,7 +127,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: ACCOUNT_SCOPE,
     });
     const fetch = vi.fn(async () =>
       Response.json({ access_token: "access-token", expires_in: 3600 }),
@@ -106,6 +145,10 @@ describe("Google credential issuing", () => {
             domain: "www.googleapis.com",
             headers: { Authorization: "Bearer access-token" },
           },
+          {
+            domain: "meet.googleapis.com",
+            headers: { Authorization: "Bearer access-token" },
+          },
         ],
       },
     });
@@ -120,7 +163,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: ACCOUNT_SCOPE,
     });
     vi.stubGlobal(
       "fetch",
