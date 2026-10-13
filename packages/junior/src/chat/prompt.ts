@@ -453,11 +453,17 @@ function buildOutputSection(
 }
 
 function buildIdentitySection(platform: PromptPlatform): string {
-  const name =
-    platform === "slack"
-      ? `Your Slack username is \`${botConfig.userName}\`.`
-      : `Your assistant name is \`${botConfig.userName}\`.`;
-  return ["# Identity", name].join("\n");
+  if (platform !== "slack") {
+    return [
+      "# Identity",
+      `Your assistant name is \`${botConfig.userName}\`.`,
+    ].join("\n");
+  }
+  return [
+    "# Identity",
+    `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
+    "Slack text shows people as `<@U…>` and channels as `<#C…>`. A mention of your own user ID means you.",
+  ].join("\n");
 }
 
 function buildPersonalitySection(): string {
@@ -486,6 +492,9 @@ function buildRuntimeSection(params: {
       : "",
     params.slackConversation?.name
       ? `- slack.conversation.name: ${escapeXml(params.slackConversation.name)}`
+      : "",
+    params.slackConversation?.botUserId
+      ? `- slack.bot_user_id: ${escapeXml(params.slackConversation.botUserId)}`
       : "",
   ].filter(Boolean);
 

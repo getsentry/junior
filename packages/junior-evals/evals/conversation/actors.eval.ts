@@ -9,6 +9,7 @@ import {
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedMcpToolCalls } from "@junior-evals/fixture/results";
+import { SLACK_BOT_USER_ID } from "@junior-evals/fixture/slack";
 import { test } from "@junior-evals/fixture/test";
 
 const ALICE = person("UALICE", "Alice");
@@ -69,6 +70,34 @@ describe("Actor Attribution", () => {
     );
 
     expect(conversation.replies.length).toBeGreaterThan(0);
+  });
+
+  test("when a person credits Junior by mention mid-message, know Junior is the one credited", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `the flaky checkout test is finally fixed. talking it through with <@${SLACK_BOT_USER_ID}> this morning is what got me to the root cause`,
+        { author: ALICE },
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply treats Junior itself as the one Alice credited, for example by accepting the thanks or crediting Alice's work.",
+        ],
+        fail: [
+          "Do not thank, credit, or give a shout-out to some other person or user for the discussion.",
+          "Do not show a raw Slack user ID such as U0BOT as if it were a person's name.",
+        ],
+      }),
+    );
+
+    expect(conversation.replies.length).toBeGreaterThan(0);
+    for (const reply of conversation.replies) {
+      expect(reply.text).not.toContain(SLACK_BOT_USER_ID);
+    }
   });
 
   test("when a different participant gives a first-person follow-up, treat it as their request", async ({

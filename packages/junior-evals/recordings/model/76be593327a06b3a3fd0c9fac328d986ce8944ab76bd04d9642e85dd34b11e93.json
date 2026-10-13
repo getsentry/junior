@@ -1,0 +1,32 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the first human message lands, store a conversation title",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "e1788e0ff201",
+      "messages[1]": "2cf4570935bd",
+      "messages[2]": "229318e8fb51",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VM219Q3RHKPS9V5KYGP1Z0\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User’s request:** “How do I debug a Node.js memory leak in production?”\\n- **Progress:** No substantive answer has been provided. The prior assistant suggested switching from “handoff” to “standard” profile, then attempted a handoff; the tool returned “No result provided.”\\n- **Next step:** Answer the original question with a practical production-safe debugging workflow. Cover how to confirm a leak (heap/RSS trends and GC), gather evidence (heap snapshots, allocation profiling, `process.memoryUsage()`), compare snapshots, investigate common retention causes, and validate a fix.\\n- **Constraints/preferences:** No additional user preferences or technical details provided. Keep advice safe for production—heap snapshots and profilers can add latency, CPU load, and disk usage; recommend controlled capture, adequate storage, and avoiding sensitive-data exposure.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":226,\"output_tokens\":177},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_00ae97939f430e1d016acea8329cb887d1a8ed1d730c44c501\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791928370506,\"endTime\":1791928374625,\"providerRequestId\":\"req_9365c942f24040fca3aefa9a3c469c4f\",\"statusCode\":200,\"providerResponseId\":\"resp_00ae97939f430e1d016acea8329cb887d1a8ed1d730c44c501\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"78db6f74491b752f0c9d92655d8d909a\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001111\",\"marketCost\":\"0.0001111\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001111\",\"inferenceCost\":\"0.0001111\",\"inputInferenceCost\":\"0.0000226\",\"outputInferenceCost\":\"0.0000885\",\"generationId\":\"gen_01M4VM219Q3RHKPS9V5KYGP1Z0\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

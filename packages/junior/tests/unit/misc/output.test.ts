@@ -39,6 +39,16 @@ describe("normalizeSlackReplyMarkdown", () => {
     ).toBe("See <https://example.com> for details.");
   });
 
+  it("turns a bare Slack user ID into a mention outside code", () => {
+    expect(
+      normalizeSlackReplyMarkdown(
+        "thanks @U0ALICE01 and <@U0BOB0001>; not `@U0CODE001`, @URGENT, or me@U0MAIL001.com",
+      ),
+    ).toBe(
+      "thanks <@U0ALICE01> and <@U0BOB0001>; not `@U0CODE001`, @URGENT, or me@U0MAIL001.com",
+    );
+  });
+
   it("does not double-wrap an already-explicit Slack link", () => {
     expect(normalizeSlackReplyMarkdown("<https://example.com>")).toBe(
       "<https://example.com>",
