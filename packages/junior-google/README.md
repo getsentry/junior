@@ -78,7 +78,7 @@ one-hour access token. Junior applies that token only to `www.googleapis.com`
 requests from this plugin's tools. The `grantForEgress` hook denies sandbox
 commands and any request that does not match a declared operation. Thus the
 model cannot use `curl` to read Junior's calendar or Drive and skip the tool
-rules. The Drive operations are read-only.
+rules.
 
 If Google rejects the refresh token (`invalid_grant`), Junior deletes it. The
 tools then report that an admin must connect the account again. If the stored
@@ -96,9 +96,8 @@ request and the tool asks an admin to reconnect.
 - Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
   and `calendar.events.owned`.
 - The Docs scope is `drive.readonly`. The Drive comments API accepts no
-  narrower read scope, so `documents.readonly` and `drive.metadata.readonly`
-  are not sufficient. The egress policy permits only file search, file
-  metadata, export, and comment reads.
+  narrower read scope. Junior permits only these Drive requests: file search,
+  file metadata, export, and comment reads.
 - Junior also requests `openid email` to verify the account during sign-in.
 
 ## Setup
