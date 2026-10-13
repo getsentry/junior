@@ -16,6 +16,10 @@ import {
 import { AgentInvocationBusyError, AgentInvocationLimitError } from "./errors";
 
 const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
+
+function createLockName(parentConversationId: string): string {
+  return `${CREATE_LOCK_PREFIX}:${parentConversationId}`;
+}
 /** Cap concurrent non-terminal children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 const TERMINAL_AGENT_INVOCATION_STATUSES = [
@@ -364,7 +368,8 @@ export async function createAgentInvocation(
     ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
     : getUnnamedAgentConversationId(invocationId);
   // Parent-scoped lock so concurrent creates share one active-count check.
-  const lockName = `${CREATE_LOCK_PREFIX}:${input.parentConversationId}`;
+  // A stop of the parent's tree takes the same lock.
+  const lockName = createLockName(input.parentConversationId);
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
@@ -374,6 +379,20 @@ export async function createAgentInvocation(
         );
       }
       return existing;
+    }
+    // A child agent can only start child agents while it has open work. A
+    // stopped child has none.
+    if (
+      (await getLatestAgentInvocationForConversation(
+        input.parentConversationId,
+      )) &&
+      !(await getNonTerminalAgentInvocationForConversation(
+        input.parentConversationId,
+      ))
+    ) {
+      throw new Error(
+        `Agent conversation ${input.parentConversationId} has no open work and cannot start child agents`,
+      );
     }
 
     const activeCount = await countNonTerminalAgentInvocationsForParent(
@@ -713,15 +732,24 @@ export async function completeAgentInvocation(
   return await getAgentInvocation(args.invocationId);
 }
 
-/** List one child Conversation and every Conversation below it, child first. */
-async function listAgentConversationTree(
+/**
+ * List one child Conversation and every Conversation below it, child first.
+ * It takes the create lock of each Conversation before it reads that
+ * Conversation's children, so no child agent can start in the tree until the
+ * caller's transaction ends.
+ */
+async function lockAgentConversationTree(
   childConversationId: string,
 ): Promise<string[]> {
-  const db = getSqlExecutor().db();
+  const executor = getSqlExecutor();
   const conversationIds = [childConversationId];
   let parents = conversationIds;
   while (parents.length > 0) {
-    const rows = await db
+    for (const parent of parents) {
+      await executor.withLock(createLockName(parent), async () => undefined);
+    }
+    const rows = await executor
+      .db()
       .selectDistinct({
         childConversationId: juniorAgentInvocations.childConversationId,
       })
@@ -783,9 +811,20 @@ export async function stopAgentInvocationTree(
   conversationId: string,
   nowMs = Date.now(),
 ): Promise<StoppedAgentTree> {
+  // One transaction holds the create locks of the tree until every write is
+  // done. A child agent that starts later finds its parent stopped.
+  return await getSqlExecutor().withLock(createLockName(conversationId), () =>
+    stopLockedAgentInvocationTree(conversationId, nowMs),
+  );
+}
+
+async function stopLockedAgentInvocationTree(
+  conversationId: string,
+  nowMs: number,
+): Promise<StoppedAgentTree> {
   const db = getSqlExecutor().db();
   const now = new Date(nowMs);
-  const conversationIds = await listAgentConversationTree(conversationId);
+  const conversationIds = await lockAgentConversationTree(conversationId);
   // Stop open work first. After this write no agent invocation in the tree
   // can finish, so no new result can appear.
   const stopped = await db

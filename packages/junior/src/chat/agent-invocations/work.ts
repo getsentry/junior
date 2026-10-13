@@ -488,6 +488,12 @@ export function createAgentInvocationWorker(
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;
+      // A stop can land between the read above and this write.
+      if (isTerminalAgentInvocation(invocation)) {
+        await finish(invocation);
+        await acknowledge();
+        return { status: "completed" };
+      }
       await lifecycle.start({
         conversationId: invocation.childConversationId,
         createdAtMs: invocation.createdAtMs,

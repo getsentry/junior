@@ -377,6 +377,14 @@ describe("stopping child agents", () => {
         parentMailboxStatus: "skipped",
         status: "stopped",
       });
+      // A late spawnAgent call of the stopped child starts no work.
+      await expect(
+        createAgentInvocation({
+          ...invocationInput,
+          idempotencyKey: "tree-late-helper",
+          parentConversationId: child.childConversationId,
+        }),
+      ).rejects.toThrow("has no open work");
       await expect(
         getAgentInvocation(doneHelper.invocationId),
       ).resolves.toMatchObject({
