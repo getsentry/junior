@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/assistant-thread.eval.ts > Slack Thread Status and Title > when a person writes in an assistant thread, Junior shows a status and gives the thread the title of the request one time",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "e6726a116276",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0dd1db5aa590c488016acebe1d9d7487d18d7e7c19547ae432\",\"reasoningEncryptedContent\":\"gAAAAABqzr4fCMh8xjncTSFa4ciUEChktPNcNF2iBQmof7Rhwas5RUbL2V0ipwy80Y8hMXvbxA-WgOvQxIhbYvx_dJxMhIj7dpbAGzT3_DhNMZR1Pi6CQ1IJxctwLJ0b6EhjAjp-TKqlc-S3KEvYuaQmNmeEz0PgU9Huv-a9iigaDQXQ6Y9M7-bbR7By52KsiJNKJgknzZxzJo-NBa-t_dJVGaIQec2icgOR9pnvLzpUHlWUVHmIySigxsmV_RwumyzZBHx7XAHht6kRP4exldnTVmgGuIhsbfQHVeuZx-aEy9aaZcMq3Tyt_tFiM6vKqKXlW1x5MhU1qctzhGRFlYDvFKhK6_s1Cx7GXuROwFX2_omdMoiAbSwGs1mUQ35uDUG3xOdy_Oi_F718crnMPaZk1i4_dqP7wckyCy9bK1kXmgM1BeduDYaA6YVBovTRHedIIygDXhJrBjPje8XOSC_TuOzCyN4iULqgAVCRgG8FCpMIpXEV86UaEdSaLaUUsI8otD7NMlcIEbBDJw4MWoLMyBb85EQ8JmGVA_QTUqcx0RcKg3HCVqX866-APLkMfIgDxTOUWsUIG83Hg6vCh4GyKVW2amhHH8ZqA80GEgMyf79zWIOl6BVQe3HzkKMGFc1Oprwz3yrbODUnuhE_yoA5cIvBTRGMTIMPi0TmVWDUknMCerzU7wYwfggJjLSRIsOciSjqvHRpObMnJddG5r-ILiP0lqPMo7YZxYuU_ddoZTpoFd2-06Jd2hWSonrBQdqyM97m3Gy4Cz2JQsay7ud0B0I8pb6C-i-0aJItHzESCjK8ji1FGARnjrqo3bTJhBUCaFLOnbIjaf8r1_Dbt-so4_j0zYkc-xmns7PoXA1xgLaeajkuQll7oRR54bcI1MnomYjMVOe0oYihwXYEwISOuCjb_UGvMiVE1NI5vIoYQMuTO3DEuBK4Mv7vQy6NPM_g_dJwMqKFZ6ElrqiYQe8Jvft2cfQ2BLaihjeOjDpspKODJ3hGFjzt9NCllLRM3JtEvzXH1mV34vrAZUo9jvDITF74eM_vkuxNYK0AvUX_daqtRz2ibZ6qYbJiG-FsVZKOxeG0wM3EVNv_bV-jYGILQdCUzmSNFTrH5NA6S57qSPdv64fssxI3KV6SF6uGqt96ZOjqcCqtMAT3b626XEZ6rvvVAl7MIZTD0ejnqvk7NYaF06krvQqvFSdfD8FkT4EUHPmfzlYdngGTNoQY64FCnY0pbpscWidfTPCikIZiq9NXtF4f3D6oPNcfoqlQx9Do0pwuHraEoE4GjkxqNCRZhEiQykDsGbZflMEiPgNbnRtD9QPJ72IIGJv7MjEOqQf_cIjjZrhZYnIDMv275f1AB2WgkMbXgRkFXBjihcHhLTReXnJGERPkO9nrUBnjEEmdjjRxZAWHc3YjHa1EHjvuy8q_WZBlhIbWYut0kiX46tfBrgdgIdJtXYHOt2Q1jX3_X3HLX0zH21Tl5Hd9sUByLjhnZ80qIz8eTTid4nDen3bn9sxhV9g6ipv3ZXe-2GAX2gbdmdA-C3YEPnkYBBcPe7TvGDbc1UxmnDXJX-VfxGUuzr0iQ0VC4BHRVvICLda2vtl2_nC_Ry7XJqweSz9lGjzykQ2cd4w-FZCN9ROWHXGBjvGbWibp0BS6-taqUhTPhWCScCkZAR53hsp66PMoDPuq7dm3OFVmSKg02ex0PZGri6NYG4yk8pL7BllvlhkhvhAMrJaO1TL1KDmDH69CV5nq__VLxmrGczVOIrVDwLp5DG5gseF0V8idmvLmOBrGs39msUV5S7YjJokR7bUglJFJBgIohzrVYy9Y3NhOUeQ2GNDTn5d8CW5PL1aEN7MnfSPbNAhUpVYkh8ZkSfz54xr9jCEzq83LNnSi_38E8-Ify67W2HrF_5MvMunFIdaHgimS7aq0-78_lm_UBn0Fq7em3k2iwJ7mUqUo1uNlorLlDiS2-YvLx5cOb8852ZQSkpAKsVshTHC22wJfeQXPC1LTJBeIOlRYesuxQOvWMGcmQ0TY_9qOyVetDxbUZmPDIXRDlbjCWT6KO7RrZ7q6kPfxfC4mRY-t0RnjBetJql8WxjLTew65HJH0LqYoOEpBkCin26_WbJo1qoNSgLRbYtnh80H2iZB2hVlWnq5wvxgjivQBrcB4jEgDcfEqfcVKksDoQ_e8ov4wLSje__FpJH8fGWKhB_ZQaQe4bFFIM0x4TODIArfanrq5ySJydsZXN6man1NpiyGA14D_pCi5jMfmsh7_VDvdNJxJ_HAgWeOK25SJbhQz_Gc7ydqr5XPl_TNU6661Hflq4YvhgBAfWrPCq-BbeA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a focused follow-up in a Node.js production memory-debugging thread; it needs context-aware clarification of the appropriate tool, but no substantial research.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0dd1db5aa590c488016acebe1e5a2487d193bfccc732f78b6f\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1045,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1042},\"outputTokens\":{\"total\":122,\"text\":60,\"reasoning\":62},\"raw\":{\"input_tokens\":1045,\"input_tokens_details\":{\"cache_write_tokens\":1042,\"cached_tokens\":0},\"output_tokens\":122,\"output_tokens_details\":{\"reasoning_tokens\":62},\"total_tokens\":1167}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0dd1db5aa590c488016acebe1cedf487d1b0b5a3f4f785fd11\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791933980837,\"endTime\":1791933983288,\"providerRequestId\":\"req_2cb7d2f86a904a89948362ab93efc711\",\"statusCode\":200,\"providerResponseId\":\"resp_0dd1db5aa590c488016acebe1cedf487d1b0b5a3f4f785fd11\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"09a7ad95e8b3028d2fa43ed7d82f6752\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00019155\",\"marketCost\":\"0.00019155\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00019155\",\"inferenceCost\":\"0.00019155\",\"inputInferenceCost\":\"0.00013055\",\"outputInferenceCost\":\"0.000061\",\"generationId\":\"gen_01M4VSD84H8KF5V7DDW34ZJQ88\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
