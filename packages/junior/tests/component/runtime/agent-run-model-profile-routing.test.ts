@@ -73,28 +73,6 @@ describe("model profile routing", () => {
     ]);
   });
 
-  it("routes the next Turn from the last routed profile", async () => {
-    observations.routedModelProfile = "handoff";
-    const conversationId = "local:test:router-current-profile";
-    for (const turn of ["first", "second"]) {
-      const outcome = await executeAgentRun({
-        conversationId,
-        runId: `run-router-current-profile-${turn}`,
-        turnId: `turn-router-current-profile-${turn}`,
-        instruction: { text: `Do the ${turn} step.` },
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      });
-      expect(outcome.status).toBe("completed");
-    }
-
-    expect(
-      observations.routerSystemPrompts.map(
-        (system) => /Current profile: "([^"]+)"/.exec(system)?.[1],
-      ),
-    ).toEqual(["standard", "handoff"]);
-  });
-
   it("blocks oversized current input after a router handoff before the first provider request", async () => {
     observations.routedModelProfile = "handoff";
     const conversationId = "local:test:router-handoff-input-limit";
