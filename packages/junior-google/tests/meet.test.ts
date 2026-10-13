@@ -77,8 +77,45 @@ describe("Google Meet transcripts", () => {
       );
     }
 
+    // Someone copied the Meet link onto their own event with Junior, but they
+    // are not invited to the meeting that owns the link.
+    const copiedLink = meetTools(
+      Response.json(event),
+      Response.json({
+        items: [
+          event,
+          { ...event, attendees: event.attendees.slice(0, 1), id: "other" },
+        ],
+      }),
+    );
+    await expect(copiedLink.read("event1")).rejects.toThrow(
+      "Another meeting on Junior's calendar uses this Meet link",
+    );
+    expect(copiedLink.fetch).toHaveBeenCalledTimes(2);
+    const calendarList = new URL(
+      copiedLink.fetch.mock.calls[1]![0].request.url,
+    );
+    expect(calendarList.pathname).toBe("/calendar/v3/calendars/primary/events");
+    expect(calendarList.searchParams.get("timeMin")).toBe(
+      "2026-10-05T17:00:00.000Z",
+    );
+
     const { fetch, read } = meetTools(
       Response.json(event),
+      Response.json({
+        items: [
+          event,
+          // Other meetings, and cancelled copies of the link, do not block.
+          {
+            ...event,
+            hangoutLink: undefined,
+            conferenceData: undefined,
+            attendees: [],
+            id: "standup",
+          },
+          { ...event, attendees: [], id: "old", status: "cancelled" },
+        ],
+      }),
       Response.json({
         conferenceRecords: [
           {
@@ -123,7 +160,7 @@ describe("Google Meet transcripts", () => {
 
     const result = await read("event1");
 
-    const records = new URL(fetch.mock.calls[1]![0].request.url);
+    const records = new URL(fetch.mock.calls[2]![0].request.url);
     expect(records.origin + records.pathname).toBe(
       "https://meet.googleapis.com/v2/conferenceRecords",
     );
@@ -132,7 +169,7 @@ describe("Google Meet transcripts", () => {
       'space.meeting_code = "abc-defg-hij" AND start_time >= "2026-10-12T16:00:00.000Z" AND start_time <= "2026-10-12T17:30:00.000Z"',
     );
     expect(
-      new URL(fetch.mock.calls[5]![0].request.url).searchParams.get(
+      new URL(fetch.mock.calls[6]![0].request.url).searchParams.get(
         "pageToken",
       ),
     ).toBe("page-2");
@@ -169,6 +206,7 @@ describe("Google Meet transcripts", () => {
   it("reports when Google denies Meet access instead of failing", async () => {
     const denied = meetTools(
       Response.json(event),
+      Response.json({ items: [event] }),
       Response.json(
         { error: { code: 403, status: "PERMISSION_DENIED" } },
         { status: 403 },
@@ -182,6 +220,7 @@ describe("Google Meet transcripts", () => {
 
     const oldGrant = meetTools(
       Response.json(event),
+      Response.json({ items: [event] }),
       Response.json(
         {
           error: {

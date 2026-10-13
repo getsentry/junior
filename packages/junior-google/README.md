@@ -93,6 +93,10 @@ connected before Meet access was added still works for Calendar.
   also keeps events that other people organize out of reach.
 - Junior reads a Meet transcript only for a requester who is invited to the
   meeting, and only when Junior is invited too.
+- Anyone can copy a Meet link onto a new event. So Junior also looks at its
+  own calendar, from seven days before the meeting to seven days after. Every
+  event there that uses the same Meet link must include the requester.
+  Otherwise Junior does not read the transcript.
 - Meet egress allows only `GET` list calls for conference records,
   participants, transcripts, and transcript entries. Meet space, recording,
   and settings calls are denied.
@@ -157,6 +161,9 @@ variables are set. The Admin page shows **Not configured** until then.
 - Junior reads a transcript only when someone asks. No event starts the read
   when a transcript is ready. Google sends that event only through Cloud
   Pub/Sub, so it needs more setup. Tracking issue: getsentry/junior#2100.
+- The shared-link check sees only events on Junior's calendar in that
+  14-day window. A call on the same link far from any such event is not
+  checked against the other meeting.
 - Junior cannot turn on transcription. The organizer must turn it on.
 - No disconnect command. To revoke access, remove the app grant from the
   Junior account in Google.

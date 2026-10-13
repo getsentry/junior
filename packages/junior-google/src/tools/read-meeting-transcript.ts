@@ -21,6 +21,9 @@ const MAX_PAGES = 20;
 const MAX_CONFERENCES = 5;
 // A conference can start a little before the scheduled time.
 const EARLY_START_MS = 60 * 60 * 1000;
+// How far around the occurrence Junior looks for other events that share the
+// same Meet link.
+const SHARED_LINK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const MEETING_CODE_PATTERN = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
 const CONFERENCE_NAME_PATTERN = /^conferenceRecords\/[A-Za-z0-9_-]+$/;
@@ -103,6 +106,11 @@ const eventSchema = z.object({
 
 type CalendarEvent = z.infer<typeof eventSchema>;
 
+const eventListSchema = z.object({
+  items: z.array(eventSchema.partial({ end: true, start: true })),
+  nextPageToken: z.string().optional(),
+});
+
 const conferenceListSchema = z.object({
   conferenceRecords: z
     .array(
@@ -168,7 +176,9 @@ class MeetAccessDenied extends Error {
 }
 
 /** Return the Meet code of a Calendar event, such as `abc-defg-hij`. */
-function meetingCode(event: CalendarEvent): string | undefined {
+function meetingCode(
+  event: Pick<CalendarEvent, "conferenceData" | "hangoutLink">,
+): string | undefined {
   const conference = event.conferenceData;
   const code =
     conference?.conferenceSolution?.key?.type === "hangoutsMeet"
@@ -239,7 +249,7 @@ async function listPages<T>(
 async function readInvitedEvent(
   ctx: GoogleToolContext,
   eventIdOrLink: string,
-): Promise<{ event: CalendarEvent; eventId: string }> {
+): Promise<{ event: CalendarEvent; eventId: string; requester: string }> {
   const eventId = parseEventId(eventIdOrLink);
   const requester = await requesterEmail(ctx);
   if (!requester) {
@@ -277,15 +287,78 @@ async function readInvitedEvent(
       "Junior is not invited to this meeting, so it cannot read its transcript.",
     );
   }
-  const requesterInvited =
-    event.organizer?.email?.toLowerCase() === requester ||
-    attendees.some((attendee) => attendee.email === requester);
-  if (!requesterInvited) {
+  if (!isInvited(event, requester)) {
     throw new PluginToolInputError(
       "Only people invited to this meeting can ask Junior for its transcript.",
     );
   }
-  return { event, eventId };
+  return { event, eventId, requester };
+}
+
+function isInvited(
+  event: Pick<CalendarEvent, "attendees" | "organizer">,
+  email: string,
+): boolean {
+  return (
+    event.organizer?.email?.toLowerCase() === email ||
+    (event.attendees ?? []).some(
+      (attendee) => attendee.email.toLowerCase() === email,
+    )
+  );
+}
+
+/**
+ * Require the requester on every event on Junior's calendar that uses this
+ * Meet link near this occurrence.
+ *
+ * Anyone can copy a Meet link onto a new event. Without this check, a person
+ * could invite Junior to their own event with the link of a meeting they were
+ * not invited to, and read that meeting's transcript. Junior does not join
+ * calls, so the meetings whose records it can read are ones it set up or is
+ * invited to. Those meetings are on its calendar.
+ */
+async function requireRequesterOnSharedLink(
+  ctx: GoogleToolContext,
+  input: { code: string; endMs: number; requester: string; startMs: number },
+): Promise<void> {
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const response = await googleApiRequest(ctx, {
+      operation: "google.calendar.events.list",
+      path: "/calendar/v3/calendars/primary/events",
+      query: {
+        maxResults: "250",
+        // One item per series, so a weekly meeting counts once.
+        singleEvents: "false",
+        timeMax: new Date(input.endMs + SHARED_LINK_WINDOW_MS).toISOString(),
+        timeMin: new Date(input.startMs - SHARED_LINK_WINDOW_MS).toISOString(),
+        ...(pageToken ? { pageToken } : undefined),
+      },
+    });
+    if (response.status !== 200) {
+      throw googleApiError("google.calendar.events.list", response);
+    }
+    const parsed = eventListSchema.parse(response.body);
+    const outsider = parsed.items.some(
+      (item) =>
+        item.status !== "cancelled" &&
+        meetingCode(item) === input.code &&
+        !isInvited(item, input.requester),
+    );
+    if (outsider) {
+      throw new PluginToolInputError(
+        "Another meeting on Junior's calendar uses this Meet link, and the requester is not invited to it. Junior cannot tell the calls apart, so it does not read this transcript.",
+      );
+    }
+    pageToken = parsed.nextPageToken;
+    if (!pageToken) {
+      return;
+    }
+  }
+  // Fail closed: Junior could not check every event.
+  throw new Error(
+    "Junior's calendar has too many events to check which meetings share this Meet link.",
+  );
 }
 
 /**
@@ -308,7 +381,10 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
     inputSchema,
     outputSchema,
     async execute(input): Promise<Output> {
-      const { event, eventId } = await readInvitedEvent(ctx, input.eventId);
+      const { event, eventId, requester } = await readInvitedEvent(
+        ctx,
+        input.eventId,
+      );
       const code = meetingCode(event);
       if (!code) {
         throw new PluginToolInputError(
@@ -322,6 +398,12 @@ export function createReadMeetingTranscriptTool(ctx: GoogleToolContext) {
           "This event has no start and end time, so Junior cannot find its call.",
         );
       }
+      await requireRequesterOnSharedLink(ctx, {
+        code,
+        endMs,
+        requester,
+        startMs,
+      });
       const base = {
         target: "readMeetingTranscript" as const,
         eventId,
