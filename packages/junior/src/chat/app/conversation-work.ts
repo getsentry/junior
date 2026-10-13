@@ -22,8 +22,10 @@ import {
 } from "@/chat/agent-invocations/work";
 import {
   enqueueAgentInvocationResult,
+  startAgentInvocationsForChildResults,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { botConfig } from "@/chat/config";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -146,6 +148,7 @@ export function createConversationWork(
         queue: options.queue,
         state: options.state,
       }),
+    maxAgentDepth: botConfig.maxAgentDepth,
   });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
@@ -175,9 +178,15 @@ export function createConversationWork(
   const run = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // Children cannot spawn children, so agent invocation results only reach
-    // Conversations that run Event Turns. Nested children would need results
-    // routed through the child's agent invocation instead.
+    // A result for a child Conversation starts an agent invocation on that
+    // child. Results for other Conversations run as Event Turns below.
+    const childResults = await startAgentInvocationsForChildResults(context, {
+      queue: options.queue,
+      state: options.state,
+    });
+    if (childResults) {
+      return childResults;
+    }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
       return await conversationTurnWorker(

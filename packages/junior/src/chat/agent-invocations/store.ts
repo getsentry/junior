@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
@@ -55,6 +55,21 @@ export function getNamedAgentConversationId(
   name: string,
 ): string {
   return stableId("agent", parentConversationId, name);
+}
+
+/**
+ * Return the stable identity of the agent invocation that gives one result to
+ * the child Conversation that started it. `parentConversationId` is the parent
+ * of that child Conversation.
+ */
+export function getAgentInvocationResultInvocationId(
+  parentConversationId: string,
+  resultInvocationId: string,
+): string {
+  return getAgentInvocationId(
+    parentConversationId,
+    `result:${resultInvocationId}`,
+  );
 }
 
 /** Return the stable turn identity advanced by one agent invocation. */
@@ -187,6 +202,20 @@ export async function getActiveAgentInvocationForConversation(
       `Child conversation ${childConversationId} has multiple active agent invocations`,
     );
   }
+  return rows[0] ? invocationFromRow(rows[0]) : undefined;
+}
+
+/** Read the newest agent invocation of one child Conversation. */
+export async function getLatestAgentInvocationForConversation(
+  childConversationId: string,
+): Promise<AgentInvocation | undefined> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.childConversationId, childConversationId))
+    .orderBy(desc(juniorAgentInvocations.createdAt))
+    .limit(1);
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
@@ -330,6 +359,126 @@ export async function createAgentInvocation(
   });
 }
 
+/**
+ * Create or replay the agent invocation that gives one child agent result to
+ * the child Conversation that started it. It continues that Conversation for
+ * the same parent, Actor, and credentials as `latest`. It skips the busy and
+ * active-count checks because it continues work that already passed them.
+ */
+export async function createAgentInvocationForResult(
+  args: {
+    input: string;
+    latest: AgentInvocation;
+    resultInvocationId: string;
+  },
+  nowMs = Date.now(),
+): Promise<AgentInvocation> {
+  const invocationId = getAgentInvocationResultInvocationId(
+    args.latest.parentConversationId,
+    args.resultInvocationId,
+  );
+  await getSqlExecutor()
+    .db()
+    .insert(juniorAgentInvocations)
+    .values({
+      invocationId,
+      parentConversationId: args.latest.parentConversationId,
+      childConversationId: args.latest.childConversationId,
+      agentName: args.latest.agentName ?? null,
+      input: args.input,
+      actor: args.latest.actor,
+      credentialContext: args.latest.credentialContext ?? null,
+      source: { kind: "agent_invocation" },
+      destination: args.latest.destination,
+      reasoningLevel: args.latest.reasoningLevel ?? null,
+      status: "pending",
+      mailboxStatus: "pending",
+      createdAt: new Date(nowMs),
+      updatedAt: new Date(nowMs),
+      terminalAt: null,
+    })
+    .onConflictDoNothing();
+  const invocation = await getAgentInvocation(invocationId);
+  if (
+    !invocation ||
+    invocation.childConversationId !== args.latest.childConversationId
+  ) {
+    throw new Error(`Agent invocation creation raced for ${invocationId}`);
+  }
+  return invocation;
+}
+
+/**
+ * Return whether a child Conversation still has work that will start another
+ * agent invocation on it: a queued agent invocation, a running child agent,
+ * or a child agent result that no agent invocation has received yet.
+ */
+async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
+  const db = getSqlExecutor().db();
+  const [queued, children] = await Promise.all([
+    db
+      .select({ invocationId: juniorAgentInvocations.invocationId })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(
+            juniorAgentInvocations.childConversationId,
+            invocation.childConversationId,
+          ),
+          ne(juniorAgentInvocations.invocationId, invocation.invocationId),
+          inArray(
+            juniorAgentInvocations.status,
+            NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+          ),
+        ),
+      )
+      .limit(1),
+    db
+      .select({
+        invocationId: juniorAgentInvocations.invocationId,
+        status: juniorAgentInvocations.status,
+      })
+      .from(juniorAgentInvocations)
+      .where(
+        eq(
+          juniorAgentInvocations.parentConversationId,
+          invocation.childConversationId,
+        ),
+      ),
+  ]);
+  if (queued.length > 0) {
+    return true;
+  }
+  if (children.length === 0) {
+    return false;
+  }
+  if (
+    children.some(
+      (child) =>
+        !TERMINAL_AGENT_INVOCATION_STATUSES.includes(
+          child.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
+        ),
+    )
+  ) {
+    return true;
+  }
+  const received = await db
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      inArray(
+        juniorAgentInvocations.invocationId,
+        children.map((child) =>
+          getAgentInvocationResultInvocationId(
+            invocation.parentConversationId,
+            child.invocationId,
+          ),
+        ),
+      ),
+    );
+  return received.length < children.length;
+}
+
 /** List bounded invocation records whose mailbox append still needs repair. */
 export async function listPendingAgentInvocationMailboxAppends(
   limit = 100,
@@ -430,7 +579,9 @@ export async function markAgentInvocationPaused(
 
 /**
  * Persist one terminal invocation result without overwriting an earlier
- * result. The same write marks the result for the parent mailbox.
+ * result. The same write marks the result for the parent mailbox. If the
+ * child still has open work, the result is `replaced`: the parent gets one
+ * report, from the agent invocation that finishes the child's work.
  */
 export async function completeAgentInvocation(
   args:
@@ -448,6 +599,15 @@ export async function completeAgentInvocation(
       },
 ): Promise<AgentInvocation | undefined> {
   const nowMs = args.nowMs ?? Date.now();
+  const current = await getAgentInvocation(args.invocationId);
+  if (!current || isTerminalAgentInvocation(current)) {
+    return current;
+  }
+  // Open child work only moves forward, so a read before the write is safe:
+  // each `replaced` result has open work that starts a later invocation.
+  const parentMailboxStatus = (await hasOpenChildWork(current))
+    ? "replaced"
+    : "pending";
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
@@ -455,7 +615,7 @@ export async function completeAgentInvocation(
       status: args.status,
       result: args.status === "completed" ? args.result : null,
       errorMessage: args.status === "completed" ? null : args.errorMessage,
-      parentMailboxStatus: "pending",
+      parentMailboxStatus,
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })

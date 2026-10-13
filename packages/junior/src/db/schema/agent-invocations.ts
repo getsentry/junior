@@ -27,10 +27,15 @@ export const AGENT_INVOCATION_MAILBOX_STATUSES = [
   "appended",
 ] as const;
 
-/** Parent mailbox append state. Only terminal invocations have a value. */
+/**
+ * Parent mailbox append state. Only terminal invocations have a value.
+ * `replaced` means the child still had open work, so a later agent invocation
+ * on the same child sends the result instead.
+ */
 export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
   "pending",
   "appended",
+  "replaced",
 ] as const;
 
 export const juniorAgentBindings = pgTable(

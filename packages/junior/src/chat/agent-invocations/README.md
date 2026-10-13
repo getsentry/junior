@@ -16,9 +16,11 @@ stores the terminal result for its parent to read later.
   binding state.
 - An invocation without a name gets an invocation-scoped child conversation.
 - `parentConversationId` is immutable. Bindings and invocation content are
-  purged with their root Conversation tree. Delegation is one level deep by
-  design: children cannot spawn children, hand off model profiles, or
-  otherwise override their run policy.
+  purged with their root Conversation tree. Children cannot hand off model
+  profiles or otherwise override their run policy.
+- `limits.maxAgentDepth` is the number of child levels that can start their
+  own children. The default, 0, lets only the root start children. The worker
+  hides `spawnAgent` from deeper children.
 - Each parent may keep at most
   `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT` non-terminal child invocations in
   flight (named busy-locking is separate and still applies per name).
@@ -73,10 +75,26 @@ mailbox metadata and wait window as Watch Events, but it has no
   history with `searchConversationEvents`.
 - The local CLI has no parent mailbox, so it does not send results.
 
+### Nested Children
+
+A child Conversation has no Location, so a result for a child cannot run an
+Event Turn. Instead, each result starts a new agent invocation on that child.
+Its id comes from the result's agent invocation id, so retries do not start a
+second one. It uses the parent, Actor, and credentials of the child's latest
+agent invocation, and it skips the busy and active-count checks.
+
+The parent gets one report for the child's work. When a child agent
+invocation finishes, it is `replaced` instead of sent if the child still has
+open work: a queued agent invocation, a running child, or a child result that
+no agent invocation has received yet. That open work always starts a later
+agent invocation on the child, which sends the report. The worker already
+holds new mailbox input while a child is paused, so one child runs one agent
+invocation at a time.
+
 A Conversation created for an Agent invocation stores `parentConversationId`.
 It uses the same Conversation type as all other work. It does not copy the
-parent Conversation's Location or receive Delivery. Its Run reads the parent
-Conversation's Location when tools need it. Output stays inside Junior. Agent
+root Conversation's Location or receive Delivery. Its Run reads the root
+Conversation's Location and visibility when tools need them. Output stays inside Junior. Agent
 invocation fields still carry the Actor, credentials, Source, and Destination
 until the final Run interface removes Destination. The final Run carries the
 parent Location once, separate from Source and Delivery.
@@ -92,8 +110,9 @@ tool receives only the delegated task, optional child name, and optional
 per-task reasoning level. The runtime derives actor, credentials, destination,
 visibility, source, parent conversation, and idempotency from the active tool
 call. Child runs set
-`disabledFeatures: ["handoff", "interactive-auth", "subagents"]` so they cannot
-hand off models, start interactive OAuth pauses, or spawn further children.
+`disabledFeatures: ["handoff", "interactive-auth"]` so they cannot hand off
+models or start interactive OAuth pauses. They also disable `subagents` when
+they are deeper than `limits.maxAgentDepth`.
 TODO(dcramer): Issues #881 and #883 track a way for children to force interactive
 auth when a delegated tool requires credentials the parent can already request.
 

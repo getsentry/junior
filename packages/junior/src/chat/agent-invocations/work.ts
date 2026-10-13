@@ -327,17 +327,46 @@ async function saveAgentInvocationResult(args: {
       };
 }
 
+// Parent links never form a cycle, so this only guards against bad data.
+const MAX_CONVERSATION_ANCESTORS = 100;
+
+/**
+ * Read how many parents a child Conversation has and the root Conversation
+ * Location. A child of the root has depth 1.
+ */
+async function readChildAncestry(
+  conversationId: string,
+): Promise<{ depth: number; location?: Location }> {
+  let depth = 0;
+  let currentId = conversationId;
+  while (depth <= MAX_CONVERSATION_ANCESTORS) {
+    const conversation = await getConversationStore().get({
+      conversationId: currentId,
+    });
+    if (!conversation?.parentConversationId) {
+      return { depth, location: conversation?.location };
+    }
+    depth += 1;
+    currentId = conversation.parentConversationId;
+  }
+  throw new Error(`Conversation ${conversationId} has too many parents`);
+}
+
 /**
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
+ * `maxAgentDepth` is the number of child agent levels that can start their
+ * own child agents. The default, 0, lets only the root start child agents.
  */
 export function createAgentInvocationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
   } = {},
 ) {
+  const maxAgentDepth = options.maxAgentDepth ?? 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -379,6 +408,7 @@ export function createAgentInvocationWorker(
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
+    let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
         throw new Error(
@@ -411,19 +441,17 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection] = await Promise.all([
+      const [persisted, projection, ancestry] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
+        readChildAncestry(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
-      location = (
-        await getConversationStore().get({
-          conversationId: invocation.parentConversationId,
-        })
-      )?.location;
+      location = ancestry.location;
+      canSpawn = ancestry.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };
@@ -464,7 +492,9 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+          disabledFeatures: canSpawn
+            ? ["handoff", "interactive-auth"]
+            : ["handoff", "interactive-auth", "subagents"],
           reasoning: invocation.reasoningLevel,
           state: {
             sandboxRef,

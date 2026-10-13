@@ -12,20 +12,26 @@ import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
+  createAgentInvocationForResult,
   getAgentInvocation,
   getAgentInvocationResultMessageId,
+  getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
 } from "./store";
 import type { TerminalAgentInvocation } from "./types";
+import { enqueueAgentInvocation } from "./work";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
 const AGENT_INVOCATION_EVENT_TYPE_PREFIX = "agent_invocation.";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
-const AGENT_INVOCATION_TASK_MAX_LENGTH = 500;
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -67,7 +73,9 @@ function trustedSummary(
 /**
  * Build the parent Inbound message for one terminal agent invocation. The
  * child result is model output, so the parent gets it as information, not
- * instructions.
+ * instructions. Verified details leave out the task. The input of an agent
+ * invocation that receives a result holds another child's output, and the
+ * parent's own `spawnAgent` call already has the task.
  */
 function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
@@ -108,7 +116,6 @@ function buildResultInboundMessage(
             ? { agent_name: invocation.agentName }
             : undefined),
           status: invocation.status,
-          task: invocation.input.slice(0, AGENT_INVOCATION_TASK_MAX_LENGTH),
         },
         externalText:
           invocation.status === "completed"
@@ -164,6 +171,59 @@ function resultInvocationId(message: InboundMessage): string | undefined {
     : undefined;
 }
 
+/** Read one result message's agent invocation and check its parent. */
+async function getResultInvocation(
+  message: InboundMessage,
+  invocationId: string,
+): Promise<TerminalAgentInvocation> {
+  const invocation = await getAgentInvocation(invocationId);
+  if (
+    !invocation ||
+    !isTerminalAgentInvocation(invocation) ||
+    invocation.parentConversationId !== message.conversationId
+  ) {
+    throw new Error(
+      `Agent invocation result ${invocationId} does not belong to ${message.conversationId}`,
+    );
+  }
+  return invocation;
+}
+
+/**
+ * Give agent invocation results that reach a child Conversation to that
+ * child. A child Conversation has no Location, so it cannot run an Event
+ * Turn. Each result starts a new agent invocation on the child instead, and
+ * that invocation reports to the child's parent. Returns undefined for work
+ * that is not a result for a child Conversation.
+ */
+export async function startAgentInvocationsForChildResults(
+  context: ConversationWorkerContext,
+  options: { queue: ConversationWorkQueue; state?: StateAdapter },
+): Promise<ConversationWorkerResult | undefined> {
+  const messages = context.attempt.messages;
+  const invocationIds = messages.map(resultInvocationId);
+  if (messages.length === 0 || invocationIds.some((id) => !id)) {
+    return undefined;
+  }
+  const latest = await getLatestAgentInvocationForConversation(
+    context.conversationId,
+  );
+  if (!latest) {
+    return undefined;
+  }
+  for (const [index, message] of messages.entries()) {
+    const result = await getResultInvocation(message, invocationIds[index]!);
+    const invocation = await createAgentInvocationForResult({
+      input: message.input.text.trim(),
+      latest,
+      resultInvocationId: result.invocationId,
+    });
+    await enqueueAgentInvocation(invocation, options);
+  }
+  await context.attempt.ack();
+  return { status: "completed" };
+}
+
 /**
  * Run each agent invocation result as the Actor that triggered the child, user
  * or system. This is on purpose: the result continues that Actor's work. The
@@ -185,16 +245,7 @@ export async function withAgentInvocationResultActors(
       if (!invocationId) {
         return entry;
       }
-      const invocation = await getAgentInvocation(invocationId);
-      if (
-        !invocation ||
-        !isTerminalAgentInvocation(invocation) ||
-        invocation.parentConversationId !== entry.message.conversationId
-      ) {
-        throw new Error(
-          `Agent invocation result ${invocationId} does not belong to ${entry.message.conversationId}`,
-        );
-      }
+      const invocation = await getResultInvocation(entry.message, invocationId);
       return { ...entry, actor: invocation.actor };
     }),
   );

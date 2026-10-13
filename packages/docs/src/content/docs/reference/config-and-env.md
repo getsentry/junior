@@ -173,6 +173,10 @@ const app = await createApp({
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
 
+By default, only the root Conversation can start child agents. Set
+`limits.maxAgentDepth` to let child agents start their own child agents. For
+example, `1` lets a child agent start child agents, and those cannot start more.
+
 ## Remote ACP
 
 Every Junior app mounts `GET`, `POST`, and `DELETE /api/acp`. No app option
