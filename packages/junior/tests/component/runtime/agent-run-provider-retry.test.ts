@@ -1102,6 +1102,7 @@ describe("agent run continuation", () => {
 
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
     agentMode.value = "cooperativeYield";
+    repositoryState.availableAtBoundary = true;
 
     const outcome = await executeAgentRun({
       conversationId: "conversation-yield",
@@ -1135,7 +1136,15 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "user",
     ]);
+    // A resumed Turn finds AGENTS.md only in context messages.
+    expect(JSON.stringify(sessionRecord?.piMessages[2])).toContain(
+      "# AGENTS.md instructions for /vercel/sandbox/repo",
+    );
+    expect(sessionRecord?.piMessageProvenance[2]).toEqual({
+      authority: "context",
+    });
     await expect(
       getPausedTurnRequest({
         conversationId: "conversation-yield",
