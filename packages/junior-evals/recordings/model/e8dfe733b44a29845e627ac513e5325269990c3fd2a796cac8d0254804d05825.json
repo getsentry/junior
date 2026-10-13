@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the history of 'a web conversation' does not fit the context window, compact it and answer from the summary",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "658e33a81627",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_03de5c15b5f63e68016aceb3850ae487d187025d4b6aedab63\",\"reasoningEncryptedContent\":\"gAAAAABqzrOF3ln9Ahz0ieS5zfFpy0UlOfB7e9UDqQwWdsnBXj9pEM1bt-8h52E3F9SAUpqEIw8ECJurbErQPsnIpmBluXcKn1BcHwjt_Vm5TDgA9TW9vj8-V_bVIe2H1l_BkEsdl-n2iGWUKXxgI7ReaQ6ncJO52GbFD5rjTGXFrQdb4a5GMavfq1O-rYnyReIBSzwk8zJllPy-q3sWADSu25IyNLaTdlVCUYNHnPEg8hFC2QECbwJTsLpguPQzp_iOh8AabJ8hlfDm696Z8O63FTT7CKcIsbSBSZde-1_aPm0OVbxfjdFLj5b6_Ho14F3wVFwhjK-73a0PPcnVLhPBBji9Ih1uNIiwH_RwDXfmyzZpP0aONn2a4b4dB_c0A1833HKBsoWkS_lyCGkdeoCy1oWHgMrLAFRPgtnhzTjlCrDem3g_fRRox7nHaMfyTWXPlqyhtFeSHKjMuFOXqghB9iYenOZkbH2w8OyFYKz9YHno8iL7gszjT74lx23tyvHJ97kik97OjKZdBfMpZVyjC1rwDQ3FH6oloX3sXfXOxySo0oMT1fERqMlLzOzI4X8s3HTRb7BjD2UOoN2WgXtSRKfiMIBtGmkpKU4hlcSIx63jgcGM7nRB3YcSBfWIJVA2k0OccVFmAJEeIWiIdOyEVUuu4fYkeIR2eoSgp-Ra9cgy1pDsZ0pVDE32aRJTOYIJ3C27PjqLv1A1Gq9pDZOvuAyUI1Bk-lS57rhGPUZr9XjEiSwLP1uaJY9Oid3FtHxn0Av6Xa4kHuPmWr-22akzSZlWwRRiLxw51Fhylua-dDA0VH7IHuq5fw4gSGO-lb2UQWR-aHsWAEfjqQdvKA24nFooyvWpseqYm7r5EY8SL2jf24uPd_0XR1-rUcHVX28mb8y4rRx0IRulC6cp0kuNrF0RkG3RLGKin6prlDG4Cz5IlUOEhOamHcl7ezknzHOjIJyPe5TNg1tcsQfTs42EXo4rKPkvhJpxqGIXsVmwIVsjFjJmSqjSILI9hCzLK8B78qcfwHoqclaXNMMIVv23woiDcymbLL6erpITfLvhiuyC31olEhdGstS9dc-4djDoCqtCByF5gHNiC3hT_74decQ6QsXQFlWKGt-fDpBAKHn0vK6G95aF2diTAb4HqHEMxMo3ZdlxlJ48diteRJBjqqU7cNPX1gsyZFEPEpx0MpyFtww2lZd-Bqy65gdNHeRBeC0MtwRUc_8kO8DXyszizTs-gCTANcjeZpduEGwizndQ7AYJ0XHPOsY_rulTfUUVWMLs0lh0XDM7I8xxaYysNcVpg_xXcQ3RFJOb4TDjRxkIZGmLPZHZZjAXBhjbm_LHx3FAE1EvjQiYeQYfvdLrgGWbRNmRQqgqtw6ZzOjhXTaZDMa7h-3KRm9sIQCxauuKK9f1FYD-wzandea-WMexOir35tdcXPHONFQixSlumuMDEQ1UEFpP1Hgc4IvdvnRZbvATAKa3EfJZlp5fr0FfzS579cB9B8hNSObklvX-Bz7l8_yaPbDdsToyHVhwkL1zOListSSIkF8EZf5Tq2Gnjqj8MoT1NxnAp3IJW4NNYtJzIMdSDz0he_LjR9cw66S3y8MceF9UyIHFEqc3CriVeRoL832vCILdZwsJYNabUJcIrrypLe-qokGRS49brf1Mw6rEbQH96M2Hdcmhr9kZwBpzdvV8vucBh5ncyWMQV7SdTqKC_LH-3Yk6u3HwD9u4gpM2k7H-bnP1JDdj91s_4fbiikLXlYI1KQnWqlETQ8X3zlONTqWHq9Gzh_VbiNOpuVW6en63ARkwnFa2bDFwKIrhAYnlGjo9HjXQ9e7wk_7HV2GQw04dN_AbIZdcN2Eq5uzc8QPBlWicOUMGjecnW13FmzWgKjJjdZYGYdedqyvmjIO5F3b0j4NXnYoWCv9hUncJNr3i0U8Amv-34H8jtnuClFAk40f9vZDWDJyJGrgcCpJ2veBnpBvAE6sBjv0EQi1p60m0BsX0Ak7muK833kwjwu59wxUB9gPF3z5EJp5VNnjpynpafeNlNQ8VQT4P1Z6HAPVPwYJhL8WzL_eYqI6Wx0RMV_DlXCbe7j1oHDE-VePLItn4EBYSX0LT2Mds1AFKdzNLkDdNPMNu3aJDrgIoiN7iMQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Answer requires retrieving the launch date from the prior thread context.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_03de5c15b5f63e68016aceb385880887d1927aecd5de32e202\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":2177,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":2174},\"outputTokens\":{\"total\":88,\"text\":41,\"reasoning\":47},\"raw\":{\"input_tokens\":2177,\"input_tokens_details\":{\"cache_write_tokens\":2174,\"cached_tokens\":0},\"output_tokens\":88,\"output_tokens_details\":{\"reasoning_tokens\":47},\"total_tokens\":2265}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_03de5c15b5f63e68016aceb3849f8887d1ab0cf652151e8eb8\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931268479,\"endTime\":1791931270014,\"providerRequestId\":\"req_264e66c5e46c47cb9b8c71bf55bf2d46\",\"statusCode\":200,\"providerResponseId\":\"resp_03de5c15b5f63e68016aceb3849f8887d1ab0cf652151e8eb8\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e36490675b685fbcb6d1c4feb79ab06b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00031605\",\"marketCost\":\"0.00031605\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00031605\",\"inferenceCost\":\"0.00031605\",\"inputInferenceCost\":\"0.00027205\",\"outputInferenceCost\":\"0.000044\",\"generationId\":\"gen_01M4VPTFAE0VSDDCBCD4RMBJ7C\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
