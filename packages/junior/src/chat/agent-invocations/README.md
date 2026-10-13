@@ -52,6 +52,24 @@ conversation tree.
 8. The heartbeat repairs invocations left in `mailboxStatus: "pending"` or
    `parentMailboxStatus: "pending"`.
 
+## Dashboard Markers
+
+Each agent invocation writes two events to its parent Conversation. The
+dashboard pairs them to show the child and its status.
+
+- `subagent_started` is written before the child mailbox append, so the child
+  cannot end first. It has the child `conversation_id` and, for a `spawnAgent`
+  call, the parent tool call id. The agent invocation stores that id, so a
+  repaired mailbox append writes the same event.
+- `subagent_ended` is written when the agent invocation is terminal, before the
+  parent result is sent. Its outcome is `success`, `blocked`, or `error`. The
+  heartbeat result repair also writes it, because the child work can be
+  acknowledged before the worker sends the result.
+- Both events have an idempotency key from the agent invocation id, so retries
+  and repairs do not add a second row.
+- An agent invocation that receives a nested result has no tool call, but it
+  writes the same two events. A `replaced` result still ends its own row.
+
 ## Parent Results
 
 A terminal result wakes the parent Conversation as a core Event without a

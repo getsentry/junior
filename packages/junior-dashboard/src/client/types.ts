@@ -40,7 +40,7 @@ export type TranscriptViewToolCallPart = {
 export type TranscriptViewSubagentPart = {
   childConversationId: string;
   id: string;
-  status: "aborted" | "completed" | "error" | "running";
+  status: "aborted" | "blocked" | "completed" | "error" | "running";
   subagentKind: string;
   type: "subagent";
 };

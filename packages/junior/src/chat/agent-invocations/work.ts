@@ -72,6 +72,64 @@ type EnqueueOptions = {
   state?: StateAdapter;
 };
 
+// The dashboard labels each child row with this kind.
+const SUBAGENT_KIND = "agent";
+
+/**
+ * Record in the parent Conversation that one agent invocation started. The
+ * dashboard pairs this event with `subagent_ended` to show the child and its
+ * status. It must be written before the child mailbox append, so the child
+ * cannot end first.
+ */
+async function recordSubagentStarted(
+  invocation: AgentInvocation,
+): Promise<void> {
+  await getConversationEventStore().append(invocation.parentConversationId, [
+    {
+      idempotencyKey: `subagent_started:${invocation.invocationId}`,
+      data: {
+        type: "subagent_started",
+        subagentInvocationId: invocation.invocationId,
+        subagentKind: SUBAGENT_KIND,
+        childConversationId: invocation.childConversationId,
+        ...(invocation.parentToolCallId
+          ? { parentToolCallId: invocation.parentToolCallId }
+          : undefined),
+        ...(invocation.reasoningLevel
+          ? { reasoningLevel: invocation.reasoningLevel }
+          : undefined),
+      },
+      createdAtMs: invocation.createdAtMs,
+    },
+  ]);
+}
+
+/**
+ * Record in the parent Conversation how one agent invocation ended. The
+ * heartbeat result repair also calls this, because the child work can be
+ * acknowledged before the worker reports the result.
+ */
+export async function recordSubagentEnded(
+  invocation: TerminalAgentInvocation,
+): Promise<void> {
+  await getConversationEventStore().append(invocation.parentConversationId, [
+    {
+      idempotencyKey: `subagent_ended:${invocation.invocationId}`,
+      data: {
+        type: "subagent_ended",
+        subagentInvocationId: invocation.invocationId,
+        outcome:
+          invocation.status === "completed"
+            ? "success"
+            : invocation.status === "blocked"
+              ? "blocked"
+              : "error",
+      },
+      createdAtMs: invocation.terminalAtMs,
+    },
+  ]);
+}
+
 /** Build destinationless mailbox work that references one durable invocation. */
 export function buildAgentInvocationInboundMessage(
   invocation: AgentInvocation,
@@ -103,6 +161,7 @@ export async function enqueueAgentInvocation(
   if (invocation.mailboxStatus === "appended") {
     return;
   }
+  await recordSubagentStarted(invocation);
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),
@@ -398,7 +457,11 @@ export function createAgentInvocationWorker(
     if (!invocation) {
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
-    // Enqueue the result before ack so a failed parent append retries this work.
+    // Report the result before ack so a failed parent append retries this work.
+    const report = async (terminal: TerminalAgentInvocation): Promise<void> => {
+      await recordSubagentEnded(terminal);
+      await options.enqueueResult?.(terminal);
+    };
     const finish = async (
       terminal: AgentInvocation | undefined,
     ): Promise<void> => {
@@ -406,7 +469,7 @@ export function createAgentInvocationWorker(
         return;
       }
       await persistTerminalLifecycle(terminal);
-      await options.enqueueResult?.(terminal);
+      await report(terminal);
     };
 
     let acknowledged = context.attempt.messages.length === 0;
@@ -616,10 +679,10 @@ export function createAgentInvocationWorker(
       return { status: "completed" };
     }
 
-    // executeTurn already recorded the terminal Turn; only enqueue the result.
+    // executeTurn already recorded the terminal Turn; only report the result.
     const terminal = await getAgentInvocation(invocation.invocationId);
     if (terminal && isTerminalAgentInvocation(terminal)) {
-      await options.enqueueResult?.(terminal);
+      await report(terminal);
     }
     await acknowledge();
     return { status: "completed" };

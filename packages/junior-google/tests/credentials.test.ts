@@ -9,7 +9,7 @@ import { getGoogleAccount, saveGoogleAccount } from "../src/store";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,
-  CALENDAR_SCOPE,
+  API_SCOPES,
   createGoogleDb,
   stubGoogleEnv,
 } from "./fixture";
@@ -88,7 +88,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: API_SCOPES,
     });
     const fetch = vi.fn(async () =>
       Response.json({ access_token: "access-token", expires_in: 3600 }),
@@ -120,7 +120,7 @@ describe("Google credential issuing", () => {
       connectedAtMs: Date.now(),
       connectedBy: ADMIN_EMAIL,
       refreshToken: "refresh-token",
-      scope: CALENDAR_SCOPE,
+      scope: API_SCOPES,
     });
     vi.stubGlobal(
       "fetch",

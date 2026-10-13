@@ -694,7 +694,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
           },
         ],
@@ -704,11 +704,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            input: { automation: "Review the dashboard plan" },
+            input: { task: "Review the dashboard plan before editing." },
           },
         ],
       }),
@@ -717,7 +717,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         parentToolCallId: "qa-advisor",
         status: "running",
       }),
@@ -726,7 +726,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         parentToolCallId: "qa-advisor",
         status: "completed",
       }),
@@ -735,11 +735,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            output: { child_conversation_id: DASHBOARD_QA_PLAN_ID },
+            output: { conversation_id: DASHBOARD_QA_PLAN_ID },
           },
         ],
       }),
@@ -748,7 +748,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         status: "running",
       }),
       reportEvent(7, iso(Date.parse(startedAt), 44_000), {
@@ -756,8 +756,8 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
-        status: "completed",
+        subagentKind: "agent",
+        status: "blocked",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "tool_calls",

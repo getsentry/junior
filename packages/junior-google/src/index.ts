@@ -3,7 +3,8 @@
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
  * that account out of band, through the dashboard Admin page or the CLI. Calendar
- * tools use host-owned egress, and the sandbox gets no Google credential.
+ * and Docs tools use host-owned egress, and the sandbox gets no Google
+ * credential.
  */
 import {
   defineJuniorPlugin,
@@ -28,7 +29,10 @@ import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
+import { createListGoogleDocCommentsTool } from "./tools/list-doc-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
+import { createReadGoogleDocTool } from "./tools/read-doc";
+import { createSearchGoogleDocsTool } from "./tools/search-docs";
 import { createUpdateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
@@ -39,7 +43,7 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling as Junior's own Google Workspace account",
+        "Google Calendar scheduling and Google Docs reading as Junior's own Google Workspace account",
       domains: [GOOGLE_API_DOMAIN],
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
@@ -77,6 +81,9 @@ export function googlePlugin(): PluginRegistration {
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
+          listGoogleDocComments: createListGoogleDocCommentsTool(toolContext),
+          readGoogleDoc: createReadGoogleDocTool(toolContext),
+          searchGoogleDocs: createSearchGoogleDocsTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
       },

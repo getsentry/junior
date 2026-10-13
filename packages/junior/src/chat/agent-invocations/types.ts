@@ -47,6 +47,7 @@ const agentInvocationBaseSchema = z
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,
     parentConversationId: exactStringSchema,
+    parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     updatedAtMs: z.number().finite(),
@@ -80,6 +81,7 @@ export const createAgentInvocationSchema = z
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     parentConversationId: exactStringSchema,
+    parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
   })
   .strict();
