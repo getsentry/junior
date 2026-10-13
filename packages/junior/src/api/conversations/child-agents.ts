@@ -9,11 +9,9 @@ import {
 import { readConversationAccessFromSql } from "./access";
 
 /**
- * Load the direct child agents of one Conversation from agent invocation
- * records, or throw a standard API not-found error.
- *
- * The status comes from the runtime, not from model output. Viewers who cannot
- * see private content get only the status and time of each child agent.
+ * Load the direct child agents of one Conversation, or throw a standard API
+ * not-found error. Viewers who cannot see private content get only the status
+ * and time of each child agent.
  */
 export async function requireConversationChildAgents(
   conversationId: string,
