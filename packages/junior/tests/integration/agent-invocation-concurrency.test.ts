@@ -16,6 +16,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -35,6 +36,10 @@ const baseInput = {
   input: "Do the delegated work.",
   parentConversationId,
 };
+
+async function listAgents() {
+  return await createListAgentsTool(parentConversationId).execute!({}, {});
+}
 
 function taskModel(request: AgentRun): StreamFn {
   return createModelStream([
@@ -164,6 +169,17 @@ describe("agent invocation identity and concurrency", () => {
         idempotencyKey: "named-2",
         input: "second named task",
         reasoningLevel: "medium",
+      });
+      await expect(listAgents()).resolves.toEqual({
+        agents: [
+          {
+            conversation_id: first.childConversationId,
+            name: "researcher",
+            status: "pending",
+            task: "second named task",
+            updated_at: expect.any(String),
+          },
+        ],
       });
       await harness.drainQueuedWork();
 
@@ -405,6 +421,25 @@ describe("agent invocation identity and concurrency", () => {
         errorMessage: "sibling failed",
         status: "failed",
       });
+      const listed = await listAgents();
+      expect(listed.agents).toHaveLength(2);
+      expect(listed.agents).toEqual(
+        expect.arrayContaining([
+          {
+            conversation_id: successful.childConversationId,
+            status: "completed",
+            task: "successful sibling",
+            updated_at: expect.any(String),
+          },
+          {
+            conversation_id: failing.childConversationId,
+            error: "sibling failed",
+            status: "failed",
+            task: "failing sibling",
+            updated_at: expect.any(String),
+          },
+        ]),
+      );
     } finally {
       await harness.close();
     }

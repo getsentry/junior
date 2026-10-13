@@ -119,5 +119,17 @@ they are deeper than `limits.maxAgentDepth`.
 TODO(dcramer): Issues #881 and #883 track a way for children to force interactive
 auth when a delegated tool requires credentials the parent can already request.
 
-This slice does not yet list or cancel child agents. Those behaviors should build on the invocation record
-rather than introducing another scheduler or execution loop.
+`listAgents` is exposed with `spawnAgent`. It lists the direct child agents of
+the current Conversation from SQL agent invocation records, not from model
+output. Each child shows the state of its oldest open agent invocation, else
+of its latest one. Two more rules apply to nested child agents:
+
+- A child whose latest result is `replaced` shows `pending`. Its open child
+  work starts another agent invocation on it.
+- The task is the input of the latest agent invocation that the parent
+  started. An agent invocation that gives a grandchild result to the child is
+  not a task.
+
+This slice does not yet cancel child agents. Cancellation should build on the
+agent invocation record rather than introducing another scheduler or execution
+loop.

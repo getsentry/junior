@@ -94,3 +94,15 @@ export type TerminalAgentInvocation = Extract<
 export type CreateAgentInvocationInput = z.input<
   typeof createAgentInvocationSchema
 >;
+
+/** Current state of one child agent, read from its agent invocations. */
+export type ChildAgent = {
+  agentName?: string;
+  childConversationId: string;
+  /** Error of the latest agent invocation when the child is blocked or failed. */
+  errorMessage?: string;
+  status: AgentInvocationStatus;
+  /** Input of the latest agent invocation that the parent started. */
+  task: string;
+  updatedAtMs: number;
+};
