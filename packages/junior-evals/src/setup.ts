@@ -27,9 +27,15 @@ const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
 afterAll(restoreAiGatewayDispatcher);
 
 beforeEach(async () => {
+  // `stable-setup.ts` set the eval clock of this test. The main process uses
+  // the same time when it checks sandbox egress tokens and leases.
   const response = await fetch(evalContext.controlUrl, {
     method: "POST",
-    headers: { authorization: `Bearer ${evalContext.controlToken}` },
+    headers: {
+      authorization: `Bearer ${evalContext.controlToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ nowMs: Date.now() }),
   });
   if (!response.ok) {
     throw new Error(

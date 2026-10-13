@@ -365,7 +365,15 @@ Its `README.md` tells how it keys, records, and replays requests.
   need its own fix. The fixture and the rules already handle these:
   - Every eval suite loads `src/stable-setup.ts` first. It sets the time
     zone to UTC and gives `Math.random` a seed from the test name. It keeps
-    the clock and `crypto.randomUUID` real; the file tells why.
+    `crypto.randomUUID` real; the file tells why.
+  - `Date` starts each test at the same instant (`EVAL_START_MS` in
+    `src/eval-clock.ts`) and moves forward in real time. The model often
+    calculates times from "now", such as the end of a search window, and
+    the recording keeps them. With the same "now" on each run, tools get the
+    same results for those times. The worker sends its clock to the main
+    process at the start of each test, so sandbox egress checks tokens and
+    leases with the same clock. Checks of real external tokens, such as
+    Vercel OIDC tokens, use `realNow()`.
   - The Slack mock takes its timestamps and channel ids from the test name.
     Setup data and web Conversations take ids from `fixtureId()` in
     `src/fixture/ids.ts`.
