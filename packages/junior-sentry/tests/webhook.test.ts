@@ -33,6 +33,36 @@ function issueBody(action = "created") {
   };
 }
 
+function metricAlertBody(action = "critical") {
+  return {
+    action,
+    actor: { id: "sentry", name: "Sentry", type: "application" },
+    data: {
+      description_text:
+        "1000 events in the last 10 minutes\nFilter: level:error",
+      description_title: "Critical: Too many errors",
+      metric_alert: {
+        alert_rule: {
+          aggregate: "count()",
+          dataset: "events",
+          id: "7",
+          name: "Too many errors",
+          projects: ["junior"],
+          query: "level:error",
+          time_window: 10,
+        },
+        id: "4",
+        identifier: "1",
+        projects: ["junior"],
+        status: 2,
+      },
+      web_url:
+        "https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
+    },
+    installation: { uuid: "24b397fc-a86e-43ef-9297-949e21b82480" },
+  };
+}
+
 function signedRawRequest(
   rawBody: string,
   options: {
@@ -123,6 +153,52 @@ describe("Sentry webhook events", () => {
         untrustedText: expect.any(String),
       },
     ]);
+  });
+
+  it("normalizes a metric alert state change for the alert rule", () => {
+    expect(
+      normalizeSentryEvents({
+        body: metricAlertBody(),
+        hookResource: "metric_alert",
+        hookTimestamp: "1785976800",
+        webhookOrg: "sentry",
+      }),
+    ).toEqual([
+      {
+        data: {
+          alertRuleId: "7",
+          incidentId: "4",
+          url: "https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
+        },
+        eventKey: "sentry:metric-alert:sentry/7:4:metric_alert.critical",
+        eventType: "metric_alert.critical",
+        identifier: "metric-alert:sentry/7",
+        occurredAtMs: 1_785_976_800_000,
+        trustedSummary: "Sentry metric alert sentry/7 is critical.",
+        untrustedText: [
+          "Critical: Too many errors",
+          "1000 events in the last 10 minutes",
+          "Filter: level:error",
+          "URL: https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
+        ].join("\n"),
+      },
+    ]);
+  });
+
+  it("ignores a metric alert for a different organization or state", () => {
+    const otherOrg = metricAlertBody();
+    otherOrg.data.web_url =
+      "https://sentry.io/organizations/other/alerts/rules/details/7/";
+
+    for (const body of [otherOrg, metricAlertBody("triggered")]) {
+      expect(
+        normalizeSentryEvents({
+          body,
+          hookResource: "metric_alert",
+          webhookOrg: "sentry",
+        }),
+      ).toEqual([]);
+    }
   });
 
   it("parses Sentry-Hook-Timestamp unix seconds when firstSeen is absent", () => {

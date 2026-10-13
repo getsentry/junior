@@ -36,7 +36,7 @@ Verified CLI surface (check live `sentry --help` before blocking):
 
 Set `SENTRY_READ_TOKEN` to a read-only internal integration token. Junior then uses it for Sentry API reads (`GET`, `HEAD`, `OPTIONS`), including Explore queries, scheduled tasks, and event automations. Writes and `/api/0/users/` requests still use the requesting user's OAuth token.
 
-## Issue webhooks
+## Issue and metric alert webhooks
 
 Use a **Sentry internal integration** (not a public app install flow):
 
@@ -44,6 +44,12 @@ Use a **Sentry internal integration** (not a public app install flow):
 2. Point it at `https://<junior-host>/api/webhooks/sentry`.
 3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
-Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes `issue.created` for `org/project#issueId` and `org/project`. Create watches/event automations before the issue arrives; unmatched deliveries are not replayed.
+For metric alerts, enable **Alert Rule Action** on the same integration and add it as a trigger action (`"type": "sentry_app"`) on each alert. Sentry does not send metric alerts through a webhook resource subscription.
+
+Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes:
+
+- `issue.created` for `org/project#issueId` and `org/project`.
+- `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`.
+  Create watches/event automations before the issue arrives; unmatched deliveries are not replayed.
 
 Full guide: https://junior.sentry.dev/extend/sentry-plugin/
