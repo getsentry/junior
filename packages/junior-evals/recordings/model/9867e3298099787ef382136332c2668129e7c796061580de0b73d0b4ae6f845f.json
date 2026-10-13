@@ -1,0 +1,28 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation teaches a task procedure, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "33b260e14054",
+      "maxOutputTokens": "405101758459",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "541b8be3f42f",
+      "prompt[1]": "eff220ebdc2b",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_02260f5abf1d4387016acebffee9c087d19a52ec4619a06415\",\"reasoningEncryptedContent\":\"gAAAAABqzr__09R5U7iTS0Nk3kc6mdfmOa1ouY9DmL3Lfq8jdXLKE1TkOEcfdu7MYfELWFk79OxlvmbysXcZoT90bn3Rw99EyXxMHahZ34U53fq5E4mp8J669xmvHoR0vjQBs9KFrqNWHwYeIEjG9aRT_QkeYIlQ3hNgpdl_ZRUlSByJkkpBQS1znK6Cbyz71r2wqCS7liUMlPpuLpzrQYVwYS4W8MQ7FapU3GmXGeWdsX9NNEmcBJMg6_KIRZG1gf7tTNwieGCKfZtcHUv3W7CS558liFb5YOJhMF1HPQhltsv-hGPZc8_VT106wNx7hki9BfuApCGutKlIXm2oLpT_XmR2t9sDgF1z1ArOtuA8SjNi8sfW3dcupa9Z4jXso3DVNl6MpLvpJ8WaiauwJvZyESzP-LUka3hERiC0Z6t0VKxEZ5SAHezVnZOdPZtmTK6cFEr9Vt-b7KK7JdFLlnwMiGJLyRNe8UU-ZxWTt8aS-nQn6dcXVMr1c_ZXnQ4qUIpzIRKZA7Xk84cclpkTH6QewUkhSZ4FYuSdN_QwVN-5_S0PvBOaQGqRBpdhDrhevFurIyYPfogJiCxMIy_ViZw8vxNXTPcLcxXQcVpSN_0CWL0gIaBHcTEZktxzpaTZdekSjkascEBoeo4HZsQwY-ZqnLnsLx2FhGK_hN6Lgjax8kejxaFSKUby6nXk9792wiXyMEQcR38r8wtT1toeqFc6ohbpdues09Ok8IF4yxBDtaKb1X5WMuKvXccV_xuoBWQW2JKPTtAwhb-ahBJ1bSXSwWVZdeJSg3lBuFSC8O5R-tcjMiydUUduOQO6rjd4j4iwvNevZukLakKqFYVf-iAePICCkft4nTegNqVF0BtWHSw56Rz0PPMOK3wg-3gptzeyZqLTYieRhPqJ83lTN7fP9LKjeL3OKFxYc8EPt00wX_eO05hlFWv7G1d8xFMYXuAfwiKsLntxkwu8iHkkAD-mkFxZp2u2BiEDdtaCoSBueSQRR5tcCMMxfsDyVTxmKQ5udkmScTQMjc2BhHN2jbEDHU0PecseJZSKn935GHmHq4tp-PgVoGR4jiGmbPotC_-TBJtUtuL54rOqi7bl6nH7bkeBypS9PNRJeqEonE7l1uErBjYPQVk3HX3pUEtHDgmtTTZeJcRooagBCVPq_Ugpp49xH9rbMjdmxXm3FAu0xZcgTKG5X4HdR--3sVT_UZyhMdftIle1-cwM4pPonfWQ0eN_fQ3HRMm5ERfW4sGaf6FsdS_X-QpW_AtP2sKoF6wp4ZgA9agZQg4ThYYyAeq2wFK--8pks70xSdFRNKWSYAc1XCOuuuHAz00kmpSEYg9tMA1ZPIiqaYYzpHDFPu5nEfWXwQfakyCCUmqN02LKxJj0JEl24Bf6z3bZLNuCOio3F044Aa0ReyzcR8_JRnYqbeQsONqIVpdr4jpaeDeQiHvx6cQcmZc8cKQKg0ax5Xbh4dtDtdxgnURVthhMmVfRE7przIqaR3oYQl9DAgwdbAUl3fbnE7nCEEqrJ3ioTv7TLlVgI1jcljxrBTgryvpxkwreV4XsDKJ4Shb7GkxntZyhEt-OxhZ6oxtAoEC__iF6uezQrKGR2CV9w1grbZSs3IYJcrmkdyXz-IJVQUJaKkJtVDq4_wcwBae4Esu6kvXwwIvlsJIz6zK-z45SClNBDMrxrjFyGVY99YkzDPZaIzQWLcUUSdAe65zk4sSsDwVo2vFAHm2JDvaIv22AuGs3G5pVkgn_hHWd4Iz9w1vFHHEegs6fTarugsXJRDthSchv2vNTkCCJbJjTesp3dpompsO68N4FWA==\"}}},{\"type\":\"text\",\"text\":\"{\\\"memories\\\":[{\\\"kind\\\":\\\"procedure\\\",\\\"canonicalFact\\\":\\\"For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.\\\",\\\"expiresAtMs\\\":null,\\\"evidenceMessageIndices\\\":[0]}]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_02260f5abf1d4387016acebfff268887d1abc90477e7b0f8ae\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":1469,\"noCache\":3,\"cacheRead\":0,\"cacheWrite\":1466},\"outputTokens\":{\"total\":73,\"text\":49,\"reasoning\":24},\"raw\":{\"input_tokens\":1469,\"input_tokens_details\":{\"cache_write_tokens\":1466,\"cached_tokens\":0},\"output_tokens\":73,\"output_tokens_details\":{\"reasoning_tokens\":24},\"total_tokens\":1542}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_02260f5abf1d4387016acebffe781c87d1a31cc4090ae8abd8\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791934462373,\"endTime\":1791934463644,\"providerRequestId\":\"req_947437ee85bf49a185f1a27d08c3f7ef\",\"statusCode\":200,\"providerResponseId\":\"resp_02260f5abf1d4387016acebffe781c87d1a31cc4090ae8abd8\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"77ad186805f57f6249571e1a82a2bb98\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00022005\",\"marketCost\":\"0.00022005\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00022005\",\"inferenceCost\":\"0.00022005\",\"inputInferenceCost\":\"0.00018355\",\"outputInferenceCost\":\"0.0000365\",\"generationId\":\"gen_01M4VSVYC9R3KW580KQE8SP1NQ\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}
