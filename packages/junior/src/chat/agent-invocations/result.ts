@@ -67,6 +67,8 @@ function trustedSummary(
       return `${agent} is blocked.`;
     case "failed":
       return `${agent} failed.`;
+    case "stopped":
+      return `${agent} was stopped.`;
   }
 }
 
@@ -213,6 +215,10 @@ export async function startAgentInvocationsForChildResults(
   }
   for (const [index, message] of messages.entries()) {
     const result = await getResultInvocation(message, invocationIds[index]!);
+    // `stopChildAgent` skips results that a stopped child has not received.
+    if (result.parentMailboxStatus === "skipped") {
+      continue;
+    }
     const invocation = await createAgentInvocationForResult({
       input: message.input.text.trim(),
       latest,

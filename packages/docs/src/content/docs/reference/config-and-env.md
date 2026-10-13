@@ -159,7 +159,8 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent and listAgents for durable child agent work.
+    // Model-facing spawnAgent, listAgents, and stopAgent for durable child
+    // agent work.
     // Incomplete; keep off unless you are testing the #879 runtime.
     subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app

@@ -29,13 +29,13 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
           status: z
             .enum(AGENT_INVOCATION_STATUSES)
             .describe(
-              "pending: waiting to run. running or paused: working. completed, blocked, or failed: stopped.",
+              "pending: waiting to run. running or paused: working. completed, blocked, failed, or stopped: not working.",
             ),
           task: z.string().describe("Latest task given to the child agent"),
           error: z
             .string()
             .optional()
-            .describe("Why the child agent is blocked or failed"),
+            .describe("Why the child agent is blocked, failed, or stopped"),
           updated_at: z.string().describe("Time of the latest change"),
         })
         .strict(),

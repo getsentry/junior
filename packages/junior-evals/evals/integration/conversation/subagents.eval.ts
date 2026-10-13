@@ -25,6 +25,25 @@ describe("Child Agents", () => {
     ]);
   });
 
+  test("when a child agent is no longer needed, stop it without a result turn", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ experimental: { subagents: true } });
+    const conversation = await run(
+      slackMention(
+        'Use spawnAgent to start one child agent named "scout" with the task "Write a detailed 2,000-word history of maple syrup." The work is no longer needed, so use stopAgent to stop it right away. Then reply here with only the word STOPPED.',
+      ),
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(completedToolCalls("stopAgent", conversation)).toHaveLength(1);
+    // A stopped child agent sends no result, so no later Turn starts.
+    expect(conversation.turns).toHaveLength(1);
+    expect(conversation.turns[0]?.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("STOPPED"),
+    ]);
+  });
+
   test("when a child agent starts its own child agent, report once after both finish", async ({
     agent,
   }) => {

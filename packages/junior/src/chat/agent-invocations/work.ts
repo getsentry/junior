@@ -13,6 +13,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
+  abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
   saveTurnCheckpoint,
@@ -45,6 +46,7 @@ import {
   getAgentInvocation,
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
+  getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
@@ -169,8 +171,18 @@ export async function resolveAgentInvocationId(
   if (context.attempt.messages.length > 0) {
     return undefined;
   }
-  return (await getActiveAgentInvocationForConversation(context.conversationId))
-    ?.invocationId;
+  const active = await getActiveAgentInvocationForConversation(
+    context.conversationId,
+  );
+  if (active) {
+    return active.invocationId;
+  }
+  // A stop request can outlive the run it stopped and wake the child again.
+  // The stopped agent invocation handles that wake and clears the request.
+  const latest = await getLatestAgentInvocationForConversation(
+    context.conversationId,
+  );
+  return latest?.status === "stopped" ? latest.invocationId : undefined;
 }
 
 /** Project the terminal invocation into the idempotent turn lifecycle. */
@@ -193,6 +205,15 @@ async function persistTerminalLifecycle(
       ...common,
       outcome: invocation.result?.trim() ? "success" : "no_reply",
     });
+  } else if (invocation.status === "stopped") {
+    // A child stopped between slices keeps a paused Turn record. Abandon it
+    // so nothing resumes it.
+    await abandonTurnRecord({
+      conversationId: common.conversationId,
+      errorMessage: "Turn cancelled",
+      turnId: common.turnId,
+    });
+    await lifecycle.complete({ ...common, outcome: "cancelled" });
   } else if (
     invocation.status === "blocked" ||
     invocation.status === "failed"
@@ -313,18 +334,26 @@ async function saveAgentInvocationResult(args: {
       `Agent invocation did not finish for ${args.invocation.invocationId}`,
     );
   }
-  return terminal.status === "completed"
-    ? {
-        finishedAtMs: terminal.terminalAtMs,
-        outcome: terminal.result.trim()
-          ? ("success" as const)
-          : ("no_reply" as const),
-      }
-    : {
-        finishedAtMs: terminal.terminalAtMs,
-        failureCode: "model_execution_failed" as const,
-        outcome: "failed" as const,
-      };
+  if (terminal.status === "completed") {
+    return {
+      finishedAtMs: terminal.terminalAtMs,
+      outcome: terminal.result.trim()
+        ? ("success" as const)
+        : ("no_reply" as const),
+    };
+  }
+  // The child was stopped while it saved its result.
+  if (terminal.status === "stopped") {
+    return {
+      finishedAtMs: terminal.terminalAtMs,
+      outcome: "cancelled" as const,
+    };
+  }
+  return {
+    finishedAtMs: terminal.terminalAtMs,
+    failureCode: "model_execution_failed" as const,
+    outcome: "failed" as const,
+  };
 }
 
 /**
@@ -393,6 +422,24 @@ export function createAgentInvocationWorker(
         );
       }
       acknowledged = true;
+    };
+
+    // Read the stop signal before any terminal return, so the worker clears a
+    // stop request that this wake handles.
+    const stopSignal = context.stopSignal?.();
+    // `stopChildAgent` marks the agent invocation `stopped` before it stops
+    // the run. Another stop, such as a direct stop of the child
+    // Conversation, records it here and reports it to the parent.
+    const finishStopped = async (): Promise<ConversationWorkerResult> => {
+      await finish(
+        await completeAgentInvocation({
+          invocationId,
+          errorMessage: "Agent invocation was stopped",
+          status: "stopped",
+        }),
+      );
+      await acknowledge();
+      return { status: "completed" };
     };
 
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
@@ -482,6 +529,7 @@ export function createAgentInvocationWorker(
           source: invocation.source,
           ...(location ? { location } : undefined),
           surface: "internal",
+          ...(stopSignal ? { signal: stopSignal } : undefined),
           // TODO(dcramer): Issues #881 and #883 track a path for child runs to
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
@@ -520,6 +568,9 @@ export function createAgentInvocationWorker(
       if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
+      if (stopSignal?.aborted) {
+        return await finishStopped();
+      }
       const blocking = blockingInvocationError(runError);
       if (blocking) {
         const terminal = await completeAgentInvocation({
@@ -547,6 +598,9 @@ export function createAgentInvocationWorker(
       return { status: "completed" };
     }
 
+    if (outcome.status !== "completed" && stopSignal?.aborted) {
+      return await finishStopped();
+    }
     if (outcome.status === "suspended") {
       await markAgentInvocationPaused(invocation.invocationId);
       return { status: "yielded" };

@@ -56,7 +56,8 @@ conversation tree.
 
 A terminal result wakes the parent Conversation as a core Event without a
 Watch. The Event has namespace `junior` and type `agent_invocation.completed`,
-`agent_invocation.blocked`, or `agent_invocation.failed`. It uses the same
+`agent_invocation.blocked`, `agent_invocation.failed`, or
+`agent_invocation.stopped`. It uses the same
 mailbox metadata and wait window as Watch Events, but it has no
 `subscriptionId`.
 
@@ -130,6 +131,23 @@ of its latest one. Two more rules apply to nested child agents:
   started. An agent invocation that gives a grandchild result to the child is
   not a task.
 
-This slice does not yet cancel child agents. Cancellation should build on the
-agent invocation record rather than introducing another scheduler or execution
-loop.
+`stopAgent` is exposed with `spawnAgent`. It stops one direct child agent of
+the current Conversation and every child agent below it:
+
+1. SQL marks each open agent invocation in that tree `stopped`. A `stopped`
+   agent invocation is terminal, so it frees its name and its place in the
+   active-child limit.
+2. Results that the tree has not received yet, and `replaced` results, become
+   `skipped`. No later agent invocation sends or receives them.
+3. A Conversation stop request for each child Conversation aborts a run that
+   is still working. This is the same stop request that Slack and ACP use.
+
+The parent asked for the stop, so it gets no result Turn. `listAgents` shows a
+child whose latest result is `skipped` as `stopped`. A stop that does not come
+from `stopAgent`, such as a direct stop of the child Conversation, also ends
+the agent invocation as `stopped`. That result is `pending`, so the parent gets
+an `agent_invocation.stopped` Event.
+
+A stop request can outlive the run that it stopped. When it wakes the child
+again, the latest `stopped` agent invocation handles the wake and clears the
+request.
