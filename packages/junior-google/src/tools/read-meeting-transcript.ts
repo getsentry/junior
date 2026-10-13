@@ -363,8 +363,8 @@ async function requireRequesterOnSharedLink(
     }
   }
   // Fail closed: Junior could not check every event.
-  throw new Error(
-    "Junior's calendar has too many events to check which meetings share this Meet link.",
+  throw new PluginToolInputError(
+    "Junior's calendar has too many events to check which meetings share this Meet link, so it does not read this transcript.",
   );
 }
 
