@@ -1029,7 +1029,7 @@ describe("memory plugin storage", () => {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
-            input.prompt.includes("<memory-preference-adjudication-input>")
+            input.prompt.includes("<memory-adjudication-input>")
           ) {
             supersessionCalls.push(input);
             return {
@@ -1529,7 +1529,7 @@ describe("memory plugin storage", () => {
         async completeObject(input) {
           if (
             typeof input.prompt === "string" &&
-            input.prompt.includes("<memory-preference-adjudication-input>")
+            input.prompt.includes("<memory-adjudication-input>")
           ) {
             const existingJson =
               /<existing-memories>\n(.+)\n<\/existing-memories>/s.exec(
@@ -3361,6 +3361,28 @@ WHERE id = '${superseded.memory.id}'
         created: false,
         memory: { id: created.memory.id },
       });
+      const duplicateRows = () =>
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryDuplicates);
+      await expect(duplicateRows()).resolves.toEqual([
+        expect.objectContaining({
+          idempotencyKey: "memory-test:exact-dedup-repeat",
+          memoryId: created.memory.id,
+          observedAtMs: TEST_NOW_MS,
+          reason: "exact",
+        }),
+      ]);
+      nowMs = TEST_NOW_MS + 91 * 24 * 60 * 60 * 1000;
+      await store.createMemory({
+        content: "Prefers release notes with risk callouts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:exact-dedup-later",
+      });
+      await expect(duplicateRows()).resolves.toEqual([
+        expect.objectContaining({
+          idempotencyKey: "memory-test:exact-dedup-later",
+          memoryId: created.memory.id,
+        }),
+      ]);
       const otherKind = await store.createMemory({
         content: "Prefers release notes with risk callouts.",
         kind: "knowledge",
@@ -4606,9 +4628,7 @@ INSERT INTO junior_memory_memories (
       let duplicateId: string | undefined;
       const model: PluginModel = {
         async completeObject(input) {
-          expect(input.prompt).toContain(
-            "<memory-preference-adjudication-input>",
-          );
+          expect(input.prompt).toContain("<memory-adjudication-input>");
           return {
             object: duplicateId
               ? { decision: "duplicate", duplicateId, supersededIds: null }
@@ -4933,7 +4953,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("does not supersede conversation-scoped preference rows", async () => {
+  it("keeps conversation-scoped preferences when review suggests supersession", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4941,10 +4961,11 @@ INSERT INTO junior_memory_memories (
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
-          adjudicateSupersession() {
-            throw new Error(
-              "conversation-scoped preferences should not use supersession",
-            );
+          adjudicateSupersession(input) {
+            return {
+              decision: "supersedes_old",
+              supersededIds: [input.existingMemories[0].id],
+            };
           },
         },
       });
@@ -4971,36 +4992,76 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("does not adjudicate supersession for non-preference memories", async () => {
+  it("reuses semantic knowledge duplicates without superseding knowledge", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const oldContent = "Deploy checks use the release runbook.";
+      const changedContent = "Deploy checks use the release checklist.";
+      const duplicateContent = "The release runbook drives deploy checks.";
+      const adjudicationCalls: MemorySupersessionInput[] = [];
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
         now: () => nowMs,
         supersessionDecider: {
-          adjudicateSupersession() {
-            throw new Error("knowledge should not use preference supersession");
+          adjudicateSupersession(input) {
+            adjudicationCalls.push(input);
+            const old = input.existingMemories.find(
+              (memory) => memory.content === oldContent,
+            );
+            if (!old) {
+              return { decision: "distinct" };
+            }
+            return input.candidate.content === duplicateContent
+              ? { decision: "duplicate", duplicateId: old.id }
+              : { decision: "supersedes_old", supersededIds: [old.id] };
           },
         },
       });
 
       const oldMemory = await store.createMemory({
-        content: "Deploy checks use the release runbook.",
+        content: oldContent,
         kind: "knowledge",
-        idempotencyKey: "memory-test:supersession-knowledge-old",
+        idempotencyKey: "memory-test:knowledge-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createMemory({
-        content: "Deploy checks use the release checklist.",
+      const changedMemory = await store.createMemory({
+        content: changedContent,
         kind: "knowledge",
-        idempotencyKey: "memory-test:supersession-knowledge-new",
+        idempotencyKey: "memory-test:knowledge-changed",
       });
 
+      nowMs = TEST_NOW_MS + 2;
+      await expect(
+        store.createMemory({
+          content: duplicateContent,
+          kind: "knowledge",
+          idempotencyKey: "memory-test:knowledge-duplicate",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: oldMemory.memory.id },
+      });
+
+      expect(adjudicationCalls.at(-1)).toMatchObject({
+        candidate: { content: duplicateContent, kind: "knowledge" },
+      });
       await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: changedMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryDuplicates),
+      ).resolves.toEqual([
+        {
+          conversationId: context.conversationId,
+          idempotencyKey: "memory-test:knowledge-duplicate",
+          memoryId: oldMemory.memory.id,
+          observedAtMs: TEST_NOW_MS + 2,
+          reason: "semantic",
+        },
       ]);
     } finally {
       await fixture.close();

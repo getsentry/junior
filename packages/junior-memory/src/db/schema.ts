@@ -12,11 +12,13 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex,
   vector,
 } from "drizzle-orm/pg-core";
 import {
+  MEMORY_DUPLICATE_REASONS,
   MEMORY_EMBEDDING_DIMENSIONS,
   MEMORY_EMBEDDING_METRICS,
   MEMORY_SCOPES,
@@ -144,6 +146,35 @@ export const juniorMemoryEmbeddings = pgTable(
     check(
       "junior_memory_embeddings_dimensions_check",
       sql`${table.dimensions} = ${sql.raw(String(MEMORY_EMBEDDING_DIMENSIONS))}`,
+    ),
+  ],
+);
+
+/**
+ * One row for each capture that resolved to an existing memory instead of a
+ * new row. Rows are thin so callers can count recent repeats per memory.
+ */
+export const juniorMemoryDuplicates = pgTable(
+  "junior_memory_duplicates",
+  {
+    memoryId: text("memory_id")
+      .notNull()
+      .references(() => juniorMemoryMemories.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    reason: text("reason", { enum: MEMORY_DUPLICATE_REASONS }).notNull(),
+    /** Conversation where Junior saw the repeat, when known. */
+    conversationId: text("conversation_id"),
+    observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.memoryId, table.idempotencyKey] }),
+    index("junior_memory_duplicates_observed_idx").on(
+      table.memoryId,
+      table.observedAtMs,
+    ),
+    check(
+      "junior_memory_duplicates_reason_check",
+      sql`${table.reason} IN ('exact', 'semantic')`,
     ),
   ],
 );
