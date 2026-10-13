@@ -45,8 +45,7 @@ Gmail are out of scope.
 - `readMeetingTranscript` reads the Google Meet transcript of one meeting on
   Junior's calendar. Junior and the requester must both be invited to the
   meeting. It checks this on the Calendar event before it calls Meet. It reads
-  only the calls of that one occurrence: the Meet code of the event, from one
-  hour before the start to the end. It returns each line with the speaker
+  only the calls of that one occurrence: the Meet code of the event, from 10 minutes before the start to the end. It returns each line with the speaker
   name and time. It returns at most 60,000 characters and reports `truncated`.
   If Google denies access, it returns `access_denied` with the reason. It does
   not fail. The tool only reads. It does nothing because of what people said

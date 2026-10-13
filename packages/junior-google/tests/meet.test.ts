@@ -69,8 +69,13 @@ describe("Google Meet transcripts", () => {
     await expect(notInvited.read("event1")).rejects.toThrow(
       "Junior is not invited",
     );
+    // A cancelled event can be a stub without times or attendees.
+    const cancelled = meetTools(
+      Response.json({ id: "event1", status: "cancelled" }),
+    );
+    await expect(cancelled.read("event1")).rejects.toThrow("was cancelled");
     // Neither request reached Meet.
-    for (const { fetch } of [outsider, notInvited]) {
+    for (const { fetch } of [outsider, notInvited, cancelled]) {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(fetch.mock.calls[0]![0].operation).toBe(
         "google.calendar.event.get",
@@ -166,7 +171,7 @@ describe("Google Meet transcripts", () => {
     );
     // Only calls of this occurrence of this meeting.
     expect(records.searchParams.get("filter")).toBe(
-      'space.meeting_code = "abc-defg-hij" AND start_time >= "2026-10-12T16:00:00.000Z" AND start_time <= "2026-10-12T17:30:00.000Z"',
+      'space.meeting_code = "abc-defg-hij" AND start_time >= "2026-10-12T16:50:00.000Z" AND start_time <= "2026-10-12T17:30:00.000Z"',
     );
     expect(
       new URL(fetch.mock.calls[6]![0].request.url).searchParams.get(

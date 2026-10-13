@@ -19,8 +19,9 @@ import {
 const MAX_TRANSCRIPT_CHARS = 60_000;
 const MAX_PAGES = 20;
 const MAX_CONFERENCES = 5;
-// A conference can start a little before the scheduled time.
-const EARLY_START_MS = 60 * 60 * 1000;
+// A conference can start a little before the scheduled time. Keep this short:
+// a call that starts earlier on the same Meet link can be another meeting.
+const EARLY_START_MS = 10 * 60 * 1000;
 // How far around the occurrence Junior looks for other events that share the
 // same Meet link.
 const SHARED_LINK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -105,6 +106,8 @@ const eventSchema = z.object({
 });
 
 type CalendarEvent = z.infer<typeof eventSchema>;
+
+const cancelledEventSchema = z.object({ status: z.literal("cancelled") });
 
 const eventListSchema = z.object({
   items: z.array(eventSchema.partial({ end: true, start: true })),
@@ -261,18 +264,22 @@ async function readInvitedEvent(
     operation: "google.calendar.event.get",
     path: `/calendar/v3/calendars/primary/events/${eventId}`,
   });
-  if (response.status === 404 || response.status === 410) {
+  if (response.status === 404) {
     throw new PluginToolInputError(
       `Junior's calendar has no event ${eventId}. Junior can only read transcripts of meetings it is invited to.`,
     );
   }
+  if (response.status === 410) {
+    throw new PluginToolInputError(`Event ${eventId} was cancelled.`);
+  }
   if (response.status !== 200) {
     throw googleApiError("google.calendar.event.get", response);
   }
-  const event = eventSchema.parse(response.body);
-  if (event.status === "cancelled") {
+  // A cancelled event can come back as a stub with only `id` and `status`.
+  if (cancelledEventSchema.safeParse(response.body).success) {
     throw new PluginToolInputError(`Event ${eventId} was cancelled.`);
   }
+  const event = eventSchema.parse(response.body);
   const attendees = (event.attendees ?? []).map((attendee) => ({
     email: attendee.email.toLowerCase(),
     self: attendee.self === true,
