@@ -54,11 +54,12 @@ runs:
           exit 0
         fi
         # A run tests the pull request merged into its base. If the base
-        # changed after the recording run, the recordings can miss requests
-        # that only the new base makes. Record them.
+        # changed after the newest recording run, the recordings can miss
+        # requests that only the new base makes. Record them. Older commits
+        # in the chain can have an older base; the newest one decides.
         base="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TESTED_MERGE" --jq '.parents[0].sha')"
-        recorded_bases="$(grep -o '^Eval-Base: [0-9a-f]*$' <<< "$chain" | sort -u || true)"
-        if [[ "$recorded_bases" != "Eval-Base: $base" ]]; then
+        recorded_base="$(grep -m1 -o '^Eval-Base: [0-9a-f]*$' <<< "$chain" || true)"
+        if [[ "$recorded_base" != "Eval-Base: $base" ]]; then
           echo "mode=auto" >> "$GITHUB_OUTPUT"
           echo "Eval recordings mode: auto, because the base changed after the recording run" >> "$GITHUB_STEP_SUMMARY"
           exit 0
