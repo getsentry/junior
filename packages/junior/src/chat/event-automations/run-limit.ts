@@ -47,6 +47,26 @@ export function eventAutomationRunLimitReason(): string {
   );
 }
 
+/** Run one change to an automation's run log under its lock. */
+async function withRunLog<T>(
+  automationId: string,
+  state: StateAdapter,
+  run: (key: string) => Promise<T>,
+): Promise<T> {
+  await state.connect();
+  const key = runLogKey(automationId);
+  const result = await withLock(state, `${key}:lock`, () => run(key), {
+    ttlMs: MUTATION_LOCK_TTL_MS,
+    waitMs: RUN_LIMIT_LOCK_WAIT_MS,
+  });
+  if (!result.acquired) {
+    throw new Error(
+      `Could not acquire event automation run limit lock for ${automationId}`,
+    );
+  }
+  return result.value;
+}
+
 /**
  * Admit one run of an Event automation, or refuse when its window is full.
  *
@@ -60,46 +80,37 @@ export async function admitEventAutomationRun(args: {
   state?: StateAdapter;
 }): Promise<"allowed" | "limited"> {
   const state = args.state ?? getStateAdapter();
-  await state.connect();
-  const key = runLogKey(args.automationId);
-  const result = await withLock(
-    state,
-    `${key}:lock`,
-    async () => {
-      const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
-      const log = parseRunLog(await state.get(key)).filter(
-        (entry) => entry.atMs > windowStartMs,
-      );
-      if (log.some((entry) => entry.key === args.runKey)) {
-        return "allowed" as const;
-      }
-      if (log.length >= EVENT_AUTOMATION_MAX_RUNS) {
-        return "limited" as const;
-      }
-      log.push({ atMs: args.nowMs, key: args.runKey });
-      await state.set(key, log, EVENT_AUTOMATION_RUN_WINDOW_MS);
-      return "allowed" as const;
-    },
-    { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: RUN_LIMIT_LOCK_WAIT_MS },
-  );
-  if (!result.acquired) {
-    throw new Error(
-      `Could not acquire event automation run limit lock for ${args.automationId}`,
+  return await withRunLog(args.automationId, state, async (key) => {
+    const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
+    const log = parseRunLog(await state.get(key)).filter(
+      (entry) => entry.atMs > windowStartMs,
     );
-  }
-  return result.value;
+    if (log.some((entry) => entry.key === args.runKey)) {
+      return "allowed" as const;
+    }
+    if (log.length >= EVENT_AUTOMATION_MAX_RUNS) {
+      return "limited" as const;
+    }
+    log.push({ atMs: args.nowMs, key: args.runKey });
+    await state.set(key, log, EVENT_AUTOMATION_RUN_WINDOW_MS);
+    return "allowed" as const;
+  });
 }
 
 /**
  * Forget the runs counted for one Event automation.
  *
- * Resume calls this so the creator's fix takes effect at once. Without it, the
- * next Event would block the automation again until the window ends.
+ * Resume and revive call this so the automation starts with a new window.
+ * Call it while the automation cannot match Events, before it becomes active.
+ * Otherwise an Event between activation and this call could see the old full
+ * window and block the automation again. The admission lock keeps an
+ * in-progress admission from writing the old log back.
  */
 export async function clearEventAutomationRuns(
   automationId: string,
   state: StateAdapter = getStateAdapter(),
 ): Promise<void> {
-  await state.connect();
-  await state.delete(runLogKey(automationId));
+  await withRunLog(automationId, state, async (key) => {
+    await state.delete(key);
+  });
 }

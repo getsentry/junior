@@ -126,6 +126,11 @@ export async function createEventAutomation(
 ): Promise<StoredEventAutomation> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
+  // A revived row starts with a new run-limit window. Clear while the row is
+  // still deleted and cannot match Events. Live retries keep their count.
+  if ((await getEventAutomation(db, parsed.id))?.status === "deleted") {
+    await clearEventAutomationRuns(parsed.id);
+  }
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(juniorEventAutomations)
@@ -416,8 +421,7 @@ export async function findMatchingEventAutomations(
  * Change lifecycle under the same row lock as edits, without changing
  * credentials. A pause keeps an unresolved block reason, so resuming a paused
  * blocked automation returns it to blocked. Resume a blocked automation to
- * clear the reason. A resume that makes the automation active also clears its
- * run-limit count.
+ * clear the reason. A resume also clears the run-limit count first.
  */
 export async function setEventAutomationStatus(
   db: JuniorDatabase,
@@ -425,7 +429,16 @@ export async function setEventAutomationStatus(
   status: "active" | "paused",
   revision: string,
 ): Promise<StoredEventAutomation> {
-  const saved = await db.transaction(async (tx) => {
+  // Clear before activation. A blocked or paused row does not match Events, so
+  // no admission can refill the count before the row is active again. An
+  // already active row keeps its count.
+  if (
+    status === "active" &&
+    (await getEventAutomation(db, id))?.status !== "active"
+  ) {
+    await clearEventAutomationRuns(id);
+  }
+  return db.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(juniorEventAutomations)
@@ -452,10 +465,6 @@ export async function setEventAutomationStatus(
       ...(next.statusReason ? { statusReason: next.statusReason } : undefined),
     };
   });
-  if (saved.status === "active") {
-    await clearEventAutomationRuns(id);
-  }
-  return saved;
 }
 
 /**

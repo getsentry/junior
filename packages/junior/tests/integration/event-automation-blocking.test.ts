@@ -10,6 +10,7 @@ import {
   EVENT_AUTOMATION_RUN_WINDOW_MS,
 } from "@/chat/event-automations/run-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { juniorEventAutomations } from "@/db/schema/event-automations";
 import {
@@ -212,5 +213,22 @@ describe("event automation blocking", () => {
     expect(await ingest("github:after-resume", nextHourMs)).toEqual({
       dispatched: 2,
     });
-  });
+
+    // Recreating a deleted automation also starts a new window.
+    const remove = (automationId: string) =>
+      execute(createDeleteEventAutomationTool(context(), EVENT_CATALOG), {
+        automationId,
+      });
+    await remove(sibling.id);
+    await fill("github:refill", EVENT_AUTOMATION_MAX_RUNS - 1, nextHourMs);
+    await remove(automation.id);
+    const { automation: revived } = await createTask(
+      "Add the release-train label.",
+    );
+    expect(revived.id).toBe(automation.id);
+    expect(await ingest("github:after-revive", nextHourMs)).toEqual({
+      dispatched: 1,
+    });
+    // Filling the window takes about 90 sequential ingests.
+  }, 30_000);
 });

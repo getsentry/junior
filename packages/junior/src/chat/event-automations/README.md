@@ -52,7 +52,9 @@ Ingest counts a run before dispatch. A provider retry of a counted Event uses
 the same dispatch idempotency key and does not count again. When the window is
 full, ingest skips the dispatch and blocks the Automation with a reason, and its
 creator gets the blocked notice. Resume clears the count, so the next Event
-runs at once. The count is in the state adapter and expires with the window.
+runs at once. Recreating a deleted automation also clears it. Both clear the
+count before the row becomes active, under the same lock as admission, so a
+concurrent Event cannot see the old full window. The count is in the state adapter and expires with the window.
 
 A blocked dispatch blocks its Automation: a run could not get the authorization
 or credentials that it needs, and only the creator can fix that. A blocked row
