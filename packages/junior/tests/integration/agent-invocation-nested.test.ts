@@ -64,19 +64,8 @@ async function prepareSlackParentConversation() {
   return { fixture };
 }
 
-/** Read the status and task of each child agent through the listAgents tool. */
 async function listAgents(conversationId: string) {
-  const { agents } = await createListAgentsTool(conversationId).execute!(
-    {},
-    {},
-  );
-  expect(agents.map((agent) => agent.task)).toEqual(
-    agents.map(() => slackInvocationInput.input),
-  );
-  return agents.map(({ conversation_id, status }) => ({
-    conversation_id,
-    status,
-  }));
+  return (await createListAgentsTool(conversationId).execute!({}, {})).agents;
 }
 
 describe("nested agent invocations", () => {
@@ -204,11 +193,17 @@ describe("nested agent invocations", () => {
       });
       // listAgents shows the state of open work. A `replaced` child still
       // has work, and an agent invocation that receives a result is not a task.
+      const listedChild = (childConversationId: string) => ({
+        conversation_id: childConversationId,
+        status: "pending",
+        task: slackInvocationInput.input,
+        updated_at: expect.any(String),
+      });
       await expect(listAgents(slackParentConversationId)).resolves.toEqual([
-        { conversation_id: child.childConversationId, status: "pending" },
+        listedChild(child.childConversationId),
       ]);
       await expect(listAgents(child.childConversationId)).resolves.toEqual([
-        { conversation_id: helper.childConversationId, status: "pending" },
+        listedChild(helper.childConversationId),
       ]);
 
       // Each child reports once, from the agent invocation that received the

@@ -425,11 +425,12 @@ describe("agent invocation identity and concurrency", () => {
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
+          {
             conversation_id: successful.childConversationId,
             status: "completed",
             task: "successful sibling",
-          }),
+            updated_at: expect.any(String),
+          },
           {
             conversation_id: failing.childConversationId,
             error: "sibling failed",

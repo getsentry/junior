@@ -8,7 +8,7 @@ import { AGENT_INVOCATION_STATUSES } from "@/db/schema/agent-invocations";
 const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;
 
-function clip(text: string, maxLength: number): string {
+function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
@@ -61,9 +61,9 @@ export function createListAgentsTool(conversationId: string) {
         conversation_id: agent.childConversationId,
         ...(agent.agentName ? { name: agent.agentName } : undefined),
         status: agent.status,
-        task: clip(agent.task, TASK_MAX_LENGTH),
+        task: truncate(agent.task, TASK_MAX_LENGTH),
         ...(agent.errorMessage
-          ? { error: clip(agent.errorMessage, ERROR_MAX_LENGTH) }
+          ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
           : undefined),
         updated_at: new Date(agent.updatedAtMs).toISOString(),
       })),

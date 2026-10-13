@@ -122,11 +122,13 @@ auth when a delegated tool requires credentials the parent can already request.
 `listAgents` is exposed with `spawnAgent`. It lists the direct child agents of
 the current Conversation from SQL agent invocation records, not from model
 output. Each child shows the state of its oldest open agent invocation, else
-of its latest one. A child whose latest result is `replaced` shows `pending`,
-because open work starts a later agent invocation on it. The task is the
-input of the latest agent invocation that the parent started. An agent
-invocation that gives a result to the child holds another child's output, so
-it is not shown as a task.
+of its latest one. Two more rules apply to nested child agents:
+
+- A child whose latest result is `replaced` shows `pending`. Its open child
+  work starts another agent invocation on it.
+- The task is the input of the latest agent invocation that the parent
+  started. An agent invocation that gives a grandchild result to the child is
+  not a task.
 
 This slice does not yet cancel child agents. Cancellation should build on the
 agent invocation record rather than introducing another scheduler or execution
