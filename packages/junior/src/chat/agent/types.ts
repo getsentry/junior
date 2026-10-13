@@ -73,7 +73,7 @@ export type SpawnAgentInput = {
 
 /** Handle returned after a child-agent task is durably scheduled. */
 export type SpawnAgentResult = {
-  invocationId: string;
+  childConversationId: string;
 };
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */

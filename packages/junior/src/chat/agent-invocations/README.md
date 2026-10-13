@@ -16,9 +16,9 @@ stores the terminal result for its parent to read later.
   binding state.
 - An invocation without a name gets an invocation-scoped child conversation.
 - `parentConversationId` is immutable. Bindings and invocation content are
-  purged with their root Conversation tree. Recursive delegation is disabled
-  until depth, cancellation, and authority rules are defined. Children cannot
-  spawn, hand off model profiles, or otherwise override their run policy.
+  purged with their root Conversation tree. Delegation is one level deep by
+  design: children cannot spawn children, hand off model profiles, or
+  otherwise override their run policy.
 - Each parent may keep at most
   `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT` non-terminal child invocations in
   flight (named busy-locking is separate and still applies per name).
@@ -43,8 +43,35 @@ conversation tree.
    projects onto the invocation. Empty resume wakes never become final delivery
    attempts, so unrecoverable stranded work must not throw and requeue forever.
 6. Completion writes the session record first, then projects the immutable
-   result or error onto the invocation.
-7. The heartbeat repairs invocations left in `mailboxStatus: "pending"`.
+   result or error onto the agent invocation. The same SQL write sets
+   `parentMailboxStatus: "pending"`.
+7. The worker appends the result to the parent mailbox before it acknowledges
+   the child work. Then it sets `parentMailboxStatus: "appended"`.
+8. The heartbeat repairs invocations left in `mailboxStatus: "pending"` or
+   `parentMailboxStatus: "pending"`.
+
+## Parent Results
+
+A terminal result wakes the parent Conversation as a core Event without a
+Watch. The Event has namespace `junior` and type `agent_invocation.completed`,
+`agent_invocation.blocked`, or `agent_invocation.failed`. It uses the same
+mailbox metadata and wait window as Watch Events, but it has no
+`subscriptionId`.
+
+- The parent Inbound message id comes from the agent invocation id, so retries
+  do not add a second parent Turn.
+- The parent Turn runs as the Actor that triggered the child, user or system.
+  This is on purpose: the result continues that Actor's work. The worker reads
+  the Actor from SQL and checks that the agent invocation belongs to the parent
+  Conversation. A delegated credential subject of a system Actor is not passed
+  to the result Turn yet.
+- Results from different Actors never share one Turn.
+- The child result is model output. The parent gets it as information, not
+  instructions.
+- The automated-turn limit does not drop results.
+- `spawnAgent` returns the child `conversation_id`. The parent reads child
+  history with `searchConversationEvents`.
+- The local CLI has no parent mailbox, so it does not send results.
 
 A Conversation created for an Agent invocation stores `parentConversationId`.
 It uses the same Conversation type as all other work. It does not copy the
@@ -70,7 +97,5 @@ hand off models, start interactive OAuth pauses, or spawn further children.
 TODO(dcramer): Issues #881 and #883 track a way for children to force interactive
 auth when a delegated tool requires credentials the parent can already request.
 
-This slice does not yet expose result recovery, inject child results into a
-parent turn, support recursive children, or implement cancellation. Those
-behaviors should build on the invocation record rather than introducing another
-scheduler or execution loop.
+This slice does not yet list or cancel child agents. Those behaviors should build on the invocation record
+rather than introducing another scheduler or execution loop.

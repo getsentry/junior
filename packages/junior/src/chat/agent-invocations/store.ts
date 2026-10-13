@@ -10,6 +10,7 @@ import {
   type AgentInvocation,
   type AgentInvocationStatus,
   type CreateAgentInvocationInput,
+  type TerminalAgentInvocation,
 } from "./types";
 import { AgentInvocationBusyError, AgentInvocationLimitError } from "./errors";
 
@@ -24,7 +25,7 @@ const TERMINAL_AGENT_INVOCATION_STATUSES = [
 const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
   "pending",
   "running",
-  "awaiting_resume",
+  "paused",
 ] as const satisfies readonly AgentInvocationStatus[];
 
 function stableId(prefix: string, ...parts: string[]): string {
@@ -66,6 +67,13 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+/** Return the stable parent mailbox identity for one terminal result. */
+export function getAgentInvocationResultMessageId(
+  invocationId: string,
+): string {
+  return `agent-invocation:${invocationId}:result`;
+}
+
 function bindingFromRow(
   row: typeof juniorAgentBindings.$inferSelect,
 ): AgentBinding {
@@ -95,6 +103,9 @@ function invocationFromRow(
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
+    ...(row.parentMailboxStatus
+      ? { parentMailboxStatus: row.parentMailboxStatus }
+      : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
@@ -121,8 +132,7 @@ function sameCreateInput(
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
       JSON.stringify(input.credentialContext) &&
-    JSON.stringify(invocation.destination) ===
-      JSON.stringify(input.destination)
+    JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
   );
 }
 
@@ -167,7 +177,7 @@ export async function getActiveAgentInvocationForConversation(
     .where(
       and(
         eq(juniorAgentInvocations.childConversationId, childConversationId),
-        inArray(juniorAgentInvocations.status, ["running", "awaiting_resume"]),
+        inArray(juniorAgentInvocations.status, ["running", "paused"]),
       ),
     )
     .orderBy(asc(juniorAgentInvocations.createdAt))
@@ -334,6 +344,37 @@ export async function listPendingAgentInvocationMailboxAppends(
   return rows.map(invocationFromRow);
 }
 
+/** List terminal agent invocation results that still need a parent mailbox append. */
+export async function listPendingAgentInvocationResults(
+  limit = 100,
+): Promise<TerminalAgentInvocation[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.parentMailboxStatus, "pending"))
+    .orderBy(asc(juniorAgentInvocations.terminalAt))
+    .limit(limit);
+  return rows.map(invocationFromRow).filter(isTerminalAgentInvocation);
+}
+
+/** Record that one terminal result is in its parent mailbox. */
+export async function markAgentInvocationParentMailboxAppended(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ parentMailboxStatus: "appended", updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
+      ),
+    );
+}
+
 /** Record that the invocation's idempotent mailbox append completed. */
 export async function markAgentInvocationMailboxAppended(
   invocationId: string,
@@ -368,14 +409,14 @@ export async function markAgentInvocationRunning(
 }
 
 /** Mark one invocation as waiting for another shared execution slice. */
-export async function markAgentInvocationAwaitingResume(
+export async function markAgentInvocationPaused(
   invocationId: string,
   nowMs = Date.now(),
 ): Promise<void> {
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
-    .set({ status: "awaiting_resume", updatedAt: new Date(nowMs) })
+    .set({ status: "paused", updatedAt: new Date(nowMs) })
     .where(
       and(
         eq(juniorAgentInvocations.invocationId, invocationId),
@@ -387,7 +428,10 @@ export async function markAgentInvocationAwaitingResume(
     );
 }
 
-/** Persist one terminal invocation result without overwriting an earlier result. */
+/**
+ * Persist one terminal invocation result without overwriting an earlier
+ * result. The same write marks the result for the parent mailbox.
+ */
 export async function completeAgentInvocation(
   args:
     | {
@@ -411,6 +455,7 @@ export async function completeAgentInvocation(
       status: args.status,
       result: args.status === "completed" ? args.result : null,
       errorMessage: args.status === "completed" ? null : args.errorMessage,
+      parentMailboxStatus: "pending",
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })
@@ -429,10 +474,7 @@ export async function completeAgentInvocation(
 /** Return whether an agent invocation has finished. */
 export function isTerminalAgentInvocation(
   invocation: AgentInvocation,
-): invocation is Extract<
-  AgentInvocation,
-  { status: "blocked" | "completed" | "failed" }
-> {
+): invocation is TerminalAgentInvocation {
   return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
     invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
   );

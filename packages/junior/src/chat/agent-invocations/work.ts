@@ -46,11 +46,15 @@ import {
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
   isTerminalAgentInvocation,
-  markAgentInvocationAwaitingResume,
+  markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
 } from "./store";
-import type { AgentInvocation, CreateAgentInvocationInput } from "./types";
+import type {
+  AgentInvocation,
+  CreateAgentInvocationInput,
+  TerminalAgentInvocation,
+} from "./types";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -323,8 +327,17 @@ async function saveAgentInvocationResult(args: {
       };
 }
 
-/** Build the invocation consumer that advances work through the shared runner. */
-export function createAgentInvocationWorker(agentRunner: AgentRunner) {
+/**
+ * Build the invocation consumer that advances work through the shared runner.
+ * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
+ * only where the parent has no mailbox, such as the local CLI.
+ */
+export function createAgentInvocationWorker(
+  agentRunner: AgentRunner,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+  } = {},
+) {
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -333,6 +346,16 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
     if (!invocation) {
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
+    // Enqueue the result before ack so a failed parent append retries this work.
+    const finish = async (
+      terminal: AgentInvocation | undefined,
+    ): Promise<void> => {
+      if (!terminal || !isTerminalAgentInvocation(terminal)) {
+        return;
+      }
+      await persistTerminalLifecycle(terminal);
+      await options.enqueueResult?.(terminal);
+    };
 
     let acknowledged = context.attempt.messages.length === 0;
     const acknowledge = async (): Promise<void> => {
@@ -368,13 +391,13 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
         );
       }
       if (isTerminalAgentInvocation(invocation)) {
-        await persistTerminalLifecycle(invocation);
+        await finish(invocation);
         await acknowledge();
         return { status: "completed" };
       }
       const projected = await projectTerminalTurn(invocation);
       if (projected && isTerminalAgentInvocation(projected)) {
-        await persistTerminalLifecycle(projected);
+        await finish(projected);
         await acknowledge();
         return { status: "completed" };
       }
@@ -414,9 +437,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           error instanceof Error ? error.message : "Agent invocation failed",
         status: "failed",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
@@ -482,9 +503,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           errorMessage: blocking.message,
           status: "blocked",
         });
-        if (terminal) {
-          await persistTerminalLifecycle(terminal);
-        }
+        await finish(terminal);
         await acknowledge();
         return { status: "completed" };
       }
@@ -499,15 +518,13 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
             : "Agent invocation failed",
         status: "failed",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
 
     if (outcome.status === "suspended") {
-      await markAgentInvocationAwaitingResume(invocation.invocationId);
+      await markAgentInvocationPaused(invocation.invocationId);
       return { status: "yielded" };
     }
     if (outcome.status === "awaiting_auth") {
@@ -516,13 +533,16 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
         errorMessage: `Agent invocation requires ${outcome.providerDisplayName} authorization`,
         status: "blocked",
       });
-      if (terminal) {
-        await persistTerminalLifecycle(terminal);
-      }
+      await finish(terminal);
       await acknowledge();
       return { status: "completed" };
     }
 
+    // executeTurn already recorded the terminal Turn; only enqueue the result.
+    const terminal = await getAgentInvocation(invocation.invocationId);
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await options.enqueueResult?.(terminal);
+    }
     await acknowledge();
     return { status: "completed" };
   };

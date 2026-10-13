@@ -13,7 +13,12 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 export const SPAWN_AGENT_TOOL_NAME = "spawnAgent";
 
 const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
-  invocation_id: z.string().min(1),
+  conversation_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Child conversation ID. Pass it to searchConversationEvents to read the child's history.",
+    ),
 });
 
 /** Create the asynchronous child-agent tool for one parent run. */
@@ -22,7 +27,7 @@ export function createSpawnAgentTool(
 ) {
   return zodTool({
     description:
-      "Start an asynchronous child agent on a delegated task. Give it a name to reuse the same child agent and its history on later calls; omit the name for a one-off agent. This call confirms durable scheduling, not task completion.",
+      "Start an asynchronous child agent on a delegated task. Give it a name to reuse the same child agent and its history on later calls; omit the name for a one-off agent. This call confirms durable scheduling, not task completion. The result arrives later as a new task in this conversation; do not wait or poll for it.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -40,9 +45,7 @@ export function createSpawnAgentTool(
           .enum(TURN_REASONING_LEVELS)
           .nullable()
           .optional()
-          .describe(
-            "Optional reasoning level for this delegated task only",
-          ),
+          .describe("Optional reasoning level for this delegated task only"),
       })
       .strict(),
     outputSchema: spawnAgentOutputSchema,
@@ -81,7 +84,7 @@ export function createSpawnAgentTool(
         throw error;
       }
       return {
-        invocation_id: result.invocationId,
+        conversation_id: result.childConversationId,
       };
     },
   });
