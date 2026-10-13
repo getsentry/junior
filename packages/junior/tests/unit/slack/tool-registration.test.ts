@@ -314,7 +314,7 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("deleteEventAutomation");
   });
 
-  it("keeps event automation management but not creation without an active event plugin", () => {
+  it("keeps event automation creation for Slack channel messages without an active event plugin", () => {
     setPlugins([eventPlugin(false)]);
     const tools = createTools(
       [],
@@ -329,9 +329,8 @@ describe("Slack tool registration", () => {
       },
     );
 
-    // Core Workspace snapshot events stay searchable/watchable. Durable event
-    // task creation still needs a plugin publisher.
-    expect(tools).not.toHaveProperty("createEventAutomation");
+    // Slack channel messages are core events that can trigger automations.
+    expect(tools).toHaveProperty("createEventAutomation");
     expect(tools).toHaveProperty("searchEventTypes");
     expect(tools).toHaveProperty("watchEvents");
     expect(tools).toHaveProperty("listEventAutomations");

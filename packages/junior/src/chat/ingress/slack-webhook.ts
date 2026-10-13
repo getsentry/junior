@@ -39,6 +39,11 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import {
+  SLACK_EVENT_NAMESPACE,
+  slackChannelMessageEvent,
+} from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
@@ -487,6 +492,26 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
+    // Other channel traffic does not start a Turn. A new top-level message can
+    // still run Event automations that watch this channel. Slack also sends
+    // `app_mention` for a code-only mention; the `message` copy is enough.
+    const channelMessage =
+      args.event.type === "message" && args.event.channel && args.event.ts
+        ? slackChannelMessageEvent({
+            channelId: args.event.channel,
+            text: args.event.text,
+            threadTs: args.event.thread_ts,
+            ts: args.event.ts,
+            userId: message.author.userId,
+          })
+        : undefined;
+    const teamId = args.installation.teamId;
+    if (channelMessage && teamId) {
+      await ingestEventAutomations(
+        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+        { queue: args.queue, teamId },
+      );
+    }
     return;
   }
 

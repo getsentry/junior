@@ -44,12 +44,15 @@ Ask in the destination conversation when rehoming a automation across channels. 
 
 ## Event Automations
 
-Event automations require a plugin that publishes the selected resource and event:
+Event automations run when a plugin publishes the selected resource and event, or when someone posts a new message in a Slack channel:
 
 ```text
 when ACME-42 closes, summarize the resolution in this channel
 whenever a new issue is created in Linear team SRE, investigate it and comment findings on the issue
+when someone posts a new message in this channel, answer it if you can, otherwise tag me
 ```
+
+A Slack channel-message automation runs for each new top-level message in the channel where you create it. It does not run for thread replies, for messages that mention Junior, or for bot messages. Junior replies in the thread of the message. Junior must be a member of the channel. The automation can watch only its own channel, and it always runs with Junior's own credentials, because anyone in the channel can write the message. Tell the channel that Junior reads every new message there.
 
 If the plugin is disabled, the automation remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 

@@ -1,5 +1,5 @@
 /** Read-only editor support. Core owns schedules; plugins own Event choices. */
-import { pluginEventCatalog } from "@/chat/events/catalog";
+import { automationEventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   compileScheduleIntent,
@@ -12,7 +12,7 @@ import type { User } from "@sentry/junior-plugin-api";
 
 /** Return only Event types that can start a durable Automation. */
 export function readAutomationEventCatalog() {
-  return Object.entries(pluginEventCatalog(getEventCatalog())).flatMap(
+  return Object.entries(automationEventCatalog(getEventCatalog())).flatMap(
     ([namespace, registration]) =>
       registration.resourceTypes.map((resource) => ({
         namespace,

@@ -1,5 +1,5 @@
 import {
-  hasPluginEventCatalogEntries,
+  hasAutomationEventCatalogEntries,
   type EventCatalog,
 } from "@/chat/events/catalog";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
@@ -24,9 +24,10 @@ export function createEventAutomationTools(
   ) {
     return {};
   }
-  // Durable event automations need a plugin publisher. Core snapshot events alone
-  // only support temporary watches from switchWorkspace / watchEvents.
-  const canCreate = hasPluginEventCatalogEntries(catalog);
+  // Core snapshot events alone only support temporary watches from
+  // switchWorkspace / watchEvents. Slack channel messages and plugin events can
+  // trigger durable event automations.
+  const canCreate = hasAutomationEventCatalogEntries(catalog);
   return {
     ...(canCreate
       ? { createEventAutomation: createEventAutomationTool(context, catalog) }

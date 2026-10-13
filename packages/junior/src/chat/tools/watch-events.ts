@@ -18,6 +18,7 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SLACK_EVENT_NAMESPACE } from "@/chat/slack/channel-message-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 function inputSchema(catalog: EventCatalog) {
@@ -145,6 +146,11 @@ export function createWatchEventsTool(
     async execute(input: Input) {
       if (input.namespace === "junior" && input.resourceType === "timer") {
         throw new ToolInputError("Use watchTimer to create a timer Watch.");
+      }
+      if (input.namespace === SLACK_EVENT_NAMESPACE) {
+        throw new ToolInputError(
+          "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
+        );
       }
       // TODO(subagents): child conversations (`agent:…`) still store watches on
       // their own id. When subagents matter, store the parent root id or give

@@ -24,13 +24,16 @@ export function hasEventCatalogEntries(catalog: EventCatalog): boolean {
 }
 
 /**
- * True when at least one plugin namespace is enabled.
+ * True when any event can trigger a durable event automation.
  *
  * Core Workspace snapshot events stay in the catalog for search and temporary
- * watches. Durable event automations still require a plugin publisher.
+ * watches only. Slack channel messages and plugin events can trigger
+ * automations.
  */
-export function hasPluginEventCatalogEntries(catalog: EventCatalog): boolean {
-  return Object.keys(pluginEventCatalog(catalog)).length > 0;
+export function hasAutomationEventCatalogEntries(
+  catalog: EventCatalog,
+): boolean {
+  return Object.keys(automationEventCatalog(catalog)).length > 0;
 }
 
 /**
@@ -38,9 +41,10 @@ export function hasPluginEventCatalogEntries(catalog: EventCatalog): boolean {
  *
  * Core Workspace snapshot events only wake temporary watches. Snapshot finish
  * does not run event-automation ingest, so those namespaces stay out of create/update
- * schemas and trigger availability.
+ * schemas and trigger availability. The core `slack` namespace stays in: Slack
+ * ingress runs event-automation ingest for channel messages.
  */
-export function pluginEventCatalog(catalog: EventCatalog): EventCatalog {
+export function automationEventCatalog(catalog: EventCatalog): EventCatalog {
   return Object.fromEntries(
     Object.entries(catalog).filter(
       ([namespace]) => namespace !== CORE_EVENT_NAMESPACE,

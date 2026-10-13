@@ -12,6 +12,7 @@ import {
   eventSchema,
   type ReplyAttribution,
   type Event,
+  type TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
 import { renderTaskInput } from "@/chat/task-input";
@@ -27,6 +28,7 @@ import {
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import { botConfig } from "@/chat/config";
+import { slackChannelMessageReplyThreadTs } from "@/chat/slack/channel-message-events";
 import { logWarn } from "@/chat/logging";
 import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
@@ -63,7 +65,11 @@ function replyAttribution(task: EventAutomation): ReplyAttribution {
 }
 
 /** Render plain agent input for one matching event automation. */
-function eventInput(task: EventAutomation, event: Event): string {
+function eventInput(
+  task: EventAutomation,
+  event: Event,
+  outcomes: TaskOutcome[],
+): string {
   const guidance = eventGuidance(
     getEventCatalog(),
     event.namespace,
@@ -74,7 +80,7 @@ function eventInput(task: EventAutomation, event: Event): string {
     about: task.trigger.label,
     creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+    outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: EVENT_SUMMARY_MAX_LENGTH,
@@ -143,6 +149,11 @@ export async function ingestEventAutomations(
         }
         continue;
       }
+      const replyThreadTs = slackChannelMessageReplyThreadTs(task, event);
+      const destination = replyThreadTs
+        ? { ...task.destination, threadTs: replyThreadTs }
+        : task.destination;
+      const outcomes = effectiveTaskOutcomes(task.outcomes, destination);
       const credentialSubject =
         task.credentialMode === "creator"
           ? {
@@ -158,12 +169,12 @@ export async function ingestEventAutomations(
         options: {
           idempotencyKey,
           ...(credentialSubject ? { credentialSubject } : undefined),
-          destination: task.destination,
+          destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event),
+          input: eventInput(task, event, outcomes),
           metadata: { eventAutomationId: task.id },
           replyAttribution: replyAttribution(task),
-          outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+          outcomes,
         },
       });
       if (dispatch.status === "created") {

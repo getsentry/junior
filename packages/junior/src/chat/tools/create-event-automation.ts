@@ -21,6 +21,7 @@ import {
 } from "@/chat/event-automations/tool-support";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { completeText } from "@/chat/pi/client";
+import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
 import {
   requireEventIdentifier,
   type EventCatalog,
@@ -169,7 +170,7 @@ export function createEventAutomationTool(
         instruction: input.instruction,
         title: input.title,
       });
-      const task: EventAutomation = {
+      const task: EventAutomation = requireSlackChannelMessageScope({
         id,
         destinationVisibility: source.visibility,
         createdAtMs: Date.now(),
@@ -195,7 +196,7 @@ export function createEventAutomationTool(
           events: [...new Set(input.trigger.events)],
           ...(match ? { match } : undefined),
         },
-      };
+      });
       return eventAutomationToolResult(
         context.conversationId,
         await createEventAutomation(db, task),

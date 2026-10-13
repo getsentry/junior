@@ -1,4 +1,4 @@
-import { pluginEventCatalog } from "@/chat/events/catalog";
+import { automationEventCatalog } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -91,7 +91,7 @@ export function viewerAutomationCollection(user: User) {
   // Use the same namespace/event availability rule as the direct reader.
   const available =
     or(
-      ...Object.entries(pluginEventCatalog(getEventCatalog())).map(
+      ...Object.entries(automationEventCatalog(getEventCatalog())).map(
         ([namespace, registration]) => {
           const events = registration.resourceTypes.flatMap(
             (resource) => resource.supportedEvents,
