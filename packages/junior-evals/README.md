@@ -443,7 +443,9 @@ Its `README.md` tells how it keys, records, and replays requests.
   the committed recordings cover every model request. Strict runs write
   nothing, so they never start another commit.
 - A run tests the pull request merged into `main`. Each recordings commit
-  has an `Eval-Base` trailer with the `main` commit that its run tested. If
+  has an `Eval-Base` trailer with the `main` commit that its run tested. Each
+  suite compares the trailer of its own newest recordings commit. A suite
+  with no recordings commit compares the trailer of the oldest one. If
   `main` changed after that run, the run on the recordings commit uses `auto`
   and records the requests that the new `main` makes. Then the next
   recordings commit gets a strict run.

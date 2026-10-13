@@ -41,11 +41,21 @@ runs:
         # mode.
         sha="$HEAD_SHA"
         chain=""
+        suite_base=""
+        first_base=""
         for _ in $(seq 1 20); do
           commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha")"
           message="$(jq -r .commit.message <<< "$commit")"
           [[ "$message" == "$PREFIX"* ]] || break
           chain+="$message"$'\n'
+          commit_base="$(grep -m1 -o '^Eval-Base: [0-9a-f]*$' <<< "$message" || true)"
+          # The newest commit of this suite. Other suites can commit on a
+          # newer base, so their trailers do not apply to this suite.
+          if [[ -z "$suite_base" ]] && grep -qx "Eval-Suite: $SUITE" <<< "$message"; then
+            suite_base="${commit_base:-none}"
+          fi
+          # The oldest commit. Its run tested the last other commit.
+          first_base="${commit_base:-none}"
           sha="$(jq -r '.parents[0].sha' <<< "$commit")"
         done
         if [[ -z "$chain" ]]; then
@@ -54,11 +64,14 @@ runs:
           exit 0
         fi
         # A run tests the pull request merged into its base. If the base
-        # changed after the newest recording run, the recordings can miss
-        # requests that only the new base makes. Record them. Older commits
-        # in the chain can have an older base; the newest one decides.
+        # changed after the recording run of this suite, the recordings can
+        # miss requests that only the new base makes. Record them. A suite
+        # with no recordings commit uses the base of the oldest commit: the
+        # runs of one push test the same merge commit, so its own run on the
+        # last other commit tested that base. An `auto` run that records
+        # nothing proves the same as a strict run.
         base="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TESTED_MERGE" --jq '.parents[0].sha')"
-        recorded_base="$(grep -m1 -o '^Eval-Base: [0-9a-f]*$' <<< "$chain" || true)"
+        recorded_base="${suite_base:-$first_base}"
         if [[ "$recorded_base" != "Eval-Base: $base" ]]; then
           echo "mode=auto" >> "$GITHUB_OUTPUT"
           echo "Eval recordings mode: auto, because the base changed after the recording run" >> "$GITHUB_STEP_SUMMARY"
