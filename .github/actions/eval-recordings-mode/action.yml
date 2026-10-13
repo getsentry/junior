@@ -3,7 +3,9 @@ description: >
   Choose the recording mode of an eval run on a pull request. A run on a
   commit that the commit-eval-recordings action made uses strict `replay`:
   it proves that the committed recordings cover every model request. Other
-  runs use `auto`. See "Recordings" in packages/junior-evals/README.md.
+  runs use `auto`. A run on a newer base than the recording run also uses
+  `auto`, because changes on the base make new requests. See "Recordings"
+  in packages/junior-evals/README.md.
 inputs:
   suite:
     description: The eval suite, such as `integration`.
@@ -22,6 +24,7 @@ runs:
         SUITE: ${{ inputs.suite }}
         PR: ${{ github.event.pull_request.number }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        TESTED_MERGE: ${{ github.sha }}
         BRANCH: ${{ github.event.pull_request.head.ref }}
         WORKFLOW_REF: ${{ github.workflow_ref }}
         RUN_ID: ${{ github.run_id }}
@@ -48,6 +51,16 @@ runs:
         if [[ -z "$chain" ]]; then
           echo "mode=auto" >> "$GITHUB_OUTPUT"
           echo "Eval recordings mode: auto" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        # A run tests the pull request merged into its base. If the base
+        # changed after the recording run, the recordings can miss requests
+        # that only the new base makes. Record them.
+        base="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TESTED_MERGE" --jq '.parents[0].sha')"
+        recorded_bases="$(grep -o '^Eval-Base: [0-9a-f]*$' <<< "$chain" | sort -u || true)"
+        if [[ "$recorded_bases" != "Eval-Base: $base" ]]; then
+          echo "mode=auto" >> "$GITHUB_OUTPUT"
+          echo "Eval recordings mode: auto, because the base changed after the recording run" >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
         echo "mode=replay" >> "$GITHUB_OUTPUT"

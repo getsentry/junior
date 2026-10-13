@@ -442,6 +442,11 @@ Its `README.md` tells how it keys, records, and replays requests.
 - A run on a recordings commit uses strict `replay`. A green run shows that
   the committed recordings cover every model request. Strict runs write
   nothing, so they never start another commit.
+- A run tests the pull request merged into `main`. Each recordings commit
+  has an `Eval-Base` trailer with the `main` commit that its run tested. If
+  `main` changed after that run, the run on the recordings commit uses `auto`
+  and records the requests that the new `main` makes. Then the next
+  recordings commit gets a strict run.
 - If the recordings of a suite are still on the way, its strict run waits
   for the earlier run of that suite.
 - Pull requests from forks get a read-only token. Their new recordings stay

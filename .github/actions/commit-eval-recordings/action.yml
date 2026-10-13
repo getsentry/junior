@@ -57,8 +57,10 @@ runs:
       shell: bash
       working-directory: recordings-branch
       env:
+        GH_TOKEN: ${{ github.token }}
         NEW: ${{ runner.temp }}/new-recordings
         TESTED: ${{ github.event.pull_request.head.sha }}
+        TESTED_MERGE: ${{ github.sha }}
         BRANCH: ${{ github.event.pull_request.head.ref }}
         SUITE: ${{ inputs.suite }}
         PREFIX: "chore(evals): Update eval recordings"
@@ -67,6 +69,9 @@ runs:
         set -euo pipefail
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # The run tested the pull request merged into this base commit. The
+        # strict run checks that it tests the same base.
+        base="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TESTED_MERGE" --jq '.parents[0].sha')"
         for attempt in 1 2 3; do
           git fetch --quiet --depth=50 origin "$BRANCH"
           git reset --quiet --hard FETCH_HEAD
@@ -92,9 +97,11 @@ runs:
         $PREFIX
 
         The $SUITE evals recorded these model responses in $RUN_URL.
-        The evals of this commit replay them in strict mode.
+        The evals of this commit replay them in strict mode when they test
+        the same base.
 
         Eval-Suite: $SUITE
+        Eval-Base: $base
         EOF
           if git push --quiet origin "HEAD:refs/heads/$BRANCH"; then
             # GitHub holds the runs of a GITHUB_TOKEN push until a person
