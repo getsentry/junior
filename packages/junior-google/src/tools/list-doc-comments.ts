@@ -7,6 +7,7 @@ import {
   docReferenceSchema,
   driveFileRequest,
   parseDocReference,
+  readDocFile,
 } from "./docs";
 import type { GoogleToolContext } from "./shared";
 
@@ -106,6 +107,9 @@ export function createListGoogleDocCommentsTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input) {
       const doc = parseDocReference(input.document);
+      // Check the type first: drive.readonly can also read comments on other
+      // Drive files, such as Sheets.
+      await readDocFile(ctx, doc);
       const response = await driveFileRequest(ctx, doc, {
         operation: "google.drive.comments.list",
         path: `/drive/v3/files/${doc.fileId}/comments`,

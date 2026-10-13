@@ -53,6 +53,11 @@ describe("Google Docs tools", () => {
         headers: { "content-type": "text/markdown" },
       }),
       Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
+      }),
+      Response.json({
         comments: [
           {
             author: { displayName: "Bob" },
@@ -111,9 +116,10 @@ describe("Google Docs tools", () => {
     const comments = await run(tools, "listGoogleDocComments", {
       document: DOC_ID,
     });
-    expect(fetch.mock.calls[3]![0].operation).toBe(
+    expect(fetch.mock.calls.slice(3).map(([call]) => call.operation)).toEqual([
+      "google.drive.file.get",
       "google.drive.comments.list",
-    );
+    ]);
     expect(comments).toEqual({
       target: "listGoogleDocComments",
       comments: [
@@ -139,8 +145,8 @@ describe("Google Docs tools", () => {
       Response.json({ error: { message: "File not found" } }, { status: 404 }),
       Response.json({
         id: DOC_ID,
-        mimeType: "application/pdf",
-        name: "scan.pdf",
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        name: "Budget",
       }),
       Response.json(
         {
@@ -159,10 +165,10 @@ describe("Google Docs tools", () => {
       `Junior's Google account (${ACCOUNT_EMAIL}) cannot open this Doc`,
     );
     await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
+      run(tools, "listGoogleDocComments", { document: DOC_ID }),
     ).rejects.toThrow("is not a Google Doc");
     await expect(
-      run(tools, "listGoogleDocComments", { document: DOC_ID }),
+      run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow("A Junior admin must reconnect it");
   });
 });

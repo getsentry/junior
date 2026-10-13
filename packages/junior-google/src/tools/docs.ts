@@ -86,3 +86,30 @@ export async function driveFileRequest(
   }
   return response;
 }
+
+const docFileSchema = z.object({
+  id: z.string(),
+  mimeType: z.string(),
+  modifiedTime: z.string().optional(),
+  name: z.string(),
+  webViewLink: z.string().optional(),
+});
+
+/** Read the Drive metadata of one file, and require it to be a Google Doc. */
+export async function readDocFile(ctx: GoogleToolContext, doc: DocReference) {
+  const response = await driveFileRequest(ctx, doc, {
+    operation: "google.drive.file.get",
+    path: `/drive/v3/files/${doc.fileId}`,
+    query: {
+      fields: "id,mimeType,modifiedTime,name,webViewLink",
+      supportsAllDrives: "true",
+    },
+  });
+  const file = docFileSchema.parse(response.body);
+  if (file.mimeType !== GOOGLE_DOC_MIME_TYPE) {
+    throw new PluginToolInputError(
+      `"${file.name}" is not a Google Doc (${file.mimeType}). Junior can only read Google Docs.`,
+    );
+  }
+  return file;
+}
