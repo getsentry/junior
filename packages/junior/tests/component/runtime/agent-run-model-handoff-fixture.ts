@@ -21,8 +21,9 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
   return {
     ...actual,
-    completeObject: async () => {
+    completeObject: async (args: { system: string }) => {
       observations.routerCalls += 1;
+      observations.routerSystemPrompts.push(args.system);
       return {
         object: {
           reasoning_level: observations.routedReasoningLevel,
@@ -219,6 +220,7 @@ export async function resetHandoffTestState(): Promise<void> {
   observations.progressTool = false;
   observations.providerCalls = 0;
   observations.routerCalls = 0;
+  observations.routerSystemPrompts = [];
   observations.requestedProfile = "handoff";
   observations.requestedProfileSequence = [];
   observations.requestHandoffAfterRouting = false;

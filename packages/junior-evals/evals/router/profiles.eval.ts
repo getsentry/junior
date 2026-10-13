@@ -37,6 +37,7 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
         "User: Fix duplicate deliveries after a worker restart.",
         "Junior: I changed the retry logic, but have not run the regression tests yet.",
       ].join("\n"),
+      currentProfile: "handoff",
       expectedProfile: "handoff",
       expectedReasoningLevel: "high",
       messageText: "verify it before opening the PR",
@@ -51,6 +52,7 @@ describeEval("Task-fit Profile Selection", routerEvals, (it) => {
         "User: Fix the race in the task queue and add a regression test.",
         "Junior: The fix is complete, the tests passed, and the pull request is open.",
       ].join("\n"),
+      currentProfile: "handoff",
       expectedProfile: "standard",
       expectedReasoningLevel: "high",
       messageText:

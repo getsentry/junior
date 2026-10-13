@@ -21,6 +21,7 @@ export const observations = {
   progressTool: false,
   providerCalls: 0,
   routerCalls: 0,
+  routerSystemPrompts: [] as string[],
   requestedProfile: "handoff" as string | null | undefined,
   requestedProfileSequence: [] as string[],
   requestHandoffAfterRouting: false,

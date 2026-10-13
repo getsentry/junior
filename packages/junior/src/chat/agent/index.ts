@@ -41,6 +41,7 @@ import {
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
+  loadLastModelProfile,
   loadTurnRoute,
   openConversationProjection,
   recordAgentsInstructionsUpdated,
@@ -602,6 +603,11 @@ async function executeAgentRunInPrivacyContext(
       policy.disabledFeatures,
       "handoff",
     );
+    // One profile with a fixed reasoning level leaves the router no choice.
+    const routeIsFixed =
+      Object.keys(botConfig.profiles).length === 1 &&
+      (profileConfig(botConfig, activeModelProfile).reasoningLevel ??
+        configuredReasoningLevel) !== undefined;
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
       const replacementOverridesRoute =
@@ -633,9 +639,10 @@ async function executeAgentRunInPrivacyContext(
           source: storedTurnRoute.source,
         };
       }
-    } else if (handoffEnabled) {
-      // Route each new turn. A handoff changes the active profile within its
-      // turn, but must not pin later requests to that profile indefinitely.
+    } else if (handoffEnabled && !routeIsFixed) {
+      // Route each new turn from the last Turn's profile. The router can keep
+      // unfinished work there or move a new request to another profile.
+      const lastProfile = await loadLastModelProfile({ conversationId });
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -645,8 +652,11 @@ async function executeAgentRunInPrivacyContext(
           actorId: slackActor?.userId,
           runId,
         },
+        currentProfile:
+          lastProfile && Object.hasOwn(botConfig.profiles, lastProfile)
+            ? lastProfile
+            : botConfig.defaultProfile,
         currentTurnBlocks: routerBlocks,
-        defaultProfile: botConfig.defaultProfile,
         fastModelId: botConfig.fastModelId,
         messageText: userInput,
         profiles: botConfig.profiles,
