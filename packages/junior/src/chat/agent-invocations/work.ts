@@ -51,6 +51,7 @@ import {
   markAgentInvocationPaused,
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
+  reportReplacedAgentInvocation,
 } from "./store";
 import type {
   AgentInvocation,
@@ -636,7 +637,20 @@ export function createAgentInvocationWorker(
     }
 
     // executeTurn already recorded the terminal Turn; only report the result.
-    const terminal = await getAgentInvocation(invocation.invocationId);
+    let terminal = await getAgentInvocation(invocation.invocationId);
+    // A stop that comes after the save still stops the child agents of this
+    // child. Then they cannot report for a `replaced` result, so this result
+    // reports now.
+    if (stopSignal?.aborted) {
+      if (
+        terminal &&
+        isTerminalAgentInvocation(terminal) &&
+        terminal.parentMailboxStatus === "replaced"
+      ) {
+        terminal = await reportReplacedAgentInvocation(terminal.invocationId);
+      }
+      await stopChildAgentsOf(context.conversationId);
+    }
     if (terminal && isTerminalAgentInvocation(terminal)) {
       await report(terminal);
     }

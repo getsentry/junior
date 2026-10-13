@@ -606,6 +606,27 @@ export async function listPendingAgentInvocationResults(
   return rows.map(invocationFromRow).filter(isTerminalAgentInvocation);
 }
 
+/**
+ * Send a `replaced` result to the parent now. A stop ended the open work of
+ * the child, so no later agent invocation sends the report.
+ */
+export async function reportReplacedAgentInvocation(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({ parentMailboxStatus: "pending", updatedAt: new Date(nowMs) })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
+      ),
+    );
+  return await getAgentInvocation(invocationId);
+}
+
 /** Record that one terminal result is in its parent mailbox. */
 export async function markAgentInvocationParentMailboxAppended(
   invocationId: string,
