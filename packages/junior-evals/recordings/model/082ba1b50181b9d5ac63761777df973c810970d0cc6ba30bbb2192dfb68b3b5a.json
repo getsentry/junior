@@ -1,0 +1,31 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when a resource supports the requested event, create the requested event automation",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "4a86e51b33f5",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VKZWX436BKXRMGNYM6N9SN\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant confirms an event automation was set up for changes-requested reviews on the specified PR and explains it will summarize requested changes and post a fix plan in the channel. It does not mention any polling schedule or creator-credential authorization, and explicitly says it uses system credentials.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":561,\"output_tokens\":68},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_03bb756fca77f765016acea7ec947887d1814af11df14e8e2d\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791928300482,\"endTime\":1791928302206,\"providerRequestId\":\"req_2d5cdc025e20498cad6f56d15a12ec1c\",\"statusCode\":200,\"providerResponseId\":\"resp_03bb756fca77f765016acea7ec947887d1814af11df14e8e2d\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"694e0ee2364fc5da0b2c409d2c33e0f2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0024225\",\"marketCost\":\"0.0024225\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0024225\",\"inferenceCost\":\"0.0024225\",\"inputInferenceCost\":\"0.0014025\",\"outputInferenceCost\":\"0.00102\",\"generationId\":\"gen_01M4VKZWX436BKXRMGNYM6N9SN\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}
