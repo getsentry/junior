@@ -1,7 +1,11 @@
 import type { StateAdapter } from "chat";
 import { stopConversationWork } from "@/chat/task-execution/store";
-import { stopChildAgentInvocations } from "./store";
-import { recordSubagentEnded } from "./work";
+import { recordSubagentEnded } from "./markers";
+import {
+  stopAgentInvocationTree,
+  stopChildAgentInvocations,
+  type StoppedAgentTree,
+} from "./store";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
@@ -15,15 +19,40 @@ export async function stopChildAgent(args: {
   parentConversationId: string;
   state?: StateAdapter;
 }): Promise<{ stoppedCount: number } | undefined> {
-  const result = await stopChildAgentInvocations(args);
-  if (!result) {
+  const tree = await stopChildAgentInvocations(args);
+  if (!tree) {
     return undefined;
   }
-  for (const invocation of result.stopped) {
+  await finishStoppedTree(tree, tree.conversationIds, args.state);
+  return { stoppedCount: tree.stopped.length };
+}
+
+/**
+ * Stop the child agents of an agent Conversation that a stop interrupted.
+ * The worker of that Conversation calls this after it records its own stop,
+ * so this sends no stop request to that Conversation.
+ */
+export async function stopChildAgentsOf(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  const tree = await stopAgentInvocationTree(conversationId);
+  await finishStoppedTree(
+    tree,
+    tree.conversationIds.filter((id) => id !== conversationId),
+    state,
+  );
+}
+
+async function finishStoppedTree(
+  tree: StoppedAgentTree,
+  conversationIdsToStop: string[],
+  state: StateAdapter | undefined,
+): Promise<void> {
+  for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
   }
-  for (const conversationId of result.conversationIds) {
-    await stopConversationWork({ conversationId, state: args.state });
+  for (const conversationId of conversationIdsToStop) {
+    await stopConversationWork({ conversationId, state });
   }
-  return { stoppedCount: result.stopped.length };
 }

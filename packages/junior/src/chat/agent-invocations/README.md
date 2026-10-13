@@ -163,7 +163,9 @@ every child agent below it:
 The parent asked for the stop, so it gets no result Turn. `listAgents` shows the
 child as `stopped`. Any other stop of a child, such as a direct stop of the
 child Conversation, also ends its agent invocation as `stopped`. Then the
-parent gets an `agent_invocation.stopped` Event.
+parent gets an `agent_invocation.stopped` Event, even when the child still has
+open work. The child's own child agents stop the same way, so no result of
+theirs starts the child again.
 
 A stop request can outlive the run that it stopped. If it wakes the child
 again, the latest `stopped` agent invocation handles the wake.

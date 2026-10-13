@@ -10,6 +10,7 @@ import {
   getAgentInvocation,
   getAgentInvocationIdForResult,
   getAgentInvocationTurnId,
+  listPendingAgentInvocationMailboxAppends,
 } from "@/chat/agent-invocations/store";
 import type {
   CreateAgentInvocationInput,
@@ -271,10 +272,16 @@ describe("stopping child agents", () => {
         pending.invocationId,
       );
 
-      // A stop that does not come from stopAgent still reaches the parent.
+      // A stop that does not come from stopAgent still reaches the parent,
+      // and it also stops the child agents of the child.
       const external = await harness.spawn({
         idempotencyKey: "stop-external",
         input: "long task",
+      });
+      const helper = await createAgentInvocation({
+        ...invocationInput,
+        idempotencyKey: "stop-external-helper",
+        parentConversationId: external.childConversationId,
       });
       const stopRequest = new AbortController();
       stopRequest.abort(new Error("Conversation work stopped"));
@@ -305,6 +312,19 @@ describe("stopping child agents", () => {
           }),
         }),
       ]);
+      await expect(
+        getAgentInvocation(helper.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "skipped",
+        status: "stopped",
+      });
+      // The helper was stopped before its mailbox append. The heartbeat must
+      // not start it.
+      expect(
+        (await listPendingAgentInvocationMailboxAppends()).map(
+          (invocation) => invocation.invocationId,
+        ),
+      ).not.toContain(helper.invocationId);
     } finally {
       await harness.close();
     }

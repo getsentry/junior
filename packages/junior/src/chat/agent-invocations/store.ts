@@ -559,7 +559,15 @@ export async function listPendingAgentInvocationMailboxAppends(
     .db()
     .select()
     .from(juniorAgentInvocations)
-    .where(eq(juniorAgentInvocations.mailboxStatus, "pending"))
+    .where(
+      and(
+        eq(juniorAgentInvocations.mailboxStatus, "pending"),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    )
     .orderBy(asc(juniorAgentInvocations.createdAt))
     .limit(limit);
   return rows.map(invocationFromRow);
@@ -676,10 +684,12 @@ export async function completeAgentInvocation(
     return current;
   }
   // Open child work only moves forward, so a read before the write is safe:
-  // each `replaced` result has open work that starts a later invocation.
-  const parentMailboxStatus = (await hasOpenChildWork(current))
-    ? "replaced"
-    : "pending";
+  // each `replaced` result has open work that starts a later invocation. A
+  // stop is always reported, because the stop also stops that open work.
+  const parentMailboxStatus =
+    args.status !== "stopped" && (await hasOpenChildWork(current))
+      ? "replaced"
+      : "pending";
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
@@ -727,20 +737,16 @@ async function listAgentConversationTree(
 
 /**
  * Stop the agent invocations of one direct child agent and of every child
- * agent below it. Open agent invocations become `stopped`. Results that would
- * still start or report work in the tree become `skipped`. Returns undefined
- * when the child does not belong to the parent.
+ * agent below it. Returns undefined when the child does not belong to the
+ * parent.
  */
 export async function stopChildAgentInvocations(args: {
   childConversationId: string;
   nowMs?: number;
   parentConversationId: string;
-}): Promise<
-  { conversationIds: string[]; stopped: TerminalAgentInvocation[] } | undefined
-> {
-  const db = getSqlExecutor().db();
-  const now = new Date(args.nowMs ?? Date.now());
-  const owned = await db
+}): Promise<StoppedAgentTree | undefined> {
+  const owned = await getSqlExecutor()
+    .db()
     .select({ invocationId: juniorAgentInvocations.invocationId })
     .from(juniorAgentInvocations)
     .where(
@@ -759,9 +765,27 @@ export async function stopChildAgentInvocations(args: {
   if (owned.length === 0) {
     return undefined;
   }
-  const conversationIds = await listAgentConversationTree(
-    args.childConversationId,
-  );
+  return await stopAgentInvocationTree(args.childConversationId, args.nowMs);
+}
+
+/** The Conversations of a stopped tree and the agent invocations it stopped. */
+export type StoppedAgentTree = {
+  conversationIds: string[];
+  stopped: TerminalAgentInvocation[];
+};
+
+/**
+ * Stop the agent invocations of one agent Conversation and of every child
+ * agent below it. Open agent invocations become `stopped`. Results that would
+ * still start or report work in the tree become `skipped`.
+ */
+export async function stopAgentInvocationTree(
+  conversationId: string,
+  nowMs = Date.now(),
+): Promise<StoppedAgentTree> {
+  const db = getSqlExecutor().db();
+  const now = new Date(nowMs);
+  const conversationIds = await listAgentConversationTree(conversationId);
   // Stop open work first. After this write no agent invocation in the tree
   // can finish, so no new result can appear.
   const stopped = await db
