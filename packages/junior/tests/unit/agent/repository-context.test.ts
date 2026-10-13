@@ -17,10 +17,9 @@ describe("createRepositoryInstructionsContext", () => {
     let current = instructions("v1", "Use pnpm.");
     const context = createRepositoryInstructionsContext({
       capture: async () => current,
-      commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
-      setMessages() {},
+      saveMessages: async () => {},
       shouldPromptAgent: true,
     });
 
@@ -46,10 +45,9 @@ describe("createRepositoryInstructionsContext", () => {
     );
     const context = createRepositoryInstructionsContext({
       capture: async () => current,
-      commit: async () => {},
       hasSandbox: () => true,
       promptContextContentParts: [],
-      setMessages() {},
+      saveMessages: async () => {},
       shouldPromptAgent: true,
     });
 

@@ -914,19 +914,17 @@ async function executeAgentRunInPrivacyContext(
     baseInstructions = assembledBaseInstructions;
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
-      async commit(messages) {
-        // Without explicit provenance, the commit attributes the message to
-        // the Turn Actor, and a resumed Turn adds AGENTS.md again.
-        await runResume.persistSafeBoundary(messages, [contextProvenance]);
-      },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
       initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
       promptContextContentParts,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,
-      setMessages(messages) {
+      async saveMessages(messages) {
         agent!.state.messages = messages;
+        // Later saves mark the newest user message as the Actor's
+        // instruction. A resumed Turn finds AGENTS.md only as context.
+        await runResume.persistSafeBoundary(messages, [contextProvenance]);
       },
       shouldPromptAgent,
     });

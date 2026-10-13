@@ -15,8 +15,6 @@ import {
 
 type RepositoryInstructionsContextOptions = {
   capture(): Promise<RepositoryInstructions | undefined>;
-  /** Commit history that ends with a new AGENTS.md message. */
-  commit(messages: PiMessage[]): Promise<void>;
   hasSandbox(): boolean;
   initialInstructions?: RepositoryInstructions;
   onTransition?: (
@@ -25,7 +23,8 @@ type RepositoryInstructionsContextOptions = {
   restoredMessages?: PiMessage[];
   restoredProvenance?: ConversationMessageProvenance[];
   promptContextContentParts: UserContentPart[];
-  setMessages(messages: PiMessage[]): void;
+  /** Use messages as agent history and save them at a safe boundary. */
+  saveMessages(messages: PiMessage[]): Promise<void>;
   shouldPromptAgent: boolean;
 };
 
@@ -99,10 +98,8 @@ export function createRepositoryInstructionsContext(
         : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
       const context = currentUpdate?.context ?? currentContext;
       const messages = [...(context.messages as PiMessage[]), message];
-      options.setMessages(messages);
-      // A final reply is committed directly after the current history, so
-      // this message must be committed first.
-      await options.commit(messages);
+      // A final reply is saved directly after this history.
+      await options.saveMessages(messages);
       visibleFingerprint = instructions?.fingerprint;
       instructionsVisible = Boolean(instructions);
       await options.onTransition?.(instructions);

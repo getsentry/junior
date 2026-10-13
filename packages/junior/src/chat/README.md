@@ -252,8 +252,8 @@ same way.
   stay outside that block. Steering messages are drained after handoff and new
   AGENTS.md context, then pass through the normal capacity check. Pi appends
   steering after the hook returns, so this order keeps committed history in Pi
-  order. New AGENTS.md context is committed as context when it is added, before
-  a reply can follow it.
+  order. New AGENTS.md context is saved with context provenance as soon as it
+  is added, because a final reply is saved directly after it.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
