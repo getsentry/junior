@@ -154,17 +154,13 @@ function normalizeIssueEvents(input: WebhookInput): EventInput[] {
   ];
 }
 
-function isMetricAlertEvent(
-  eventType: string,
-): eventType is (typeof SENTRY_METRIC_ALERT_EVENTS)[number] {
-  return (SENTRY_METRIC_ALERT_EVENTS as readonly string[]).includes(eventType);
-}
-
 function normalizeMetricAlertEvents(input: WebhookInput): EventInput[] {
   const parsed = metricAlertWebhookSchema.safeParse(input.body);
   if (!parsed.success) return [];
   const eventType = `metric_alert.${parsed.data.action}`;
-  if (!isMetricAlertEvent(eventType)) return [];
+  if (!(SENTRY_METRIC_ALERT_EVENTS as readonly string[]).includes(eventType)) {
+    return [];
+  }
 
   const { data } = parsed.data;
   const org = webOrganizationSlug(data.web_url)?.toLowerCase();

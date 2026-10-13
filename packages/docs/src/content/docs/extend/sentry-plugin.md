@@ -97,7 +97,7 @@ Internal integration token with read-only scopes. Junior uses it for Sentry API 
 <details class="plugin-config">
 <summary><code>SENTRY_WEBHOOK_ORG</code></summary>
 
-Organization slug allowed to send issue and metric alert webhooks.
+Organization slug allowed to send webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_ORG` in the deployment environment
 - **Required:** Yes for events; otherwise no
@@ -108,7 +108,7 @@ Organization slug allowed to send issue and metric alert webhooks.
 <details class="plugin-config">
 <summary><code>SENTRY_WEBHOOK_SECRET</code></summary>
 
-Internal integration client secret used to verify issue and metric alert webhooks.
+Internal integration client secret used to verify webhooks.
 
 - **Define:** Set `SENTRY_WEBHOOK_SECRET` in the deployment environment
 - **Required:** Yes for events; otherwise no
@@ -166,10 +166,10 @@ Junior verifies each webhook signature and accepts webhooks only from the config
 
 ### Metric alert webhooks
 
-Sentry does not send metric alerts to a webhook resource. It sends them only to an integration that is an action on the alert.
+Sentry sends metric alerts only to an integration that is an action on the alert.
 
 1. In the same internal integration, enable **Alert Rule Action**.
-2. On each metric alert that Junior should receive, add the integration as a trigger action. With the Sentry CLI, use this trigger action:
+2. On each metric alert that Junior should receive, add this trigger action:
 
 ```text
 {

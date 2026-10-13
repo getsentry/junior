@@ -44,12 +44,13 @@ Use a **Sentry internal integration** (not a public app install flow):
 2. Point it at `https://<junior-host>/api/webhooks/sentry`.
 3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
-For metric alerts, enable **Alert Rule Action** on the same integration and add it as a trigger action (`"type": "sentry_app"`) on each alert. Sentry does not send metric alerts through a webhook resource subscription.
+For metric alerts, also enable **Alert Rule Action** on the integration and add it as a `sentry_app` trigger action on each alert. Sentry sends metric alerts only to alert actions.
 
 Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes:
 
 - `issue.created` for `org/project#issueId` and `org/project`.
 - `metric_alert.critical`, `metric_alert.warning`, and `metric_alert.resolved` for `metric-alert:org/alertRuleId`.
-  Create watches/event automations before the issue arrives; unmatched deliveries are not replayed.
+
+Create watches/event automations before the webhook arrives; unmatched deliveries are not replayed.
 
 Full guide: https://junior.sentry.dev/extend/sentry-plugin/

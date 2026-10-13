@@ -11,7 +11,6 @@ const REQUEST_ID = "6f54fb51-5c5b-4d18-899a-3c40f13c77bb";
 function issueBody(action = "created") {
   return {
     action,
-    actor: { id: "sentry", name: "Sentry", type: "application" },
     data: {
       issue: {
         culprit: "api.users.create",
@@ -36,25 +35,13 @@ function issueBody(action = "created") {
 function metricAlertBody(action = "critical") {
   return {
     action,
-    actor: { id: "sentry", name: "Sentry", type: "application" },
     data: {
       description_text:
         "1000 events in the last 10 minutes\nFilter: level:error",
       description_title: "Critical: Too many errors",
       metric_alert: {
-        alert_rule: {
-          aggregate: "count()",
-          dataset: "events",
-          id: "7",
-          name: "Too many errors",
-          projects: ["junior"],
-          query: "level:error",
-          time_window: 10,
-        },
+        alert_rule: { id: "7", name: "Too many errors" },
         id: "4",
-        identifier: "1",
-        projects: ["junior"],
-        status: 2,
       },
       web_url:
         "https://sentry.sentry.io/alerts/rules/details/7/?alert=1&referrer=metric_alert_sentry_app",
