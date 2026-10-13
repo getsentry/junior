@@ -42,7 +42,7 @@ export function bindSpawnAgent(
           ? { reasoningLevel: input.reasoningLevel }
           : undefined),
       },
-      { ...options, queue },
+      { ...options, parentToolCallId: call.toolCallId, queue },
     );
     return {
       childConversationId: invocation.childConversationId,

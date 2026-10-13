@@ -2,22 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
-  createAgentInvocation,
   getAgentInvocation,
-  getAgentInvocationId,
   getAgentInvocationMessageId,
-  getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildResults,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import type { InboundMessage } from "@/chat/task-execution/store";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
@@ -25,278 +18,38 @@ import {
   routeAgentInvocationWork,
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import type { AgentRun } from "@/chat/agent/types";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { createSqlStore } from "@/chat/conversations/sql/store";
 import { loadProjection } from "@/chat/conversations/projection";
-import { getConversationEventStore } from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  recoverPendingAgentInvocationMailboxAppends,
-  recoverPendingAgentInvocationResults,
-} from "@/chat/agent-dispatch/heartbeat";
 import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import {
   createModelAgentRunner,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import {
-  createEventSource,
-  createLocalSource,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
+import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
-const parentConversationId = "local:test:parent-agent";
-const destination = {
-  conversationId: parentConversationId,
-  platform: "local",
-} as const;
-const invocationInput = {
-  actor: { name: "parent-agent", platform: "system" } as const,
+import {
   destination,
-  input: "Summarize the durable task.",
+  invocationInput,
   parentConversationId,
-  reasoningLevel: "medium" as const,
-};
-const slackParentConversationId = "slack:C123:1712345.0001";
-const slackDestination = {
-  platform: "slack",
-  teamId: "T123",
-  channelId: "C123",
-} as const;
-const slackSource = createSlackSource({
-  channelId: "C123",
-  teamId: "T123",
-  threadTs: "1712345.0001",
-  visibility: "public",
-});
-const slackInvocationInput = {
-  ...invocationInput,
-  actor: {
-    platform: "slack",
-    teamId: "T123",
-    userId: "U123",
-  } as const,
-  destination: slackDestination,
-  parentConversationId: slackParentConversationId,
-};
-
-async function prepareParentConversation() {
-  const fixture = createConfiguredJuniorSqlFixture();
-  await migrateSchema(fixture.sql);
-  const conversationStore = createSqlStore(fixture.sql);
-  await conversationStore.recordActivity({
-    conversationId: parentConversationId,
-    destination,
-    nowMs: 1_000,
-    source: "local",
-  });
-  return { conversationStore, fixture };
-}
-
-async function prepareSlackParentConversation() {
-  const fixture = createConfiguredJuniorSqlFixture();
-  await migrateSchema(fixture.sql);
-  const conversationStore = createSqlStore(fixture.sql);
-  await conversationStore.recordActivity({
-    conversationId: slackParentConversationId,
-    destination: slackDestination,
-    nowMs: 1_000,
-    sessionSource: slackSource,
-    source: "slack",
-    visibility: "public",
-  });
-  return { conversationStore, fixture };
-}
-
-async function loadTurnEvents(conversationId: string) {
-  return (await getConversationEventStore().loadHistory(conversationId)).filter(
-    (event) =>
-      event.data.type === "turn_started" ||
-      event.data.type === "turn_completed" ||
-      event.data.type === "turn_failed",
-  );
-}
+  slackDestination,
+  slackInvocationInput,
+  slackParentConversationId,
+  prepareParentConversation,
+  prepareSlackParentConversation,
+  loadTurnEvents,
+  loadSubagentEvents,
+} from "../fixtures/agent-invocations";
 
 describe("agent invocation conversation work", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     vi.restoreAllMocks();
-  });
-
-  it("keeps named bindings stable and idempotent invocation input immutable", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    try {
-      const first = await createAgentInvocation(
-        {
-          ...invocationInput,
-          agentName: "researcher",
-          idempotencyKey: "named-1",
-        },
-        2_000,
-      );
-      const replay = await createAgentInvocation(
-        {
-          ...invocationInput,
-          agentName: "researcher",
-          idempotencyKey: "named-1",
-        },
-        3_000,
-      );
-      await completeAgentInvocation({
-        invocationId: first.invocationId,
-        result: "Finished.",
-        status: "completed",
-      });
-      const next = await createAgentInvocation(
-        {
-          ...invocationInput,
-          agentName: "researcher",
-          idempotencyKey: "named-2",
-        },
-        4_000,
-      );
-      const unnamed = await createAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "unnamed-1",
-        },
-        5_000,
-      );
-      const unnamedReplay = await createAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "unnamed-1",
-        },
-        6_000,
-      );
-      const otherUnnamed = await createAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "unnamed-2",
-        },
-        7_000,
-      );
-
-      expect(replay).toEqual(first);
-      expect(next.invocationId).not.toBe(first.invocationId);
-      expect(next.childConversationId).toBe(first.childConversationId);
-      expect(unnamedReplay.childConversationId).toBe(
-        unnamed.childConversationId,
-      );
-      expect(otherUnnamed.childConversationId).not.toBe(
-        unnamed.childConversationId,
-      );
-      const child = await conversationStore.get({
-        conversationId: first.childConversationId,
-      });
-      expect(child).toMatchObject({
-        parentConversationId,
-        source: "internal",
-      });
-      expect(child).not.toHaveProperty("destination");
-      await expect(
-        createAgentInvocation({
-          ...invocationInput,
-          idempotencyKey: "named-1",
-          input: "Different input must not reuse the key.",
-          agentName: "researcher",
-        }),
-      ).rejects.toThrow("idempotency key was reused with different input");
-      await completeAgentInvocation({
-        invocationId: next.invocationId,
-        result: "Next finished.",
-        status: "completed",
-      });
-      const nextWithDifferentReasoning = await createAgentInvocation({
-        ...invocationInput,
-        agentName: "researcher",
-        idempotencyKey: "named-reasoning-per-task",
-        reasoningLevel: "high",
-      });
-      expect(nextWithDifferentReasoning.childConversationId).toBe(
-        first.childConversationId,
-      );
-      expect(nextWithDifferentReasoning.reasoningLevel).toBe("high");
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("derives spawn authority from the parent run and replays one tool call", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    try {
-      const request = {
-        conversationId: parentConversationId,
-        turnId: "parent-turn",
-        instruction: { text: "Delegate the investigation." },
-        actor: { platform: "local", userId: "local-user" },
-        credentialContext: {
-          actor: { type: "user", userId: "local-user" },
-        },
-        destination,
-        source: createLocalSource(parentConversationId),
-      } satisfies AgentRun;
-      const spawnAgent = bindSpawnAgent(request, {
-        conversationStore,
-        queue,
-      });
-      expect(spawnAgent).toBeDefined();
-      const tool = createSpawnAgentTool(spawnAgent!);
-      const input = tool.prepareArguments!({
-        task: "Inspect the failing checks.",
-        name: "reviewer",
-        reasoning_level: "high",
-      });
-
-      const first = await tool.execute!(input, { toolCallId: "call-1" });
-      const replay = await tool.execute!(input, { toolCallId: "call-1" });
-
-      expect(replay).toEqual(first);
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationId(parentConversationId, "parent-turn:call-1"),
-        ),
-      ).resolves.toMatchObject({
-        childConversationId: first.conversation_id,
-        actor: { platform: "local", userId: "local-user" },
-        agentName: "reviewer",
-        credentialContext: {
-          actor: { type: "user", userId: "local-user" },
-        },
-        destination,
-        input: "Inspect the failing checks.",
-        parentConversationId,
-        reasoningLevel: "high",
-      });
-      expect(queue.sentRecords()).toHaveLength(1);
-      await expect(
-        tool.execute!(
-          tool.prepareArguments!({
-            task: "Start overlapping work.",
-            name: "reviewer",
-            reasoning_level: "high",
-          }),
-          { toolCallId: "call-2" },
-        ),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message:
-          'Named agent "reviewer" already has active work. Wait for it to finish or use a different name.',
-      });
-    } finally {
-      await fixture.close();
-    }
   });
 
   it("reads the parent Location and visibility without delivering child output", async () => {
@@ -411,6 +164,20 @@ describe("agent invocation conversation work", () => {
             (record) => record.conversationId === slackParentConversationId,
           ),
       ).toHaveLength(1);
+      await expect(
+        loadSubagentEvents(slackParentConversationId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          type: "subagent_started",
+          subagentInvocationId: created.invocationId,
+          childConversationId: created.childConversationId,
+        }),
+        {
+          type: "subagent_ended",
+          subagentInvocationId: created.invocationId,
+          outcome: "success",
+        },
+      ]);
       // The parent Turn uses the Actor that spawned the child, read from SQL.
       const resultMessage = parentWork!.messages[0]!;
       const resultEntry = {
@@ -519,153 +286,6 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("sends each nested child's report to its parent once its own children finish", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const context = (
-      conversationId: string,
-      messages: InboundMessage[] = [],
-    ): ConversationWorkerContext => ({
-      attempt: {
-        ack: async () => undefined,
-        conversationId,
-        drain: async () => [],
-        isFinalAttempt: false,
-        messages,
-      },
-      checkIn: async () => true,
-      conversationId,
-      shouldYield: () => false,
-    });
-    const mailbox = async (conversationId: string) =>
-      (await getConversationWorkState({ conversationId, state }))?.messages ??
-      [];
-    const complete = async (invocationId: string, result: string) =>
-      (await completeAgentInvocation({
-        invocationId,
-        result,
-        status: "completed",
-      })) as TerminalAgentInvocation;
-    // Send one result to its parent child, as the worker does, and return the
-    // agent invocation that the result starts there.
-    const sendToChild = async (result: TerminalAgentInvocation) => {
-      await enqueueAgentInvocationResult(result, { queue, state });
-      const messages = (await mailbox(result.parentConversationId)).filter(
-        (message) =>
-          message.inboundMessageId ===
-          getAgentInvocationResultMessageId(result.invocationId),
-      );
-      expect(messages).toHaveLength(1);
-      // A retried delivery starts the same agent invocation.
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await expect(
-          startAgentInvocationsForChildResults(
-            context(result.parentConversationId, messages),
-            { queue, state },
-          ),
-        ).resolves.toEqual({ status: "completed" });
-      }
-      return (await getAgentInvocation(
-        getAgentInvocationIdForResult(result.invocationId),
-      ))!;
-    };
-    try {
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "nested-child",
-      });
-      const helper = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "nested-helper",
-        parentConversationId: child.childConversationId,
-      });
-      const grandHelper = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "nested-grand-helper",
-        parentConversationId: helper.childConversationId,
-      });
-
-      // With maxAgentDepth 1, depth 1 can spawn and depth 2 cannot. Both read
-      // the root Location.
-      const runs: AgentRun[] = [];
-      const worker = createAgentInvocationWorker(
-        {
-          run: async (run) => {
-            runs.push(run);
-            throw new Error("stop after reading the run");
-          },
-        },
-        { maxAgentDepth: 1 },
-      );
-      for (const invocation of [child, helper]) {
-        await expect(
-          worker(
-            context(invocation.childConversationId),
-            invocation.invocationId,
-          ),
-        ).rejects.toThrow("stop after reading the run");
-      }
-      expect(runs.map((run) => run.disabledFeatures)).toEqual([
-        ["handoff", "interactive-auth"],
-        ["handoff", "interactive-auth", "subagents"],
-      ]);
-      expect(runs[1]?.location).toMatchObject({
-        provider: "slack",
-        channelId: "C123",
-      });
-
-      // A child that finishes while its own child runs does not report yet.
-      for (const invocation of [child, helper]) {
-        await expect(
-          complete(invocation.invocationId, "Started a helper."),
-        ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      }
-
-      const grandResult = await complete(
-        grandHelper.invocationId,
-        "Grand helper fact: 42.",
-      );
-      expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
-      const helperContinuation = await sendToChild(grandResult);
-      expect(helperContinuation).toMatchObject({
-        actor: slackInvocationInput.actor,
-        childConversationId: helper.childConversationId,
-        input: expect.stringContaining("Grand helper fact: 42."),
-        parentConversationId: child.childConversationId,
-        status: "pending",
-      });
-
-      // Each child reports once, from the agent invocation that received the
-      // last result of its own children.
-      const helperResult = await complete(
-        helperContinuation.invocationId,
-        "Helper fact: 42.",
-      );
-      expect(helperResult).toMatchObject({ parentMailboxStatus: "pending" });
-      const childContinuation = await sendToChild(helperResult);
-      const childResult = await complete(
-        childContinuation.invocationId,
-        "Final answer: 42.",
-      );
-      expect(childResult).toMatchObject({ parentMailboxStatus: "pending" });
-      await enqueueAgentInvocationResult(childResult, { queue, state });
-      expect(await mailbox(slackParentConversationId)).toEqual([
-        expect.objectContaining({
-          inboundMessageId: getAgentInvocationResultMessageId(
-            childContinuation.invocationId,
-          ),
-          input: expect.objectContaining({
-            text: expect.stringContaining("Final answer: 42."),
-          }),
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("finishes a failed child Turn after saving its result", async () => {
     const { conversationStore, fixture } = await prepareParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
@@ -721,6 +341,14 @@ describe("agent invocation conversation work", () => {
             turnId: getAgentInvocationTurnId(created.invocationId),
           }),
         }),
+      ]);
+      await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual([
+        expect.objectContaining({ type: "subagent_started" }),
+        {
+          type: "subagent_ended",
+          subagentInvocationId: created.invocationId,
+          outcome: "error",
+        },
       ]);
     } finally {
       await fixture.close();
@@ -900,99 +528,6 @@ describe("agent invocation conversation work", () => {
         result: "Recovered visible result",
         status: "completed",
       });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("repairs the durable creation-to-mailbox crash gap once", async () => {
-    const { fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "mailbox-repair-1",
-        },
-        2_000,
-      );
-
-      await recoverPendingAgentInvocationMailboxAppends({
-        conversationWorkQueue: queue,
-        nowMs: 3_000,
-      });
-      await recoverPendingAgentInvocationMailboxAppends({
-        conversationWorkQueue: queue,
-        nowMs: 4_000,
-      });
-
-      expect(queue.sentRecords()).toHaveLength(1);
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({ mailboxStatus: "appended" });
-    } finally {
-      await fixture.close();
-    }
-  });
-  it("repairs a terminal result that never reached its parent", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAgentInvocation(
-        {
-          ...slackInvocationInput,
-          idempotencyKey: "parent-result-repair-1",
-        },
-        2_000,
-      );
-      // The worker stopped after the terminal write and before the parent append.
-      await completeAgentInvocation({
-        errorMessage: "GitHub authorization is required",
-        invocationId: created.invocationId,
-        status: "blocked",
-      });
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({ parentMailboxStatus: "pending" });
-
-      await recoverPendingAgentInvocationResults({
-        conversationWorkQueue: queue,
-        nowMs: Date.now(),
-      });
-      await recoverPendingAgentInvocationResults({
-        conversationWorkQueue: queue,
-        nowMs: Date.now(),
-      });
-
-      expect(
-        queue
-          .sentRecords()
-          .filter(
-            (record) => record.conversationId === slackParentConversationId,
-          ),
-      ).toHaveLength(1);
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
-      const parentWork = await getConversationWorkState({
-        conversationId: slackParentConversationId,
-        state,
-      });
-      expect(parentWork?.messages).toEqual([
-        expect.objectContaining({
-          inboundMessageId: getAgentInvocationResultMessageId(
-            created.invocationId,
-          ),
-          source: "event",
-        }),
-      ]);
-      expect(parentWork?.messages[0]?.input.text).toContain(
-        "GitHub authorization is required",
-      );
     } finally {
       await fixture.close();
     }

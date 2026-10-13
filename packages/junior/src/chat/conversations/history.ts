@@ -387,6 +387,7 @@ const subagentEndedEventDataSchema = z
     subagentInvocationId: z.string().min(1),
     outcome: z.union([
       z.literal("success"),
+      z.literal("blocked"),
       z.literal("error"),
       z.literal("aborted"),
     ]),

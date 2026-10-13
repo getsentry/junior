@@ -541,7 +541,7 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
-test("inspects and copies an advisor transcript", async ({
+test("inspects and copies a child agent transcript", async ({
   context,
   page,
   dashboard,
@@ -564,15 +564,19 @@ test("inspects and copies an advisor transcript", async ({
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
-  await page
-    .getByRole("button", { name: "Open advisor transcript" })
-    .first()
-    .click();
+  const openChild = page.getByRole("button", {
+    name: "Open agent transcript",
+  });
+  await expect(openChild).toHaveCount(2);
+  await expect(openChild.last()).toContainText("blocked");
+  await screenshot(page, "conversation-child-agents");
+  await openChild.first().click();
 
   const drawer = page.getByRole("dialog", { name: "Advisor review" });
   await expect(
     drawer.getByRole("heading", { name: "Advisor review" }),
   ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-drawer");
   await expect(
     drawer.getByText(childConversationId, { exact: true }),
   ).toBeVisible();
