@@ -4,17 +4,16 @@
  * The cap applies to each Automation, not to a trigger type. A noisy trigger
  * blocks only the Automation that it fires. Each run costs a full agent Turn,
  * and Event automations do not use the consecutive automated-turn limit.
+ * `botConfig.maxEventAutomationRunsPerHour` sets the cap. The window is fixed.
  */
 import type { StateAdapter } from "chat";
 import { z } from "zod";
+import { botConfig } from "@/chat/config";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
 const RUN_LIMIT_PREFIX = "junior:event_automation_run_limit:v1";
 const RUN_LIMIT_LOCK_WAIT_MS = 2_000;
-
-/** Most runs that one Event automation can start in one window. */
-export const EVENT_AUTOMATION_MAX_RUNS = 30;
 
 /** Length of the rolling window for the run limit. */
 export const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 60 * 1000;
@@ -42,7 +41,7 @@ function parseRunLog(value: unknown): RunLog {
 /** Reason stored on an Event automation that the run limit blocked. */
 export function eventAutomationRunLimitReason(): string {
   return (
-    `This automation started ${EVENT_AUTOMATION_MAX_RUNS} runs in the last hour, ` +
+    `This automation started ${botConfig.maxEventAutomationRunsPerHour} runs in the last hour, ` +
     "the most one automation can start. Check that its trigger is not too broad, then resume it."
   );
 }
@@ -88,7 +87,7 @@ export async function admitEventAutomationRun(args: {
     if (log.some((entry) => entry.key === args.runKey)) {
       return "allowed" as const;
     }
-    if (log.length >= EVENT_AUTOMATION_MAX_RUNS) {
+    if (log.length >= botConfig.maxEventAutomationRunsPerHour) {
       return "limited" as const;
     }
     log.push({ atMs: args.nowMs, key: args.runKey });

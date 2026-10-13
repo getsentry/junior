@@ -43,15 +43,20 @@ Deletion keeps the row and execution history.
 
 Deploy all workers before using pause. Older workers still match paused rows.
 
-Each Event automation can start at most 30 runs in a rolling hour
-(`run-limit.ts`). The limit applies to one Automation, not to its trigger or
+Each Event automation can start at most
+`botConfig.maxEventAutomationRunsPerHour` runs in a rolling hour
+(`run-limit.ts`). The default is 10. A host sets it with
+`createApp({ limits: { maxEventAutomationRunsPerHour } })`. The one-hour
+window is fixed. The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
 what stops a noisy trigger from starting a full agent Turn for every Event.
 Ingest counts a run before dispatch. A provider retry of a counted Event uses
 the same dispatch idempotency key and does not count again. When the window is
 full, ingest skips the dispatch and blocks the Automation with a reason, and its
-creator gets the blocked notice. Resume clears the count, so the next Event
+creator gets the blocked notice. Each block also captures one Sentry issue event
+with the fingerprint `event_automation.run_limit.blocked` and the `app.task.id`
+of the Automation. Events refused after the block do not capture again. Resume clears the count, so the next Event
 runs at once. Recreating a deleted automation also clears it. Both clear the
 count before the row becomes active, under the same lock as admission, so a
 concurrent Event cannot see the old full window. The count is in the state adapter and expires with the window.

@@ -5,10 +5,8 @@ import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
-import {
-  EVENT_AUTOMATION_MAX_RUNS,
-  EVENT_AUTOMATION_RUN_WINDOW_MS,
-} from "@/chat/event-automations/run-limit";
+import { botConfig } from "@/chat/config";
+import { EVENT_AUTOMATION_RUN_WINDOW_MS } from "@/chat/event-automations/run-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
@@ -165,6 +163,7 @@ describe("event automation blocking", () => {
         queue,
         teamId,
       });
+    const maxRuns = botConfig.maxEventAutomationRunsPerHour;
     const fill = async (prefix: string, count: number, nowMs: number) => {
       for (let index = 0; index < count; index += 1) {
         expect(await ingest(`${prefix}-${index}`, nowMs)).toEqual({
@@ -174,7 +173,7 @@ describe("event automation blocking", () => {
     };
 
     const firstHourMs = Date.now();
-    await fill("github:burst", EVENT_AUTOMATION_MAX_RUNS, firstHourMs);
+    await fill("github:burst", maxRuns, firstHourMs);
     // A provider retry of a counted Event does not count again.
     expect(await ingest("github:burst-0", firstHourMs)).toEqual({
       dispatched: 0,
@@ -185,7 +184,7 @@ describe("event automation blocking", () => {
 
     // Old runs leave the rolling window.
     const nextHourMs = firstHourMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
-    await fill("github:next", EVENT_AUTOMATION_MAX_RUNS, nextHourMs);
+    await fill("github:next", maxRuns, nextHourMs);
 
     // A second automation on the same trigger has its own count.
     const { automation: sibling } = await createTask(
@@ -195,9 +194,7 @@ describe("event automation blocking", () => {
     expect(await ingest("github:over", nextHourMs)).toEqual({ dispatched: 1 });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
       status: "blocked",
-      statusReason: expect.stringContaining(
-        `${EVENT_AUTOMATION_MAX_RUNS} runs in the last hour`,
-      ),
+      statusReason: expect.stringContaining(`${maxRuns} runs in the last hour`),
     });
     expect(await getEventAutomation(db, sibling.id)).toMatchObject({
       status: "active",
@@ -220,7 +217,7 @@ describe("event automation blocking", () => {
         automationId,
       });
     await remove(sibling.id);
-    await fill("github:refill", EVENT_AUTOMATION_MAX_RUNS - 1, nextHourMs);
+    await fill("github:refill", maxRuns - 1, nextHourMs);
     await remove(automation.id);
     const { automation: revived } = await createTask(
       "Add the release-train label.",
@@ -229,6 +226,6 @@ describe("event automation blocking", () => {
     expect(await ingest("github:after-revive", nextHourMs)).toEqual({
       dispatched: 1,
     });
-    // Filling the window takes about 90 sequential ingests.
+    // Filling the window takes about three times the cap in sequential ingests.
   }, 30_000);
 });

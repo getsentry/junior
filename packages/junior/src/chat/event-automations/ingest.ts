@@ -26,7 +26,9 @@ import {
   eventAutomationRunLimitReason,
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { botConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
+import { captureMessage } from "@/chat/sentry";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { eventGuidance } from "@/chat/events/catalog";
@@ -116,6 +118,23 @@ export async function ingestEventAutomations(
           "app.task.type": "event",
         });
         if (await blockEventAutomation(db, task.id, reason)) {
+          // One Sentry issue groups every block, so operators see noisy
+          // triggers. Capture once per block, not for each refused Event.
+          captureMessage("Event automation blocked by run limit", {
+            level: "warning",
+            fingerprint: ["event_automation.run_limit.blocked"],
+            tags: {
+              "app.event.namespace": event.namespace,
+              "app.task.type": "event",
+            },
+            extra: {
+              "app.event.event_type": event.eventType,
+              "app.event_automation.max_runs_per_hour":
+                botConfig.maxEventAutomationRunsPerHour,
+              "app.event_automation.resource_type": task.trigger.resourceType,
+              "app.task.id": task.id,
+            },
+          });
           await notifyAutomationBlocked({
             automationId: task.id,
             kind: "event",
