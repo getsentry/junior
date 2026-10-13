@@ -461,8 +461,8 @@ function buildIdentitySection(platform: PromptPlatform): string {
   }
   return [
     "# Identity",
-    `Your Slack username is \`${botConfig.userName}\`. \`slack.bot_user_id\` in the runtime context is your Slack user ID.`,
-    "In Slack text, `<@U…>` is a person mention and `<#C…>` is a channel. A mention of your own user ID refers to you.",
+    `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
+    "Slack text shows people as `<@U…>` and channels as `<#C…>`. A mention of your own user ID means you.",
   ].join("\n");
 }
 

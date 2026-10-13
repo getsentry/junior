@@ -163,8 +163,7 @@ function readBareUrl(
   return { url: raw, suffix, end };
 }
 
-// Slack user IDs start with U or W and contain at least one digit, which keeps
-// all-caps words such as `@URGENT` out.
+// Slack user IDs start with U or W and contain a digit, so `@URGENT` stays text.
 const BARE_SLACK_USER_ID_RE = /^@([UW](?=[A-Z0-9]*\d)[A-Z0-9]{8,})(?![\w])/;
 
 function readBareSlackUserMention(

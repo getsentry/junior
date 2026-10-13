@@ -66,22 +66,21 @@ describe("parseContent", () => {
     });
   });
 
-  it("keeps Slack user and channel mentions that the SDK flattens", () => {
+  it("keeps Slack mentions as tokens and converts the rest of the mrkdwn", () => {
     const adapter = createJuniorSlackAdapter({
       botToken: "xoxb-test",
-      botUserId: "U0BOT1234",
       signingSecret: "test-secret",
     });
     const message = adapter.parseMessage({
       channel: "C123",
-      text: "thanks <@U0BOT1234> and <@U0ALICE01> for the fix in <#C0ENG0001|eng_ops> and <#C0OPS0001>",
+      text: "*thanks* <@U0ALICE01> for the fix in <#C0ENG0001|eng_ops> and <#C0OPS0001>",
       ts: "1712345.000100",
       type: "message",
       user: "U0ALICE01",
     });
 
     expect(parseContent(message).text).toBe(
-      "thanks <@U0BOT1234> and <@U0ALICE01> for the fix in <#C0ENG0001|eng_ops> and <#C0OPS0001>",
+      "**thanks** <@U0ALICE01> for the fix in <#C0ENG0001|eng_ops> and <#C0OPS0001>",
     );
   });
 });

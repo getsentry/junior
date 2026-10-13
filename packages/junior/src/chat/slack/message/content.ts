@@ -4,6 +4,7 @@
  * This module is the typed entry point for agent-visible Slack text. Raw block
  * and attachment details stay behind this boundary.
  */
+import { SlackFormatConverter } from "@chat-adapter/slack";
 import { stringifyMarkdown, type Message } from "chat";
 import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { renderBlockText } from "@/chat/slack/message/blocks";
@@ -42,33 +43,31 @@ function readRawText(raw: unknown): string {
   return typeof text === "string" ? text : "";
 }
 
-const SLACK_ENTITY_TOKEN_RE = /<([@#])([A-Z0-9]+)(?:\|([^<>]*))?>/g;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+const slackFormat = new SlackFormatConverter();
+const SLACK_ENTITY_RE = /<[@#][A-Z0-9]+(?:\|[^<>]*)?>/g;
+const ENTITY_PLACEHOLDER_RE = /\uE000(\d+)\uE001/g;
 
 /**
- * Put back the Slack user and channel mentions that the SDK flattened.
+ * Convert Slack mrkdwn to Markdown and keep user and channel mentions as
+ * `<@U123>` and `<#C123|name>`.
  *
- * The SDK renders `<@U123>` as `@U123` and `<#C123|name>` as `#name`. A bare
- * ID does not say what kind of entity it is, and a reply that copies it is not
- * a mention. The agent sees the same `<@U123>` form that Slack tools return.
- * Markdown output escapes `_`, so a label can also appear as `#name\_x`.
+ * The SDK conversion turns `<@U123>` into a bare `@U123`. That is not a
+ * mention when the agent copies it, and it does not say what the ID is.
+ * Private-use placeholders keep each token out of the conversion.
  */
-function restoreSlackEntityTokens(text: string, rawText: string): string {
-  let restored = text;
-  for (const [token, sigil, id, label] of rawText.matchAll(
-    SLACK_ENTITY_TOKEN_RE,
-  )) {
-    const name = label || id;
-    const flattened = [name, name.replaceAll("_", "\\_")]
-      .map((value) => escapeRegExp(`${sigil}${value}`))
-      .join("|");
-    const pattern = new RegExp(`(?<![<\\w])(?:${flattened})(?![\\w|>])`);
-    restored = restored.replace(pattern, label ? token : `<${sigil}${id}>`);
-  }
-  return restored;
+function renderSlackMrkdwn(mrkdwn: string): string {
+  const entities: string[] = [];
+  const markdown = stringifyMarkdown(
+    slackFormat.toAst(
+      mrkdwn.replace(
+        SLACK_ENTITY_RE,
+        (entity) => `\uE000${entities.push(entity) - 1}\uE001`,
+      ),
+    ),
+  );
+  return markdown
+    .replace(ENTITY_PLACEHOLDER_RE, (_, index) => entities[Number(index)]!)
+    .trim();
 }
 
 function renderTopLevelText(
@@ -86,14 +85,15 @@ function renderTopLevelText(
   }
 
   const rawText = readRawText(message.raw);
-  if (message.formatted.children.length > 0) {
-    return restoreSlackEntityTokens(
-      stringifyMarkdown(message.formatted).trim(),
-      rawText,
-    );
+  if (rawText.trim()) {
+    return renderSlackMrkdwn(rawText);
   }
 
-  return restoreSlackEntityTokens(message.text.trim(), rawText) || blockText;
+  if (message.formatted.children.length > 0) {
+    return stringifyMarkdown(message.formatted).trim();
+  }
+
+  return message.text.trim() || blockText;
 }
 
 /** Parse the agent-visible content and attachment state of a Slack message. */
