@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/output.eval.ts > Output Contract > when asked to compare two options, use bullets instead of a markdown table",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "106f4608c2d3",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_018ded347b5c9eb3016aceb2ce6eec87d184a9e2d15021d851\",\"reasoningEncryptedContent\":\"gAAAAABqzrLPn2LPduCjs1VruE9mywHfpP6JMlpIodXnuCBnzJVpIx_RNhV83nWJvmyxzdcaxLnGnW62Z8buBLGdISrrC_RfSOXDBfkRngzmc43qfPrJx70mIxnjbsARdvdaU_zQh1RffWcrUzEI43CmH8sTj3nIdNc-HHA9PAL9m4HuURtS17kcxhKiBtLqDBfDud0_vcmPoAkSducxhEAnsSM85yDChkPHVHR2pX_6_HJFg5HuL8GtGMHTx__VPlEFqLYADP6rNQWE6Z6m2Mi6LrrniiiqpB9MfiJqC18kMBNyFzIgO8d_N_R2NR9EmZ7RsKOZRp7BSgAR3KZa8zooonKXEL75TtwSKUxENq7ZiEHwJmzAGYU4hs8pwl1IiH-zx8kdNyY4AXq1ghx85Ug0ynn7c9WFsXzVkvpfc2GuEUbd14woE0fbE20DjYThztu2yq-B4gq1iJRCrjr2QsH10REjksSysxd6EBioSX0Umoirc_z4fyQIO1mlussnfrA0oTORDfhsXM-WvO03lOeE2hbmvk6Em2PR8Q7rf6nQ-_M4il6_RxU_IQtEIQ1CSiKIy3DO8iiUL7OFbQ7lY04yHJNBZJUJb6WZ3Hb_jJfa_y5A7Oz_IE7X-jetRB6w5GQzzoXAl5Jkr3F0khYxIH1PXbZs24lGUY_3YBV61nMHWL6PIP_sB7uffpgZG1zJhj6nrRReTgh8YVCV8sWd-Ww1mxnWvz7DMI3pTPbIkxVAGvtF8t59gtMjLpWROT08nc2k5p23AWa5L7M2g002qltompOkE_05tFDudBKvCq5dmu20iTdLGHLaK6uRWHX9Z67cGL1O2cPovx75BiYKFUn7W6A2-5erYrIZgY3h2vpIzvyGPpZmtAr6OmZBQTGHSmr6wwMSViV0ku7I1TPcEgxBaimD7aPj-w-uBDEA1ORsAWOcRdQLEBkny68NEKU_Zw1K6IRQ6NjfvAncQ2I5OAdVl6NDwdrpf4Kde2CaaC113eB4p5tJY7Xjhl4LP0zL7NNh5pvSLrNl1HqrZQkh101iYyjdhTr6UAupIm3Ru0gC4rZZcSd8WqF3gtPS5qsfgSaTLmJLT66LgHSt7sZik4N6YWzTzLO7vmBl5qnBQ3jaRUELUhzuFC9rewAuCUWACQ44TJCTWRsWbmBjcqSUah92V3ihGo7G83tNwOo44J5bOLfa7uYUF2C53wb_P_vNGtcm13Ledo9_iyQGnGgE23Ga9nBRazTXx0zC2Mo7-FVENmYjCDy3btTJ6StLPSYyKwNofP4PO1iq4yU494vgQHTYsFDF9LVDt-jPjFDjm_6mSS6B9BXD1zOcCxC2WHuXoc-NtnOq1-nTVwzs6HcticSAmPlvjtlAYR1xila_7kK1lz9Oq3w9Kaqi4HwjnBj1nfwh1VyZLwY5dEnzi7BfqWNvcWKPxZsvfHRQea2XOneNh1SUKnSXzMeM2vRwJxY45846av5dBbxPPJeIa7YXOazjwBNL_CcOLG0Y158CLAO8Qc5dqwFlCoNuqhSbi23xg163Cd_2f15KMDprbAJ3wUE_FN4t28N5sWT3g6bp8C5VTn473sbWry6vXnyMdIwfFKFDDpRw6PjTYvoQ8QkaXF1crOqFcj-qVW3gsykIpWio1Ht-e8nRwF6YyxALdfSmTg7Biupg0mdGkvscSbnw9QNLKz0o-zBkGdW3So8Nlt9eoaFdc9q19TatVTqwaUpSQxC2JjIvGuxssLshGDuki2ki0sNZMLClSyVrCEXxtualVTXLL_MMs3KxxiZLgJyQKlTHg1DodBXsb2IM1jGWffGUNBaKW0uXEg9-3MoMqKXiAjol7k18SIsVZ730nK0nShy7m8oKg5A_k_xQfDdU0nz4rcbz8gig-Dj2OfUbkI__ZGE1kZPqCh_jAXAtfRCdKArfdvfW1LmM-CU13wFXJSTPjO5_4Br1S3ptE5-aNTw2guMArvfldasw3CbApuoSe2Rw5RS6ffbwi2m3F0efeeyL_wWtlwXVyvUnS-Qw9hB8oNrS3eUgh7Q=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a concise comparison requiring a brief, nuanced explanation across three dimensions, with no research or tools needed.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_018ded347b5c9eb3016aceb2cf001887d196d3a96d2c8ebd0d\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":603,\"noCache\":603,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":90,\"text\":51,\"reasoning\":39},\"raw\":{\"input_tokens\":603,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":90,\"output_tokens_details\":{\"reasoning_tokens\":39},\"total_tokens\":693}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_018ded347b5c9eb3016aceb2cdf72487d1ad0e9d72f995edb1\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931085867,\"endTime\":1791931087533,\"providerRequestId\":\"req_57ba7139fdc34e21b1bd1ed298332544\",\"statusCode\":200,\"providerResponseId\":\"resp_018ded347b5c9eb3016aceb2cdf72487d1ad0e9d72f995edb1\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"5109e6ba7f620b590a89cb1bfd32e26b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001053\",\"marketCost\":\"0.0001053\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001053\",\"inferenceCost\":\"0.0001053\",\"inputInferenceCost\":\"0.0000603\",\"outputInferenceCost\":\"0.000045\",\"generationId\":\"gen_01M4VPMX09YG749JJPF9G2X3QM\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

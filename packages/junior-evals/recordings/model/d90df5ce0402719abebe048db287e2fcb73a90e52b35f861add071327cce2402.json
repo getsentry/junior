@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/assistant-thread.eval.ts > Slack Thread Status and Title > when a direct message is not in a thread, Junior shows no status and gives no thread title",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "94ddcdf902fc",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0d0422ffbe5d8621016aceb3d95e0087d1b2c078b65cdf2a10\",\"reasoningEncryptedContent\":\"gAAAAABqzrPaWuFCsDzVkmLAgLqmqiEQEZMBlLLjVW4aR5YV9po1knas62KPFeI4J4b51jwTzZbSJtQONZZnEfuH7WFkjIo-O2wZn-2oHq1vNCim9EWDxkr-NOBdllcK3TBNNtRuaXu5aPrVgkUUgoYquVBVmWNo71eaBPHQeFHCaSpbTv-9UtcEECmg0e7kvOlYIHTkXJOhlplF05t0tJ3VCF9w8RlF1Xby2E8WOtxOn2JzUUD8wR359mhm9ofGETotBoAHZjS_bm5tymSikpGMkuac6EFH8ksueBoB89_8JKGuaVx-anPNbpnqCmxGjw8TSoXXQGV0spOkv_6QVyFD_yxxos3097WCBbzM8VfwuKXLDqCtY25Qp4i0mQCmrsC454PKes91CdbnaYyLdaKEDCxTx7wf4p_xowC9Ww-DDyxCfTHN2ijWo4NosyS5xDTRf9nFXUHKjRyAEJe7-TtNKcepaaYrdZW40mlLk5PlL49vTSeuOQxZat45yclRSVn9CngS_ktQ8DozVnDHhvUP3DLz1_HckbfQ5W0AL1CvGfzK0eFyZaU_tzOAncmzXeWs-PG4DmU9BdHtW2k5N6ZfbDww0rxRj_Cx78QQwMAki2kKfEV34CXdjpOn25JkI-oHkAeMo7y0Hdd8n_pOz6i0k0K79X128QJMidAYWrbYQspWNzAqrO_9MLglp8bL3X8ChAqd62cD03_egU8BqmQ7-XmMh6JeFWgP5oCRC8Ykit5ntm6aE1o2gDrmV4B1DehimgY-lXPRD83WFAOxHWEdxnYIt8ek0g8uODFCEJ_lCpvByL8GmuToiv8nHM7p0G6Qwg93davAWeatUBqJ_NzLeolEXkj7jrxvD2-V4Qn-E7Uy79jIjNQ5gjZ0ail5RANX3gerlIbvjdmKMCHAs2-Z3rAou-9jntWwG7v5xvsyvJtN_65cUfFIunGrtfncAMXiMhOdZYiUNTFLJgS78SAY5fCChf14WRlGnvpprQMAKY2PBd_3k6WMxc3b6eKbrB6CGbcF0ffg1lPt2IDNuEgrvEZrF47nKbD5MHR6mbU568pjr3htP9uEm7nMIzzZKn1WzSLYG5XJO60UQzrrho6h53jnDr5cMRpeqViZ8lClvSyudpTpQ5bhxYj2aBDv7slXj2j4gDvvCGmr-HKJqm4atbYO3yMx0t1cx9ISFfksPqWuTflZ-hAgRRTU21QQAzrLSX8H9osbxYQb6Eab8wheKAm4UPDCnSb0I4CWhHB6wqCyfSgnm-uTfw8aC7Q_s982j84i4pZ1qmXZHiSU8D4YD3ECvUGAcwiERPdOKTwg8dcMx0smHjn0KVM0n7jn7hleuRCFziUzzxtHm20BE00VAWJB8zaT7i6HUiFCc6Ft9wBb1xalkEDPzpxUHemhtgXSLWTzRny6-HS3qay4dk-KzIMNBlON8nXeJ_eAMT5mZpgoPN93A--M4B-uymQaOX5lVwExeafItlS2XJHtUA2bb7A6l9md4_739PluzWwyNxMgJRulN_cWmOlEBAOUjbNizbmLYbjljwc8pzOEZuUH3f1XSQLk8FLnfqLKSklsp6qwb1k_xU_S7nT0wszormE3MBCkEYzQmiV3eS81iHV33rYUq9JA393f_o9LXV6l_myX9LshbyThGDB1AvRyaiPkqsgu-hzcB0hJ7SPXef3gmKwVdG_XPJoS1jeeug4hiRJr9hse1jI-CFKL172lY12lb66PoWa7mrjoLocULsTSXRvleZfZFoLrdFAVBCuTYRuGn-hY2YnNVMnihY9AbY0O5iKhqBmt40LHCt9ioS5XjcYKGgwmjvngpO9IH9D_jehoATsIFTa0oPYHOwIyA6qe-Ch6zfXznSWfBUCxGKZ4oLzsfsBf0KM7jBrR_suZjbTkq1M8nI2pQlVK6EzXxhM6fia_ODocTOgQLIvK3ONo70UdcdZQwaZ5a2-PtQL1s_OvrGcXjb_fWLTCpDIdzHHkkmjPA9IJOrqN7RezPzFrhGaxo92BNYP9eEJmtrwhVOh063LrJ-IBhNgRkSKAwUqYMRRt7b3fktcamFpX64Vu9N0qc9YnDyS_G_W_w5pcEryYF3_lV5U2Fh1SnC3hKKNOmc29gCQv3HbQDid4mwmoRya9V_rG9I7KfZyrpvCcXiqX8Ncv-II=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.95,\\\"reason\\\":\\\"This is a general technical guidance request that needs a practical, multi-step explanation, but it does not call for implementation, debugging a specific codebase, or deep research.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0d0422ffbe5d8621016aceb3d9e7fc87d1bc36a5659f700613\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":586,\"noCache\":586,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":111,\"text\":63,\"reasoning\":48},\"raw\":{\"input_tokens\":586,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":111,\"output_tokens_details\":{\"reasoning_tokens\":48},\"total_tokens\":697}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0d0422ffbe5d8621016aceb3d8f78487d1b9cd697ba0fd8354\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931352875,\"endTime\":1791931354753,\"providerRequestId\":\"req_007b960eb73d4f5593d7975ac7c84858\",\"statusCode\":200,\"providerResponseId\":\"resp_0d0422ffbe5d8621016aceb3d8f78487d1b9cd697ba0fd8354\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"3a97c75219fdabe6a1d75ff6999c2828\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001141\",\"marketCost\":\"0.0001141\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001141\",\"inferenceCost\":\"0.0001141\",\"inputInferenceCost\":\"0.0000586\",\"outputInferenceCost\":\"0.0000555\",\"generationId\":\"gen_01M4VPX1R3J62BXMCGDEVRERX6\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

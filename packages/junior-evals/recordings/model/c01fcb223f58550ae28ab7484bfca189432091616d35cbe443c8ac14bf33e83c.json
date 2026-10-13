@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when asked to show an image, attach it without process chatter",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "c64ea8afa26e",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0aa177eb487c45d0016aceb3f8745c87d1bbd6850df4cba5b6\",\"reasoningEncryptedContent\":\"gAAAAABqzrP543BeUGqn4msethF520TN1QBiG5nsx3SXlOctXoeYqId9HnMSwqolLnUHXoxkUEN992ZsopVHsTJoGRzi-NmcSDmre69b06pkMyAyuC4_EpI7moGts4EUCMFwMHm9Xb1vconWtiFDOavHNymkI4xFeecKxuopfze3arZgsoCsZDRGouL2W2rGTWQPc_fYgrzU_W0IzbRSY8dfbTHUqwyZ-jFxfjmz2XS8A4dQekkBadZ6Me-m9Z6IcjUi4jwYFJ-nGxWhpJpYemTE9o_YmWhZgfDsUw78Vo5OgpgPyJnX1OGPeax5pJ4t9n9a86YL_x9sCxRm9ngLCyPsmCcNefToXrFhGsUWECmDrGfT6Cge2q7YxBoCEZtusrueAogae9bG7HFw4j327zLFTgkW-mvOVhepdjWrRbsKvY1QHmEe_WXQWL50NxboDln1k8t4a52O_xMHOa8C5bilDKC78b07NX_Y_lUf9XCQKE1JWCFchXUzTR3DmB4DkUiRDYA5FHdj7H6GNb7-2_be8Xnhnjnx3b0anUG0xOvPrhDWTqY4bWvI6ywqp_9VbE4Y4K3tTtfdrZrfrCtMTvkXgL-lTT46gSjpqT_bbuTeVtGRz_O72z682YVjRm9kZ5rimdZhi3XjYhyPbpwIFGZJRxGCe6znw2KJ6AQJSXOr00PTuCblb0d9L-U_KCmdzhtThn13IkaWlU-XplZDPU10E5z7l2HBAU5N024PvAecuB5hK9-X_rnPcwDH_lRSePBp7RAGDjL-KHbFWzY9Rso2idkJHU2llblPKCpGK7NRNTaDl8Z0kSHr-8ZWY3MrvHwI3cEDstaP2oDpF99BgoKSXKe4zjD5Fg8LJ7wBpeeHIjPa6fYSnHQuWC72Vp_TQfd0rSScC8OpEhJ84TCguS8fSRbZEJElrALVFXhb3yOq9DpIz-yOIbLjQ0kI-A8vnND2Bavf_EdqopvoY_XneicYiNY7Yud9zN8SKieudVSC6SZUxqfmrjNrJLvw73TB9FlzgF4UhBPI5zzTYqmR_5UDYb7BP9irNSd2eyMzRt9D_XhmjhSd43lPhigE_bVU312M9fnoQAHvsp4CDIkw_3SLCVao_KRujq_ByOGktDK91I-_R_xVoyYFgqSPO780eBl_O281VLgpoEuAvvOKSSDZFYSPxYtYoaYslOEyCzqOBfzUXwIJuEY33eGhKnh-Inv9f47Q4vZ0gCQjXOtwihMlap740RkxDgiOVasz-sWBwaasUsn_S7Fy1nNVUyqaOo9fU5Xpnk3JpBIxMzfl4yKZJ4smrU8PNX9vYh85uN4YbmCY0-e1t3Axx6bpIzfhuqvxrGRulOXhoVIts-bpJvJdt-6dia9zkd8iQqlKpbR3VP9-eJdG92OoZAUUtgJvBIndqduDiprtOnPu6gOyvC0ama2V2bA9qSRcBYNMk2hD_ng0oiYOHuVAVURoZa3zfEPYHHseq844AVDSV6O2pjiOA10aBlVJFf8kS-MVorIwgF2OMc08Ldl8YTTTj4dHUcc66dDpc5sBsRBv3cVTOgyQzq5NtygtqW7rxgkikrybrlgIUNabirahiLJi8iKo2Bod63wGPqkCoCKU_TtuqEKZBfuSitMO6i9j_A5gNY54b8R34jmBG1aghY9Z3GEoiT-4d480kw8d8x7wyjhAo5qD2-ARHFI0kO3ly6UWNDiof9kq1Ve18wtMgkBXArr1hgFHyXpCHPq6ll-l-9YNxy4MUMbx6UUUrX39uEHA2QsXbYCZbz6eON_0Y-yRdnnTC67ai7BHYu34SAe9ymBpOMcmZcbMajdkLC_vOXHn2vhbK3Vas3ZXarP05lWL_BgvSwsVBGHEEUWX4kEeqDRKfs-fWZtIo01UZ_fr05gGMVMU2EX0z8OVMqk-ahm1qKPPHHMgRMRRK-KkL6xRy8lK4mjnbyGAlWktbhKkQ4coApMb_uRLxG_hVk0nrjKo8vp42YTBFA0Gl81w864UTarojOozlyorY_MCMKCruCjb8TFatwQbyTo12qB_GeHF7LzuyDT0hcWQW4eGC4FQo_dwVZ7Jp5i9f03YyJ8U4JoEh_yES6SYcxPQ6M0=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.94,\\\"reason\\\":\\\"The request requires providing or sourcing an image, so it involves a tool or modality choice rather than a simple text-only transformation.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0aa177eb487c45d0016aceb3f90a7887d1ad70faaed4b81570\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":583,\"noCache\":583,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":98,\"text\":54,\"reasoning\":44},\"raw\":{\"input_tokens\":583,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":98,\"output_tokens_details\":{\"reasoning_tokens\":44},\"total_tokens\":681}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0aa177eb487c45d0016aceb3f7c12887d1abee74a55b626fce\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931383672,\"endTime\":1791931385698,\"providerRequestId\":\"req_47db5fa98e7f42de99d14bd159265c48\",\"statusCode\":200,\"providerResponseId\":\"resp_0aa177eb487c45d0016aceb3f7c12887d1abee74a55b626fce\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"26a7a2dd63e5bbd9b7f70c0b57a64743\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001073\",\"marketCost\":\"0.0001073\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001073\",\"inferenceCost\":\"0.0001073\",\"inputInferenceCost\":\"0.0000583\",\"outputInferenceCost\":\"0.000049\",\"generationId\":\"gen_01M4VPXZTSKTPGWD31BZEED1N0\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/delivery.eval.ts > Slack Message Delivery > when Slack rejects the reply, the turn fails and the next turn does not use the lost reply",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "d31aa38f665a",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0fdb4c906c9c4e82016aceb400fc0087d19e4faa370d3b469d\",\"reasoningEncryptedContent\":\"gAAAAABqzrQC-2Xun4oY11z_mEhZLViZK3Mn5eUR_qmZ2t0jfI-DJ0SJCuFZXotGB5yvpp7FJAl3zGjOkC18FAwA4PIh6gEI4VGJ6ajTx2sbwVueY7hwwibxzWVjMr3qDfeXTj3ByIdK6HAsjyvurQfTzXWMv6ksfwr0Gd37NR0xjB-8sdE8zpuSBuxgRrebIQAdZMEKU157mMRaV4nNJsHXGWf2UzEYVJuebNtOVFHZCT5U6maolBRYeFW3zzjAExogTvtBCUSxk77FZvGLCq9ms2z1DabdE7iseH9SeeyUtg9R2lOb-AvpzbStRuOOMUQaBzHi7aVBhIXSYRNLiTasTUv4nE_7NHSmXmGorRbqkEMxUbk8eXvLMzjsQfpisJjWk-dsIHMOyNGY_-B5ZSBXMrdtWuoeCx_CEJ0LjgvFChASTSKcB1BP3IzPGeurVyObv_iDQye10i77hFuvzhNfDBftL6TbpTlqKCdSqOxzUuBPO8vDirR5mh9hwSFN6NOa2t2cv_AwTvznowpuV0AR1HxEurvFpFzgJRjBr5AhLWVSxEVJRPjqmONXjNo0TtGNLfbleJpC-DInTjMVdyQhRHkSO2DKB0g9Wu5dlVe5K4nfLS4z8wzW2WotO_wfLLrEKiDURXp15_we1WjYM-xE7YBzFatFU42YiPv0cY4RqsP547EiJTwLBUtciPFYXtJ1zc8Noa0gTfKCGWbgBiRtPZAAQsW-ekj4MdayaMstNefYmjRfSTDQZ5TxW3Dk5FiA5fnYVy8f4uaejmE9fQszIsrzCJoJznhHLdJu5XpFUVk68an364fTnS3YYwG-ZyuoPQEHQBWr4VhoaOv6MTZRBlf5llSKFBRAx9esQBYhuiG34ffvKfW6xMZVATZ16RFbdZnzEl9C_AlYPkWWbshUqpvyKtSYDXwmWHUpmu1X7txNX88SpxMqcWbggHBJ5kjqvPwbF_ROXM4TbYLPVY97-B0K7ONyBur2cJZpfQncZjh9DkTLdd9DbegrUjLlSFLISDUwfHujQQKlwfuU6qVYmYlGw6yEPs-GYDFYm8tjH6nvwleESwFAGhPtgUaybJYx59aqWAj7NDWfwkygV8HBLiWFmramo-8SzO7O36nS-ZIBwPI2iu8GFoUR77QDATZkSYftaQxl3rNhfcH4ngqGoCn4B5M7ObsFBtHmbD8lO-q2_oSjCbUv2hrMuwctDPO_hPhOdhgxNsgxl8ALTFjY41UBoE2C92BfcK1l6x5Hw9du9FILXAZHjUpAayPlqW2n2c51bHL0JeQvhSqtCG12omO7rwC2tWAUA4TOefXKjiveGcGGqriZ9i0IPgL06yGUHvUfOu4VaFEbca2GRgVT9M6w4H8zpVsNVZ3CAl4pKyTyhVA5qihWJ_3j0DW48l4mEMenrgcx0bIqeVQzjDQo4DESaWiDNCnX6s9IGbmJnEK7EN8pbWY4ysFSad0cawE3r4COvDZ26FJqCrte7NFUxbnk0A8JFB7YO6iv4tZoQmlA7MStcH7leY5OP-7nzNL7HKhsZ6rtzzpDRQR4z8ngHnWCa4mTn8FFOlZuYio32E2K7nCb17UET26mHFy0ejCv5KuqXMAwBNMGWwKJah_C0lK5fveCpxEhTeoYSIrpYMLZmiTaXRDzZqtEHtqZOpfLUW0bbSJb-52IAwzqVXyIyfL0kIq8ak8ELtq7JsMF6QpKCzD9ZGZbp4DNWnl7VxPw06wrP3WNhw5EDxkgJO4SBvlbDT8pQPGqdn0_2YCY8f2W_ZRLS7HoSyUXpbP4N5iS0Eyzdr-0AcvDeRlxg0UBHMmxshxk1mgx6yXAOA1cVOEHVeEWd8GjHGhlXme2Nm5biCM-cLBZKYyFhycdulthV_juawAuIEOBydvAkfepbu6mSzjAR1M1bvXypDjKnZL-ujg5dNQmnPPksSjXhqX61mpD82qG9yBZ74M1xYjFAsLb0QjVacv5WZJSeQoIaEMvHBHEI77A20Bj4j_dPZ6q7wL2yEp42H4bZJPrgm3hFPx37uP923Ozf2DpsLFk9cKMJUK80Tmt_2dGAwEYdhHp9wuwANR-DsROdObUrgNAkEXwd0m31HezDrD5S9_hD3Y4jYVUy9dU1R4pcSwgSqXUxTqqC5T_0BUh4ye1a5yQIfAxj0AfgpPq8isfDd32w8XBvyfYfC5fO7wst8tawk9LzDjeq8W2Tce-5-5SkrWEA4IfS4EXBwVfAM3lGce8MDqxmbFeRSrwTWKdo25_YpvCKAOhJiflvrAXGa1ptwb-KBydowaGffI=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"low\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"A simple one-step request to provide a random four-digit number.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0fdb4c906c9c4e82016aceb4019ee487d1913b06c69d7b89d4\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":586,\"noCache\":586,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":100,\"text\":42,\"reasoning\":58},\"raw\":{\"input_tokens\":586,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":100,\"output_tokens_details\":{\"reasoning_tokens\":58},\"total_tokens\":686}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0fdb4c906c9c4e82016aceb4006b5887d1b5f95eced9a68a8b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931392148,\"endTime\":1791931394183,\"providerRequestId\":\"req_0263412c3d344a68902060d82502459a\",\"statusCode\":200,\"providerResponseId\":\"resp_0fdb4c906c9c4e82016aceb4006b5887d1b5f95eced9a68a8b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"c44c0e8b8d73eccd519709e4770a893a\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001086\",\"marketCost\":\"0.0001086\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001086\",\"inferenceCost\":\"0.0001086\",\"inputInferenceCost\":\"0.0000586\",\"outputInferenceCost\":\"0.00005\",\"generationId\":\"gen_01M4VPY83A5VQM2CQ8Q23KCQEP\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

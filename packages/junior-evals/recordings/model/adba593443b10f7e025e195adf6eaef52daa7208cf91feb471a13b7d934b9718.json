@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the model provider rejects a request, Junior posts a safe failure reply and answers the next message",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "89700a6f7cb7",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_03a25dfb343018b0016aceb3b86d9087d19a1dffcb58d5fdf7\",\"reasoningEncryptedContent\":\"gAAAAABqzrO5HxtHgjsXnCz_mEqFnhczk8UZmKNSLlljmsXfft_JUGp3zrP9uJU5cG8bBzVP4NDyolOIZbotfc_EdjDHYFm9d3yrPWHhjaVeDYBStA5Sqb71POBilNreqJL17Iu4AUoT9r32v3F-YV0QtW2SJgwsnkfGN9lx3dGC2X83AmQcRxxvLzXTCm7a0uZn-Ld-yTmPok4zXlxyZVHvB5mm2YxjqTCMV550GcYQ_8EZR-xVFXyRs4EkTv_sYwhoeqpcQ1EXChywSvNfJ76tddVCLJWt2btjhwR5uXIM_1XFBFV5dL-fPPmvLkAQemyUs6HMk3KOwmw4COFh7QK7iU2HxqQGjppk4gCPmLqLJRJyStWMznv_Ll3gWrpkdNM4ieKhr5p6sVKXA-gA6hLYT3YXwWxjwr7DGiIvt4gXx11NxaUGKL4pfL1qf-G3Mvg0lpO_OuRPAg2IPzk6IVUC6KvGBWEEqp0-Kz2ByHdPhWXwzC0JZDnov_BbCbp1oqOP7scwyh8JInAk5qXLWcWQLMIcCLzN6f7C82I4FT_rmzQZNf7m8kKmVedDRfpTs7u_gTMWhJSmC4O2E1tskbTNuVQadC98AHcVL4SfcF6i0P6w0Vdb0xK73xb1vBTkCqFFaCntaJm7o3KOmjJ0qd9Di53Q_Ng6UvhJJAuwmarT8F8nYOURftf4meX2eXgn2j3vQfcEY5znILyV_BlZsFLXNAPi2x_8XTo1RF2oXTIk7kpkm0yOFBWRrdVMoxNkmM4dZOWoBlM6d0rWbOZkJG2s7Weju2ZXnJobUkIZkPbOP2Q9UjkHA2X26UFNyxbR9FOjTSk3JqIDHLUBoxJBGwPfQNMegYaN53fsKoYfv15Ba2MIcvoYe-DVVSwPeLaiDD2Bklk0kyagjgcgdODhtaJvU9O_KACDr8RZI3ZWP0YKIcEBLntq5rqVP0ycZO2_yUd6W8QdqhZXtfj8RkHsXiPaDZ1Z7V7Jj7muF88jpHFjoF9PexzgdaMjetFYq7KP5KV1JYpKrb3prQzlpX7JelgLFAKA9BXjLEWrOntsjmCLywRG9BygDbocZOR3iS3Dora2_oiktQ_cCtFlOhjkWLELtmYdmZ83LwGv0Npdm9glPlua265dV9QppYU2ONVU-O4TCvL3vQU8-uYE0GMkzxF7-0-vg_xRS3LzB01Ts8IAnTCZEXIUlEZeFs259dO8UgebsFI7zFUKUhbFBr9AsWFfDMcHJIMCX9mzpVAzvnHmCpOZMqTl-2O02erqIGClYfgsnGnwY5azP66Y3JypuxT48zBeffhCuD38WFgumkm8cPNbV4A6KaLyScrkIhyVMlMMYk-RX5Ujj2zk--2qWAum0yQ7hn7ifhDC7WHGqbiNtgYIdW2o-LEtx8v1EVd8g1Wh8sZTPhXJXygoVut5eV0q6SO70lfna4YatSHCMHy3OZ7KHRsZAZ_cUAtiT6ZZu2CYrr-w_Puqc2OclNCLaRDVofOemwuFPZEk_p0wvkArRZRhh9DHSKZBFcRztBWV8cLFZL1b4mgcxPvPSCpURVQLVDocdDtI20J50zclKwq7HJVFEIk6GNkSLgJSHevSG85e0M46w4Tcxxmi2Z-I5eZ3qcVUIHYLTQSUg-qhZBFbiENAHWInpgIA7iH5NNg2K48HeL4iQK0p9jiKKOt0Y8Zp3qHaufnWObUQhC1QkppAnJ2dpPqwBdR3F0QweMcnpR2cJXDMx62trYgSWnnI4ikVWTYgx6bWwHzessJOJtdTm4o8c7w5ocynGev0Sc5jUz8tDM2YsTYqGdMtHTv0EMIPFCYCbRlXTYx51mSgb6DkDENLScH-8rRmeR8DHWOh71ok138OVS2D0L_3KHwe1SEmJUTOaZXkWs5xiXPgtkNwsPY1ofF34jqJVIvLmSk8qQADI_hAgzAG_jzL0Y0IlWFLgG58-X4QavrJhxmVrun3wUgUj2UmoVdz6C5V9wi-JW4nJBrK0LH_ks-Wo8LaTruFuzEGWlDMSOmOZ3Eyazu4A_SVYLPl9HWvliDew2SHQDAKS1Z0RUVYSKh83EI8zwRHFpfdncruOQ==\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"none\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"This is a simple acknowledgment request requiring no substantive work.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_03a25dfb343018b0016aceb3b8f18087d194cd8b3890b63a84\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":588,\"noCache\":588,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":83,\"text\":40,\"reasoning\":43},\"raw\":{\"input_tokens\":588,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":83,\"output_tokens_details\":{\"reasoning_tokens\":43},\"total_tokens\":671}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_03a25dfb343018b0016aceb3b7f87487d19614a40af8f2fbc5\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931319896,\"endTime\":1791931321405,\"providerRequestId\":\"req_b682734c9287467b8ae5ee4163d09170\",\"statusCode\":200,\"providerResponseId\":\"resp_03a25dfb343018b0016aceb3b7f87487d19614a40af8f2fbc5\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"8664a38c3d5015b4c9a59c1de5de1e9c\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001003\",\"marketCost\":\"0.0001003\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001003\",\"inferenceCost\":\"0.0001003\",\"inputInferenceCost\":\"0.0000588\",\"outputInferenceCost\":\"0.0000415\",\"generationId\":\"gen_01M4VPW1HX36BV7WA0WC4KNTB8\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

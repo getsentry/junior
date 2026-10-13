@@ -1,0 +1,29 @@
+{
+  "session": "evals/agent/research.eval.ts > Research Reply Shape > when summarizing multiple sources, show initial progress and return a concise answer without process chatter",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "bd393da23b25",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_062ed480a21550a3016aceb2c5918c87d1a44b10d39fa102db\",\"reasoningEncryptedContent\":\"gAAAAABqzrLGtuBFgKgdOki_zvhw6_4Y56Eggi4mu0RpgDL7seBSVgJCflFai8JXUOKCHH94sJ3lAm-dwJOrfmqwMbP_PKgzkK90OMVhZg9GmVUVIeQQhzjJm1zb5JcNYlxmzCAzzYlr6VCjQkWJAZN_gUgBekivvmWYiYYErojtHAzSO10WWC5cPy_AUMTfhFNgMkoGQsmxK0-Z9HVSZ9Mm9XChEEVVWEoE_rbgmUxqLevuocj-OiCW079K6uTKLp8zQvAg1xq-i5z_yxgWmCdf5DrNPvvpYcyFZEvCdgMkYI_KT9qk6FSQ6Qm_b-R98JHwgq10oCPtq-31kWSMBhY96RPxP1sJ4Ohat6PrOR7FYrLfVspFKOEwn-4CZTmZNRUk-8ybDA7zmIbDkTRDov0rpZ-87ssYzUOR0JbfU0CBgx8BBuY9yeADi75yrM8lLfIObJ-aBzdYpAKFPS7FWtd96Z1QdHi_fDzDV6-fh4mEoTGhoRqwX0iMN0Pn4IaW5K29kV3Q8kCRuenuWyArAiarxGaTWfYJhaNy0yzuZJX6Wuxn5GtW4wCQ7bLl5z62lyPdcJ7T2K4ejzP1lXbrXxS9Oax4s6F3-rb_VXoHA0wzgwZ7oarcVceB_HGF1hJuh9QVckNViMGUS24O4JiFVonQC4ZE6ek27QFwOM0gKKLV51BOUMCbGHrJd9M4x9MyCv9kN0RfiP_aE1_bcO9R4DcW_DIAu3uhdUVAGKmb8Jv0GKCn2cxgUHa1EuVbhkPnz7wgAieuWbRlWl2H7MT_6n-11meDNJgJ9PlerAhkkTwWARHxt8hFGDqcmWMfYPfOY6YnKx3T-bVgvd1wm6wo3vaf-hxqso7dXxAMVR18vhR1Twsiso13BV7eWx3l4nBqF69RQOPaMOWgTIx5uGR2oGg8c_0IYQtiVHNVhcmFdLq_ezncZJlXKJ570BxMEcI4htODgMlbnk2rW_MyD6genwQ1npL9ficEQkzFT1FqBUn7Kuaq0BvgM-kQlmCGztIekpoVIu_JZrmfXJ7PKSX6WJg6cUBkMxjxFZFwnfVicbcuqPPyQvFIAgGEaL3RlaRLmzdULueP_YlSPrsgQguXKA6ISKsQJn-LKqqG-kfQwvEePC5yDFK2jMAput6SaH0QS6r8BbDB75uisjU71iLufK_PD9q0lOioQdr_76qrgs-VU2JYZInQ2MINCpgoKmZv1ATwGOwcX4O1ZzG4yOPJi3yQyz_SG_eLE01db4nuUdg_DZ2TC9ev2mTTpVgDv6-WgO0qmqv_ejIZwYDPqnGxXBJoTHex0TDER4FyPmVGdUWDZfILw2K_OCbNPIDBwihI4TXLvaB8MO4a7MwWfl7wc0GZJd0qD34T_XjQRv11hmbjWl_nb8PV_3MKBm6yFzld5_4h46_NZYXfXqwsB05cm4l1NJMS1WnmtmDwfVycqLJbG2NS1uBcdDKFPzLNilfLbGLGgVNP5u1UMnTUH--a4ChCkRU-GYapC5P5SD-waLBQfqJsvf1C9RhmCwGrBag4oQ25oxQlVQiI9-xzjfOtFwp8CXNGcYvQ9K9QXdvCqS90c8vXfhLG2ex56fD-3gKa0UmnvZAoXordC6TV_8pn5Zn1qa84tWuzqn6_s4KGjhLauGONSAhKrusrUIjh030IGuJfawBIPRdt0LLHxAr_NzYpPlD9kMDjjSkqQUUOoS_RTrcMmXLfClnyaa3YzDbNKNAsHsP5khHrbmz0-8cCouU4jv-pPFS5_m4JE_GVWeVLyM1PLsJUH2Hvj3Q-iPYSaCDGqkCU76x-CG7LzbjsuBtjvRT2zdWl_Bpk2lfkKlKz2QgqpZFrjMOYrYqYi-WO6zon8xrTEprzVvzgZ5qB4F44VTp1vzqRUUAz8GJE3oySu4NopvUT4jCpREvjvcL-v8OZphnBlpsRocmGXM84EtDVNn7fVgIcuswyAt8v5oYYkKSqTJFINspwuK3e74iqjm0n4TUSja660p-UqYMzdkb4yiPO61MJhZsaSV3smCCIQmAof_JmFWIJhCup4TTb6bynx_xjEuAZy2gprOWLYqpF5zYXXE-aQKHiWYzra2meJ66GBWAIp690hJBORFmFi8wB_eYzOICO\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This requires checking three current Slack documentation sources and synthesizing them into a brief summary.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_062ed480a21550a3016aceb2c6347087d19a8665410bb4c2f5\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":677,\"noCache\":677,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":93,\"text\":46,\"reasoning\":47},\"raw\":{\"input_tokens\":677,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":93,\"output_tokens_details\":{\"reasoning_tokens\":47},\"total_tokens\":770}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_062ed480a21550a3016aceb2c52b0487d1a3ff2d074dfbd260\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931077089,\"endTime\":1791931078778,\"providerRequestId\":\"req_f120dcf9dc424c2e9548a7674374987c\",\"statusCode\":200,\"providerResponseId\":\"resp_062ed480a21550a3016aceb2c52b0487d1a3ff2d074dfbd260\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"1110c372da7bb0fa5e1645900ebd90e4\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001142\",\"marketCost\":\"0.0001142\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001142\",\"inferenceCost\":\"0.0001142\",\"inputInferenceCost\":\"0.0000677\",\"outputInferenceCost\":\"0.0000465\",\"generationId\":\"gen_01M4VPMMEGCT654CM5N1RCAJ5Z\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

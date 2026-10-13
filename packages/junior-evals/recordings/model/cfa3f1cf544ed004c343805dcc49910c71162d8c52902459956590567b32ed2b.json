@@ -1,0 +1,29 @@
+{
+  "session": "evals/conversation/continuity.eval.ts > Thread Continuity > when a follow-up asks about the prior turn, recall the earlier budget context",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "334323a38150",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e4113a1144bc16f016aceb2d37e9487d1b33416ead5885d31\",\"reasoningEncryptedContent\":\"gAAAAABqzrLU1w41cciYif6GFp2jZzELGfedWUvuOhZMsAlUg99elAMQY3Ssr7UZf85u1hcHFHNvrRvQ2PplTVOvTMn_m_L_sx1WwRAS-f7mQvPnSqNObQsMA8-7FfmtW2AjZPlmwIRtoWvfMxR_4zmsV6gZva_65gTGyegUQlXtBpKNi77Zzemqew9g2HNEjYFCCusMxAWohtrwhFRalf4ZrlyCAIjFQFwohzWKbvJqBWpnfWVJT3pVA50dcEfF1iTF32KtYcv_hIhNq5uLvf-7kt-WK7O81gDodPPrCew-Pu4t1P0UAr0Dt9pLFTliY20FomfCLETRV_Rza4GIxpBwxqZgl83ukcC66OJkDTUDvNLIYf7-0hufv00hNsGJGgskQcNNHgWf82iz825d5AgeXRspcvL40aEyxcD323mbb3Nd0rcH7knGN_wwMz3LBIpxnQbWDU6FpVQ-s6QPea0xAHZIH4Qb2q9XsrHAMPKEOu3k2afLSV8_e2pOolOIIju3lgMua6JRXppqt1OX-8jcqyQRNH5abBE_1OPy1VZ6BdBdQYACfgKWN_8jhj6H1v19pbTAu7_RtDTfDjasV0BSkR-vMezbA4FWswvSu7ujEMfs6wSO8G7dyVvVq_lNBmPEAmipdBXW-pZm8VsjC_iiFYzXiL6UqA_next2NlDHO7NcwLmZlHJyJs6ikqcb7BuPZzGjSQ5zHp9CgdDf03pPy7-aEql4H40S6wSr9AoAM8QGsyP-I1S29qmFQan8Jl6ybdzkmAyr4asNSAX0MRLnA3iEQ5Lvu96abWGA1gT7GGYvpYnaxFj6UeZykd-jG-36yAojT5haCRzBLY7ueMu2fzrj5Cw2zcSUbht7yowgDtwRCzocHya0rKGQ-Llovb9zjzxDBA0OmeoGZhbQi3um1PewqTUFr06H1AtpbDbeVQ1ksUlryA_nHXSifdmPjKTDsj6qcwcRRRd32vVyDGJov-Pw4T2jU6o0sHqTWpQcS8uPUsqzU1OO1iEwiLYFS3flNaX5YYv8Ila7ZrG4vtidBglzM_smkiM1nItP1hnZh8ZEpqk_kU4sFK9KOiSK4qqWnKv8YKzTIVGSucCv2C-2YxFxOuzH7gFCjvIutBklKOmz03L9KUJO6YpJWyXUgIeXAM86rTSrJvhg2u1OaKge3Q1JDjFXxOW37EiHPNVYValk_aXDc5YGl2oAvW9F4m6kjuCKQISrCEsEuaDuuCUDXEV5clui2t0tYoZQzb_DtsON2eQb8uCD94jKQl9btXmvt-V_G68AjOZS-0ljhRrDH-v6LRMfM6sCRCDzQVPs1OdqeheEV3IzEDlwTUqfilbesAotuoPjsdOMn4uPCWhf0gkoF9-qojd7cY8UTh4ml9Mc54_2EVv2C13Xa1HBXGaCLdFFWq9MFlsKZKqDQkc-4Q2ozLEcSmmEl7BvXQA3Cx_yQlPaOYa4TRbTY0t8xi09McroOpxeY_SL0plVlVxvmpFIRGaWyZNF64XPTyTdHGr-Wxr4mCLRPZb5Z60Ow2fAsWbU5PaPAK30Lb1OxRJ3wTXhsPS9Fe9ZBGKPN0pDm0tS50yf5eiWidCTIW49SAN5o-zSKP_JwdKDs2tadpuzcCBxUa12aWfDwubkmKthHpdk1j9LX8KOsJov7Aiuk8OEqaaNVZ9r2tQyGIi5khm2Pc9yML0sPZHi3RQ8GeadBuy94ZVAy_8fWbjH2G9WA5HPi38MAv_zXFOV7dvtDxvmx-dnUKX2EAydWypqMw7jeCWq7Wkt72ECSbhz-NEa9UC9rN3oxFvK43hRlIzW1CyQZLYPSpX2zlUc84HZihm6Glac-yh0OYg=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"The request asks what the user said in the preceding thread, so it requires interpreting prior context.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e4113a1144bc16f016aceb2d3ca6087d18a4355baa52c82e4\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":728,\"noCache\":728,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":72,\"text\":48,\"reasoning\":24},\"raw\":{\"input_tokens\":728,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":72,\"output_tokens_details\":{\"reasoning_tokens\":24},\"total_tokens\":800}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e4113a1144bc16f016aceb2d320d887d187192593b2036f2b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931091036,\"endTime\":1791931092372,\"providerRequestId\":\"req_e00509e8e53148f080cf43bf91062c7c\",\"statusCode\":200,\"providerResponseId\":\"resp_0e4113a1144bc16f016aceb2d320d887d187192593b2036f2b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"529f518cbe46673b8b111868f848346e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001088\",\"marketCost\":\"0.0001088\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001088\",\"inferenceCost\":\"0.0001088\",\"inputInferenceCost\":\"0.0000728\",\"outputInferenceCost\":\"0.000036\",\"generationId\":\"gen_01M4VPN21VP90TXNPE88B653G3\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

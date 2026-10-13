@@ -1,0 +1,29 @@
+{
+  "session": "evals/coding/files.eval.ts > Coding File Tools > when asked about a workspace image, inspect it and explain what it shows",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "e1eb0de70982",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0eb8037af0c70a15016aceb2db161887d19b89663597e976da\",\"reasoningEncryptedContent\":\"gAAAAABqzrLccU8-0kBgr4jKvZansbTo0dGeLwQkjg1pGGkwVkuk3ET5myCPQOTbHCM6qnUZFbYQZT-Nh5sRpWbzinJ2rpzSd9PnH25AyaDmPlkpNQWVP2EJDfnjOd_QgsQRRuTZAeSypQCjjAitprrq1DhQrbXcl44l5gi_S3-3p1M4j4r_S6b0rt_XogzKVRxvE9KesKviTtlzE2GblvlwQ9GtljzHYLcafyL-k38JOVN49wvlLy8I8XcWJPsDdkuUgotlDT-oIyK3zHp-dshhwX32Mk4VlrqZKKC_Wjt_FNz_dPQzMcLyXxdi4o97t21vxova6VPaf0wOQn9AMZNU4FOkqeDUIw9CW4Ta2KzPoQs9S_P7_IkExFbEelUs0a-EIL1-AagLVWWQ-_8kds0CfYx5riXOqxEh_lkJNzXZREbem83log04XYgdww0f3xUJ4QW-B0LWF82VKfCXHsvqfgJ1_cgUr06pvLeAdqJYkGo4IJMbNXXQssn3wYfRbkoltGmhy8m4bH49FeDKbY3lhanJBQYO-qlTLmFjZERnR_3V8y9mXEWFEK0kapRvcNkM_zJXeZAjsgOSrjDhHCMKmAFbMMuIY7S65I7cIKXdHAy2I_UO1kHV1iJXk_8Vk0GzfqEGkKEH3X9VelCXTFY7luI_25NcADQfNkPSZlfCyIGAaK4m-wXtyXCHhkFPLtxWwMPoePtZfUAVZRbTPNcjGyQPmEyxPT1nTZTYmyLzJEqlcnXnYiFJ7nd8L2YpXFKQm00OXk60g-OIo0QER2v-WJ0uC8W5pCp_161DqSB4p5F5Vsr8KOp9t2rwp71B9CxpO1ljxFB_03v725cY3PSe4hiIilbpaC_UzOgV5apfddieOTVyKiX1tHEE4LJHa302x6OS9QOyvVWKL0Eg-atTHFH5b_vKUgtCcPDVzHPFNM_Yy2cZvxecNh3elH1hrcrpz1TOksQo0Fn54om8b4BMjZfzIGXWCeX1XnplMDFms0JhA9BChimRpOk4BM-JHlkWRb_yC25a00eRAWGkLU5SPL2O6c8T48t9uIswPJXDiDEksWkBmyggpLc0TpSxI5SCGiKFwPXicL4RNP8tQTJY_xSuXlMQyy8ckfKm_TYvVw_1ib2Z8PjKb_eyL-dSqI0q_qwQzoirVwUWSl8X2NsP-py5QSeEetm9R0sBjUxxx-ATwnmQzF06pWWa3xs_oZDFGzfACU5ZP2iFQfLCPe7mVHy82uQRbQubIVgAXrcp2d5adXR2SJ1rSMpTU5t0Kp4mz5gIq282hePmig1wbbfInZpF_AW4t_oWPq4oBHOAro2rlhMrlguMD6OvDHM3daEu5SfYR4Ya1VSKtbS2mrtI6afa4d3atX924JJ6M2vb6D8lceoRgrq7_jqUl3hqpFKhqf00HPkfkB-h28eLGKUBT8DBUCW3TPtf-tdRKEyh5rSpnleuJv-PKgTP2QemdpGHhEYttxQqnOtJjR5bajrGaJCeDtNhyS0MIGJxq8j58C4ddDFbaM2sMDOT0xR3J37LpZ8hBDPKXBRDqY7kJWJ-8G4Ic2gANau-jfyrFyNxo_xQWKqCxT8GAtY67ewCkOTkn9k1w3KjFvpnQr56XSPp-MT4ExILUIgqL5V2fnkbQ-TUG8jt_rhxXmA6ZdxCVGXo6BD8QLjfVgBLuQenHH9NPYKf2PXIQxokoG9H-0eTfSJi-YWs67rVrHR7D0vGfAaFPPLdKufEuqJDu0FYGrU1NPB_UhMsfqgjP98bIpJTE1nh44b0_fDYoEq1R2xVv9QhgJirrIQ9O6G3qbybYd3TephrIXmhKJWIQXDaMKnsRPtXJhOoJPg0uWAj0Az2A6mInWu3ehCzKA6-79B3AkytZi5T5p2Q00oDR2b6IdmdRDahSinbp12mRUOOm2JJP_1Qd204N2gcvBChMGGad_q_Qs45fh5nW6MgccYSWAoj92c_aRsCz0U79jz4ZnODPIxhZT4AUE6wkQC2ndNfO9M_8PD-0DNJVvIjdOlG1aj11bxq-7J56O_EsI5e2sSjBZaZOI1UKYMZ\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"The request requires inspecting a project image and describing its contents and spatial arrangement.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0eb8037af0c70a15016aceb2db94a087d18ed1cb767b7ef251\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":601,\"noCache\":601,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":84,\"text\":44,\"reasoning\":40},\"raw\":{\"input_tokens\":601,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":84,\"output_tokens_details\":{\"reasoning_tokens\":40},\"total_tokens\":685}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0eb8037af0c70a15016aceb2da8acc87d1bb25ef0d3eefb8b5\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931098459,\"endTime\":1791931100161,\"providerRequestId\":\"req_d27aed02997b4c049db3cac5ef5010bd\",\"statusCode\":200,\"providerResponseId\":\"resp_0eb8037af0c70a15016aceb2da8acc87d1bb25ef0d3eefb8b5\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"06ed76b34871c7561ef8f8b9bc54504f\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001021\",\"marketCost\":\"0.0001021\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001021\",\"inferenceCost\":\"0.0001021\",\"inputInferenceCost\":\"0.0000601\",\"outputInferenceCost\":\"0.000042\",\"generationId\":\"gen_01M4VPN9A272P5VRKT7CE8M9QT\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}
