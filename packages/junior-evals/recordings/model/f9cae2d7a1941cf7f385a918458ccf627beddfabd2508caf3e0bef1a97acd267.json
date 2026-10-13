@@ -1,0 +1,33 @@
+{
+  "session": "evals/coding/github.eval.ts > GitHub Skill Workflows > when drafting an issue from a foreign reference, keep the default repo as target",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "ef2d127de37b",
+      "messages[0]": "12f28d3a4766",
+      "messages[1]": "15a2c35af0bb",
+      "messages[2]": "cbdea6cce6af",
+      "messages[3]": "8c2579d02657",
+      "messages[4]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VK14C3EYBFATWN438W9BGH\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"### Handoff summary\\n\\n- **Task:** Draft a tracking issue for the Junior bot. User explicitly said **do not create anything yet**—only provide a draft for review.\\n- **Reference:** `getsentry/junior-eval-reference-never-exists#123` is intended as background.\\n- **Channel default repo context:** The visible thread says the channel default was set to `getsentry/junior-eval-bot-never-exists`. Treat this as evidence of context, but verify whether it is the intended target repo before drafting.\\n- **Progress:** No issue lookup or draft has been completed. An initial handoff/profile call returned no result.\\n- **Next steps:** Inspect the reference issue for its relevant details; determine the correct target repo (the apparent default repo name contains `never-exists`, so do not assume it is valid); then provide a proposed **target repo, title, and body** for user review. Do not create an issue or take other write actions.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":425,\"output_tokens\":206},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0d3acd56ca532f6a016acea3fc6c5887d191ccfa6ba97bf11f\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791927292318,\"endTime\":1791927295455,\"providerRequestId\":\"req_98b5fd99744041cbbe084bc770ac62a5\",\"statusCode\":200,\"providerResponseId\":\"resp_0d3acd56ca532f6a016acea3fc6c5887d191ccfa6ba97bf11f\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"d06e5c8aaa793aa544e38e49f3a00bd2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001455\",\"marketCost\":\"0.0001455\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001455\",\"inferenceCost\":\"0.0001455\",\"inputInferenceCost\":\"0.0000425\",\"outputInferenceCost\":\"0.000103\",\"generationId\":\"gen_01M4VK14C3EYBFATWN438W9BGH\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}
