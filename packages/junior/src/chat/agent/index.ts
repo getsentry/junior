@@ -49,6 +49,7 @@ import {
   recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
+  contextProvenance,
   instructionActors,
   instructionProvenanceFor,
   sameActorIdentity,
@@ -903,6 +904,11 @@ async function executeAgentRunInPrivacyContext(
     baseInstructions = assembledBaseInstructions;
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
+      async commit(messages) {
+        // Without explicit provenance, the commit attributes the message to
+        // the Turn Actor, and a resumed Turn adds AGENTS.md again.
+        await runResume.persistSafeBoundary(messages, [contextProvenance]);
+      },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
       initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
