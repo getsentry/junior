@@ -249,8 +249,10 @@ same way.
   verbatim, with its author and source event. The generated summary follows it
   as escaped text inside `<thread-context authority="evidence-only">`, not as a
   new instruction. Runtime-owned open plan state and completed handoff facts
-  stay outside that block. Steering messages are drained after handoff and pass
-  through the normal capacity check.
+  stay outside that block. Steering messages are drained after handoff and new
+  AGENTS.md context, then pass through the normal capacity check. Pi appends
+  steering after the hook returns, so this order keeps committed history in Pi
+  order.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
