@@ -22,8 +22,8 @@ import {
 
 /** Calendar and Drive API host. */
 export const GOOGLE_API_DOMAIN = "www.googleapis.com";
-export const GOOGLE_SHEETS_API_DOMAIN = "sheets.googleapis.com";
-export const GOOGLE_SLIDES_API_DOMAIN = "slides.googleapis.com";
+const GOOGLE_SHEETS_API_DOMAIN = "sheets.googleapis.com";
+const GOOGLE_SLIDES_API_DOMAIN = "slides.googleapis.com";
 /** Every host that receives Junior's Google access token. */
 export const GOOGLE_API_DOMAINS = [
   GOOGLE_API_DOMAIN,
@@ -71,6 +71,12 @@ export const GOOGLE_OPERATIONS = {
     host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
+  },
+  "google.drive.comment.create": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "POST",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/comments$/,
   },
   "google.drive.comments.list": {
     access: "read",

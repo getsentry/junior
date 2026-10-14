@@ -7,33 +7,39 @@ import {
   type GoogleToolContext,
 } from "./shared";
 
-/** Drive MIME type of each Google file type that the tools read. */
-export const GOOGLE_FILE_MIME_TYPES = {
-  document: "application/vnd.google-apps.document",
-  presentation: "application/vnd.google-apps.presentation",
-  spreadsheet: "application/vnd.google-apps.spreadsheet",
+/** Google file types that the tools read, with their Drive MIME types. */
+const FILE_TYPES = {
+  document: {
+    label: "Google Doc",
+    mimeType: "application/vnd.google-apps.document",
+  },
+  presentation: {
+    label: "Google Slides presentation",
+    mimeType: "application/vnd.google-apps.presentation",
+  },
+  spreadsheet: {
+    label: "Google Sheet",
+    mimeType: "application/vnd.google-apps.spreadsheet",
+  },
 } as const;
 
-export type GoogleFileType = keyof typeof GOOGLE_FILE_MIME_TYPES;
+export type GoogleFileType = keyof typeof FILE_TYPES;
 
-export const GOOGLE_FILE_TYPES = Object.keys(
-  GOOGLE_FILE_MIME_TYPES,
-) as GoogleFileType[];
+export const GOOGLE_FILE_TYPES = Object.keys(FILE_TYPES) as GoogleFileType[];
 
-const FILE_TYPE_NAMES: Record<GoogleFileType, string> = {
-  document: "Google Doc",
-  presentation: "Google Slides presentation",
-  spreadsheet: "Google Sheet",
-};
+/** Return the Drive MIME type of one file type. */
+export function googleFileMimeType(type: GoogleFileType): string {
+  return FILE_TYPES[type].mimeType;
+}
 
 /** Return the file type of a Drive MIME type, when the tools read it. */
 export function googleFileType(mimeType: string): GoogleFileType | undefined {
   return GOOGLE_FILE_TYPES.find(
-    (type) => GOOGLE_FILE_MIME_TYPES[type] === mimeType,
+    (type) => FILE_TYPES[type].mimeType === mimeType,
   );
 }
 
-/** File id or link input for the tools that read one file. */
+/** File id or link input for the tools that use one file. */
 export function fileReferenceSchema(name: string) {
   return z
     .string()
@@ -81,11 +87,20 @@ export function parseFileReference(value: string): FileReference {
   return { fileId, ...(resourceKey ? { resourceKey } : undefined) };
 }
 
+const driveErrorSchema = z.object({
+  error: z
+    .object({
+      errors: z.array(z.object({ reason: z.string().optional() })).optional(),
+    })
+    .optional(),
+});
+
 /** Call one Google operation on a file, with its resource key when known. */
 export async function googleFileRequest(
   ctx: GoogleToolContext,
   file: FileReference,
   input: {
+    body?: unknown;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -109,6 +124,19 @@ export async function googleFileRequest(
       `Junior's Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
     );
   }
+  // Drive returns this when the account can open the file but not comment.
+  if (
+    response.status === 403 &&
+    driveErrorSchema
+      .safeParse(response.body)
+      .data?.error?.errors?.some(
+        (error) => error.reason === "insufficientFilePermissions",
+      )
+  ) {
+    throw new PluginToolInputError(
+      `Junior's Google account (${ctx.accountEmail}) can open this file but cannot comment on it. Ask the owner to give that account comment access.`,
+    );
+  }
   if (response.status !== 200) {
     throw googleApiError(input.operation, response);
   }
@@ -126,8 +154,8 @@ const driveFileSchema = z.object({
 /**
  * Read the Drive metadata of one file, and require one of the given types.
  *
- * `drive.readonly` can read any Drive file, so each tool checks the type
- * before it reads content or comments.
+ * The `drive` scope reaches every Drive file, so each tool checks the type
+ * before it reads or comments.
  */
 export async function readGoogleFile(
   ctx: GoogleToolContext,
@@ -145,7 +173,7 @@ export async function readGoogleFile(
   const metadata = driveFileSchema.parse(response.body);
   const type = googleFileType(metadata.mimeType);
   if (!type || !types.includes(type)) {
-    const expected = types.map((item) => FILE_TYPE_NAMES[item]).join(" or ");
+    const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");
     throw new PluginToolInputError(
       `"${metadata.name}" is not a ${expected} (${metadata.mimeType}).`,
     );

@@ -4,8 +4,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
-  GOOGLE_FILE_MIME_TYPES,
+  fileOutputFields,
   GOOGLE_FILE_TYPES,
+  googleFileMimeType,
   googleFileType,
 } from "./files";
 import {
@@ -87,7 +88,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input) {
       const mimeTypes = (input.types ?? GOOGLE_FILE_TYPES)
-        .map((type) => `mimeType = '${GOOGLE_FILE_MIME_TYPES[type]}'`)
+        .map((type) => `mimeType = '${googleFileMimeType(type)}'`)
         .join(" or ");
       const response = await googleApiRequest(ctx, {
         operation: "google.drive.files.list",
@@ -116,12 +117,9 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
             ? [
                 {
                   fileId: file.id,
-                  ...(file.modifiedTime
-                    ? { modifiedTime: file.modifiedTime }
-                    : undefined),
+                  ...fileOutputFields(file),
                   title: file.name,
                   type,
-                  ...(file.webViewLink ? { url: file.webViewLink } : undefined),
                 },
               ]
             : [];

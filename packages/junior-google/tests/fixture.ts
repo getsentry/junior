@@ -42,4 +42,4 @@ export function idToken(claims: Record<string, unknown>): string {
 
 /** Every API scope the tools need, as Google lists them in a grant. */
 export const API_SCOPES =
-  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/drive.readonly";
+  "https://www.googleapis.com/auth/calendar.events.freebusy https://www.googleapis.com/auth/calendar.events.owned https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/drive";

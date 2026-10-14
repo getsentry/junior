@@ -4,8 +4,8 @@ Proof of concept. Junior acts as its own Google Workspace account, for example
 `junior@sentry.io`. Junior does not use the Google credentials of the people it
 helps. Tracking issue: getsentry/junior#2063.
 
-This version supports Calendar and reading Google Docs, Sheets, and Slides.
-Gmail and Drive writes are out of scope.
+This version supports Calendar, and reading and commenting on Google Docs,
+Sheets, and Slides. Gmail and other Drive changes are out of scope.
 
 ## Surfaces
 
@@ -62,6 +62,10 @@ Gmail and Drive writes are out of scope.
 - `listGoogleFileComments` reads the comments and replies on one Doc, Sheet,
   or Slides file, 100 per call. Each comment gives its author name, text, the
   file text it is attached to, and whether it is resolved.
+- `createGoogleFileComment` posts one plain-text comment on a Doc, Sheet, or
+  Slides file, as Junior's account. The comment is on the whole file, because
+  the Drive API cannot attach a comment to text in these files. Junior's
+  account needs comment access to the file.
 - The **Google account** page on the dashboard Admin page shows whether the
   account is connected. Its Connect button starts Google sign-in.
 - `junior google connect` and `junior google status` are the operator CLI.
@@ -104,11 +108,13 @@ request and the tool asks an admin to reconnect.
   also keeps events that other people organize out of reach.
 - Calendar scopes are `calendar.events.freebusy`, `calendar.events.readonly`,
   and `calendar.events.owned`.
-- The Drive scope is `drive.readonly`. The Drive comments API accepts no
-  narrower read scope, and the Sheets and Slides APIs also accept it. Junior
-  permits only these requests: Drive file search, file metadata, export, and
-  comment reads; Sheets metadata and cell reads; and Slides reads. Each
-  request must go to the host of its own API.
+- The Drive scope is `drive`. A new comment needs it, because `drive.file`
+  covers only files that Junior created or got from the Google file picker.
+  The Sheets and Slides APIs also accept `drive`. The scope also lets the
+  token change or delete files, so Junior permits only these requests: Drive
+  file search, file metadata, export, comment reads, and comment creation;
+  Sheets metadata and cell reads; and Slides reads. Each request must go to
+  the host of its own API.
 - Junior also requests `openid email` to verify the account during sign-in.
 
 ## Setup
@@ -122,7 +128,7 @@ identity.
    API. If an API is not enabled, its tool tells the requester that an admin
    must enable it.
 2. On the OAuth consent screen, use user type **Internal** and add the
-   Calendar and Drive scopes above. `drive.readonly` is a restricted scope.
+   Calendar and Drive scopes above. `drive` is a restricted scope.
    An Internal app does not need Google verification for it.
 3. On the OAuth client, add these redirect URIs:
    - `https://<junior host>/api/plugins/google/oauth/callback`
@@ -159,8 +165,13 @@ variables are set. The Admin page shows **Not configured** until then.
 - Anyone who can talk to Junior can also ask it to read any file shared with
   Junior's account. Share a file with that account only when everyone who can
   talk to Junior may read it.
-- `drive.readonly` lets the account read every Drive file it can open. The
-  tools read only Google Docs, Sheets, and Slides.
+- Anyone who can talk to Junior can ask it to comment on any file where
+  Junior's account can comment. The comment shows Junior's account as the
+  author, not the requester.
+- Drive has no idempotency key for comments. A retry of the same tool call
+  can post a second comment.
+- `drive` lets the account change every Drive file it can edit. The tools
+  only read Google Docs, Sheets, and Slides, and post comments on them.
 - `readGoogleSheet` does not return formulas, notes on cells, or charts.
   `readGoogleSlides` does not describe images or charts.
 - Google does not expose the working hours that people set in Calendar.

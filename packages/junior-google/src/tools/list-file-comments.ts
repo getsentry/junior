@@ -108,7 +108,7 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
     outputSchema,
     async execute(input) {
       const ref = parseFileReference(input.file);
-      // Check the type first: drive.readonly can also read comments on other
+      // Check the type first: the drive scope can also read comments on other
       // Drive files, such as PDFs.
       await readGoogleFile(ctx, ref, GOOGLE_FILE_TYPES);
       const response = await googleFileRequest(ctx, ref, {

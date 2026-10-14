@@ -91,7 +91,7 @@ function csvCell(value: unknown): string {
  * Read the cells of one Google Sheet as CSV, one entry per range.
  *
  * A Drive CSV export has only the first tab, so this uses the Sheets API. It
- * accepts the same `drive.readonly` scope as the Drive tools.
+ * accepts the same `drive` scope as the Drive tools.
  */
 export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -108,37 +108,27 @@ export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
     async execute(input) {
       const ref = parseFileReference(input.spreadsheet);
       const file = await readGoogleFile(ctx, ref, ["spreadsheet"]);
-      const metadata = spreadsheetSchema.parse(
-        (
-          await googleFileRequest(ctx, ref, {
-            operation: "google.sheets.spreadsheet.get",
-            path: `/v4/spreadsheets/${ref.fileId}`,
-            query: { fields: "sheets.properties(sheetType,title)" },
-          })
-        ).body,
-      );
+      const spreadsheet = await googleFileRequest(ctx, ref, {
+        operation: "google.sheets.spreadsheet.get",
+        path: `/v4/spreadsheets/${ref.fileId}`,
+        query: { fields: "sheets.properties(sheetType,title)" },
+      });
       // Chart tabs have no cells.
-      const tabs = metadata.sheets
-        .map((sheet) => sheet.properties)
+      const tabs = spreadsheetSchema
+        .parse(spreadsheet.body)
+        .sheets.map((sheet) => sheet.properties)
         .filter((tab) => (tab.sheetType ?? "GRID") === "GRID")
         .map((tab) => tab.title);
-      const requested = input.range ? [input.range] : tabs.map(tabRange);
-      const { valueRanges } =
-        requested.length === 0
-          ? { valueRanges: [] }
-          : valuesSchema.parse(
-              (
-                await googleFileRequest(ctx, ref, {
-                  operation: "google.sheets.values.batchGet",
-                  path: `/v4/spreadsheets/${ref.fileId}/values:batchGet`,
-                  query: {
-                    majorDimension: "ROWS",
-                    ranges: requested,
-                    valueRenderOption: "FORMATTED_VALUE",
-                  },
-                })
-              ).body,
-            );
+      const values = await googleFileRequest(ctx, ref, {
+        operation: "google.sheets.values.batchGet",
+        path: `/v4/spreadsheets/${ref.fileId}/values:batchGet`,
+        query: {
+          majorDimension: "ROWS",
+          ranges: input.range ? [input.range] : tabs.map(tabRange),
+          valueRenderOption: "FORMATTED_VALUE",
+        },
+      });
+      const { valueRanges } = valuesSchema.parse(values.body);
 
       let remaining = MAX_CONTENT_CHARS;
       const ranges = valueRanges.map(({ range, values }) => {
