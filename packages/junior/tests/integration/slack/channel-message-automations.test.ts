@@ -200,6 +200,22 @@ describe("Slack channel-message automations", () => {
       }),
     ).rejects.toThrow("can watch only the channel where it posts");
 
+    // A DM is not a channel, so the automation could never run there.
+    await expect(
+      execute(
+        createEventAutomationTool(
+          context("U123", "D123", "private", undefined, TEAM_ID),
+          catalog,
+        ),
+        {
+          instruction: "Summarize new messages.",
+          title: "Summarize DMs",
+          outcomes: [],
+          trigger: trigger(),
+        },
+      ),
+    ).rejects.toThrow("not in a DM");
+
     // A temporary Watch cannot follow channel messages either.
     await expect(
       execute(createWatchEventsTool(channelContext, catalog), {

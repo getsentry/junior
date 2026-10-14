@@ -58,6 +58,11 @@ export function requireSlackChannelMessageScope(
 ): EventAutomation {
   if (automation.trigger.namespace !== SLACK_EVENT_NAMESPACE) return automation;
   const channelId = automation.destination.channelId;
+  if (!CHANNEL_ID_PATTERN.test(channelId)) {
+    throw new ToolInputError(
+      "A Slack channel-message automation works only in a channel, not in a DM.",
+    );
+  }
   const identifier =
     automation.trigger.identifier === SLACK_CURRENT_CHANNEL_IDENTIFIER
       ? channelId
@@ -77,8 +82,8 @@ export function requireSlackChannelMessageScope(
 /**
  * Build the Event for one new top-level channel message, or nothing.
  *
- * Thread replies and bot posts do not count. Bots can post often and use up
- * the run limit of the automation.
+ * Thread replies and bot posts, including Slackbot, do not count. Bots can
+ * post often and use up the run limit of the automation.
  */
 export function slackChannelMessageEvent(input: {
   botId?: string;
@@ -89,7 +94,13 @@ export function slackChannelMessageEvent(input: {
   ts: string;
   userId: string;
 }): EventInput | undefined {
-  if (input.botId || input.subtype === "bot_message") return undefined;
+  if (
+    input.botId ||
+    input.subtype === "bot_message" ||
+    input.userId === "USLACKBOT"
+  ) {
+    return undefined;
+  }
   if (input.threadTs && input.threadTs !== input.ts) return undefined;
   if (!CHANNEL_ID_PATTERN.test(input.channelId)) return undefined;
   return {
