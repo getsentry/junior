@@ -1,4 +1,11 @@
 # Changelog
+## 0.244.0
+
+### New Features ✨
+
+- (memory) Review semantic duplicates for every kind and log repeats by @sentry-junior in [#2110](https://github.com/getsentry/junior/pull/2110)
+- (subagents) Label dashboard child rows with name and title by @sentry-junior in [#2124](https://github.com/getsentry/junior/pull/2124)
+
 ## 0.243.0
 
 ### New Features ✨
