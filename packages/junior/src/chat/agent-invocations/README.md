@@ -174,6 +174,20 @@ on the child, and that agent invocation sends the report. The worker holds
 mailbox input while a child is paused, so a child runs one agent invocation at
 a time.
 
+### Watches on a Child
+
+A child can use `watchTimer` and `watchEvents` the same as a root. Its watches
+belong to the child Conversation. A batch of watch events starts a new agent
+invocation on the child, and its result goes to the parent like any other.
+It follows the root rules for an Event Turn: it waits out the same burst
+window, runs as the event system Actor, and a timer may use the grants of the
+person who set it. Its id comes from the first Inbound message of the batch.
+
+Each watch event invocation counts toward the child's automated-turn limit, so
+a watch cannot wake the child forever. A `spawnAgent` task or `messageAgent`
+message from the parent resets the count, like a user message on a root. A child has no
+Location, so it gets no pause notice.
+
 ## Child Conversations
 
 A Conversation created for an Agent invocation stores `parentConversationId`.
@@ -233,6 +247,8 @@ every child agent below it:
    `skipped`.
 3. A Conversation stop request aborts each run that is still working. Slack and
    ACP use the same stop request.
+4. The watches of each Conversation in the tree end, so no event wakes a
+   stopped child. A child that an agent message starts again sets new watches.
 
 The parent asked for the stop, so it gets no result Turn. `listAgents` shows the
 child as `stopped`. Any other stop of a child, such as a direct stop of the

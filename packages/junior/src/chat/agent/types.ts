@@ -233,6 +233,11 @@ export type AgentEnvironment = {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
+  /**
+   * Parent of a child agent Conversation. The final reply of this run goes to
+   * that parent, not to a person. Unset for a root Conversation.
+   */
+  parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
   /** Optional bounded-run identifier used only for observability. */

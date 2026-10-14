@@ -1,6 +1,7 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import { getSqlExecutor } from "@/chat/db";
+import { cancelSubscriptions } from "@/chat/events/store";
 import { stopConversationWork } from "@/chat/task-execution/store";
 import { juniorAgentInvocations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
@@ -15,7 +16,8 @@ import type { TerminalAgentInvocation } from "./types";
 /**
  * Stop one child agent of a parent Conversation and every child agent below
  * it. The parent gets no result. SQL stops the work first. Then a
- * Conversation stop request aborts each run that is still working.
+ * Conversation stop request aborts each run that is still working, and the
+ * watches of each stopped child end, so no event wakes it again.
  *
  * Returns undefined when the child does not belong to the parent.
  */
@@ -56,6 +58,9 @@ async function finishStoppedTree(
 ): Promise<void> {
   for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
+  }
+  for (const conversationId of tree.conversationIds) {
+    await cancelSubscriptions({ conversationId, state });
   }
   for (const conversationId of conversationIdsToStop) {
     await stopConversationWork({ conversationId, state });

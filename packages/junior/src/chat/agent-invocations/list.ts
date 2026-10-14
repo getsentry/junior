@@ -38,10 +38,13 @@ function childAgentFromInvocations(
     }
   }
   // A task comes from a parent tool call: spawnAgent or messageAgent. An
-  // agent invocation that gives a grandchild result or message to the child
-  // holds that input, not a task from the parent.
+  // agent invocation that gives a grandchild result or message, or the
+  // child's own watch events, to the child holds that input, not a task from
+  // the parent.
   const tasks = invocations.filter(
-    (invocation) => !resultInvocationIds.has(invocation.invocationId),
+    (invocation) =>
+      invocation.source.kind === "agent_invocation" &&
+      !resultInvocationIds.has(invocation.invocationId),
   );
   const task =
     tasks.find((invocation) => invocation.parentToolCallId) ??

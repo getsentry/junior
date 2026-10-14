@@ -22,7 +22,7 @@ import {
 } from "@/chat/agent-invocations/work";
 import {
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildResults,
+  startAgentInvocationsForChildInput,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { botConfig } from "@/chat/config";
@@ -178,14 +178,15 @@ export function createConversationWork(
   const run = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // A result for a child Conversation starts an agent invocation on that
-    // child. Results for other Conversations run as Event Turns below.
-    const childResults = await startAgentInvocationsForChildResults(context, {
+    // Mailbox input for a child Conversation (a result, a message, or a watch
+    // event) starts an agent invocation on that child. The same input for a
+    // root Conversation runs as an Event Turn below.
+    const childInput = await startAgentInvocationsForChildInput(context, {
       queue: options.queue,
       state: options.state,
     });
-    if (childResults) {
-      return childResults;
+    if (childInput) {
+      return childInput;
     }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {

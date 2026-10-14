@@ -46,7 +46,7 @@ export function createAgentRunner(
       const messageAgent =
         bindMessageAgent &&
         canBindSpawn &&
-        (spawnAgent || run.source.kind === "agent_invocation")
+        (spawnAgent || run.parentConversationId)
           ? bindMessageAgent(run)
           : undefined;
       const nextRun: AgentRun = {

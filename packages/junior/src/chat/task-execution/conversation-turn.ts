@@ -76,6 +76,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
+  getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -84,7 +85,6 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  EVENT_WAIT_MS,
   isEventMailboxMetadata,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
@@ -92,11 +92,6 @@ import {
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-
-/** Extra debounce time added per additional event already batched. */
-const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
-/** Upper bound on the debounce window regardless of batch size. */
-const EVENT_MAX_WAIT_MS = 60_000;
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -203,26 +198,13 @@ export function createConversationTurnWorker(
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
   ): Promise<ConversationWorkerResult> => {
-    // A resource-event burst (e.g. several check runs on one PR) should
-    // produce one Turn instead of one per event. When the batch starts with
-    // an event, wait past its debounce window before running the Turn so
-    // later events in the same burst still land in this batch. The window
-    // grows with batch size (more events waiting means a longer burst) up to
-    // EVENT_MAX_WAIT_MS. If the window has not elapsed, defer without
-    // running: the worker re-enqueues this wake with the remaining delay
-    // (see `ensureConversationWake`'s `delayMs`), so this never sleeps in
-    // process.
+    // Wait out the event debounce window without sleeping in process. The
+    // worker re-enqueues this wake with the remaining delay.
     if (resolved.kind === "mailbox") {
-      const first = resolved.batch[0]!;
-      if (isEventMailboxMetadata(first.message.input.metadata)) {
-        const waitMs = Math.min(
-          EVENT_MAX_WAIT_MS,
-          EVENT_WAIT_MS +
-            EVENT_WAIT_PER_EXTRA_MESSAGE_MS * (resolved.batch.length - 1),
-        );
-        const delayMs = first.message.receivedAtMs + waitMs - Date.now();
-        if (delayMs > 0) return { status: "deferred", delayMs };
-      }
+      const delayMs = getEventBatchDelayMs(
+        resolved.batch.map((entry) => entry.message),
+      );
+      if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
     const lifecycle = new ConversationTurnLifecycleService(

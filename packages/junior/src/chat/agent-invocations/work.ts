@@ -24,6 +24,12 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { botConfig } from "@/chat/config";
+import {
+  recordFinishedTurnForAutomatedLimit,
+  resetAutomatedTurnLimit,
+} from "@/chat/services/automated-turn-limit";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
@@ -336,6 +342,26 @@ async function saveAgentInvocationResult(args: {
       surface: "internal",
     });
   }
+  // Same rules as a root Conversation: a watch event Turn counts toward the
+  // automated-turn limit, so a watch cannot wake the child forever. A task or
+  // message from a parent tool call resets the count, like a user message.
+  if (args.invocation.parentToolCallId) {
+    await resetAutomatedTurnLimit({
+      conversationId: args.invocation.childConversationId,
+    });
+  } else if (args.invocation.source.kind !== "agent_invocation") {
+    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+    // A child has no Location, so this skips the notice and clears its claim.
+    await maybePostAutomatedTurnLimitNotice({
+      conversationId: args.invocation.childConversationId,
+      maxTurns,
+      update: await recordFinishedTurnForAutomatedLimit({
+        conversationId: args.invocation.childConversationId,
+        maxTurns,
+        source: args.invocation.source,
+      }),
+    });
+  }
   const terminal = await completeAgentInvocation({
     invocationId: args.invocation.invocationId,
     ...(failed
@@ -554,6 +580,7 @@ export function createAgentInvocationWorker(
         agentRunner,
         {
           conversationId: invocation.childConversationId,
+          parentConversationId: invocation.parentConversationId,
           turnId,
           runId: invocation.invocationId,
           instruction: {

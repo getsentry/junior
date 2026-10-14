@@ -350,6 +350,9 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
+    ...(args.run.parentConversationId
+      ? { parentConversationId: args.run.parentConversationId }
+      : undefined),
     ...(args.run.location
       ? {
           location: args.run.location,
