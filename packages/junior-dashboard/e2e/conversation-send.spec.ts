@@ -562,7 +562,7 @@ test("stops the active Turn and returns queued text to the composer", async ({
   const conversationId = "slack:CQA123:1770000000.000100";
   const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
   const createdAt = "2026-06-12T00:00:00.000Z";
-  const queuedMessage: ConversationPendingMessage = {
+  const queuedMessage: ConversationPendingMessage & { text: string } = {
     createdAt,
     receivedAt: createdAt,
     delivery: "defer",
@@ -572,29 +572,45 @@ test("stops the active Turn and returns queued text to the composer", async ({
     source: "web",
     text: "Queued follow-up",
   };
+  // Sent from this tab. The server accepts it, but no poll lists it yet.
+  const sentMessage = { ...queuedMessage, text: "Sent before stop" };
   let active = true;
-  let queued = [queuedMessage];
+  let queued: ConversationPendingMessage[] = [queuedMessage];
   let stopRequests = 0;
   await page.route(`${path}/pending-messages`, async (route) => {
     await route.fulfill({
       json: { conversationId, generatedAt: createdAt, messages: queued },
     });
   });
+  await page.route(`${path}/messages`, async (route) => {
+    const body = route.request().postDataJSON();
+    sentMessage.messageId = await webMessageId({
+      conversationId,
+      idempotencyKey: body.idempotencyKey,
+    });
+    sentMessage.inboundMessageId = sentMessage.messageId;
+    await route.fulfill({
+      json: {
+        conversationId,
+        messageId: sentMessage.messageId,
+        status: "accepted",
+      },
+    });
+  });
   await page.route(`${path}/stop`, async (route) => {
     stopRequests += 1;
-    // The worker removes stopped rows later. Keep serving the stale row so
-    // the dashboard must hide it on its own.
+    const stopped = [queuedMessage, sentMessage];
     await route.fulfill({
       json: {
         conversationId,
         status: "requested",
-        stoppedInboundMessageIds: [queuedMessage.inboundMessageId],
-        stoppedMessages: [
-          {
-            inboundMessageId: queuedMessage.inboundMessageId,
-            text: queuedMessage.text,
-          },
-        ],
+        stoppedInboundMessageIds: stopped.map(
+          (message) => message.inboundMessageId,
+        ),
+        stoppedMessages: stopped.map((message) => ({
+          inboundMessageId: message.inboundMessageId,
+          text: message.text,
+        })),
       },
     });
   });
@@ -619,21 +635,25 @@ test("stops the active Turn and returns queued text to the composer", async ({
   const composer = page.getByLabel("Continue this conversation");
   const pending = page.getByLabel("Pending messages");
   const stop = page.getByRole("button", { name: "Stop", exact: true });
-  await expect(pending.getByText(queuedMessage.text!)).toBeVisible();
+  await expect(pending.getByText(queuedMessage.text)).toBeVisible();
   await expect(stop).toBeVisible();
+  await composer.fill(sentMessage.text);
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(pending.getByText(sentMessage.text)).toBeVisible();
   await screenshot(page, "conversation-stop-active");
 
   // Queued text goes back ahead of the draft.
   await composer.fill("Draft in progress");
   await stop.click();
   await expect(composer).toHaveValue(
-    `${queuedMessage.text}\nDraft in progress`,
+    `${queuedMessage.text}\n${sentMessage.text}\nDraft in progress`,
   );
   await expect(pending).toBeHidden();
   expect(stopRequests).toBe(1);
 
-  // Leaving the conversation view remounts the footer. The stale row must stay
-  // hidden until the server mailbox drops it.
+  // The worker removes stopped rows later, so polls can still list them. Keep
+  // them hidden, also after leaving the view remounts the footer.
+  queued = [queuedMessage, sentMessage];
   await page.getByRole("button", { name: "Event log", exact: true }).click();
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(composer).toBeVisible();

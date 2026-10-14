@@ -399,6 +399,7 @@ export function useCancelConversationPendingMessages(conversationId: string) {
 /**
  * Local cache of queued rows that a stop removed. The worker drops them only
  * when it observes the stop, so the mailbox can still list them for a while.
+ * Inbound ids are unique, so the cache never needs to forget one.
  */
 function stoppedMessageIdsQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "stopped-messages"] as const;
@@ -415,10 +416,18 @@ export function useStopConversationTurn(conversationId: string) {
         {},
       ),
     onSuccess: (result) => {
-      if (!result.stoppedInboundMessageIds.length) return;
+      const stopped = result.stoppedInboundMessageIds;
+      if (!stopped.length) return;
       queryClient.setQueryData<readonly string[]>(
         stoppedMessageIdsQueryKey(conversationId),
-        (current) => [...(current ?? []), ...result.stoppedInboundMessageIds],
+        (current) => [...(current ?? []), ...stopped],
+      );
+      // A web row keeps its Message id as its inbound id. Drop local sends the
+      // stop removed so they do not wait for a mailbox row that never comes.
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+        (current) =>
+          current?.filter((message) => !stopped.includes(message.messageId)),
       );
     },
     onSettled: async () => {
@@ -654,21 +663,6 @@ export function useConversationData(conversationId: string | undefined) {
       },
     );
   }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
-  // Forget a stopped row once the server mailbox no longer lists it.
-  useEffect(() => {
-    if (!mailbox) return;
-    queryClient.setQueryData<readonly string[]>(
-      stoppedMessageIdsQueryKey(conversationId),
-      (current) => {
-        if (!current?.length) return current;
-        const listed = new Set(
-          mailbox.messages.map((message) => message.inboundMessageId),
-        );
-        const next = current.filter((id) => listed.has(id));
-        return next.length === current.length ? current : next;
-      },
-    );
-  }, [conversationId, mailbox, queryClient]);
   const historyStatus = detailData?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
@@ -705,6 +699,8 @@ export function useConversationData(conversationId: string | undefined) {
     undefined,
   );
   const pendingMessages = useMemo(() => {
+    // Hide stopped rows from both sources, or the outbox copy of a stopped
+    // send would look unseen and come back.
     const stopped = stoppedMessageIds.data;
     const next = mergeConversationMailboxMessages(
       stopped.length
@@ -712,7 +708,9 @@ export function useConversationData(conversationId: string | undefined) {
             (message) => !stopped.includes(message.inboundMessageId),
           )
         : mailbox?.messages,
-      outbox.data,
+      stopped.length
+        ? outbox.data.filter((message) => !stopped.includes(message.messageId))
+        : outbox.data,
       pendingMessagesRef.current,
     );
     pendingMessagesRef.current = next;
