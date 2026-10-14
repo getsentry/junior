@@ -91,6 +91,7 @@ export interface BotConfig {
   profiles: Readonly<Record<string, ModelProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
+  maxAgentDepth: number;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
   maxConsecutiveAutomatedTurns: number;
@@ -500,6 +501,7 @@ function readBotConfig(
       env.AI_VISION_MODEL === undefined
         ? DEFAULT_VISION_MODEL_ID
         : validateGatewayModelId(env.AI_VISION_MODEL),
+    maxAgentDepth: 0,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
@@ -615,6 +617,11 @@ const chatConfig: ChatConfig = readChatConfig(process.env);
 export interface RuntimeLimits {
   /** Largest model context window used for compaction, in tokens. */
   contextWindowTokens?: number;
+  /**
+   * Levels of child agents that can start their own child agents. The
+   * default, 0, lets only the root Conversation start child agents.
+   */
+  maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
   /** Run slices one turn may use. */
@@ -695,6 +702,15 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
       "contextWindowTokens",
       limits.contextWindowTokens,
     );
+  }
+  if (limits?.maxAgentDepth !== undefined) {
+    if (
+      !Number.isSafeInteger(limits.maxAgentDepth) ||
+      limits.maxAgentDepth < 0
+    ) {
+      throw new Error("limits.maxAgentDepth must be a non-negative integer");
+    }
+    bot.maxAgentDepth = limits.maxAgentDepth;
   }
   if (limits?.maxConsecutiveAutomatedTurns !== undefined) {
     bot.maxConsecutiveAutomatedTurns = requirePositiveLimit(

@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when a stored automation's plugin event is unavailable, explain that it cannot currently run",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "a869537e8ab8",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0562b1cd7d0ae44c016aceb32f96ac87d197bae0a692ae52f3\",\"reasoningEncryptedContent\":\"gAAAAABqzrMwDN_wlbnCvn0iwrQlc5BCGTJkdcdh3CP_hHFdCt1gvc5XMkthr1EjUJ46ndEfbI82x2D8dI9BoNJWAwDIFVUEqVPK5wpTxivtN-a767lFBTt7hksIHGGrdOZwi7Oz-GcmFJq5pMgz13r7MweG016ubHcAIQhp-hmFYWuRTTYuUGHn0DFo_aODqZpkA6NvSNX_xV-pWN3x8XYj9UYCnbZj4XlGAh2PKrBijMeoxiTZLuOFzZTqneecmIHcUmh6WWLGB24wLXCvI1M0hrvJohXVStAykbMiisMI5hmFYxvGipYRIgSisvQ2modhfIJIxb6FiKeZc5hFqegD-5SxVCKjOnB8nNTYswVovjSqIb6fqGUt5rcIIhKgaBLMTr8-xpIFnwLqqJP_doCOcnEIHI8pahP28dCotRYDq5DA5SB077KlVxiBsJEs1QdCIUITgYOd8ZWm0PfZtbBmQTp6xC0r2YmxpsUKwCJjjeFh5gSRpdUMM9tFPdDBuBRGWd0I5hcvTDhC4Z31_b6v68g3AfdAJKviSEJRzxbm49rbnD5R2oTyu2brVmUuds0jP5NRMcaac2R-nnaDf51VCJDCPZsf-EZ5bOkwIbT6w3THD9dP4TAb2Mm7KUeAaEgdqt_Dsjv3tOcKoe6ACd9bDXVORoq6ZfqmeWDJOwD0NOktcETlbvY-BXv8szL30z2d-dlboF1Z0QnqavQJ_DcKz90UmD9gkUQQRoe2Gr4VZdatcxy4QuanOMgZaN8P4IJbZWM8zLlrDc_vw3nHX2T30XGsVQwb0BY-UwzSjWLn4spxTlzvMQc-uBVkufonYpqHiYlN5BZJciSUqbJoE0XRriMabCdFki-XAvNELVWsfbqQgMbzRTQqZm4NWfGY-J44h1dgb82i9asECz5-MmYIcsIZARVk89nVpyMBg7YEoSPZkA-81ucbPnntcWc7rFCTGJvJevuQtO9h2HqriLMPVungOjaPPWw4yU8Nl4pUFJTTdeefy-4XbNPoBr0ZSaCwWQXl3o6ALk6F4tseCviX34VtPameT_ADa5LM-pniq1uCDi7uRzaH6GCCUlRMxh-B_bjK9k7tJbanAoiwtbYM7ZJWM_ctGu0tyC-eJxQhzUzI3DDVi89_-TVgZBPWREbhCfqtCFmNQERmyxwBTVzgCypSi2_2tCYc18viXKk9pIfEtDfnr6N9ltT5ltSKZEEecW3NtsJvcWbg83EXo4UsmgBM6XeOeeGDHXytVcYs3rnscDFL5plILQwrG020W9jzasWrHAvh1rDUiEJIXzqOYMgKJA6ffIcfrHxkfL4syIHax5XIQF0Uw1JH4UKmQCmm6_Xb0Tjgtir-meWViuahm0t1YOlksPTwXcCtYYvIpNKR1gcUUcAgPjtjjKJ92rLqjpm09EAnURUJfp9quL9RoMBTK812ooB6ia8ZAuORaIpbTLyoMPTkSdaTPLTdQeF1aHtNjmFZlqH1bZktNg6RQlS9NCveTpSoKEcVQoMPAKF4ePOU0RIYHOMOdrtnzDQL8ww7XmTu5P94sPoEGOHdM9nsQWQLTq1QbXAQwwbfT597B4P-VzzKpR8B44PPLx8NskB5wkdgczJv67A28DCkN5-kHKuvPWHARxYO3m7sGCj-qIQwky8Hy9ulyCwoIYjD1AnAMatPFFtOic3uk-hj_yDk0pev9I-3hKukgYk68qkRp20OYJztaOuXMK6Jd5HsIdQ12m_IXUjC1d_2FRUN2wv31gqL5SfHTkV22v9Spqbu2PmhBUAmexPXcAOG4Mw_4aAK_sUsHN3sp5hMiE-jsBp6odKvxPRg1J0Xrf4vKqk3ba1-Shk63Uv5_lAUA3KhKENAOY0mu3xqode0NZKuY3ZgfXK92IMnvnsWGdCUWhIVVAQ2Sowy8E_98QIvP0_onzjSWOGTX1ZbZahYp7xcGOBWftRijjYSl8wlq896fdnVlEzXEtM1w2t7Kys6VdQETP51Idl2y6Izd68G9HfJ2uPu9r14nV5GM67TUvTiJr2lYIFW2JEmGAyEMNoB5_s9iybAIY7iFLWZUbuJ04Nkx_EDSr9epLqAq7e9eotg7CyOHF5quvPVwZwGVvTgjw9jG9HNUakS2t_J7925MMvct_POIZtaf4aYG_k39zm-ZIPmGrt2DPwUUYcyVmJQhsRs3kCpiid5\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.88,\\\"reason\\\":\\\"This asks about the current status of an event integration, which may require checking channel context or live configuration rather than giving a deterministic answer.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0562b1cd7d0ae44c016aceb3303a6887d1ba086f46c9cf2545\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":590,\"noCache\":590,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":103,\"text\":56,\"reasoning\":47},\"raw\":{\"input_tokens\":590,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":103,\"output_tokens_details\":{\"reasoning_tokens\":47},\"total_tokens\":693}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0562b1cd7d0ae44c016aceb32f213887d18b650c21fe2b5b2e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931183038,\"endTime\":1791931184907,\"providerRequestId\":\"req_348762ca1760400b8d93727c17f6506f\",\"statusCode\":200,\"providerResponseId\":\"resp_0562b1cd7d0ae44c016aceb32f213887d18b650c21fe2b5b2e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"4d0020d5b188108e1ff9c6130d5dc506\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001105\",\"marketCost\":\"0.0001105\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001105\",\"inferenceCost\":\"0.0001105\",\"inputInferenceCost\":\"0.000059\",\"outputInferenceCost\":\"0.0000515\",\"generationId\":\"gen_01M4VPQVX9X6EGTY7X6VWP9A7T\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

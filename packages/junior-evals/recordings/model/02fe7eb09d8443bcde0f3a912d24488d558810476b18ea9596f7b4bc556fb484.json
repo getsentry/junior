@@ -1,0 +1,31 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when a tool call is interrupted at a turn deadline, continue the task to completion with a message that arrived in between",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "7193983c3f82",
+      "messages.length": "6b86b273ff34",
+      "messages[0]": "e60035de48fb",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "e2d98e230ee2",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VPVZNJFBFG8YKRM9C2YCY7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-5.4\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"answer\\\":\\\"A\\\",\\\"rationale\\\":\\\"The assistant reports the final remote status as `shipped` and explicitly notes that although the push timed out, it used the remote status to confirm completion. It does not stop at the interruption or ask the user to retry.\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":420,\"output_tokens\":58},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_03c1ba934d94f44b016aceb3b60e2c87d193060713a6d063a5\",\"serviceTier\":\"default\",\"reasoningContext\":\"current_turn\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-5.4\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-5.4\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-5.4\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931317974,\"endTime\":1791931319401,\"providerRequestId\":\"req_a1c42bfb71934a81adb13ba6d43059cb\",\"statusCode\":200,\"providerResponseId\":\"resp_03c1ba934d94f44b016aceb3b60e2c87d193060713a6d063a5\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"ea49071947e6b12cab13ed39bfda3c9b\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.00192\",\"marketCost\":\"0.00192\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.00192\",\"inferenceCost\":\"0.00192\",\"inputInferenceCost\":\"0.00105\",\"outputInferenceCost\":\"0.00087\",\"generationId\":\"gen_01M4VPVZNJFBFG8YKRM9C2YCY7\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -148,6 +148,78 @@ describe("agent invocation worker", () => {
     }
   });
 
+  it("stops open child agents when a stop comes after the child saved its result", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "late-stop",
+      });
+      const helper = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        idempotencyKey: "late-stop-helper",
+        parentConversationId: created.childConversationId,
+      });
+      const stopRequest = new AbortController();
+      const worker = createAgentInvocationWorker({
+        run: async () => {
+          // The stop request arrives after the run finished.
+          stopRequest.abort(new Error("Conversation work stopped"));
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "Partial result",
+            },
+          };
+        },
+      });
+      const context = {
+        attempt: {
+          ack: vi.fn(async () => {}),
+          conversationId: created.childConversationId,
+          drain: vi.fn(),
+          isFinalAttempt: false,
+          messages: [buildAgentInvocationInboundMessage(created)],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        shouldYield: () => false,
+        stopSignal: () => stopRequest.signal,
+      } satisfies ConversationWorkerContext;
+
+      await expect(worker(context, created.invocationId)).resolves.toEqual({
+        status: "completed",
+      });
+
+      // The open helper would have reported for the child. The stop ends the
+      // helper, so the child's own result reports now.
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "pending",
+        result: "Partial result",
+        status: "completed",
+      });
+      await expect(
+        getAgentInvocation(helper.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "skipped",
+        status: "stopped",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps unexpected runner failures retryable until the final attempt", async () => {
     const fixture = await prepareParentConversation();
     try {

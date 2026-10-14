@@ -238,7 +238,7 @@ export interface MemoryAgent {
   selectRelevantMemories(
     request: MemoryRecallInput,
   ): Promise<MemoryRecallResult> | MemoryRecallResult;
-  /** Classify a new preference against related active preferences. */
+  /** Classify a new memory against related active memories of the same kind. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
   ): Promise<MemorySupersessionDecision> | MemorySupersessionDecision;
@@ -271,12 +271,12 @@ const MEMORY_RECALL_SYSTEM = [
   "Prefer specific matches on the exact repository, workflow, command, test, CI setup, project, or user preference being asked about.",
   "An empty relevantIds array is correct when no candidate is directly helpful.",
 ].join("\n");
-const MEMORY_PREFERENCE_ADJUDICATION_SYSTEM = [
-  "You are Junior's memory preference adjudication agent.",
-  "Classify how one new actor preference relates to existing active actor preferences.",
-  "Return duplicate when the same durable preference is merely phrased differently.",
-  "Return supersedes_old only for an obvious changed value in the same mutable preference slot.",
-  "Return distinct for additive preferences or different topics, and uncertain when the relationship is unclear.",
+const MEMORY_ADJUDICATION_SYSTEM = [
+  "You are Junior's memory duplicate review agent.",
+  "Classify how one new memory relates to existing active memories of the same kind.",
+  "Return duplicate when the same durable fact, procedure, or preference is merely phrased differently.",
+  "Return supersedes_old only for a preference with an obvious changed value in the same mutable preference slot.",
+  "Return distinct for additive memories or different topics, and uncertain when the relationship is unclear.",
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
   "- Stored memory text must be a rewritten fact, not copied user wording or a sentence about who said it.",
@@ -538,12 +538,10 @@ function recallRelevancePrompt(request: MemoryRecallInput): string {
   ].join("\n");
 }
 
-function preferenceAdjudicationPrompt(
-  request: MemorySupersessionInput,
-): string {
+function adjudicationPrompt(request: MemorySupersessionInput): string {
   return [
-    "<memory-preference-adjudication-input>",
-    "Classify the candidate preference against the related active preferences.",
+    "<memory-adjudication-input>",
+    `Classify the candidate ${request.candidate.kind} memory against the related active memories of the same kind.`,
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
@@ -558,17 +556,18 @@ function preferenceAdjudicationPrompt(
     "</existing-memories>",
     "",
     "<rules>",
-    "- Return duplicate when the candidate and one existing memory express the same durable preference or value with different wording.",
-    "- Return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
+    "- Return duplicate when the candidate and one existing memory state the same durable fact, procedure, preference, or value with different wording.",
+    "- Return supersedes_old only for preference candidates, and only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
     "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
-    "- Return distinct when the candidate is an additional preference or belongs to a different task or topic.",
+    "- For knowledge and procedure candidates, never return supersedes_old. Return distinct or uncertain when the candidate changes or contradicts an existing memory.",
+    "- Return distinct when the candidate adds information or belongs to a different task or topic.",
     "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
     "- Do not supersede memories from different topics even if they are both preferences.",
     "- duplicateId and supersededIds may contain only ids from existing-memories.",
     "- Set duplicateId to null unless the decision is duplicate. Set supersededIds to null unless the decision is supersedes_old.",
     "- If unsure, return uncertain.",
     "</rules>",
-    "</memory-preference-adjudication-input>",
+    "</memory-adjudication-input>",
   ].join("\n");
 }
 
@@ -598,8 +597,8 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
       const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({
         schema: memorySupersessionResponseSchema,
-        system: MEMORY_PREFERENCE_ADJUDICATION_SYSTEM,
-        prompt: preferenceAdjudicationPrompt(request),
+        system: MEMORY_ADJUDICATION_SYSTEM,
+        prompt: adjudicationPrompt(request),
         maxTokens: 400,
       });
       return memorySupersessionFromResponse(

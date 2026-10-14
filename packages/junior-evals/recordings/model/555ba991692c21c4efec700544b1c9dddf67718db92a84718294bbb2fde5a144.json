@@ -1,0 +1,29 @@
+{
+  "session": "evals/router/profiles.eval.ts > Task-fit Profile Selection > keeps a single-file code lookup on standard",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "a51cad0748a0",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0dac533611738b17016aceb0917fc487d1a010e691c9684c26\",\"reasoningEncryptedContent\":\"gAAAAABqzrCSrlEGwpZOp-wtk1AYy35NtEXM7krKquPEUqtQ4Z3OLYqwNGnp6Le_mZpTmexQbdi_mnIMSItMN0q9FQs5Gk86etHJm_ncff0xyOoovawRTXaU98jWs0ixEOyde4rblGYVt0uJdtba4hLYyXx74iZpJvhI7RoLevCgI1t23wpW7Rbj7i7aejQAjBgjKBL7B7MVG-vmOS8e48KZefiVgKtjMYu7Zm7RHVHJGWPCajc2_qjwvx1SP4zdBWAPIoh4IzNOdS9pDWGmCxRI1xIU8YJ4n-Dbjq7J0BWQmCDoRV7rBg_xLWuPRx24oRA9nKAEupJhzA4rTYuEOehTUqiulbhAobkLCigwkupHAG2JLTDpuqob9CYE3QFVfshx1PUI3ExDzG6gJBIU9A6KmWBMb-iVJfUCTH8fSFrxVMJukB95JtG6n4eMucLeu1O3pv-K5mD0MjypImd1sda-bcvAOJnx08Q-9n7cJxgZ5-zaCnUzQ6rAMoXEK5L2XRx5V4JRbWVYVlGuYQQ7Zy1fFBJp5mFzExS9xUznksbzNT4LJWMr68np5AawaPZmKnPUMkeUiGld8e_GZOUUsnVdrNeeU5OMHp57I1Rh4JiGPP7lnasYCr_fi-f1GiSnpy0r9gbP5prrIV5CTRT_MnKbZ74bcvm7QMsw20OxcTcmiuGoS2dStlt_BZAYx8IIIUDZDq9sR4SqdLHwPlkrplK-9ebfAqHZ5mw9cca0B4yA0vMj8_acpFS5GKEBBgdK4TwNBYaQpM8pSdzr9lCPjA2wDAQ1COEB5bUKnbiqkb7aFl8x2h4xWt1yWJ0xkMRwpLvgrWU4-BZS7pu1vOS3zdvyxg8tAt4AgtXBn1lc73NCV9F8U9W8UmJplcDiRrAq0feyAq7IJ7L5DTt1couhSygTjg8q3ioT2ygeg3Gz_gRg2lr0Liswv8OqBqNMob1v5NMrE5aS3gOMksKuIK_qXaarHSu-62H5gakv0iFYHaeels2kEgmJhz1iQ6DaboUMks7izsXWtRKInpGE4AjF4-vkYw3NWk5O0Wm6ayOn3ocfo4qu5Y6lW4UPTB-LizQ36xSBq2wLn3CnIdSScBfr6Ah48DpEzWes4BBxRRL3ogqIOTAzf4fgu-vJntqvghFOV95QuNzGXu8WajU4w0IqxCbYldynwHJ3PaUkL2ic9ZIWiwW5nunS7p8N2TfumDz861DjThyCKkxAabntM4EcqNfZtCOUFqzvdEC2kQ-EVjhztieYHBLi6H-IOx8rN4oTDkCyqJ0TbP743jDxh6A-kIcRQ4fvuU91Me8NYmVAgFV4MVUUzsj8kM0PXwAKfAUgYX6kEoSMAGaoGS6KC5ii5iftbKPF5GtsD3dqunhhj82tzxuciJYuRQdC82ja0jPL8olPXTnUZEvcXDBhYvW9F7vjMgf6YGYblJKSXkabHpY3k_MjgOGpD-iDjhaTItwJkFY5fFsR_Fc7FPAxZ9mbnPkZV14V0BvSw4X4OKnobnZNmfReBgdObHI-u6hmGq9dv5z0PV8nLL6XCPbeMRuPLx4p4dXVYrA15FpJDK4OgYmqRXiFYpYwR0W_rE3BGKcmva_QTTmqAXNyrYZiqb21bXLOABf2_SErrvyn7OPEWhlUi_QZXcqRz2ckTO9lYMBQ9E5XrWQXRAVU93E6hVL9LwZingMYDFlKp3BqdH_DXMUhF6YFQNKQYWkNav-LO2Jisj-eBfmqod4XDb1odMtJyP4d-kQP_NKxjoz9cVyuVOga5OVUE67s1yaEFzZ5JHKcHFVFfXgeSRWljJibHP3LXuKaqP62MtWP2ycD3eSMgy53pwUKe0ZNvsJ5ABFRZMKCFrJpjalgFok0R020B7xV_qRvSQm7h6X81_BTScwexGQKIBLL67cp66NA7kcdAv01tlfCX9ZXyM1mlt_HUhATJtedKIAJfUkOIRzTxZ71okLiPy7g0VcrBbp27denZ_QWMxbyfrGtYx2OeWGlVDheHxh1vuqklT5h2pRB6AUgn8srV0yvC70jHn7jA7V_sj5HDRUTQBdINGMa67ul_9_RfZ4nmDm-IKipwD6x4FERK6gl0IlH82s4V6OVK55ABsgA8naJskF-ux2_\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a focused lookup in one project file; identifying the test command is routine, but it requires inspecting the package.json.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0dac533611738b17016aceb092157487d1afad4c949bd06283\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":592,\"noCache\":592,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":101,\"text\":54,\"reasoning\":47},\"raw\":{\"input_tokens\":592,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":101,\"output_tokens_details\":{\"reasoning_tokens\":47},\"total_tokens\":693}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0dac533611738b17016aceb090e23087d181f27861f69ae382\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791930512718,\"endTime\":1791930514955,\"providerRequestId\":\"req_de398a3e1a9840449d7ff4b78dfaa0af\",\"statusCode\":200,\"providerResponseId\":\"resp_0dac533611738b17016aceb090e23087d181f27861f69ae382\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"ef55b01456c24a8359a9008594e12fed\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001097\",\"marketCost\":\"0.0001097\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001097\",\"inferenceCost\":\"0.0001097\",\"inputInferenceCost\":\"0.0000592\",\"outputInferenceCost\":\"0.0000505\",\"generationId\":\"gen_01M4VP3D9V4HDGBDA67R0Y7VZH\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

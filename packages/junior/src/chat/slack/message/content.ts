@@ -4,6 +4,7 @@
  * This module is the typed entry point for agent-visible Slack text. Raw block
  * and attachment details stay behind this boundary.
  */
+import { SlackFormatConverter } from "@chat-adapter/slack";
 import { stringifyMarkdown, type Message } from "chat";
 import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { renderBlockText } from "@/chat/slack/message/blocks";
@@ -36,6 +37,39 @@ function readRawBlocks(raw: unknown): unknown {
   return (raw as Record<string, unknown>).blocks;
 }
 
+function readRawText(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const text = (raw as Record<string, unknown>).text;
+  return typeof text === "string" ? text : "";
+}
+
+const slackFormat = new SlackFormatConverter();
+const SLACK_ENTITY_RE = /<[@#][A-Z0-9]+(?:\|[^<>]*)?>/g;
+const ENTITY_PLACEHOLDER_RE = /\uE000(\d+)\uE001/g;
+
+/**
+ * Convert Slack mrkdwn to Markdown and keep user and channel mentions as
+ * `<@U123>` and `<#C123|name>`.
+ *
+ * The SDK conversion turns `<@U123>` into a bare `@U123`. That is not a
+ * mention when the agent copies it, and it does not say what the ID is.
+ * Private-use placeholders keep each token out of the conversion.
+ */
+function renderSlackMrkdwn(mrkdwn: string): string {
+  const entities: string[] = [];
+  const markdown = stringifyMarkdown(
+    slackFormat.toAst(
+      mrkdwn.replace(
+        SLACK_ENTITY_RE,
+        (entity) => `\uE000${entities.push(entity) - 1}\uE001`,
+      ),
+    ),
+  );
+  return markdown
+    .replace(ENTITY_PLACEHOLDER_RE, (_, index) => entities[Number(index)]!)
+    .trim();
+}
+
 function renderTopLevelText(
   message: Pick<Message, "formatted" | "raw" | "text">,
 ): string {
@@ -48,6 +82,11 @@ function renderTopLevelText(
     blockText
   ) {
     return blockText;
+  }
+
+  const rawText = readRawText(message.raw);
+  if (rawText.trim()) {
+    return renderSlackMrkdwn(rawText);
   }
 
   if (message.formatted.children.length > 0) {

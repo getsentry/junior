@@ -100,6 +100,14 @@ export type {
   GuardianStats,
 } from "./schema/conversation";
 export {
+  conversationChildAgentSchema,
+  conversationChildAgentsReportSchema,
+} from "./schema/child-agent";
+export type {
+  ConversationChildAgent,
+  ConversationChildAgentsReport,
+} from "./schema/child-agent";
+export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   personalSpendReportSchema,

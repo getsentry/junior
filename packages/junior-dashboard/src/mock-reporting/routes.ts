@@ -7,6 +7,7 @@ import {
   actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  conversationChildAgentsReportSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -38,6 +39,7 @@ import {
   readMockCodeRepository,
 } from "./code-repository";
 import {
+  readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationFeed,
@@ -192,6 +194,16 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
+  });
+  app.get("/conversations/:conversationId/agents", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationChildAgents(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationChildAgentsReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

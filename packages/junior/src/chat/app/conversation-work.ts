@@ -20,6 +20,12 @@ import {
   createAgentInvocationWorker,
   resolveAgentInvocationId,
 } from "@/chat/agent-invocations/work";
+import {
+  enqueueAgentInvocationResult,
+  startAgentInvocationsForChildResults,
+  withAgentInvocationResultActors,
+} from "@/chat/agent-invocations/result";
+import { botConfig } from "@/chat/config";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -136,7 +142,14 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const invocationWorker = createAgentInvocationWorker(options.agentRunner);
+  const invocationWorker = createAgentInvocationWorker(options.agentRunner, {
+    enqueueResult: async (invocation) =>
+      await enqueueAgentInvocationResult(invocation, {
+        queue: options.queue,
+        state: options.state,
+      }),
+    maxAgentDepth: botConfig.maxAgentDepth,
+  });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
     createSlackSystemTurnDelivery({
@@ -165,9 +178,21 @@ export function createConversationWork(
   const run = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
+    // A result for a child Conversation starts an agent invocation on that
+    // child. Results for other Conversations run as Event Turns below.
+    const childResults = await startAgentInvocationsForChildResults(context, {
+      queue: options.queue,
+      state: options.state,
+    });
+    if (childResults) {
+      return childResults;
+    }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
-      return await conversationTurnWorker(context, mailboxTurn);
+      return await conversationTurnWorker(
+        context,
+        await withAgentInvocationResultActors(mailboxTurn),
+      );
     }
     const invocationId = await resolveAgentInvocationId(context);
     if (invocationId) {

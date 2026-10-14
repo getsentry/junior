@@ -8,6 +8,7 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorWindowMetrics,
+  ConversationChildAgentsReport,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -694,7 +695,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
           },
         ],
@@ -704,11 +705,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            input: { automation: "Review the dashboard plan" },
+            input: { task: "Review the dashboard plan before editing." },
           },
         ],
       }),
@@ -717,7 +718,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         parentToolCallId: "qa-advisor",
         status: "running",
       }),
@@ -726,7 +727,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         parentToolCallId: "qa-advisor",
         status: "completed",
       }),
@@ -735,11 +736,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         calls: [
           {
             toolCallId: "qa-advisor",
-            name: "advisor",
+            name: "spawnAgent",
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            output: { child_conversation_id: DASHBOARD_QA_PLAN_ID },
+            output: { conversation_id: DASHBOARD_QA_PLAN_ID },
           },
         ],
       }),
@@ -748,7 +749,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
+        subagentKind: "agent",
         status: "running",
       }),
       reportEvent(7, iso(Date.parse(startedAt), 44_000), {
@@ -756,8 +757,8 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
-        subagentKind: "advisor",
-        status: "completed",
+        subagentKind: "agent",
+        status: "blocked",
       }),
       reportEvent(8, iso(Date.parse(startedAt), 50_000), {
         type: "tool_calls",
@@ -1813,6 +1814,39 @@ export function readMockConversationPendingMessages(
     conversationId,
     generatedAt: iso(nowMs),
     messages,
+  };
+}
+
+/** Return the child agents of one mock Conversation, matching its transcript. */
+export function readMockConversationChildAgents(
+  conversationId: string,
+): ConversationChildAgentsReport | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
+  const startedAtMs = NOW_MS - 5 * 60 * 60_000;
+  return {
+    agents: [
+      {
+        conversationId: DASHBOARD_QA_REVIEW_ID,
+        error: "GitHub access is needed to read the pull request.",
+        name: "reviewer",
+        status: "blocked",
+        task: "Review the open dashboard pull requests and list risky changes.",
+        updatedAt: iso(startedAtMs, 44_000),
+      },
+      {
+        conversationId: DASHBOARD_QA_PLAN_ID,
+        status: "completed",
+        task: "Review the dashboard plan before editing.",
+        updatedAt: iso(startedAtMs, 20_000),
+      },
+    ],
+    conversationId,
   };
 }
 

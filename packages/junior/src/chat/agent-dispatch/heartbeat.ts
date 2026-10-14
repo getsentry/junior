@@ -6,7 +6,12 @@ import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/he
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
-import { listPendingAgentInvocationMailboxAppends } from "@/chat/agent-invocations/store";
+import {
+  listPendingAgentInvocationMailboxAppends,
+  listPendingAgentInvocationResults,
+} from "@/chat/agent-invocations/store";
+import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
@@ -152,6 +157,29 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   }
 }
 
+/** Repair terminal agent invocation results that never reached their parent. */
+export async function recoverPendingAgentInvocationResults(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+}): Promise<void> {
+  const invocations = await listPendingAgentInvocationResults(
+    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
+  );
+  for (const invocation of invocations) {
+    try {
+      await recordSubagentEnded(invocation);
+      await enqueueAgentInvocationResult(invocation, {
+        nowMs: args.nowMs,
+        queue: args.conversationWorkQueue,
+      });
+    } catch (error) {
+      logException(error, "agent.invocation.result.recovery.failed", {
+        "app.agent.invocation_id": invocation.invocationId,
+      });
+    }
+  }
+}
+
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
@@ -167,6 +195,10 @@ export async function runHeartbeat(args: {
     nowMs: args.nowMs,
   });
   await recoverPendingAgentInvocationMailboxAppends({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
+  await recoverPendingAgentInvocationResults({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });

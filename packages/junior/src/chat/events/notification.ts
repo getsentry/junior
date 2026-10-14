@@ -72,7 +72,8 @@ export type EventMailboxMetadata = {
     eventType: string;
     namespace: string;
     identifier: string;
-    subscriptionId: string;
+    /** Watch that matched the Event. Core Events without a Watch omit it. */
+    subscriptionId?: string;
     objectType?: ObjectType;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
@@ -102,7 +103,8 @@ export function isEventMailboxMetadata(
     typeof fields.eventType === "string" &&
     typeof fields.namespace === "string" &&
     typeof fields.identifier === "string" &&
-    typeof fields.subscriptionId === "string" &&
+    (fields.subscriptionId === undefined ||
+      typeof fields.subscriptionId === "string") &&
     (fields.objectType === undefined ||
       objectTypeSchema.safeParse(fields.objectType).success) &&
     (fields.trustedSummary === undefined ||
@@ -127,6 +129,7 @@ export function timerWatchCredentialSubject(
     );
     if (
       !parsed.success ||
+      !metadata.event.subscriptionId ||
       !verifyTimerWatchCredentialSubject({
         conversationId,
         subject: parsed.data,

@@ -38,12 +38,15 @@ export function bindSpawnAgent(
         idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
         parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
           : undefined),
       },
       { ...options, queue },
     );
-    return { invocationId: invocation.invocationId };
+    return {
+      childConversationId: invocation.childConversationId,
+    };
   };
 }

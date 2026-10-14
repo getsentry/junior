@@ -8,6 +8,7 @@ import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
+  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
 } from "@/db/schema/agent-invocations";
 
@@ -20,6 +21,10 @@ export const agentNameSchema = exactStringSchema.max(64);
 
 const agentInvocationMailboxStatusSchema = z.enum(
   AGENT_INVOCATION_MAILBOX_STATUSES,
+);
+
+const agentInvocationParentMailboxStatusSchema = z.enum(
+  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
 );
 
 export const agentBindingSchema = z
@@ -42,6 +47,7 @@ const agentInvocationBaseSchema = z
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,
     parentConversationId: exactStringSchema,
+    parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
     updatedAtMs: z.number().finite(),
@@ -50,16 +56,18 @@ const agentInvocationBaseSchema = z
 
 export const agentInvocationSchema = z.discriminatedUnion("status", [
   agentInvocationBaseSchema.extend({
-    status: z.enum(["pending", "running", "awaiting_resume"]),
+    status: z.enum(["pending", "running", "paused"]),
   }),
   agentInvocationBaseSchema.extend({
+    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
     result: z.string(),
     status: z.literal("completed"),
     terminalAtMs: z.number().finite(),
   }),
   agentInvocationBaseSchema.extend({
     errorMessage: z.string(),
-    status: z.enum(["blocked", "failed"]),
+    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
+    status: z.enum(["blocked", "failed", "stopped"]),
     terminalAtMs: z.number().finite(),
   }),
 ]);
@@ -73,6 +81,7 @@ export const createAgentInvocationSchema = z
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     parentConversationId: exactStringSchema,
+    parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
   })
   .strict();
@@ -80,6 +89,22 @@ export const createAgentInvocationSchema = z
 export type AgentBinding = z.output<typeof agentBindingSchema>;
 export type AgentInvocation = z.output<typeof agentInvocationSchema>;
 export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
+export type TerminalAgentInvocation = Extract<
+  AgentInvocation,
+  { status: "blocked" | "completed" | "failed" | "stopped" }
+>;
 export type CreateAgentInvocationInput = z.input<
   typeof createAgentInvocationSchema
 >;
+
+/** Current state of one child agent, read from its agent invocations. */
+export type ChildAgent = {
+  agentName?: string;
+  childConversationId: string;
+  /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
+  errorMessage?: string;
+  status: AgentInvocationStatus;
+  /** Input of the latest agent invocation that the parent started. */
+  task: string;
+  updatedAtMs: number;
+};

@@ -1,0 +1,32 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation teaches a task procedure, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "7da4e42354d5",
+      "messages[1]": "0629640cc478",
+      "messages[2]": "1dc5c5dc37b2",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4VKWRWGHJF2P322RBQ9GC71\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **User instruction:** “For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.”\\n- **Progress:** No triage or inspection has been performed. An earlier assistant attempted to switch profiles via `functions.handoff` with `{\\\"profile\\\":\\\"standard\\\"}`, but received no result. Do not assume the profile changed.\\n- **Next steps:** If continuing the timeout triage, first inspect heartbeat gaps, then decide whether increasing the timeout is warranted. No other context or data was provided.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":254,\"output_tokens\":109},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_00734d4621995fcf016acea7862b8087d19f4943c40a15d204\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791928198053,\"endTime\":1791928200255,\"providerRequestId\":\"req_e4cba446c8b344279de943e779517ac1\",\"statusCode\":200,\"providerResponseId\":\"resp_00734d4621995fcf016acea7862b8087d19f4943c40a15d204\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"23967f6f38f3649fc7d3c9956eb002a9\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000799\",\"marketCost\":\"0.0000799\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000799\",\"inferenceCost\":\"0.0000799\",\"inputInferenceCost\":\"0.0000254\",\"outputInferenceCost\":\"0.0000545\",\"generationId\":\"gen_01M4VKWRWGHJF2P322RBQ9GC71\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -114,7 +114,7 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 function buildClassifierSystemPrompt(
   profiles: Readonly<Record<string, ModelProfileConfig>>,
   profileNames: string[],
-  defaultProfile: ModelProfile,
+  currentProfile: ModelProfile,
 ): string {
   const profileList = formatModelProfiles(profiles, profileNames);
   return [
@@ -130,10 +130,10 @@ function buildClassifierSystemPrompt(
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     "",
-    `Default profile: "${defaultProfile}". Keep it unless another profile's description is a clearly better fit.`,
+    `Current profile: "${currentProfile}". Keep it unless another profile's description is a clearly better fit.`,
     "Configured profiles (use each description's use and avoid cases; names are labels only; non-default does not mean stronger):",
     profileList,
-    "A previous profile choice is not binding. Keep follow-ups about unfinished work with that task; do not carry completed work into a new request.",
+    "Keep follow-ups about unfinished work on the current profile. A new request after completed work can move to another profile.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
@@ -214,8 +214,9 @@ export async function selectTurnRoute(args: {
     runId?: string;
     threadId?: string;
   };
+  /** Profile of the last Turn, or the default profile for a new Conversation. */
+  currentProfile: ModelProfile;
   currentTurnBlocks?: string[];
-  defaultProfile: ModelProfile;
   fastModelId: string;
   messageText: string;
   profiles: Readonly<Record<string, ModelProfileConfig>>;
@@ -263,7 +264,7 @@ export async function selectTurnRoute(args: {
           actorId: args.context?.actorId ?? "",
           runId: args.context?.runId ?? "",
         },
-        defaultProfile: args.defaultProfile,
+        currentProfile: args.currentProfile,
         profiles: args.profiles,
         prompt,
       });
@@ -331,7 +332,7 @@ function applyProfileReasoningOverride(
  * The fast classifier model occasionally returns a malformed object
  * (`ProviderError` kind `invalid_response`, e.g. the AI SDK's
  * `NoObjectGeneratedError`) even though a retry usually succeeds. Give it
- * one retry before falling back to `defaultProfile`; any other error kind
+ * one retry before falling back to `currentProfile`; any other error kind
  * still falls back immediately.
  */
 const CLASSIFIER_MAX_ATTEMPTS = 2;
@@ -342,7 +343,7 @@ function isRetryableClassifierError(error: unknown): boolean {
 
 async function classifyTurn(args: {
   completeObject: Parameters<typeof selectTurnRoute>[0]["completeObject"];
-  defaultProfile: ModelProfile;
+  currentProfile: ModelProfile;
   fastModelId: string;
   metadata: Record<string, string>;
   profiles: Readonly<Record<string, ModelProfileConfig>>;
@@ -367,7 +368,7 @@ async function classifyTurn(args: {
         system: buildClassifierSystemPrompt(
           args.profiles,
           Object.keys(args.profiles),
-          args.defaultProfile,
+          args.currentProfile,
         ),
         temperature: 0,
         promptName: "junior.thinking_route",
@@ -382,7 +383,7 @@ async function classifyTurn(args: {
           ...(result.costUsd !== undefined
             ? { costUsd: result.costUsd }
             : undefined),
-          profile: args.defaultProfile,
+          profile: args.currentProfile,
           reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
           reason: `low_confidence_medium_default:${reason}`,
           source: "router",
@@ -416,7 +417,7 @@ async function classifyTurn(args: {
       lastError instanceof Error ? lastError.message : String(lastError),
   });
   return {
-    profile: args.defaultProfile,
+    profile: args.currentProfile,
     reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
     reason: "classifier_error_default",
     source: "router",

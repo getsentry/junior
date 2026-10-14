@@ -13,20 +13,32 @@ import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-// TODO(dcramer): Remove awaiting_resume after every SQL row uses paused and no
-// supported worker writes the legacy status.
 export const AGENT_INVOCATION_STATUSES = [
   "pending",
   "running",
-  "awaiting_resume",
+  "paused",
   "blocked",
   "completed",
   "failed",
+  "stopped",
 ] as const;
 
 export const AGENT_INVOCATION_MAILBOX_STATUSES = [
   "pending",
   "appended",
+] as const;
+
+/**
+ * Parent mailbox append state. Only terminal invocations have a value.
+ * `replaced` means the child still had open work, so a later agent invocation
+ * on the same child sends the result instead. `skipped` means a stop ended
+ * the work, so the result is never used.
+ */
+export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
+  "pending",
+  "appended",
+  "replaced",
+  "skipped",
 ] as const;
 
 export const juniorAgentBindings = pgTable(
@@ -67,6 +79,8 @@ export const juniorAgentInvocations = pgTable(
       "credential_context_json",
     ).$type<CredentialContext>(),
     source: jsonb("source_json").$type<Source>().notNull(),
+    // TODO(dcramer): Remove destination_json after AgentRun no longer carries
+    // Destination and child Runs read only the parent Conversation Location.
     destination: jsonb("destination_json").$type<Destination>().notNull(),
     // TODO(dcramer): Remove destinationVisibility after all deployed Agent
     // invocation readers ignore the destination_visibility SQL column.
@@ -74,12 +88,17 @@ export const juniorAgentInvocations = pgTable(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
+    // The parent `spawnAgent` tool call. Null for runtime-started invocations.
+    parentToolCallId: text("parent_tool_call_id"),
     status: text("status")
       .$type<(typeof AGENT_INVOCATION_STATUSES)[number]>()
       .notNull(),
     mailboxStatus: text("mailbox_status")
       .$type<(typeof AGENT_INVOCATION_MAILBOX_STATUSES)[number]>()
       .notNull(),
+    parentMailboxStatus: text("parent_mailbox_status").$type<
+      (typeof AGENT_INVOCATION_PARENT_MAILBOX_STATUSES)[number]
+    >(),
     result: text("result"),
     errorMessage: text("error_message"),
     createdAt: timestamptz("created_at").notNull(),
@@ -91,6 +110,10 @@ export const juniorAgentInvocations = pgTable(
     index("junior_agent_invocations_mailbox_idx").on(
       table.mailboxStatus,
       table.createdAt,
+    ),
+    index("junior_agent_invocations_parent_mailbox_idx").on(
+      table.parentMailboxStatus,
+      table.terminalAt,
     ),
   ],
 );

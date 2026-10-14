@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/google/calendar.eval.ts > Google Calendar > when asked to book a meeting at a stated time, create one event and invite the requester and attendees",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "79d64dd1b143",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0e0fdaf17a01b252016aceb348f86087d1b525a294f9908689\",\"reasoningEncryptedContent\":\"gAAAAABqzrNKM7GmfCjm3fnURLLmswQBAdq2m_tGkk3kPSEH2eTxe5St7x8zIK4heremtR_0GACfpKR0oUPK-TA3Wt2Jyvou-teQeol9OnzJSxUJx3CWsW69Zo3drNMgGKewxJTaAS_3UifpURS_3RehXDWut6iUsGbTXJjAz8-6sR6jCExI1LBlzKisluhpydggZYLLVQGx64Yb6usqNY47V26g6s18cgVZlEyY_ntwaoSO-RVcamqYq2ihTrYbgcqFAglmL9Ue7zG39WZc_gKDJ_fGRA8A9bH6tgc3EpSQEpplNJRbC71W7ZJ_v0l3eE2qCz6-vkYfTeJsJJSWn5tEbCZ0GQ3yQEIcFsrVwA-GR1D65qKojhD88gcs-YG1zMuMoYS7XP2V226n4W7KcbjQwPrC4yFrF-tBqGIEn2Xv3h50yeEn_PaYJnepxwGjPn2QOHgDUY9ZIaw6dZTtkfzpTzILpgFMa9-bgal41aAJnbSQe_VAocdh76jpO-3vWTjr4gew3-7nwrif5Jiyr2-N53LpwsdhBBoCz92cTpAflyPepocshjrd0sCxHIRvm1cIAOK7-DCOXUjJwdx7mNzLP-zY837r5sXcx-UCCMGOo0oEvC1rNjh2Ysmwu51rzsXfoW-FPW1KDdDjVViz_S28jr991dE2ZA3H7LR_ZMqblMY8rGNfLIuFs_2XLnmhB8ZYq0RprUXR7fkc5iBvZsH8JxUJhys3lbKj880MaNwp3m1kZuGjNP9FlNcGBpJ3BcpupSLHAcVmYM3xUYxlTYIEXMaN3pLftb2Mj4YqgMkqeXtWsaijtV6woxUZGvADFtvpygi4_mJ-k3ghMY98GV3pd41Lq_I1H9Hz517-veZDWoTSMwdXbeD3RXPC1H-aMGS962aU_PiaK7z9or0mkSW9CuHPXEAs029kMEdemmq3NKbzKx57wpp45VwFpeAuzVa91eboeZL2Gm2ePnmV_eTabiD-8Tbo-P1xKOWgASnHxqn0etrdiH7r5fVpfTWxTMyaHYFR3siyMK1QngEYZ1bbfGGTMktfK7SAUKDUhyG_4QLK9bq6f5dd6OGd798siI5gEG0VWp1f41y7d0jTUe3sMChXz3sZVQ6sYHk8BDZlzZI717zVwd0HvP52UhQb60I0k9SV8wmy4GZtX_tIepGhaWDlf5kVV8XVFPIMumy9wHutFPZBUFpvEENnVz_mL_X9LkzfdWYVvwphlCE8IC1ABuI1Dzy8oO9T49-CqBdOvmulUwaDne1PNteBwyQT2NGHOcVJ6ZJdg0kaY0CUu-R2BKkljLE4uA8Gs79hvrBuWsuH2Wbmcc5gJUWjZ90UeAlzYxr4ihelniSzyiLuHkrmZ_ol6h-_LU9oH98Mnx8EQw7TghBSptZyaP_XcgWHNlywxTQQ_CvKjL8BrRvih_x5A5b6V5L5QSwIbspEMi0gm4J5PxnhsGL8uE3yNpp8Emz1FGr1yYDWIC3HEIhMLJ3-84EV2J2zptyrRNaLdnUUovGzhXFRJY0m60IwBzk_RQcVEspPfnMFUSV5IeL5dxxgyPOSq3z9q7O0aHvMJC6_HpOh-pZLNhbVMt8EuWzlMarmN15Wn_0zRTlbdLxAzG8Ax_Rypp3KEv_rhEJwga8Ebv4a8FHEAuVBO_PcUZP4bDtdW-EBBx-8tPgZ3GLrhuuKL-Ybj09c3pPQTI4UgYInheN5jZnwVquXNT8GeoCG7T0lvsiP8coNJ3RVl_tmxQKi4N9yMFCH-dUtQyK7bCwUuDMnkauQ8udHZ6ZOK8t4JLQzpYa2MLzwfj2b6WvWcVSy9lqMRMK-5TBtVwNvOSzoBaj-OHnEp26zP8nrFdIIccwWJqL75-ZWHcfsP2AIJ2uG3XycKGLpiv5mobSX5hnnu04oxyS21uIO7tFXhCtGKQ4hlXXQiA39MH5696VZyc6_GSx_bJq5JbJ44U5OCeCIN5KOL_kP-gQsBvhPBUFUXRXeWjlXc6D-eU1PhOLCI5Tzpq6JYZirJ3exIZrrxib9SoR9Vi9s5Wc=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.99,\\\"reason\\\":\\\"Scheduling a meeting requires interpreting “next Tuesday” against the current date and likely using a calendar tool.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0e0fdaf17a01b252016aceb349633c87d18546fa74a7d5eb04\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":607,\"noCache\":607,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":89,\"text\":49,\"reasoning\":40},\"raw\":{\"input_tokens\":607,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":89,\"output_tokens_details\":{\"reasoning_tokens\":40},\"total_tokens\":696}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0e0fdaf17a01b252016aceb348914087d182253484fb3f2b11\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791931208482,\"endTime\":1791931210143,\"providerRequestId\":\"req_e5c05557cf2640bea06d763bcf1de2b7\",\"statusCode\":200,\"providerResponseId\":\"resp_0e0fdaf17a01b252016aceb348914087d182253484fb3f2b11\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"c5941c072ea2c4f304a8e12347376ce2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001052\",\"marketCost\":\"0.0001052\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001052\",\"inferenceCost\":\"0.0001052\",\"inputInferenceCost\":\"0.0000607\",\"outputInferenceCost\":\"0.0000445\",\"generationId\":\"gen_01M4VPRMQ47KSW5D8HX7X8B5WT\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

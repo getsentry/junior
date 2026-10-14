@@ -169,7 +169,7 @@ function statusLabel(
   part: TranscriptViewSubagentPart,
   detailStatus?: string,
 ): string {
-  if (part.status === "error" || part.status === "aborted") {
+  if (part.status !== "running" && part.status !== "completed") {
     return part.status;
   }
   return detailStatus ?? part.status;

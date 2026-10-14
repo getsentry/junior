@@ -21,6 +21,8 @@ export interface SlackConversationContext {
   name?: string;
   /** Visibility proven by source or persisted metadata. */
   visibility?: SlackConversationVisibility;
+  /** Junior's own Slack user ID, so the agent can recognize its mentions. */
+  botUserId?: string;
 }
 
 function normalizeConversationName(
@@ -125,6 +127,7 @@ export function resolveSlackChannelTypeFromMessage(
 
 /** Build Slack conversation facts available to runtime consumers. */
 export function resolveSlackConversationContext(input: {
+  botUserId?: string;
   channelId?: string;
   channelName?: string;
   channelType?: SlackEventChannelType;
@@ -143,6 +146,7 @@ export function resolveSlackConversationContext(input: {
     type,
     ...(name ? { name } : undefined),
     ...(visibility ? { visibility } : undefined),
+    ...(input.botUserId ? { botUserId: input.botUserId } : undefined),
   };
 }
 

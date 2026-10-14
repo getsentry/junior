@@ -159,8 +159,9 @@ const app = await createApp({
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and event notifications in those threads.
     "passive-routing": true,
-    // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
-    // unless you are testing the #879 runtime.
+    // Model-facing spawnAgent, listAgents, and stopAgent for durable child
+    // agent work.
+    // Incomplete; keep off unless you are testing the #879 runtime.
     subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app
     // database directly and skip Conversation privacy checks. Enable them only
@@ -172,6 +173,10 @@ const app = await createApp({
 
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
+
+By default, only the root Conversation can start child agents. Set
+`limits.maxAgentDepth` to let child agents start their own child agents. For
+example, `1` lets a child agent start child agents, and those cannot start more.
 
 ## Remote ACP
 

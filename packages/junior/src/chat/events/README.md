@@ -44,6 +44,9 @@ Watches route events back into an existing conversation.
   input contains text and event metadata. Destination and Location stay on the
   Conversation. The shared mailbox worker runs a normal Turn. Slack supplies
   Delivery for the Location. It does not build webhook Message or Thread objects.
+- Core can also wake a Conversation with an Event that has no Watch. Agent
+  invocation results use this path (see `agent-invocations/README.md`). Their
+  mailbox metadata has no `subscriptionId`.
 - TODO(subagents): child conversations still store watches on their own id.
   When subagents matter, store the parent root id or give children the parent's
   destination and worker path.

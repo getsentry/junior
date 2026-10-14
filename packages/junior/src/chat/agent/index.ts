@@ -41,6 +41,7 @@ import {
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
+  loadLastModelProfile,
   loadTurnRoute,
   openConversationProjection,
   recordAgentsInstructionsUpdated,
@@ -49,6 +50,7 @@ import {
   recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
+  contextProvenance,
   instructionActors,
   instructionProvenanceFor,
   sameActorIdentity,
@@ -154,19 +156,18 @@ import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
+/** Read visibility from the Conversation, or from its nearest parent with one. */
 async function readRunConversationVisibility(
   conversationId: string,
 ): Promise<ConversationPrivacy | undefined> {
   const conversationStore = getConversationStore();
-  const conversation = await conversationStore.get({ conversationId });
-  if (conversation?.visibility || !conversation?.parentConversationId) {
-    return conversation?.visibility;
-  }
-  return (
-    await conversationStore.get({
+  let conversation = await conversationStore.get({ conversationId });
+  while (!conversation?.visibility && conversation?.parentConversationId) {
+    conversation = await conversationStore.get({
       conversationId: conversation.parentConversationId,
-    })
-  )?.visibility;
+    });
+  }
+  return conversation?.visibility;
 }
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
@@ -603,6 +604,11 @@ async function executeAgentRunInPrivacyContext(
       policy.disabledFeatures,
       "handoff",
     );
+    // One profile with a fixed reasoning level leaves the router no choice.
+    const routeIsFixed =
+      Object.keys(botConfig.profiles).length === 1 &&
+      (profileConfig(botConfig, activeModelProfile).reasoningLevel ??
+        configuredReasoningLevel) !== undefined;
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
       const replacementOverridesRoute =
@@ -634,9 +640,10 @@ async function executeAgentRunInPrivacyContext(
           source: storedTurnRoute.source,
         };
       }
-    } else if (handoffEnabled) {
-      // Route each new turn. A handoff changes the active profile within its
-      // turn, but must not pin later requests to that profile indefinitely.
+    } else if (handoffEnabled && !routeIsFixed) {
+      // Route each new turn from the last Turn's profile. The router can keep
+      // unfinished work there or move a new request to another profile.
+      const lastProfile = await loadLastModelProfile({ conversationId });
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -646,8 +653,11 @@ async function executeAgentRunInPrivacyContext(
           actorId: slackActor?.userId,
           runId,
         },
+        currentProfile:
+          lastProfile && Object.hasOwn(botConfig.profiles, lastProfile)
+            ? lastProfile
+            : botConfig.defaultProfile,
         currentTurnBlocks: routerBlocks,
-        defaultProfile: botConfig.defaultProfile,
         fastModelId: botConfig.fastModelId,
         messageText: userInput,
         profiles: botConfig.profiles,
@@ -904,6 +914,11 @@ async function executeAgentRunInPrivacyContext(
     baseInstructions = assembledBaseInstructions;
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
+      async commit(messages) {
+        // Without explicit provenance, the commit attributes the message to
+        // the Turn Actor, and a resumed Turn adds AGENTS.md again.
+        await runResume.persistSafeBoundary(messages, [contextProvenance]);
+      },
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
       initialInstructions: initialRepositoryInstructions,
       onTransition: recordAgentsTransition,
@@ -1138,30 +1153,30 @@ async function executeAgentRunInPrivacyContext(
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
           const handoffUpdate = applyPendingHandoff();
+          // Pi appends steering after this hook returns, so add AGENTS.md
+          // context first to commit the same message order.
+          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
+            handoffUpdate,
+            nextTurn.context,
+          );
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate
+            contextUpdate
               ? currentAgentMessages()
               : (nextTurn.context.messages as PiMessage[]),
             hookSignal,
             pendingMessages,
             true,
           );
-          const combinedUpdate = capacityUpdate
-            ? { ...handoffUpdate, ...capacityUpdate }
-            : handoffUpdate;
-          const repositoryInstructionsUpdate =
-            await repositoryInstructionsContext.applyUpdate(
-              combinedUpdate,
-              nextTurn.context,
-            );
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return repositoryInstructionsUpdate;
+          return capacityUpdate
+            ? { ...contextUpdate, ...capacityUpdate }
+            : contextUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));

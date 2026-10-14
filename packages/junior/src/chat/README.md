@@ -249,8 +249,11 @@ same way.
   verbatim, with its author and source event. The generated summary follows it
   as escaped text inside `<thread-context authority="evidence-only">`, not as a
   new instruction. Runtime-owned open plan state and completed handoff facts
-  stay outside that block. Steering messages are drained after handoff and pass
-  through the normal capacity check.
+  stay outside that block. Steering messages are drained after handoff and new
+  AGENTS.md context, then pass through the normal capacity check. Pi appends
+  steering after the hook returns, so this order keeps committed history in Pi
+  order. New AGENTS.md context is committed as context when it is added, before
+  a reply can follow it.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
@@ -270,11 +273,14 @@ same way.
 `model-profile.ts` owns the default model ids, fixed reasoning levels, and
 task-fit descriptions. Apps can replace them through `createApp()`.
 `services/turn-router.ts` selects a profile for each new Turn when handoff is
-enabled. It selects reasoning independently, then applies any fixed level from
-the selected profile. A saved Turn route, or a later handoff in that Turn, wins
-on resume. A previous Turn's handoff does not pin a new request to that profile.
-When handoff is disabled, the agent keeps the active profile and configured
-reasoning without calling the router.
+enabled. It starts from the current profile: the profile of the newest Turn
+route or handoff, or the default profile in a new Conversation. It keeps that
+profile for unfinished work and when it is not sure. A new request can move to
+another profile. It selects reasoning independently, then applies any fixed
+level from the selected profile. A saved Turn route, or a later handoff in that
+Turn, wins on resume. When handoff is disabled, or when only one profile is
+configured and its reasoning is fixed, the agent keeps the active profile and
+configured reasoning without calling the router.
 
 `tools/handoff/tool.ts` owns in-turn switch rules. Its description includes the
 active profile and the other available profiles. `agent/handoff.ts` refreshes

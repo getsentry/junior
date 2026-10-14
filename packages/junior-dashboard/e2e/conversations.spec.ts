@@ -541,7 +541,7 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
-test("inspects and copies an advisor transcript", async ({
+test("inspects and copies a child agent transcript", async ({
   context,
   page,
   dashboard,
@@ -564,15 +564,39 @@ test("inspects and copies an advisor transcript", async ({
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
-  await page
-    .getByRole("button", { name: "Open advisor transcript" })
-    .first()
-    .click();
+  const openChild = page.getByRole("button", {
+    name: "Open agent transcript",
+  });
+  await expect(openChild).toHaveCount(2);
+  await expect(openChild.last()).toContainText("blocked");
+  await screenshot(page, "conversation-child-agents");
+
+  // The Details drawer lists child agents with the runtime status.
+  await page.getByRole("button", { name: "Conversation details" }).click();
+  const details = page.getByRole("dialog", { name: "Dashboard QA edge cases" });
+  await details.getByRole("tab", { name: "Subagents" }).click();
+  const subagents = details.getByRole("list", { name: "Subagents" });
+  await expect(subagents.getByRole("listitem")).toHaveCount(2);
+  await expect(subagents.getByRole("listitem").first()).toContainText(
+    "GitHub access is needed to read the pull request.",
+  );
+  await expect(
+    subagents.getByRole("link", { name: "reviewer" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-review")}`,
+  );
+  await screenshot(page, "conversation-subagents-tab");
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+
+  await openChild.first().click();
 
   const drawer = page.getByRole("dialog", { name: "Advisor review" });
   await expect(
     drawer.getByRole("heading", { name: "Advisor review" }),
   ).toBeVisible();
+  await screenshot(page, "conversation-child-agent-drawer");
   await expect(
     drawer.getByText(childConversationId, { exact: true }),
   ).toBeVisible();

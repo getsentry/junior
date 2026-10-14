@@ -5,12 +5,14 @@ import { formatRelativeTime, formatTime } from "../format";
 import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SegmentedTabs } from "../components/SegmentedTabs";
+import { ConversationChildAgents } from "./ConversationChildAgents";
 import { ConversationMemories } from "./ConversationMemories";
 import { ShareConversationButton } from "./ShareConversationButton";
 
 const tabs = [
   { label: "Details", value: "details" },
   { label: "Memories", value: "memories" },
+  { label: "Subagents", value: "agents" },
 ] as const;
 
 /** Put conversation context before usage and diagnostic links. */
@@ -26,7 +28,7 @@ export function ConversationDetailsDrawer(props: {
   stats: ReactNode;
   title: string;
 }) {
-  const [tab, setTab] = useState<"details" | "memories">("details");
+  const [tab, setTab] = useState<(typeof tabs)[number]["value"]>("details");
   const titleId = "conversation-details-drawer-title";
   const sections = [
     { content: props.brief, title: "Summary" },
@@ -65,6 +67,11 @@ export function ConversationDetailsDrawer(props: {
       >
         {tab === "memories" ? (
           <ConversationMemories conversationId={props.conversationId} />
+        ) : tab === "agents" ? (
+          <ConversationChildAgents
+            conversationId={props.conversationId}
+            onNavigate={props.onClose}
+          />
         ) : sections.length > 0 ? (
           <div className="grid min-w-0 gap-5">
             {sections.map((section) => (
