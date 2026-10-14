@@ -19,11 +19,11 @@ export function segmentedTabClass(selected: boolean): string {
   );
 }
 
-/** Switch between related panels with equal-width tabs and keyboard navigation. */
+/** Switch between related panels with tabs that fill the row and keyboard navigation. */
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
-  /** `count` is the number of entries in the panel, when known. */
+  /** `count` is the number of entries in the panel. Zero and unknown counts are hidden. */
   items: readonly { count?: number; label: string; value: Value }[];
   onChange(value: NoInfer<Value>): void;
   value: NoInfer<Value>;
@@ -34,11 +34,7 @@ export function SegmentedTabs<const Value extends string>(props: {
     <div className="grid min-w-0 gap-4">
       <div
         aria-label={props.label}
-        className={cn(
-          "grid auto-cols-fr grid-flow-col",
-          segmentedTabsFrameClass,
-          segmentedTabsInsetClass,
-        )}
+        className={cn("flex", segmentedTabsFrameClass, segmentedTabsInsetClass)}
         role="tablist"
       >
         {props.items.map((item, index) => (
@@ -46,7 +42,7 @@ export function SegmentedTabs<const Value extends string>(props: {
             aria-controls={`${id}-panel`}
             aria-selected={props.value === item.value}
             className={cn(
-              "inline-flex min-w-0 items-center justify-center gap-1.5",
+              "inline-flex min-w-0 flex-auto items-center justify-center gap-1.5",
               segmentedTabClass(props.value === item.value),
             )}
             id={`${id}-${item.value}`}
@@ -82,8 +78,8 @@ export function SegmentedTabs<const Value extends string>(props: {
             type="button"
           >
             <span className="truncate">{item.label}</span>
-            {item.count !== undefined ? (
-              <span className="shrink-0 font-mono text-xs tabular-nums text-dashboard-text-muted">
+            {item.count ? (
+              <span className="min-w-5 shrink-0 rounded-full bg-dashboard-fill-strong px-1.5 text-center text-xs font-semibold leading-5 tabular-nums">
                 {item.count.toLocaleString("en-US")}
               </span>
             ) : null}
