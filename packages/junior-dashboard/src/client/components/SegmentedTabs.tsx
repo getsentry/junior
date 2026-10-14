@@ -19,7 +19,7 @@ export function segmentedTabClass(selected: boolean): string {
   );
 }
 
-/** Switch between related panels with tabs that fill the row and keyboard navigation. */
+/** Switch between related panels. Tabs share the row equally on wide screens. */
 export function SegmentedTabs<const Value extends string>(props: {
   children: ReactNode;
   label: string;
@@ -42,7 +42,7 @@ export function SegmentedTabs<const Value extends string>(props: {
             aria-controls={`${id}-panel`}
             aria-selected={props.value === item.value}
             className={cn(
-              "inline-flex min-w-0 flex-auto items-center justify-center gap-1.5",
+              "inline-flex min-w-0 flex-auto items-center justify-center gap-1.5 sm:flex-1",
               segmentedTabClass(props.value === item.value),
             )}
             id={`${id}-${item.value}`}
