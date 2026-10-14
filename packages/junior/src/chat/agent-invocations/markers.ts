@@ -28,8 +28,8 @@ export async function recordSubagentStarted(
         ...(invocation.agentName
           ? { agentName: invocation.agentName }
           : undefined),
-        // Only a parent tool call starts a task. The input of an agent
-        // invocation that receives a nested result is another child's output.
+        // Only a `spawnAgent` call has a task. An agent invocation that
+        // receives a nested result has another child's output as its input.
         ...(invocation.parentToolCallId
           ? {
               parentToolCallId: invocation.parentToolCallId,
