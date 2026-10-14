@@ -27,6 +27,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
 import { automationPath } from "../../format";
+import { useDocumentTitle } from "../../documentTitle";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
@@ -122,6 +123,12 @@ export function AutomationsPage(props: {
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
   const selectedTask = detail.data;
+  // Overview names the tab through PageHeader; the list has a plain heading.
+  useDocumentTitle(
+    props.view === "list"
+      ? (selectedTask?.title ?? "All automations")
+      : undefined,
+  );
   // A deletion or a shared URL can leave the requested page past the last page.
   useEffect(() => {
     if (

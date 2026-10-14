@@ -9,6 +9,7 @@ import {
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
+import { useDocumentTitle } from "../documentTitle";
 import { Button } from "../components/Button";
 import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
@@ -18,6 +19,7 @@ const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 
 /** Create and revoke personal API tokens for local clients. */
 export function PersonalTokensPage() {
+  useDocumentTitle("API tokens");
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
   const [name, setName] = useState("Local agent");

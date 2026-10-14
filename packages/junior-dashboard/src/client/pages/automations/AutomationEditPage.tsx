@@ -6,6 +6,7 @@ import {
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { useAutomationData } from "../../api";
+import { useDocumentTitle } from "../../documentTitle";
 import { fetchDashboardJson } from "../../http";
 import { Button } from "../../components/Button";
 import { FormNotice } from "../../components/FormNotice";
@@ -37,6 +38,13 @@ export function AutomationEditPage(props: { enabled: boolean }) {
   });
   const returnPath = `/automations/list${location.search}`;
   const value = summary.data;
+  useDocumentTitle(
+    value
+      ? canEdit
+        ? `${value.title} · Edit`
+        : value.title
+      : "Edit automation",
+  );
   const status =
     value?.kind === "event"
       ? value.status !== "active"

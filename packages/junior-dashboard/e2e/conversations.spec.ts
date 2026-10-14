@@ -212,6 +212,7 @@ test("opens a conversation in the built dashboard", async ({
   await page.goto(dashboard.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
+  await expect(page).toHaveTitle("Junior");
   await expect(
     page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
@@ -234,6 +235,7 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  await expect(page).toHaveTitle("Checkout latency triage - Junior");
   await expect(page.getByRole("note")).toContainText("Public conversation");
   await expect(page.getByRole("note")).toContainText("Public");
 

@@ -113,6 +113,11 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
             </div>
           }
           description={<RepositoryDescription data={data} />}
+          documentTitle={
+            props.tab === "overview"
+              ? repository.name
+              : `${repository.name} · ${props.tab === "changes" ? "Changes" : "Conversations"}`
+          }
           title={repository.name}
         />
         {props.tab === "overview" ? (
