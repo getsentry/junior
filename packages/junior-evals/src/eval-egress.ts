@@ -1,10 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SandboxEgressHttpInterceptor } from "@/chat/sandbox/egress/proxy";
+import type { SandboxEgressProxyOptions } from "@/handlers/sandbox-egress-proxy";
 
 const QUICK_TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/i;
 const QUICK_TUNNEL_START_TIMEOUT_MS = 30_000;
@@ -16,10 +22,17 @@ const QUICK_TUNNEL_RETRY_MAX_DELAY_MS = 5_000;
 const RESET_PATH = "/__junior_eval/reset";
 const STATE_PATH = "/__junior_eval/state";
 
+/** The start of one test, as the worker sends it. */
+export interface EvalEgressReset {
+  /** The eval clock of the worker. See `src/eval-clock.ts`. */
+  nowMs: number;
+}
+
 interface EvalEgressOptions {
   interceptHttp?: SandboxEgressHttpInterceptor;
   readFixtureState?: () => Promise<unknown> | unknown;
-  resetFixtures?: () => Promise<void> | void;
+  resetFixtures?: (reset: EvalEgressReset) => Promise<void> | void;
+  verifyOidc?: SandboxEgressProxyOptions["verifyOidc"];
   verifyPublicUrl?: (baseUrl: string) => Promise<void>;
 }
 
@@ -106,6 +119,21 @@ async function writeResponse(
   }
 }
 
+/** Read the JSON body of a reset request from the worker. */
+async function readReset(incoming: IncomingMessage): Promise<EvalEgressReset> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of incoming) {
+    chunks.push(Buffer.from(chunk as Uint8Array));
+  }
+  const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+    nowMs?: unknown;
+  };
+  if (typeof body.nowMs !== "number" || !Number.isFinite(body.nowMs)) {
+    throw new Error("Eval egress reset did not include the worker time");
+  }
+  return { nowMs: body.nowMs };
+}
+
 /** Serve health checks and credentialed sandbox requests for the eval worker. */
 function createEvalEgressServer(options: EvalEgressOptions): {
   controlToken: string;
@@ -135,7 +163,7 @@ function createEvalEgressServer(options: EvalEgressOptions): {
             outgoing.end("Unauthorized\n");
             return;
           }
-          await options.resetFixtures?.();
+          await options.resetFixtures?.(await readReset(incoming));
           outgoing.statusCode = 204;
           outgoing.end();
           return;
@@ -175,6 +203,7 @@ function createEvalEgressServer(options: EvalEgressOptions): {
             ...(options.interceptHttp
               ? { interceptHttp: options.interceptHttp }
               : {}),
+            ...(options.verifyOidc ? { verifyOidc: options.verifyOidc } : {}),
           }),
         );
       } catch (error) {

@@ -11,24 +11,26 @@
  *   test gets the same values on each run, and different tests get different
  *   values. Ids that the product and the AI SDK make with it, such as
  *   conversation memory ids, then do not change.
+ * - `Date` starts each test at `EVAL_START_MS` and moves forward in real
+ *   time (`src/eval-clock.ts`). The model then sees the same "now" in the
+ *   recording run and in the replay, and tools compare the times that the
+ *   model calculates with the same clock. The main process uses the same
+ *   clock for sandbox egress: `src/setup.ts` sends it the time of the
+ *   worker at the start of each test.
  *
- * Two things stay real on purpose:
- *
- * - The clock. The worker shares state with processes that use the real
- *   clock: the main process checks sandbox egress leases that the worker
- *   writes, and it verifies Vercel OIDC tokens, which have real `nbf` and
- *   `exp` times. Postgres also writes `now()` defaults. A fake clock in the
- *   worker breaks those checks. The `values` of the model rule in
- *   `recording-rules.ts` replace times and dates in requests instead.
- * - `crypto.randomUUID`. Sandbox names and workspace snapshot names come from
- *   it, and Vercel Sandbox reuses a sandbox by name. Repeated UUIDs would
- *   share sandboxes between runs and pull requests. The `uuid` value of the
- *   model rule replaces UUIDs in requests instead.
+ * `crypto.randomUUID` stays real on purpose. Sandbox names and workspace
+ * snapshot names come from it, and Vercel Sandbox reuses a sandbox by name.
+ * Repeated UUIDs would share sandboxes between runs and pull requests. The
+ * `uuid` value of the model rule in `recording-rules.ts` replaces UUIDs in
+ * requests instead.
  */
 import { relative } from "node:path";
 import { beforeEach } from "vitest";
+import { EVAL_START_MS, installEvalClock } from "./eval-clock";
 
 process.env.TZ = "UTC";
+
+const evalClock = installEvalClock();
 
 // Install one generator per worker and only reseed it per test. Code that a
 // test runs can make `Math.random` read-only, so a later assignment throws.
@@ -40,6 +42,7 @@ const globals = globalThis as { [SEEDED_RANDOM]?: SeededRandom };
 const seededRandom = (globals[SEEDED_RANDOM] ??= installSeededRandom());
 
 beforeEach(({ task }) => {
+  evalClock.set(EVAL_START_MS);
   seededRandom.seed(
     `${relative(process.cwd(), task.file.filepath)} > ${task.fullName}`,
   );
