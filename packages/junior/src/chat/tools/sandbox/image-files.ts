@@ -1,4 +1,7 @@
-import { detectImageMediaType } from "@/chat/attachments/media";
+import {
+  detectImageMediaType,
+  type InputImageType,
+} from "@/chat/attachments/media";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   normalizeSandboxPath,
@@ -13,7 +16,7 @@ export async function readSandboxImage(
   path: string,
   readFile: (path: string) => Promise<Buffer | null | undefined>,
   maxBytes: number,
-): Promise<{ data: Buffer; mimeType: string }> {
+): Promise<{ data: Buffer; mimeType: InputImageType }> {
   const targetPath = normalizeSandboxPath(path);
   const data = await readFile(targetPath);
   if (!data) {

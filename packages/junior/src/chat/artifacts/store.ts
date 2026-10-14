@@ -102,7 +102,7 @@ export async function publishImage(args: {
       "unsupported image format; use PNG, JPEG, GIF, or WebP",
     );
   }
-  const imageType = { contentType, extension: IMAGE_EXTENSIONS[contentType] };
+  const extension = IMAGE_EXTENSIONS[contentType];
 
   const baseUrl = resolvePublicBaseUrl(args.publicBaseUrl);
   const sha256 = createHash("sha256").update(args.body).digest("hex");
@@ -123,12 +123,12 @@ export async function publishImage(args: {
 
   // One public id per conversation+bytes. Other conversations get their own id.
   const id = existing?.id ?? randomUUID();
-  const filename = `${id}.${imageType.extension}`;
+  const filename = `${id}.${extension}`;
   const storageKey = artifactKey(filename);
 
   await args.storage.put({
     body: args.body,
-    contentType: imageType.contentType,
+    contentType,
     key: storageKey,
   });
 
@@ -138,11 +138,11 @@ export async function publishImage(args: {
     .insert(juniorArtifacts)
     .values({
       bytes: args.body.byteLength,
-      contentType: imageType.contentType,
+      contentType,
       conversationId: args.conversationId,
       createdAt: now,
       deleteRequestedAt: null,
-      ext: imageType.extension,
+      ext: extension,
       id,
       public: true,
       sha256,
@@ -152,9 +152,9 @@ export async function publishImage(args: {
       target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
       set: {
         bytes: args.body.byteLength,
-        contentType: imageType.contentType,
+        contentType,
         deleteRequestedAt: null,
-        ext: imageType.extension,
+        ext: extension,
         public: true,
         // Keep the winning row's id/storage key. A raced put may leave an
         // unused object; that is fine for mvp.
@@ -171,7 +171,7 @@ export async function publishImage(args: {
 
   return {
     bytes: args.body.byteLength,
-    contentType: imageType.contentType,
+    contentType,
     url: `${baseUrl}/public/artifacts/${row.id}.${row.ext}`,
   };
 }

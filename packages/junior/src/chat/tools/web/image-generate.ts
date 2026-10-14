@@ -17,7 +17,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 // AI Gateway rejects request bodies over 4.5 MB with HTTP 413. Base64 makes
 // images a third larger, so 3 MB of images keeps the body under that limit.
-const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_REQUEST_IMAGE_BYTES = 3 * 1024 * 1024;
 
 const imageGenerateOutputSchema = juniorToolOutputSchema
   .extend({
@@ -141,7 +141,7 @@ export function createImageGenerateTool(
             path,
             (targetPath) =>
               options.sandbox.readFileToBuffer({ path: targetPath }),
-            MAX_INPUT_IMAGE_BYTES,
+            MAX_REQUEST_IMAGE_BYTES,
           ),
         ),
       );
@@ -149,14 +149,26 @@ export function createImageGenerateTool(
         (sum, image) => sum + image.data.byteLength,
         0,
       );
-      if (inputBytes > MAX_INPUT_IMAGE_BYTES) {
+      if (inputBytes > MAX_REQUEST_IMAGE_BYTES) {
         throw new ToolInputError(
-          `input images total ${inputBytes} bytes; imageGenerate accepts ${MAX_INPUT_IMAGE_BYTES} bytes. Make the images smaller first.`,
+          `input images total ${inputBytes} bytes; imageGenerate accepts ${MAX_REQUEST_IMAGE_BYTES} bytes. Make the images smaller first.`,
         );
       }
       // Enrichment restyles the whole image, so it would undo an edit.
       const enrichedPrompt =
         inputImages.length > 0 ? prompt : await enrichImagePrompt(prompt);
+      const content =
+        inputImages.length > 0
+          ? [
+              { type: "text", text: enrichedPrompt },
+              ...inputImages.map((image) => ({
+                type: "image_url",
+                image_url: {
+                  url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
+                },
+              })),
+            ]
+          : enrichedPrompt;
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {
@@ -167,23 +179,7 @@ export function createImageGenerateTool(
           },
           body: JSON.stringify({
             model,
-            messages: [
-              {
-                role: "user",
-                content:
-                  inputImages.length > 0
-                    ? [
-                        { type: "text", text: enrichedPrompt },
-                        ...inputImages.map((image) => ({
-                          type: "image_url",
-                          image_url: {
-                            url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
-                          },
-                        })),
-                      ]
-                    : enrichedPrompt,
-              },
-            ],
+            messages: [{ role: "user", content }],
             modalities: ["image"],
           }),
         },
