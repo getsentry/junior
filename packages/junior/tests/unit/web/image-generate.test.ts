@@ -338,6 +338,10 @@ describe("createImageGenerateTool", () => {
         sandbox: sandbox({
           "/vercel/sandbox/a.png": largePng,
           "/vercel/sandbox/b.png": largePng,
+          "/vercel/sandbox/photo.png": Buffer.concat([
+            PNG_BYTES,
+            Buffer.alloc(4 * 1024 * 1024),
+          ]),
         }),
       },
     );
@@ -348,6 +352,12 @@ describe("createImageGenerateTool", () => {
         {} as any,
       ),
     ).rejects.toThrow("Make the images smaller first");
+    await expect(
+      tool.execute!(
+        { prompt: "change the sign", images: ["photo.png"] },
+        {} as any,
+      ),
+    ).rejects.toThrow("exceeds 3145728 bytes");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

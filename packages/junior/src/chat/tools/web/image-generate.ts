@@ -137,8 +137,11 @@ export function createImageGenerateTool(
       const model = options.modelId;
       const inputImages = await Promise.all(
         images.map((path) =>
-          readSandboxImage(path, (targetPath) =>
-            options.sandbox.readFileToBuffer({ path: targetPath }),
+          readSandboxImage(
+            path,
+            (targetPath) =>
+              options.sandbox.readFileToBuffer({ path: targetPath }),
+            MAX_INPUT_IMAGE_BYTES,
           ),
         ),
       );

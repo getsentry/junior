@@ -5,6 +5,8 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ViewImageToolDeps } from "@/chat/tools/types";
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
 
+const MAX_VIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+
 const viewImageInputSchema = z
   .object({
     path: z
@@ -42,6 +44,7 @@ export function createViewImageTool(
         path,
         deps.readFile ??
           ((targetPath) => sandbox.readFileToBuffer({ path: targetPath })),
+        MAX_VIEW_IMAGE_BYTES,
       );
 
       return {

@@ -4,8 +4,6 @@ import {
   SandboxFileNotFoundError,
 } from "@/chat/tools/sandbox/file-uploads";
 
-const MAX_SANDBOX_IMAGE_BYTES = 5 * 1024 * 1024;
-
 function detectImageMimeType(data: Buffer): string | undefined {
   if (
     data.length >= 8 &&
@@ -45,6 +43,7 @@ function detectImageMimeType(data: Buffer): string | undefined {
 export async function readSandboxImage(
   path: string,
   readFile: (path: string) => Promise<Buffer | null | undefined>,
+  maxBytes: number,
 ): Promise<{ data: Buffer; mimeType: string }> {
   const targetPath = normalizeSandboxPath(path);
   const data = await readFile(targetPath);
@@ -54,9 +53,9 @@ export async function readSandboxImage(
   if (data.byteLength === 0) {
     throw new ToolInputError(`image file is empty: ${targetPath}`);
   }
-  if (data.byteLength > MAX_SANDBOX_IMAGE_BYTES) {
+  if (data.byteLength > maxBytes) {
     throw new ToolInputError(
-      `image exceeds ${MAX_SANDBOX_IMAGE_BYTES} bytes: ${targetPath} (${data.byteLength} bytes)`,
+      `image exceeds ${maxBytes} bytes: ${targetPath} (${data.byteLength} bytes). Make the image smaller first.`,
     );
   }
   const mimeType = detectImageMimeType(data);
