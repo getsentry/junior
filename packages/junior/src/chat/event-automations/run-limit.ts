@@ -6,26 +6,29 @@
  * and Event automations do not use the consecutive automated-turn limit.
  * `botConfig.maxEventAutomationRunsPerHour` sets the cap.
  *
- * Each run appends one entry to a short list in the state adapter, then counts
- * the entries from the last hour. The append is atomic, so the run that goes
- * over the cap always sees it, even when Events arrive at the same moment. No
- * lock and no read-modify-write are needed. A burst can refuse runs that would
- * fit, because each run counts the entries that arrived after it too. Then the
- * Automation blocks, which is the safe side for a cap.
+ * Each run appends one entry with its own id to a short list in the state
+ * adapter. Then it counts the entries from the last hour up to its own entry.
+ * The append is atomic, so the list order decides which runs fit, even when
+ * Events arrive at the same moment. The first runs up to the cap pass, and the
+ * rest are refused. No lock and no read-modify-write are needed.
  */
+import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
 import { botConfig } from "@/chat/config";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const RUN_LIST_PREFIX = "junior:event_automation_runs:v1";
+// Extra entries kept past the cap. A run looks for its own entry, so it must
+// stay in the list while other Events of the same burst append after it.
+const RUN_LIST_BURST_ROOM = 100;
 
 /** Length of the rolling window for the run limit. */
 export const EVENT_AUTOMATION_RUN_WINDOW_MS = 60 * 60 * 1000;
 
 // A reset entry marks a resume or revive. Runs before it do not count.
 const runEntrySchema = z.union([
-  z.object({ atMs: z.number().finite() }).strict(),
+  z.object({ atMs: z.number().finite(), id: z.string().min(1) }).strict(),
   z.object({ reset: z.literal(true) }).strict(),
 ]);
 
@@ -35,7 +38,6 @@ function runListKey(automationId: string): string {
   return `${RUN_LIST_PREFIX}:${automationId}`;
 }
 
-// The newest cap + 1 entries are enough to tell whether a run is over the cap.
 async function appendRunEntry(
   state: StateAdapter,
   automationId: string,
@@ -43,7 +45,7 @@ async function appendRunEntry(
 ): Promise<void> {
   await state.connect();
   await state.appendToList(runListKey(automationId), entry, {
-    maxLength: botConfig.maxEventAutomationRunsPerHour + 1,
+    maxLength: botConfig.maxEventAutomationRunsPerHour + RUN_LIST_BURST_ROOM,
     ttlMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
   });
 }
@@ -63,7 +65,8 @@ export async function admitEventAutomationRun(args: {
   state?: StateAdapter;
 }): Promise<"allowed" | "limited"> {
   const state = args.state ?? getStateAdapter();
-  await appendRunEntry(state, args.automationId, { atMs: args.nowMs });
+  const id = randomUUID();
+  await appendRunEntry(state, args.automationId, { atMs: args.nowMs, id });
   const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
   let count = 0;
   for (const value of await state.getList(runListKey(args.automationId))) {
@@ -74,10 +77,14 @@ export async function admitEventAutomationRun(args: {
     } else if (entry.data.atMs > windowStartMs) {
       count += 1;
     }
+    if ("id" in entry.data && entry.data.id === id) {
+      return count > botConfig.maxEventAutomationRunsPerHour
+        ? "limited"
+        : "allowed";
+    }
   }
-  return count > botConfig.maxEventAutomationRunsPerHour
-    ? "limited"
-    : "allowed";
+  // More Events than the burst room arrived after this one, so the hour is full.
+  return "limited";
 }
 
 /**
