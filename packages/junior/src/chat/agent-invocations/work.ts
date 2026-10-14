@@ -332,10 +332,15 @@ async function saveAgentInvocationResult(args: {
             args.result.diagnostics.errorMessage ?? "Agent invocation failed",
           status: "failed" as const,
         }
-      : {
-          result: args.result.text,
-          status: "completed" as const,
-        }),
+      : args.result.blocked
+        ? {
+            errorMessage: args.result.blocked.missing,
+            status: "blocked" as const,
+          }
+        : {
+            result: args.result.text,
+            status: "completed" as const,
+          }),
   });
   if (!terminal || !isTerminalAgentInvocation(terminal)) {
     throw new Error(

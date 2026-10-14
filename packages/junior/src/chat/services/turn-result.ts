@@ -22,6 +22,10 @@ import {
   readAutomationResult,
   type AutomationResult,
 } from "@/chat/automation-result";
+import {
+  readBlockedReport,
+  type BlockedReport,
+} from "@/chat/agent-invocations/blocked-report";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -47,6 +51,8 @@ export interface AgentRunResult {
   text: string;
   /** Declared result of a Scheduled automation or Event automation run. */
   automation?: AutomationResult;
+  /** Blocked report of a child agent run. */
+  blocked?: BlockedReport;
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
@@ -79,6 +85,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
+  // A blocked report ends the run with no text, and it is the run's result.
+  const blocked = readBlockedReport(newMessages);
 
   const rawPrimaryText = sanitizeAssistantText(
     terminalAssistantMessages
@@ -135,7 +143,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     }
   }
 
-  if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
+  if (
+    !primaryText &&
+    !completedWithoutTerminalText &&
+    !blocked &&
+    !isProviderError
+  ) {
     logWarn("ai.model_response.empty", {
       "app.ai.tool_results": toolResults.length,
       "app.ai.tool_error_results": toolErrorCount,
@@ -152,7 +165,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     outcome = "provider_error";
   } else if (suppressedPrimaryText) {
     outcome = "execution_failure";
-  } else if (primaryText || completedWithoutTerminalText) {
+  } else if (primaryText || completedWithoutTerminalText || blocked) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
@@ -173,6 +186,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   return {
     text: primaryText,
+    ...(blocked ? { blocked } : undefined),
     sandboxRef,
     piMessages: input.piMessages,
     diagnostics: buildDiagnostics(input, {

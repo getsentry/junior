@@ -113,6 +113,19 @@ mailbox metadata and wait window as Watch Events, but it has no
   history with `searchConversationEvents`.
 - The local CLI has no parent mailbox, so it does not send results.
 
+### Blocked Reports
+
+A child's reply goes to its parent agent, not to a person, so nobody answers a
+question that the child asks. Each child run has the `reportBlocked` tool. The
+child calls it when missing access, input, or a decision stops its task. The
+tool ends the run, like `finishAutomationRun` ends an Automation run. The
+agent invocation then ends as `blocked`, and the parent result shows what is
+missing. A child that cannot get authorization also ends as `blocked`.
+
+The worker reads the report only from the new messages of the run. A named
+child keeps its history, so a report from an earlier agent invocation does not
+end a later one.
+
 ### Results for a Child
 
 A child Conversation has no Location, so it cannot run an Event Turn. When

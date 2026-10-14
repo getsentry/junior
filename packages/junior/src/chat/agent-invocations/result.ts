@@ -85,11 +85,18 @@ const RESULT_NEXT_STEP = {
   completed:
     "Use this result to continue the work in this conversation. Do not repeat work that the child agent already did.",
   blocked:
-    "The child agent did not finish its task. If you still need this work, use spawnAgent again, or tell the user what is blocked.",
+    "The child agent did not finish its task because something is missing. If you can give it, use spawnAgent again with the same name, if it has one. Otherwise tell the user what is missing.",
   failed:
     "The child agent did not finish its task. If you still need this work, use spawnAgent again, or tell the user what is blocked.",
   stopped:
     "The child agent was stopped before it finished. Do not start this work again unless the user asks.",
+} as const satisfies Record<TerminalAgentInvocation["status"], string>;
+
+const OUTPUT_LABEL = {
+  completed: "Result",
+  blocked: "Missing",
+  failed: "Error",
+  stopped: "Error",
 } as const satisfies Record<TerminalAgentInvocation["status"], string>;
 
 function renderResultInput(
@@ -103,7 +110,7 @@ function renderResultInput(
   )
     .trim()
     .slice(0, AGENT_INVOCATION_RESULT_MAX_LENGTH);
-  const outputLabel = invocation.status === "completed" ? "Result" : "Error";
+  const outputLabel = OUTPUT_LABEL[invocation.status];
   return [
     "[agent result]",
     "",

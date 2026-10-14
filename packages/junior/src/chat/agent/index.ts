@@ -78,6 +78,7 @@ import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
   readAutomationResult,
@@ -1140,9 +1141,11 @@ async function executeAgentRunInPrivacyContext(
           timedOutResult || projectedResult !== result
             ? projectedResult
             : undefined;
-        // A declared Automation result is the last step of the run.
+        // A declared Automation result or blocked report is the last step of
+        // the run.
         if (
-          toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME &&
+          (toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME ||
+            toolCall.name === REPORT_BLOCKED_TOOL_NAME) &&
           !isError &&
           !override
         ) {
