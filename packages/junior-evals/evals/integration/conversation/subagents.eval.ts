@@ -1,5 +1,6 @@
 import { describe, expect } from "vitest";
 import { slackMention } from "@junior-evals/fixture/inputs";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -23,6 +24,41 @@ describe("Child Agents", () => {
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("MAPLE-7"),
     ]);
+  });
+
+  test("when a child agent is missing input, it reports the block and the parent says what is missing", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ experimental: { subagents: true } });
+    const requestedTools: string[] = [];
+    const conversation = await run(
+      slackMention(
+        'Use spawnAgent to start one child agent with the task "Reply with the deploy region that the user chose. The region is not in this task." When its result arrives, tell me what happened.',
+      ),
+      {
+        onProgress: (progress) => {
+          if (progress.type === "tool_request") {
+            requestedTools.push(progress.name);
+          }
+        },
+      },
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    // Only the child agent has reportBlocked.
+    expect(requestedTools).toContain("reportBlocked");
+    expect(conversation.turns).toHaveLength(2);
+    const resultTurn = conversation.turns[1];
+    expect(resultTurn?.status).toBe("succeeded");
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply says the child agent could not finish because it does not know the deploy region.",
+        ],
+        fail: ["Do not name a deploy region or say the task is done."],
+      }),
+    );
   });
 
   test("when a child agent is no longer needed, stop it without a result turn", async ({

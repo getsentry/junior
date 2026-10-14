@@ -1,0 +1,62 @@
+{
+  "session": "evals/integration/conversation/lifecycle.eval.ts > Lifecycle and Resilience > when the history of 'a web conversation' does not fit the context window, compact it and answer from the summary",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4e07408562be",
+      "messages[0]": "95fc74ff7e21",
+      "messages[1]": "d637cf1ed22c",
+      "messages[2]": "21ab737786d5",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "system.length": "6b86b273ff34",
+      "system[0]": "d4243d8c92c5",
+      "tools.length": "35135aaa6cc2",
+      "tools[0]": "d098cd1dd937",
+      "tools[1]": "12dba46828ca",
+      "tools[2]": "a1056c279456",
+      "tools[3]": "c40e21f9ef0d",
+      "tools[4]": "d3dd7b468c8f",
+      "tools[5]": "f116e66fefdf",
+      "tools[6]": "6653a0a0a3a9",
+      "tools[7]": "3b6ca120b0fb",
+      "tools[8]": "c7dc1bc2c04d",
+      "tools[9]": "f9054d6c4f64",
+      "tools[10]": "f47ca0d0af13",
+      "tools[11]": "37bbd2f6c311",
+      "tools[12]": "5802c8f4c428",
+      "tools[13]": "ae045899dc37",
+      "tools[14]": "93d4e5df9c0a",
+      "tools[15]": "bb382ebec455",
+      "tools[16]": "93f913ef2874",
+      "tools[17]": "cb8897349d4d",
+      "tools[18]": "95c787875e54",
+      "tools[19]": "23162886a934",
+      "tools[20]": "9da7c42a547b",
+      "tools[21]": "ed13dd55d6be",
+      "tools[22]": "06ea3d798e31",
+      "tools[23]": "98cd636f11ec",
+      "tools[24]": "00fbcd9a6ca2",
+      "tools[25]": "783be0c88076",
+      "tools[26]": "36e632f69c1b",
+      "tools[27]": "e4e3f296282f",
+      "tools[28]": "ec59e4ad36dd",
+      "thinking": "e871cb1e753e"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4WHWQGTHF8F54A8KVJXHT37\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"**Confirming launch date**\\n\\nThe question asks for the launch date in one sentence, and the handoff clearly states March 14 as the chosen date. So, I need to focus on providing it succinctly and directly, ensuring there’s no ambiguity. It’s just about making sure the user gets a straightforward answer. I’ll state that clearly: “The date picked for the launch is March 14.” Simple and to the point!\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"gwrs1.eyJvcGVuYWkiOnsiaXRlbUlkIjoicnNfMGViNmU2YmFiZTM3OTU0OTAxNmFjZjIyNjZjYzY4ODdkMThkZGJhNjc0ZWUyN2QwMDkiLCJyZWFzb25pbmdFbmNyeXB0ZWRDb250ZW50IjoiZ0FBQUFBQnF6eUpuWUxPN0U1NDkwRFBONGxCOUNUQnJESDZHZTBvTkM5RTlxVWRBRGZBMEtwOU0td2Jnd1NjZHBtVEVlLXRqYlJZaUVBLXkwZXkyWmVueDZfYUE4UFVGNDdhOXpSSERoNXdBZTdPVk1uNXFLZ2FjZU9SWm5lLVNnNXRKNGpYU1dIamFKcUJIRFFKMFRTTXYyZjU0ZVQ2V0FCZVgxVjNFWVVKREd3MFQyVS16WUVCRHBGWWVxV3lNUjIzM3FuTDAzalZ4QmN6Q01TLUN1SjR2MjUtQ1RfcWhIOE5CNVhvcGpjbmw4QnB3NlRmbG9wbTYzbDI2Tjh6cHZBVVNkZ3UyNF9rWnQ5UDF6anYtNnVsNk00Y1ZiNmd5MUJUbHVyOUJic3o3LXlGM3R0V0dsZS1RWUttSERuaE8yRmx4Ukh0MnFhdGRiM2JDM2tNOXFyQlhiSHdPdThodUdjZTM1SVdWQ1ZibC1LZTg0a1htWlB0aTQ0V21kWThvb0xTbm5ET1pJMjNobkxyRzhJRkFTajdMWS1ESU1IOVl4c19ZeHdoYnl0U2hyZkI1dUhvX1pySGRKYVdqbE9aYU9XNkN4R28xSHlEd3ktUDcxZ2Y5ei15NHZjb1hGZjR1d2ludUxLSWJTUllpb29DdFVWTXVZanh2SHpHWjhDSUtkTV9IQzNuODlWS2J3elNiYTA1Wll6RlM1Ri1DSUp6dXJpV2Vfem4wWDhSRGUwYXhhOEpON0l0Szc0enJheDBrZURId05Oa0VEMjdpTllxTjRCNkdiR2w5Q21hajBqREhEQVdmS19iTER4OElxVVRVVUxUYTNyT0lZTVUxQzdMM3JwLUVWSzh5WllraUhEWHdXSXVsY1JJMnJzLWRJLVZMUlhCajFaQ0FyeEFkVDQ0V2M0NUxvb19VOE5EOTQyektBYUVUWURfV1hJV0YzWFpubXpwcVBpLUJ4UGx1bjFLeFByX0kxMHFydDZ0ZzFia1ZicmJ3eURfeURvcHhIQzJkSDRsXzhxVi1rcEZBeUZvSWNWNjNWVmFBeVlVbW5ESks5MHVMakN5blNyMzZsczJuenI3NGxURmU4ajZlUmZiNEVwNWhMT0h1X2RzZV9SalYxeDA2TC0wcUZlZ0p2VDBSbVRaMkxtemhxWlc2MUZEM005Q3V4amdvYkk1SGNydVJrZ0xSQmlOc1BsdnBFbTJGNi1Nc3I5TW9tc3dfbDlMSlJQdi1POVdzSm1JeWZBQVVCejlpMHlzeWgxSHJyUUV0emNJd3lZaVFZWUxqVkhLWm1aVUNtbWs0RlZJcnFzUlJKTjk5Q1JwbGFROERiNmZialYtUGY1cDJadENndkEyY08yRnVFa2JMRi0zeGl2cUtTRzFvS2tPZVo0UE1uaFdrdnVsQVIyUWxURlhLY2RPbzlaQnRGMzBwQ1g5Y1pEV2J0dTJwbTB5empKTHg5T1pDNC1ueFJESE5wTHd5NTMtMXhaQk1XV2R0OUJFajJZdy1wckttWGY1MjlXelRBaTVFTkJWRWhScXJlZXpzeWJOc2s4bG5GRkFzQzBqSnVSRE5MLXlfcGZ0a3g5VXFaS0tLcTVGMEYwTG10WDRxNnZTTk45ZmVyeXpJWWZWeW5pbFZ2U0JPWWYtRUhtS0Y1aDJjZmZObTQ2UFRPSWdza1hLN043SUx3OURNYWpaa21Qdk1HTkNHS0dTMHU3Ty1VVXBLT3RSRUlVaGlUQTJYckpKZ1NveFFGbGtXb1BZN0tDYU1mSnh0ZXpyU3R4cFdraWQ0aGY3RVVMa2JVR2hVSElBRFROT3JDb0lJSnVnc2ZGZDBzR0NEUE4yS0NjdVhscFlYdlhLMkQySmthVm5PMUo5VjQ5UldWcjVQV09SNHdSWk0xc1BFNFVCQUJWTlEwdndSZVNvQTVTT0lhbF9oQ3p6VTFaXzNRS3h4WUVjUUJ1N0QxcTJ6ekNPdnp5U0x0YlVWaHJYbzlleEpldEJsUFZzSHV0LWVBUzBaNjhLY1I1dnhlT1didTF5SWl2OHFoOWw0Z1FxWTl3VVdlcE50NlE1ay1tb1NCekhUNU0tYjAzMFVySlRlbUFDd2hrTmliMndSM0lJbzNmaTRldXhkTlB2cktxLW4wc3VQVWtvT0VvOXlEYnBhd3RlSXlVYWFMaWd2cWxoWDJkTU1QSlM0N2NUQUVlZm56NmhGeWxoUmpTRTB0TE9WNll4c012QUhrRlBXOFVncUExdWJxRzcwUl9mRW51QnRsZ0RzV1RWZ2d2REJxbGc5b2V0by1lZFpRVXNrakhxbmtVRE5zaDVSYUF4a2JoQUMyM2VvZXNvSm9NVXZMRHgtc3l0RDZPTzRkdTNXb2NZTzUtMnFwSXJmX3Q1QkhSaDdXLXFaOFRneUphbkxGRWpySmFzd0F1em1WSmlMZ1o5TU14TnU4cEppRjk3cUwzTFlqTTh0TVNtQkh1TUZuQmV6ZTdyTzk2WmgwRkxLd2xCNU5RWlVXN2pzVm5EUldnPT0ifX0\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"We picked March 14 for the launch.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":3,\"output_tokens\":46,\"cache_creation_input_tokens\":495,\"cache_read_input_tokens\":5629},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_0eb6e6babe379549016acf2266076887d1a7b2c21ce4c32c2b\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791959653937,\"endTime\":1791959656124,\"providerRequestId\":\"req_ffdadc4e46fd46ce94b2c96c6d72404c\",\"statusCode\":200,\"providerResponseId\":\"resp_0eb6e6babe379549016acf2266076887d1a7b2c21ce4c32c2b\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"no_pin\"},\"clientSessionId\":\"e1a2f300b63c63722e4e5482b594f2ad\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000141465\",\"marketCost\":\"0.000141465\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000141465\",\"inferenceCost\":\"0.000141465\",\"inputInferenceCost\":\"0.000118465\",\"outputInferenceCost\":\"0.000023\",\"generationId\":\"gen_01M4WHWQGTHF8F54A8KVJXHT37\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}

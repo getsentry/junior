@@ -1,0 +1,29 @@
+{
+  "session": "evals/memory/shared.eval.ts > Shared Memory > when organic conversation reveals operational knowledge, store and recall it as conversation memory",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "a87248729a29",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_087d96f30b4e1ff5016acf2aac7c0487d18a376a1a73ec55fd\",\"reasoningEncryptedContent\":\"gAAAAABqzyqtJosrSBdrCkBXwroKOSRKU2IcYTIXCNvkhhIw56X_OOIdLRG4kWLcajFujMqkBvgQOlHb7wURLBQuszSX6HvqI9K5Zu_zBtoS8ww2n0yqu0CCvTmRRA6YftPaPW9tIjrG5Rbm5vI2G4bAXFPbRQ-QwNyWfEDaE6L8Oo4NPJ4Xcyhlwfox1nXqvcBsvidlWHaoS_r98hjdKElAnjJp-Hpotp4RhbNdK0qR5EZA_fONn7Ru5G3mOmy6JKpvR1R122iJ5EdAzVIKWLjXcujEUairmwKJTytqmFlc34rVBHinjVA1YD-7tLCOcoloFZsdaigfvoceDEbL7dEj2fznIj0BnD1uSqgTvSyzNCylogf77nPMmP5ugIgyqIL_qYmO5TTqdiC5wvHlH50QZdMCPSYEqvJROl_g99RxkDoKSUDsgxJgOBorwqWSYjSFfcJmIdY_yFCjN0Oc4inVIqC0NFIpzqA0hC7bcU-pJdUc3npHmANNu0ASbK2B7-0RYbKxTLTaKgaPBv8cTkK3h9emCc4cWH1m8nu7CyCp3OvWoWPo4C38AAYeh2oOZv2LNJ9hmzhWncmEQ9QvgLCb9nvWVVLScYGkYXRsuI1h2P3wSrgDqumU2fpZzU6xgTYBG9KAfTZMAQ2XaOgUg2F6zB8KJXnW-sAQcCHzRX4bDLmOSb8dwhJNDYFz9K8J0qOnvc4Z9jE7_Dr6vXtyU6Tknk36cftuyEAEN128jHj2YLAt5TaeJFdATmOH1JtK16IGuU5ZAERmgybiPJ84vumiSs0u-zQnzDA88Ut2fZZIUb0dhGV9wMxyhDYVmjuI4MRYLEPj5ysinZWUlZ0awOq670R3W5lbQFiz5B0N9WNJ6mia_D9e3noRXZKGtBLb1w1ayNjKAhG5zsafPFwUNBdMAPFAXPLP_Kr6Rxt60RaVL4Rhs_PUa1aUMyLmbbUUDxJHjszebzPz1qpRMW4JsDnmylwjCYmoTkekRIRHbJBGMXKoWKQsiSIsXx7a5tAGoYB5a8W35rPeFcJgZypmA5f1aK2iMG1NrhAvWa49-ALgh5OCUYpz2gH6Q7YST-ttUhk3LWwQmVVDuk5GmDe7SMEy4FSvYnx9O1YapAwjYANkNOJ1Vx9L7MABQh2L_N91nHpszof_A-TI2Y3MSU0QLqSU61pHFq79HDK-jAQ2ZNJ_mQnoTPULyGx9VxW03KR7nmomKZBlTQIm1iaGs0oXF-a7NWhiowipYr30NUp6XvtGck788f52Cf2r6mdCQcJZGhHLDxR4kIS5U_3uVHALuBxnCJ5kCxGt4NowDabjGHLUWuhJqQUXy_cvhkMfUhs5DvKvieumLbOYV-EyL3Lt3hp4E3fntzLG3I3UOAKYLINWBcgQwgEDFQ3aUu9JeSQ92VJQDc1VVpSM7-1SNChh2NdvcX9opTdYQYNYLWBZNnjMbeqd7EirWFXLd7l6xeuarei4FDM8uTIWv2wO0_PfS-5-kJNi-3RCBbzEfz2l35YMUUS9FraDUTeQeYzWKef8YprURm4uK0fiPZULThmobBgeGTd7fls0YK9vhC9o31cylwzSyCVC1O7ja0EOLzzvX30KDUmx8jazKkHdgTEZFZXC0GosrqUk7sUvScwoU8RPZra5n38ExCY9h-Df_I4q0QFVLxurvsoBSpsUznNyJYLAdPe7LJ4vyUT43tmGHSic2G7itF3Ta9-CKyrxuiGrlRm1HFbsRz8_1qZzug_sURZxVXdKM1VONDo1YobVgtUJMfZYE9SJYE5BI2QdCx8iMGR1KH0Jo8ej98miKAAGL4gma6TmltS0jaiDvk3QRG4g4zwzC0RUNNw9mh-lrVq1hW_9qnhDGvaFDyjfi1xdhpTn2JScIkXvHIMLQnQNE7Y_C8gMCCWKlyE=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a straightforward follow-up that requires retrieving a requirement from the thread context: branch QA runbooks require risk notes before summary notes.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_087d96f30b4e1ff5016acf2aacfeac87d1a7e71fe215417d4e\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":754,\"noCache\":754,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":85,\"text\":56,\"reasoning\":29},\"raw\":{\"input_tokens\":754,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":85,\"output_tokens_details\":{\"reasoning_tokens\":29},\"total_tokens\":839}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_087d96f30b4e1ff5016acf2aac12b087d1b288ff722fd00e66\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791961771985,\"endTime\":1791961773977,\"providerRequestId\":\"req_2c60babc82724477b91b2f7ababe9df6\",\"statusCode\":200,\"providerResponseId\":\"resp_087d96f30b4e1ff5016acf2aac12b087d1b288ff722fd00e66\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"7918b85778cc17b81d9a5e7ee9f13ab2\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001179\",\"marketCost\":\"0.0001179\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001179\",\"inferenceCost\":\"0.0001179\",\"inputInferenceCost\":\"0.0000754\",\"outputInferenceCost\":\"0.0000425\",\"generationId\":\"gen_01M4WKXBD59MD5RGW1WAYAEY03\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

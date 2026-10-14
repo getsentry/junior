@@ -1,0 +1,29 @@
+{
+  "session": "evals/integration/conversation/subagents.eval.ts > Child Agents > when a child agent is missing input, it reports the block and the parent asks for it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "9a77d1d92748",
+      "maxOutputTokens": "0f8eb4b72b6e",
+      "temperature": "5feceb66ffc8",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "6274335f638f",
+      "prompt[1]": "def8f0b1f6f6",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_009753ea8ddcb1b1016acf29f51c7087d1bde060709f3a1cb9\",\"reasoningEncryptedContent\":\"gAAAAABqzyn2ju8JD2nTBkDpQHmKSCe0v3mscHsS8YCk-VTrxaQXsXA4DpJVIPkt5-Y4kbb-dCJaZnSrD5SpDPBNKV5VdeKE-2Wy8ABXVDZMSO3MjK5cPoi2mmkFKixx_IrQfxQpZKNflFFIGXLVio-pUS6wN8F4g0sWRNzmlBaEMR_sXLPHMTQ54DurOaxsH27c1BfNnKw4XwFebwO8t6Npg1seOvu_pUDda9niCldU7dogZN3yDaYEeulEcYIyZnf1N3iPoYOU_QHtVdVCxaLUd5jfxdKzDxAyzBmJAPO-ButsY3NIy1XKDzPt4tHOW_tZcI0-5d_NLY7pJk84tIjA9czuam9EHnNAXnE2JFT1AqRK9JhL9XyAJqjByzPhneOrvE2BLvkM0vv6Af5C8pL4YvKzjdBHUjhKhrEhvm1EiyyzH-lysSf1tO3A3tlswaOdTS837PctYe4XhOVqUlqSCKwT_SyHLQRmxRKr3cCSpU-lem6_8TkG7mISG5ybaFV1YDcM0WfEP_rdyBuS8zTnKzLLVCZCQekMfB0PphClaVl4ZJZpl_lHiBQycel2uY-4nWaHcQnVLkjQxpEuqvnhuEsAiVTxfzUd7NumoDH6UrDbn8r8qF06yq1oU5TFV_UGaSTGf34r6nFgKpKpABc-yMyQG2XboIrXaM5M0GIx5KrLJKYmFfgFIAo3PwXlLYKbBdsf8-5i9fdVoAf8w9-WH7vhz1n5AXDo-Ldzw39duf8j8W267fJzAfI8mlBYClo0vVUJSWh30nuS7SgMFYWtrJTx48NAi0Xes_QXUYj4rOWlCgPBKaMrAgnok7c15PiYWWELlk_Sf3OZntTcIDKpL-xs_kbpG0Afry0Pjm3Yt173_OIcBpbU528GIOtr5mTCICXv_bIZ1dGUUhRci3ROKtJeJRyLCsYf3LsMSyzXyAgeWJiOVdpLpiE81ibcr9XYC-fI6UPALcsUSkjYPknJL0OBckWPrv2nn9IKzkpLVkdJd-SXYiHf0TDAK-DHvjwE43hPsiZPCmmi6sTB7n-d6YcONuuc7oenKPFQGyjt_NVg-m_GyDskofcc-DRatfVIk7uOdSJIpsn_PqyAhMDQNi2j2hCf8UEO2e59GvFe40lcJ0LNCa9Uz_BjNkg89DToCUSL1lcUamGG8eEtGFuSpLn-wkjmGqu8-aUd3nTzySyVqNxMQvaqeEzzf0IVGfjoFV_KwnvawVnrXAmHjg1ZvEymDqT2dWVk2E1kMpgLjAOnqF91MoMR4Xs3g5xO-4obDckSXNM8MGxMQ-8atE0FG22nTx6iI0jGztZdTcpETzYWMTJXcxagRquwIxiAVpO5i3GPpYRd83AcfPAyufRLTQvApT14iX1Hdm5PvXdaTWIlIAJdnaR-U2mfo4NCb3-DHqmd4HXmz1DKlYz9moB4Q7uv8fk_Qkp-XRTLA7RHj1bLtjT2CMwgeyFT2EB_TO-5Pi0IPzNAuf4n75YwfJ_QTb141jhlWqOxXRmX4FOdAboJvtSTYHtdlCO9A-rXq1ncfZjb9DZmOClM_CLs_0q3NeVWHbzxXiDHWdih-a95i0jrym4OhRCfRJ-kjew_2YGuUKVU8glpIT7hcA8XGkJhnHURVtYwAXwZhtKmfr7plucZ5g1uyqSFFTsrif6Knw8D-L5KYylXFhg4zAm6AYOr1DIyaZ3RoL3OiY6cLIT4cNeoTKOeSY3VJh1vNVEI9WFvW7xDHgPbCvSgF0HQBy8XixpJCXQCkL9-D_2-a70_QIdJymAJg3D4gNQX5_lcdXTJzVahLzdLueZ-Lb_akYhBUJaPnuDS2e34eU1KByjKvrYuGc7062EETA9iZQh9dxrymx9YnulGEOurhXMAei7YOVQssl09f7wBmHfKrEXz52A3FNHQgDHidTVL4vHjiQSbh1TC1lxK0VIIhDzm-yv-dyJnlBVx-WZmvYsGnighi-uNRZ7Kt4YHH4_FnDwbgP12jyTg16w1czRKMuXjKTQS8LiLo212eqaboy0qziRAwg9QvN54VCRuFLi63mFeQL49c6eF9tJ4U3HQejiCOCPXtdFfQLRTEvpzPg0_LeIWWSUC6QqjTp4j3bGAMZMwIBQyqUXaw1Ao5SnHi4nBF9uOJ5pHJ4ZW4eGy2UWR4SndUQFvTHi3f9oeXptZ85QqPMdDjM0Lw8aLRDGReQBPwCdjsTjKqkXZ1T1nfq9zhDoZoW8CkO1AMjS2rOzoCXq3DJb42DDLyW_DmAdB91lx40gZUeXbbm-npUJrEg42uSqJnKu7_iLN1N-F0IahwW_tSD7hQbESqSLgWQfQ6lqZ0LtmghTKacRB3B8xX4mBHzOSWcQMBp2LdKFNuZLFUvfuHEuecPB_ehYuzVWbd99LReD35jtH_H9QyDPvrlWAavWqn9Cx1Kyyspo=\"}}},{\"type\":\"text\",\"text\":\"{\\\"reasoning_level\\\":\\\"medium\\\",\\\"profile\\\":\\\"standard\\\",\\\"confidence\\\":0.98,\\\"reason\\\":\\\"This is a thread follow-up: report that the child agent was blocked because the user-selected deploy region is missing from the available context.\\\"}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_009753ea8ddcb1b1016acf29f61dec87d1b8191578bd1db09c\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":940,\"noCache\":940,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":120,\"text\":56,\"reasoning\":64},\"raw\":{\"input_tokens\":940,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":120,\"output_tokens_details\":{\"reasoning_tokens\":64},\"total_tokens\":1060}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_009753ea8ddcb1b1016acf29f4ae5087d195bf0a13b58a695e\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791961588585,\"endTime\":1791961590794,\"providerRequestId\":\"req_f5821ff922d443819545702c37d89945\",\"statusCode\":200,\"providerResponseId\":\"resp_009753ea8ddcb1b1016acf29f4ae5087d195bf0a13b58a695e\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"3467fd53cd06a0fbb5a4a9ae37320134\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.000154\",\"marketCost\":\"0.000154\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.000154\",\"inferenceCost\":\"0.000154\",\"inputInferenceCost\":\"0.000094\",\"outputInferenceCost\":\"0.00006\",\"generationId\":\"gen_01M4WKQRT3DNB6X6B098MWFKV0\"}},\"warnings\":[{\"type\":\"unsupported\",\"feature\":\"temperature\",\"details\":\"temperature is not supported for reasoning models\"}]}",
+    "bodyEncoding": "utf8"
+  }
+}

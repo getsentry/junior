@@ -35,6 +35,7 @@ import type {
   SystemActor,
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
@@ -357,6 +358,15 @@ const AUTOMATION_RUN_RULES = [
   `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
 ];
 
+// Replaces the task-execution, conversation, and Slack action rules for child
+// agent runs. No person reads a child run, and its final text is its result.
+const CHILD_AGENT_RUN_RULES = [
+  "- This run is a task that a parent agent gave you. The task is the job. The parent agent reads your final reply; no person reads this run.",
+  "- Do the work now. Do not ask questions, ask for approval, or offer options.",
+  `- Your final text reply goes to the parent as finished work. When the task cannot be finished, end the run with \`${REPORT_BLOCKED_TOOL_NAME}\` instead.`,
+  "- A tool result with `timed_out: true` means that attempt did not finish. Before you retry work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
+];
+
 const SAFETY_RULES = [
   "- Stay within the user's request and the runtime's available capabilities; do not pursue independent goals, persistence, replication, credential gathering, or access expansion.",
   "- Respect stop, pause, audit, and approval boundaries. Do not bypass safeguards or persuade the user to weaken them.",
@@ -368,6 +378,13 @@ const SAFETY_RULES = [
 const AUTOMATION_FAILURE_RULES = [
   "- Keep commands, error output, raw tool payloads, and internal routing metadata out of the message.",
   `- When a failure stops the job, put its cause in the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` reason, not in the message.`,
+];
+
+// A child's text reply is finished work, so a failure that stops the task goes
+// in its blocked report.
+const CHILD_AGENT_FAILURE_RULES = [
+  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in a text reply.`,
+  "- Keep raw tool payloads and internal routing metadata out of the final reply.",
 ];
 
 const FAILURE_RULES = [
@@ -387,18 +404,20 @@ function buildBehaviorSection(
   const runSections =
     mode === "automation"
       ? [renderRuleSection("automation-run", AUTOMATION_RUN_RULES)]
-      : [
-          renderRuleSection("task-execution", TASK_EXECUTION_RULES),
-          renderRuleSection("conversation", CONVERSATION_RULES),
-          ...(platform === "slack"
-            ? [renderRuleSection("slack-actions", SLACK_ACTION_RULES)]
-            : []),
-        ];
+      : mode === "child_agent"
+        ? [renderRuleSection("child-agent-run", CHILD_AGENT_RUN_RULES)]
+        : [
+            renderRuleSection("task-execution", TASK_EXECUTION_RULES),
+            renderRuleSection("conversation", CONVERSATION_RULES),
+            ...(platform === "slack"
+              ? [renderRuleSection("slack-actions", SLACK_ACTION_RULES)]
+              : []),
+          ];
   const automation = mode === "automation";
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     // Narration guidance is for a person who reads the run.
-    ...(automation
+    ...(mode !== "conversation"
       ? []
       : [renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES)]),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
@@ -407,7 +426,11 @@ function buildBehaviorSection(
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection(
       "failure-handling",
-      automation ? AUTOMATION_FAILURE_RULES : FAILURE_RULES,
+      automation
+        ? AUTOMATION_FAILURE_RULES
+        : mode === "child_agent"
+          ? CHILD_AGENT_FAILURE_RULES
+          : FAILURE_RULES,
     ),
   ].join("\n\n");
 }
@@ -431,6 +454,15 @@ function buildOutputSection(
 ): string {
   if (mode === "automation") {
     return buildAutomationOutputSection(platform);
+  }
+  if (mode === "child_agent") {
+    return [
+      `<output format="markdown">`,
+      "- Start with the result, not internal process narration.",
+      "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+      "- Reply with text only when the task is finished.",
+      "</output>",
+    ].join("\n");
   }
   if (platform === "local") {
     return [
@@ -784,9 +816,10 @@ type TurnContextPromptInput = {
 
 /**
  * Prompt mode for one Run. `automation` is for Scheduled automation and Event
- * automation runs. It replaces the interactive conversation rules.
+ * automation runs, and `child_agent` is for agent invocation runs. Both
+ * replace the interactive conversation rules.
  */
-export type PromptMode = "automation" | "conversation";
+export type PromptMode = "automation" | "child_agent" | "conversation";
 
 function buildStaticSystemPrompt(
   platform: PromptPlatform,
@@ -811,6 +844,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
   automation: {
     local: buildStaticSystemPrompt("local", "automation"),
     slack: buildStaticSystemPrompt("slack", "automation"),
+  },
+  child_agent: {
+    local: buildStaticSystemPrompt("local", "child_agent"),
+    slack: buildStaticSystemPrompt("slack", "child_agent"),
   },
   conversation: {
     local: buildStaticSystemPrompt("local", "conversation"),

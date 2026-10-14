@@ -160,7 +160,7 @@ const app = await createApp({
     // and event notifications in those threads.
     "passive-routing": true,
     // Model-facing spawnAgent, listAgents, and stopAgent for durable child
-    // agent work.
+    // agent work. Child agents get reportBlocked.
     // Incomplete; keep off unless you are testing the #879 runtime.
     subagents: true,
     // Operator tools such as runOperatorSql. They read and write the app

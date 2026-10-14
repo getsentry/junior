@@ -516,7 +516,9 @@ export async function assemblePrompt(args: {
     !hasRuntimeTurnContext(promptHistoryMessages);
   const promptMode = args.run.dispatch?.declaresResult
     ? "automation"
-    : "conversation";
+    : args.run.source.kind === "agent_invocation"
+      ? "child_agent"
+      : "conversation";
   // Automation runs have no Delivery port. Their declared message still goes
   // to Slack, so they keep Slack formatting rules.
   const platform =

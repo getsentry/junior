@@ -19,6 +19,8 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -208,6 +210,10 @@ export function createTools(
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.listAgents = createListAgentsTool(context.conversationId);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+  }
+
+  if (context.source.kind === "agent_invocation") {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 
   if (context.automation) {

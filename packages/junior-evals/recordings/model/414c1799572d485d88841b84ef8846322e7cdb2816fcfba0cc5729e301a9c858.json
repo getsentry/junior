@@ -1,0 +1,28 @@
+{
+  "session": "evals/integration/coding/event-automations/management.eval.ts > Event automation management > when managing an existing event automation, list update and delete it",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v3/ai/language-model",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "686541845d33",
+      "header ai-language-model-id": "e5d076977e95",
+      "header ai-language-model-streaming": "fcbcf165908d",
+      "header ai-model-id": "e3b0c44298fc",
+      "responseFormat": "4fc22ed872f0",
+      "maxOutputTokens": "26d228663f13",
+      "prompt.length": "d4735e3a265e",
+      "prompt[0]": "7310d426fab4",
+      "prompt[1]": "f05bb059a7d1",
+      "headers": "e6f1332f8681"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"content\":[{\"type\":\"reasoning\",\"text\":\"\",\"providerMetadata\":{\"openai\":{\"itemId\":\"rs_0b58b10f87ce3492016acf22357edc87d1bbc7f6ad9c302b2f\",\"reasoningEncryptedContent\":\"gAAAAABqzyI2TNf61cbSokJ2QHkfX3eDAt7VjJyIaHo_1it-JLYgtt91Xp8wU4eGXfI-uwWT1dLG2ATBJCfpid9KaDWjegCVm-xaNrClN6BxulDvK3Q-8vKkhEHUIw4CijuUWpaQ8deVCLk7eU1g9faNYSYd_V3aUFN8pbfgyvoXrh8jOJcKBfS-zjkkvxu5A9hud1CLubWvZk0gb2PoFj_TDBw948YW4YUvE2UB4lhyXmqkHvZN-X05kNC6uarIwBks89XARaqyOckk5QvOGc2agSYdRYR9Fh2jtiBp7KV1EbL2Je5_Cp5NxPIj80uUNJD_47WaqYzKWX738oWUbPk8gHpJ0I9zOVax3nMZuLL_PyenzTqVoxsE3o4B7DvLNrmPjeVZxeTEM5QW9XN4u815da4Am4RORWH6bSyWosasOGdP7TE-7EyrkfL53GLK3Y_daTv-_q0u6OQUAnEC9shk3JbpDCgteAfuSNkJ9rbdXBUSLNxBY_kAux9IxF9sJW3POHDfxIvk08ErBHojgzFOMWoz5Y-LvvtjYzJtfPw-GnRRgWjlaQ39qsCb6oUHmcq-5Dwx0w0UJE72upAZMd6rFmBHIYk9Lot8CfyCrOq857h_wNOWHpruWpD9LVd-9p_ZpPsr6gtLPLJCVV6vVp1a70mFTWKCwWtK7CvaH4zyZjgAmdibXT9Jm53baUgSvLxupE_3kn5dBqlVPCZunNv9C5SrezvM_h9_ZJswekMQLh0kSUKm4qHu1VG13G94m9lR7fGaWHJDUuv2SxhAagXfNqYfFPg6O1Qx1JzH3raw4rEYM7mMQCIAe2Dgu6dFWc1p_2H-jMI7SKgydGTdbWZ4EcTKZ3hgaR7XBK2wSHvb1_FgqIA7PVtkOzOWHU3lma1XS_DDI0W7pob15ntHqUlYoOkJPR0QHggcKYThP3iCGE-9MrhNllURgQE2J6rd1v5fypAzICXYXjVnADLf9h6xz24q5zWUGN6GbbSEEnYDwCYeO5JZyRW38yixa4GyWfw4r5COsiMgaXXd6-3bvNQs0_4x4do-Wi3Q_fZLIG-9itLnPPfiMZ0pk75D59ruZwa4DGUBWJCIn2T_DMEM68wUjm_1yyX18iuhKuG77SIAVqPNw83YyaOc4LM52LwzBEkzJ20XSsdtk3UCGG_OYATd-p9Z5g9IPLhL7nRAMOWfJmW7f9B928S2juMBj62MyVkdqDqtNWBWEn9cLpuQFrrqFyAu5HSkuV5zzAp_38YXdTImk1yFNHbiuxENZn203XyC8nm3EgBjRhqNFT89kxAs0qUqEoSZsEST2aLkId7CdgdFEsL_33R6ArYTOBS8Xsqvtsrt--xlv_DSF1Fi58BXvl3MMHfb9-Bn1aeNh0jVFpMfKeLFZ3D2sIBAEtAitkl8Y-R2PYT_7Tvbr75JEH_sv9tl5Y15KEVr8XtZ_GjRtZlrtiXKwtN7RRiVB8xYGvF_-NOxuPw197moyCnN0UJ-DNsp0jx1-6oABmPOn1p184cvn2sEW9rEh0U8uPfu05hWU8_RfKMpzzo-yEb9fLTF54A8kwShr1KsSVZmvCor0NQs-haq30nliFJfchU9tj1jex07vDOBfVmYlxqexsOT22mDLSn9DiBWDdjFuuJLi_fekvIfIGWMdSqj-Kscy7sTAG_NWmfcwxPWy3aFus0DVYVGm0-aG-urOHt-Xu1Zfw4XnCecAedlwYpE5PYSdTomAaZNc6HB_y2reccl1adQXZPgAFC1e1gKOz2-XcuEikG7DI5hAJbMbwySMrNGslZZHKQ-bcZ8Eb1LgBfNAsrrO4TkcVITwi-GOF_7B39jIpEtY4ap6EoDC06OosRoTQwU6_KMkfaZsQolN7x744iXaca5JPekB7OrBLV3V0Wss5fYPtl-65_w8mkbYY2sFP4m6OYaOPRE9PyPNb5fSobPYfWRNWfEAw==\"}}},{\"type\":\"text\",\"text\":\"{\\\"relevantIds\\\":[\\\"<<uuid:1>>\\\"]}\",\"providerMetadata\":{\"openai\":{\"itemId\":\"msg_0b58b10f87ce3492016acf2235f43487d1959a842205ee9d4b\",\"phase\":\"final_answer\"}}}],\"finishReason\":{\"unified\":\"stop\"},\"usage\":{\"inputTokens\":{\"total\":254,\"noCache\":254,\"cacheRead\":0,\"cacheWrite\":0},\"outputTokens\":{\"total\":76,\"text\":42,\"reasoning\":34},\"raw\":{\"input_tokens\":254,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":76,\"output_tokens_details\":{\"reasoning_tokens\":34},\"total_tokens\":330}},\"providerMetadata\":{\"openai\":{\"responseId\":\"resp_0b58b10f87ce3492016acf2234ff6487d1b22309f905e3804a\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791959604912,\"endTime\":1791959606778,\"providerRequestId\":\"req_c151393439e84ae298cea1566596f466\",\"statusCode\":200,\"providerResponseId\":\"resp_0b58b10f87ce3492016acf2234ff6487d1b22309f905e3804a\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"a4e2a0564c416ae2e03d7661299fc73e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0000634\",\"marketCost\":\"0.0000634\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0000634\",\"inferenceCost\":\"0.0000634\",\"inputInferenceCost\":\"0.0000254\",\"outputInferenceCost\":\"0.000038\",\"generationId\":\"gen_01M4WHV7M33EAXPKBVDN4DHFN4\"}},\"warnings\":[]}",
+    "bodyEncoding": "utf8"
+  }
+}

@@ -41,6 +41,42 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("uses a blocked report as the result of a run without text", () => {
+    const missing = "Write access to getsentry/junior. Ask the user.";
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "reportBlocked",
+              arguments: { missing },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolName: "reportBlocked",
+          isError: false,
+          content: [{ type: "text", text: missing }],
+          details: { missing },
+        },
+      ],
+      userInput: "Push the fix to getsentry/junior",
+      toolCalls: ["reportBlocked"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.blocked).toEqual({ missing });
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("requires completed output after a user-visible tool call", () => {
     const reply = buildTurnResult({
       newMessages: [

@@ -60,6 +60,7 @@ import type {
 } from "./types";
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
 import { stopChildAgentsOf } from "./stop";
+import { readBlockedReport } from "./blocked-report";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -263,6 +264,12 @@ async function projectTerminalTurn(
     .filter((text): text is string => text !== undefined)
     .join("\n\n");
   const failed = turn.state !== "completed" || Boolean(turn.errorMessage);
+  // Read the report only from this Turn. A Turn record without a start index
+  // cannot tell this Turn from earlier history of a named child.
+  const blocked =
+    turn.turnStartMessageIndex === undefined
+      ? undefined
+      : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
   return await completeAgentInvocation({
     invocationId: invocation.invocationId,
     ...(failed
@@ -270,10 +277,15 @@ async function projectTerminalTurn(
           errorMessage: turn.errorMessage ?? "Agent invocation failed",
           status: "failed" as const,
         }
-      : {
-          result,
-          status: "completed" as const,
-        }),
+      : blocked
+        ? {
+            errorMessage: blocked.missing,
+            status: "blocked" as const,
+          }
+        : {
+            result,
+            status: "completed" as const,
+          }),
   });
 }
 
@@ -332,10 +344,15 @@ async function saveAgentInvocationResult(args: {
             args.result.diagnostics.errorMessage ?? "Agent invocation failed",
           status: "failed" as const,
         }
-      : {
-          result: args.result.text,
-          status: "completed" as const,
-        }),
+      : args.result.blocked
+        ? {
+            errorMessage: args.result.blocked.missing,
+            status: "blocked" as const,
+          }
+        : {
+            result: args.result.text,
+            status: "completed" as const,
+          }),
   });
   if (!terminal || !isTerminalAgentInvocation(terminal)) {
     throw new Error(
