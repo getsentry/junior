@@ -306,6 +306,12 @@ describe("messageAgent", () => {
         childConversationId: child.childConversationId,
         parentConversationId: slackParentConversationId,
       });
+      // The `replaced` result was never reported, so it is not a result.
+      const { agents } = (await createListAgentsTool(slackParentConversationId)
+        .execute!({}, {})) as { agents: Record<string, unknown>[] };
+      expect(agents).toHaveLength(1);
+      expect(agents[0]).toMatchObject({ status: "stopped" });
+      expect(agents[0]).not.toHaveProperty("last_result");
       const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(

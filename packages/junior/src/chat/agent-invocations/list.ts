@@ -48,10 +48,15 @@ function childAgentFromInvocations(
     tasks[0] ??
     invocations[invocations.length - 1]!;
   const terminal = isTerminalAgentInvocation(current) ? current : undefined;
-  // A `replaced` result is not reported, so it does not count as a result.
+  // A `replaced` or `skipped` result is not reported, so it does not count as
+  // a result. A tree stop marks `replaced` results `skipped`.
   const lastResult = invocations
     .filter(isTerminalAgentInvocation)
-    .filter((invocation) => invocation.parentMailboxStatus !== "replaced")
+    .filter(
+      (invocation) =>
+        invocation.parentMailboxStatus !== "replaced" &&
+        invocation.parentMailboxStatus !== "skipped",
+    )
     .map((invocation) => invocation.status)
     .find(isChildAgentResult);
   return {
