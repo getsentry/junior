@@ -1044,8 +1044,8 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(html).toContain("error ·");
-    expect(html).not.toContain("completed ·");
+    expect(html).toContain(">error</span>");
+    expect(html).not.toContain(">completed</span>");
   });
 
   it("keeps a child transcript openable when its end event is missing", () => {
@@ -1090,8 +1090,8 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain("completed ·");
-    expect(drawerHtml).not.toContain("running ·");
+    expect(drawerHtml).toContain(">completed</span>");
+    expect(drawerHtml).not.toContain(">running</span>");
     expect(drawerHtml).toContain("Open conversation");
   });
 

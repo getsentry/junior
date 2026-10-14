@@ -8,6 +8,8 @@ import { conversationDetailTitle, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
+import { StatusChip } from "../components/StatusChip";
+import { subagentStatusTone } from "./ConversationChildAgents";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import {
   TranscriptSearchToggle,
@@ -55,10 +57,7 @@ function SubagentTranscriptDrawerContent(props: {
   const detail = query.data;
   const label =
     props.target.label ?? conversationDetailTitle(detail) ?? "Subagent";
-  const meta = [
-    statusLabel(props.target.status, detail?.status),
-    detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,
-  ].filter(isString);
+  const status = statusLabel(props.target.status, detail?.status);
   const searchOpenVisible = searchOpen || search.length > 0;
 
   const titleId = "subagent-transcript-drawer-title";
@@ -123,9 +122,20 @@ function SubagentTranscriptDrawerContent(props: {
               <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
             </Link>
           </div>
-          <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted first-letter:uppercase">
-            {meta.join(" · ")}
-          </div>
+          {status || detail ? (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-snug text-dashboard-text-muted">
+              {status ? (
+                <StatusChip size="compact" tone={subagentStatusTone(status)}>
+                  {status}
+                </StatusChip>
+              ) : null}
+              {detail ? (
+                <time className="font-mono" dateTime={detail.startedAt}>
+                  {formatMessageTimestamp(Date.parse(detail.startedAt))}
+                </time>
+              ) : null}
+            </div>
+          ) : null}
           {searchOpenVisible ? (
             <div className="mt-3 min-w-0">
               <SearchInput
@@ -193,8 +203,4 @@ function DrawerEmptyState(props: {
       {props.children}
     </div>
   );
-}
-
-function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
 }

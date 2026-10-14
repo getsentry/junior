@@ -17,15 +17,20 @@ import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
-const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
+const statusTones: Partial<Record<string, StatusChipTone>> = {
+  active: "info",
   blocked: "warning",
   completed: "success",
+  error: "danger",
   failed: "danger",
   paused: "info",
-  pending: "neutral",
   running: "info",
-  stopped: "neutral",
 };
+
+/** Pick the status tone for a child agent, its transcript row, or its detail. */
+export function subagentStatusTone(status: string): StatusChipTone {
+  return statusTones[status] ?? "neutral";
+}
 
 const errorToneClass: Partial<Record<StatusChipTone, string>> = {
   danger: "text-rose-200/85",
@@ -99,7 +104,7 @@ function ChildAgentRow(props: {
   onOpen(target: SubagentTranscriptTarget): void;
 }) {
   const { agent } = props;
-  const tone = statusTone[agent.status];
+  const tone = subagentStatusTone(agent.status);
   const task = agent.task?.trim();
   const headline = agent.title ?? task;
   // A title is often a short form of the task. Skip the task when it adds nothing.
@@ -113,7 +118,7 @@ function ChildAgentRow(props: {
 
   return (
     <button
-      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg text-left border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      className="grid w-full min-w-0 cursor-pointer gap-1.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface px-3 py-2.5 text-left text-inherit transition-colors duration-200 hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={() =>
         props.onOpen({
           conversationId: agent.conversationId,

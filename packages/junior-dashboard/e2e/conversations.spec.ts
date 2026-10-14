@@ -590,7 +590,9 @@ test("inspects and copies a child agent transcript", async ({
   await subagents.getByRole("button", { name: /^reviewer blocked/ }).click();
   await expect(details).toBeHidden();
   const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
-  await expect(reviewerDrawer.getByText("blocked ·")).toBeVisible();
+  await expect(
+    reviewerDrawer.getByText("blocked", { exact: true }),
+  ).toBeVisible();
   await expect(
     reviewerDrawer.getByRole("link", { name: "Open conversation" }),
   ).toHaveAttribute(

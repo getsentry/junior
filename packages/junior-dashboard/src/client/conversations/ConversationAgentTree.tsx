@@ -28,7 +28,7 @@ export function ConversationAgentTree(props: {
               <ChevronRight aria-hidden="true" className="shrink-0" size={12} />
             ) : null}
             <Link
-              className="min-w-0 max-w-[16rem] truncate font-medium text-dashboard-text-muted no-underline underline-offset-2 hover:text-dashboard-text hover:underline"
+              className="min-w-0 max-w-[16rem] truncate font-medium text-dashboard-text no-underline underline-offset-2 hover:underline"
               title={node.label}
               to={conversationPath(node.conversationId)}
             >
