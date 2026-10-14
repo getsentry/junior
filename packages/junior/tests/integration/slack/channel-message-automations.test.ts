@@ -48,6 +48,7 @@ function trigger(identifier = "current_channel") {
 }
 
 async function postChannelMessage(input: {
+  botId?: string;
   channel?: string;
   threadTs?: string;
   ts: string;
@@ -55,14 +56,15 @@ async function postChannelMessage(input: {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
+  const { botId, ...message } = input;
+  const envelope = slackEnvelope({
+    eventType: "message",
+    text: "How do I connect the Jira integration?",
+    ...message,
+  });
+  if (botId) Object.assign(envelope.event, { bot_id: botId });
   return await handleSlackWebhookAndFlush({
-    request: slackWebhookRequest(
-      slackEnvelope({
-        eventType: "message",
-        text: "How do I connect the Jira integration?",
-        ...input,
-      }),
-    ),
+    request: slackWebhookRequest(envelope),
     services: {
       getSlackAdapter: () => slackAdapter,
       queue,
@@ -130,7 +132,7 @@ describe("Slack channel-message automations", () => {
       trigger: { identifier: "C123", namespace: "slack" },
     });
 
-    // A thread reply and a message in another channel do not run it.
+    // A thread reply, a bot post, and a message in another channel do not run it.
     expect(
       (
         await postChannelMessage({
@@ -138,6 +140,9 @@ describe("Slack channel-message automations", () => {
           ts: "1712345.0002",
         })
       ).status,
+    ).toBe(200);
+    expect(
+      (await postChannelMessage({ botId: "B123", ts: "1712345.0005" })).status,
     ).toBe(200);
     expect(
       (await postChannelMessage({ channel: "C999", ts: "1712345.0003" }))

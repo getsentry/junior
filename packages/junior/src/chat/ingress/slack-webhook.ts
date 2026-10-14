@@ -498,7 +498,9 @@ async function routeParsedMessage(args: {
     const channelMessage =
       args.event.type === "message" && args.event.channel && args.event.ts
         ? slackChannelMessageEvent({
+            botId: args.event.bot_id,
             channelId: args.event.channel,
+            subtype: args.event.subtype,
             text: args.event.text,
             threadTs: args.event.thread_ts,
             ts: args.event.ts,

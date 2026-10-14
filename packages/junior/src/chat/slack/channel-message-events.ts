@@ -97,15 +97,20 @@ export function requireSlackChannelMessageScope(
 /**
  * Build the Event for one new top-level channel message, or nothing.
  *
- * Thread replies do not count. They belong to an existing discussion.
+ * Thread replies do not count. They belong to an existing discussion. Bot
+ * and app posts do not count either. Notification bots can post often, and
+ * each post would use up the run limit of the automation.
  */
 export function slackChannelMessageEvent(input: {
+  botId?: string;
   channelId: string;
+  subtype?: string;
   text?: string;
   threadTs?: string;
   ts: string;
   userId: string;
 }): EventInput | undefined {
+  if (input.botId || input.subtype === "bot_message") return undefined;
   if (input.threadTs && input.threadTs !== input.ts) return undefined;
   if (!CHANNEL_ID_PATTERN.test(input.channelId)) return undefined;
   const occurredAtMs = Math.floor(Number(input.ts) * 1000);
