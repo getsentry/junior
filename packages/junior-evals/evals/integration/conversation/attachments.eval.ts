@@ -12,6 +12,7 @@ import {
   webMessage,
 } from "@junior-evals/fixture/inputs";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 // Only the pixels have the ticket number, so a reply with the number proves
@@ -33,6 +34,26 @@ describe("Conversation Attachments", () => {
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
     ]);
+  });
+
+  test("when a mention asks to change an attached image, the edit uses that image", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention("Change the ticket number in this screenshot to 1234.", {
+        files: [SCREENSHOT],
+      }),
+    );
+
+    const loads = completedToolCalls("loadAttachment", conversation);
+    expect(loads).toHaveLength(1);
+    const { path } = toolOutput(loads[0]!) as { path: string };
+    const edits = completedToolCalls("imageGenerate", conversation);
+    expect(edits).toHaveLength(1);
+    expect(edits[0]!.input).toMatchObject({
+      images: [expect.stringContaining(path)],
+    });
+    expect(conversation.files).toHaveLength(1);
   });
 
   test("when a web message has an image, the reply uses the image", async ({

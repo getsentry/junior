@@ -11,6 +11,13 @@ import {
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
+import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+
+// AI Gateway rejects request bodies over 4.5 MB with HTTP 413. Base64 makes
+// images a third larger, so 3 MB of images keeps the body under that limit.
+const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
 
 const imageGenerateOutputSchema = juniorToolOutputSchema
   .extend({
@@ -89,6 +96,7 @@ export function createImageGenerateTool(
   options: {
     modelId: string;
     canSendFilesToActiveConversation?: boolean;
+    sandbox: SandboxWorkspace;
   },
   deps: ImageGenerateToolDeps = {},
 ) {
@@ -100,12 +108,25 @@ export function createImageGenerateTool(
       readOnlyHint: false,
     },
     description:
-      "Generate images from a prompt. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation requests.",
+      "Generate images from a prompt, or edit existing images. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation or image edit requests.",
     inputSchema: z.object({
-      prompt: z.string().min(1).max(4000).describe("Image generation prompt."),
+      prompt: z
+        .string()
+        .min(1)
+        .max(4000)
+        .describe(
+          "Image generation prompt. When images are given, describe the change to make and what to keep.",
+        ),
+      images: z
+        .array(z.string().min(1))
+        .max(4)
+        .optional()
+        .describe(
+          "Sandbox paths of PNG, JPEG, GIF, or WebP images to edit or use as references, up to 3 MB in total. Use paths from loadAttachment or from an earlier imageGenerate result.",
+        ),
     }),
     outputSchema: imageGenerateOutputSchema,
-    execute: async ({ prompt }) => {
+    execute: async ({ prompt, images = [] }) => {
       const fetchImpl = deps.fetch ?? fetch;
       // Raw fetch does not resolve AI Gateway auth on its own, so this path
       // has to turn the shared gateway credential into a bearer token.
@@ -114,7 +135,25 @@ export function createImageGenerateTool(
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = options.modelId;
-      const enrichedPrompt = await enrichImagePrompt(prompt);
+      const inputImages = await Promise.all(
+        images.map((path) =>
+          readSandboxImage(path, (targetPath) =>
+            options.sandbox.readFileToBuffer({ path: targetPath }),
+          ),
+        ),
+      );
+      const inputBytes = inputImages.reduce(
+        (sum, image) => sum + image.data.byteLength,
+        0,
+      );
+      if (inputBytes > MAX_INPUT_IMAGE_BYTES) {
+        throw new ToolInputError(
+          `input images total ${inputBytes} bytes; imageGenerate accepts ${MAX_INPUT_IMAGE_BYTES} bytes. Make the images smaller first.`,
+        );
+      }
+      // Enrichment restyles the whole image, so it would undo an edit.
+      const enrichedPrompt =
+        inputImages.length > 0 ? prompt : await enrichImagePrompt(prompt);
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {
@@ -125,7 +164,23 @@ export function createImageGenerateTool(
           },
           body: JSON.stringify({
             model,
-            messages: [{ role: "user", content: enrichedPrompt }],
+            messages: [
+              {
+                role: "user",
+                content:
+                  inputImages.length > 0
+                    ? [
+                        { type: "text", text: enrichedPrompt },
+                        ...inputImages.map((image) => ({
+                          type: "image_url",
+                          image_url: {
+                            url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
+                          },
+                        })),
+                      ]
+                    : enrichedPrompt,
+              },
+            ],
             modalities: ["image"],
           }),
         },
