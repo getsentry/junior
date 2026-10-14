@@ -1,57 +1,26 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import {
+  detectImageMediaType,
+  type InputImageType,
+} from "@/chat/attachments/media";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const IMAGE_TYPES = {
-  gif: "image/gif",
-  jpg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-} as const;
+const IMAGE_EXTENSIONS = {
+  "image/gif": "gif",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+} as const satisfies Record<InputImageType, string>;
 
-type ImageExtension = keyof typeof IMAGE_TYPES;
+type ImageExtension = (typeof IMAGE_EXTENSIONS)[InputImageType];
 
 const FILENAME_RE =
   /^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(gif|jpg|png|webp)$/i;
-
-function detectImageType(data: Buffer): {
-  contentType: (typeof IMAGE_TYPES)[ImageExtension];
-  extension: ImageExtension;
-} | null {
-  if (
-    data.length >= 8 &&
-    data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-  ) {
-    return { contentType: IMAGE_TYPES.png, extension: "png" };
-  }
-  if (
-    data.length >= 3 &&
-    data[0] === 255 &&
-    data[1] === 216 &&
-    data[2] === 255
-  ) {
-    return { contentType: IMAGE_TYPES.jpg, extension: "jpg" };
-  }
-  if (
-    data.length >= 6 &&
-    (data.subarray(0, 6).toString("ascii") === "GIF87a" ||
-      data.subarray(0, 6).toString("ascii") === "GIF89a")
-  ) {
-    return { contentType: IMAGE_TYPES.gif, extension: "gif" };
-  }
-  if (
-    data.length >= 12 &&
-    data.subarray(0, 4).toString("ascii") === "RIFF" &&
-    data.subarray(8, 12).toString("ascii") === "WEBP"
-  ) {
-    return { contentType: IMAGE_TYPES.webp, extension: "webp" };
-  }
-  return null;
-}
 
 function artifactKey(filename: string): string {
   return `artifacts/${filename}`;
@@ -127,12 +96,13 @@ export async function publishImage(args: {
       `image exceeds ${MAX_IMAGE_BYTES} bytes (${args.body.byteLength} bytes)`,
     );
   }
-  const imageType = detectImageType(args.body);
-  if (!imageType) {
+  const contentType = detectImageMediaType(args.body);
+  if (!contentType) {
     throw new ToolInputError(
       "unsupported image format; use PNG, JPEG, GIF, or WebP",
     );
   }
+  const imageType = { contentType, extension: IMAGE_EXTENSIONS[contentType] };
 
   const baseUrl = resolvePublicBaseUrl(args.publicBaseUrl);
   const sha256 = createHash("sha256").update(args.body).digest("hex");
