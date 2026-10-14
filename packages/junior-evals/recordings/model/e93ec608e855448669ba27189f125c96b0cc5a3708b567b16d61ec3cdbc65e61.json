@@ -1,0 +1,32 @@
+{
+  "session": "evals/coding/subscriptions.eval.ts > Watches > when a watch asks for a fix and the PR checks fail, commit and push the fix without a person",
+  "request": {
+    "method": "POST",
+    "url": "https://ai-gateway.vercel.sh/v1/messages?beta=true",
+    "parts": {
+      "method": "9aee6b1bcdf6",
+      "url": "ebadb6691a7f",
+      "header ai-language-model-id": "e3b0c44298fc",
+      "header ai-language-model-streaming": "e3b0c44298fc",
+      "header ai-model-id": "e3b0c44298fc",
+      "model": "1a0a1ddcb528",
+      "messages.length": "4b227777d4dd",
+      "messages[0]": "c01cbcb6a8a8",
+      "messages[1]": "48b0890e6dbe",
+      "messages[2]": "ff31338e49a5",
+      "messages[3]": "5e514e443926",
+      "max_tokens": "8eda794b86cb",
+      "stream": "b5bea41b6c62",
+      "temperature": "5feceb66ffc8",
+      "thinking": "d12700b52885"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/event-stream"
+    },
+    "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"gen_01M4WKXXS2RCD6CMTQVXGNMMXB\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"openai/gpt-6-luna\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":0,\"output_tokens\":0}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"## Handoff summary\\n\\n- **Task:** Monitor CI failures for getsentry/junior PR #691 and report failures with suggested next steps. Do not modify the PR.\\n- **Progress:** Switched to the `handoff` profile. No GitHub checks have been queried and no report has been sent yet.\\n- **Verified failure details:** GitHub Actions check suite failed for branch `fix/cache-refresh`, head SHA `<<git-commit:1>>`, check suite ID `42`.\\n  - Failed check: `test`\\n  - Job URL: https://github.com/getsentry/junior/actions/runs/1/job/1\\n  - Suite URL: https://github.com/getsentry/junior/commit/<<git-commit:1>>/checks?check_suite_id=42\\n- **Next steps:** Briefly report that the `test` check failed and recommend opening the job log to identify the error, then rerunning or fixing the failing test as appropriate. Do not make changes to the PR.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":681,\"output_tokens\":225},\"provider_metadata\":{\"openai\":{\"responseId\":\"resp_01d5b423d9a2a1f1016acf2abe71dc87d19b563dafcc3bc144\",\"serviceTier\":\"default\",\"reasoningContext\":\"all_turns\"},\"gateway\":{\"routing\":{\"originalModelId\":\"openai/gpt-6-luna\",\"resolvedProvider\":\"openai\",\"fallbacksAvailable\":[\"bedrock\",\"azure\"],\"planningReasoning\":\"System credentials planned for: openai, bedrock, azure. Total execution order: openai(system) → bedrock(system) → azure(system)\",\"canonicalSlug\":\"openai/gpt-6-luna\",\"finalProvider\":\"openai\",\"modelAttemptCount\":1,\"modelAttempts\":[{\"canonicalSlug\":\"openai/gpt-6-luna\",\"success\":true,\"providerAttemptCount\":1,\"providerAttempts\":[{\"provider\":\"openai\",\"credentialType\":\"system\",\"success\":true,\"startTime\":1791961790340,\"endTime\":1791961793469,\"providerRequestId\":\"req_25c2e10f612f43a08504edeb29b6bb79\",\"statusCode\":200,\"providerResponseId\":\"resp_01d5b423d9a2a1f1016acf2abe71dc87d19b563dafcc3bc144\"}]}],\"totalProviderAttemptCount\":1,\"affinity\":{\"outcome\":\"skipped_below_min_prefix\"},\"clientSessionId\":\"6154d410ff9250b8c1a6c1a21162092e\",\"clientSessionIdSource\":\"fingerprint\"},\"cost\":\"0.0001806\",\"marketCost\":\"0.0001806\",\"surchargeCost\":\"0\",\"gatewayCost\":\"0.0001806\",\"inferenceCost\":\"0.0001806\",\"inputInferenceCost\":\"0.0000681\",\"outputInferenceCost\":\"0.0001125\",\"generationId\":\"gen_01M4WKXXS2RCD6CMTQVXGNMMXB\"}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+    "bodyEncoding": "utf8"
+  }
+}
