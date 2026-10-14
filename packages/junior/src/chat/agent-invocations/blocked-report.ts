@@ -1,11 +1,4 @@
-/**
- * Blocked report of a child agent.
- *
- * A child agent's reply goes to its parent agent, not to a person. When
- * missing access, input, or a decision stops its task, the child ends its run
- * with `reportBlocked`. Then the agent invocation ends as `blocked` with what
- * is missing, and the parent does not read the reply as finished work.
- */
+/** Blocked report of a child agent. See "Blocked Reports" in README.md. */
 import { z } from "zod";
 import {
   isToolResultError,
@@ -16,8 +9,7 @@ import {
 /** Model-facing tool that ends a child agent run as blocked. */
 export const REPORT_BLOCKED_TOOL_NAME = "reportBlocked";
 
-/** What a child agent needs before it can finish its task. */
-export const blockedReportSchema = z.object({
+const blockedReportSchema = z.object({
   missing: z.string().trim().min(1),
 });
 

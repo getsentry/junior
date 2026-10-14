@@ -30,7 +30,7 @@ describe("Child Agents", () => {
     agent,
   }) => {
     const { run } = await agent({ experimental: { subagents: true } });
-    const childTools: string[] = [];
+    const requestedTools: string[] = [];
     const conversation = await run(
       slackMention(
         'Use spawnAgent to start one child agent with the task "Reply with the six-digit verification code that the user got by email." When its result arrives, tell me what happened.',
@@ -38,7 +38,7 @@ describe("Child Agents", () => {
       {
         onProgress: (progress) => {
           if (progress.type === "tool_request") {
-            childTools.push(progress.name);
+            requestedTools.push(progress.name);
           }
         },
       },
@@ -46,7 +46,7 @@ describe("Child Agents", () => {
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
     // Only the child agent has reportBlocked.
-    expect(childTools).toContain("reportBlocked");
+    expect(requestedTools).toContain("reportBlocked");
     expect(conversation.turns).toHaveLength(2);
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");

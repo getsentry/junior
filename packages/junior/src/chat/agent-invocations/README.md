@@ -122,11 +122,9 @@ tool ends the run, like `finishAutomationRun` ends an Automation run. The
 agent invocation then ends as `blocked`, and the parent result shows what is
 missing. A child that cannot get authorization also ends as `blocked`.
 
-The worker reads the report only from the new messages of the run. A named
-child keeps its history, so a report from an earlier agent invocation does not
-end a later one. Recovery of a completed child Turn reads the report the same
-way, from the messages after the Turn start, so a worker that dies before it
-saves the agent invocation still ends it as `blocked`.
+The worker and the recovery of a completed child Turn read the report only
+from the messages of that Turn. A named child keeps its history, so a report
+from an earlier agent invocation does not end a later one.
 
 ### Results for a Child
 
