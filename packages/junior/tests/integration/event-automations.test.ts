@@ -652,29 +652,6 @@ describe("event automations", () => {
     ).resolves.toEqual({ dispatched: 1 });
   });
 
-  it("dispatches every distinct event without a task-level quota", async () => {
-    await createTask("Address the requested changes.");
-    const nowMs = Date.parse("2026-07-31T12:00:00.000Z");
-    const event = {
-      eventType: "pull_request.review.changes_requested",
-      occurredAtMs: nowMs,
-      namespace: "github",
-      identifier: "getsentry/junior#1174",
-      trustedSummary: "A reviewer requested changes.",
-    };
-
-    for (let index = 0; index < 26; index += 1) {
-      await expect(
-        ingestEventAutomations(
-          { ...event, eventKey: `github:delivery-${index}` },
-          { nowMs, queue, teamId },
-        ),
-      ).resolves.toEqual({ dispatched: 1 });
-    }
-
-    expect(queue.sentRecords()).toHaveLength(26);
-  });
-
   it("matches tasks only within the event's Slack workspace", async () => {
     await createTask("Handle this workspace's review feedback.");
     await createTask(

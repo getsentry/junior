@@ -14,6 +14,7 @@ import {
   juniorEventAutomations,
   type EventAutomationStatus,
 } from "@/db/schema/event-automations";
+import { clearEventAutomationRuns } from "./run-limit";
 import { eventAutomationSchema, type EventAutomation } from "./types";
 
 // Older workers can still write thread destinations during deployment.
@@ -125,6 +126,11 @@ export async function createEventAutomation(
 ): Promise<StoredEventAutomation> {
   const parsed = eventAutomationSchema.parse(eventAutomationJsonPayload(task));
   const title = task.title?.trim() || null;
+  // A revived row starts with a new run-limit window. Clear while the row is
+  // still deleted and cannot match Events. Live retries keep their count.
+  if ((await getEventAutomation(db, parsed.id))?.status === "deleted") {
+    await clearEventAutomationRuns(parsed.id);
+  }
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(juniorEventAutomations)
@@ -415,7 +421,7 @@ export async function findMatchingEventAutomations(
  * Change lifecycle under the same row lock as edits, without changing
  * credentials. A pause keeps an unresolved block reason, so resuming a paused
  * blocked automation returns it to blocked. Resume a blocked automation to
- * clear the reason.
+ * clear the reason. A resume also clears the run-limit count first.
  */
 export async function setEventAutomationStatus(
   db: JuniorDatabase,
@@ -423,6 +429,14 @@ export async function setEventAutomationStatus(
   status: "active" | "paused",
   revision: string,
 ): Promise<StoredEventAutomation> {
+  // Clear before activation, while the row does not match Events. An already
+  // active row keeps its count.
+  if (
+    status === "active" &&
+    (await getEventAutomation(db, id))?.status !== "active"
+  ) {
+    await clearEventAutomationRuns(id);
+  }
   return db.transaction(async (tx) => {
     const rows = await tx
       .select()
