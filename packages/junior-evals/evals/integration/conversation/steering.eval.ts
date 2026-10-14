@@ -38,6 +38,17 @@ describe("Slack Turn Steering", () => {
       "succeeded",
     ]);
     expect(conversation.reactions).toContain("white_check_mark");
+    // The dashboard transcript shows the mention the running turn took.
+    expect(
+      conversation.session.events.filter(
+        (event) => event.type === "message" && event.role === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({ content: INCIDENT_REQUEST }),
+      expect.objectContaining({
+        content: "include the rollback owner: Dana",
+      }),
+    ]);
   });
 
   test("when other people mention Junior during a turn, each person gets a follow-up turn unless they override with !!", async ({

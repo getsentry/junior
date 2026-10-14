@@ -140,6 +140,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   scheduleSessionCompletedPluginTasks,
@@ -1067,6 +1068,24 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   async (queuedMessages) => {
                     acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
+                    // The mailbox drops these messages after this returns.
+                    // Record them like pre-turn queued messages so the
+                    // transcript still shows them. Record first: a failed
+                    // write leaves them pending instead of hidden.
+                    for (const queued of queuedMessages) {
+                      upsertConversationMessage(
+                        preparedState.conversation,
+                        toConversationMessage({
+                          entry: queued.message,
+                          explicitMention: queued.explicitMention,
+                          text: queued.userText,
+                        }),
+                      );
+                    }
+                    await persistConversationMessages({
+                      conversation: preparedState.conversation,
+                      conversationId,
+                    });
                     await accept(acceptedMessages);
                   },
                   { conversationContext: preparedState.conversationContext },
