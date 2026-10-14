@@ -119,16 +119,25 @@ export function createReadGoogleSheetTool(ctx: GoogleToolContext) {
         .sheets.map((sheet) => sheet.properties)
         .filter((tab) => (tab.sheetType ?? "GRID") === "GRID")
         .map((tab) => tab.title);
-      const values = await googleFileRequest(ctx, ref, {
-        operation: "google.sheets.values.batchGet",
-        path: `/v4/spreadsheets/${ref.fileId}/values:batchGet`,
-        query: {
-          majorDimension: "ROWS",
-          ranges: input.range ? [input.range] : tabs.map(tabRange),
-          valueRenderOption: "FORMATTED_VALUE",
-        },
-      });
-      const { valueRanges } = valuesSchema.parse(values.body);
+      const requested = input.range ? [input.range] : tabs.map(tabRange);
+      // batchGet rejects a request without ranges, as for a Sheet of only
+      // chart tabs.
+      const { valueRanges } =
+        requested.length === 0
+          ? { valueRanges: [] }
+          : valuesSchema.parse(
+              (
+                await googleFileRequest(ctx, ref, {
+                  operation: "google.sheets.values.batchGet",
+                  path: `/v4/spreadsheets/${ref.fileId}/values:batchGet`,
+                  query: {
+                    majorDimension: "ROWS",
+                    ranges: requested,
+                    valueRenderOption: "FORMATTED_VALUE",
+                  },
+                })
+              ).body,
+            );
 
       let remaining = MAX_CONTENT_CHARS;
       const ranges = valueRanges.map(({ range, values }) => {
