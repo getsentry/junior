@@ -380,6 +380,13 @@ const AUTOMATION_FAILURE_RULES = [
   `- When a failure stops the job, put its cause in the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` reason, not in the message.`,
 ];
 
+// A child's text reply is finished work, so a failure that stops the task goes
+// in its blocked report.
+const CHILD_AGENT_FAILURE_RULES = [
+  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in a text reply.`,
+  "- Keep raw tool payloads and internal routing metadata out of the final reply.",
+];
+
 const FAILURE_RULES = [
   "- For tool/runtime failures, run the named check before diagnosing and report the exact failed command plus stderr/exit code.",
   "- If a fact cannot be verified after focused checks, say what you checked and what blocked a stronger answer.",
@@ -419,7 +426,11 @@ function buildBehaviorSection(
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection(
       "failure-handling",
-      automation ? AUTOMATION_FAILURE_RULES : FAILURE_RULES,
+      automation
+        ? AUTOMATION_FAILURE_RULES
+        : mode === "child_agent"
+          ? CHILD_AGENT_FAILURE_RULES
+          : FAILURE_RULES,
     ),
   ].join("\n\n");
 }
@@ -443,6 +454,15 @@ function buildOutputSection(
 ): string {
   if (mode === "automation") {
     return buildAutomationOutputSection(platform);
+  }
+  if (mode === "child_agent") {
+    return [
+      `<output format="markdown">`,
+      "- Start with the result, not internal process narration.",
+      "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
+      "- Reply with text only when the task is finished.",
+      "</output>",
+    ].join("\n");
   }
   if (platform === "local") {
     return [
