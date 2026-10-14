@@ -44,23 +44,23 @@ Deletion keeps the row and execution history.
 Deploy all workers before using pause. Older workers still match paused rows.
 
 Each Event automation can start at most
-`botConfig.maxEventAutomationRunsPerHour` runs in one hour
+`botConfig.maxEventAutomationRunsPerHour` runs in a rolling hour
 (`run-limit.ts`). The default is 10. A host sets it with
 `createApp({ limits: { maxEventAutomationRunsPerHour } })`. The one-hour
 window is fixed. The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
 what stops a noisy trigger from starting a full agent Turn for every Event.
-Ingest counts a run before dispatch. The count is a plain fixed-window counter
-in the state adapter: the window starts at the first run, lasts one hour, and
-expires with the key. It takes no lock, so Events at the same moment can pass
-with the same count. A provider retry can count again, but the dispatch
-idempotency key still stops a second run. When the window is full, ingest skips
-the dispatch and blocks the Automation with a reason, and its creator gets the
-blocked notice. Each block also captures one Sentry issue event with the
-fingerprint `event_automation.run_limit.blocked` and the `app.task.id` of the
-Automation. Events refused after the block do not capture again. Resume clears
-the count, so the next Event runs at once. Recreating a deleted automation also
+Ingest counts a run before dispatch. Each run appends one entry to a short
+list in the state adapter, then counts the entries from the last hour. The
+append is atomic, so Events at the same moment cannot all pass. No lock is
+needed. A provider retry can count again, but the dispatch idempotency key still
+stops a second run. When the hour is full, ingest skips the dispatch and blocks
+the Automation with a reason, and its creator gets the blocked notice. Each
+block also captures one Sentry issue event with the fingerprint
+`event_automation.run_limit.blocked` and the `app.task.id` of the Automation.
+Events refused after the block do not capture again. Resume appends a reset
+entry, so runs before it do not count and the next Event runs at once. Recreating a deleted automation also
 clears it. Both clear the count before the row becomes active.
 
 A blocked dispatch blocks its Automation: a run could not get the authorization

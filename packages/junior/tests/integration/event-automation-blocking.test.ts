@@ -178,7 +178,7 @@ describe("event automation blocking", () => {
       status: "active",
     });
 
-    // A new window starts after the hour.
+    // Old runs leave the rolling window.
     const nextHourMs = firstHourMs + EVENT_AUTOMATION_RUN_WINDOW_MS + 1;
     await fill("github:next", maxRuns, nextHourMs);
 
@@ -190,7 +190,9 @@ describe("event automation blocking", () => {
     expect(await ingest("github:over", nextHourMs)).toEqual({ dispatched: 1 });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
       status: "blocked",
-      statusReason: expect.stringContaining(`${maxRuns} runs in the last hour`),
+      statusReason: expect.stringContaining(
+        `limit of ${maxRuns} runs per hour`,
+      ),
     });
     expect(await getEventAutomation(db, sibling.id)).toMatchObject({
       status: "active",
