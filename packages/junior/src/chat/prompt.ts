@@ -361,7 +361,7 @@ const AUTOMATION_RUN_RULES = [
 // Replaces the task-execution, conversation, and Slack action rules for child
 // agent runs. No person reads a child run, and its final text is its result.
 const CHILD_AGENT_RUN_RULES = [
-  "- This run is a task that a parent agent gave you. The task is the job. The parent agent reads your final reply; no person reads this run.",
+  "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. The parent agent reads your final reply; no person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
   `- Your final text reply goes to the parent as finished work. When the task cannot be finished, end the run with \`${REPORT_BLOCKED_TOOL_NAME}\` instead.`,
   "- A tool result with `timed_out: true` means that attempt did not finish. Before you retry work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",

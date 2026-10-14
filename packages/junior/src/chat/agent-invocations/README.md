@@ -174,6 +174,17 @@ on the child, and that agent invocation sends the report. The worker holds
 mailbox input while a child is paused, so a child runs one agent invocation at
 a time.
 
+### Watches on a Child
+
+A child can use `watchTimer` and `watchEvents` the same as a root, and its
+watches belong to the child Conversation. Each batch of watch events starts a
+new agent invocation on the child, with the same rules as an Event Turn on a
+root: the same burst window, the event system Actor, and a timer's own grants.
+Its id comes from the batch's first Inbound message.
+
+Watch event invocations count toward the child's automated-turn limit. A task
+or message from the parent resets the count, like a user message on a root.
+
 ## Child Conversations
 
 A Conversation created for an Agent invocation stores `parentConversationId`.
@@ -221,7 +232,7 @@ Two more rules apply to nested child agents:
   work starts another agent invocation on it.
 - The task and title come from the latest agent invocation that the parent
   started with `spawnAgent` or `messageAgent`. An agent invocation that gives a
-  grandchild result or message to the child is not a task.
+  grandchild result or message, or a watch event, to the child is not a task.
 
 `stopAgent` is exposed with `spawnAgent`. It stops one direct child agent and
 every child agent below it:
@@ -233,6 +244,14 @@ every child agent below it:
    `skipped`.
 3. A Conversation stop request aborts each run that is still working. Slack and
    ACP use the same stop request.
+4. Each Conversation in the tree ends its watches and then records the stop in
+   `junior_conversations.stopped_at`. The worker drops watch events, agent
+   results, and agent messages received at or before that time, even on an
+   idle child.
+
+The Slack `stop` keyword stops a root the same way with
+`stopConversationSession`. A turn stop (Slack's stop button, the dashboard, or
+a direct stop of a child's run) only interrupts the running work.
 
 The parent asked for the stop, so it gets no result Turn. `listAgents` shows the
 child as `stopped`. Any other stop of a child, such as a direct stop of the

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildResults,
+  startAgentInvocationsForChildInput,
 } from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
@@ -402,7 +402,7 @@ describe("stopping child agents", () => {
       const childContext = await harness.context(child.childConversationId);
       expect(childContext.attempt.messages).toHaveLength(1);
       await expect(
-        startAgentInvocationsForChildResults(childContext, {
+        startAgentInvocationsForChildInput(childContext, {
           queue: harness.queue,
           state: harness.state,
         }),

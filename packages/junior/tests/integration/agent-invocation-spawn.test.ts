@@ -9,7 +9,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildResults,
+  startAgentInvocationsForChildInput,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { InboundMessage } from "@/chat/task-execution/store";
@@ -267,7 +267,7 @@ describe("agent invocation spawn and result delivery", () => {
       // A retried delivery starts the same agent invocation.
       for (let attempt = 0; attempt < 2; attempt++) {
         await expect(
-          startAgentInvocationsForChildResults(
+          startAgentInvocationsForChildInput(
             context(result.parentConversationId, messages),
             { queue, state },
           ),

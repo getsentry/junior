@@ -106,6 +106,15 @@ export function getAgentInvocationIdForMessage(messageId: string): string {
   return stableId("agent-invocation", "message", messageId);
 }
 
+/**
+ * Return the stable identity of the agent invocation that gives one batch of
+ * watch events to a child Conversation. The first message of the batch names
+ * it.
+ */
+export function getAgentInvocationIdForEvents(messageId: string): string {
+  return stableId("agent-invocation", "events", messageId);
+}
+
 /** Return the stable turn identity advanced by one agent invocation. */
 export function getAgentInvocationTurnId(invocationId: string): string {
   return `agent-invocation:${invocationId}`;
@@ -469,17 +478,20 @@ export async function createAgentInvocation(
 }
 
 /**
- * Create or replay the agent invocation that gives one child agent result or
- * message to the child Conversation that started that child agent. It
- * continues that Conversation for the same parent, Actor, and credentials as
- * `latest`. It skips the queue and active-count checks because it continues
- * work that already passed them.
+ * Create or replay the agent invocation that gives one input to a child
+ * Conversation: a result or message from its own child agent, or its own
+ * watch events. It continues that Conversation for the same parent as
+ * `latest`, and for the same Actor and credentials unless `runAs` sets them.
+ * It skips the queue and active-count checks because it continues work that
+ * already passed them.
  */
 export async function createAgentInvocationFromLatest(
   args: {
     input: string;
     invocationId: string;
     latest: AgentInvocation;
+    /** Actor, credentials, and Source for watch events. */
+    runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
@@ -493,9 +505,9 @@ export async function createAgentInvocationFromLatest(
       childConversationId: args.latest.childConversationId,
       agentName: args.latest.agentName ?? null,
       input: args.input,
-      actor: args.latest.actor,
-      credentialContext: args.latest.credentialContext ?? null,
-      source: { kind: "agent_invocation" },
+      actor: (args.runAs ?? args.latest).actor,
+      credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
+      source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: args.latest.destination,
       reasoningLevel: args.latest.reasoningLevel ?? null,
       status: "pending",

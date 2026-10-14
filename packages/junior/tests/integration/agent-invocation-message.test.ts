@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import {
-  startAgentInvocationsForChildResults,
+  startAgentInvocationsForChildInput,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import {
@@ -248,7 +248,7 @@ describe("messageAgent", () => {
       // A retried delivery starts the same agent invocation.
       for (let attempt = 0; attempt < 2; attempt++) {
         await expect(
-          startAgentInvocationsForChildResults(
+          startAgentInvocationsForChildInput(
             context(child.childConversationId, messages),
             { queue, state },
           ),
@@ -315,7 +315,7 @@ describe("messageAgent", () => {
       const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(
-        startAgentInvocationsForChildResults(
+        startAgentInvocationsForChildInput(
           context(child.childConversationId, messages),
           { queue, state },
         ),

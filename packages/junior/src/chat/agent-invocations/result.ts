@@ -1,11 +1,18 @@
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import {
   EVENT_WAIT_MS,
   isEventMailboxMetadata,
+  timerWatchCredentialSubject,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import type { MailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import {
+  getEventBatchDelayMs,
+  parseEventMessages,
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -18,6 +25,7 @@ import type {
 import {
   createAgentInvocationFromLatest,
   getAgentInvocation,
+  getAgentInvocationIdForEvents,
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
@@ -316,20 +324,22 @@ async function getChildAgentInputInvocation(
 }
 
 /**
- * Give agent invocation results and messages that reach a child Conversation
- * to that child. A child Conversation has no Location, so it cannot run an
- * Event Turn. Each result or message starts a new agent invocation on the
- * child instead, and that invocation reports to the child's parent. Returns
- * undefined for work that is not a result or message for a child
- * Conversation.
+ * Give mailbox input that reaches a child Conversation to that child: results
+ * and messages from its own child agents, and its own watch events. A child
+ * Conversation has no Location, so it cannot run an Event Turn. Each input
+ * starts a new agent invocation on the child instead, and that invocation
+ * reports to the child's parent. Returns undefined for work that is not
+ * mailbox input for a child Conversation.
  */
-export async function startAgentInvocationsForChildResults(
+export async function startAgentInvocationsForChildInput(
   context: ConversationWorkerContext,
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {
   const messages = context.attempt.messages;
   const inputs = messages.map(childAgentInput);
-  if (messages.length === 0 || inputs.some((input) => !input)) {
+  const isAgentInput = inputs.every((input) => input !== undefined);
+  const events = isAgentInput ? [] : parseEventMessages(messages);
+  if (messages.length === 0 || (!isAgentInput && events.length === 0)) {
     return undefined;
   }
   const latest = await getLatestAgentInvocationForConversation(
@@ -338,14 +348,42 @@ export async function startAgentInvocationsForChildResults(
   if (!latest) {
     return undefined;
   }
-  // A stopped child takes no new work, even from a result or message sent
-  // before the stop. A tree stop leaves a `replaced` agent invocation with its
-  // finished status and marks it `skipped`, so that also means stopped.
+  // A stopped child takes no new work, even from input sent before the stop.
+  // A tree stop leaves a `replaced` agent invocation with its finished status
+  // and marks it `skipped`, so that also means stopped.
   if (
     latest.status === "stopped" ||
     (isTerminalAgentInvocation(latest) &&
       latest.parentMailboxStatus === "skipped")
   ) {
+    await context.attempt.ack();
+    return { status: "completed" };
+  }
+  if (!isAgentInput) {
+    // Watch events wait for the same burst window as on a root.
+    const delayMs = getEventBatchDelayMs(messages);
+    if (delayMs > 0) {
+      return { status: "deferred", delayMs };
+    }
+    // The events run as the event system Actor, as on a root. A timer may
+    // use the grants of the person who set it.
+    const { actor, source } = events[0]!;
+    const invocation = await createAgentInvocationFromLatest({
+      input: joinMailboxText(messages),
+      invocationId: getAgentInvocationIdForEvents(
+        messages[0]!.inboundMessageId,
+      ),
+      latest,
+      runAs: {
+        actor,
+        credentialContext: credentialContextForActor(
+          actor,
+          timerWatchCredentialSubject(context.conversationId, messages),
+        ),
+        source,
+      },
+    });
+    await enqueueAgentInvocation(invocation, options);
     await context.attempt.ack();
     return { status: "completed" };
   }

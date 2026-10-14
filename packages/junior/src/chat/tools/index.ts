@@ -217,7 +217,8 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  if (context.source.kind === "agent_invocation") {
+  // A child agent reports to its parent, whatever input started this Turn.
+  if (context.parentConversationId) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 

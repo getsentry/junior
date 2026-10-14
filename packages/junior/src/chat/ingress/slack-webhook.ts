@@ -21,7 +21,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
-import { cancelSubscriptions } from "@/chat/events/store";
+import { stopConversationSession } from "@/chat/agent-invocations/stop";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -322,7 +322,7 @@ async function persistSlackMessage(args: {
 }
 
 /**
- * Interrupt the active Run, cancel resource watches, unsubscribe, and record
+ * Interrupt the active Run, stop the session, unsubscribe, and record
  * the stop message in history. Stop input never enters the mailbox, so a
  * mention-route stop cannot resubscribe the thread by starting a new Turn.
  *
@@ -372,7 +372,7 @@ async function handleSlackThreadStop(args: {
     messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
-  await cancelSubscriptions({ conversationId, state: args.state });
+  await stopConversationSession({ conversationId, state: args.state });
 
   const content = parseContent(args.message);
   const conversation = coerceThreadConversationState(undefined);

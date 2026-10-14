@@ -48,7 +48,7 @@ export function createStopAgentTool(conversationId: string) {
       }
       return {
         conversation_id: input.conversation_id,
-        stopped: stopped.stoppedCount > 0,
+        stopped: stopped.stopped,
       };
     },
   });

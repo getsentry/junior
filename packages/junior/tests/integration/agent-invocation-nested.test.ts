@@ -8,7 +8,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  startAgentInvocationsForChildResults,
+  startAgentInvocationsForChildInput,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { createAgentInvocationWorker } from "@/chat/agent-invocations/work";
@@ -116,7 +116,7 @@ describe("nested agent invocations", () => {
       // A retried delivery starts the same agent invocation.
       for (let attempt = 0; attempt < 2; attempt++) {
         await expect(
-          startAgentInvocationsForChildResults(
+          startAgentInvocationsForChildInput(
             context(result.parentConversationId, messages),
             { queue, state },
           ),

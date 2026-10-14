@@ -252,6 +252,10 @@ async function prepareLocalChatRun(
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
   const { createAgentInvocationWorker, routeAgentInvocationWork } =
     await import("@/chat/agent-invocations/work");
+  const { startAgentInvocationsForChildInput } =
+    await import("@/chat/agent-invocations/result");
+  const { skipInputBeforeConversationStop } =
+    await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
   const { processConversationWork } =
@@ -262,8 +266,19 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const run = routeAgentInvocationWork({
-      fallbackWorker: async () => {
-        throw new Error("Local child queue received non-invocation work");
+      // The local queue carries only child Conversation work.
+      fallbackWorker: async (context) => {
+        const skipped = await skipInputBeforeConversationStop(context);
+        if (skipped) {
+          return skipped;
+        }
+        const started = await startAgentInvocationsForChildInput(context, {
+          queue: localConversationWork.queue,
+        });
+        if (!started) {
+          throw new Error("Local child queue received non-invocation work");
+        }
+        return started;
       },
       invocationWorker: createAgentInvocationWorker(agentRunner),
     });
@@ -276,7 +291,7 @@ async function prepareLocalChatRun(
     // The local CLI does not send child results or messages back to the
     // root Conversation, so only the root gets messageAgent here.
     bindMessageAgent: (request) =>
-      request.source.kind === "agent_invocation"
+      request.parentConversationId
         ? undefined
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>

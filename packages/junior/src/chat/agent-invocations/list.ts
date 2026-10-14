@@ -1,6 +1,6 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
-import { juniorAgentInvocations } from "@/db/schema";
+import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import {
   getAgentInvocationIdForResult,
   invocationFromRow,
@@ -23,10 +23,19 @@ function isChildAgentResult(
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
 
+/** Return whether a child's session stopped after its latest agent invocation. */
+export function isChildAgentSessionStopped(
+  latest: AgentInvocation,
+  stoppedAtMs: number | undefined,
+): boolean {
+  return stoppedAtMs !== undefined && stoppedAtMs >= latest.createdAtMs;
+}
+
 /** Return the child state that one child's agent invocations show. */
 function childAgentFromInvocations(
   invocations: readonly AgentInvocation[],
   resultInvocationIds: ReadonlySet<string>,
+  stoppedAtMs: number | undefined,
 ): ChildAgent {
   // `invocations` is newest first. The oldest open agent invocation is the
   // one that runs, so it owns the status.
@@ -38,10 +47,12 @@ function childAgentFromInvocations(
     }
   }
   // A task comes from a parent tool call: spawnAgent or messageAgent. An
-  // agent invocation that gives a grandchild result or message to the child
-  // holds that input, not a task from the parent.
+  // agent invocation that gives a grandchild result or message, or a watch
+  // event, to the child is not a task.
   const tasks = invocations.filter(
-    (invocation) => !resultInvocationIds.has(invocation.invocationId),
+    (invocation) =>
+      invocation.source.kind === "agent_invocation" &&
+      !resultInvocationIds.has(invocation.invocationId),
   );
   const task =
     tasks.find((invocation) => invocation.parentToolCallId) ??
@@ -69,8 +80,9 @@ function childAgentFromInvocations(
     // A `replaced` result means open child work starts a later agent
     // invocation on this child, so the child has not finished. Only a stop
     // skips a result.
-    status:
-      terminal?.parentMailboxStatus === "replaced"
+    status: isChildAgentSessionStopped(latest, stoppedAtMs)
+      ? "stopped"
+      : terminal?.parentMailboxStatus === "replaced"
         ? "pending"
         : terminal?.parentMailboxStatus === "skipped"
           ? "stopped"
@@ -118,9 +130,23 @@ export async function listChildAgents(
   const resultInvocationIds = new Set(
     grandchildren.map((row) => getAgentInvocationIdForResult(row.invocationId)),
   );
-  return [...byChild.values()]
-    .map((invocations) =>
-      childAgentFromInvocations(invocations, resultInvocationIds),
+  const stops = await db
+    .select({
+      conversationId: juniorConversations.conversationId,
+      stoppedAt: juniorConversations.stoppedAt,
+    })
+    .from(juniorConversations)
+    .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
+  const stoppedAtMs = new Map(
+    stops.map((row) => [row.conversationId, row.stoppedAt?.getTime()]),
+  );
+  return [...byChild.entries()]
+    .map(([childConversationId, invocations]) =>
+      childAgentFromInvocations(
+        invocations,
+        resultInvocationIds,
+        stoppedAtMs.get(childConversationId),
+      ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
 }

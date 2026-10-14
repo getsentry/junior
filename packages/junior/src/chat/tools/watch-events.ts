@@ -152,9 +152,6 @@ export function createWatchEventsTool(
           "Slack channel messages can trigger only an event automation in that channel. Use createEventAutomation.",
         );
       }
-      // TODO(subagents): child conversations (`agent:…`) still store watches on
-      // their own id. When subagents matter, store the parent root id or give
-      // children the parent's destination and worker path.
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (
