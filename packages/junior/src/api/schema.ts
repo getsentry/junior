@@ -63,6 +63,8 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
+export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export type {
   AcceptedConversationMessage,
   ArchiveConversationBody,

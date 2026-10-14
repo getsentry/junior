@@ -26,6 +26,7 @@ import {
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
   forkConversationResponseSchema,
+  stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import type { DashboardCoreData } from "../types";
@@ -395,6 +396,49 @@ export function useCancelConversationPendingMessages(conversationId: string) {
   });
 }
 
+/**
+ * Local cache of queued rows that a stop removed. The worker drops them only
+ * when it observes the stop, so the mailbox can still list them for a while.
+ * Inbound ids are unique, so the cache never needs to forget one.
+ */
+function stoppedMessageIdsQueryKey(conversationId: string | undefined) {
+  return ["conversation", conversationId, "stopped-messages"] as const;
+}
+
+/** Stop the active Turn and hide its removed queued rows until polls agree. */
+export function useStopConversationTurn(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationTurnResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSuccess: (result) => {
+      const stopped = result.stoppedInboundMessageIds;
+      if (!stopped.length) return;
+      queryClient.setQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+        (current) => [...(current ?? []), ...stopped],
+      );
+      // A web row keeps its Message id as its inbound id. Drop local sends the
+      // stop removed so they do not wait for a mailbox row that never comes.
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+        (current) =>
+          current?.filter((message) => !stopped.includes(message.messageId)),
+      );
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+    },
+  });
+}
+
 /** Archive or restore one conversation with an immediate reversible cache update. */
 export function useArchiveConversation(
   conversationId: string,
@@ -571,6 +615,18 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
+  const stoppedMessageIds = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache written by useStopConversationTurn.
+    queryFn: async (): Promise<readonly string[]> =>
+      queryClient.getQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+      ) ?? [],
+    queryKey: stoppedMessageIdsQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
   const awaitingMessage = outbox.data.some(
     (message) => message.status !== "failed",
   );
@@ -643,14 +699,23 @@ export function useConversationData(conversationId: string | undefined) {
     undefined,
   );
   const pendingMessages = useMemo(() => {
+    // Hide stopped rows from both sources, or the outbox copy of a stopped
+    // send would look unseen and come back.
+    const stopped = stoppedMessageIds.data;
     const next = mergeConversationMailboxMessages(
-      mailbox?.messages,
-      outbox.data,
+      stopped.length
+        ? mailbox?.messages.filter(
+            (message) => !stopped.includes(message.inboundMessageId),
+          )
+        : mailbox?.messages,
+      stopped.length
+        ? outbox.data.filter((message) => !stopped.includes(message.messageId))
+        : outbox.data,
       pendingMessagesRef.current,
     );
     pendingMessagesRef.current = next;
     return next;
-  }, [outbox.data, mailbox?.messages]);
+  }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detailData &&

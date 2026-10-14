@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { ImagePlus, Send } from "lucide-react";
+import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
@@ -78,6 +78,12 @@ type ConversationComposerProps = {
     images?: InputImage[],
   ): Promise<void>;
   onSubmitStart?: () => void;
+  /**
+   * Stop the active Turn. Present only while a Turn can be stopped. Resolves
+   * with queued text that the stop removed, which returns to the draft.
+   */
+  onStop?: () => Promise<string | undefined>;
+  stopPending?: boolean;
 };
 
 /** Render the dashboard message composer for a new or existing conversation. */
@@ -115,6 +121,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   });
   // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
+  const stoppingRef = useRef(false);
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
   const sendLocked =
@@ -304,6 +311,30 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
   };
 
+  // Put queued text back ahead of anything the reader already typed.
+  const stopTurn = async () => {
+    if (!props.onStop || stoppingRef.current) return;
+    stoppingRef.current = true;
+    let restored: string | undefined;
+    try {
+      restored = await props.onStop();
+    } catch {
+      // The parent owns the stop error message.
+      return;
+    } finally {
+      stoppingRef.current = false;
+    }
+    if (!restored) return;
+    const current = draftRef.current.text;
+    const next: ConversationDraft = {
+      ...draftRef.current,
+      text: current.trim() ? `${restored}\n${current}` : restored,
+    };
+    replaceMessage(next);
+    storeDraft(storageKey, next);
+    textareaRef.current?.focus({ preventScroll: true });
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
       event.key === "Enter" &&
@@ -317,20 +348,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error || imageError ? (
+      {props.error || imageError ? (
         <div
           aria-live="polite"
-          className={
-            !online
-              ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
-              : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-          }
+          className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
         >
-          {!online
-            ? images.length
-              ? "Connect to send. Image drafts stay here until you leave."
-              : "Connect to send. Your draft is saved."
-            : (imageError ?? props.error)}
+          {imageError ?? props.error}
         </div>
       ) : null}
       <form
@@ -451,29 +474,39 @@ export const ConversationComposer = memo(function ConversationComposer(
               </div>
             )}
           </div>
-          <Button
-            aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="rounded-lg !border-0 !bg-cyan-100 font-sans !text-dashboard-text-inverse hover:!bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted"
-            disabled={
-              (!canSend && !images.length) ||
-              !online ||
-              sendLocked ||
-              readingImages
-            }
-            title={
-              !online
-                ? "Connect to send"
-                : sendLocked
-                  ? "Sending message"
-                  : props.submitLabel
-            }
-            type="submit"
-          >
-            <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">
-              {sendLocked ? "Sending…" : props.submitLabel}
-            </span>
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {props.onStop ? (
+              <Button
+                aria-label={props.stopPending ? "Stopping" : "Stop"}
+                className="rounded-lg font-sans"
+                disabled={props.stopPending || !online}
+                onClick={() => void stopTurn()}
+                title="Stop Junior"
+              >
+                <Square aria-hidden="true" fill="currentColor" size={12} />
+                <span className="hidden md:inline">
+                  {props.stopPending ? "Stopping…" : "Stop"}
+                </span>
+              </Button>
+            ) : null}
+            <Button
+              aria-label={sendLocked ? "Sending message" : props.submitLabel}
+              className="rounded-lg !border-0 !bg-cyan-100 font-sans !text-dashboard-text-inverse hover:!bg-cyan-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 disabled:!bg-dashboard-fill-hover disabled:!text-dashboard-text-muted"
+              disabled={
+                (!canSend && !images.length) ||
+                !online ||
+                sendLocked ||
+                readingImages
+              }
+              title={sendLocked ? "Sending message" : props.submitLabel}
+              type="submit"
+            >
+              <Send aria-hidden="true" size={14} />
+              <span className="hidden md:inline">
+                {sendLocked ? "Sending…" : props.submitLabel}
+              </span>
+            </Button>
+          </div>
         </div>
       </form>
     </div>

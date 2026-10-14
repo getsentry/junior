@@ -12,6 +12,7 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  useStopConversationTurn,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationIsResponding } from "./transcript";
@@ -366,6 +367,7 @@ export function ConversationPage(props: {
               // every 2s; a prop would bust footer memo while the reader types.
               pendingGeneratedAtRef={pendingGeneratedAtRef}
               pendingMessages={detail.pendingMessages}
+              stoppable={live}
             />
           ) : undefined
         }
@@ -392,8 +394,13 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** True while the conversation has a Turn that a stop can end. */
+  stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
+  const stopTurn = useStopConversationTurn(props.conversationId);
+  const stopTurnRef = useRef(stopTurn);
+  stopTurnRef.current = stopTurn;
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
@@ -446,6 +453,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!cancelPendingMessagesRef.current.isPending) {
       cancelPendingMessagesRef.current.reset();
     }
+    if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
@@ -470,6 +478,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       cancellableMessageIds.includes(id),
     ),
   );
+
+  const onStop = useCallback(async () => {
+    const result = await stopTurnRef.current.mutateAsync();
+    const restored = result.stoppedMessages.map((message) => message.text);
+    return restored.length ? restored.join("\n") : undefined;
+  }, []);
 
   const onMailboxLayoutChange = useCallback(() => {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
@@ -504,9 +518,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     >
       <ConversationComposer
         draftId={props.conversationId}
+        error={stopTurn.error ? "Could not stop Junior. Try again." : undefined}
         label="Continue this conversation"
         submitLabel="Send"
         onFocus={onComposerFocus}
+        onStop={props.stoppable ? onStop : undefined}
+        stopPending={stopTurn.isPending}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}
       />
