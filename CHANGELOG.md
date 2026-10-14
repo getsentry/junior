@@ -1,4 +1,32 @@
 # Changelog
+## 0.245.0
+
+### New Features ✨
+
+#### Automations
+
+- Run event automations for new Slack channel messages by @sentry-junior in [#2119](https://github.com/getsentry/junior/pull/2119)
+- Limit runs for each event automation by @sentry-junior in [#2117](https://github.com/getsentry/junior/pull/2117)
+
+#### Dashboard
+
+- Show usage and runtime on subagent rows by @sentry-junior in [#2130](https://github.com/getsentry/junior/pull/2130)
+- Show counts on Memories and Subagents tabs by @sentry-junior in [#2125](https://github.com/getsentry/junior/pull/2125)
+
+#### Other
+
+- (google) Read Google Sheets and Slides by @sentry-junior[bot] in [#2131](https://github.com/getsentry/junior/pull/2131)
+
+### Bug Fixes 🐛
+
+- (evals) Start every eval test at the same clock time by @sentry-junior in [#2111](https://github.com/getsentry/junior/pull/2111)
+- (slack) Record steered mentions in the conversation transcript by @sentry-junior in [#2126](https://github.com/getsentry/junior/pull/2126)
+- (subagents) Show child transcripts and the agent tree by @sentry-junior in [#2128](https://github.com/getsentry/junior/pull/2128)
+
+### Internal Changes 🔧
+
+- (review) Keep eval recordings out of PR review by @sentry-junior in [#2127](https://github.com/getsentry/junior/pull/2127)
+
 ## 0.244.0
 
 ### New Features ✨
