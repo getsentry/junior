@@ -2,9 +2,9 @@
  * Google plugin runtime boundary.
  *
  * Junior acts as its own Google Workspace account. A Junior admin connects
- * that account out of band, through the dashboard Admin page or the CLI. Calendar
- * and Docs tools use host-owned egress, and the sandbox gets no Google
- * credential.
+ * that account out of band, through the dashboard Admin page or the CLI. Calendar,
+ * Docs, Sheets, and Slides tools use host-owned egress, and the sandbox gets no
+ * Google credential.
  */
 import {
   defineJuniorPlugin,
@@ -20,7 +20,7 @@ import {
   readGoogleConfig,
 } from "./config";
 import {
-  GOOGLE_API_DOMAIN,
+  GOOGLE_API_DOMAINS,
   googleGrantForEgress,
   issueGoogleCredential,
 } from "./credentials";
@@ -29,10 +29,12 @@ import type { GoogleDb } from "./store";
 import { createCancelCalendarEventTool } from "./tools/cancel-event";
 import { createCreateCalendarEventTool } from "./tools/create-event";
 import { createFindMeetingTimesTool } from "./tools/find-meeting-times";
-import { createListGoogleDocCommentsTool } from "./tools/list-doc-comments";
+import { createListGoogleFileCommentsTool } from "./tools/list-file-comments";
 import { createListCalendarEventsTool } from "./tools/list-events";
 import { createReadGoogleDocTool } from "./tools/read-doc";
-import { createSearchGoogleDocsTool } from "./tools/search-docs";
+import { createReadGoogleSheetTool } from "./tools/read-sheet";
+import { createReadGoogleSlidesTool } from "./tools/read-slides";
+import { createSearchGoogleFilesTool } from "./tools/search-files";
 import { createUpdateCalendarEventTool } from "./tools/update-event";
 
 /** Register Junior's Google Workspace plugin. */
@@ -43,8 +45,8 @@ export function googlePlugin(): PluginRegistration {
       name: "google",
       displayName: "Google Workspace",
       description:
-        "Google Calendar scheduling and Google Docs reading as Junior's own Google Workspace account",
-      domains: [GOOGLE_API_DOMAIN],
+        "Google Calendar scheduling and Google Docs, Sheets, and Slides reading as Junior's own Google Workspace account",
+      domains: GOOGLE_API_DOMAINS,
       envVars: {
         [GOOGLE_CLIENT_ID_ENV]: {},
         [GOOGLE_CLIENT_SECRET_ENV]: {},
@@ -81,9 +83,11 @@ export function googlePlugin(): PluginRegistration {
           createCalendarEvent: createCreateCalendarEventTool(toolContext),
           findMeetingTimes: createFindMeetingTimesTool(toolContext),
           listCalendarEvents: createListCalendarEventsTool(toolContext),
-          listGoogleDocComments: createListGoogleDocCommentsTool(toolContext),
+          listGoogleFileComments: createListGoogleFileCommentsTool(toolContext),
           readGoogleDoc: createReadGoogleDocTool(toolContext),
-          searchGoogleDocs: createSearchGoogleDocsTool(toolContext),
+          readGoogleSheet: createReadGoogleSheetTool(toolContext),
+          readGoogleSlides: createReadGoogleSlidesTool(toolContext),
+          searchGoogleFiles: createSearchGoogleFilesTool(toolContext),
           updateCalendarEvent: createUpdateCalendarEventTool(toolContext),
         };
       },

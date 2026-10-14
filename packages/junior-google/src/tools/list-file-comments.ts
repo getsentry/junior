@@ -4,16 +4,17 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
-  docReferenceSchema,
-  driveFileRequest,
-  parseDocReference,
-  readDocFile,
-} from "./docs";
+  fileReferenceSchema,
+  GOOGLE_FILE_TYPES,
+  googleFileRequest,
+  parseFileReference,
+  readGoogleFile,
+} from "./files";
 import type { GoogleToolContext } from "./shared";
 
 const inputSchema = z
   .object({
-    document: docReferenceSchema,
+    file: fileReferenceSchema("Google Docs, Sheets, or Slides"),
     pageToken: z
       .string()
       .min(1)
@@ -41,19 +42,19 @@ const commentOutputSchema = z.object({
   quotedText: z
     .string()
     .optional()
-    .describe("The Doc text that the comment is attached to."),
+    .describe("The file text that the comment is attached to."),
   replies: z.array(replyOutputSchema),
   resolved: z.boolean(),
 });
 
 const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("listGoogleDocComments"),
+  target: z.literal("listGoogleFileComments"),
   comments: z.array(commentOutputSchema),
-  documentId: z.string(),
+  fileId: z.string(),
   nextPageToken: z
     .string()
     .optional()
-    .describe("Set when the Doc has more comments. Pass it as pageToken."),
+    .describe("Set when the file has more comments. Pass it as pageToken."),
 });
 
 const authorSchema = z
@@ -92,8 +93,8 @@ const commentListSchema = z.object({
 const COMMENT_FIELDS =
   "comments(author/displayName,content,createdTime,id,quotedFileContent/value,resolved,replies(action,author/displayName,content,createdTime)),nextPageToken";
 
-/** List the comments and replies on one Google Doc. */
-export function createListGoogleDocCommentsTool(ctx: GoogleToolContext) {
+/** List the comments and replies on one Google Doc, Sheet, or Slides file. */
+export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -102,17 +103,17 @@ export function createListGoogleDocCommentsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List the comments and replies on one Google Doc, as Junior's own Google account sees them. Each comment gives its author, text, the Doc text it is attached to, and whether it is resolved. Works for Docs shared with that account and Docs shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
+      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as Junior's own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
     inputSchema,
     outputSchema,
     async execute(input) {
-      const doc = parseDocReference(input.document);
+      const ref = parseFileReference(input.file);
       // Check the type first: drive.readonly can also read comments on other
-      // Drive files, such as Sheets.
-      await readDocFile(ctx, doc);
-      const response = await driveFileRequest(ctx, doc, {
+      // Drive files, such as PDFs.
+      await readGoogleFile(ctx, ref, GOOGLE_FILE_TYPES);
+      const response = await googleFileRequest(ctx, ref, {
         operation: "google.drive.comments.list",
-        path: `/drive/v3/files/${doc.fileId}/comments`,
+        path: `/drive/v3/files/${ref.fileId}/comments`,
         query: {
           fields: COMMENT_FIELDS,
           pageSize: "100",
@@ -123,7 +124,7 @@ export function createListGoogleDocCommentsTool(ctx: GoogleToolContext) {
         response.body,
       );
       return {
-        target: "listGoogleDocComments" as const,
+        target: "listGoogleFileComments" as const,
         comments: comments.map((comment) => ({
           ...(comment.author?.displayName
             ? { author: comment.author.displayName }
@@ -148,7 +149,7 @@ export function createListGoogleDocCommentsTool(ctx: GoogleToolContext) {
           })),
           resolved: comment.resolved === true,
         })),
-        documentId: doc.fileId,
+        fileId: ref.fileId,
         ...(nextPageToken ? { nextPageToken } : undefined),
       };
     },

@@ -20,7 +20,16 @@ import {
   type GoogleDb,
 } from "./store";
 
+/** Calendar and Drive API host. */
 export const GOOGLE_API_DOMAIN = "www.googleapis.com";
+export const GOOGLE_SHEETS_API_DOMAIN = "sheets.googleapis.com";
+export const GOOGLE_SLIDES_API_DOMAIN = "slides.googleapis.com";
+/** Every host that receives Junior's Google access token. */
+export const GOOGLE_API_DOMAINS = [
+  GOOGLE_API_DOMAIN,
+  GOOGLE_SHEETS_API_DOMAIN,
+  GOOGLE_SLIDES_API_DOMAIN,
+];
 const GRANT_NAME = "account";
 // Renew leases a little before Google's access token expires.
 const LEASE_SAFETY_MS = 60_000;
@@ -29,57 +38,85 @@ const LEASE_SAFETY_MS = 60_000;
 export const GOOGLE_OPERATIONS = {
   "google.calendar.event.create": {
     access: "write",
+    host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/calendars\/primary\/events$/,
   },
   "google.calendar.event.delete": {
     access: "write",
+    host: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.event.get": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.event.update": {
     access: "write",
+    host: GOOGLE_API_DOMAIN,
     method: "PATCH",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
   },
   "google.calendar.events.list": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/calendar\/v3\/calendars\/[^/]+\/events$/,
   },
   "google.calendar.freebusy.query": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
   "google.drive.comments.list": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/comments$/,
   },
   "google.drive.file.export": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/export$/,
   },
   "google.drive.file.get": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
   },
   "google.drive.files.list": {
     access: "read",
+    host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files$/,
   },
+  "google.sheets.spreadsheet.get": {
+    access: "read",
+    host: GOOGLE_SHEETS_API_DOMAIN,
+    method: "GET",
+    path: /^\/v4\/spreadsheets\/[A-Za-z0-9_-]+$/,
+  },
+  "google.sheets.values.batchGet": {
+    access: "read",
+    host: GOOGLE_SHEETS_API_DOMAIN,
+    method: "GET",
+    path: /^\/v4\/spreadsheets\/[A-Za-z0-9_-]+\/values:batchGet$/,
+  },
+  "google.slides.presentation.get": {
+    access: "read",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+$/,
+  },
 } as const satisfies Record<
   string,
-  { access: "read" | "write"; method: string; path: RegExp }
+  { access: "read" | "write"; host: string; method: string; path: RegExp }
 >;
 
 export type GoogleOperation = keyof typeof GOOGLE_OPERATIONS;
@@ -97,7 +134,7 @@ export function googleGrantForEgress(ctx: EgressHookContext): PluginGrant {
   }
   const url = new URL(ctx.request.url);
   if (
-    url.hostname !== GOOGLE_API_DOMAIN ||
+    url.hostname !== rule.host ||
     ctx.request.method.toUpperCase() !== rule.method ||
     !rule.path.test(url.pathname)
   ) {
@@ -156,12 +193,10 @@ export async function issueGoogleCredential(
     lease: {
       account: { id: config.accountEmail, label: config.accountEmail },
       expiresAt: new Date(token.expiresAtMs - LEASE_SAFETY_MS).toISOString(),
-      headerTransforms: [
-        {
-          domain: GOOGLE_API_DOMAIN,
-          headers: { Authorization: `Bearer ${token.accessToken}` },
-        },
-      ],
+      headerTransforms: GOOGLE_API_DOMAINS.map((domain) => ({
+        domain,
+        headers: { Authorization: `Bearer ${token.accessToken}` },
+      })),
     },
   };
 }

@@ -3,7 +3,11 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { GOOGLE_DOC_MIME_TYPE } from "./docs";
+import {
+  GOOGLE_FILE_MIME_TYPES,
+  GOOGLE_FILE_TYPES,
+  googleFileType,
+} from "./files";
 import {
   googleApiError,
   googleApiRequest,
@@ -17,25 +21,33 @@ const inputSchema = z
       .trim()
       .min(1)
       .max(500)
-      .describe("Words to find in the Doc title or text."),
+      .describe("Words to find in the file title or text."),
+    types: z
+      .array(z.enum(GOOGLE_FILE_TYPES))
+      .min(1)
+      .optional()
+      .describe(
+        "File types to find: document (Docs), spreadsheet (Sheets), presentation (Slides). Omit to find all three.",
+      ),
     maxResults: z.number().int().min(1).max(50).default(10),
   })
   .strict();
 
 const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("searchGoogleDocs"),
-  documents: z.array(
+  target: z.literal("searchGoogleFiles"),
+  files: z.array(
     z.object({
-      documentId: z.string(),
+      fileId: z.string(),
       modifiedTime: z.string().optional(),
       title: z.string(),
+      type: z.enum(GOOGLE_FILE_TYPES),
       url: z.string().optional(),
     }),
   ),
   truncated: z
     .boolean()
     .describe(
-      "True when more Docs match, or Google did not search every Drive.",
+      "True when more files match, or Google did not search every Drive.",
     ),
 });
 
@@ -44,6 +56,7 @@ const fileListSchema = z.object({
     .array(
       z.object({
         id: z.string(),
+        mimeType: z.string(),
         modifiedTime: z.string().optional(),
         name: z.string(),
         webViewLink: z.string().optional(),
@@ -59,8 +72,8 @@ function driveQueryString(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
-/** Find Google Docs that Junior's account can open, by title or text. */
-export function createSearchGoogleDocsTool(ctx: GoogleToolContext) {
+/** Find Docs, Sheets, and Slides that Junior's account can open. */
+export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -69,20 +82,23 @@ export function createSearchGoogleDocsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs shared with Junior's own Google account, by words in the title or text. Docs that are only shared by public link are not found; ask for their link and use readGoogleDoc instead. Returns document ids for readGoogleDoc and listGoogleDocComments.",
+      "Find Google Docs, Sheets, and Slides shared with Junior's own Google account, by words in the title or text. Files that are only shared by public link are not found; ask for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {
+      const mimeTypes = (input.types ?? GOOGLE_FILE_TYPES)
+        .map((type) => `mimeType = '${GOOGLE_FILE_MIME_TYPES[type]}'`)
+        .join(" or ");
       const response = await googleApiRequest(ctx, {
         operation: "google.drive.files.list",
         path: "/drive/v3/files",
         query: {
           corpora: "allDrives",
           fields:
-            "files(id,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
+            "files(id,mimeType,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
           includeItemsFromAllDrives: "true",
           pageSize: String(input.maxResults),
-          q: `mimeType = '${GOOGLE_DOC_MIME_TYPE}' and trashed = false and fullText contains ${driveQueryString(input.query)}`,
+          q: `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)}`,
           supportsAllDrives: "true",
         },
       });
@@ -93,15 +109,23 @@ export function createSearchGoogleDocsTool(ctx: GoogleToolContext) {
         response.body,
       );
       return {
-        target: "searchGoogleDocs" as const,
-        documents: files.map((file) => ({
-          documentId: file.id,
-          ...(file.modifiedTime
-            ? { modifiedTime: file.modifiedTime }
-            : undefined),
-          title: file.name,
-          ...(file.webViewLink ? { url: file.webViewLink } : undefined),
-        })),
+        target: "searchGoogleFiles" as const,
+        files: files.flatMap((file) => {
+          const type = googleFileType(file.mimeType);
+          return type
+            ? [
+                {
+                  fileId: file.id,
+                  ...(file.modifiedTime
+                    ? { modifiedTime: file.modifiedTime }
+                    : undefined),
+                  title: file.name,
+                  type,
+                  ...(file.webViewLink ? { url: file.webViewLink } : undefined),
+                },
+              ]
+            : [];
+        }),
         truncated: nextPageToken !== undefined || incompleteSearch === true,
       };
     },

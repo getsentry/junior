@@ -6,11 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { emailDomain } from "../config";
-import {
-  GOOGLE_API_DOMAIN,
-  GOOGLE_OPERATIONS,
-  type GoogleOperation,
-} from "../credentials";
+import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
 
 /** Runtime capabilities the Google tools use. */
 export interface GoogleToolContext {
@@ -111,18 +107,22 @@ export async function googleApiRequest(
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
-    query?: Record<string, string>;
+    /** A list value repeats the parameter, as Sheets `ranges` needs. */
+    query?: Record<string, string | string[]>;
   },
 ): Promise<{ body: unknown; status: number }> {
-  const url = new URL(`https://${GOOGLE_API_DOMAIN}${input.path}`);
+  const rule = GOOGLE_OPERATIONS[input.operation];
+  const url = new URL(`https://${rule.host}${input.path}`);
   for (const [key, value] of Object.entries(input.query ?? {})) {
-    url.searchParams.set(key, value);
+    for (const item of [value].flat()) {
+      url.searchParams.append(key, item);
+    }
   }
   const response = await ctx.egress.fetch({
     operation: input.operation,
     provider: "google",
     request: new Request(url, {
-      method: GOOGLE_OPERATIONS[input.operation].method,
+      method: rule.method,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -154,6 +154,15 @@ export function googleApiError(
   ) {
     return new Error(
       `Junior's Google account does not have the permission that ${operation} needs. A Junior admin must reconnect it on the dashboard Admin page or with \`junior google connect\`.`,
+    );
+  }
+  // Each Google API must be enabled in the Cloud project of the OAuth client.
+  if (
+    response.status === 403 &&
+    error?.details?.some((detail) => detail.reason === "SERVICE_DISABLED")
+  ) {
+    return new Error(
+      `The Google API that ${operation} needs is not enabled for Junior's Google Cloud project. A Junior admin must enable it.`,
     );
   }
   const detail = error?.message;
