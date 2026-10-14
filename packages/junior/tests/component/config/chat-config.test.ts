@@ -531,6 +531,11 @@ describe("chat config", () => {
     expect(botConfig.maxConsecutiveAutomatedTurns).toBe(25);
   });
 
+  it("sets max event automation runs per hour from core config", async () => {
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxEventAutomationRunsPerHour).toBe(10);
+  });
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();

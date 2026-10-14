@@ -75,7 +75,11 @@ describe("createApp profiles", () => {
       defaultProfile: "gpt-5",
       profiles: { "gpt-5": "openai/gpt-5.6-sol" },
       fastModelId: "anthropic/claude-haiku-4.5",
-      limits: { contextWindowTokens: 2_000, maxToolCallsPerTurn: 3 },
+      limits: {
+        contextWindowTokens: 2_000,
+        maxEventAutomationRunsPerHour: 2,
+        maxToolCallsPerTurn: 3,
+      },
       slack: {
         completedReactionEmoji: "jr-done",
         crossActorMidRunMode: "steer",
@@ -86,6 +90,7 @@ describe("createApp profiles", () => {
       contextWindowTokens: 2_000,
       crossActorMidRunMode: "steer",
       defaultProfile: "gpt-5",
+      maxEventAutomationRunsPerHour: 2,
       maxToolCallsPerTurn: 3,
     });
 
@@ -96,6 +101,8 @@ describe("createApp profiles", () => {
       crossActorMidRunMode: originalBotConfig.crossActorMidRunMode,
       defaultProfile: originalBotConfig.defaultProfile,
       fastModelId: originalBotConfig.fastModelId,
+      maxEventAutomationRunsPerHour:
+        originalBotConfig.maxEventAutomationRunsPerHour,
       maxToolCallsPerTurn: originalBotConfig.maxToolCallsPerTurn,
       profiles: originalBotConfig.profiles,
     });

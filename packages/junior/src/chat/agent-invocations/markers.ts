@@ -25,9 +25,18 @@ export async function recordSubagentStarted(
         subagentInvocationId: invocation.invocationId,
         subagentKind: SUBAGENT_KIND,
         childConversationId: invocation.childConversationId,
-        ...(invocation.parentToolCallId
-          ? { parentToolCallId: invocation.parentToolCallId }
+        ...(invocation.agentName
+          ? { agentName: invocation.agentName }
           : undefined),
+        // Only a `spawnAgent` call has a task. An agent invocation that
+        // receives a nested result has another child's output as its input.
+        ...(invocation.parentToolCallId
+          ? {
+              parentToolCallId: invocation.parentToolCallId,
+              task: invocation.input,
+            }
+          : undefined),
+        ...(invocation.title ? { title: invocation.title } : undefined),
         ...(invocation.reasoningLevel
           ? { reasoningLevel: invocation.reasoningLevel }
           : undefined),

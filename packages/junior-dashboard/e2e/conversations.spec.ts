@@ -564,11 +564,14 @@ test("inspects and copies a child agent transcript", async ({
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
-  const openChild = page.getByRole("button", {
-    name: "Open agent transcript",
+  const planner = page.getByRole("button", {
+    name: "Open planner transcript",
   });
-  await expect(openChild).toHaveCount(2);
-  await expect(openChild.last()).toContainText("blocked");
+  const reviewer = page.getByRole("button", {
+    name: "Open reviewer transcript",
+  });
+  await expect(planner).toContainText("Review the dashboard plan");
+  await expect(reviewer).toContainText("blocked");
   await screenshot(page, "conversation-child-agents");
 
   // The Details drawer lists child agents with the runtime status.
@@ -590,11 +593,13 @@ test("inspects and copies a child agent transcript", async ({
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
 
-  await openChild.first().click();
+  await planner.click();
 
-  const drawer = page.getByRole("dialog", { name: "Advisor review" });
+  const drawer = page.getByRole("dialog", {
+    name: "Review the dashboard plan",
+  });
   await expect(
-    drawer.getByRole("heading", { name: "Advisor review" }),
+    drawer.getByRole("heading", { name: "Review the dashboard plan" }),
   ).toBeVisible();
   await screenshot(page, "conversation-child-agent-drawer");
   await expect(

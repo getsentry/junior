@@ -18,6 +18,7 @@ const statusTone: Record<ConversationChildAgent["status"], StatusChipTone> = {
   paused: "info",
   pending: "neutral",
   running: "info",
+  stopped: "neutral",
 };
 
 /** Load and show the child agents of one Conversation with runtime status. */
@@ -83,6 +84,11 @@ export function ConversationChildAgents(props: {
               {agent.status}
             </StatusChip>
           </div>
+          {agent.title ? (
+            <p className="m-0 break-words text-sm font-semibold text-dashboard-text">
+              {agent.title}
+            </p>
+          ) : null}
           {agent.task ? (
             <p className="m-0 line-clamp-4 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text">
               {agent.task}

@@ -94,7 +94,7 @@ export function eventLogSummary(data: ConversationReportEventData): string {
     case "handoff":
       return "Handoff · New configuration applied";
     case "subagent":
-      return `${data.subagentKind} · ${data.status} · ${data.childConversationId}`;
+      return `${data.agentName ?? data.subagentKind} · ${data.status} · ${data.childConversationId}`;
   }
 }
 

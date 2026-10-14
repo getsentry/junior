@@ -36,6 +36,13 @@ const MAX_TOOL_CALLS_PER_TURN = 250;
  * headroom to avoid pausing on legitimate longer-running automation.
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
+/**
+ * Max runs one Event automation can start in a rolling hour. Each run is a
+ * full agent turn, and Event automations skip the consecutive automated-turn
+ * limit. Kept low so a broad trigger, such as every message in a channel,
+ * blocks quickly instead of starting a turn for each Event.
+ */
+const MAX_EVENT_AUTOMATION_RUNS_PER_HOUR = 10;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -95,6 +102,7 @@ export interface BotConfig {
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
   maxConsecutiveAutomatedTurns: number;
+  maxEventAutomationRunsPerHour: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -505,6 +513,7 @@ function readBotConfig(
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
+    maxEventAutomationRunsPerHour: MAX_EVENT_AUTOMATION_RUNS_PER_HOUR,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
@@ -624,6 +633,8 @@ export interface RuntimeLimits {
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
   maxConsecutiveAutomatedTurns?: number;
+  /** Runs one Event automation can start in a rolling hour. */
+  maxEventAutomationRunsPerHour?: number;
   /** Run slices one turn may use. */
   maxSlicesPerTurn?: number;
   /** Tool calls one turn may make. */
@@ -716,6 +727,12 @@ export function setRuntimeLimits(limits: RuntimeLimits | undefined): void {
     bot.maxConsecutiveAutomatedTurns = requirePositiveLimit(
       "maxConsecutiveAutomatedTurns",
       limits.maxConsecutiveAutomatedTurns,
+    );
+  }
+  if (limits?.maxEventAutomationRunsPerHour !== undefined) {
+    bot.maxEventAutomationRunsPerHour = requirePositiveLimit(
+      "maxEventAutomationRunsPerHour",
+      limits.maxEventAutomationRunsPerHour,
     );
   }
   if (limits?.maxSlicesPerTurn !== undefined) {
