@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentSteeringMessage } from "@/chat/agent/types";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
   getAgentInvocation,
+  getAgentInvocationMessageId,
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
@@ -220,6 +223,129 @@ describe("agent invocation worker", () => {
       ).resolves.toMatchObject({
         parentMailboxStatus: "skipped",
         status: "stopped",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("lets a running child read a parent message as a steering message", async () => {
+    const fixture = await prepareParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...INVOCATION_INPUT,
+        agentName: "researcher",
+        idempotencyKey: "steer-task",
+      });
+      await markAgentInvocationRunning(created.invocationId);
+      const { invocation: message, queued } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-message",
+          input: "Also check the retry path.",
+          parentToolCallId: "call-steer-message",
+        });
+      expect(queued).toBe(true);
+
+      // The runner drains steering messages at a step boundary, as the
+      // agent does before its next model call.
+      const steered: AgentSteeringMessage[][] = [];
+      const worker = createAgentInvocationWorker({
+        run: async (run) => {
+          await run.durability?.drainSteeringMessages?.(async (messages) => {
+            steered.push(messages);
+          });
+          return {
+            status: "completed" as const,
+            result: {
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+              text: "Checked both paths.",
+            },
+          };
+        },
+      });
+      const acknowledged: Array<readonly string[] | void> = [];
+      const ownMessage = buildAgentInvocationInboundMessage(created);
+      const context = {
+        attempt: {
+          ack: vi.fn(async () => {}),
+          conversationId: created.childConversationId,
+          // The parent message keeps `defer` delivery, so the worker offers
+          // it only to a drain that asks for deferred messages.
+          drain: vi.fn(
+            async (
+              handle: (
+                messages: ReturnType<
+                  typeof buildAgentInvocationInboundMessage
+                >[],
+              ) => Promise<readonly string[] | void>,
+            ) => {
+              acknowledged.push(
+                await handle([
+                  ownMessage,
+                  buildAgentInvocationInboundMessage(message),
+                ]),
+              );
+              return [];
+            },
+          ),
+          isFinalAttempt: false,
+          messages: [ownMessage],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        shouldYield: () => false,
+      } satisfies ConversationWorkerContext;
+
+      await expect(worker(context, created.invocationId)).resolves.toEqual({
+        status: "completed",
+      });
+
+      expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
+        deferred: true,
+      });
+      expect(steered).toEqual([
+        [expect.objectContaining({ text: "Also check the retry path." })],
+      ]);
+      // Only the parent message is acknowledged. The running agent
+      // invocation acknowledges its own input when the Turn commits it.
+      expect(acknowledged).toEqual([
+        [getAgentInvocationMessageId(message.invocationId)],
+      ]);
+      // The running agent invocation reports for both.
+      await expect(
+        getAgentInvocation(message.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "steered",
+        status: "completed",
+      });
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "pending",
+        result: "Checked both paths.",
+        status: "completed",
+      });
+      await expect(
+        createListAgentsTool(PARENT_CONVERSATION_ID).execute!({}, {}),
+      ).resolves.toMatchObject({
+        agents: [
+          {
+            last_result: "completed",
+            name: "researcher",
+            status: "idle",
+            task: "Also check the retry path.",
+          },
+        ],
       });
     } finally {
       await fixture.close();
