@@ -23,7 +23,7 @@ import { transcriptEmptyClass } from "./transcriptStyles";
 /** One child Conversation to show, with what its parent already knows. */
 export interface SubagentTranscriptTarget {
   conversationId: string;
-  /** Agent name or task title, shown before the child loads. */
+  /** Task title or agent name, shown before the child loads. */
   label?: string;
   /** Child status from the parent, which knows how the child ended. */
   status?: string;

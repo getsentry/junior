@@ -1918,7 +1918,7 @@ function mockAgentTree(
     )?.agents.find((child) => child.conversationId === item.conversationId);
     return {
       conversationId: item.conversationId,
-      label: agent?.name ?? agent?.title ?? "Subagent",
+      label: agent?.title ?? agent?.name ?? "Subagent",
     };
   });
 }

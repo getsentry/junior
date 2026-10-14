@@ -141,7 +141,7 @@ describe("conversation child agents API", () => {
       conversationDetailReportSchema.parse(await response.json()).agentTree,
     ).toEqual([
       { conversationId: slackParentConversationId, label: root.displayTitle },
-      { conversationId: reviewer.childConversationId, label: "reviewer" },
+      { conversationId: reviewer.childConversationId, label: "Plan review" },
       { conversationId: helper.childConversationId, label: "Claim check" },
     ]);
   });

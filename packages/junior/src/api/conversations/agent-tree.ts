@@ -70,7 +70,7 @@ export async function readConversationAgentTree(
       const agent = await getChildAgentLabel(id);
       return {
         conversationId: id,
-        label: agent?.agentName ?? agent?.title ?? CHILD_LABEL,
+        label: agent?.title ?? agent?.agentName ?? CHILD_LABEL,
       };
     }),
   );
