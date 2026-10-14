@@ -82,27 +82,32 @@ export async function admitEventAutomationRun(args: {
   });
   const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
   const values = await state.getList(runListKey(args.automationId));
+  const entries = values.flatMap((value) => {
+    const entry = runEntrySchema.safeParse(value);
+    return entry.success ? [entry.data] : [];
+  });
+  // Only runs after the last reset count. A retry finds its entry there too,
+  // so a resume or revive also clears the answer for an earlier delivery.
+  let lastReset = -1;
+  entries.forEach((entry, index) => {
+    if ("reset" in entry) lastReset = index;
+  });
   // A full list whose oldest entry is from this hour may have dropped runs
   // from this hour. Then the hour is full, until a reset entry.
-  const oldest = runEntrySchema.safeParse(values[0]);
-  let full =
+  const oldest = entries[0];
+  const full =
+    lastReset === -1 &&
     values.length >= runListMaxLength() &&
-    oldest.success &&
-    "atMs" in oldest.data &&
-    oldest.data.atMs > windowStartMs;
+    oldest !== undefined &&
+    "atMs" in oldest &&
+    oldest.atMs > windowStartMs;
   const runKeys = new Set<string>();
-  for (const value of values) {
-    const entry = runEntrySchema.safeParse(value);
-    if (!entry.success) continue;
-    if ("reset" in entry.data) {
-      runKeys.clear();
-      full = false;
-      continue;
+  for (const entry of entries.slice(lastReset + 1)) {
+    if ("reset" in entry) continue;
+    if (entry.atMs > windowStartMs) {
+      runKeys.add(entry.id);
     }
-    if (entry.data.atMs > windowStartMs) {
-      runKeys.add(entry.data.id);
-    }
-    if (entry.data.id === args.runKey) {
+    if (entry.id === args.runKey) {
       return full || runKeys.size > botConfig.maxEventAutomationRunsPerHour
         ? "limited"
         : "allowed";
