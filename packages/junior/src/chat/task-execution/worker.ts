@@ -490,7 +490,8 @@ async function processConversationWorkInContext(
       handle: async (messages) => {
         // Pending work that was not selected when the attempt started belongs
         // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain.
+        // interrupts remain eligible for this attempt's drain. A `deferred`
+        // drain scopes the messages itself.
         const candidates = drainOptions?.deferred
           ? messages
           : messages.filter(

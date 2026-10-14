@@ -143,20 +143,15 @@ valid targets.
   now (`delivery: "started"`). If the child has open work, the agent
   invocation waits in the child mailbox and runs after that work
   (`delivery: "queued"`). The idempotency key comes from the parent tool call.
-- **Steering a running child.** A running child reads queued parent messages
-  as steering messages at its next step boundary, before its next model call.
-  A running tool is never interrupted. The worker drains the child mailbox
-  with `deferred: true`, so the messages keep `defer` mailbox delivery and
-  never start an attempt ahead of a paused child. The running Turn saves each
-  message first. Then its agent invocation ends as `completed` with
-  `parentMailboxStatus: "steered"`, and the mailbox entry is acknowledged. If a
-  drain fails after the save, the next drain finds the message in the Turn
-  checkpoint and only marks it, so the child never reads it twice. The
-  running agent invocation reports for both. A message with another Actor or
-  other credentials cannot join the running Turn. It and every later parent
-  message wait. When the child finishes without another model call, the
-  message runs after that work as before: the earlier work ends as `replaced`,
-  so the parent gets one result for both.
+- **Steering a running child.** A running child reads a queued parent message
+  as a steering message before its next model call. A running tool is never
+  interrupted. The message keeps `defer` mailbox delivery, so it never starts
+  an attempt ahead of a paused child. The Turn saves the message, and then its
+  agent invocation ends as `completed` with `parentMailboxStatus: "steered"`.
+  The running agent invocation reports for both. A message joins only with the
+  Actor and credentials of the running Turn. Otherwise it and every later
+  parent message wait. If the child finishes without another model call, the
+  message runs after that work, and the earlier work ends as `replaced`.
 - **Child to parent.** The message wakes the parent as an Event with
   namespace `junior` and type `agent.message`. It uses the same mailbox path
   and Actor rules as a child result: the Actor comes from the sender's agent

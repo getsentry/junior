@@ -207,24 +207,6 @@ export async function resolveAgentInvocationId(
   return latest?.status === "stopped" ? latest.invocationId : undefined;
 }
 
-/**
- * Return whether a pending parent task or message can join the running agent
- * invocation of the same child. It must run with the same Actor and
- * credentials, because the running Turn keeps its own.
- */
-function canSteerRunningInvocation(
-  running: AgentInvocation,
-  candidate: AgentInvocation,
-): boolean {
-  return (
-    candidate.status === "pending" &&
-    candidate.childConversationId === running.childConversationId &&
-    candidate.parentConversationId === running.parentConversationId &&
-    sameActorIdentity(candidate.actor, running.actor) &&
-    isDeepStrictEqual(candidate.credentialContext, running.credentialContext)
-  );
-}
-
 /** Return whether a saved message is the steering message of one agent invocation. */
 function isSteeringMessageFor(
   message: PiMessage,
@@ -242,94 +224,99 @@ function isSteeringMessageFor(
 }
 
 /**
- * Give pending parent messages to the running agent invocation of a child.
- * The child reads each one as a steering message at its next step boundary.
- * Each one then ends as `steered`, and the running agent invocation reports
- * for all of them. A message with another Actor or other credentials stops the
- * scan, so it and every later message wait for the current work.
+ * Give queued parent messages to the running agent invocation of a child as
+ * steering messages. A message joins only with the Actor and credentials of
+ * the running Turn. The first message that does not match stops the scan, so
+ * it and every later message wait for the current work. Each message that
+ * joins ends as `steered`, and the running agent invocation reports for it.
  */
 function createAgentMessageSteeringDrain(
   context: ConversationWorkerContext,
   running: AgentInvocation,
 ) {
+  const turnId = getAgentInvocationTurnId(running.invocationId);
   return async (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ): Promise<AgentSteeringMessage[]> => {
     const accepted: AgentSteeringMessage[] = [];
     await context.attempt.drain(
       async (pending) => {
-        const steered: AgentInvocation[] = [];
-        // A retry can find a message that an earlier attempt already read.
-        const alreadyRead: string[] = [];
+        const readIds: string[] = [];
+        const joining: AgentInvocation[] = [];
         for (const message of pending) {
           const metadata = agentInvocationMailboxMetadataSchema.safeParse(
             message.input.metadata,
           );
-          if (
-            !metadata.success ||
-            metadata.data.agentInvocationId === running.invocationId
-          ) {
+          if (!metadata.success) {
             continue;
           }
           const candidate = await getAgentInvocation(
             metadata.data.agentInvocationId,
           );
           // Only a parent task or message steers. A grandchild result or a
-          // watch event starts its own agent invocation later.
-          if (!candidate?.parentToolCallId) {
+          // watch event starts its own agent invocation.
+          if (
+            !candidate?.parentToolCallId ||
+            candidate.invocationId === running.invocationId
+          ) {
             continue;
           }
           if (isTerminalAgentInvocation(candidate)) {
+            // An earlier drain marked this message but did not acknowledge it.
             if (candidate.parentMailboxStatus === "steered") {
-              alreadyRead.push(message.inboundMessageId);
+              readIds.push(message.inboundMessageId);
             }
             continue;
           }
-          if (!canSteerRunningInvocation(running, candidate)) {
+          if (
+            !sameActorIdentity(candidate.actor, running.actor) ||
+            !isDeepStrictEqual(
+              candidate.credentialContext,
+              running.credentialContext,
+            )
+          ) {
             break;
           }
-          steered.push(candidate);
+          joining.push(candidate);
+          readIds.push(message.inboundMessageId);
         }
-        if (steered.length > 0) {
-          // The running Turn saves the messages before they are marked read.
-          // If marking failed after an earlier save, the Turn checkpoint
-          // already has the message, so only mark it now.
-          const saved = await getTurnRecord(
-            running.childConversationId,
-            getAgentInvocationTurnId(running.invocationId),
-          );
-          const unread = steered.filter(
+        if (joining.length === 0) {
+          return readIds;
+        }
+        // An earlier drain can save a message in the Turn and then fail
+        // before it marks the agent invocation. Do not give it to the Turn
+        // again.
+        const saved =
+          (await getTurnRecord(running.childConversationId, turnId))
+            ?.piMessages ?? [];
+        const messages = joining
+          .filter(
             (candidate) =>
-              !saved?.piMessages.some((message) =>
+              !saved.some((message) =>
                 isSteeringMessageFor(message, candidate),
               ),
-          );
-          const messages = unread.map(
+          )
+          .map(
             (candidate): AgentSteeringMessage => ({
               provenance: instructionProvenanceFor(candidate.actor),
               text: candidate.input,
               timestampMs: candidate.createdAtMs,
             }),
           );
-          if (messages.length > 0) {
-            await accept(messages);
-          }
-          for (const candidate of steered) {
-            const terminal = await markAgentInvocationSteered(
-              candidate.invocationId,
-            );
-            if (terminal && isTerminalAgentInvocation(terminal)) {
-              await recordSubagentEnded(terminal);
-            }
-          }
+        // The Turn saves the messages before they are marked.
+        if (messages.length > 0) {
+          await accept(messages);
           accepted.push(...messages);
         }
-        return [
-          ...alreadyRead,
-          ...steered.map((candidate) =>
-            getAgentInvocationMessageId(candidate.invocationId),
-          ),
-        ];
+        for (const candidate of joining) {
+          const terminal = await markAgentInvocationSteered(
+            candidate.invocationId,
+          );
+          if (terminal && isTerminalAgentInvocation(terminal)) {
+            await recordSubagentEnded(terminal);
+          }
+        }
+        return readIds;
       },
       { deferred: true },
     );

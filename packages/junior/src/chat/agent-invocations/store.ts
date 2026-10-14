@@ -945,7 +945,6 @@ export async function markAgentInvocationSteered(
     .set({
       status: "completed",
       result: "",
-      errorMessage: null,
       parentMailboxStatus: "steered",
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),

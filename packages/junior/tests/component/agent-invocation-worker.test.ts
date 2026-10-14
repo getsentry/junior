@@ -21,7 +21,10 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import type {
+  ConversationWorkerContext,
+  InboxAttempt,
+} from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
@@ -275,8 +278,8 @@ describe("agent invocation worker", () => {
         surface: "internal",
       });
 
-      // The runner drains steering messages at a step boundary, as the
-      // agent does before its next model call.
+      // The runner drains steering messages, as the agent does before its
+      // next model call.
       const steered: AgentSteeringMessage[][] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
@@ -306,26 +309,16 @@ describe("agent invocation worker", () => {
         attempt: {
           ack: vi.fn(async () => {}),
           conversationId: created.childConversationId,
-          // The parent message keeps `defer` delivery, so the worker offers
-          // it only to a drain that asks for deferred messages.
-          drain: vi.fn(
-            async (
-              handle: (
-                messages: ReturnType<
-                  typeof buildAgentInvocationInboundMessage
-                >[],
-              ) => Promise<readonly string[] | void>,
-            ) => {
-              acknowledged.push(
-                await handle([
-                  ownMessage,
-                  buildAgentInvocationInboundMessage(message),
-                  buildAgentInvocationInboundMessage(savedMessage),
-                ]),
-              );
-              return [];
-            },
-          ),
+          drain: vi.fn(async (handle: Parameters<InboxAttempt["drain"]>[0]) => {
+            acknowledged.push(
+              await handle([
+                ownMessage,
+                buildAgentInvocationInboundMessage(message),
+                buildAgentInvocationInboundMessage(savedMessage),
+              ]),
+            );
+            return [];
+          }),
           isFinalAttempt: false,
           messages: [ownMessage],
         },
@@ -344,7 +337,7 @@ describe("agent invocation worker", () => {
       expect(steered).toEqual([
         [expect.objectContaining({ text: "Also check the retry path." })],
       ]);
-      // The saved message is not read twice. Only the parent messages are
+      // The Turn reads the saved message only once. Both parent messages are
       // acknowledged. The running agent invocation acknowledges its own input
       // when the Turn commits it.
       expect(acknowledged).toEqual([
@@ -353,16 +346,15 @@ describe("agent invocation worker", () => {
           getAgentInvocationMessageId(savedMessage.invocationId),
         ],
       ]);
-      await expect(
-        getAgentInvocation(savedMessage.invocationId),
-      ).resolves.toMatchObject({ parentMailboxStatus: "steered" });
-      // The running agent invocation reports for both.
-      await expect(
-        getAgentInvocation(message.invocationId),
-      ).resolves.toMatchObject({
-        parentMailboxStatus: "steered",
-        status: "completed",
-      });
+      for (const steeredMessage of [message, savedMessage]) {
+        await expect(
+          getAgentInvocation(steeredMessage.invocationId),
+        ).resolves.toMatchObject({
+          parentMailboxStatus: "steered",
+          status: "completed",
+        });
+      }
+      // The running agent invocation reports for all of them.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
