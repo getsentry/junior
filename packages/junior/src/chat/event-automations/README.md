@@ -51,11 +51,12 @@ window is fixed. The limit applies to one Automation, not to its trigger or
 namespace. Another Automation on the same trigger keeps its own count. Event
 automations do not use the consecutive automated-turn limit, so this limit is
 what stops a noisy trigger from starting a full agent Turn for every Event.
-Ingest counts a run before dispatch. Each run appends one entry with its own id
-to a short list in the state adapter. Then it counts the entries from the last
-hour up to its own entry. The append is atomic, so the list order decides which
-runs fit when Events arrive at the same moment. No lock is needed. A provider retry can count again, but the dispatch idempotency key still
-stops a second run. When the hour is full, ingest skips the dispatch and blocks
+Ingest counts a run before dispatch. Each run appends one entry with its
+dispatch idempotency key to a short list in the state adapter. Then it counts
+the keys from the last hour up to the first entry with its own key. The append
+is atomic, so the list order decides which runs fit when Events arrive at the
+same moment. No lock is needed. A provider retry has the same key, so it gets
+the same answer and does not count again. When the hour is full, ingest skips the dispatch and blocks
 the Automation with a reason, and its creator gets the blocked notice. Each
 block also captures one Sentry issue event with the fingerprint
 `event_automation.run_limit.blocked` and the `app.task.id` of the Automation.

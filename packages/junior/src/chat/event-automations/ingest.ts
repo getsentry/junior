@@ -109,6 +109,7 @@ export async function ingestEventAutomations(
       const admission = await admitEventAutomationRun({
         automationId: task.id,
         nowMs,
+        runKey: idempotencyKey,
       });
       if (admission === "limited") {
         const reason = eventAutomationRunLimitReason();

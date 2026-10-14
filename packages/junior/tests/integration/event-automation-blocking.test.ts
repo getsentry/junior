@@ -174,6 +174,10 @@ describe("event automation blocking", () => {
 
     const firstHourMs = Date.now();
     await fill("github:burst", maxRuns, firstHourMs);
+    // A provider retry of a counted Event does not count again.
+    expect(await ingest("github:burst-0", firstHourMs)).toEqual({
+      dispatched: 0,
+    });
     expect(await getEventAutomation(db, automation.id)).toMatchObject({
       status: "active",
     });

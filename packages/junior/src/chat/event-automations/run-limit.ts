@@ -6,13 +6,14 @@
  * and Event automations do not use the consecutive automated-turn limit.
  * `botConfig.maxEventAutomationRunsPerHour` sets the cap.
  *
- * Each run appends one entry with its own id to a short list in the state
- * adapter. Then it counts the entries from the last hour up to its own entry.
- * The append is atomic, so the list order decides which runs fit, even when
- * Events arrive at the same moment. The first runs up to the cap pass, and the
- * rest are refused. No lock and no read-modify-write are needed.
+ * Each run appends one entry with its run key to a short list in the state
+ * adapter. Then it counts the run keys from the last hour up to the first entry
+ * with its own key. The append is atomic, so the list order decides which runs
+ * fit, even when Events arrive at the same moment. The first runs up to the cap
+ * pass, and the rest are refused. A provider retry has the same run key, so it
+ * gets the same answer and does not count again. No lock and no
+ * read-modify-write are needed.
  */
-import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { z } from "zod";
 import { botConfig } from "@/chat/config";
@@ -62,15 +63,23 @@ export function eventAutomationRunLimitReason(): string {
   );
 }
 
-/** Count one run of an Event automation, or refuse when its hour is full. */
+/**
+ * Count one run of an Event automation, or refuse when its hour is full.
+ *
+ * `runKey` is the dispatch idempotency key, so a provider retry of the same
+ * Event does not count again.
+ */
 export async function admitEventAutomationRun(args: {
   automationId: string;
   nowMs: number;
+  runKey: string;
   state?: StateAdapter;
 }): Promise<"allowed" | "limited"> {
   const state = args.state ?? getStateAdapter();
-  const id = randomUUID();
-  await appendRunEntry(state, args.automationId, { atMs: args.nowMs, id });
+  await appendRunEntry(state, args.automationId, {
+    atMs: args.nowMs,
+    id: args.runKey,
+  });
   const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
   const values = await state.getList(runListKey(args.automationId));
   // A full list whose oldest entry is from this hour may have dropped runs
@@ -81,18 +90,20 @@ export async function admitEventAutomationRun(args: {
     oldest.success &&
     "atMs" in oldest.data &&
     oldest.data.atMs > windowStartMs;
-  let count = 0;
+  const runKeys = new Set<string>();
   for (const value of values) {
     const entry = runEntrySchema.safeParse(value);
     if (!entry.success) continue;
     if ("reset" in entry.data) {
-      count = 0;
+      runKeys.clear();
       full = false;
-    } else if (entry.data.atMs > windowStartMs) {
-      count += 1;
+      continue;
     }
-    if ("id" in entry.data && entry.data.id === id) {
-      return full || count > botConfig.maxEventAutomationRunsPerHour
+    if (entry.data.atMs > windowStartMs) {
+      runKeys.add(entry.data.id);
+    }
+    if (entry.data.id === args.runKey) {
+      return full || runKeys.size > botConfig.maxEventAutomationRunsPerHour
         ? "limited"
         : "allowed";
     }
