@@ -38,9 +38,15 @@ function childAgentFromInvocations(
   stoppedAtMs: number | undefined,
 ): ChildAgent {
   // `invocations` is newest first. The oldest open agent invocation is the
-  // one that runs, so it owns the status.
+  // one that runs, so it owns the status. A `steered` agent invocation never
+  // ran: the agent invocation that read its input owns its status.
   const latest = invocations[0]!;
-  let current = latest;
+  let current =
+    invocations.find(
+      (invocation) =>
+        !isTerminalAgentInvocation(invocation) ||
+        invocation.parentMailboxStatus !== "steered",
+    ) ?? latest;
   for (const invocation of invocations) {
     if (!isTerminalAgentInvocation(invocation)) {
       current = invocation;
@@ -59,14 +65,15 @@ function childAgentFromInvocations(
     tasks[0] ??
     invocations[invocations.length - 1]!;
   const terminal = isTerminalAgentInvocation(current) ? current : undefined;
-  // A `replaced` or `skipped` result is not reported, so it does not count as
-  // a result. A tree stop marks `replaced` results `skipped`.
+  // A `replaced`, `skipped`, or `steered` result is not reported, so it does
+  // not count as a result. A tree stop marks `replaced` results `skipped`.
   const lastResult = invocations
     .filter(isTerminalAgentInvocation)
     .filter(
       (invocation) =>
         invocation.parentMailboxStatus !== "replaced" &&
-        invocation.parentMailboxStatus !== "skipped",
+        invocation.parentMailboxStatus !== "skipped" &&
+        invocation.parentMailboxStatus !== "steered",
     )
     .map((invocation) => invocation.status)
     .find(isChildAgentResult);

@@ -32,13 +32,16 @@ export const AGENT_INVOCATION_MAILBOX_STATUSES = [
  * Parent mailbox append state. Only terminal invocations have a value.
  * `replaced` means the child still had open work, so a later agent invocation
  * on the same child sends the result instead. `skipped` means a stop ended
- * the work, so the result is never used.
+ * the work, so the result is never used. `steered` means the agent invocation
+ * that was running read the input as a steering message, so its result covers
+ * this one.
  */
 export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
   "pending",
   "appended",
   "replaced",
   "skipped",
+  "steered",
 ] as const;
 
 export const juniorAgentBindings = pgTable(

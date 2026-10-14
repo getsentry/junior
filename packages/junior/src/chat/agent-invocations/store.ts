@@ -930,6 +930,35 @@ export async function completeAgentInvocation(
   return await getAgentInvocation(args.invocationId);
 }
 
+/**
+ * End a pending agent invocation whose input the running agent invocation of
+ * the same child read as a steering message. The running agent invocation
+ * reports for both, so this one is never sent to the parent.
+ */
+export async function markAgentInvocationSteered(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({
+      status: "completed",
+      result: "",
+      errorMessage: null,
+      parentMailboxStatus: "steered",
+      terminalAt: new Date(nowMs),
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.status, "pending"),
+      ),
+    );
+  return await getAgentInvocation(invocationId);
+}
+
 /** Return whether an agent invocation has finished. */
 export function isTerminalAgentInvocation(
   invocation: AgentInvocation,

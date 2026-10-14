@@ -55,8 +55,14 @@ export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
   destination?: Destination;
+  /**
+   * Give pending mailbox messages to the active Turn. By default only
+   * `interrupt` messages for this attempt are offered. With `deferred`, every
+   * pending message is offered, and the handler owns Actor and Source scoping.
+   */
   drain(
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+    options?: { deferred?: boolean },
   ): Promise<InboundMessage[]>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
@@ -475,6 +481,7 @@ async function processConversationWorkInContext(
 
   const drain = (
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+    drainOptions?: { deferred?: boolean },
   ) =>
     drainConversationMailbox({
       conversationId,
@@ -484,12 +491,14 @@ async function processConversationWorkInContext(
         // Pending work that was not selected when the attempt started belongs
         // to a later actor-scoped attempt. Selected or newly arrived
         // interrupts remain eligible for this attempt's drain.
-        const candidates = messages.filter(
-          (message) =>
-            message.delivery === "interrupt" &&
-            (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-              !attemptStartMessageIds.has(message.inboundMessageId)),
-        );
+        const candidates = drainOptions?.deferred
+          ? messages
+          : messages.filter(
+              (message) =>
+                message.delivery === "interrupt" &&
+                (attemptSelectedMessageIds.has(message.inboundMessageId) ||
+                  !attemptStartMessageIds.has(message.inboundMessageId)),
+            );
         if (candidates.length === 0) {
           return [];
         }

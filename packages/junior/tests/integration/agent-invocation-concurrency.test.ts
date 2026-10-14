@@ -5,8 +5,10 @@ import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   createAgentInvocationForMessage,
   getAgentInvocation,
+  getAgentInvocationTurnId,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/store";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import {
   createAgentInvocationWorker,
   enqueueAgentInvocation,
@@ -251,6 +253,77 @@ describe("agent invocation identity and concurrency", () => {
         reasoningLevel: "high",
         result: "result:second named task",
         status: "completed",
+      });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("lets a running child read a parent message at its next step", async () => {
+    const firstRequest = deferred();
+    const messageSent = deferred();
+    const model = createModelStream([
+      {
+        type: "toolCall",
+        name: "systemTime",
+        arguments: {},
+        onRequest: () => firstRequest.resolve(),
+        waitFor: messageSent.promise,
+      },
+      { type: "text", text: "Checked both paths." },
+    ]);
+    const harness = await createHarness(() => model);
+    try {
+      const task = await harness.spawn({
+        agentName: "researcher",
+        idempotencyKey: "steer-1",
+        input: "Check the happy path.",
+      });
+      const running = harness.processQueuedBatch();
+      await firstRequest.promise;
+      const message = await harness.message({
+        childConversationId: task.childConversationId,
+        idempotencyKey: "steer-2",
+        input: "Also check the retry path.",
+      });
+      messageSent.resolve();
+      await running;
+      await harness.drainQueuedWork();
+
+      // The child read the message in its current Turn, so it ran once and
+      // its result covers both.
+      expect(harness.requests()).toHaveLength(1);
+      const turn = await getTurnRecord(
+        task.childConversationId,
+        getAgentInvocationTurnId(task.invocationId),
+      );
+      expect(JSON.stringify(turn?.piMessages)).toContain(
+        "Also check the retry path.",
+      );
+      await expect(
+        getAgentInvocation(message.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "steered",
+        status: "completed",
+      });
+      await expect(
+        getAgentInvocation(task.invocationId),
+      ).resolves.toMatchObject({
+        parentMailboxStatus: "pending",
+        result: "Checked both paths.",
+        status: "completed",
+      });
+      await expect(listAgents()).resolves.toEqual({
+        agents: [
+          {
+            conversation_id: task.childConversationId,
+            last_result: "completed",
+            name: "researcher",
+            status: "idle",
+            task: "Also check the retry path.",
+            updated_at: expect.any(String),
+          },
+        ],
       });
     } finally {
       await harness.close();

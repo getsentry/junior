@@ -64,9 +64,9 @@ Canonical words used across Junior's code and documentation.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.
-- **Steering message**: a user message that interrupts the active turn at the
-  next safe boundary and joins that turn. Messages arriving together may be
-  batched into the same turn.
+- **Steering message**: a user message or agent message that interrupts the
+  active turn at the next safe boundary and joins that turn. Messages arriving
+  together may be batched into the same turn.
 - **Follow-up message**: a user message that waits for the active turn to finish
   before starting the next turn.
 - **Mailbox delivery**: the durable instruction for an inbound message:
@@ -125,7 +125,8 @@ Canonical words used across Junior's code and documentation.
   message or from a result of the child's own child agents.
 - **Agent message**: text that one agent sends with `messageAgent` to its
   parent agent or to one of its child agents. A message to a child starts an
-  agent invocation on that child. A message to the parent is an Event Inbound
+  agent invocation on that child. If the child is running, it reads the
+  message as a steering message. A message to the parent is an Event Inbound
   message, the same as a child result. An agent message is not from a person,
   so it does not give user approval.
 - **Reasoning level**: the configured or selected amount of model reasoning for
