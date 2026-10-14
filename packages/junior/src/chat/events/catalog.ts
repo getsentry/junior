@@ -24,19 +24,6 @@ export function hasEventCatalogEntries(catalog: EventCatalog): boolean {
 }
 
 /**
- * True when any event can trigger a durable event automation.
- *
- * Core Workspace snapshot events stay in the catalog for search and temporary
- * watches only. Slack channel messages and plugin events can trigger
- * automations.
- */
-export function hasAutomationEventCatalogEntries(
-  catalog: EventCatalog,
-): boolean {
-  return Object.keys(automationEventCatalog(catalog)).length > 0;
-}
-
-/**
  * Catalog entries that durable event automations may select.
  *
  * Core Workspace snapshot events only wake temporary watches. Snapshot finish

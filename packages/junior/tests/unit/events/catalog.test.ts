@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CORE_EVENT_NAMESPACE,
-  hasAutomationEventCatalogEntries,
   automationEventCatalog,
   eventGuidance,
   requireEventIdentifier,
@@ -100,12 +99,6 @@ describe("event catalog", () => {
   it("keeps core snapshot events out of durable event-automation selection", () => {
     const plugins = automationEventCatalog(catalog);
     expect(Object.keys(plugins)).toEqual(["github"]);
-    expect(hasAutomationEventCatalogEntries(catalog)).toBe(true);
-    expect(
-      hasAutomationEventCatalogEntries({
-        [CORE_EVENT_NAMESPACE]: workspaceSnapshotEvents(),
-      }),
-    ).toBe(false);
 
     expect(() =>
       registeredEventAutomationTriggerSchema(catalog).parse({

@@ -196,7 +196,7 @@ describe("Slack channel-message automations", () => {
         instruction: "Summarize new messages.",
         title: "Summarize secrets",
         outcomes: [],
-        trigger: trigger("<#C999|secret-project>"),
+        trigger: trigger("C999"),
       }),
     ).rejects.toThrow("can watch only the channel where it posts");
 

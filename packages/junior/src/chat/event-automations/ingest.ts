@@ -149,7 +149,7 @@ export async function ingestEventAutomations(
         }
         continue;
       }
-      const replyThreadTs = slackChannelMessageReplyThreadTs(task, event);
+      const replyThreadTs = slackChannelMessageReplyThreadTs(event);
       const destination = replyThreadTs
         ? { ...task.destination, threadTs: replyThreadTs }
         : task.destination;

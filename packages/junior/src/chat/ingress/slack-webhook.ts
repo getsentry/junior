@@ -492,9 +492,8 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // Other channel traffic does not start a Turn. A new top-level message can
-    // still run Event automations that watch this channel. Slack also sends
-    // `app_mention` for a code-only mention; the `message` copy is enough.
+    // A new top-level message can run Event automations for this channel.
+    // Use only `message`: Slack also sends `app_mention` for a mention in code.
     const channelMessage =
       args.event.type === "message" && args.event.channel && args.event.ts
         ? slackChannelMessageEvent({

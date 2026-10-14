@@ -21,7 +21,7 @@ const noopEgress = {
   },
 };
 
-function eventPlugin(enabled = true) {
+function eventPlugin() {
   return defineJuniorPlugin({
     manifest: {
       name: "events-test",
@@ -30,7 +30,6 @@ function eventPlugin(enabled = true) {
     },
     events: {
       resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
-      isEnabled: () => enabled,
     },
   });
 }
@@ -312,30 +311,6 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("listEventAutomations");
     expect(complete).toHaveProperty("updateEventAutomation");
     expect(complete).toHaveProperty("deleteEventAutomation");
-  });
-
-  it("keeps event automation creation for Slack channel messages without an active event plugin", () => {
-    setPlugins([eventPlugin(false)]);
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-        actor: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-        },
-      },
-    );
-
-    // Slack channel messages are core events that can trigger automations.
-    expect(tools).toHaveProperty("createEventAutomation");
-    expect(tools).toHaveProperty("searchEventTypes");
-    expect(tools).toHaveProperty("watchEvents");
-    expect(tools).toHaveProperty("listEventAutomations");
-    expect(tools).toHaveProperty("updateEventAutomation");
-    expect(tools).toHaveProperty("deleteEventAutomation");
   });
 
   it("does not register schedule tools without a actor", () => {

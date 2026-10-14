@@ -5,17 +5,13 @@ namespace, identifier, and event type. Plugins verify webhooks, validate provide
 scope, and normalize events. Core binds the plugin namespace when it publishes
 an event. Plugins do not know which conversations or automations consume it.
 
-Slack channel messages are the one core event source for automations
-(`slack/channel-message-events.ts`). Slack ingress publishes `slack` /
-`channel` / `message.posted` for a new top-level message from a workspace member
-when no other route handles it. Thread replies, mentions, subscribed threads,
-bots, and Junior's own messages do not publish. The event goes to event
-automations only; a Watch cannot select it. An automation can watch only the
-channel where it posts. The trigger identifier `current_channel` names that
-channel, and create and edit reject another channel. This keeps private channel
-text out of other channels. Runs always use system credentials, because anyone
-in the channel writes the Event text. Each run replies in the thread of the
-source message. Junior must be a member of the channel to receive the messages.
+Slack ingress also publishes core `slack` / `channel` / `message.posted` events
+(`slack/channel-message-events.ts`) for new top-level messages that no other
+route handles. Bot posts and thread replies do not publish. A Watch cannot select
+these events. An automation can watch only the channel where it posts, so
+private channel text stays in that channel. Runs always use system credentials,
+because anyone in the channel writes the Event text. Each run replies in the
+thread of the source message.
 
 One selector has one Slack workspace, namespace, identifier, and one or more
 event types. Multiple automations can use the same selector.
@@ -36,9 +32,8 @@ consecutive automated-turn limit. Each dispatch runs in its own Conversation, an
 the limit is not counted for a Destination. A shared Destination count paused
 unrelated automations in the same channel.
 
-Event automations target channels or DMs, not threads. A run for a Slack
-channel message is the exception at dispatch time: its Destination adds the
-source message as the thread. The stored Destination stays the channel. Migration 0044 removes
+Event automations target channels or DMs, not threads. A Slack channel-message
+run adds the source message thread only at dispatch time. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
 workers during deployment; new writes reject them.
 
