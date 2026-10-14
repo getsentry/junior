@@ -397,11 +397,14 @@ export function useCancelConversationPendingMessages(conversationId: string) {
 }
 
 /**
- * Stop the active Turn for the open conversation.
- *
- * The response lists the queued messages the stop removes. The worker removes
- * them when it observes the stop, so callers hide them until polls catch up.
+ * Local cache of queued rows that a stop removed. The worker drops them only
+ * when it observes the stop, so the mailbox can still list them for a while.
  */
+function stoppedMessageIdsQueryKey(conversationId: string | undefined) {
+  return ["conversation", conversationId, "stopped-messages"] as const;
+}
+
+/** Stop the active Turn and hide its removed queued rows until polls agree. */
 export function useStopConversationTurn(conversationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -411,6 +414,13 @@ export function useStopConversationTurn(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
         {},
       ),
+    onSuccess: (result) => {
+      if (!result.stoppedInboundMessageIds.length) return;
+      queryClient.setQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+        (current) => [...(current ?? []), ...result.stoppedInboundMessageIds],
+      );
+    },
     onSettled: async () => {
       await queryClient.invalidateQueries({
         exact: true,
@@ -596,6 +606,18 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
+  const stoppedMessageIds = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache written by useStopConversationTurn.
+    queryFn: async (): Promise<readonly string[]> =>
+      queryClient.getQueryData<readonly string[]>(
+        stoppedMessageIdsQueryKey(conversationId),
+      ) ?? [],
+    queryKey: stoppedMessageIdsQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
   const awaitingMessage = outbox.data.some(
     (message) => message.status !== "failed",
   );
@@ -632,6 +654,21 @@ export function useConversationData(conversationId: string | undefined) {
       },
     );
   }, [conversationId, detailData, mailbox, outbox.data, queryClient]);
+  // Forget a stopped row once the server mailbox no longer lists it.
+  useEffect(() => {
+    if (!mailbox) return;
+    queryClient.setQueryData<readonly string[]>(
+      stoppedMessageIdsQueryKey(conversationId),
+      (current) => {
+        if (!current?.length) return current;
+        const listed = new Set(
+          mailbox.messages.map((message) => message.inboundMessageId),
+        );
+        const next = current.filter((id) => listed.has(id));
+        return next.length === current.length ? current : next;
+      },
+    );
+  }, [conversationId, mailbox, queryClient]);
   const historyStatus = detailData?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
@@ -668,14 +705,19 @@ export function useConversationData(conversationId: string | undefined) {
     undefined,
   );
   const pendingMessages = useMemo(() => {
+    const stopped = stoppedMessageIds.data;
     const next = mergeConversationMailboxMessages(
-      mailbox?.messages,
+      stopped.length
+        ? mailbox?.messages.filter(
+            (message) => !stopped.includes(message.inboundMessageId),
+          )
+        : mailbox?.messages,
       outbox.data,
       pendingMessagesRef.current,
     );
     pendingMessagesRef.current = next;
     return next;
-  }, [outbox.data, mailbox?.messages]);
+  }, [outbox.data, mailbox?.messages, stoppedMessageIds.data]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detailData &&

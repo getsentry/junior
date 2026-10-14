@@ -632,6 +632,13 @@ test("stops the active Turn and returns queued text to the composer", async ({
   await expect(pending).toBeHidden();
   expect(stopRequests).toBe(1);
 
+  // Leaving the conversation view remounts the footer. The stale row must stay
+  // hidden until the server mailbox drops it.
+  await page.getByRole("button", { name: "Event log", exact: true }).click();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(composer).toBeVisible();
+  await expect(pending).toBeHidden();
+
   queued = [];
   active = false;
   await expect(stop).toBeHidden({ timeout: 15_000 });

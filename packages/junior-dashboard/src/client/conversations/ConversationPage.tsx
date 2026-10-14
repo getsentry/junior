@@ -401,19 +401,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
   stopTurnRef.current = stopTurn;
-  // The worker drops stopped mailbox rows only when it observes the stop.
-  // Hide them now so restored text does not also show as queued.
-  const [stoppedMessageIds, setStoppedMessageIds] =
-    useState<ReadonlySet<string>>(EMPTY_STOPPED_IDS);
-  const pendingMessages = useMemo(
-    () =>
-      stoppedMessageIds.size === 0
-        ? props.pendingMessages
-        : props.pendingMessages.filter(
-            (message) => !stoppedMessageIds.has(message.inboundMessageId),
-          ),
-    [props.pendingMessages, stoppedMessageIds],
-  );
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
@@ -425,7 +412,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   cancelPendingMessagesRef.current = cancelPendingMessages;
   const onPinRequestRef = useRef(props.onPinRequest);
   onPinRequestRef.current = props.onPinRequest;
-  const pendingMessageVersion = pendingMessages
+  const pendingMessageVersion = props.pendingMessages
     .map((message) =>
       [
         message.inboundMessageId,
@@ -469,7 +456,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!stopTurnRef.current.isPending) stopTurnRef.current.reset();
     onPinRequestRef.current();
   }, []);
-  const cancellableMessageIds = pendingMessages
+  const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
   const onCancelMessage = useCallback(
@@ -494,11 +481,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
 
   const onStop = useCallback(async () => {
     const result = await stopTurnRef.current.mutateAsync();
-    if (result.stoppedInboundMessageIds.length) {
-      setStoppedMessageIds(
-        (current) => new Set([...current, ...result.stoppedInboundMessageIds]),
-      );
-    }
     const restored = result.stoppedMessages.map((message) => message.text);
     return restored.length ? restored.join("\n") : undefined;
   }, []);
@@ -526,7 +508,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             cancelPending={cancelPendingMessages.isPending}
             cancelTargetInboundMessageId={cancelTargetInboundMessageId}
             committedMessageIds={props.committedMessageIds}
-            messages={pendingMessages}
+            messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
             onLayoutChange={onMailboxLayoutChange}
             onRetry={onRetry}
@@ -587,4 +569,3 @@ function committedMessageIds(
 }
 
 const EMPTY_MESSAGE_IDS: readonly string[] = [];
-const EMPTY_STOPPED_IDS: ReadonlySet<string> = new Set();
