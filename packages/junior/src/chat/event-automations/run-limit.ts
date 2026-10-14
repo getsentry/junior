@@ -38,6 +38,10 @@ function runListKey(automationId: string): string {
   return `${RUN_LIST_PREFIX}:${automationId}`;
 }
 
+function runListMaxLength(): number {
+  return botConfig.maxEventAutomationRunsPerHour + RUN_LIST_BURST_ROOM;
+}
+
 async function appendRunEntry(
   state: StateAdapter,
   automationId: string,
@@ -45,7 +49,7 @@ async function appendRunEntry(
 ): Promise<void> {
   await state.connect();
   await state.appendToList(runListKey(automationId), entry, {
-    maxLength: botConfig.maxEventAutomationRunsPerHour + RUN_LIST_BURST_ROOM,
+    maxLength: runListMaxLength(),
     ttlMs: EVENT_AUTOMATION_RUN_WINDOW_MS,
   });
 }
@@ -68,17 +72,27 @@ export async function admitEventAutomationRun(args: {
   const id = randomUUID();
   await appendRunEntry(state, args.automationId, { atMs: args.nowMs, id });
   const windowStartMs = args.nowMs - EVENT_AUTOMATION_RUN_WINDOW_MS;
+  const values = await state.getList(runListKey(args.automationId));
+  // A full list whose oldest entry is from this hour may have dropped runs
+  // from this hour. Then the hour is full, until a reset entry.
+  const oldest = runEntrySchema.safeParse(values[0]);
+  let full =
+    values.length >= runListMaxLength() &&
+    oldest.success &&
+    "atMs" in oldest.data &&
+    oldest.data.atMs > windowStartMs;
   let count = 0;
-  for (const value of await state.getList(runListKey(args.automationId))) {
+  for (const value of values) {
     const entry = runEntrySchema.safeParse(value);
     if (!entry.success) continue;
     if ("reset" in entry.data) {
       count = 0;
+      full = false;
     } else if (entry.data.atMs > windowStartMs) {
       count += 1;
     }
     if ("id" in entry.data && entry.data.id === id) {
-      return count > botConfig.maxEventAutomationRunsPerHour
+      return full || count > botConfig.maxEventAutomationRunsPerHour
         ? "limited"
         : "allowed";
     }
