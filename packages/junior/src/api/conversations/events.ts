@@ -457,15 +457,17 @@ function reportEventData(args: {
   }
 }
 
-// The child name and task are model content, so they follow payload access.
+// The child name, task, and title are model content, so they follow payload
+// access.
 function reportSubagentLabel(
   data: Extract<ConversationEvent["data"], { type: "subagent_started" }>,
   canExposePayload: boolean,
-): { agentName?: string; task?: string } {
+): { agentName?: string; task?: string; title?: string } {
   if (!canExposePayload) return {};
   return {
     ...(data.agentName ? { agentName: data.agentName } : undefined),
     ...(data.task ? { task: data.task } : undefined),
+    ...(data.title ? { title: data.title } : undefined),
   };
 }
 

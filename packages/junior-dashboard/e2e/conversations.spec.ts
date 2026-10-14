@@ -570,9 +570,7 @@ test("inspects and copies a child agent transcript", async ({
   const reviewer = page.getByRole("button", {
     name: "Open reviewer transcript",
   });
-  await expect(planner).toContainText(
-    "Review the dashboard plan before editing.",
-  );
+  await expect(planner).toContainText("Review the dashboard plan");
   await expect(reviewer).toContainText("blocked");
   await screenshot(page, "conversation-child-agents");
 
@@ -597,9 +595,11 @@ test("inspects and copies a child agent transcript", async ({
 
   await planner.click();
 
-  const drawer = page.getByRole("dialog", { name: "Advisor review" });
+  const drawer = page.getByRole("dialog", {
+    name: "Review the dashboard plan",
+  });
   await expect(
-    drawer.getByRole("heading", { name: "Advisor review" }),
+    drawer.getByRole("heading", { name: "Review the dashboard plan" }),
   ).toBeVisible();
   await screenshot(page, "conversation-child-agent-drawer");
   await expect(

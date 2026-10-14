@@ -34,6 +34,7 @@ describe("conversation child agents API", () => {
         agentName: "reviewer",
         idempotencyKey: "child-agents-reviewer",
         input: "Review the plan.",
+        title: "Plan review",
       },
       1_000,
     );
@@ -71,6 +72,7 @@ describe("conversation child agents API", () => {
           name: "reviewer",
           status: "pending",
           task: "Review the plan.",
+          title: "Plan review",
           updatedAt: new Date(1_000).toISOString(),
         },
       ],
@@ -85,6 +87,7 @@ describe("conversation child agents API", () => {
         ...invocationInput,
         agentName: "private-reviewer",
         idempotencyKey: "child-agents-private",
+        title: "Private plan review",
       },
       1_000,
     );

@@ -50,6 +50,7 @@ const agentInvocationBaseSchema = z
     parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
     source: sourceSchema,
+    title: exactStringSchema.optional(),
     updatedAtMs: z.number().finite(),
   })
   .strict();
@@ -83,6 +84,7 @@ export const createAgentInvocationSchema = z
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
+    title: exactStringSchema.optional(),
   })
   .strict();
 
@@ -106,5 +108,7 @@ export type ChildAgent = {
   status: AgentInvocationStatus;
   /** Input of the latest agent invocation that the parent started. */
   task: string;
+  /** Short title of that task. */
+  title?: string;
   updatedAtMs: number;
 };

@@ -44,6 +44,7 @@ export type TranscriptViewSubagentPart = {
   status: "aborted" | "blocked" | "completed" | "error" | "running";
   subagentKind: string;
   task?: string;
+  title?: string;
   type: "subagent";
 };
 

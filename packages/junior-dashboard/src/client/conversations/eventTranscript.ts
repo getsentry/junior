@@ -364,6 +364,7 @@ export function transcriptMessagesFromEvents(
         status: data.status,
         ...(data.agentName ? { agentName: data.agentName } : undefined),
         ...(data.task ? { task: data.task } : undefined),
+        ...(data.title ? { title: data.title } : undefined),
       };
       subagents.set(subagentId, part);
       messages.push({

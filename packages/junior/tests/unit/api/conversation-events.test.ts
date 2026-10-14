@@ -984,6 +984,7 @@ describe("conversation report event projection", () => {
         subagentKind: "agent",
         agentName: "release-checker",
         task: "Check the private release notes.",
+        title: "Private release notes",
         childConversationId: "child-conversation-1",
       }),
     ];
@@ -1014,6 +1015,7 @@ describe("conversation report event projection", () => {
         subagentKind: "agent",
         agentName: "release-checker",
         task: "Check the private release notes.",
+        title: "Private release notes",
         status: "running",
       },
     ]);
@@ -1029,6 +1031,7 @@ describe("conversation report event projection", () => {
     expect(redacted).not.toContain("Fix the remaining test.");
     expect(redacted).not.toContain("release-checker");
     expect(redacted).not.toContain("Check the private release notes.");
+    expect(redacted).not.toContain("Private release notes");
   });
 
   it("emits only safe structural lifecycle, context, and child references", () => {

@@ -165,6 +165,7 @@ describe("agent invocation spawn and result delivery", () => {
       const tool = createSpawnAgentTool(spawnAgent!);
       const input = tool.prepareArguments!({
         task: "Inspect the failing checks.",
+        title: "Failing checks",
         name: "reviewer",
         reasoning_level: "high",
       });
@@ -188,6 +189,7 @@ describe("agent invocation spawn and result delivery", () => {
         input: "Inspect the failing checks.",
         parentConversationId,
         reasoningLevel: "high",
+        title: "Failing checks",
       });
       expect(queue.sentRecords()).toHaveLength(1);
       // The parent log gets one dashboard marker for the replayed tool call.
@@ -203,6 +205,7 @@ describe("agent invocation spawn and result delivery", () => {
           agentName: "reviewer",
           parentToolCallId: "call-1",
           task: "Inspect the failing checks.",
+          title: "Failing checks",
           reasoningLevel: "high",
         },
       ]);

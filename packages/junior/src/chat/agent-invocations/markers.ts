@@ -36,6 +36,7 @@ export async function recordSubagentStarted(
               task: invocation.input,
             }
           : undefined),
+        ...(invocation.title ? { title: invocation.title } : undefined),
         ...(invocation.reasoningLevel
           ? { reasoningLevel: invocation.reasoningLevel }
           : undefined),

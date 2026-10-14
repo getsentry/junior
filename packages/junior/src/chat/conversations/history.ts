@@ -376,6 +376,7 @@ const subagentStartedEventDataSchema = z
     subagentKind: z.string().min(1),
     agentName: z.string().min(1).optional(),
     task: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     parentToolCallId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),

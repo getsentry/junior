@@ -402,6 +402,7 @@ function appendSubagent(
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.status);
+  addMetaLine(lines, "Title", part.title);
   addMetaLine(lines, "Task", part.task);
 }
 

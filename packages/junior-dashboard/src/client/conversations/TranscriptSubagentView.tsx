@@ -10,6 +10,7 @@ export function TranscriptSubagentView(props: {
   timestamp?: number;
 }) {
   const label = props.part.agentName ?? props.part.subagentKind;
+  const summary = props.part.title ?? props.part.task;
   const status = props.part.status;
   const meta = [
     status,
@@ -27,9 +28,9 @@ export function TranscriptSubagentView(props: {
           <strong className="min-w-0 break-words font-bold text-cyan-100">
             <HighlightText text={label} />
           </strong>
-          {props.part.task ? (
+          {summary ? (
             <span className="min-w-0 truncate text-dashboard-text-muted">
-              <HighlightText text={props.part.task} />
+              <HighlightText text={summary} />
             </span>
           ) : null}
           {props.part.status === "running" ? (

@@ -196,6 +196,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "subagent") {
         return [
           `subagent ${part.agentName ?? part.subagentKind}`,
+          ...(part.title ? [`title ${part.title}`] : []),
           ...(part.task ? [`task ${part.task}`] : []),
           `status ${part.status}`,
         ].join("\n");

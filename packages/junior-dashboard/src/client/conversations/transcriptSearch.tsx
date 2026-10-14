@@ -164,6 +164,7 @@ export function entryMatchesSearch(
         entry.part.agentName ?? entry.part.subagentKind,
         normalizedQuery,
       ) ||
+      textContains(entry.part.title, normalizedQuery) ||
       textContains(entry.part.task, normalizedQuery) ||
       textContains(entry.part.status, normalizedQuery)
     );

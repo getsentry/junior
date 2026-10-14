@@ -1,4 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+
+const { completeText } = vi.hoisted(() => ({
+  completeText: vi.fn(async () => ({ text: "Failing check review" })),
+}));
+
+vi.mock("@/chat/pi/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/client")>()),
+  completeText,
+}));
+
 import {
   AgentInvocationBusyError,
   AgentInvocationLimitError,
@@ -7,7 +17,7 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 describe("spawnAgent", () => {
-  it("normalizes nullable optional fields before invoking the runtime control", async () => {
+  it("normalizes nullable optional fields and generates a missing title", async () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
@@ -19,6 +29,7 @@ describe("spawnAgent", () => {
           task: "Investigate the failing checks.",
           name: null,
           reasoning_level: null,
+          title: null,
         }),
         { toolCallId: "call-1" },
       ),
@@ -26,7 +37,10 @@ describe("spawnAgent", () => {
       conversation_id: "agent:one",
     });
     expect(spawnAgent).toHaveBeenCalledWith(
-      { task: "Investigate the failing checks." },
+      {
+        task: "Investigate the failing checks.",
+        title: "Failing check review",
+      },
       { toolCallId: "call-1" },
     );
   });

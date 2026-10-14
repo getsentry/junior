@@ -37,6 +37,7 @@ export async function requireConversationChildAgents(
       ? {
           ...(agent.agentName ? { name: agent.agentName } : undefined),
           task: agent.task,
+          ...(agent.title ? { title: agent.title } : undefined),
           ...(agent.errorMessage ? { error: agent.errorMessage } : undefined),
         }
       : { redacted: true as const }),
