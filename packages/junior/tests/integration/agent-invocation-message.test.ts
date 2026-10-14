@@ -63,6 +63,17 @@ function childRun(invocation: AgentInvocation): AgentRun {
   };
 }
 
+/** Read the Event messages, such as agent messages, in one mailbox. */
+async function eventMessages(
+  conversationId: string,
+): Promise<InboundMessage[]> {
+  const work = await getConversationWorkState({
+    conversationId,
+    state: getStateAdapter(),
+  });
+  return work?.messages.filter((message) => message.source === "event") ?? [];
+}
+
 function context(
   conversationId: string,
   messages: InboundMessage[],
@@ -227,13 +238,7 @@ describe("messageAgent", () => {
         { text: "Halfway there.", to: "parent" },
         { toolCallId: "call-halfway" },
       );
-      const messages =
-        (
-          await getConversationWorkState({
-            conversationId: child.childConversationId,
-            state,
-          })
-        )?.messages.filter((message) => message.source === "event") ?? [];
+      const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       // A stop after the send does not drop the message.
       await stopChildAgentInvocations({
@@ -255,14 +260,10 @@ describe("messageAgent", () => {
         ),
       ).resolves.toMatchObject({
         childConversationId: child.childConversationId,
+        input: expect.stringContaining("Halfway there."),
         parentConversationId: slackParentConversationId,
         status: "pending",
       });
-      expect(
-        (await getAgentInvocation(
-          getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
-        ))!.input,
-      ).toContain("Halfway there.");
     } finally {
       await fixture.close();
     }
@@ -305,13 +306,7 @@ describe("messageAgent", () => {
         childConversationId: child.childConversationId,
         parentConversationId: slackParentConversationId,
       });
-      const messages =
-        (
-          await getConversationWorkState({
-            conversationId: child.childConversationId,
-            state,
-          })
-        )?.messages.filter((message) => message.source === "event") ?? [];
+      const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(
         startAgentInvocationsForChildResults(

@@ -49,7 +49,7 @@ export function bindMessageAgent(
       );
       if (!sender) {
         throw new AgentMessageTargetError(
-          "This conversation has no parent agent.",
+          "This conversation has no parent agent",
         );
       }
       await enqueueAgentMessageToParent({
@@ -70,7 +70,7 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       throw new AgentMessageTargetError(
-        `"${input.to}" is not "${PARENT_AGENT_TARGET}" or a child agent of this conversation.`,
+        `"${input.to}" is not "${PARENT_AGENT_TARGET}" or a child agent of this conversation`,
       );
     }
     const { invocation, queued } = await createAgentInvocationForMessage({

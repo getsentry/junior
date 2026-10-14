@@ -483,7 +483,7 @@ export async function createAgentInvocationFromLatest(
   },
   nowMs = Date.now(),
 ): Promise<AgentInvocation> {
-  const invocationId = args.invocationId;
+  const { invocationId } = args;
   await getSqlExecutor()
     .db()
     .insert(juniorAgentInvocations)

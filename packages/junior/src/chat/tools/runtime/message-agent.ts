@@ -70,7 +70,7 @@ export function createMessageAgentTool(
       } catch (error) {
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
-            `${error.message} Use listAgents to find a child agent.`,
+            `${error.message}. Use listAgents to find a child agent.`,
             { cause: error },
           );
         }

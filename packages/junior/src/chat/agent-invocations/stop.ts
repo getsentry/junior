@@ -1,9 +1,9 @@
-import type { StateAdapter } from "chat";
-import { stopConversationWork } from "@/chat/task-execution/store";
-import { recordSubagentEnded } from "./markers";
 import { and, eq, inArray, or } from "drizzle-orm";
+import type { StateAdapter } from "chat";
 import { getSqlExecutor } from "@/chat/db";
+import { stopConversationWork } from "@/chat/task-execution/store";
 import { juniorAgentInvocations } from "@/db/schema";
+import { recordSubagentEnded } from "./markers";
 import {
   getChildAgentLockName,
   invocationFromRow,
