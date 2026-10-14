@@ -12,7 +12,7 @@ export function createReportBlockedTool() {
       readOnlyHint: false,
     },
     description:
-      "End this delegated task as blocked. Your reply goes to the parent agent, not a person, and a text reply counts as finished work. When missing access, credentials, input, or a decision stops the task, call this instead of a text reply, also when a search for the missing part found nothing. Do not ask a question, guess, mock, or fake results to work around it.",
+      "End this delegated task as blocked. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
     inputSchema: z
       .object({
         missing: z

@@ -116,7 +116,8 @@ mailbox metadata and wait window as Watch Events, but it has no
 ### Blocked Reports
 
 A child's reply goes to its parent agent, not to a person, so nobody answers a
-question that the child asks. Each child run has the `reportBlocked` tool. The
+question that the child asks. A child run uses the `child_agent` prompt mode,
+which replaces the conversation rules, and it has the `reportBlocked` tool. The
 child calls it when missing access, input, or a decision stops its task. The
 tool ends the run, like `finishAutomationRun` ends an Automation run. The
 agent invocation then ends as `blocked`, and the parent result shows what is
