@@ -4,16 +4,27 @@ import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../controls/TimeRangeSelector";
+import { useDocumentTitle } from "../../documentTitle";
 
-/** Render a spacious analytics page heading with optional controls. */
+/**
+ * Render a spacious analytics page heading with optional controls.
+ *
+ * Also names the browser tab after the page. Pass `documentTitle` when the tab
+ * needs more context than the visible heading.
+ */
 export function PageHeader(props: {
   actions?: ReactNode;
   description: ReactNode;
+  documentTitle?: string;
   onRangeChange?(value: TimeRangeDays): void;
   range?: TimeRangeDays;
   rangeOptions?: TimeRangeDays[];
   title: ReactNode;
 }) {
+  useDocumentTitle(
+    props.documentTitle ??
+      (typeof props.title === "string" ? props.title : undefined),
+  );
   const rangeActions =
     props.range !== undefined && props.onRangeChange ? (
       <TimeRangeSelector

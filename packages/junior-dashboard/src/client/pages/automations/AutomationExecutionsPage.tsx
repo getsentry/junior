@@ -133,6 +133,7 @@ function AutomationExecutionsView(props: {
           {...(data.executionDays.length > 0
             ? { onRangeChange: setRange, range }
             : {})}
+          documentTitle={`${data.automation.title} · Executions`}
           title={data.automation.title}
         />
       </div>

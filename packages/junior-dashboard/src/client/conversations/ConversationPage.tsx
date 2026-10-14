@@ -45,6 +45,7 @@ import {
   conversationFromDetail,
   visualStatusForConversation,
 } from "../format";
+import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import {
   conversationParticipants,
@@ -106,6 +107,10 @@ export function ConversationPage(props: {
       <ParticipantAvatarStack participants={participants} size="detail" />
     ) : null;
   const conversationDetail = detail.data;
+  const title =
+    conversationDetailTitle(detail.data) ??
+    conversationDisplayTitle(conversation);
+  useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
   useEffect(() => {
     if (!conversation) return;
@@ -301,10 +306,7 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              title={
-                conversationDetailTitle(detail.data) ??
-                conversationDisplayTitle(conversation)
-              }
+              title={title}
               view={view}
             />
 

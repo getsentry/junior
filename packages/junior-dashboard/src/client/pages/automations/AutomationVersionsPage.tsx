@@ -125,6 +125,7 @@ function AutomationVersionsView(props: {
         <BackLink to={props.backTo} />
         <PageHeader
           description={`${automation.kind} automation · ${automation.destination.label} · ${data.versions.length} ${data.versions.length === 1 ? "version" : "versions"}`}
+          documentTitle={`${automation.title} · Version history`}
           title={automation.title}
         />
       </div>
