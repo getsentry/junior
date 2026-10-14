@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { stopConversationSession } from "@/chat/agent-invocations/stop";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { takeDueTimerWatches } from "@/chat/events/store";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -162,4 +163,39 @@ it("recovers an abandoned claim and a failed queue send without duplicating inpu
     (await getConversationWorkState({ conversationId }))?.execution
       .pendingMessages,
   ).toHaveLength(1);
+});
+
+it("drops a fired timer when the root session stops, the same as a child", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const { conversationId, tools, queue, drain, agentRuns } =
+    await timerConversation();
+  const input = { afterMs: 60_000, intent: "Check the deployment." };
+  await execute(tools.watchTimer!, input, "timer-1");
+  await execute(
+    tools.watchTimer!,
+    { afterMs: 600_000, intent: "Check much later." },
+    "timer-2",
+  );
+  clock.mockReturnValue(clock() + 60_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  expect(
+    (await getConversationWorkState({ conversationId }))?.execution
+      .pendingMessages,
+  ).toHaveLength(1);
+
+  // The Slack `stop` keyword runs this session stop on a root.
+  await stopConversationSession({ conversationId });
+  expect(await execute(tools.listWatches!, {})).toEqual({ subscriptions: [] });
+  clock.mockReturnValue(clock() + 600_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  await drain();
+  expect(agentRuns).toHaveLength(0);
+
+  // A watch set after the stop wakes the root again.
+  await execute(tools.watchTimer!, input, "timer-3");
+  clock.mockReturnValue(clock() + 60_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  clock.mockReturnValue(clock() + 120_000);
+  await drain();
+  expect(agentRuns).toHaveLength(1);
 });

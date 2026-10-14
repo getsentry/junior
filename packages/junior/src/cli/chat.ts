@@ -254,6 +254,8 @@ async function prepareLocalChatRun(
     await import("@/chat/agent-invocations/work");
   const { startAgentInvocationsForChildInput } =
     await import("@/chat/agent-invocations/result");
+  const { skipInputBeforeConversationStop } =
+    await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
   const { processConversationWork } =
@@ -264,9 +266,12 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const run = routeAgentInvocationWork({
-      // The local queue carries only child Conversation work. Child results,
-      // messages, and watch events each start an agent invocation.
+      // The local queue carries only child Conversation work.
       fallbackWorker: async (context) => {
+        const skipped = await skipInputBeforeConversationStop(context);
+        if (skipped) {
+          return skipped;
+        }
         const started = await startAgentInvocationsForChildInput(context, {
           queue: localConversationWork.queue,
         });

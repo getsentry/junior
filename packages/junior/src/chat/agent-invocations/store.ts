@@ -480,17 +480,17 @@ export async function createAgentInvocation(
 /**
  * Create or replay the agent invocation that gives one input to a child
  * Conversation: a result or message from its own child agent, or its own
- * watch events. It keeps the parent, name, Destination, and reasoning level
- * of `latest`. A result or message also keeps its Actor and credentials;
- * watch events pass their own, as they would on a root. It skips the queue
- * and active-count checks because it continues work that already passed them.
+ * watch events. It continues that Conversation for the same parent as
+ * `latest`, and for the same Actor and credentials unless `runAs` sets them.
+ * It skips the queue and active-count checks because it continues work that
+ * already passed them.
  */
 export async function createAgentInvocationFromLatest(
   args: {
     input: string;
     invocationId: string;
     latest: AgentInvocation;
-    /** Run as this Actor, with these credentials and Source, instead. */
+    /** Actor, credentials, and Source for watch events. */
     runAs?: Pick<AgentInvocation, "actor" | "credentialContext" | "source">;
   },
   nowMs = Date.now(),
@@ -505,10 +505,8 @@ export async function createAgentInvocationFromLatest(
       childConversationId: args.latest.childConversationId,
       agentName: args.latest.agentName ?? null,
       input: args.input,
-      actor: args.runAs?.actor ?? args.latest.actor,
-      credentialContext: args.runAs
-        ? (args.runAs.credentialContext ?? null)
-        : (args.latest.credentialContext ?? null),
+      actor: (args.runAs ?? args.latest).actor,
+      credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
       source: args.runAs?.source ?? { kind: "agent_invocation" },
       destination: args.latest.destination,
       reasoningLevel: args.latest.reasoningLevel ?? null,

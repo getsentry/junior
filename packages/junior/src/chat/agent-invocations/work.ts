@@ -342,9 +342,8 @@ async function saveAgentInvocationResult(args: {
       surface: "internal",
     });
   }
-  // Same rules as a root Conversation: a watch event Turn counts toward the
-  // automated-turn limit, so a watch cannot wake the child forever. A task or
-  // message from a parent tool call resets the count, like a user message.
+  // As on a root, a watch event Turn counts toward the automated-turn limit,
+  // and a task or message from the parent resets it like a user message.
   if (args.invocation.parentToolCallId) {
     await resetAutomatedTurnLimit({
       conversationId: args.invocation.childConversationId,

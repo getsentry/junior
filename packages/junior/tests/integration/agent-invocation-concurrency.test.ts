@@ -15,18 +15,19 @@ import {
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { startAgentInvocationsForChildInput } from "@/chat/agent-invocations/result";
-import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { createEventTools } from "@/chat/tools/events";
+import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -73,7 +74,9 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
   const agentRunner = createModelAgentRunnerForRun(streamForRun);
   const run = vi.spyOn(agentRunner, "run");
   const route = routeAgentInvocationWork({
+    // The same order as production conversation work.
     fallbackWorker: async (workContext) =>
+      (await skipInputBeforeConversationStop(workContext)) ??
       (await startAgentInvocationsForChildInput(workContext, {
         queue,
         state,
@@ -550,23 +553,35 @@ describe("agent invocation identity and concurrency", () => {
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
-      // A stop ends the child's watches, so its timer never fires.
+      // A stop of the idle child ends its watches and records the stop, so
+      // a timer event that already reached it is dropped, and a later timer
+      // never fires.
       await execute(
         childTools.watchTimer!,
         { afterMs: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
-      await stopChildAgent({
-        childConversationId: child.childConversationId,
-        parentConversationId,
-      });
+      await execute(
+        childTools.watchTimer!,
+        { afterMs: 600_000, intent: "Check much later." },
+        "child-timer-3",
+      );
+      clock.mockReturnValue(clock() + 120_000);
+      await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
+      const stopAgent = createStopAgentTool(parentConversationId);
+      await expect(
+        stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
+      ).resolves.toMatchObject({ stopped: true });
       await expect(execute(childTools.listWatches!, {})).resolves.toEqual({
         subscriptions: [],
       });
-      clock.mockReturnValue(clock() + 120_000);
+      clock.mockReturnValue(clock() + 600_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
       await harness.drainQueuedWork();
       expect(harness.requests()).toHaveLength(2);
+      await expect(listAgents()).resolves.toMatchObject({
+        agents: [{ status: "stopped" }],
+      });
 
       // A message from the parent starts the child again and resets its
       // automated-turn count, and its new watches work.
@@ -581,10 +596,13 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
+      await expect(listAgents()).resolves.toMatchObject({
+        agents: [{ status: "idle" }],
+      });
       await execute(
         childTools.watchTimer!,
         { afterMs: 60_000, intent: "Check after the restart." },
-        "child-timer-3",
+        "child-timer-4",
       );
       clock.mockReturnValue(clock() + 120_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });

@@ -1,12 +1,18 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
+import {
+  getConversationStoppedAtMs,
+  markConversationsStopped,
+} from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
 import { cancelSubscriptions } from "@/chat/events/store";
 import { stopConversationWork } from "@/chat/task-execution/store";
 import { juniorAgentInvocations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
+import { isChildAgentSessionStopped } from "./list";
 import {
   getChildAgentLockName,
+  getLatestAgentInvocationForConversation,
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
@@ -15,9 +21,9 @@ import type { TerminalAgentInvocation } from "./types";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
- * it. The parent gets no result. SQL stops the work first. Then a
- * Conversation stop request aborts each run that is still working, and the
- * watches of each stopped child end, so no event wakes it again.
+ * it. The parent gets no result. SQL stops the work first. Then each
+ * Conversation in the tree ends its session, and a Conversation stop request
+ * aborts each run that is still working.
  *
  * Returns undefined when the child does not belong to the parent.
  */
@@ -25,13 +31,36 @@ export async function stopChildAgent(args: {
   childConversationId: string;
   parentConversationId: string;
   state?: StateAdapter;
-}): Promise<{ stoppedCount: number } | undefined> {
+}): Promise<{ stopped: boolean } | undefined> {
+  const latest = await getLatestAgentInvocationForConversation(
+    args.childConversationId,
+  );
+  const wasStopped =
+    latest !== undefined &&
+    (latest.status === "stopped" ||
+      isChildAgentSessionStopped(
+        latest,
+        await getConversationStoppedAtMs(args.childConversationId),
+      ));
   const tree = await stopChildAgentInvocations(args);
   if (!tree) {
     return undefined;
   }
   await finishStoppedTree(tree, tree.conversationIds, args.state);
-  return { stoppedCount: tree.stopped.length };
+  return { stopped: tree.stopped.length > 0 || !wasStopped };
+}
+
+/**
+ * Stop a root Conversation's session the same way `stopAgent` stops a child:
+ * its child agents stop, and it ends its own session. The caller interrupts
+ * its own run.
+ */
+export async function stopConversationSession(args: {
+  conversationId: string;
+  state?: StateAdapter;
+}): Promise<void> {
+  await stopChildAgentsOf(args.conversationId, args.state);
+  await endSessions([args.conversationId], args.state);
 }
 
 /**
@@ -59,12 +88,24 @@ async function finishStoppedTree(
   for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
   }
-  for (const conversationId of tree.conversationIds) {
-    await cancelSubscriptions({ conversationId, state });
-  }
+  await endSessions(conversationIdsToStop, state);
   for (const conversationId of conversationIdsToStop) {
     await stopConversationWork({ conversationId, state });
   }
+}
+
+/**
+ * End each Conversation's watches, then record the stop, so the worker drops
+ * every event those watches delivered.
+ */
+async function endSessions(
+  conversationIds: string[],
+  state: StateAdapter | undefined,
+): Promise<void> {
+  for (const conversationId of conversationIds) {
+    await cancelSubscriptions({ conversationId, state });
+  }
+  await markConversationsStopped(conversationIds);
 }
 
 /**
