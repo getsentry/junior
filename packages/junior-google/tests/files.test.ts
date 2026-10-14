@@ -18,6 +18,17 @@ function docsTools(...responses: Response[]) {
   return { fetch, tools };
 }
 
+/** Slides API text with one run. */
+function slidesText(content: string) {
+  return { textElements: [{ textRun: { content } }] };
+}
+
+/** One Slides text box. */
+function textBox(content: string, objectId?: string) {
+  // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- Slides API field.
+  return { objectId, shape: { text: slidesText(content) } };
+}
+
 function run(
   tools: ReturnType<typeof docsTools>["tools"],
   name: string,
@@ -27,7 +38,7 @@ function run(
   return tool.execute!(tool.prepareArguments!(input), { toolCallId: name });
 }
 
-describe("Google Docs tools", () => {
+describe("Google Docs, Sheets, and Slides tools", () => {
   beforeEach(() => stubGoogleEnv());
   afterEach(() => vi.unstubAllEnvs());
 
@@ -37,6 +48,7 @@ describe("Google Docs tools", () => {
         files: [
           {
             id: DOC_ID,
+            mimeType: "application/vnd.google-apps.document",
             modifiedTime: "2026-10-01T10:00:00Z",
             name: "Q4 plan",
             webViewLink: `https://docs.google.com/document/d/${DOC_ID}/edit`,
@@ -79,16 +91,17 @@ describe("Google Docs tools", () => {
       }),
     );
 
-    const search = await run(tools, "searchGoogleDocs", {
+    const search = await run(tools, "searchGoogleFiles", {
       query: "Bob's plan",
+      types: ["document"],
     });
     const searchUrl = new URL(fetch.mock.calls[0]![0].request.url);
     expect(searchUrl.pathname).toBe("/drive/v3/files");
     expect(searchUrl.searchParams.get("q")).toBe(
-      "mimeType = 'application/vnd.google-apps.document' and trashed = false and fullText contains 'Bob\\'s plan'",
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
     );
     expect(search).toMatchObject({
-      documents: [{ documentId: DOC_ID, title: "Q4 plan" }],
+      files: [{ fileId: DOC_ID, title: "Q4 plan", type: "document" }],
       truncated: true,
     });
 
@@ -113,15 +126,15 @@ describe("Google Docs tools", () => {
       truncated: false,
     });
 
-    const comments = await run(tools, "listGoogleDocComments", {
-      document: DOC_ID,
+    const comments = await run(tools, "listGoogleFileComments", {
+      file: DOC_ID,
     });
     expect(fetch.mock.calls.slice(3).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.comments.list",
     ]);
     expect(comments).toEqual({
-      target: "listGoogleDocComments",
+      target: "listGoogleFileComments",
       comments: [
         {
           author: "Bob",
@@ -135,12 +148,12 @@ describe("Google Docs tools", () => {
           resolved: true,
         },
       ],
-      documentId: DOC_ID,
+      fileId: DOC_ID,
       nextPageToken: "page-2",
     });
   });
 
-  it("explains a Doc Junior cannot open, a file that is not a Doc, and a grant without Drive access", async () => {
+  it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
     const { tools } = docsTools(
       Response.json({ error: { message: "File not found" } }, { status: 404 }),
       Response.json({
@@ -162,13 +175,132 @@ describe("Google Docs tools", () => {
     const hidden = run(tools, "readGoogleDoc", { document: DOC_ID });
     await expect(hidden).rejects.toThrow(PluginToolInputError);
     await expect(hidden).rejects.toThrow(
-      `Junior's Google account (${ACCOUNT_EMAIL}) cannot open this Doc`,
+      `Junior's Google account (${ACCOUNT_EMAIL}) cannot open this file`,
     );
     await expect(
-      run(tools, "listGoogleDocComments", { document: DOC_ID }),
-    ).rejects.toThrow("is not a Google Doc");
+      run(tools, "readGoogleDoc", { document: DOC_ID }),
+    ).rejects.toThrow('"Budget" is not a Google Doc');
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow("A Junior admin must reconnect it");
+  });
+
+  it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {
+    const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
+    const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
+    const { fetch, tools } = docsTools(
+      Response.json({
+        id: SHEET_ID,
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        name: "Budget",
+      }),
+      Response.json({
+        sheets: [
+          { properties: { sheetType: "GRID", title: "Q4" } },
+          { properties: { sheetType: "OBJECT", title: "Chart" } },
+          { properties: { sheetType: "GRID", title: "Bob's tab" } },
+        ],
+      }),
+      Response.json({
+        valueRanges: [
+          {
+            range: "Q4!A1:B2",
+            values: [
+              ["Item", "Cost"],
+              ["Laptops, new", "$1,200"],
+            ],
+          },
+          { range: "'Bob''s tab'!A1:A1", values: [['Say "hi"']] },
+        ],
+      }),
+      Response.json({
+        id: SLIDES_ID,
+        mimeType: "application/vnd.google-apps.presentation",
+        name: "Kickoff",
+      }),
+      Response.json({
+        slides: [
+          {
+            pageElements: [
+              textBox("Kickoff\n"),
+              {
+                elementGroup: {
+                  children: [
+                    {
+                      table: {
+                        tableRows: [
+                          {
+                            tableCells: [
+                              { text: slidesText("Q4") },
+                              { text: slidesText("Ship\n") },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              { image: { contentUrl: "https://example.com/logo.png" } },
+            ],
+            slideProperties: {
+              notesPage: {
+                notesProperties: { speakerNotesObjectId: "notes" },
+                pageElements: [
+                  textBox("Not notes", "thumbnail"),
+                  textBox("Say hello.\n", "notes"),
+                ],
+              },
+            },
+          },
+          { pageElements: [] },
+        ],
+      }),
+    );
+
+    const sheet = await run(tools, "readGoogleSheet", {
+      spreadsheet: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
+    });
+    const batchGet = new URL(fetch.mock.calls[2]![0].request.url);
+    expect(batchGet.host).toBe("sheets.googleapis.com");
+    expect(batchGet.searchParams.getAll("ranges")).toEqual([
+      "'Q4'",
+      "'Bob''s tab'",
+    ]);
+    expect(sheet).toMatchObject({
+      ranges: [
+        {
+          content: 'Item,Cost\n"Laptops, new","$1,200"',
+          range: "Q4!A1:B2",
+          truncated: false,
+        },
+        {
+          content: '"Say ""hi"""',
+          range: "'Bob''s tab'!A1:A1",
+          truncated: false,
+        },
+      ],
+      spreadsheetId: SHEET_ID,
+      tabs: ["Q4", "Bob's tab"],
+      title: "Budget",
+      truncated: false,
+    });
+
+    const slides = await run(tools, "readGoogleSlides", {
+      presentation: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
+    });
+    expect(new URL(fetch.mock.calls[4]![0].request.url).host).toBe(
+      "slides.googleapis.com",
+    );
+    expect(slides).toMatchObject({
+      presentationId: SLIDES_ID,
+      slideCount: 2,
+      slides: [
+        { notes: "Say hello.", slideNumber: 1, text: "Kickoff\nQ4 | Ship" },
+        { slideNumber: 2, text: "" },
+      ],
+      title: "Kickoff",
+      truncated: false,
+    });
   });
 });

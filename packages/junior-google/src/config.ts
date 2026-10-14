@@ -20,8 +20,9 @@ export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
  *   still decide how much detail each calendar shows.
  * - `calendar.events.owned`: create and change events on Junior's own
  *   calendar.
- * - `drive.readonly`: search, export, and read comments on Docs. The Drive
- *   comments API accepts no narrower read scope.
+ * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
+ *   read comments. The Drive comments API accepts no narrower read scope. The
+ *   Sheets and Slides APIs also accept this scope.
  */
 export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",

@@ -37,6 +37,14 @@ describe("Google egress policy", () => {
         url: "https://www.googleapis.com/drive/v3/files",
       }),
     ).toThrow(EgressPolicyDenied);
+    // Each operation is bound to the host of its own Google API.
+    expect(() =>
+      grantFor({
+        method: "GET",
+        operation: "google.sheets.spreadsheet.get",
+        url: "https://www.googleapis.com/v4/spreadsheets/1AbCdEfGhIjK",
+      }),
+    ).toThrow(EgressPolicyDenied);
 
     expect(
       grantFor({
@@ -102,11 +110,13 @@ describe("Google credential issuing", () => {
       lease: {
         account: { id: ACCOUNT_EMAIL },
         headerTransforms: [
-          {
-            domain: "www.googleapis.com",
-            headers: { Authorization: "Bearer access-token" },
-          },
-        ],
+          "www.googleapis.com",
+          "sheets.googleapis.com",
+          "slides.googleapis.com",
+        ].map((domain) => ({
+          domain,
+          headers: { Authorization: "Bearer access-token" },
+        })),
       },
     });
     const body = new URLSearchParams(String(fetch.mock.calls[0]![1]!.body));
