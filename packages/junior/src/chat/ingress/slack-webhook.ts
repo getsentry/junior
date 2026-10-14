@@ -39,6 +39,11 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import {
+  SLACK_EVENT_NAMESPACE,
+  slackChannelMessageEvent,
+} from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
 import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
@@ -487,6 +492,27 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
+    // A new top-level message can run Event automations for this channel.
+    // Use only `message`: Slack also sends `app_mention` for a mention in code.
+    const channelMessage =
+      args.event.type === "message" && args.event.channel && args.event.ts
+        ? slackChannelMessageEvent({
+            botId: args.event.bot_id,
+            channelId: args.event.channel,
+            subtype: args.event.subtype,
+            text: args.event.text,
+            threadTs: args.event.thread_ts,
+            ts: args.event.ts,
+            userId: message.author.userId,
+          })
+        : undefined;
+    const teamId = args.installation.teamId;
+    if (channelMessage && teamId) {
+      await ingestEventAutomations(
+        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+        { queue: args.queue, teamId },
+      );
+    }
     return;
   }
 

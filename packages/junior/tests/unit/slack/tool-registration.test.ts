@@ -21,7 +21,7 @@ const noopEgress = {
   },
 };
 
-function eventPlugin(enabled = true) {
+function eventPlugin() {
   return defineJuniorPlugin({
     manifest: {
       name: "events-test",
@@ -30,7 +30,6 @@ function eventPlugin(enabled = true) {
     },
     events: {
       resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
-      isEnabled: () => enabled,
     },
   });
 }
@@ -312,31 +311,6 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("listEventAutomations");
     expect(complete).toHaveProperty("updateEventAutomation");
     expect(complete).toHaveProperty("deleteEventAutomation");
-  });
-
-  it("keeps event automation management but not creation without an active event plugin", () => {
-    setPlugins([eventPlugin(false)]);
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-        actor: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-        },
-      },
-    );
-
-    // Core Workspace snapshot events stay searchable/watchable. Durable event
-    // task creation still needs a plugin publisher.
-    expect(tools).not.toHaveProperty("createEventAutomation");
-    expect(tools).toHaveProperty("searchEventTypes");
-    expect(tools).toHaveProperty("watchEvents");
-    expect(tools).toHaveProperty("listEventAutomations");
-    expect(tools).toHaveProperty("updateEventAutomation");
-    expect(tools).toHaveProperty("deleteEventAutomation");
   });
 
   it("does not register schedule tools without a actor", () => {

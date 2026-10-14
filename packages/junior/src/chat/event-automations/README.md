@@ -5,6 +5,20 @@ namespace, identifier, and event type. Plugins verify webhooks, validate provide
 scope, and normalize events. Core binds the plugin namespace when it publishes
 an event. Plugins do not know which conversations or automations consume it.
 
+Slack ingress also publishes core `slack` / `channel` / `message.posted` events
+(`slack/channel-message-events.ts`) for new top-level messages that no other
+route handles. Bot posts and thread replies do not publish. A Watch cannot select
+these events. An automation can watch only the channel where it posts, so
+private channel text stays in that channel. Runs always use system credentials,
+because anyone in the channel writes the Event text. Each run replies in the
+thread of the source message.
+
+Later, we may let a Watch select these events. For example, a person opens an
+incident and wants Junior to record every message in the incident channel. A
+Watch delivers into the Conversation that created it, so this needs a decision
+about which credentials those Turns use. The consecutive automated-turn limit
+also stops a Watch on a busy channel.
+
 One selector has one Slack workspace, namespace, identifier, and one or more
 event types. Multiple automations can use the same selector.
 `resourceType` and `label` are presentation metadata, not match keys.
@@ -24,7 +38,8 @@ consecutive automated-turn limit. Each dispatch runs in its own Conversation, an
 the limit is not counted for a Destination. A shared Destination count paused
 unrelated automations in the same channel.
 
-Event automations target channels or DMs, not threads. Migration 0044 removes
+Event automations target channels or DMs, not threads. A Slack channel-message
+run adds the source message thread only at dispatch time. Migration 0044 removes
 stored thread destinations. Reads also remove thread fields written by older
 workers during deployment; new writes reject them.
 

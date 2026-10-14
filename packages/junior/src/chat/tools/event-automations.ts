@@ -1,7 +1,4 @@
-import {
-  hasPluginEventCatalogEntries,
-  type EventCatalog,
-} from "@/chat/events/catalog";
+import type { EventCatalog } from "@/chat/events/catalog";
 import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
 import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
 import type { ToolRegistry } from "@/chat/tools/definition";
@@ -24,13 +21,8 @@ export function createEventAutomationTools(
   ) {
     return {};
   }
-  // Durable event automations need a plugin publisher. Core snapshot events alone
-  // only support temporary watches from switchWorkspace / watchEvents.
-  const canCreate = hasPluginEventCatalogEntries(catalog);
   return {
-    ...(canCreate
-      ? { createEventAutomation: createEventAutomationTool(context, catalog) }
-      : undefined),
+    createEventAutomation: createEventAutomationTool(context, catalog),
     listEventAutomations: createListEventAutomationsTool(context, catalog),
     updateEventAutomation: createUpdateEventAutomationTool(context, catalog),
     deleteEventAutomation: createDeleteEventAutomationTool(context, catalog),
