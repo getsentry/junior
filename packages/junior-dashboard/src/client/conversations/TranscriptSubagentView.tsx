@@ -9,7 +9,7 @@ export function TranscriptSubagentView(props: {
   part: TranscriptViewSubagentPart;
   timestamp?: number;
 }) {
-  const label = props.part.subagentKind;
+  const label = props.part.agentName ?? props.part.subagentKind;
   const status = props.part.status;
   const meta = [
     status,
@@ -27,6 +27,11 @@ export function TranscriptSubagentView(props: {
           <strong className="min-w-0 break-words font-bold text-cyan-100">
             <HighlightText text={label} />
           </strong>
+          {props.part.task ? (
+            <span className="min-w-0 truncate text-dashboard-text-muted">
+              <HighlightText text={props.part.task} />
+            </span>
+          ) : null}
           {props.part.status === "running" ? (
             <span
               aria-hidden="true"
@@ -44,7 +49,7 @@ export function TranscriptSubagentView(props: {
 
   return (
     <button
-      aria-label={`Open ${props.part.subagentKind} transcript`}
+      aria-label={`Open ${label} transcript`}
       className="block w-full min-w-0 cursor-pointer text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
       onClick={() => props.onOpenTranscript?.(props.part)}
       type="button"

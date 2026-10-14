@@ -200,7 +200,9 @@ describe("agent invocation spawn and result delivery", () => {
           ),
           subagentKind: "agent",
           childConversationId: first.conversation_id,
+          agentName: "reviewer",
           parentToolCallId: "call-1",
+          task: "Inspect the failing checks.",
           reasoningLevel: "high",
         },
       ]);

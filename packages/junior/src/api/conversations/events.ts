@@ -457,6 +457,18 @@ function reportEventData(args: {
   }
 }
 
+// The child name and task are model content, so they follow payload access.
+function reportSubagentLabel(
+  data: Extract<ConversationEvent["data"], { type: "subagent_started" }>,
+  canExposePayload: boolean,
+): { agentName?: string; task?: string } {
+  if (!canExposePayload) return {};
+  return {
+    ...(data.agentName ? { agentName: data.agentName } : undefined),
+    ...(data.task ? { task: data.task } : undefined),
+  };
+}
+
 /**
  * Project canonical events into the ordered reporting boundary.
  *
@@ -572,6 +584,7 @@ export function projectConversationReportEventPage(args: {
         startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
+        ...reportSubagentLabel(event.data, args.canExposePayload),
         status: "running",
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
@@ -586,6 +599,7 @@ export function projectConversationReportEventPage(args: {
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
           subagentKind: started.data.subagentKind,
+          ...reportSubagentLabel(started.data, args.canExposePayload),
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
             : undefined),

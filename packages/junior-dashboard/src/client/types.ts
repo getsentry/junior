@@ -38,10 +38,12 @@ export type TranscriptViewToolCallPart = {
 };
 
 export type TranscriptViewSubagentPart = {
+  agentName?: string;
   childConversationId: string;
   id: string;
   status: "aborted" | "blocked" | "completed" | "error" | "running";
   subagentKind: string;
+  task?: string;
   type: "subagent";
 };
 

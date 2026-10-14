@@ -362,6 +362,8 @@ export function transcriptMessagesFromEvents(
         childConversationId: data.childConversationId,
         subagentKind: data.subagentKind,
         status: data.status,
+        ...(data.agentName ? { agentName: data.agentName } : undefined),
+        ...(data.task ? { task: data.task } : undefined),
       };
       subagents.set(subagentId, part);
       messages.push({

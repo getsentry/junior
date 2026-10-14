@@ -58,9 +58,11 @@ Each agent invocation writes two events to its parent Conversation. The
 dashboard pairs them to show the child and its status.
 
 - `subagent_started` is written before the child mailbox append, so the child
-  cannot end first. It has the child `conversation_id` and, for a `spawnAgent`
-  call, the parent tool call id. The agent invocation stores that id, so a
-  repaired mailbox append writes the same event.
+  cannot end first. It has the child `conversation_id` and the child name, if
+  there is one. For a `spawnAgent` call, it also has the parent tool call id
+  and the task. The agent invocation stores both, so a repaired mailbox append
+  writes the same event. The dashboard labels the row with the name and task.
+  It shows them only to viewers who can see private content.
 - `subagent_ended` is written when the agent invocation is terminal, before the
   parent result is sent. Its outcome is `success`, `blocked`, `error`, or
   `aborted` for a stopped child. The heartbeat result repair also writes it,

@@ -50,7 +50,10 @@ function SubagentTranscriptDrawerContent(props: {
   const [searchOpen, setSearchOpen] = useState(false);
 
   const detail = query.data;
-  const label = detail?.displayTitle || props.target.part.subagentKind;
+  const label =
+    props.target.part.agentName ||
+    detail?.displayTitle ||
+    props.target.part.subagentKind;
   const meta = [
     statusLabel(props.target.part, detail?.status),
     detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,

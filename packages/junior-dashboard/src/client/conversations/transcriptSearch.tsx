@@ -160,7 +160,11 @@ export function entryMatchesSearch(
 
   if (entry.kind === "subagent") {
     return (
-      textContains(entry.part.subagentKind, normalizedQuery) ||
+      textContains(
+        entry.part.agentName ?? entry.part.subagentKind,
+        normalizedQuery,
+      ) ||
+      textContains(entry.part.task, normalizedQuery) ||
       textContains(entry.part.status, normalizedQuery)
     );
   }

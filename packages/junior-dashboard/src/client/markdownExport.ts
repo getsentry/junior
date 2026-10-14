@@ -396,9 +396,13 @@ function appendSubagent(
   part: TranscriptViewSubagentPart,
   timestamp: number | undefined,
 ): void {
-  lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
+  lines.push(
+    "",
+    `### Subagent: ${headingText(part.agentName ?? part.subagentKind)}`,
+  );
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.status);
+  addMetaLine(lines, "Task", part.task);
 }
 
 function appendTool(
