@@ -5,15 +5,17 @@ import { formatRelativeTime, formatTime } from "../format";
 import { ButtonLink } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SegmentedTabs } from "../components/SegmentedTabs";
-import { ConversationChildAgents } from "./ConversationChildAgents";
-import { ConversationMemories } from "./ConversationMemories";
+import {
+  ConversationChildAgents,
+  useConversationChildAgents,
+} from "./ConversationChildAgents";
+import {
+  ConversationMemories,
+  useConversationMemories,
+} from "./ConversationMemories";
 import { ShareConversationButton } from "./ShareConversationButton";
 
-const tabs = [
-  { label: "Details", value: "details" },
-  { label: "Memories", value: "memories" },
-  { label: "Subagents", value: "agents" },
-] as const;
+type DetailsTab = "agents" | "details" | "memories";
 
 /** Put conversation context before usage and diagnostic links. */
 export function ConversationDetailsDrawer(props: {
@@ -28,7 +30,19 @@ export function ConversationDetailsDrawer(props: {
   stats: ReactNode;
   title: string;
 }) {
-  const [tab, setTab] = useState<(typeof tabs)[number]["value"]>("details");
+  const [tab, setTab] = useState<DetailsTab>("details");
+  // Load both lists with the drawer so each tab can show its count.
+  const memories = useConversationMemories(props.conversationId);
+  const agents = useConversationChildAgents(props.conversationId);
+  const tabs = [
+    { label: "Details", value: "details" },
+    {
+      count: memories.data?.memories.length,
+      label: "Memories",
+      value: "memories",
+    },
+    { count: agents.data?.agents.length, label: "Subagents", value: "agents" },
+  ] as const;
   const titleId = "conversation-details-drawer-title";
   const sections = [
     { content: props.brief, title: "Summary" },
