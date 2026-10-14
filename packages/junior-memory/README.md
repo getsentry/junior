@@ -49,8 +49,14 @@ exported types, tools, and tests are authoritative.
 - Records retain provenance, the optional origin `conversation_id`, lifecycle
   status, supersession relationships, and timestamps needed for review and deletion.
 - Embeddings are derived indexes, not independent memory authority.
-- Embedding distance never decides that two memories are duplicates. Exact
-  content and preference review own duplicate and supersession decisions.
+- Embedding distance never decides that two memories are duplicates. It only
+  selects candidates. Exact content and model review own duplicate decisions
+  for every memory kind. Only user preferences can supersede old memories.
+- `junior_memory_signals` is a thin log of things that happen to a stored
+  memory (memory id, signal, idempotency key, conversation, time). The only
+  signal today is `duplicate`: a capture resolved to an existing memory. Rows
+  older than 90 days are dropped when the same memory gets the same signal
+  again. Count recent rows, or distinct conversations, to weigh memories.
 - Writes are idempotent where a completed session or tool retry can repeat.
 - Removal and supersession preserve enough lifecycle information to prevent
   deleted facts from being recalled or silently recreated.
