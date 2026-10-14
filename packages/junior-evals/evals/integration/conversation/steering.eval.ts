@@ -38,7 +38,7 @@ describe("Slack Turn Steering", () => {
       "succeeded",
     ]);
     expect(conversation.reactions).toContain("white_check_mark");
-    // The dashboard transcript shows the mention the running turn took.
+    // The transcript shows the steered mention.
     expect(
       conversation.session.events.filter(
         (event) => event.type === "message" && event.role === "user",

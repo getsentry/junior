@@ -1068,10 +1068,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   async (queuedMessages) => {
                     acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
-                    // The mailbox drops these messages after this returns.
-                    // Record them like pre-turn queued messages so the
-                    // transcript still shows them. Record first: a failed
-                    // write leaves them pending instead of hidden.
+                    // Record before accepting, so a failed write leaves the
+                    // messages pending instead of missing from the transcript.
                     for (const queued of queuedMessages) {
                       upsertConversationMessage(
                         preparedState.conversation,
